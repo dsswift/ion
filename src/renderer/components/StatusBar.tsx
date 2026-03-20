@@ -286,10 +286,12 @@ export function StatusBar() {
       && a.hasChosenDirectory === b.hasChosenDirectory
       && a.workingDirectory === b.workingDirectory
       && a.claudeSessionId === b.claudeSessionId
+      && (a.messages.length > 0) === (b.messages.length > 0)
     ),
   )
   const addDirectory = useSessionStore((s) => s.addDirectory)
   const removeDirectory = useSessionStore((s) => s.removeDirectory)
+  const setBaseDirectory = useSessionStore((s) => s.setBaseDirectory)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -316,6 +318,7 @@ export function StatusBar() {
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const isEmpty = tab.messages.length === 0
   const hasExtraDirs = tab.additionalDirs.length > 0
+  const baseLocked = !isEmpty
 
   const handleOpenInTerminal = () => {
     window.clui.openInTerminal(tab.claudeSessionId, tab.workingDirectory)
@@ -336,7 +339,19 @@ export function StatusBar() {
   const handleAddDir = async () => {
     const dir = await window.clui.selectDirectory()
     if (dir) {
-      addDirectory(dir)
+      if (!tab.hasChosenDirectory && !baseLocked) {
+        setBaseDirectory(dir)
+      } else {
+        addDirectory(dir)
+      }
+    }
+  }
+
+  const handleChangeBaseDir = async () => {
+    if (isRunning || baseLocked) return
+    const dir = await window.clui.selectDirectory()
+    if (dir) {
+      setBaseDirectory(dir)
     }
   }
 
@@ -395,14 +410,20 @@ export function StatusBar() {
           >
             <div className="py-1.5 px-1">
               {/* Base directory */}
-              <div className="px-2 py-1">
+              <button
+                onClick={handleChangeBaseDir}
+                disabled={isRunning || baseLocked}
+                className="w-full text-left px-2 py-1 rounded-lg transition-colors"
+                style={{ cursor: isRunning || baseLocked ? 'default' : 'pointer', opacity: baseLocked ? 0.7 : 1 }}
+                title={baseLocked ? 'Base directory is locked after the conversation starts' : tab.hasChosenDirectory ? `${tab.workingDirectory} — click to change` : 'Click to choose a base directory'}
+              >
                 <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: colors.textTertiary }}>
                   Base directory
                 </div>
-                <div className="text-[11px] truncate" style={{ color: tab.hasChosenDirectory ? colors.textSecondary : colors.textMuted }} title={tab.hasChosenDirectory ? tab.workingDirectory : 'No folder selected — defaults to home directory'}>
+                <div className="text-[11px] truncate" style={{ color: tab.hasChosenDirectory ? colors.textSecondary : colors.textMuted }}>
                   {tab.hasChosenDirectory ? tab.workingDirectory : 'None (defaults to ~)'}
                 </div>
-              </div>
+              </button>
 
               {/* Additional directories */}
               {hasExtraDirs && (
