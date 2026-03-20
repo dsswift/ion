@@ -221,6 +221,8 @@ export interface RunOptions {
   hookSettingsPath?: string
   /** Extra directories to add via --add-dir (session-preserving) */
   addDirs?: string[]
+  /** CLI permission mode override (e.g. 'plan') passed as --permission-mode */
+  permissionModeCli?: string
 }
 
 // ─── Control Plane Types ───

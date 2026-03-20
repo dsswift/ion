@@ -71,8 +71,8 @@ export class ControlPlane extends EventEmitter {
   private permissionServer: PermissionServer
   /** Per-run tokens: requestId → runToken (for cleanup on exit/error) */
   private runTokens = new Map<string, string>()
-  /** Global permission mode: 'ask' shows cards, 'auto' auto-approves */
-  private permissionMode: 'ask' | 'auto' = 'ask'
+  /** Global permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
+  private permissionMode: 'ask' | 'auto' | 'plan' = 'ask'
   /** Resolves when the permission server is ready (or failed). Dispatch awaits this. */
   private hookServerReady: Promise<void>
 
@@ -107,8 +107,8 @@ export class ControlPlane extends EventEmitter {
 
       log(`Permission request [${questionId}]: tool=${toolRequest.tool_name} tab=${tabId.substring(0, 8)}… mode=${this.permissionMode}`)
 
-      // Auto mode: immediately allow without showing UI
-      if (this.permissionMode === 'auto') {
+      // Auto/Plan mode: immediately allow without showing UI
+      if (this.permissionMode === 'auto' || this.permissionMode === 'plan') {
         this.permissionServer.respondToPermission(questionId, 'allow', 'Auto mode')
         return
       }
@@ -482,7 +482,7 @@ export class ControlPlane extends EventEmitter {
    * Set global permission mode.
    * 'ask' = show permission cards, 'auto' = auto-approve all tool calls.
    */
-  setPermissionMode(mode: 'ask' | 'auto'): void {
+  setPermissionMode(mode: 'ask' | 'auto' | 'plan'): void {
     log(`Permission mode set to: ${mode}`)
     this.permissionMode = mode
   }
@@ -603,6 +603,11 @@ export class ControlPlane extends EventEmitter {
       this.runTokens.set(requestId, runToken)
       const hookSettingsPath = this.permissionServer.generateSettingsFile(runToken)
       options = { ...options, hookSettingsPath }
+    }
+
+    // Inject CLI permission mode for plan mode
+    if (this.permissionMode === 'plan') {
+      options = { ...options, permissionModeCli: 'plan' }
     }
 
     tab.activeRequestId = requestId

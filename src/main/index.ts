@@ -333,7 +333,7 @@ ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
 })
 
 ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, mode: string) => {
-  if (mode !== 'ask' && mode !== 'auto') {
+  if (mode !== 'ask' && mode !== 'auto' && mode !== 'plan') {
     log(`IPC SET_PERMISSION_MODE: invalid mode "${mode}" — ignoring`)
     return
   }
