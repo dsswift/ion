@@ -30,8 +30,8 @@ interface State {
   staticInfo: StaticInfo | null
   /** User's preferred model override (null = use default) */
   preferredModel: string | null
-  /** Global permission mode: 'ask' shows cards, 'auto' auto-approves all tool calls */
-  permissionMode: 'ask' | 'auto'
+  /** Global permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
+  permissionMode: 'ask' | 'auto' | 'plan'
 
   // Marketplace state
   marketplaceOpen: boolean
@@ -46,7 +46,7 @@ interface State {
   // Actions
   initStaticInfo: () => Promise<void>
   setPreferredModel: (model: string | null) => void
-  setPermissionMode: (mode: 'ask' | 'auto') => void
+  setPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
   createTab: () => Promise<string>
   selectTab: (tabId: string) => void
   closeTab: (tabId: string) => void

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck } from '@phosphor-icons/react'
+import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks } from '@phosphor-icons/react'
 import { useSessionStore, AVAILABLE_MODELS } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
@@ -167,7 +167,10 @@ function PermissionModePicker() {
     setOpen((o) => !o)
   }
 
-  const isAuto = permissionMode === 'auto'
+  const modeLabel = permissionMode === 'plan' ? 'Plan' : permissionMode === 'auto' ? 'Auto' : 'Ask'
+  const modeIcon = permissionMode === 'plan'
+    ? <ListChecks size={11} weight="bold" />
+    : <ShieldCheck size={11} weight={permissionMode === 'auto' ? 'fill' : 'regular'} />
 
   return (
     <>
@@ -181,8 +184,8 @@ function PermissionModePicker() {
         }}
         title="Permission mode (global)"
       >
-        <ShieldCheck size={11} weight={isAuto ? 'fill' : 'regular'} />
-        {isAuto ? 'Auto' : 'Ask'}
+        {modeIcon}
+        {modeLabel}
         <CaretDown size={10} style={{ opacity: 0.6 }} />
       </button>
 
@@ -213,15 +216,32 @@ function PermissionModePicker() {
               onClick={() => { setPermissionMode('ask'); setOpen(false) }}
               className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
               style={{
-                color: !isAuto ? colors.textPrimary : colors.textSecondary,
-                fontWeight: !isAuto ? 600 : 400,
+                color: permissionMode === 'ask' ? colors.textPrimary : colors.textSecondary,
+                fontWeight: permissionMode === 'ask' ? 600 : 400,
               }}
             >
               <span className="flex items-center gap-1.5">
                 <ShieldCheck size={12} />
                 Ask
               </span>
-              {!isAuto && <Check size={12} style={{ color: colors.accent }} />}
+              {permissionMode === 'ask' && <Check size={12} style={{ color: colors.accent }} />}
+            </button>
+
+            <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />
+
+            <button
+              onClick={() => { setPermissionMode('plan'); setOpen(false) }}
+              className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
+              style={{
+                color: permissionMode === 'plan' ? colors.textPrimary : colors.textSecondary,
+                fontWeight: permissionMode === 'plan' ? 600 : 400,
+              }}
+            >
+              <span className="flex items-center gap-1.5">
+                <ListChecks size={12} weight="bold" />
+                Plan
+              </span>
+              {permissionMode === 'plan' && <Check size={12} style={{ color: colors.accent }} />}
             </button>
 
             <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />
@@ -230,15 +250,15 @@ function PermissionModePicker() {
               onClick={() => { setPermissionMode('auto'); setOpen(false) }}
               className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
               style={{
-                color: isAuto ? colors.textPrimary : colors.textSecondary,
-                fontWeight: isAuto ? 600 : 400,
+                color: permissionMode === 'auto' ? colors.textPrimary : colors.textSecondary,
+                fontWeight: permissionMode === 'auto' ? 600 : 400,
               }}
             >
               <span className="flex items-center gap-1.5">
                 <ShieldCheck size={12} weight="fill" />
                 Auto
               </span>
-              {isAuto && <Check size={12} style={{ color: colors.accent }} />}
+              {permissionMode === 'auto' && <Check size={12} style={{ color: colors.accent }} />}
             </button>
           </div>
         </motion.div>,
