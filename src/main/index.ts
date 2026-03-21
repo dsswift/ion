@@ -897,6 +897,29 @@ end tell`
   }
 })
 
+ipcMain.handle(IPC.OPEN_IN_VSCODE, (_event, projectPath: string) => {
+  const { execFile } = require('child_process')
+  const dir = projectPath || process.cwd()
+
+  try {
+    execFile('code', ['--reuse-window', dir], (err: Error | null) => {
+      if (err) {
+        log(`'code' CLI failed, falling back to open -a: ${err.message}`)
+        execFile('/usr/bin/open', ['-a', 'Visual Studio Code', dir], (err2: Error | null) => {
+          if (err2) log(`Failed to open VS Code: ${err2.message}`)
+          else log(`Opened VS Code (via open -a) at: ${dir}`)
+        })
+      } else {
+        log(`Opened VS Code at: ${dir}`)
+      }
+    })
+    return true
+  } catch (err: unknown) {
+    log(`Failed to open VS Code: ${err}`)
+    return false
+  }
+})
+
 // ─── Marketplace IPC ───
 
 ipcMain.handle(IPC.MARKETPLACE_FETCH, async (_event, { forceRefresh } = {}) => {
@@ -923,7 +946,7 @@ ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { plugi
 
 const SETTINGS_DIR = join(homedir(), '.clui')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '' }
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' }
 
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {

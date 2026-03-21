@@ -317,6 +317,7 @@ export const IPC = {
   SELECT_DIRECTORY: 'clui:select-directory',
   OPEN_EXTERNAL: 'clui:open-external',
   OPEN_IN_TERMINAL: 'clui:open-in-terminal',
+  OPEN_IN_VSCODE: 'clui:open-in-vscode',
   ATTACH_FILES: 'clui:attach-files',
   TAKE_SCREENSHOT: 'clui:take-screenshot',
   TRANSCRIBE_AUDIO: 'clui:transcribe-audio',
