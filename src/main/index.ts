@@ -187,10 +187,9 @@ function createTray(): void {
   trayIcon.setTemplateImage(true)
   tray = new Tray(trayIcon)
   tray.setToolTip('Clui CC — Claude Code UI')
-  tray.on('click', () => toggleWindow('tray click'))
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Show Clui CC', click: () => showWindow('tray menu') },
+      { label: 'Toggle Interface', accelerator: 'Alt+Space', click: () => toggleWindow('tray menu') },
       { type: 'separator' },
       { label: 'Settings...', click: () => {
         showWindow('tray settings')
