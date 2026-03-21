@@ -150,6 +150,7 @@ export class ControlPlane extends EventEmitter {
       // Handle session init
       if (event.type === 'session_init') {
         tab.claudeSessionId = event.sessionId
+        log(`Session init [${requestId.substring(0, 8)}]: cliMode=${(event as any).permissionMode || 'unknown'}, session=${event.sessionId.substring(0, 8)}`)
 
         if (this.initRequestIds.has(requestId)) {
           // Warmup init — emit session_init with isWarmup flag, don't change status
@@ -304,6 +305,7 @@ export class ControlPlane extends EventEmitter {
       // Handle session init
       if (event.type === 'session_init') {
         tab.claudeSessionId = event.sessionId
+        log(`Session init (pty) [${requestId.substring(0, 8)}]: cliMode=${(event as any).permissionMode || 'unknown'}, session=${event.sessionId.substring(0, 8)}`)
 
         if (this.initRequestIds.has(requestId)) {
           this.emit('event', tabId, { ...event, isWarmup: true })
@@ -612,7 +614,9 @@ export class ControlPlane extends EventEmitter {
     }
 
     // Inject CLI permission mode for plan mode
-    if (this._getPermissionMode(tabId) === 'plan') {
+    const tabMode = this._getPermissionMode(tabId)
+    log(`Dispatch [${requestId.substring(0, 8)}]: mode=${tabMode}, resume=${!!tab.claudeSessionId}, session=${tab.claudeSessionId?.substring(0, 8) || 'new'}`)
+    if (tabMode === 'plan') {
       options = { ...options, permissionModeCli: 'plan' }
     }
 
