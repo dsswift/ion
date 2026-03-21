@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldWarning, Terminal, ArrowSquareOut, RocketLaunch, ListChecks, Eye } from '@phosphor-icons/react'
+import { ShieldWarning, Terminal, ArrowSquareOut, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { PlanViewer } from './PlanViewer'
 import type { Message } from '../../shared/types'
@@ -12,9 +12,21 @@ interface Props {
   messages: Message[]
   onDismiss: () => void
   onImplement?: (mode: 'ask' | 'auto', clearContext: boolean) => void
+  onAnswer?: (answer: string) => void
 }
 
-export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, onDismiss, onImplement }: Props) {
+interface AskOption {
+  label: string
+  description?: string
+}
+
+interface AskData {
+  question: string
+  header?: string
+  options: AskOption[]
+}
+
+export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, onDismiss, onImplement, onAnswer }: Props) {
   const colors = useColors()
   const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
 
@@ -47,6 +59,22 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
 
   const toolNames = [...new Set(tools.map((t) => t.toolName))]
   const isPlanExit = toolNames.includes('ExitPlanMode')
+  const isAskQuestion = !isPlanExit && toolNames.includes('AskUserQuestion')
+
+  // Extract question data from the last AskUserQuestion message
+  const askData = useMemo<AskData | null>(() => {
+    if (!isAskQuestion) return null
+    const askMsg = [...messages].reverse().find((m) => m.toolName === 'AskUserQuestion' && m.toolInput)
+    if (!askMsg?.toolInput) return null
+    try {
+      const input = JSON.parse(askMsg.toolInput)
+      const q = input.questions?.[0]
+      if (!q?.question || !q?.options?.length) return null
+      return { question: q.question, header: q.header, options: q.options }
+    } catch { return null }
+  }, [messages, isAskQuestion])
+
+  // ─── ExitPlanMode: "Plan Ready" card ───
 
   if (isPlanExit && onImplement) {
     return (
@@ -190,6 +218,95 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
       </motion.div>
     )
   }
+
+  // ─── AskUserQuestion: interactive question card ───
+
+  if (isAskQuestion && askData && onAnswer) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -4, scale: 0.97 }}
+        transition={{ duration: 0.2 }}
+        className="mx-4 mb-2"
+      >
+        <div
+          style={{
+            background: colors.containerBg,
+            border: `1px solid ${colors.accentBorderMedium}`,
+            borderRadius: 14,
+            boxShadow: `0 2px 12px ${colors.accentLight}`,
+          }}
+          className="overflow-hidden"
+        >
+          {/* Header */}
+          <div
+            className="flex items-center gap-2 px-3 py-2"
+            style={{
+              background: colors.accentLight,
+              borderBottom: `1px solid ${colors.accentBorderMedium}`,
+            }}
+          >
+            <Question size={14} style={{ color: colors.accent }} />
+            <span className="text-[12px] font-semibold" style={{ color: colors.accent }}>
+              {askData.header || 'Input Required'}
+            </span>
+          </div>
+
+          {/* Body */}
+          <div className="px-3 py-2">
+            <p className="text-[11px] leading-[1.5] mb-2" style={{ color: colors.textSecondary }}>
+              {askData.question}
+            </p>
+
+            {/* Option buttons */}
+            <div className="flex gap-1.5 flex-wrap">
+              {askData.options.map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => onAnswer(opt.label)}
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
+                  style={{
+                    background: colors.accentLight,
+                    color: colors.accent,
+                    border: `1px solid ${colors.accentBorderMedium}`,
+                  }}
+                  title={opt.description || undefined}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = colors.accentSoft
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = colors.accentLight
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <button
+                onClick={onDismiss}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
+                style={{
+                  background: colors.surfaceHover,
+                  color: colors.textTertiary,
+                  border: `1px solid ${colors.surfaceSecondary}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.surfaceActive
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.surfaceHover
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // ─── Generic: "Tools Denied" error card ───
 
   return (
     <motion.div

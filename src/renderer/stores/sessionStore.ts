@@ -602,6 +602,7 @@ export const useSessionStore = create<State>((set, get) => ({
           currentActivity: 'Starting...',
           title,
           attachments: [],
+          permissionDenied: null,
           messages: [
             ...withEffectiveBase.messages,
             { id: nextMsgId(), role: 'user' as const, content: prompt, timestamp: Date.now() },

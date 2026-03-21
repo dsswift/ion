@@ -212,6 +212,16 @@ export function ConversationView() {
                   ),
                 }))
               }}
+              onAnswer={(answer) => {
+                // Dismiss the card
+                useSessionStore.setState((s) => ({
+                  tabs: s.tabs.map((t) =>
+                    t.id === tab.id ? { ...t, permissionDenied: null } : t
+                  ),
+                }))
+                // Resume session with the answer (no mode change, no context clear)
+                sendMessage(answer)
+              }}
               onImplement={async (mode, clearContext) => {
                 // Dismiss the card
                 useSessionStore.setState((s) => ({
@@ -225,8 +235,11 @@ export function ConversationView() {
                 let implementPrompt = 'Implement the plan'
 
                 if (clearContext) {
-                  // Extract plan file path from messages BEFORE clearing them
-                  const exitMsg = [...tab.messages].reverse().find(
+                  // Snapshot messages BEFORE any async work or state clearing
+                  const messages = [...tab.messages]
+
+                  // Extract plan file path from messages
+                  const exitMsg = messages.reverse().find(
                     (m) => m.toolName === 'ExitPlanMode' && m.toolInput
                   )
                   let planContent: string | null = null
@@ -238,7 +251,9 @@ export function ConversationView() {
                         const result = await window.clui.readPlan(planFilePath)
                         planContent = result.content
                       }
-                    } catch { /* proceed without plan content */ }
+                    } catch (err) {
+                      console.warn('Failed to read plan file:', err)
+                    }
                   }
 
                   // Reset session (fresh Claude context) and clear messages
@@ -446,6 +461,7 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
         color: colors.userBubbleText,
         border: `1px solid ${colors.userBubbleBorder}`,
         borderRadius: '14px 14px 4px 14px',
+        whiteSpace: 'pre-wrap',
       }}
     >
       {message.content}
