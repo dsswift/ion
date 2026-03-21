@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState } from '../shared/types'
 
 export interface CluiAPI {
   // ─── Request-response (renderer → main) ───
@@ -34,6 +34,10 @@ export interface CluiAPI {
   setPermissionMode(tabId: string, mode: string): void
   getTheme(): Promise<{ isDark: boolean }>
   onThemeChange(callback: (isDark: boolean) => void): () => void
+  loadSettings(): Promise<{ themeMode: string; soundEnabled: boolean; expandedUI: boolean }>
+  saveSettings(data: { themeMode: string; soundEnabled: boolean; expandedUI: boolean }): Promise<void>
+  loadTabs(): Promise<PersistedTabState | null>
+  saveTabs(data: PersistedTabState): Promise<void>
 
   // ─── Git operations ───
   gitIsRepo(directory: string): Promise<{ isRepo: boolean }>
@@ -108,6 +112,10 @@ const api: CluiAPI = {
     ipcRenderer.on(IPC.THEME_CHANGED, handler)
     return () => ipcRenderer.removeListener(IPC.THEME_CHANGED, handler)
   },
+  loadSettings: () => ipcRenderer.invoke(IPC.LOAD_SETTINGS),
+  saveSettings: (data) => ipcRenderer.invoke(IPC.SAVE_SETTINGS, data),
+  loadTabs: () => ipcRenderer.invoke(IPC.LOAD_TABS),
+  saveTabs: (data) => ipcRenderer.invoke(IPC.SAVE_TABS, data),
 
   // ─── Git operations ───
   gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),

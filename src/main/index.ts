@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
 import { join } from 'path'
-import { existsSync, readdirSync, statSync, createReadStream, readFileSync } from 'fs'
+import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
@@ -141,7 +141,25 @@ function createWindow(): void {
   })
 
   let forceQuit = false
-  app.on('before-quit', () => { forceQuit = true })
+  app.on('before-quit', (e) => {
+    if (forceQuit) return
+    e.preventDefault()
+    const hasRunning = controlPlane.hasRunningTabs()
+    const choice = dialog.showMessageBoxSync(mainWindow!, {
+      type: 'warning',
+      buttons: ['Quit', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Quit Clui CC?',
+      message: hasRunning
+        ? 'Sessions are still running. Quitting will stop them.'
+        : 'Are you sure you want to quit?',
+    })
+    if (choice === 0) {
+      forceQuit = true
+      app.quit()
+    }
+  })
   mainWindow.on('close', (e) => {
     if (!forceQuit) {
       e.preventDefault()
@@ -899,6 +917,56 @@ ipcMain.handle(IPC.MARKETPLACE_INSTALL, async (_event, { repo, pluginName, marke
 ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { pluginName: string }) => {
   log(`IPC MARKETPLACE_UNINSTALL: ${pluginName}`)
   return uninstallPlugin(pluginName)
+})
+
+// ─── Settings Persistence ───
+
+const SETTINGS_DIR = join(homedir(), '.clui')
+const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false }
+
+ipcMain.handle(IPC.LOAD_SETTINGS, () => {
+  try {
+    if (existsSync(SETTINGS_FILE)) {
+      return { ...SETTINGS_DEFAULTS, ...JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) }
+    }
+  } catch (err) {
+    log(`Failed to load settings: ${err}`)
+  }
+  return SETTINGS_DEFAULTS
+})
+
+ipcMain.handle(IPC.SAVE_SETTINGS, (_event, data: Record<string, unknown>) => {
+  try {
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+    writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2))
+  } catch (err) {
+    log(`Failed to save settings: ${err}`)
+  }
+})
+
+// ─── Tab Persistence ───
+
+const TABS_FILE = join(SETTINGS_DIR, 'tabs.json')
+
+ipcMain.handle(IPC.LOAD_TABS, () => {
+  try {
+    if (existsSync(TABS_FILE)) {
+      return JSON.parse(readFileSync(TABS_FILE, 'utf-8'))
+    }
+  } catch (err) {
+    log(`Failed to load tabs: ${err}`)
+  }
+  return null
+})
+
+ipcMain.handle(IPC.SAVE_TABS, (_event, data: Record<string, unknown>) => {
+  try {
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+    writeFileSync(TABS_FILE, JSON.stringify(data, null, 2))
+  } catch (err) {
+    log(`Failed to save tabs: ${err}`)
+  }
 })
 
 // ─── Git IPC Handlers ───

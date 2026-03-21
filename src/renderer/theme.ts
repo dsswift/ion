@@ -306,29 +306,14 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_KEY = 'clui-settings'
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false }
 
-function loadSettings(): { themeMode: ThemeMode; soundEnabled: boolean; expandedUI: boolean } {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      return {
-        themeMode: ['light', 'dark'].includes(parsed.themeMode) ? parsed.themeMode : 'dark',
-        soundEnabled: typeof parsed.soundEnabled === 'boolean' ? parsed.soundEnabled : true,
-        expandedUI: typeof parsed.expandedUI === 'boolean' ? parsed.expandedUI : false,
-      }
-    }
-  } catch {}
-  return { themeMode: 'dark', soundEnabled: true, expandedUI: false }
+function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean }): void {
+  window.clui?.saveSettings(s)
 }
 
-function saveSettings(s: { themeMode: ThemeMode; soundEnabled: boolean; expandedUI: boolean }): void {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)) } catch {}
-}
-
-// Always start in compact UI mode on launch.
-const saved = { ...loadSettings(), expandedUI: false }
+// Start with defaults; async load from disk will update immediately after mount.
+const saved = { ...SETTINGS_DEFAULTS, expandedUI: false }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
   isDark: saved.themeMode === 'dark' ? true : saved.themeMode === 'light' ? false : true,
@@ -366,6 +351,18 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 
 // Initialize CSS vars with saved theme
 syncTokensToCss(saved.themeMode === 'light' ? lightColors : darkColors)
+
+// Load persisted settings from disk (async, fires once on startup)
+window.clui?.loadSettings().then((disk) => {
+  if (!disk) return
+  const store = useThemeStore.getState()
+  const mode = (['light', 'dark'].includes(disk.themeMode) ? disk.themeMode : 'dark') as ThemeMode
+  const resolved = mode === 'system' ? store._systemIsDark : mode === 'dark'
+  const sound = typeof disk.soundEnabled === 'boolean' ? disk.soundEnabled : true
+  const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded })
+  applyTheme(resolved)
+})
 
 /** Reactive hook — returns the active color palette */
 export function useColors(): ColorPalette {

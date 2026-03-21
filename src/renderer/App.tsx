@@ -40,11 +40,62 @@ export default function App() {
   }, [setSystemTheme])
 
   useEffect(() => {
-    useSessionStore.getState().initStaticInfo().then(() => {
+    useSessionStore.getState().initStaticInfo().then(async () => {
       const homeDir = useSessionStore.getState().staticInfo?.homePath || '~'
+
+      // Try restoring saved tabs
+      const saved = await window.clui.loadTabs().catch(() => null)
+      if (saved && saved.tabs && saved.tabs.length > 0) {
+        // Restore each saved tab via resumeSession
+        const restoredTabIds: Array<{ tabId: string; sessionId: string }> = []
+        for (const st of saved.tabs) {
+          const tabId = await useSessionStore.getState().resumeSession(
+            st.claudeSessionId,
+            st.title,
+            st.workingDirectory,
+          )
+          restoredTabIds.push({ tabId, sessionId: st.claudeSessionId })
+
+          // Patch extra per-tab settings that resumeSession doesn't handle
+          useSessionStore.setState((s) => ({
+            tabs: s.tabs.map((t) =>
+              t.id === tabId
+                ? {
+                    ...t,
+                    hasChosenDirectory: st.hasChosenDirectory,
+                    additionalDirs: st.additionalDirs,
+                    permissionMode: st.permissionMode,
+                  }
+                : t
+            ),
+          }))
+        }
+
+        // Set active tab by matching activeSessionId
+        if (saved.activeSessionId) {
+          const activeEntry = restoredTabIds.find((r) => r.sessionId === saved.activeSessionId)
+          if (activeEntry) {
+            useSessionStore.setState({ activeTabId: activeEntry.tabId })
+          }
+        }
+
+        // Remove the initial blank tab created by store constructor
+        const initialTabId = useSessionStore.getState().tabs[0]?.id
+        const isInitialBlank = initialTabId && !restoredTabIds.some((r) => r.tabId === initialTabId)
+        if (isInitialBlank) {
+          useSessionStore.setState((s) => ({
+            tabs: s.tabs.filter((t) => t.id !== initialTabId),
+          }))
+        }
+
+        // Launch collapsed (resumeSession sets isExpanded=true by default)
+        useSessionStore.setState({ isExpanded: false })
+        return
+      }
+
+      // No saved tabs -- fall through to blank tab behavior
       const tab = useSessionStore.getState().tabs[0]
       if (tab) {
-        // Set working directory to home by default (user hasn't chosen yet)
         useSessionStore.setState((s) => ({
           tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, workingDirectory: homeDir, hasChosenDirectory: false } : t)),
         }))

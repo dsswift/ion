@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, CatalogPlugin, PluginStatus } from '../../shared/types'
+import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, CatalogPlugin, PluginStatus, PersistedTabState } from '../../shared/types'
 import { useThemeStore } from '../theme'
 import notificationSrc from '../../../resources/notification.mp3'
 
@@ -928,3 +928,34 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
 }))
+
+// ─── Real-time tab persistence ───
+
+function persistTabs(): void {
+  const { tabs, activeTabId } = useSessionStore.getState()
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const persistedTabs = tabs
+    .filter((t) => t.claudeSessionId)
+    .map((t) => ({
+      claudeSessionId: t.claudeSessionId!,
+      title: t.title,
+      workingDirectory: t.workingDirectory,
+      hasChosenDirectory: t.hasChosenDirectory,
+      additionalDirs: t.additionalDirs,
+      permissionMode: t.permissionMode,
+    }))
+
+  const data: PersistedTabState = {
+    activeSessionId: activeTab?.claudeSessionId || null,
+    tabs: persistedTabs,
+  }
+  window.clui.saveTabs(data)
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+useSessionStore.subscribe((state, prev) => {
+  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId) {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(persistTabs, 100)
+  }
+})

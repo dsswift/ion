@@ -364,6 +364,14 @@ export const IPC = {
   // Permission mode
   SET_PERMISSION_MODE: 'clui:set-permission-mode',
 
+  // Settings persistence
+  LOAD_SETTINGS: 'clui:load-settings',
+  SAVE_SETTINGS: 'clui:save-settings',
+
+  // Tab persistence
+  LOAD_TABS: 'clui:load-tabs',
+  SAVE_TABS: 'clui:save-tabs',
+
   // Git operations
   GIT_GRAPH: 'clui:git-graph',
   GIT_CHANGES: 'clui:git-changes',
@@ -386,6 +394,22 @@ export const IPC = {
   RUN_COMPLETE: 'clui:run-complete',
   RUN_ERROR: 'clui:run-error',
 } as const
+
+// ─── Persisted Tab State ───
+
+export interface PersistedTab {
+  claudeSessionId: string
+  title: string
+  workingDirectory: string
+  hasChosenDirectory: boolean
+  additionalDirs: string[]
+  permissionMode: 'ask' | 'auto' | 'plan'
+}
+
+export interface PersistedTabState {
+  activeSessionId: string | null
+  tabs: PersistedTab[]
+}
 
 // ─── Git Types ───
 

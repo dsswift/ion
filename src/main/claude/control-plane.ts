@@ -823,6 +823,13 @@ export class ControlPlane extends EventEmitter {
     this.emit('tab-status-change', tabId, newStatus, oldStatus)
   }
 
+  hasRunningTabs(): boolean {
+    for (const tab of this.tabs.values()) {
+      if (tab.status === 'running' || tab.status === 'connecting') return true
+    }
+    return false
+  }
+
   // ─── Shutdown ───
 
   shutdown(): void {
