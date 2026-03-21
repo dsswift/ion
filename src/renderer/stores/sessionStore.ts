@@ -359,7 +359,7 @@ export const useSessionStore = create<State>((set, get) => ({
         const newTab = makeLocalTab()
         newTab.workingDirectory = startDir
         newTab.hasChosenDirectory = !!defaultBase
-        set({ tabs: [newTab], activeTabId: newTab.id })
+        set({ tabs: [newTab], activeTabId: newTab.id, gitPanelOpen: false })
         return
       }
       const closedIndex = s.tabs.findIndex((t) => t.id === tabId)
