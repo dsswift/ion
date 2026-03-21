@@ -5,6 +5,8 @@ export interface GitGraphNode {
   lane: number
   color: string
   connections: GitGraphConnection[]
+  /** Whether this commit has an incoming connection from a previous row */
+  hasIncoming: boolean
   /** Lanes that pass through this row without stopping (other active branches) */
   passThroughLanes: { lane: number; color: string }[]
 }
@@ -48,7 +50,8 @@ export function computeGraphLayout(commits: GitCommit[]): GitGraphNode[] {
     // Determine which lane this commit occupies
     // Use fullHash for lane tracking since parent hashes (%P) are full hashes
     let lane: number
-    if (hashToLane.has(commit.fullHash)) {
+    const hasIncoming = hashToLane.has(commit.fullHash)
+    if (hasIncoming) {
       lane = hashToLane.get(commit.fullHash)!
       hashToLane.delete(commit.fullHash)
     } else {
@@ -57,6 +60,15 @@ export function computeGraphLayout(commits: GitCommit[]): GitGraphNode[] {
 
     activeLanes[lane] = null // commit consumed this lane
     const color = laneColor(lane)
+
+    // Collect pass-through lanes BEFORE processing parents, so newly forked
+    // lanes don't get a stray vertical line above the fork point
+    const passThroughLanes: { lane: number; color: string }[] = []
+    for (let i = 0; i < activeLanes.length; i++) {
+      if (activeLanes[i] !== null && i !== lane) {
+        passThroughLanes.push({ lane: i, color: laneColor(i) })
+      }
+    }
 
     // Process parents
     for (let i = 0; i < commit.parents.length; i++) {
@@ -95,15 +107,7 @@ export function computeGraphLayout(commits: GitCommit[]): GitGraphNode[] {
       }
     }
 
-    // Collect pass-through lanes: active lanes that aren't this commit's lane
-    const passThroughLanes: { lane: number; color: string }[] = []
-    for (let i = 0; i < activeLanes.length; i++) {
-      if (activeLanes[i] !== null && i !== lane) {
-        passThroughLanes.push({ lane: i, color: laneColor(i) })
-      }
-    }
-
-    result.push({ commit, lane, color, connections, passThroughLanes })
+    result.push({ commit, lane, color, connections, hasIncoming, passThroughLanes })
   }
 
   return result

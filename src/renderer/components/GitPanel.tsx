@@ -635,7 +635,7 @@ const LANE_SPACING = 16
 const MAX_GRAPH_WIDTH = 80
 const ROW_HEIGHT = 32
 
-function GraphRow({ node, maxLanes, isFirst }: { node: GitGraphNode; maxLanes: number; isFirst: boolean }) {
+function GraphRow({ node, maxLanes }: { node: GitGraphNode; maxLanes: number }) {
   const colors = useColors()
   const commit = node.commit
   const graphWidth = Math.min(MAX_GRAPH_WIDTH, Math.max(28, (maxLanes + 1) * LANE_SPACING))
@@ -688,7 +688,7 @@ function GraphRow({ node, maxLanes, isFirst }: { node: GitGraphNode; maxLanes: n
         })}
 
         {/* Incoming line: draw from top of row to dot center (connects to previous row) */}
-        {!isFirst && (
+        {node.hasIncoming && (
           <line x1={cx} y1={0} x2={cx} y2={cy}
             stroke={node.color} strokeWidth={1.5} opacity={0.6} />
         )}
@@ -897,7 +897,7 @@ function GitGraphSection({
       {/* Commit list */}
       <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         {graphNodes.map((node, idx) => (
-          <GraphRow key={node.commit.hash} node={node} maxLanes={maxLanes} isFirst={idx === 0} />
+          <GraphRow key={node.commit.hash} node={node} maxLanes={maxLanes} />
         ))}
         {commits.length < totalCount && (
           <div ref={sentinelRef} className="py-2 text-center text-[10px]" style={{ color: colors.textTertiary }}>
