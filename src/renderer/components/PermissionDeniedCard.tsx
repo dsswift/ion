@@ -112,7 +112,7 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
           {/* Body */}
           <div className="px-3 py-2">
             <p className="text-[11px] leading-[1.5] mb-2" style={{ color: colors.textSecondary }}>
-              Planning complete. Continue to implementation or dismiss to stay in plan mode.
+              Planning complete. Continue to implementation or keep chatting in plan mode.
             </p>
 
             {/* Actions */}
@@ -187,23 +187,6 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
                 <Eye size={12} />
                 View Plan
               </button>}
-              <button
-                onClick={onDismiss}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
-                style={{
-                  background: colors.surfaceHover,
-                  color: colors.textTertiary,
-                  border: `1px solid ${colors.surfaceSecondary}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.surfaceActive
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.surfaceHover
-                }}
-              >
-                Dismiss
-              </button>
             </div>
           </div>
         </div>
