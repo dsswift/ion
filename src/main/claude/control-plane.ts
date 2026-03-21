@@ -71,8 +71,9 @@ export class ControlPlane extends EventEmitter {
   private permissionServer: PermissionServer
   /** Per-run tokens: requestId → runToken (for cleanup on exit/error) */
   private runTokens = new Map<string, string>()
-  /** Global permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
-  private permissionMode: 'ask' | 'auto' | 'plan' = 'ask'
+  /** Per-tab permission modes */
+  private permissionModes = new Map<string, 'ask' | 'auto' | 'plan'>()
+
   /** Resolves when the permission server is ready (or failed). Dispatch awaits this. */
   private hookServerReady: Promise<void>
 
@@ -105,10 +106,11 @@ export class ControlPlane extends EventEmitter {
         return
       }
 
-      log(`Permission request [${questionId}]: tool=${toolRequest.tool_name} tab=${tabId.substring(0, 8)}… mode=${this.permissionMode}`)
+      const tabMode = this._getPermissionMode(tabId)
+      log(`Permission request [${questionId}]: tool=${toolRequest.tool_name} tab=${tabId.substring(0, 8)}… mode=${tabMode}`)
 
       // Auto/Plan mode: immediately allow without showing UI
-      if (this.permissionMode === 'auto' || this.permissionMode === 'plan') {
+      if (tabMode === 'auto' || tabMode === 'plan') {
         this.permissionServer.respondToPermission(questionId, 'allow', 'Auto mode')
         return
       }
@@ -479,12 +481,15 @@ export class ControlPlane extends EventEmitter {
   }
 
   /**
-   * Set global permission mode.
-   * 'ask' = show permission cards, 'auto' = auto-approve all tool calls.
+   * Set permission mode for a specific tab.
    */
-  setPermissionMode(mode: 'ask' | 'auto' | 'plan'): void {
-    log(`Permission mode set to: ${mode}`)
-    this.permissionMode = mode
+  setPermissionMode(tabId: string, mode: 'ask' | 'auto' | 'plan'): void {
+    log(`Permission mode for tab ${tabId}: ${mode}`)
+    this.permissionModes.set(tabId, mode)
+  }
+
+  private _getPermissionMode(tabId: string): 'ask' | 'auto' | 'plan' {
+    return this.permissionModes.get(tabId) ?? 'plan'
   }
 
   closeTab(tabId: string): void {
@@ -515,6 +520,7 @@ export class ControlPlane extends EventEmitter {
       return true
     })
 
+    this.permissionModes.delete(tabId)
     this.tabs.delete(tabId)
     log(`Tab closed: ${tabId}`)
   }
@@ -606,7 +612,7 @@ export class ControlPlane extends EventEmitter {
     }
 
     // Inject CLI permission mode for plan mode
-    if (this.permissionMode === 'plan') {
+    if (this._getPermissionMode(tabId) === 'plan') {
       options = { ...options, permissionModeCli: 'plan' }
     }
 

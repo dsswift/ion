@@ -128,10 +128,12 @@ function ModelPicker() {
   )
 }
 
-/* ─── Permission Mode Picker (global — affects all tabs) ─── */
+/* ─── Permission Mode Picker (per-tab) ─── */
 
 function PermissionModePicker() {
-  const permissionMode = useSessionStore((s) => s.permissionMode)
+  const permissionMode = useSessionStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.permissionMode ?? 'plan'
+  )
   const setPermissionMode = useSessionStore((s) => s.setPermissionMode)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
@@ -182,7 +184,7 @@ function PermissionModePicker() {
           color: colors.textTertiary,
           cursor: 'pointer',
         }}
-        title="Permission mode (global)"
+        title="Permission mode (this tab)"
       >
         {modeIcon}
         {modeLabel}

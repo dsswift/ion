@@ -30,8 +30,6 @@ interface State {
   staticInfo: StaticInfo | null
   /** User's preferred model override (null = use default) */
   preferredModel: string | null
-  /** Global permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
-  permissionMode: 'ask' | 'auto' | 'plan'
   /** Whether the git side panel is open */
   gitPanelOpen: boolean
 
@@ -120,6 +118,7 @@ function makeLocalTab(): TabState {
     workingDirectory: '~',
     hasChosenDirectory: false,
     additionalDirs: [],
+    permissionMode: 'plan',
   }
 }
 
@@ -131,7 +130,6 @@ export const useSessionStore = create<State>((set, get) => ({
   isExpanded: false,
   staticInfo: null,
   preferredModel: null,
-  permissionMode: 'ask',
   gitPanelOpen: false,
 
   // Marketplace
@@ -164,8 +162,13 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   setPermissionMode: (mode) => {
-    set({ permissionMode: mode })
-    window.clui.setPermissionMode(mode)
+    const { activeTabId } = get()
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === activeTabId ? { ...t, permissionMode: mode } : t
+      ),
+    }))
+    window.clui.setPermissionMode(activeTabId, mode)
   },
 
   createTab: async () => {
