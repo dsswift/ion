@@ -350,7 +350,12 @@ export const useSessionStore = create<State>((set, get) => ({
 
     if (s.activeTabId === tabId) {
       if (remaining.length === 0) {
+        const homeDir = get().staticInfo?.homePath || '~'
+        const defaultBase = useThemeStore.getState().defaultBaseDirectory
+        const startDir = defaultBase || homeDir
         const newTab = makeLocalTab()
+        newTab.workingDirectory = startDir
+        newTab.hasChosenDirectory = !!defaultBase
         set({ tabs: [newTab], activeTabId: newTab.id })
         return
       }

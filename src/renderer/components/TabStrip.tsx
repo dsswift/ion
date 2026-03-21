@@ -132,6 +132,7 @@ export function TabStrip() {
   const showDirLabel = useThemeStore((s) => s.showDirLabel)
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
 
   return (
     <div
@@ -158,6 +159,8 @@ export function TabStrip() {
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId
               const isEditing = editingTabId === tab.id
+              const isConfirmingClose = confirmingCloseId === tab.id
+              const isRunning = tab.status === 'running' || tab.status === 'connecting'
               const displayTitle = tab.customTitle || tab.title
               const hasCustomTitle = !!tab.customTitle
               return (
@@ -168,9 +171,9 @@ export function TabStrip() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.15 }}
-                  onClick={() => selectTab(tab.id)}
+                  onClick={() => { setConfirmingCloseId(null); selectTab(tab.id) }}
                   className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 transition-all duration-150 ${
-                    hasCustomTitle || isEditing ? '' : 'max-w-[160px]'
+                    hasCustomTitle || isEditing || isConfirmingClose ? '' : 'max-w-[160px]'
                   }`}
                   style={{
                     background: isActive ? colors.tabActive : 'transparent',
@@ -219,9 +222,26 @@ export function TabStrip() {
                       {displayTitle}
                     </span>
                   )}
-                  {tabs.length > 1 && (
+                  {isConfirmingClose ? (
+                    <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setConfirmingCloseId(null)}
+                        className="px-1 rounded"
+                        style={{ color: colors.textTertiary }}
+                      >
+                        No
+                      </button>
+                      <button
+                        onClick={() => { closeTab(tab.id); setConfirmingCloseId(null) }}
+                        className="px-1 rounded"
+                        style={{ color: colors.accent }}
+                      >
+                        Yes
+                      </button>
+                    </div>
+                  ) : !isRunning && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+                      onClick={(e) => { e.stopPropagation(); setConfirmingCloseId(tab.id) }}
                       className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center transition-opacity"
                       style={{
                         opacity: isActive ? 0.5 : 0,
