@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShieldWarning, Terminal, ArrowSquareOut, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
-import { useColors } from '../theme'
+import { useColors, useThemeStore } from '../theme'
 import { PlanViewer } from './PlanViewer'
 import type { Message } from '../../shared/types'
 
@@ -28,6 +28,7 @@ interface AskData {
 
 export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, onDismiss, onImplement, onAnswer }: Props) {
   const colors = useColors()
+  const showClearContext = useThemeStore((s) => s.showImplementClearContext)
   const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
 
   // Extract planFilePath from the last ExitPlanMode tool message's input
@@ -116,7 +117,7 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
 
             {/* Actions */}
             <div className="flex gap-1.5 flex-wrap">
-              <button
+              {showClearContext && <button
                 onClick={() => onImplement('auto', true)}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
@@ -133,9 +134,26 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
               >
                 <RocketLaunch size={12} />
                 Implement, clear context
-              </button>
+              </button>}
               <button
                 onClick={() => onImplement('auto', false)}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                style={{
+                  background: colors.permissionAllowBg,
+                  color: 'rgba(34, 197, 94, 0.85)',
+                  border: `1px solid ${colors.permissionAllowBorder}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.permissionAllowHoverBg
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.permissionAllowBg
+                }}
+              >
+                Implement
+              </button>
+              <button
+                onClick={() => onImplement('ask', false)}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
                   background: colors.accentLight,
@@ -147,23 +165,6 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = colors.accentLight
-                }}
-              >
-                Implement
-              </button>
-              <button
-                onClick={() => onImplement('ask', false)}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                style={{
-                  background: colors.surfaceHover,
-                  color: colors.textTertiary,
-                  border: `1px solid ${colors.surfaceSecondary}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.surfaceActive
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.surfaceHover
                 }}
               >
                 Implement (ask)

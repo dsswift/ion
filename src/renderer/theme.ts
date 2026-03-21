@@ -280,6 +280,7 @@ interface ThemeState {
   defaultBaseDirectory: string
   showDirLabel: boolean
   preferredOpenWith: 'cli' | 'vscode'
+  showImplementClearContext: boolean
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
@@ -289,6 +290,7 @@ interface ThemeState {
   setDefaultBaseDirectory: (dir: string) => void
   setShowDirLabel: (show: boolean) => void
   setPreferredOpenWith: (app: 'cli' | 'vscode') => void
+  setShowImplementClearContext: (show: boolean) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -312,15 +314,15 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode' }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false }
 
-function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string }): void {
+function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean }): void {
   window.clui?.saveSettings(s)
 }
 
-function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string } {
+function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean } {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext }
 }
 
 // Start with defaults; async load from disk will update immediately after mount.
@@ -334,6 +336,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   defaultBaseDirectory: saved.defaultBaseDirectory,
   showDirLabel: saved.showDirLabel,
   preferredOpenWith: saved.preferredOpenWith,
+  showImplementClearContext: saved.showImplementClearContext,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -365,6 +368,10 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ preferredOpenWith: app })
     saveSettings(getAllSettings(get))
   },
+  setShowImplementClearContext: (show) => {
+    set({ showImplementClearContext: show })
+    saveSettings(getAllSettings(get))
+  },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -389,7 +396,8 @@ window.clui?.loadSettings().then((disk) => {
   const baseDir = typeof disk.defaultBaseDirectory === 'string' ? disk.defaultBaseDirectory : ''
   const dirLabel = typeof disk.showDirLabel === 'boolean' ? disk.showDirLabel : false
   const openWith = (disk.preferredOpenWith === 'cli' || disk.preferredOpenWith === 'vscode') ? disk.preferredOpenWith : 'cli'
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, showDirLabel: dirLabel, preferredOpenWith: openWith })
+  const implClearCtx = typeof disk.showImplementClearContext === 'boolean' ? disk.showImplementClearContext : false
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx })
   applyTheme(resolved)
 })
 
