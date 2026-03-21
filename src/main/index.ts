@@ -33,11 +33,9 @@ const INTERACTIVE_PTY = process.env.CLUI_INTERACTIVE_PERMISSIONS_PTY === '1'
 
 const controlPlane = new ControlPlane(INTERACTIVE_PTY)
 
-// Keep native width fixed to avoid renderer animation vs setBounds race.
-// The UI itself still launches in compact mode; extra width is transparent/click-through.
-const BAR_WIDTH = 1040
-const PILL_HEIGHT = 720  // Fixed native window height — extra room for expanded UI + shadow buffers
-const PILL_BOTTOM_MARGIN = 24
+// The native window covers the full screen work area so that floating panels
+// (plan viewer, diff viewer, git panel) can be positioned anywhere without clipping.
+// The UI itself renders at the bottom center; all other regions are transparent/click-through.
 
 // ─── Broadcast to renderer ───
 
@@ -100,17 +98,13 @@ controlPlane.on('error', (tabId: string, error: EnrichedError) => {
 function createWindow(): void {
   const cursor = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursor)
-  const { width: screenWidth, height: screenHeight } = display.workAreaSize
-  const { x: dx, y: dy } = display.workArea
-
-  const x = dx + Math.round((screenWidth - BAR_WIDTH) / 2)
-  const y = dy + screenHeight - PILL_HEIGHT - PILL_BOTTOM_MARGIN
+  const { x: dx, y: dy, width: sw, height: sh } = display.workArea
 
   mainWindow = new BrowserWindow({
-    width: BAR_WIDTH,
-    height: PILL_HEIGHT,
-    x,
-    y,
+    width: sw,
+    height: sh,
+    x: dx,
+    y: dy,
     ...(process.platform === 'darwin' ? { type: 'panel' as const } : {}),  // NSPanel — non-activating, joins all spaces
     frame: false,
     transparent: true,
@@ -169,13 +163,12 @@ function showWindow(source = 'unknown'): void {
   // Position on the display where the cursor currently is (not always primary)
   const cursor = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursor)
-  const { width: sw, height: sh } = display.workAreaSize
-  const { x: dx, y: dy } = display.workArea
+  const { x: dx, y: dy, width: sw, height: sh } = display.workArea
   mainWindow.setBounds({
-    x: dx + Math.round((sw - BAR_WIDTH) / 2),
-    y: dy + sh - PILL_HEIGHT - PILL_BOTTOM_MARGIN,
-    width: BAR_WIDTH,
-    height: PILL_HEIGHT,
+    x: dx,
+    y: dy,
+    width: sw,
+    height: sh,
   })
 
   // Always re-assert space membership — the flag can be lost after hide/show cycles
@@ -212,8 +205,7 @@ function toggleWindow(source = 'unknown'): void {
 }
 
 // ─── Resize ───
-// Fixed-height mode: ignore renderer resize events to prevent jank.
-// The native window stays at PILL_HEIGHT; all expand/collapse happens inside the renderer.
+// The native window covers the full work area; all expand/collapse happens inside the renderer.
 
 ipcMain.on(IPC.RESIZE_HEIGHT, () => {
   // No-op — fixed height window, no dynamic resize

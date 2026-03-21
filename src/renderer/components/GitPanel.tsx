@@ -8,7 +8,7 @@ import {
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors } from '../theme'
+import { useColors, useThemeStore } from '../theme'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { DiffViewer } from './DiffViewer'
 import type { GitChangedFile, GitCommit, GitBranchInfo } from '../../shared/types'
@@ -918,6 +918,7 @@ function GitGraphSection({
 
 export function GitPanel() {
   const colors = useColors()
+  const expandedUI = useThemeStore((s) => s.expandedUI)
   const tab = useSessionStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId),
     (a, b) => a === b || (!!a && !!b && a.workingDirectory === b.workingDirectory),
@@ -957,7 +958,7 @@ export function GitPanel() {
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         overflow: 'hidden',
-        maxHeight: 520,
+        maxHeight: expandedUI ? 520 : 400,
       }}
     >
       {/* Panel header */}

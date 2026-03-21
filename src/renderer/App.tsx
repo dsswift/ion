@@ -208,7 +208,7 @@ export default function App() {
 
           {/* ─── Input row — circles float outside left ─── */}
           {/* marginBottom: shadow buffer so the glass-surface drop shadow isn't clipped at the native window edge */}
-          <div data-clui-ui className="relative" style={{ minHeight: 46, zIndex: 15, marginBottom: 10 }}>
+          <div data-clui-ui className="relative" style={{ minHeight: 46, zIndex: 15, marginBottom: 60 }}>
             {/* Stacked circle buttons — expand on hover */}
             <div
               data-clui-ui
@@ -266,7 +266,7 @@ export default function App() {
                 style={{
                   position: 'absolute',
                   left: '100%',
-                  bottom: 10,
+                  bottom: 60,
                   marginLeft: 8,
                   width: 280,
                   zIndex: 25,
