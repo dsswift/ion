@@ -157,6 +157,10 @@ function createWindow(): void {
     })
     if (choice === 0) {
       forceQuit = true
+      if (tray) {
+        tray.destroy()
+        tray = null
+      }
       app.quit()
     }
   })
@@ -166,6 +170,9 @@ function createWindow(): void {
       mainWindow?.hide()
     }
   })
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -174,7 +181,40 @@ function createWindow(): void {
   }
 }
 
+function createTray(): void {
+  const trayIconPath = join(__dirname, '../../resources/trayTemplate.png')
+  const trayIcon = nativeImage.createFromPath(trayIconPath)
+  trayIcon.setTemplateImage(true)
+  tray = new Tray(trayIcon)
+  tray.setToolTip('Clui CC — Claude Code UI')
+  tray.on('click', () => toggleWindow('tray click'))
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Show Clui CC', click: () => showWindow('tray menu') },
+      { type: 'separator' },
+      { label: 'Settings...', click: () => {
+        showWindow('tray settings')
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC.SHOW_SETTINGS)
+        }
+      }},
+      { type: 'separator' },
+      { label: 'Quit', click: () => { app.quit() } },
+    ])
+  )
+}
+
+function ensureWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow()
+  }
+  if (!tray || tray.isDestroyed()) {
+    createTray()
+  }
+}
+
 function showWindow(source = 'unknown'): void {
+  ensureWindow()
   if (!mainWindow) return
   const toggleId = ++toggleSequence
 
@@ -207,7 +247,7 @@ function showWindow(source = 'unknown'): void {
 }
 
 function toggleWindow(source = 'unknown'): void {
-  if (!mainWindow) return
+  if (!mainWindow || mainWindow.isDestroyed()) return
   const toggleId = ++toggleSequence
   if (SPACES_DEBUG) {
     log(`[spaces] toggle#${toggleId} source=${source} start`)
@@ -1384,26 +1424,7 @@ app.whenReady().then(async () => {
   }
   globalShortcut.register('CommandOrControl+Shift+K', () => toggleWindow('shortcut Cmd/Ctrl+Shift+K'))
 
-  const trayIconPath = join(__dirname, '../../resources/trayTemplate.png')
-  const trayIcon = nativeImage.createFromPath(trayIconPath)
-  trayIcon.setTemplateImage(true)
-  tray = new Tray(trayIcon)
-  tray.setToolTip('Clui CC — Claude Code UI')
-  tray.on('click', () => toggleWindow('tray click'))
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Show Clui CC', click: () => showWindow('tray menu') },
-      { type: 'separator' },
-      { label: 'Settings...', click: () => {
-        showWindow('tray settings')
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC.SHOW_SETTINGS)
-        }
-      }},
-      { type: 'separator' },
-      { label: 'Quit', click: () => { app.quit() } },
-    ])
-  )
+  createTray()
 
   // app 'activate' fires when macOS brings the app to the foreground (e.g. after
   // webContents.focus() triggers applicationDidBecomeActive on some macOS versions).
@@ -1415,6 +1436,10 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   controlPlane.shutdown()
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
   flushLogs()
 })
 
