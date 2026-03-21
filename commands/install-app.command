@@ -140,6 +140,20 @@ fi
 
 step "Step 4/6 — Installing to /Applications"
 
+# Kill running instance before replacing the binary
+if pgrep -f "Clui CC" &>/dev/null; then
+  echo "${APP_NAME} is currently running."
+  echo
+  echo "  Switch to it now and close it cleanly, then come back"
+  echo "  and press Enter to continue. (Ctrl+C to abort)"
+  echo
+  read -r -p "Press Enter when ready... "
+  echo
+  echo "Force-killing any remaining ${APP_NAME} processes..."
+  pkill -9 -f "Clui CC" 2>/dev/null || true
+  sleep 1
+fi
+
 APP_SOURCE=""
 if [ -d "release/mac-arm64/${APP_NAME}.app" ]; then
   APP_SOURCE="release/mac-arm64/${APP_NAME}.app"

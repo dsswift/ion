@@ -39,7 +39,7 @@ bash install-app.command
 ### Quick reinstall (skip whisper/setup)
 
 ```bash
-npm run dist && rm -rf "/Applications/Clui CC.app" && cp -R "release/mac-arm64/Clui CC.app" "/Applications/Clui CC.app"
+pkill -9 -f "Clui CC" 2>/dev/null; sleep 1; npm run dist && rm -rf "/Applications/Clui CC.app" && cp -R "release/mac-arm64/Clui CC.app" "/Applications/Clui CC.app"
 ```
 
 ## Transparent Window + Click-Through
