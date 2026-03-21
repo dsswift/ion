@@ -914,6 +914,46 @@ function GitGraphSection({
   )
 }
 
+// ─── Drag split hook ───
+
+function useDragSplit(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  splitRatio: number,
+  setSplitRatio: (r: number) => void,
+  fixedChrome: number,
+) {
+  const [isDragging, setIsDragging] = useState(false)
+  const startRef = useRef({ y: 0, ratio: 0 })
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    startRef.current = { y: e.clientY, ratio: splitRatio }
+    setIsDragging(true)
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const container = containerRef.current
+      if (!container) return
+      const availableHeight = container.clientHeight - fixedChrome
+      if (availableHeight <= 0) return
+      const deltaY = ev.clientY - startRef.current.y
+      const deltaRatio = deltaY / availableHeight
+      const newRatio = Math.min(0.85, Math.max(0.15, startRef.current.ratio + deltaRatio))
+      setSplitRatio(newRatio)
+    }
+
+    const onMouseUp = () => {
+      setIsDragging(false)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [splitRatio, containerRef, setSplitRatio, fixedChrome])
+
+  return { onMouseDown, isDragging }
+}
+
 // ─── Main GitPanel ───
 
 export function GitPanel() {
@@ -925,10 +965,15 @@ export function GitPanel() {
   )
   const directory = tab?.workingDirectory || '~'
 
-  const [changesOpen, setChangesOpen] = useState(true)
-  const [graphOpen, setGraphOpen] = useState(true)
+  const changesOpen = useThemeStore((s) => s.gitPanelChangesOpen)
+  const setChangesOpen = useThemeStore((s) => s.setGitPanelChangesOpen)
+  const graphOpen = useThemeStore((s) => s.gitPanelGraphOpen)
+  const setGraphOpen = useThemeStore((s) => s.setGitPanelGraphOpen)
   const [files, setFiles] = useState<GitChangedFile[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
+  const splitRatio = useThemeStore((s) => s.gitPanelSplitRatio)
+  const setSplitRatio = useThemeStore((s) => s.setGitPanelSplitRatio)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
@@ -949,16 +994,52 @@ export function GitPanel() {
     return () => { cancelled = true; clearInterval(interval) }
   }, [directory, refreshKey])
 
+  // Drag split between Changes and Graph
+  const FIXED_CHROME = 28 + 28 + 28 + 6 // panel header + changes header + graph header + divider
+  const { onMouseDown: onDividerMouseDown, isDragging } = useDragSplit(
+    containerRef, splitRatio, setSplitRatio, FIXED_CHROME,
+  )
+
+  // Cursor override during drag
+  useEffect(() => {
+    if (isDragging) {
+      document.body.style.cursor = 'row-resize'
+      return () => { document.body.style.cursor = '' }
+    }
+  }, [isDragging])
+
+  // Panel height = conversation card + gap + input pill so top edges align
+  // card: bodyMaxHeight + tabStrip(40) + border(2), gap: 10, input pill: 38
+  const bodyMaxHeight = expandedUI ? 520 : 400
+  const panelHeight = bodyMaxHeight + 82
+  const bothOpen = changesOpen && graphOpen
+  const availableHeight = panelHeight - FIXED_CHROME
+
+  let changesContentHeight: number | undefined
+  let graphContentHeight: number | undefined
+
+  if (bothOpen) {
+    changesContentHeight = Math.round(availableHeight * splitRatio)
+    graphContentHeight = availableHeight - changesContentHeight
+  } else if (changesOpen) {
+    // Reclaim divider space only — collapsed graph header stays visible
+    changesContentHeight = availableHeight + 6
+  } else if (graphOpen) {
+    // Reclaim divider space only — collapsed changes header stays visible
+    graphContentHeight = availableHeight + 6
+  }
+
   return (
     <div
+      ref={containerRef}
       data-clui-ui
-      className="glass-surface rounded-xl flex flex-col h-full"
+      className="glass-surface rounded-xl flex flex-col"
       style={{
         width: 280,
+        height: panelHeight,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         overflow: 'hidden',
-        maxHeight: expandedUI ? 520 : 400,
       }}
     >
       {/* Panel header */}
@@ -982,10 +1063,14 @@ export function GitPanel() {
         </button>
       </div>
 
-      {/* Changes section — natural height, doesn't flex-grow */}
-      <div className="flex flex-col" style={{ flexShrink: 0, maxHeight: changesOpen ? 200 : undefined, overflow: 'hidden' }}>
+      {/* Changes section */}
+      <div className="flex flex-col" style={{
+        height: changesOpen ? (changesContentHeight! + 28) : 28,
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}>
         <button
-          onClick={() => setChangesOpen((o) => !o)}
+          onClick={() => setChangesOpen(!changesOpen)}
           className="flex items-center gap-1 px-2.5 w-full text-left"
           style={{
             height: 28,
@@ -1008,14 +1093,53 @@ export function GitPanel() {
           )}
         </button>
         {changesOpen && (
-          <GitChangesSection directory={directory} files={files} onRefresh={refresh} />
+          <div style={{ height: changesContentHeight, overflow: 'auto' }}>
+            <GitChangesSection directory={directory} files={files} onRefresh={refresh} />
+          </div>
         )}
       </div>
 
-      {/* Graph section — takes all remaining height */}
-      <div className="flex flex-col" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* Draggable divider */}
+      {bothOpen && (
+        <div
+          data-clui-ui
+          onMouseDown={onDividerMouseDown}
+          style={{
+            height: 6,
+            flexShrink: 0,
+            cursor: 'row-resize',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: isDragging ? colors.surfaceHover : 'transparent',
+            transition: isDragging ? 'none' : 'background 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = colors.surfaceHover
+          }}
+          onMouseLeave={(e) => {
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'transparent'
+          }}
+        >
+          <div style={{
+            width: 24,
+            height: 2,
+            borderRadius: 1,
+            background: colors.textTertiary,
+            opacity: isDragging ? 0.8 : 0.4,
+          }} />
+        </div>
+      )}
+
+      {/* Graph section */}
+      <div className="flex flex-col" style={{
+        height: graphOpen ? (graphContentHeight! + 28) : 28,
+        flex: (!changesOpen && !graphOpen) ? 1 : undefined,
+        minHeight: 0,
+        overflow: 'hidden',
+      }}>
         <button
-          onClick={() => setGraphOpen((o) => !o)}
+          onClick={() => setGraphOpen(!graphOpen)}
           className="flex items-center gap-1 px-2.5 w-full text-left"
           style={{
             height: 28,
@@ -1030,9 +1154,16 @@ export function GitPanel() {
           Graph
         </button>
         {graphOpen && (
-          <GitGraphSection directory={directory} onRefresh={refresh} />
+          <div style={{ height: graphContentHeight, minHeight: 0, overflow: 'hidden' }}>
+            <GitGraphSection directory={directory} onRefresh={refresh} />
+          </div>
         )}
       </div>
+
+      {/* Spacer when both collapsed */}
+      {!changesOpen && !graphOpen && (
+        <div style={{ flex: 1 }} />
+      )}
     </div>
   )
 }

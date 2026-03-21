@@ -295,6 +295,9 @@ interface ThemeState {
   showDirLabel: boolean
   preferredOpenWith: 'cli' | 'vscode'
   showImplementClearContext: boolean
+  gitPanelSplitRatio: number
+  gitPanelChangesOpen: boolean
+  gitPanelGraphOpen: boolean
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
@@ -305,6 +308,9 @@ interface ThemeState {
   setShowDirLabel: (show: boolean) => void
   setPreferredOpenWith: (app: 'cli' | 'vscode') => void
   setShowImplementClearContext: (show: boolean) => void
+  setGitPanelSplitRatio: (ratio: number) => void
+  setGitPanelChangesOpen: (open: boolean) => void
+  setGitPanelGraphOpen: (open: boolean) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -328,15 +334,15 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true }
 
-function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean }): void {
+function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean }): void {
   window.clui?.saveSettings(s)
 }
 
-function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean } {
+function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean } {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen }
 }
 
 // Start with defaults; async load from disk will update immediately after mount.
@@ -351,6 +357,9 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   showDirLabel: saved.showDirLabel,
   preferredOpenWith: saved.preferredOpenWith,
   showImplementClearContext: saved.showImplementClearContext,
+  gitPanelSplitRatio: saved.gitPanelSplitRatio,
+  gitPanelChangesOpen: saved.gitPanelChangesOpen,
+  gitPanelGraphOpen: saved.gitPanelGraphOpen,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -386,6 +395,18 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ showImplementClearContext: show })
     saveSettings(getAllSettings(get))
   },
+  setGitPanelSplitRatio: (ratio) => {
+    set({ gitPanelSplitRatio: ratio })
+    saveSettings(getAllSettings(get))
+  },
+  setGitPanelChangesOpen: (open) => {
+    set({ gitPanelChangesOpen: open })
+    saveSettings(getAllSettings(get))
+  },
+  setGitPanelGraphOpen: (open) => {
+    set({ gitPanelGraphOpen: open })
+    saveSettings(getAllSettings(get))
+  },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -411,7 +432,10 @@ window.clui?.loadSettings().then((disk) => {
   const dirLabel = typeof disk.showDirLabel === 'boolean' ? disk.showDirLabel : false
   const openWith = (disk.preferredOpenWith === 'cli' || disk.preferredOpenWith === 'vscode') ? disk.preferredOpenWith : 'cli'
   const implClearCtx = typeof disk.showImplementClearContext === 'boolean' ? disk.showImplementClearContext : false
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx })
+  const splitRatio = typeof disk.gitPanelSplitRatio === 'number' ? disk.gitPanelSplitRatio : 0.4
+  const changesOpen = typeof disk.gitPanelChangesOpen === 'boolean' ? disk.gitPanelChangesOpen : true
+  const graphOpen = typeof disk.gitPanelGraphOpen === 'boolean' ? disk.gitPanelGraphOpen : true
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen })
   applyTheme(resolved)
 })
 
