@@ -276,6 +276,7 @@ export interface SessionLoadMessage {
   role: string
   content: string
   toolName?: string
+  toolInput?: string
   timestamp: number
 }
 
@@ -325,6 +326,7 @@ export const IPC = {
   ANIMATE_HEIGHT: 'clui:animate-height',
   LIST_SESSIONS: 'clui:list-sessions',
   LOAD_SESSION: 'clui:load-session',
+  READ_PLAN: 'clui:read-plan',
 
   // One-way events (main → renderer)
   TEXT_CHUNK: 'clui:text-chunk',

@@ -1,17 +1,42 @@
-import React from 'react'
-import { motion } from 'framer-motion'
-import { ShieldWarning, Terminal, ArrowSquareOut } from '@phosphor-icons/react'
+import React, { useState, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ShieldWarning, Terminal, ArrowSquareOut, RocketLaunch, ListChecks, Eye } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { PlanViewer } from './PlanViewer'
+import type { Message } from '../../shared/types'
 
 interface Props {
   tools: Array<{ toolName: string; toolUseId: string }>
   sessionId: string | null
   projectPath: string
+  messages: Message[]
   onDismiss: () => void
+  onImplement?: (mode: 'ask' | 'auto', clearContext: boolean) => void
 }
 
-export function PermissionDeniedCard({ tools, sessionId, projectPath, onDismiss }: Props) {
+export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, onDismiss, onImplement }: Props) {
   const colors = useColors()
+  const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
+
+  // Extract planFilePath from the last ExitPlanMode tool message's input
+  const planFilePath = useMemo(() => {
+    const exitMsg = [...messages].reverse().find((m) => m.toolName === 'ExitPlanMode' && m.toolInput)
+    if (!exitMsg?.toolInput) return null
+    try {
+      const input = JSON.parse(exitMsg.toolInput)
+      return (input.planFilePath as string) || null
+    } catch {
+      return null
+    }
+  }, [messages])
+
+  const handleViewPlan = async () => {
+    if (!planFilePath) return
+    const result = await window.clui.readPlan(planFilePath)
+    if (result.content && result.fileName) {
+      setPlanData({ content: result.content, fileName: result.fileName })
+    }
+  }
 
   const handleOpenInCli = () => {
     if (sessionId) {
@@ -21,6 +46,150 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, onDismiss 
   }
 
   const toolNames = [...new Set(tools.map((t) => t.toolName))]
+  const isPlanExit = toolNames.includes('ExitPlanMode')
+
+  if (isPlanExit && onImplement) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -4, scale: 0.97 }}
+        transition={{ duration: 0.2 }}
+        className="mx-4 mb-2"
+      >
+        <div
+          style={{
+            background: colors.containerBg,
+            border: `1px solid ${colors.permissionAllowBorder}`,
+            borderRadius: 14,
+            boxShadow: `0 2px 12px rgba(34, 197, 94, 0.06)`,
+          }}
+          className="overflow-hidden"
+        >
+          {/* Header */}
+          <div
+            className="flex items-center gap-2 px-3 py-2"
+            style={{
+              background: colors.permissionAllowBg,
+              borderBottom: `1px solid ${colors.permissionAllowBorder}`,
+            }}
+          >
+            <ListChecks size={14} style={{ color: 'rgba(34, 197, 94, 0.85)' }} />
+            <span className="text-[12px] font-semibold" style={{ color: 'rgba(34, 197, 94, 0.85)' }}>
+              Plan Ready
+            </span>
+          </div>
+
+          {/* Body */}
+          <div className="px-3 py-2">
+            <p className="text-[11px] leading-[1.5] mb-2" style={{ color: colors.textSecondary }}>
+              Planning complete. Continue to implementation or dismiss to stay in plan mode.
+            </p>
+
+            {/* Actions */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => onImplement('auto', true)}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                style={{
+                  background: colors.permissionAllowBg,
+                  color: 'rgba(34, 197, 94, 0.85)',
+                  border: `1px solid ${colors.permissionAllowBorder}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.permissionAllowHoverBg
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.permissionAllowBg
+                }}
+              >
+                <RocketLaunch size={12} />
+                Implement, clear context
+              </button>
+              <button
+                onClick={() => onImplement('auto', false)}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                style={{
+                  background: colors.accentLight,
+                  color: colors.accent,
+                  border: `1px solid ${colors.accentBorderMedium}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.accentSoft
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.accentLight
+                }}
+              >
+                Implement
+              </button>
+              <button
+                onClick={() => onImplement('ask', false)}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                style={{
+                  background: colors.surfaceHover,
+                  color: colors.textTertiary,
+                  border: `1px solid ${colors.surfaceSecondary}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.surfaceActive
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.surfaceHover
+                }}
+              >
+                Implement (ask)
+              </button>
+              {planFilePath && <button
+                onClick={handleViewPlan}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                style={{
+                  background: colors.surfaceHover,
+                  color: colors.textTertiary,
+                  border: `1px solid ${colors.surfaceSecondary}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.surfaceActive
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.surfaceHover
+                }}
+              >
+                <Eye size={12} />
+                View Plan
+              </button>}
+              <button
+                onClick={onDismiss}
+                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
+                style={{
+                  background: colors.surfaceHover,
+                  color: colors.textTertiary,
+                  border: `1px solid ${colors.surfaceSecondary}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.surfaceActive
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = colors.surfaceHover
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+        <AnimatePresence>
+          {planData && (
+            <PlanViewer
+              content={planData.content}
+              fileName={planData.fileName}
+              onClose={() => setPlanData(null)}
+            />
+          )}
+        </AnimatePresence>
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div

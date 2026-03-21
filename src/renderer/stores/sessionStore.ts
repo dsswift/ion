@@ -378,9 +378,16 @@ export const useSessionStore = create<State>((set, get) => ({
         role: m.role as Message['role'],
         content: m.content,
         toolName: m.toolName,
+        toolInput: m.toolInput,
         toolStatus: m.toolName ? 'completed' as const : undefined,
         timestamp: m.timestamp,
       }))
+
+      // Restore plan-ready state if last tool message was ExitPlanMode
+      const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
+      const restoredDenied = lastToolMsg?.toolName === 'ExitPlanMode'
+        ? { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'restored' }] }
+        : null
 
       const tab: TabState = {
         ...makeLocalTab(),
@@ -390,6 +397,7 @@ export const useSessionStore = create<State>((set, get) => ({
         workingDirectory: defaultDir,
         hasChosenDirectory: !!projectPath,
         messages,
+        permissionDenied: restoredDenied,
       }
       set((s) => ({
         tabs: [...s.tabs, tab],

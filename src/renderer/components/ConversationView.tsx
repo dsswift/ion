@@ -204,12 +204,60 @@ export function ConversationView() {
               tools={tab.permissionDenied.tools}
               sessionId={tab.claudeSessionId}
               projectPath={staticInfo?.projectPath || process.cwd()}
+              messages={tab.messages}
               onDismiss={() => {
                 useSessionStore.setState((s) => ({
                   tabs: s.tabs.map((t) =>
                     t.id === tab.id ? { ...t, permissionDenied: null } : t
                   ),
                 }))
+              }}
+              onImplement={async (mode, clearContext) => {
+                // Dismiss the card
+                useSessionStore.setState((s) => ({
+                  tabs: s.tabs.map((t) =>
+                    t.id === tab.id ? { ...t, permissionDenied: null } : t
+                  ),
+                }))
+                // Switch permission mode
+                useSessionStore.getState().setPermissionMode(mode)
+
+                let implementPrompt = 'Implement the plan'
+
+                if (clearContext) {
+                  // Extract plan file path from messages BEFORE clearing them
+                  const exitMsg = [...tab.messages].reverse().find(
+                    (m) => m.toolName === 'ExitPlanMode' && m.toolInput
+                  )
+                  let planContent: string | null = null
+                  if (exitMsg?.toolInput) {
+                    try {
+                      const input = JSON.parse(exitMsg.toolInput)
+                      const planFilePath = input.planFilePath as string
+                      if (planFilePath) {
+                        const result = await window.clui.readPlan(planFilePath)
+                        planContent = result.content
+                      }
+                    } catch { /* proceed without plan content */ }
+                  }
+
+                  // Reset session (fresh Claude context) and clear messages
+                  window.clui.resetTabSession(tab.id)
+                  useSessionStore.setState((s) => ({
+                    tabs: s.tabs.map((t) =>
+                      t.id === tab.id
+                        ? { ...t, messages: [], claudeSessionId: null, lastResult: null, currentActivity: '', permissionQueue: [], permissionDenied: null, queuedPrompts: [] }
+                        : t
+                    ),
+                  }))
+
+                  // Include plan content in the prompt
+                  if (planContent) {
+                    implementPrompt = `Implement the following plan:\n\n${planContent}`
+                  }
+                }
+
+                sendMessage(implementPrompt)
               }}
             />
           )}

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
 import { join } from 'path'
-import { existsSync, readdirSync, statSync, createReadStream } from 'fs'
+import { existsSync, readdirSync, statSync, createReadStream, readFileSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
@@ -465,6 +465,7 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
                     role: 'tool',
                     content: '',
                     toolName: block.name,
+                    toolInput: block.input ? JSON.stringify(block.input) : undefined,
                     timestamp: new Date(obj.timestamp).getTime(),
                   })
                 }
@@ -479,6 +480,18 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
   } catch (err) {
     log(`LOAD_SESSION error: ${err}`)
     return []
+  }
+})
+
+ipcMain.handle(IPC.READ_PLAN, async (_e, filePath: string) => {
+  try {
+    if (!filePath || !existsSync(filePath)) return { content: null, fileName: null }
+    const content = readFileSync(filePath, 'utf-8')
+    const fileName = filePath.split('/').pop() || filePath
+    return { content, fileName }
+  } catch (err) {
+    log(`READ_PLAN error: ${err}`)
+    return { content: null, fileName: null }
   }
 })
 
