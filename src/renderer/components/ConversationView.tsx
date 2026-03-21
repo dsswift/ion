@@ -722,6 +722,52 @@ function getToolDescription(name: string, input?: string): string {
   }
 }
 
+function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<typeof useColors> }) {
+  const [showResult, setShowResult] = useState(false)
+  const isError = tool.toolStatus === 'error'
+  const hasContent = !!tool.content
+  const lineCount = hasContent ? tool.content.split('\n').length : 0
+
+  return (
+    <>
+      <span className="inline-flex items-center gap-1 mt-0.5">
+        <span
+          className="inline-block text-[10px] px-1.5 py-[1px] rounded"
+          style={{
+            background: isError ? colors.statusErrorBg : colors.statusCompleteBg,
+            color: isError ? colors.statusError : colors.statusComplete,
+          }}
+        >
+          {isError ? 'Error' : 'Success'}
+        </span>
+        {hasContent && (
+          <span
+            className="text-[10px] cursor-pointer select-none"
+            style={{ color: colors.textMuted }}
+            onClick={() => setShowResult(!showResult)}
+          >
+            +{lineCount} line{lineCount !== 1 ? 's' : ''}
+          </span>
+        )}
+      </span>
+      {showResult && tool.content && (
+        <pre
+          className="text-[11px] leading-[1.4] p-2 rounded overflow-auto whitespace-pre-wrap break-words"
+          style={{
+            margin: '4px 0 0 0',
+            background: colors.surfaceHover,
+            color: colors.textSecondary,
+            maxHeight: 200,
+            border: `1px solid ${colors.toolBorder}`,
+          }}
+        >
+          {tool.content}
+        </pre>
+      )}
+    </>
+  )
+}
+
 function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boolean }) {
   const hasRunning = tools.some((t) => t.toolStatus === 'running')
   const [expanded, setExpanded] = useState(false)
@@ -786,15 +832,7 @@ function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boole
 
                     {/* Result badge */}
                     {!isRunning && (
-                      <span
-                        className="inline-block text-[10px] mt-0.5 px-1.5 py-[1px] rounded"
-                        style={{
-                          background: tool.toolStatus === 'error' ? colors.statusErrorBg : colors.surfaceHover,
-                          color: tool.toolStatus === 'error' ? colors.statusError : colors.textMuted,
-                        }}
-                      >
-                        Result
-                      </span>
+                      <ToolResultBadge tool={tool} colors={colors} />
                     )}
 
                     {isRunning && (
@@ -815,6 +853,7 @@ function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boole
 
     return (
       <motion.div
+        key="expanded"
         initial={{ opacity: 0, height: 0 }}
         animate={{ opacity: 1, height: 'auto' }}
         exit={{ opacity: 0, height: 0 }}
@@ -844,6 +883,7 @@ function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boole
 
   return (
     <motion.div
+      key="collapsed"
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.12 }}

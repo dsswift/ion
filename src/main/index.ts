@@ -517,7 +517,7 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
     const filePath = join(homedir(), '.claude', 'projects', encodedPath, `${sessionId}.jsonl`)
     if (!existsSync(filePath)) return []
 
-    const messages: Array<{ role: string; content: string; toolName?: string; timestamp: number }> = []
+    const messages: Array<{ role: string; content: string; toolName?: string; toolId?: string; timestamp: number }> = []
     await new Promise<void>((resolve) => {
       const rl = createInterface({ input: createReadStream(filePath) })
       rl.on('line', (line: string) => {
@@ -529,6 +529,27 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
             if (typeof content === 'string') {
               raw = content
             } else if (Array.isArray(content)) {
+              // Extract tool_result blocks and attach content to matching tool messages
+              for (const block of content) {
+                if (block.type === 'tool_result' && block.tool_use_id) {
+                  let resultText = ''
+                  if (typeof block.content === 'string') {
+                    resultText = block.content
+                  } else if (Array.isArray(block.content)) {
+                    resultText = block.content
+                      .filter((c: any) => c.type === 'text' && c.text)
+                      .map((c: any) => c.text)
+                      .join('\n')
+                  }
+                  // Find matching tool message and set its content
+                  const toolMsg = [...messages].reverse().find(
+                    (m) => m.role === 'tool' && m.toolId === block.tool_use_id
+                  )
+                  if (toolMsg) {
+                    toolMsg.content = resultText
+                  }
+                }
+              }
               raw = content
                 .filter((b: any) => b.type === 'text')
                 .map((b: any) => b.text)
@@ -573,6 +594,7 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
                     role: 'tool',
                     content: '',
                     toolName: block.name,
+                    toolId: block.id,
                     toolInput: block.input ? JSON.stringify(block.input) : undefined,
                     timestamp: new Date(obj.timestamp).getTime(),
                   })

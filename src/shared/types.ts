@@ -182,6 +182,7 @@ export interface Message {
   content: string
   toolName?: string
   toolInput?: string
+  toolId?: string
   toolStatus?: 'running' | 'completed' | 'error'
   timestamp: number
 }
@@ -202,6 +203,7 @@ export type NormalizedEvent =
   | { type: 'tool_call'; toolName: string; toolId: string; index: number }
   | { type: 'tool_call_update'; toolId: string; partialInput: string }
   | { type: 'tool_call_complete'; index: number }
+  | { type: 'tool_result'; toolId: string; content: string; isError: boolean }
   | { type: 'task_update'; message: AssistantMessagePayload }
   | { type: 'task_complete'; result: string; costUsd: number; durationMs: number; numTurns: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }
   | { type: 'error'; message: string; isError: boolean; sessionId?: string }
@@ -278,6 +280,7 @@ export interface SessionLoadMessage {
   role: string
   content: string
   toolName?: string
+  toolId?: string
   toolInput?: string
   timestamp: number
 }

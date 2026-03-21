@@ -401,6 +401,7 @@ export const useSessionStore = create<State>((set, get) => ({
         role: m.role as Message['role'],
         content: m.content,
         toolName: m.toolName,
+        toolId: m.toolId,
         toolInput: m.toolInput,
         toolStatus: m.toolName ? 'completed' as const : undefined,
         timestamp: m.timestamp,
@@ -707,6 +708,7 @@ export const useSessionStore = create<State>((set, get) => ({
                 role: 'tool',
                 content: '',
                 toolName: event.toolName,
+                toolId: event.toolId,
                 toolInput: '',
                 toolStatus: 'running',
                 timestamp: Date.now(),
@@ -731,6 +733,19 @@ export const useSessionStore = create<State>((set, get) => ({
               runningTool.toolStatus = 'completed'
             }
             updated.messages = msgs2
+            break
+          }
+
+          case 'tool_result': {
+            const msgs3 = [...updated.messages]
+            const targetTool = [...msgs3].reverse().find((m) => m.role === 'tool' && m.toolId === event.toolId)
+            if (targetTool) {
+              targetTool.content = event.content
+              if (event.isError) {
+                targetTool.toolStatus = 'error'
+              }
+            }
+            updated.messages = msgs3
             break
           }
 

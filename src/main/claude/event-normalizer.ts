@@ -37,10 +37,44 @@ export function normalize(raw: ClaudeEvent): NormalizedEvent[] {
     case 'permission_request':
       return normalizePermission(raw as PermissionEvent)
 
+    case 'user':
+      return normalizeUser(raw)
+
     default:
-      // Unknown event type — skip silently (defensive)
+      // Unknown event type — log for diagnostics
+      if (process.env.CLUI_DEBUG === '1') {
+        console.log(`[event-normalizer] unknown event type: ${raw.type}`, JSON.stringify(raw).substring(0, 300))
+      }
       return []
   }
+}
+
+function normalizeUser(event: any): NormalizedEvent[] {
+  const content = event.message?.content
+  if (!Array.isArray(content)) return []
+
+  const results: NormalizedEvent[] = []
+  for (const block of content) {
+    if (block.type === 'tool_result' && block.tool_use_id) {
+      // Content can be a string or an array of content blocks
+      let text = ''
+      if (typeof block.content === 'string') {
+        text = block.content
+      } else if (Array.isArray(block.content)) {
+        text = block.content
+          .filter((c: any) => c.type === 'text' && c.text)
+          .map((c: any) => c.text)
+          .join('\n')
+      }
+      results.push({
+        type: 'tool_result',
+        toolId: block.tool_use_id,
+        content: text,
+        isError: !!block.is_error,
+      })
+    }
+  }
+  return results
 }
 
 function normalizeSystem(event: InitEvent): NormalizedEvent[] {
