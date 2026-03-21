@@ -220,9 +220,11 @@ export const useSessionStore = create<State>((set, get) => ({
           : prev.tabs,
       }))
     } else {
-      // Switching to a different tab: mark as read
+      // Switching to a different tab: mark as read, auto-expand if setting enabled
+      const expandOnSwitch = useThemeStore.getState().expandOnTabSwitch
       set((prev) => ({
         activeTabId: tabId,
+        isExpanded: expandOnSwitch ? true : prev.isExpanded,
         marketplaceOpen: false,
         tabs: prev.tabs.map((t) =>
           t.id === tabId ? { ...t, hasUnread: false } : t

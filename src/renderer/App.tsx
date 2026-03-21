@@ -99,8 +99,9 @@ export default function App() {
           }))
         }
 
-        // Launch collapsed (resumeSession sets isExpanded=true by default)
-        useSessionStore.setState({ isExpanded: false, tabsReady: true })
+        // Auto-expand if setting enabled, otherwise stay collapsed
+        const expandOnSwitch = useThemeStore.getState().expandOnTabSwitch
+        useSessionStore.setState({ isExpanded: expandOnSwitch, tabsReady: true })
         return
       }
 
@@ -251,7 +252,9 @@ export default function App() {
                     className="glass-surface overflow-hidden no-drag"
                     style={{
                       borderRadius: 24,
-                      maxHeight: 400,
+                      maxHeight: 520,
+                      display: 'flex',
+                      flexDirection: 'column' as const,
                     }}
                   >
                     <SettingsDialog onClose={() => setSettingsOpen(false)} />
