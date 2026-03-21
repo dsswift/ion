@@ -448,11 +448,20 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
             if (obj.timestamp) meta.lastTimestamp = obj.timestamp
             if (obj.type === 'user' && !meta.firstMessage) {
               const content = obj.message?.content
+              let raw = ''
               if (typeof content === 'string') {
-                meta.firstMessage = content.substring(0, 100)
+                raw = content
               } else if (Array.isArray(content)) {
-                const textPart = content.find((p: any) => p.type === 'text')
-                meta.firstMessage = textPart?.text?.substring(0, 100) || null
+                raw = (content.find((p: any) => p.type === 'text')?.text) || ''
+              }
+              // Skip CLI internal messages, but show bash commands with ! prefix
+              if (!raw || raw.includes('<local-command-caveat') || raw.includes('<bash-stdout') || raw.includes('<bash-stderr') || raw.includes('<system-reminder') || raw.includes('<command-name')) {
+                // Skip: internal hints and output-only messages
+              } else if (raw.includes('<bash-input')) {
+                const cmd = extractTag(raw, 'bash-input')
+                if (cmd) meta.firstMessage = `! ${cmd.trim()}`.substring(0, 100)
+              } else {
+                meta.firstMessage = cleanCliTags(raw).substring(0, 100) || null
               }
             }
           } catch {}
@@ -482,6 +491,23 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
 })
 
 // Load conversation history from a session's JSONL file
+/**
+ * Clean CLI-internal XML tags from session JSONL content.
+ * Removes hidden tags entirely and strips wrapper tags from visible content.
+ */
+function cleanCliTags(text: string): string {
+  let result = text.replace(/<(?:local-command-caveat|system-reminder|command-name|command-message|command-args)[^>]*>[\s\S]*?<\/(?:local-command-caveat|system-reminder|command-name|command-message|command-args)>/g, '')
+  result = result.replace(/<\/?(?:bash-input|bash-stdout|bash-stderr)[^>]*>/g, '')
+  return result.trim()
+}
+
+/** Extract inner text from a specific XML tag, or null if not present */
+function extractTag(text: string, tag: string): string | null {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`)
+  const m = text.match(re)
+  return m ? m[1] : null
+}
+
 ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPath?: string } | string) => {
   const sessionId = typeof arg === 'string' ? arg : arg.sessionId
   const projectPath = typeof arg === 'string' ? undefined : arg.projectPath
@@ -500,24 +526,49 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
           const obj = JSON.parse(line)
           if (obj.type === 'user') {
             const content = obj.message?.content
-            let text = ''
+            let raw = ''
             if (typeof content === 'string') {
-              text = content
+              raw = content
             } else if (Array.isArray(content)) {
-              text = content
+              raw = content
                 .filter((b: any) => b.type === 'text')
                 .map((b: any) => b.text)
                 .join('\n')
             }
-            if (text) {
-              messages.push({ role: 'user', content: text, timestamp: new Date(obj.timestamp).getTime() })
+            const ts = new Date(obj.timestamp).getTime()
+
+            // CLI ! command messages: route by tag type
+            if (raw.includes('<local-command-caveat')) {
+              // Internal hint — discard entirely
+            } else if (raw.includes('<bash-input')) {
+              const cmd = extractTag(raw, 'bash-input') || raw
+              messages.push({ role: 'user', content: cmd.trim(), timestamp: ts })
+            } else if (raw.includes('<bash-stdout') || raw.includes('<bash-stderr')) {
+              // Emit as a Bash tool card so it renders like agent tool output
+              const stdout = extractTag(raw, 'bash-stdout') || ''
+              const stderr = extractTag(raw, 'bash-stderr') || ''
+              // Look back for the preceding bash-input to use as toolInput
+              const prevMsg = messages[messages.length - 1]
+              const cmdInput = prevMsg?.role === 'user' ? prevMsg.content : undefined
+              messages.push({
+                role: 'tool',
+                content: '',
+                toolName: 'Bash',
+                toolInput: cmdInput ? JSON.stringify({ command: cmdInput }) : undefined,
+                timestamp: ts,
+              })
+            } else {
+              const text = cleanCliTags(raw)
+              if (text) {
+                messages.push({ role: 'user', content: text, timestamp: ts })
+              }
             }
           } else if (obj.type === 'assistant') {
             const content = obj.message?.content
             if (Array.isArray(content)) {
               for (const block of content) {
                 if (block.type === 'text' && block.text) {
-                  messages.push({ role: 'assistant', content: block.text, timestamp: new Date(obj.timestamp).getTime() })
+                  messages.push({ role: 'assistant', content: cleanCliTags(block.text), timestamp: new Date(obj.timestamp).getTime() })
                 } else if (block.type === 'tool_use' && block.name) {
                   messages.push({
                     role: 'tool',
