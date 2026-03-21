@@ -234,9 +234,9 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
         <div
           style={{
             background: colors.containerBg,
-            border: `1px solid ${colors.accentBorderMedium}`,
+            border: `1px solid ${colors.infoBorder}`,
             borderRadius: 14,
-            boxShadow: `0 2px 12px ${colors.accentLight}`,
+            boxShadow: `0 2px 12px ${colors.infoShadow}`,
           }}
           className="overflow-hidden"
         >
@@ -244,12 +244,12 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
           <div
             className="flex items-center gap-2 px-3 py-2"
             style={{
-              background: colors.accentLight,
-              borderBottom: `1px solid ${colors.accentBorderMedium}`,
+              background: colors.infoBg,
+              borderBottom: `1px solid ${colors.infoBorder}`,
             }}
           >
-            <Question size={14} style={{ color: colors.accent }} />
-            <span className="text-[12px] font-semibold" style={{ color: colors.accent }}>
+            <Question size={14} style={{ color: colors.infoText }} />
+            <span className="text-[12px] font-semibold" style={{ color: colors.infoText }}>
               {askData.header || 'Input Required'}
             </span>
           </div>
@@ -268,16 +268,16 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
                   onClick={() => onAnswer(opt.label)}
                   className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
                   style={{
-                    background: colors.accentLight,
-                    color: colors.accent,
-                    border: `1px solid ${colors.accentBorderMedium}`,
+                    background: colors.infoBg,
+                    color: colors.infoText,
+                    border: `1px solid ${colors.infoBorder}`,
                   }}
                   title={opt.description || undefined}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = colors.accentSoft
+                    e.currentTarget.style.background = colors.infoHoverBg
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = colors.accentLight
+                    e.currentTarget.style.background = colors.infoBg
                   }}
                 >
                   {opt.label}
