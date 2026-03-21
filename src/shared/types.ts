@@ -154,6 +154,8 @@ export interface TabState {
   attachments: Attachment[]
   messages: Message[]
   title: string
+  /** User-provided custom tab name (overrides auto-generated title when set) */
+  customTitle: string | null
   /** Last run's result data (cost, tokens, duration) */
   lastResult: RunResult | null
   /** Session metadata from init event */
@@ -401,6 +403,7 @@ export const IPC = {
 export interface PersistedTab {
   claudeSessionId: string
   title: string
+  customTitle: string | null
   workingDirectory: string
   hasChosenDirectory: boolean
   additionalDirs: string[]

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
@@ -36,13 +36,101 @@ function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; ha
   )
 }
 
+function InlineRenameInput({
+  value,
+  onCommit,
+  onCancel,
+  color,
+  fontWeight,
+}: {
+  value: string
+  onCommit: (newValue: string) => void
+  onCancel: () => void
+  color: string
+  fontWeight: number
+}) {
+  const [editValue, setEditValue] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const measureRef = useRef<HTMLSpanElement>(null)
+  const [inputWidth, setInputWidth] = useState(0)
+  const committedRef = useRef(false)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  useEffect(() => {
+    if (measureRef.current) {
+      setInputWidth(measureRef.current.offsetWidth + 4)
+    }
+  }, [editValue])
+
+  const commit = useCallback(() => {
+    if (committedRef.current) return
+    committedRef.current = true
+    const trimmed = editValue.trim()
+    onCommit(trimmed)
+  }, [editValue, onCommit])
+
+  return (
+    <>
+      {/* Hidden measuring span */}
+      <span
+        ref={measureRef}
+        style={{
+          position: 'absolute',
+          visibility: 'hidden',
+          whiteSpace: 'pre',
+          fontSize: 12,
+          fontWeight,
+        }}
+      >
+        {editValue || ' '}
+      </span>
+      <input
+        ref={inputRef}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+          e.stopPropagation()
+        }}
+        onBlur={commit}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: Math.max(inputWidth, 20),
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          padding: 0,
+          margin: 0,
+          fontSize: 12,
+          fontWeight,
+          color,
+          fontFamily: 'inherit',
+        }}
+      />
+    </>
+  )
+}
+
 export function TabStrip() {
   const tabs = useSessionStore((s) => s.tabs)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const selectTab = useSessionStore((s) => s.selectTab)
   const createTab = useSessionStore((s) => s.createTab)
   const closeTab = useSessionStore((s) => s.closeTab)
+  const renameTab = useSessionStore((s) => s.renameTab)
   const colors = useColors()
+
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
 
   return (
     <div
@@ -68,6 +156,9 @@ export function TabStrip() {
           <AnimatePresence mode="popLayout">
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId
+              const isEditing = editingTabId === tab.id
+              const displayTitle = tab.customTitle || tab.title
+              const hasCustomTitle = !!tab.customTitle
               return (
                 <motion.div
                   key={tab.id}
@@ -77,7 +168,9 @@ export function TabStrip() {
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.15 }}
                   onClick={() => selectTab(tab.id)}
-                  className="group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 max-w-[160px] transition-all duration-150"
+                  className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 transition-all duration-150 ${
+                    hasCustomTitle || isEditing ? '' : 'max-w-[160px]'
+                  }`}
                   style={{
                     background: isActive ? colors.tabActive : 'transparent',
                     border: isActive ? `1px solid ${colors.tabActiveBorder}` : '1px solid transparent',
@@ -89,7 +182,29 @@ export function TabStrip() {
                   }}
                 >
                   <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} />
-                  <span className="truncate flex-1">{tab.title}</span>
+                  {isEditing ? (
+                    <InlineRenameInput
+                      value={displayTitle}
+                      color={isActive ? colors.textPrimary : colors.textTertiary}
+                      fontWeight={isActive ? 500 : 400}
+                      onCommit={(newValue) => {
+                        setEditingTabId(null)
+                        renameTab(tab.id, newValue || null)
+                      }}
+                      onCancel={() => setEditingTabId(null)}
+                    />
+                  ) : (
+                    <span
+                      className={hasCustomTitle ? 'flex-1 whitespace-nowrap' : 'truncate flex-1'}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setEditingTabId(tab.id)
+                      }}
+                    >
+                      {displayTitle}
+                    </span>
+                  )}
                   {tabs.length > 1 && (
                     <button
                       onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}

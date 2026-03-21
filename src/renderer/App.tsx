@@ -72,6 +72,7 @@ export default function App() {
               t.id === tabId
                 ? {
                     ...t,
+                    customTitle: st.customTitle || null,
                     hasChosenDirectory: st.hasChosenDirectory,
                     additionalDirs: st.additionalDirs,
                     permissionMode: st.permissionMode,
