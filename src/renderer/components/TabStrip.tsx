@@ -130,9 +130,14 @@ export function TabStrip() {
   const renameTab = useSessionStore((s) => s.renameTab)
   const colors = useColors()
   const showDirLabel = useThemeStore((s) => s.showDirLabel)
+  const tabsReady = useSessionStore((s) => s.tabsReady)
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
+
+  if (!tabsReady) {
+    return <div data-clui-ui className="flex items-center no-drag" style={{ padding: '8px 0', height: 40 }} />
+  }
 
   return (
     <div

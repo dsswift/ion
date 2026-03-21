@@ -32,6 +32,8 @@ interface State {
   preferredModel: string | null
   /** Whether the git side panel is open */
   gitPanelOpen: boolean
+  /** Whether tab restoration has completed (prevents placeholder flash) */
+  tabsReady: boolean
 
   // Marketplace state
   marketplaceOpen: boolean
@@ -133,6 +135,7 @@ export const useSessionStore = create<State>((set, get) => ({
   staticInfo: null,
   preferredModel: null,
   gitPanelOpen: false,
+  tabsReady: false,
 
   // Marketplace
   marketplaceOpen: false,

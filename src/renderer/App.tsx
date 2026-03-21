@@ -100,7 +100,7 @@ export default function App() {
         }
 
         // Launch collapsed (resumeSession sets isExpanded=true by default)
-        useSessionStore.setState({ isExpanded: false })
+        useSessionStore.setState({ isExpanded: false, tabsReady: true })
         return
       }
 
@@ -117,8 +117,11 @@ export default function App() {
           useSessionStore.setState((s) => ({
             tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, id: tabId } : t)),
             activeTabId: tabId,
+            tabsReady: true,
           }))
-        }).catch(() => {})
+        }).catch(() => {
+          useSessionStore.setState({ tabsReady: true })
+        })
       }
     })
   }, [])
