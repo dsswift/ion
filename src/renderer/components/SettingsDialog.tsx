@@ -14,6 +14,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const setShowDirLabel = useThemeStore((s) => s.setShowDirLabel)
   const showImplementClearContext = useThemeStore((s) => s.showImplementClearContext)
   const setShowImplementClearContext = useThemeStore((s) => s.setShowImplementClearContext)
+  const defaultPermissionMode = useThemeStore((s) => s.defaultPermissionMode)
+  const setDefaultPermissionMode = useThemeStore((s) => s.setDefaultPermissionMode)
 
   const handleBrowse = async () => {
     const dir = await window.clui.selectDirectory()
@@ -148,6 +150,63 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 <Trash size={15} />
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Default Tab Mode */}
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: 'block',
+              color: colors.textSecondary,
+              fontSize: 12,
+              fontWeight: 500,
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Default Tab Mode
+          </label>
+          <p
+            style={{
+              color: colors.textTertiary,
+              fontSize: 12,
+              margin: '0 0 10px',
+              lineHeight: 1.4,
+            }}
+          >
+            The permission mode new tabs start with.
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              background: colors.surfacePrimary,
+              border: `1px solid ${colors.containerBorder}`,
+              borderRadius: 8,
+              overflow: 'hidden',
+            }}
+          >
+            {(['plan', 'auto', 'ask'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setDefaultPermissionMode(mode)}
+                style={{
+                  flex: 1,
+                  padding: '7px 0',
+                  background: defaultPermissionMode === mode ? colors.accent : 'transparent',
+                  color: defaultPermissionMode === mode ? '#fff' : colors.textSecondary,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: defaultPermissionMode === mode ? 600 : 400,
+                  textTransform: 'capitalize',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                {mode}
+              </button>
+            ))}
           </div>
         </div>
 

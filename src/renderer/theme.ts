@@ -295,6 +295,7 @@ interface ThemeState {
   showDirLabel: boolean
   preferredOpenWith: 'cli' | 'vscode'
   showImplementClearContext: boolean
+  defaultPermissionMode: 'ask' | 'auto' | 'plan'
   gitPanelSplitRatio: number
   gitPanelChangesOpen: boolean
   gitPanelGraphOpen: boolean
@@ -308,6 +309,7 @@ interface ThemeState {
   setShowDirLabel: (show: boolean) => void
   setPreferredOpenWith: (app: 'cli' | 'vscode') => void
   setShowImplementClearContext: (show: boolean) => void
+  setDefaultPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
   setGitPanelSplitRatio: (ratio: number) => void
   setGitPanelChangesOpen: (open: boolean) => void
   setGitPanelGraphOpen: (open: boolean) => void
@@ -334,15 +336,15 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true }
 
-function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean }): void {
+function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean }): void {
   window.clui?.saveSettings(s)
 }
 
-function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean } {
+function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean } {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen }
 }
 
 // Start with defaults; async load from disk will update immediately after mount.
@@ -357,6 +359,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   showDirLabel: saved.showDirLabel,
   preferredOpenWith: saved.preferredOpenWith,
   showImplementClearContext: saved.showImplementClearContext,
+  defaultPermissionMode: saved.defaultPermissionMode,
   gitPanelSplitRatio: saved.gitPanelSplitRatio,
   gitPanelChangesOpen: saved.gitPanelChangesOpen,
   gitPanelGraphOpen: saved.gitPanelGraphOpen,
@@ -393,6 +396,10 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   },
   setShowImplementClearContext: (show) => {
     set({ showImplementClearContext: show })
+    saveSettings(getAllSettings(get))
+  },
+  setDefaultPermissionMode: (mode) => {
+    set({ defaultPermissionMode: mode })
     saveSettings(getAllSettings(get))
   },
   setGitPanelSplitRatio: (ratio) => {

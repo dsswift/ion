@@ -122,7 +122,7 @@ function makeLocalTab(): TabState {
     workingDirectory: '~',
     hasChosenDirectory: false,
     additionalDirs: [],
-    permissionMode: 'plan',
+    permissionMode: useThemeStore.getState().defaultPermissionMode,
   }
 }
 
