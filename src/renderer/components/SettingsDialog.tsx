@@ -10,6 +10,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const colors = useColors()
   const defaultBaseDirectory = useThemeStore((s) => s.defaultBaseDirectory)
   const setDefaultBaseDirectory = useThemeStore((s) => s.setDefaultBaseDirectory)
+  const showDirLabel = useThemeStore((s) => s.showDirLabel)
+  const setShowDirLabel = useThemeStore((s) => s.setShowDirLabel)
 
   const handleBrowse = async () => {
     const dir = await window.clui.selectDirectory()
@@ -145,6 +147,71 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Show Directory Label on Tabs */}
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: 'block',
+              color: colors.textSecondary,
+              fontSize: 12,
+              fontWeight: 500,
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Tab Directory Label
+          </label>
+          <p
+            style={{
+              color: colors.textTertiary,
+              fontSize: 12,
+              margin: '0 0 10px',
+              lineHeight: 1.4,
+            }}
+          >
+            Show the working directory name on each tab for quick identification.
+          </p>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer',
+            }}
+          >
+            <div
+              onClick={() => setShowDirLabel(!showDirLabel)}
+              style={{
+                width: 36,
+                height: 20,
+                borderRadius: 10,
+                background: showDirLabel ? colors.accent : colors.surfaceSecondary,
+                position: 'relative',
+                transition: 'background 0.15s',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: showDirLabel ? '#fff' : colors.textTertiary,
+                  position: 'absolute',
+                  top: 2,
+                  left: showDirLabel ? 18 : 2,
+                  transition: 'left 0.15s, background 0.15s',
+                }}
+              />
+            </div>
+            <span style={{ color: colors.textPrimary, fontSize: 13 }}>
+              Show directory name on tabs
+            </span>
+          </label>
         </div>
       </div>
     </div>

@@ -4,7 +4,7 @@ import { Plus, X } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
-import { useColors } from '../theme'
+import { useColors, useThemeStore } from '../theme'
 import type { TabStatus } from '../../shared/types'
 
 function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean }) {
@@ -129,6 +129,7 @@ export function TabStrip() {
   const closeTab = useSessionStore((s) => s.closeTab)
   const renameTab = useSessionStore((s) => s.renameTab)
   const colors = useColors()
+  const showDirLabel = useThemeStore((s) => s.showDirLabel)
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
 
@@ -182,6 +183,19 @@ export function TabStrip() {
                   }}
                 >
                   <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} />
+                  {showDirLabel && tab.workingDirectory && (
+                    <span
+                      className="flex-shrink-0"
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 500,
+                        color: colors.textSecondary,
+                        opacity: 0.5,
+                      }}
+                    >
+                      {tab.workingDirectory.split('/').pop() || tab.workingDirectory}
+                    </span>
+                  )}
                   {isEditing ? (
                     <InlineRenameInput
                       value={displayTitle}
