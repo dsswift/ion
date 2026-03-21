@@ -173,12 +173,16 @@ export const useSessionStore = create<State>((set, get) => ({
 
   createTab: async () => {
     const homeDir = get().staticInfo?.homePath || '~'
+    const defaultBase = useThemeStore.getState().defaultBaseDirectory
+    const startDir = defaultBase || homeDir
+    const hasChosen = !!defaultBase
     try {
       const { tabId } = await window.clui.createTab()
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
-        workingDirectory: homeDir,
+        workingDirectory: startDir,
+        hasChosenDirectory: hasChosen,
       }
       set((s) => ({
         tabs: [...s.tabs, tab],
@@ -187,7 +191,8 @@ export const useSessionStore = create<State>((set, get) => ({
       return tabId
     } catch {
       const tab = makeLocalTab()
-      tab.workingDirectory = homeDir
+      tab.workingDirectory = startDir
+      tab.hasChosenDirectory = hasChosen
       set((s) => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,

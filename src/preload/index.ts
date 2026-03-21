@@ -34,8 +34,8 @@ export interface CluiAPI {
   setPermissionMode(tabId: string, mode: string): void
   getTheme(): Promise<{ isDark: boolean }>
   onThemeChange(callback: (isDark: boolean) => void): () => void
-  loadSettings(): Promise<{ themeMode: string; soundEnabled: boolean; expandedUI: boolean }>
-  saveSettings(data: { themeMode: string; soundEnabled: boolean; expandedUI: boolean }): Promise<void>
+  loadSettings(): Promise<{ themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string }>
+  saveSettings(data: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string }): Promise<void>
   loadTabs(): Promise<PersistedTabState | null>
   saveTabs(data: PersistedTabState): Promise<void>
 
@@ -71,6 +71,7 @@ export interface CluiAPI {
   onError(callback: (tabId: string, error: EnrichedError) => void): () => void
   onSkillStatus(callback: (status: { name: string; state: string; error?: string; reason?: string }) => void): () => void
   onWindowShown(callback: () => void): () => void
+  onShowSettings(callback: () => void): () => void
 }
 
 const api: CluiAPI = {
@@ -181,6 +182,12 @@ const api: CluiAPI = {
     const handler = () => callback()
     ipcRenderer.on(IPC.WINDOW_SHOWN, handler)
     return () => ipcRenderer.removeListener(IPC.WINDOW_SHOWN, handler)
+  },
+
+  onShowSettings: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC.SHOW_SETTINGS, handler)
+    return () => ipcRenderer.removeListener(IPC.SHOW_SETTINGS, handler)
   },
 }
 

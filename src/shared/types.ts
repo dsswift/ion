@@ -367,6 +367,7 @@ export const IPC = {
   // Settings persistence
   LOAD_SETTINGS: 'clui:load-settings',
   SAVE_SETTINGS: 'clui:save-settings',
+  SHOW_SETTINGS: 'clui:show-settings',
 
   // Tab persistence
   LOAD_TABS: 'clui:load-tabs',

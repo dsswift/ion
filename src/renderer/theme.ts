@@ -277,12 +277,14 @@ interface ThemeState {
   themeMode: ThemeMode
   soundEnabled: boolean
   expandedUI: boolean
+  defaultBaseDirectory: string
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
   setThemeMode: (mode: ThemeMode) => void
   setSoundEnabled: (enabled: boolean) => void
   setExpandedUI: (expanded: boolean) => void
+  setDefaultBaseDirectory: (dir: string) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -306,10 +308,15 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '' }
 
-function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean }): void {
+function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string }): void {
   window.clui?.saveSettings(s)
+}
+
+function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string } {
+  const s = get()
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory }
 }
 
 // Start with defaults; async load from disk will update immediately after mount.
@@ -320,6 +327,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   themeMode: saved.themeMode,
   soundEnabled: saved.soundEnabled,
   expandedUI: saved.expandedUI,
+  defaultBaseDirectory: saved.defaultBaseDirectory,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -329,15 +337,19 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const resolved = mode === 'system' ? get()._systemIsDark : mode === 'dark'
     set({ themeMode: mode, isDark: resolved })
     applyTheme(resolved)
-    saveSettings({ themeMode: mode, soundEnabled: get().soundEnabled, expandedUI: get().expandedUI })
+    saveSettings(getAllSettings(get))
   },
   setSoundEnabled: (enabled) => {
     set({ soundEnabled: enabled })
-    saveSettings({ themeMode: get().themeMode, soundEnabled: enabled, expandedUI: get().expandedUI })
+    saveSettings(getAllSettings(get))
   },
   setExpandedUI: (expanded) => {
     set({ expandedUI: expanded })
-    saveSettings({ themeMode: get().themeMode, soundEnabled: get().soundEnabled, expandedUI: expanded })
+    saveSettings(getAllSettings(get))
+  },
+  setDefaultBaseDirectory: (dir) => {
+    set({ defaultBaseDirectory: dir })
+    saveSettings(getAllSettings(get))
   },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
@@ -360,7 +372,8 @@ window.clui?.loadSettings().then((disk) => {
   const resolved = mode === 'system' ? store._systemIsDark : mode === 'dark'
   const sound = typeof disk.soundEnabled === 'boolean' ? disk.soundEnabled : true
   const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded })
+  const baseDir = typeof disk.defaultBaseDirectory === 'string' ? disk.defaultBaseDirectory : ''
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir })
   applyTheme(resolved)
 })
 

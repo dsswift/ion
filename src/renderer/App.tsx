@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react'
+import React, { useEffect, useCallback, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, HeadCircuit } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
@@ -7,6 +7,7 @@ import { ConversationView } from './components/ConversationView'
 import { InputBar } from './components/InputBar'
 import { StatusBar } from './components/StatusBar'
 import { MarketplacePanel } from './components/MarketplacePanel'
+import { SettingsDialog } from './components/SettingsDialog'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { useClaudeEvents } from './hooks/useClaudeEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
@@ -19,6 +20,7 @@ export default function App() {
   useClaudeEvents()
   useHealthReconciliation()
 
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const activeTabStatus = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.status)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const colors = useColors()
@@ -38,6 +40,14 @@ export default function App() {
     })
     return unsub
   }, [setSystemTheme])
+
+  // Listen for show-settings IPC from tray menu
+  useEffect(() => {
+    const unsub = window.clui.onShowSettings(() => {
+      setSettingsOpen(true)
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     useSessionStore.getState().initStaticInfo().then(async () => {
@@ -96,8 +106,11 @@ export default function App() {
       // No saved tabs -- fall through to blank tab behavior
       const tab = useSessionStore.getState().tabs[0]
       if (tab) {
+        const defaultBase = useThemeStore.getState().defaultBaseDirectory
+        const startDir = defaultBase || homeDir
+        const hasChosen = !!defaultBase
         useSessionStore.setState((s) => ({
-          tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, workingDirectory: homeDir, hasChosenDirectory: false } : t)),
+          tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, workingDirectory: startDir, hasChosenDirectory: hasChosen } : t)),
         }))
         window.clui.createTab().then(({ tabId }) => {
           useSessionStore.setState((s) => ({
@@ -203,6 +216,41 @@ export default function App() {
                     }}
                   >
                     <MarketplacePanel />
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence initial={false}>
+            {settingsOpen && (
+              <div
+                data-clui-ui
+                style={{
+                  width: 420,
+                  maxWidth: 420,
+                  marginLeft: '50%',
+                  transform: 'translateX(-50%)',
+                  marginBottom: 14,
+                  position: 'relative',
+                  zIndex: 30,
+                }}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.985 }}
+                  transition={TRANSITION}
+                >
+                  <div
+                    data-clui-ui
+                    className="glass-surface overflow-hidden no-drag"
+                    style={{
+                      borderRadius: 24,
+                      maxHeight: 400,
+                    }}
+                  >
+                    <SettingsDialog onClose={() => setSettingsOpen(false)} />
                   </div>
                 </motion.div>
               </div>

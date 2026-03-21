@@ -923,7 +923,7 @@ ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { plugi
 
 const SETTINGS_DIR = join(homedir(), '.clui')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '' }
 
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {
@@ -1370,6 +1370,14 @@ app.whenReady().then(async () => {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Show Clui CC', click: () => showWindow('tray menu') },
+      { type: 'separator' },
+      { label: 'Settings...', click: () => {
+        showWindow('tray settings')
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC.SHOW_SETTINGS)
+        }
+      }},
+      { type: 'separator' },
       { label: 'Quit', click: () => { app.quit() } },
     ])
   )
