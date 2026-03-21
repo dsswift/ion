@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo } from '../shared/types'
 
 export interface CluiAPI {
   // ─── Request-response (renderer → main) ───
@@ -33,6 +33,23 @@ export interface CluiAPI {
   setPermissionMode(mode: string): void
   getTheme(): Promise<{ isDark: boolean }>
   onThemeChange(callback: (isDark: boolean) => void): () => void
+
+  // ─── Git operations ───
+  gitIsRepo(directory: string): Promise<{ isRepo: boolean }>
+  gitGraph(directory: string, skip?: number, limit?: number): Promise<GitGraphData>
+  gitChanges(directory: string): Promise<GitChangesData>
+  gitCommit(directory: string, message: string): Promise<{ ok: boolean; error?: string }>
+  gitFetch(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitPull(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitPush(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitBranches(directory: string): Promise<{ branches: GitBranchInfo[]; current: string }>
+  gitCheckout(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
+  gitCreateBranch(directory: string, name: string): Promise<{ ok: boolean; error?: string }>
+  gitDiff(directory: string, path: string, staged: boolean): Promise<{ diff: string; fileName: string }>
+  gitStage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
+  gitUnstage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
+  gitDiscard(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
+  gitDeleteBranch(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
 
   // ─── Window management ───
   resizeHeight(height: number): void
@@ -89,6 +106,23 @@ const api: CluiAPI = {
     ipcRenderer.on(IPC.THEME_CHANGED, handler)
     return () => ipcRenderer.removeListener(IPC.THEME_CHANGED, handler)
   },
+
+  // ─── Git operations ───
+  gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),
+  gitGraph: (directory, skip, limit) => ipcRenderer.invoke(IPC.GIT_GRAPH, { directory, skip, limit }),
+  gitChanges: (directory) => ipcRenderer.invoke(IPC.GIT_CHANGES, { directory }),
+  gitCommit: (directory, message) => ipcRenderer.invoke(IPC.GIT_COMMIT, { directory, message }),
+  gitFetch: (directory) => ipcRenderer.invoke(IPC.GIT_FETCH, { directory }),
+  gitPull: (directory) => ipcRenderer.invoke(IPC.GIT_PULL, { directory }),
+  gitPush: (directory) => ipcRenderer.invoke(IPC.GIT_PUSH, { directory }),
+  gitBranches: (directory) => ipcRenderer.invoke(IPC.GIT_BRANCHES, { directory }),
+  gitCheckout: (directory, branch) => ipcRenderer.invoke(IPC.GIT_CHECKOUT, { directory, branch }),
+  gitCreateBranch: (directory, name) => ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, { directory, name }),
+  gitDiff: (directory, path, staged) => ipcRenderer.invoke(IPC.GIT_DIFF, { directory, path, staged }),
+  gitStage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_STAGE, { directory, paths }),
+  gitUnstage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_UNSTAGE, { directory, paths }),
+  gitDiscard: (directory, paths) => ipcRenderer.invoke(IPC.GIT_DISCARD, { directory, paths }),
+  gitDeleteBranch: (directory, branch) => ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { directory, branch }),
 
   // ─── Window management ───
   resizeHeight: (height) => ipcRenderer.send(IPC.RESIZE_HEIGHT, height),

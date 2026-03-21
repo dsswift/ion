@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks } from '@phosphor-icons/react'
+import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch } from '@phosphor-icons/react'
 import { useSessionStore, AVAILABLE_MODELS } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
@@ -292,9 +292,12 @@ export function StatusBar() {
   const addDirectory = useSessionStore((s) => s.addDirectory)
   const removeDirectory = useSessionStore((s) => s.removeDirectory)
   const setBaseDirectory = useSessionStore((s) => s.setBaseDirectory)
+  const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
+  const toggleGitPanel = useSessionStore((s) => s.toggleGitPanel)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
+  const [isGitRepo, setIsGitRepo] = useState(false)
   const [dirOpen, setDirOpen] = useState(false)
   const dirRef = useRef<HTMLButtonElement>(null)
   const dirPopRef = useRef<HTMLDivElement>(null)
@@ -312,6 +315,24 @@ export function StatusBar() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [dirOpen])
+
+  const closeGitPanel = useSessionStore((s) => s.closeGitPanel)
+
+  // Check if working directory is a git repo; close git panel if not
+  useEffect(() => {
+    if (!tab?.workingDirectory || tab.workingDirectory === '~') {
+      setIsGitRepo(false)
+      closeGitPanel()
+      return
+    }
+    window.clui.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
+      setIsGitRepo(isRepo)
+      if (!isRepo) closeGitPanel()
+    }).catch(() => {
+      setIsGitRepo(false)
+      closeGitPanel()
+    })
+  }, [tab?.workingDirectory, closeGitPanel])
 
   if (!tab) return null
 
@@ -477,8 +498,21 @@ export function StatusBar() {
         <PermissionModePicker />
       </div>
 
-      {/* Right — Open in CLI */}
+      {/* Right — Git + Open in CLI */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        {isGitRepo && (
+          <>
+            <button
+              onClick={toggleGitPanel}
+              className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 transition-colors"
+              style={{ color: gitPanelOpen ? colors.accent : colors.textTertiary }}
+              title={gitPanelOpen ? 'Close git panel' : 'Open git panel'}
+            >
+              <GitBranch size={11} />
+            </button>
+            <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
+          </>
+        )}
         <button
           onClick={handleOpenInTerminal}
           className="flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 transition-colors"

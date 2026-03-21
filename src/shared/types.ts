@@ -360,8 +360,69 @@ export const IPC = {
   // Permission mode
   SET_PERMISSION_MODE: 'clui:set-permission-mode',
 
+  // Git operations
+  GIT_GRAPH: 'clui:git-graph',
+  GIT_CHANGES: 'clui:git-changes',
+  GIT_IS_REPO: 'clui:git-is-repo',
+  GIT_COMMIT: 'clui:git-commit',
+  GIT_FETCH: 'clui:git-fetch',
+  GIT_PULL: 'clui:git-pull',
+  GIT_PUSH: 'clui:git-push',
+  GIT_BRANCHES: 'clui:git-branches',
+  GIT_CHECKOUT: 'clui:git-checkout',
+  GIT_CREATE_BRANCH: 'clui:git-create-branch',
+  GIT_DIFF: 'clui:git-diff',
+  GIT_STAGE: 'clui:git-stage',
+  GIT_UNSTAGE: 'clui:git-unstage',
+  GIT_DISCARD: 'clui:git-discard',
+  GIT_DELETE_BRANCH: 'clui:git-delete-branch',
+
   // Legacy (kept for backward compat during migration)
   STREAM_EVENT: 'clui:stream-event',
   RUN_COMPLETE: 'clui:run-complete',
   RUN_ERROR: 'clui:run-error',
 } as const
+
+// ─── Git Types ───
+
+export interface GitCommit {
+  hash: string
+  fullHash: string
+  parents: string[]
+  authorName: string
+  authorDate: string
+  subject: string
+  refs: GitRef[]
+}
+
+export interface GitRef {
+  name: string
+  type: 'head' | 'remote' | 'tag'
+  isCurrent: boolean
+}
+
+export interface GitGraphData {
+  commits: GitCommit[]
+  isGitRepo: boolean
+  totalCount: number
+}
+
+export interface GitChangedFile {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+  staged: boolean
+  oldPath?: string
+}
+
+export interface GitChangesData {
+  files: GitChangedFile[]
+  branch: string
+  isGitRepo: boolean
+}
+
+export interface GitBranchInfo {
+  name: string
+  isCurrent: boolean
+  upstream: string | null
+  isRemote: boolean
+}

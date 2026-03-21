@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, HeadCircuit } from '@phosphor-icons/react'
+import { GitPanel } from './components/GitPanel'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
 import { InputBar } from './components/InputBar'
@@ -93,6 +94,7 @@ export default function App() {
 
   const isExpanded = useSessionStore((s) => s.isExpanded)
   const marketplaceOpen = useSessionStore((s) => s.marketplaceOpen)
+  const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 
   // Layout dimensions — expandedUI widens and heightens the panel
@@ -252,6 +254,28 @@ export default function App() {
               <InputBar />
             </div>
           </div>
+          {/* Git side panel — anchored to right edge of content column */}
+          <AnimatePresence>
+            {gitPanelOpen && (
+              <motion.div
+                data-clui-ui
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={TRANSITION}
+                style={{
+                  position: 'absolute',
+                  left: '100%',
+                  bottom: 10,
+                  marginLeft: 8,
+                  width: 280,
+                  zIndex: 25,
+                }}
+              >
+                <GitPanel />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </PopoverLayerProvider>

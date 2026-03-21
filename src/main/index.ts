@@ -1,8 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
 import { join } from 'path'
 import { existsSync, readdirSync, statSync, createReadStream } from 'fs'
+import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
+import { execFile as execFileCb } from 'child_process'
+import { promisify } from 'util'
 import { ControlPlane } from './claude/control-plane'
 import { ensureSkills, type SkillStatus } from './skills/installer'
 import { fetchCatalog, listInstalled, installPlugin, uninstallPlugin } from './marketplace/catalog'
@@ -10,6 +13,8 @@ import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
 import type { RunOptions, NormalizedEvent, EnrichedError } from '../shared/types'
+
+const gitExec = promisify(execFileCb)
 
 const DEBUG_MODE = process.env.CLUI_DEBUG === '1'
 const SPACES_DEBUG = DEBUG_MODE || process.env.CLUI_SPACES_DEBUG === '1'
@@ -888,6 +893,308 @@ ipcMain.handle(IPC.MARKETPLACE_INSTALL, async (_event, { repo, pluginName, marke
 ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { pluginName: string }) => {
   log(`IPC MARKETPLACE_UNINSTALL: ${pluginName}`)
   return uninstallPlugin(pluginName)
+})
+
+// ─── Git IPC Handlers ───
+
+async function runGit(directory: string, args: string[]): Promise<string> {
+  try {
+    const { stdout } = await gitExec('git', args, { cwd: directory, maxBuffer: 10 * 1024 * 1024 })
+    return stdout
+  } catch (err: any) {
+    throw new Error(err.stderr?.trim() || err.message)
+  }
+}
+
+ipcMain.handle(IPC.GIT_IS_REPO, async (_event, directory: string) => {
+  try {
+    await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
+    return { isRepo: true }
+  } catch {
+    return { isRepo: false }
+  }
+})
+
+ipcMain.handle(IPC.GIT_GRAPH, async (_event, { directory, skip = 0, limit = 100 }: { directory: string; skip?: number; limit?: number }) => {
+  try {
+    await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
+  } catch {
+    return { commits: [], isGitRepo: false, totalCount: 0 }
+  }
+
+  try {
+    const format = '%h%x00%H%x00%P%x00%an%x00%aI%x00%s%x00%D'
+    const logOutput = await runGit(directory, [
+      'log', '--all', `--format=${format}`, '--topo-order',
+      `--skip=${skip}`, `-n`, `${limit}`,
+    ])
+
+    let totalCount = 0
+    try {
+      const countOutput = await runGit(directory, ['rev-list', '--all', '--count'])
+      totalCount = parseInt(countOutput.trim(), 10) || 0
+    } catch {}
+
+    const commits = logOutput.trim().split('\n').filter(Boolean).map((line) => {
+      const [hash, fullHash, parents, authorName, authorDate, subject, decorations] = line.split('\x00')
+      const refs: Array<{ name: string; type: 'head' | 'remote' | 'tag'; isCurrent: boolean }> = []
+      if (decorations && decorations.trim()) {
+        for (const dec of decorations.split(',')) {
+          const d = dec.trim()
+          if (!d) continue
+          if (d.startsWith('HEAD -> ')) {
+            refs.push({ name: d.replace('HEAD -> ', ''), type: 'head', isCurrent: true })
+          } else if (d.startsWith('tag: ')) {
+            refs.push({ name: d.replace('tag: ', ''), type: 'tag', isCurrent: false })
+          } else if (d.includes('/')) {
+            refs.push({ name: d, type: 'remote', isCurrent: false })
+          } else if (d !== 'HEAD') {
+            refs.push({ name: d, type: 'head', isCurrent: false })
+          }
+        }
+      }
+      return {
+        hash,
+        fullHash,
+        parents: parents ? parents.split(' ') : [],
+        authorName,
+        authorDate,
+        subject,
+        refs,
+      }
+    })
+
+    return { commits, isGitRepo: true, totalCount }
+  } catch {
+    return { commits: [], isGitRepo: true, totalCount: 0 }
+  }
+})
+
+ipcMain.handle(IPC.GIT_CHANGES, async (_event, { directory }: { directory: string }) => {
+  try {
+    await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
+  } catch {
+    return { files: [], branch: '', isGitRepo: false }
+  }
+
+  let branch = ''
+  try {
+    branch = (await runGit(directory, ['branch', '--show-current'])).trim()
+  } catch {}
+
+  try {
+    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
+
+    // A file can appear twice if it has both staged and unstaged changes
+    // Split into staged and unstaged entries
+    const result: Array<{ path: string; status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'; staged: boolean; oldPath?: string }> = []
+    // Do NOT trim() the output — leading spaces are status codes (X=' ' means not staged)
+    for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
+      // Porcelain v1 format: XY PATH — use regex to robustly extract status and path
+      const match = line.match(/^(.)(.) (.+)$/)
+      if (!match) continue
+      const x = match[1]
+      const y = match[2]
+      let filePath = match[3]
+      let oldPath: string | undefined
+      if (filePath.includes(' -> ')) {
+        const parts = filePath.split(' -> ')
+        oldPath = parts[0]
+        filePath = parts[1]
+      }
+
+      // Staged change
+      if (x !== ' ' && x !== '?' && x !== '!') {
+        let status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+        if (x === 'A') status = 'added'
+        else if (x === 'D') status = 'deleted'
+        else if (x === 'R') status = 'renamed'
+        else status = 'modified'
+        result.push({ path: filePath, status, staged: true, oldPath })
+      }
+      // Unstaged change
+      if (y !== ' ' && y !== '!') {
+        let status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+        if (y === '?') status = 'untracked'
+        else if (y === 'A') status = 'added'
+        else if (y === 'D') status = 'deleted'
+        else if (y === 'R') status = 'renamed'
+        else status = 'modified'
+        result.push({ path: filePath, status, staged: false, oldPath })
+      }
+    }
+
+    return { files: result, branch, isGitRepo: true }
+  } catch {
+    return { files: [], branch, isGitRepo: true }
+  }
+})
+
+ipcMain.handle(IPC.GIT_COMMIT, async (_event, { directory, message }: { directory: string; message: string }) => {
+  try {
+    await runGit(directory, ['commit', '-m', message])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_FETCH, async (_event, { directory }: { directory: string }) => {
+  try {
+    await runGit(directory, ['fetch', '--all'])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_PULL, async (_event, { directory }: { directory: string }) => {
+  try {
+    await runGit(directory, ['pull'])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_PUSH, async (_event, { directory }: { directory: string }) => {
+  try {
+    await runGit(directory, ['push'])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_BRANCHES, async (_event, { directory }: { directory: string }) => {
+  try {
+    const output = await runGit(directory, [
+      'branch', '-a', '--format=%(refname:short)%x00%(HEAD)%x00%(upstream:short)',
+    ])
+    let current = ''
+    const branches: Array<{ name: string; isCurrent: boolean; upstream: string | null; isRemote: boolean }> = []
+    for (const line of output.trim().split('\n').filter(Boolean)) {
+      const [name, head, upstream] = line.split('\x00')
+      const isCurrent = head === '*'
+      if (isCurrent) current = name
+      const isRemote = name.startsWith('origin/') || name.includes('/')
+      branches.push({ name, isCurrent, upstream: upstream || null, isRemote })
+    }
+    return { branches, current }
+  } catch (err: any) {
+    return { branches: [], current: '' }
+  }
+})
+
+ipcMain.handle(IPC.GIT_CHECKOUT, async (_event, { directory, branch }: { directory: string; branch: string }) => {
+  try {
+    await runGit(directory, ['checkout', branch])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_CREATE_BRANCH, async (_event, { directory, name }: { directory: string; name: string }) => {
+  try {
+    await runGit(directory, ['checkout', '-b', name])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_DIFF, async (_event, { directory, path, staged }: { directory: string; path: string; staged: boolean }) => {
+  const { basename } = require('path')
+  try {
+    let diff: string
+    if (staged) {
+      diff = await runGit(directory, ['diff', '--cached', '--', path])
+    } else {
+      // Try normal diff first
+      diff = await runGit(directory, ['diff', '--', path])
+      // If empty, might be untracked - read file contents
+      if (!diff.trim()) {
+        try {
+          const { readFileSync } = require('fs')
+          const { join } = require('path')
+          const fullPath = join(directory, path)
+          const content = readFileSync(fullPath, 'utf-8')
+          const lines = content.split('\n')
+          diff = `--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n` +
+            lines.map((l: string) => `+${l}`).join('\n')
+        } catch {
+          diff = ''
+        }
+      }
+    }
+    return { diff, fileName: basename(path) }
+  } catch (err: any) {
+    return { diff: '', fileName: basename(path) }
+  }
+})
+
+ipcMain.handle(IPC.GIT_STAGE, async (_event, { directory, paths }: { directory: string; paths: string[] }) => {
+  try {
+    await runGit(directory, ['add', '--', ...paths])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_UNSTAGE, async (_event, { directory, paths }: { directory: string; paths: string[] }) => {
+  try {
+    await runGit(directory, ['restore', '--staged', '--', ...paths])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_DISCARD, async (_event, { directory, paths }: { directory: string; paths: string[] }) => {
+  try {
+    // Separate tracked and untracked files
+    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall', '--', ...paths])
+    const trackedPaths: string[] = []
+    const untrackedPaths: string[] = []
+    for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
+      const dm = line.match(/^(.)(.) (.+)$/)
+      if (!dm) continue
+      const x = dm[1]
+      const y = dm[2]
+      let p = dm[3]
+      if (p.includes(' -> ')) p = p.split(' -> ')[1]
+      if (x === '?' && y === '?') {
+        untrackedPaths.push(p)
+      } else {
+        trackedPaths.push(p)
+      }
+    }
+    if (trackedPaths.length > 0) {
+      await runGit(directory, ['checkout', 'HEAD', '--', ...trackedPaths])
+    }
+    if (untrackedPaths.length > 0) {
+      const { join } = require('path')
+      for (const p of untrackedPaths) {
+        try {
+          await unlink(join(directory, p))
+        } catch {}
+      }
+    }
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_DELETE_BRANCH, async (_event, { directory, branch }: { directory: string; branch: string }) => {
+  try {
+    await runGit(directory, ['branch', '-d', branch])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
 })
 
 // ─── Theme Detection ───

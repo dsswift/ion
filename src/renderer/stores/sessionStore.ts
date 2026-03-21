@@ -32,6 +32,8 @@ interface State {
   preferredModel: string | null
   /** Global permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
   permissionMode: 'ask' | 'auto' | 'plan'
+  /** Whether the git side panel is open */
+  gitPanelOpen: boolean
 
   // Marketplace state
   marketplaceOpen: boolean
@@ -54,6 +56,8 @@ interface State {
   toggleExpanded: () => void
   toggleMarketplace: () => void
   closeMarketplace: () => void
+  toggleGitPanel: () => void
+  closeGitPanel: () => void
   loadMarketplace: (forceRefresh?: boolean) => Promise<void>
   setMarketplaceSearch: (query: string) => void
   setMarketplaceFilter: (filter: string) => void
@@ -128,6 +132,7 @@ export const useSessionStore = create<State>((set, get) => ({
   staticInfo: null,
   preferredModel: null,
   permissionMode: 'ask',
+  gitPanelOpen: false,
 
   // Marketplace
   marketplaceOpen: false,
@@ -238,6 +243,14 @@ export const useSessionStore = create<State>((set, get) => ({
 
   closeMarketplace: () => {
     set({ marketplaceOpen: false })
+  },
+
+  toggleGitPanel: () => {
+    set((s) => ({ gitPanelOpen: !s.gitPanelOpen }))
+  },
+
+  closeGitPanel: () => {
+    set({ gitPanelOpen: false })
   },
 
   loadMarketplace: async (forceRefresh) => {
