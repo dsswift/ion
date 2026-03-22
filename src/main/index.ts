@@ -9,6 +9,7 @@ import { promisify } from 'util'
 import { ControlPlane } from './claude/control-plane'
 import { ensureSkills, type SkillStatus } from './skills/installer'
 import { fetchCatalog, listInstalled, installPlugin, uninstallPlugin } from './marketplace/catalog'
+import { discoverCommands } from './claude/command-discovery'
 import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
@@ -512,6 +513,20 @@ ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { tabId }: { tabId: string }) => {
 ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }: { tabId: string; questionId: string; optionId: string }) => {
   log(`IPC RESPOND_PERMISSION: tab=${tabId} question=${questionId} option=${optionId}`)
   return controlPlane.respondToPermission(tabId, questionId, optionId)
+})
+
+ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
+  log(`IPC DISCOVER_COMMANDS (path=${projectPath})`)
+  try {
+    if (!isValidProjectPath(projectPath)) {
+      log(`DISCOVER_COMMANDS: rejected invalid projectPath: ${projectPath}`)
+      return []
+    }
+    return await discoverCommands(projectPath)
+  } catch (err) {
+    log(`DISCOVER_COMMANDS error: ${err}`)
+    return []
+  }
 })
 
 ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {

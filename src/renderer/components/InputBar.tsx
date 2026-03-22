@@ -4,8 +4,9 @@ import { Microphone, ArrowUp, SpinnerGap, X, Check } from '@phosphor-icons/react
 import { create } from 'zustand'
 import { useSessionStore, AVAILABLE_MODELS } from '../stores/sessionStore'
 import { AttachmentChips } from './AttachmentChips'
-import { SlashCommandMenu, getFilteredCommandsWithExtras, type SlashCommand } from './SlashCommandMenu'
+import { SlashCommandMenu, getFilteredCommandsWithExtras, SLASH_COMMANDS, type SlashCommand } from './SlashCommandMenu'
 import { useColors, useThemeStore } from '../theme'
+import type { DiscoveredCommand } from '../../main/claude/command-discovery'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
@@ -64,10 +65,23 @@ export function InputBar() {
   const canSend = !!tab && !isConnecting && hasContent
   const attachments = tab?.attachments || []
   const showSlashMenu = slashFilter !== null && !isConnecting
-  const skillCommands: SlashCommand[] = (tab?.sessionSkills || []).map((skill) => ({
-    command: `/${skill}`,
-    description: `Run skill: ${skill}`,
-    icon: <span className="text-[11px]">✦</span>,
+  const [discoveredCommands, setDiscoveredCommands] = useState<DiscoveredCommand[]>([])
+  const workingDir = tab?.workingDirectory || '~'
+
+  // Discover commands from filesystem on mount and when working directory changes
+  useEffect(() => {
+    let cancelled = false
+    window.clui.discoverCommands(workingDir).then((cmds) => {
+      if (!cancelled) setDiscoveredCommands(cmds)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [workingDir])
+
+  const extraCommands: SlashCommand[] = discoveredCommands.map((dc) => ({
+    command: `/${dc.name}`,
+    description: dc.description || `${dc.source}: ${dc.name}`,
+    icon: <span className="text-[11px]">{dc.scope === 'project' ? '◆' : '✦'}</span>,
+    group: dc.scope === 'project' ? 'project' as const : 'user' as const,
   }))
 
   useEffect(() => {
@@ -223,13 +237,21 @@ export function InputBar() {
         break
       }
       case '/skills': {
-        if (tab?.sessionSkills && tab.sessionSkills.length > 0) {
-          const lines = tab.sessionSkills.map((s) => `/${s}`)
-          addSystemMessage(`Available skills (${tab.sessionSkills.length}):\n${lines.join('\n')}`)
-        } else if (tab?.claudeSessionId) {
-          addSystemMessage('No skills available in this session.')
+        if (discoveredCommands.length > 0) {
+          const projectCmds = discoveredCommands.filter((c) => c.scope === 'project')
+          const userCmds = discoveredCommands.filter((c) => c.scope === 'user')
+          const lines: string[] = []
+          if (projectCmds.length > 0) {
+            lines.push('Project:')
+            projectCmds.forEach((c) => lines.push(`  /${c.name}`))
+          }
+          if (userCmds.length > 0) {
+            lines.push('User:')
+            userCmds.forEach((c) => lines.push(`  /${c.name}`))
+          }
+          addSystemMessage(`Available commands (${discoveredCommands.length}):\n${lines.join('\n')}`)
         } else {
-          addSystemMessage('No session metadata yet — send a message first.')
+          addSystemMessage('No commands found in ~/.claude/commands/ or .claude/commands/')
         }
         break
       }
@@ -246,25 +268,18 @@ export function InputBar() {
         break
       }
     }
-  }, [tab, clearTab, addSystemMessage, staticInfo, preferredModel])
+  }, [tab, clearTab, addSystemMessage, staticInfo, preferredModel, discoveredCommands])
 
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
-    const isSkillCommand = !!tab?.sessionSkills?.includes(cmd.command.replace(/^\//, ''))
-    if (isSkillCommand) {
-      setInput(`${cmd.command} `)
-      setSlashFilter(null)
-      requestAnimationFrame(() => textareaRef.current?.focus())
-      return
-    }
-    setInput('')
+    setInput(`${cmd.command} `)
     setSlashFilter(null)
-    executeCommand(cmd)
-  }, [executeCommand, tab?.sessionSkills])
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [])
 
   // ─── Send ───
   const handleSend = useCallback(() => {
     if (showSlashMenu) {
-      const filtered = getFilteredCommandsWithExtras(slashFilter!, skillCommands)
+      const filtered = getFilteredCommandsWithExtras(slashFilter!, extraCommands)
       if (filtered.length > 0) {
         handleSlashSelect(filtered[slashIndex])
         return
@@ -323,7 +338,7 @@ export function InputBar() {
     sendMessage(prompt || 'See attached files')
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand])
+  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -340,10 +355,10 @@ export function InputBar() {
       return
     }
     if (showSlashMenu) {
-      const filtered = getFilteredCommandsWithExtras(slashFilter!, skillCommands)
+      const filtered = getFilteredCommandsWithExtras(slashFilter!, extraCommands)
       if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex((i) => (i + 1) % filtered.length); return }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex((i) => (i - 1 + filtered.length) % filtered.length); return }
-      if (e.key === 'Tab') { e.preventDefault(); if (filtered.length > 0) handleSlashSelect(filtered[slashIndex]); return }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); if (filtered.length > 0) handleSlashSelect(filtered[slashIndex]); return }
       if (e.key === 'Escape') { e.preventDefault(); setSlashFilter(null); return }
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
@@ -448,7 +463,7 @@ export function InputBar() {
             selectedIndex={slashIndex}
             onSelect={handleSlashSelect}
             anchorRect={wrapperRef.current?.getBoundingClientRect() ?? null}
-            extraCommands={skillCommands}
+            extraCommands={extraCommands}
           />
         )}
       </AnimatePresence>

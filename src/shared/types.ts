@@ -370,6 +370,9 @@ export const IPC = {
   GET_THEME: 'clui:get-theme',
   THEME_CHANGED: 'clui:theme-changed',
 
+  // Command discovery
+  DISCOVER_COMMANDS: 'clui:discover-commands',
+
   // Marketplace
   MARKETPLACE_FETCH: 'clui:marketplace-fetch',
   MARKETPLACE_INSTALLED: 'clui:marketplace-installed',
