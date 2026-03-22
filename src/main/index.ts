@@ -957,12 +957,24 @@ ipcMain.handle(IPC.PASTE_IMAGE, async (_event, dataUrl: string) => {
 
 ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
   const { writeFileSync, existsSync, unlinkSync, readFileSync } = require('fs')
-  const { execSync } = require('child_process')
-  const { join } = require('path')
+  const { execFile } = require('child_process')
+  const { join, basename } = require('path')
   const { tmpdir } = require('os')
 
   const tmpWav = join(tmpdir(), `clui-voice-${Date.now()}.wav`)
   try {
+    const runExecFile = (bin: string, args: string[], timeout: number): Promise<string> =>
+      new Promise((resolve, reject) => {
+        execFile(bin, args, { encoding: 'utf-8', timeout }, (err: any, stdout: string, stderr: string) => {
+          if (err) {
+            const detail = stderr?.trim() || stdout?.trim() || err.message
+            reject(new Error(detail))
+            return
+          }
+          resolve(stdout || '')
+        })
+      })
+
     const buf = Buffer.from(audioBase64, 'base64')
     writeFileSync(tmpWav, buf)
 
@@ -985,7 +997,7 @@ ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
     if (!whisperBin) {
       for (const name of ['whisperkit-cli', 'whisper-cli', 'whisper']) {
         try {
-          whisperBin = execSync(`/bin/zsh -lc "whence -p ${name}"`, { encoding: 'utf-8' }).trim()
+          whisperBin = await runExecFile('/bin/zsh', ['-lc', `whence -p ${name}`], 5000).then((s) => s.trim())
           if (whisperBin) break
         } catch {}
       }
@@ -1011,12 +1023,9 @@ ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
       // WhisperKit (Apple Silicon CoreML) — auto-downloads models on first run
       // Use --report to produce a JSON file with a top-level "text" field for deterministic parsing
       const reportDir = tmpdir()
-      execSync(
-        `"${whisperBin}" transcribe --audio-path "${tmpWav}" --model tiny --without-timestamps --skip-special-tokens --report --report-path "${reportDir}"`,
-        { encoding: 'utf-8', timeout: 60000 }
-      )
+      output = await runExecFile(whisperBin, ['transcribe', '--audio-path', tmpWav, '--model', 'tiny', '--without-timestamps', '--skip-special-tokens', '--report', '--report-path', reportDir], 60000)
       // WhisperKit writes <audioFileName>.json (filename without extension)
-      const wavBasename = require('path').basename(tmpWav, '.wav')
+      const wavBasename = basename(tmpWav, '.wav')
       const reportPath = join(reportDir, `${wavBasename}.json`)
       if (existsSync(reportPath)) {
         try {
@@ -1032,11 +1041,10 @@ ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
           try { unlinkSync(reportPath) } catch {}
         }
       }
-      // Fallback: re-run without --report, stdout is plain text when --verbose is not set
-      output = execSync(
-        `"${whisperBin}" transcribe --audio-path "${tmpWav}" --model tiny --without-timestamps --skip-special-tokens`,
-        { encoding: 'utf-8', timeout: 60000 }
-      )
+      // Fallback: re-run without --report only if first run produced no stdout
+      if (!output || !output.trim()) {
+        output = await runExecFile(whisperBin, ['transcribe', '--audio-path', tmpWav, '--model', 'tiny', '--without-timestamps', '--skip-special-tokens'], 60000)
+      }
     } else if (isWhisperCpp) {
       // whisper-cpp: whisper-cli -m model -f file --no-timestamps
       // Find model file — prefer multilingual (auto-detect language) over .en (English-only)
@@ -1064,17 +1072,10 @@ ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
       }
 
       const isEnglishOnly = modelPath.includes('.en.')
-      const langFlag = isEnglishOnly ? '-l en' : '-l auto'
-      output = execSync(
-        `"${whisperBin}" -m "${modelPath}" -f "${tmpWav}" --no-timestamps ${langFlag}`,
-        { encoding: 'utf-8', timeout: 30000 }
-      )
+      output = await runExecFile(whisperBin, ['-m', modelPath, '-f', tmpWav, '--no-timestamps', '-l', isEnglishOnly ? 'en' : 'auto'], 30000)
     } else {
       // Python whisper
-      output = execSync(
-        `"${whisperBin}" "${tmpWav}" --model tiny --output_format txt --output_dir "${tmpdir()}"`,
-        { encoding: 'utf-8', timeout: 30000 }
-      )
+      output = await runExecFile(whisperBin, [tmpWav, '--model', 'tiny', '--output_format', 'txt', '--output_dir', tmpdir()], 30000)
       // Python whisper writes .txt file
       const txtPath = tmpWav.replace('.wav', '.txt')
       if (existsSync(txtPath)) {
