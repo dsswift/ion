@@ -435,6 +435,18 @@ export class ControlPlane extends EventEmitter {
 
   createTab(): string {
     const tabId = crypto.randomUUID()
+    this.ensureTab(tabId)
+    return tabId
+  }
+
+  /** Check if a tab exists in the registry */
+  hasTab(tabId: string): boolean {
+    return this.tabs.has(tabId)
+  }
+
+  /** Register a tab if it doesn't already exist (idempotent) */
+  ensureTab(tabId: string): void {
+    if (this.tabs.has(tabId)) return
     const entry: TabRegistryEntry = {
       tabId,
       claudeSessionId: null,
@@ -446,8 +458,7 @@ export class ControlPlane extends EventEmitter {
       promptCount: 0,
     }
     this.tabs.set(tabId, entry)
-    log(`Tab created: ${tabId}`)
-    return tabId
+    log(`Tab registered: ${tabId}`)
   }
 
   /**

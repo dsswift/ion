@@ -349,6 +349,13 @@ ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId
     throw new Error('No requestId provided — prompt rejected')
   }
 
+  // Auto-register tab if it doesn't exist in the control plane
+  // (handles race conditions on first launch, process restarts, stale state)
+  if (!controlPlane.hasTab(tabId)) {
+    log(`PROMPT: tab ${tabId} not found — auto-registering`)
+    controlPlane.ensureTab(tabId)
+  }
+
   try {
     await controlPlane.submitPrompt(tabId, requestId, options)
   } catch (err: unknown) {

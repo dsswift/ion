@@ -45,7 +45,8 @@ export function InputBar() {
   const sendMessage = useSessionStore((s) => s.sendMessage)
   const clearTab = useSessionStore((s) => s.clearTab)
   const addSystemMessage = useSessionStore((s) => s.addSystemMessage)
-  const addBashResult = useSessionStore((s) => s.addBashResult)
+  const startBashCommand = useSessionStore((s) => s.startBashCommand)
+  const completeBashCommand = useSessionStore((s) => s.completeBashCommand)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const removeAttachment = useSessionStore((s) => s.removeAttachment)
 
@@ -280,11 +281,12 @@ export function InputBar() {
       if (textareaRef.current) {
         textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
       }
+      const toolMsgId = startBashCommand(cmd)
       window.clui.executeBash(execId, cmd, cwd).then((result) => {
         bashExecIdRef.current = null
         setBashExecuting(false)
         setBashMode(false)
-        addBashResult(cmd, result.stdout, result.stderr, result.exitCode)
+        completeBashCommand(toolMsgId, cmd, result.stdout, result.stderr, result.exitCode)
         requestAnimationFrame(() => textareaRef.current?.focus())
       })
       return
@@ -318,7 +320,7 @@ export function InputBar() {
     sendMessage(prompt || 'See attached files')
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, addBashResult])
+  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {

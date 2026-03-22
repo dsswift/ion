@@ -67,7 +67,8 @@ interface State {
   buildYourOwn: () => void
   resumeSession: (sessionId: string, title?: string, projectPath?: string) => Promise<string>
   addSystemMessage: (content: string) => void
-  addBashResult: (command: string, stdout: string, stderr: string, exitCode: number | null) => void
+  startBashCommand: (command: string) => string
+  completeBashCommand: (toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
   sendMessage: (prompt: string, projectPath?: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
   addDirectory: (dir: string) => void
@@ -467,13 +468,9 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
 
-  addBashResult: (command, stdout, stderr, exitCode) => {
+  startBashCommand: (command) => {
     const { activeTabId } = get()
-    // Build tool output for display
-    const outputParts: string[] = []
-    if (stdout) outputParts.push(stdout.trimEnd())
-    if (stderr) outputParts.push(`stderr: ${stderr.trimEnd()}`)
-    if (exitCode !== null && exitCode !== 0) outputParts.push(`exit code: ${exitCode}`)
+    const toolMsgId = nextMsgId()
     const now = Date.now()
     set((s) => ({
       tabs: s.tabs.map((t) => {
@@ -484,12 +481,34 @@ export const useSessionStore = create<State>((set, get) => ({
         return {
           ...t,
           title,
-          bashResults: [...t.bashResults, { command, stdout, stderr }],
           messages: [
             ...t.messages,
             { id: nextMsgId(), role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now },
-            { id: nextMsgId(), role: 'tool' as const, content: outputParts.join('\n'), toolName: 'Bash', toolInput: JSON.stringify({ command }), userExecuted: true, timestamp: now },
+            { id: toolMsgId, role: 'tool' as const, content: '', toolName: 'Bash', toolInput: JSON.stringify({ command }), toolStatus: 'running' as const, userExecuted: true, timestamp: now },
           ],
+        }
+      }),
+    }))
+    return toolMsgId
+  },
+
+  completeBashCommand: (toolMsgId, command, stdout, stderr, exitCode) => {
+    const { activeTabId } = get()
+    const outputParts: string[] = []
+    if (stdout) outputParts.push(stdout.trimEnd())
+    if (stderr) outputParts.push(`stderr: ${stderr.trimEnd()}`)
+    if (exitCode !== null && exitCode !== 0) outputParts.push(`exit code: ${exitCode}`)
+    set((s) => ({
+      tabs: s.tabs.map((t) => {
+        if (t.id !== activeTabId) return t
+        return {
+          ...t,
+          bashResults: [...t.bashResults, { command, stdout, stderr }],
+          messages: t.messages.map((m) =>
+            m.id === toolMsgId
+              ? { ...m, content: outputParts.join('\n'), toolStatus: 'completed' as const }
+              : m
+          ),
         }
       }),
     }))

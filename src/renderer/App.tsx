@@ -116,15 +116,24 @@ export default function App() {
         useSessionStore.setState((s) => ({
           tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, workingDirectory: startDir, hasChosenDirectory: hasChosen } : t)),
         }))
-        window.clui.createTab().then(({ tabId }) => {
-          useSessionStore.setState((s) => ({
-            tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, id: tabId } : t)),
-            activeTabId: tabId,
-            tabsReady: true,
-          }))
-        }).catch(() => {
+        const registerInitialTab = async (retries = 5): Promise<void> => {
+          for (let i = 0; i < retries; i++) {
+            try {
+              const { tabId } = await window.clui.createTab()
+              useSessionStore.setState((s) => ({
+                tabs: s.tabs.map((t, idx) => (idx === 0 ? { ...t, id: tabId } : t)),
+                activeTabId: tabId,
+                tabsReady: true,
+              }))
+              return
+            } catch {
+              if (i < retries - 1) await new Promise((r) => setTimeout(r, 500))
+            }
+          }
+          // All retries failed — still set tabsReady so UI isn't stuck forever
           useSessionStore.setState({ tabsReady: true })
-        })
+        }
+        registerInitialTab()
       }
     })
   }, [])
