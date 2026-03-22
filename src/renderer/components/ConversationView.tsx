@@ -724,7 +724,7 @@ function getToolDescription(name: string, input?: string): string {
 }
 
 function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<typeof useColors> }) {
-  const [showResult, setShowResult] = useState(!!tool.userExecuted)
+  const [showResult, setShowResult] = useState(!!tool.userExecuted || !!tool.autoExpandResult)
   const isError = tool.toolStatus === 'error'
   const hasContent = !!tool.content
   const lineCount = hasContent ? tool.content.split('\n').length : 0
@@ -758,7 +758,7 @@ function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<t
             margin: '4px 0 0 0',
             background: colors.surfaceHover,
             color: colors.textSecondary,
-            maxHeight: 200,
+            maxHeight: tool.autoExpandResult ? undefined : 200,
             border: `1px solid ${colors.toolBorder}`,
           }}
         >
@@ -772,8 +772,18 @@ function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<t
 function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boolean }) {
   const hasRunning = tools.some((t) => t.toolStatus === 'running')
   const hasUserExecuted = tools.some((t) => t.userExecuted)
+  const expandToolResults = useThemeStore((s) => s.expandToolResults)
   const [expanded, setExpanded] = useState(hasUserExecuted)
+  const prevHasRunning = useRef(hasRunning)
   const colors = useColors()
+
+  // When tools finish running and the expand setting is on, keep the group expanded
+  useEffect(() => {
+    if (prevHasRunning.current && !hasRunning && expandToolResults) {
+      setExpanded(true)
+    }
+    prevHasRunning.current = hasRunning
+  }, [hasRunning, expandToolResults])
 
   const isOpen = expanded || hasRunning
 

@@ -188,6 +188,8 @@ export interface Message {
   toolStatus?: 'running' | 'completed' | 'error'
   /** True for messages originating from user bash command entry (! prefix) */
   userExecuted?: boolean
+  /** True when the expand-tool-results setting auto-expanded this result */
+  autoExpandResult?: boolean
   timestamp: number
 }
 

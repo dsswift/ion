@@ -812,6 +812,9 @@ export const useSessionStore = create<State>((set, get) => ({
               if (event.isError) {
                 targetTool.toolStatus = 'error'
               }
+              if (useThemeStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
+                targetTool.autoExpandResult = true
+              }
             }
             updated.messages = msgs3
             break
