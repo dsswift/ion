@@ -1,11 +1,36 @@
 import { net } from 'electron'
 import { execFile } from 'child_process'
 import { readFile, readdir, mkdir, writeFile, rm } from 'fs/promises'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { homedir } from 'os'
 import type { CatalogPlugin } from '../../shared/types'
 import { log as _log } from '../logger'
 import { getCliEnv } from '../cli-env'
+
+// ─── Input Validation ───
+
+const SAFE_PLUGIN_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
+const SAFE_REPO = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/
+
+function validatePluginName(name: string): boolean {
+  return SAFE_PLUGIN_NAME.test(name) && !name.includes('..')
+}
+
+function validateRepo(repo: string): boolean {
+  return SAFE_REPO.test(repo)
+}
+
+function validateSourcePath(p: string): boolean {
+  if (!p || /[\0\\]/.test(p) || p.startsWith('/') || p.includes('..')) return false
+  return true
+}
+
+function assertSkillDirContained(skillsDir: string, base: string): void {
+  const resolved = resolve(skillsDir)
+  if (!resolved.startsWith(base + '/') && resolved !== base) {
+    throw new Error(`Path escapes skills directory: ${resolved}`)
+  }
+}
 
 function log(msg: string): void {
   _log('marketplace', msg)
@@ -248,9 +273,22 @@ export async function installPlugin(
   isSkillMd?: boolean
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    // Validate all external inputs before any filesystem or network operations
+    if (!validatePluginName(pluginName)) {
+      return { ok: false, error: `Invalid plugin name: ${pluginName}` }
+    }
+    if (!validateRepo(repo)) {
+      return { ok: false, error: `Invalid repo format: ${repo}` }
+    }
+    if (sourcePath && !validateSourcePath(sourcePath)) {
+      return { ok: false, error: `Invalid source path: ${sourcePath}` }
+    }
+
     if (isSkillMd !== false) {
       // Direct SKILL.md install
-      const skillsDir = join(homedir(), '.claude', 'skills', pluginName)
+      const skillsBase = join(homedir(), '.claude', 'skills')
+      const skillsDir = join(skillsBase, pluginName)
+      assertSkillDirContained(skillsDir, skillsBase)
 
       // Check if we have cached content from the catalog fetch
       let content = skillContentCache.get(pluginName)
@@ -295,7 +333,12 @@ export async function uninstallPlugin(
   pluginName: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const skillsDir = join(homedir(), '.claude', 'skills', pluginName)
+    if (!validatePluginName(pluginName)) {
+      return { ok: false, error: `Invalid plugin name: ${pluginName}` }
+    }
+    const skillsBase = join(homedir(), '.claude', 'skills')
+    const skillsDir = join(skillsBase, pluginName)
+    assertSkillDirContained(skillsDir, skillsBase)
     await rm(skillsDir, { recursive: true, force: true })
     log(`uninstallPlugin: removed ${skillsDir}`)
     return { ok: true }
