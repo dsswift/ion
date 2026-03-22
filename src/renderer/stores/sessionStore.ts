@@ -809,7 +809,7 @@ export const useSessionStore = create<State>((set, get) => ({
             const targetTool = [...msgs3].reverse().find((m) => m.role === 'tool' && m.toolId === event.toolId)
             if (targetTool) {
               targetTool.content = event.content
-              if (event.isError) {
+              if (event.isError && targetTool.toolName !== 'ExitPlanMode' && targetTool.toolName !== 'AskUserQuestion') {
                 targetTool.toolStatus = 'error'
               }
               if (useThemeStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
@@ -869,6 +869,15 @@ export const useSessionStore = create<State>((set, get) => ({
                         timestamp: Date.now(),
                       },
                     ]
+                  } else if (block.input) {
+                    // Ensure toolInput has complete data from the assembled assistant message
+                    // (streaming tool_call_update events may have been incomplete)
+                    const completeInput = JSON.stringify(block.input, null, 2)
+                    if (exists.toolInput !== completeInput) {
+                      updated.messages = updated.messages.map((m) =>
+                        m === exists ? { ...m, toolInput: completeInput } : m
+                      )
+                    }
                   }
                 }
               }
