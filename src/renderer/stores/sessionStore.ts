@@ -52,6 +52,7 @@ interface State {
   createTab: () => Promise<string>
   selectTab: (tabId: string) => void
   closeTab: (tabId: string) => void
+  reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
   clearTab: () => void
   toggleExpanded: () => void
@@ -373,6 +374,10 @@ export const useSessionStore = create<State>((set, get) => ({
     } else {
       set({ tabs: remaining })
     }
+  },
+
+  reorderTabs: (reorderedTabs) => {
+    set({ tabs: reorderedTabs })
   },
 
   renameTab: (tabId, customTitle) => {
