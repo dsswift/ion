@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react'
+import React, { useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, HeadCircuit } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
@@ -21,7 +21,7 @@ export default function App() {
   useClaudeEvents()
   useHealthReconciliation()
 
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsOpen = useSessionStore((s) => s.settingsOpen)
   const activeTabStatus = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.status)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const colors = useColors()
@@ -46,7 +46,7 @@ export default function App() {
   // Listen for show-settings IPC from tray menu
   useEffect(() => {
     const unsub = window.clui.onShowSettings(() => {
-      setSettingsOpen(true)
+      useSessionStore.getState().openSettings()
     })
     return unsub
   }, [])
@@ -245,38 +245,7 @@ export default function App() {
 
           <AnimatePresence initial={false}>
             {settingsOpen && (
-              <div
-                data-clui-ui
-                style={{
-                  width: 420,
-                  maxWidth: 420,
-                  marginLeft: '50%',
-                  transform: 'translateX(-50%)',
-                  marginBottom: 14,
-                  position: 'relative',
-                  zIndex: 30,
-                }}
-              >
-                <motion.div
-                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.985 }}
-                  transition={TRANSITION}
-                >
-                  <div
-                    data-clui-ui
-                    className="glass-surface overflow-hidden no-drag"
-                    style={{
-                      borderRadius: 24,
-                      maxHeight: 520,
-                      display: 'flex',
-                      flexDirection: 'column' as const,
-                    }}
-                  >
-                    <SettingsDialog onClose={() => setSettingsOpen(false)} />
-                  </div>
-                </motion.div>
-              </div>
+              <SettingsDialog onClose={() => useSessionStore.getState().closeSettings()} />
             )}
           </AnimatePresence>
 

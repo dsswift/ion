@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { DotsThree, Bell, ArrowsOutSimple, Moon } from '@phosphor-icons/react'
+import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear } from '@phosphor-icons/react'
 import { useThemeStore } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -221,6 +221,28 @@ export function SettingsPopover() {
                 />
               </div>
             </div>
+
+            <div style={{ height: 1, background: colors.popoverBorder }} />
+
+            {/* All settings */}
+            <button
+              onClick={() => {
+                setOpen(false)
+                useSessionStore.getState().openSettings()
+              }}
+              className="flex items-center gap-2 w-full"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 0',
+              }}
+            >
+              <Gear size={14} style={{ color: colors.textTertiary }} />
+              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                Settings...
+              </span>
+            </button>
           </div>
         </motion.div>,
         popoverLayer,

@@ -37,6 +37,9 @@ interface State {
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
 
+  // Settings dialog state
+  settingsOpen: boolean
+
   // Marketplace state
   marketplaceOpen: boolean
   marketplaceCatalog: CatalogPlugin[]
@@ -59,6 +62,8 @@ interface State {
   setTabPillColor: (tabId: string, color: string | null) => void
   clearTab: () => void
   toggleExpanded: () => void
+  openSettings: () => void
+  closeSettings: () => void
   toggleMarketplace: () => void
   closeMarketplace: () => void
   toggleGitPanel: () => void
@@ -147,6 +152,9 @@ export const useSessionStore = create<State>((set, get) => ({
   terminalOpenTabIds: new Set<string>(),
   tabsReady: false,
 
+  // Settings dialog
+  settingsOpen: false,
+
   // Marketplace
   marketplaceOpen: false,
   marketplaceCatalog: [],
@@ -224,6 +232,7 @@ export const useSessionStore = create<State>((set, get) => ({
       set((prev) => ({
         isExpanded: willExpand,
         marketplaceOpen: false,
+        settingsOpen: false,
         // Expanding = reading: clear unread flag
         tabs: willExpand
           ? prev.tabs.map((t) => t.id === tabId ? { ...t, hasUnread: false } : t)
@@ -236,6 +245,7 @@ export const useSessionStore = create<State>((set, get) => ({
         activeTabId: tabId,
         isExpanded: expandOnSwitch ? true : prev.isExpanded,
         marketplaceOpen: false,
+        settingsOpen: false,
         tabs: prev.tabs.map((t) =>
           t.id === tabId ? { ...t, hasUnread: false } : t
         ),
@@ -249,11 +259,20 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       isExpanded: willExpand,
       marketplaceOpen: false,
+      settingsOpen: false,
       // Expanding = reading: clear unread flag for the active tab
       tabs: willExpand
         ? s.tabs.map((t) => t.id === activeTabId ? { ...t, hasUnread: false } : t)
         : s.tabs,
     }))
+  },
+
+  openSettings: () => {
+    set({ settingsOpen: true })
+  },
+
+  closeSettings: () => {
+    set({ settingsOpen: false })
   },
 
   toggleMarketplace: () => {
@@ -362,7 +381,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   buildYourOwn: () => {
-    set({ marketplaceOpen: false, isExpanded: true })
+    set({ marketplaceOpen: false, settingsOpen: false, isExpanded: true })
     // Small delay to let the UI transition
     setTimeout(() => {
       get().sendMessage('Help me create a new Claude Code skill')
