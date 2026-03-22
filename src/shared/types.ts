@@ -176,6 +176,8 @@ export interface TabState {
   permissionMode: 'ask' | 'auto' | 'plan'
   /** Pending bash command results to send as context with next prompt */
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
+  /** Custom pill outline color (null = use theme default) */
+  pillColor: string | null
 }
 
 export interface Message {
@@ -424,6 +426,7 @@ export interface PersistedTab {
   additionalDirs: string[]
   permissionMode: 'ask' | 'auto' | 'plan'
   bashResults?: Array<{ command: string; stdout: string; stderr: string }>
+  pillColor?: string | null
 }
 
 export interface PersistedTabState {

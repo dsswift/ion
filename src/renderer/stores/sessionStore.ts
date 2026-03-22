@@ -54,6 +54,7 @@ interface State {
   closeTab: (tabId: string) => void
   reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
+  setTabPillColor: (tabId: string, color: string | null) => void
   clearTab: () => void
   toggleExpanded: () => void
   toggleMarketplace: () => void
@@ -127,6 +128,7 @@ function makeLocalTab(): TabState {
     additionalDirs: [],
     permissionMode: useThemeStore.getState().defaultPermissionMode,
     bashResults: [],
+    pillColor: null,
   }
 }
 
@@ -384,6 +386,14 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === tabId ? { ...t, customTitle } : t
+      ),
+    }))
+  },
+
+  setTabPillColor: (tabId, color) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, pillColor: color } : t
       ),
     }))
   },
@@ -1064,6 +1074,7 @@ function persistTabs(): void {
       additionalDirs: t.additionalDirs,
       permissionMode: t.permissionMode,
       ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
+      ...(t.pillColor ? { pillColor: t.pillColor } : {}),
     }))
 
   const data: PersistedTabState = {

@@ -78,6 +78,7 @@ export default function App() {
                     additionalDirs: st.additionalDirs,
                     permissionMode: st.permissionMode,
                     bashResults: st.bashResults || [],
+                    pillColor: st.pillColor || null,
                   }
                 : t
             ),

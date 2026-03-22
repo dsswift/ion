@@ -1,11 +1,23 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X } from '@phosphor-icons/react'
+import { Plus, X, Prohibit } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
+import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
 import type { TabStatus, TabState } from '../../shared/types'
+
+const PILL_COLOR_PRESETS = [
+  { color: null, label: 'Default' },
+  { color: '#d97757', label: 'Orange' },
+  { color: '#7aac8c', label: 'Green' },
+  { color: '#c47060', label: 'Red' },
+  { color: '#7a9ecc', label: 'Blue' },
+  { color: '#b898c8', label: 'Purple' },
+  { color: '#c4a84d', label: 'Gold' },
+] as const
 
 function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean }) {
   const colors = useColors()
@@ -33,6 +45,90 @@ function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; ha
         ...(glow ? { boxShadow: `0 0 6px 2px ${colors.statusPermissionGlow}` } : {}),
       }}
     />
+  )
+}
+
+function PillColorPicker({
+  anchor,
+  currentColor,
+  onSelect,
+  onClose,
+}: {
+  anchor: { x: number; y: number }
+  currentColor: string | null
+  onSelect: (color: string | null) => void
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  if (!popoverLayer) return null
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-clui-ui
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left: anchor.x,
+        top: anchor.y + 8,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        padding: 6,
+        display: 'flex',
+        gap: 4,
+        zIndex: 10000,
+      }}
+    >
+      {PILL_COLOR_PRESETS.map((preset) => {
+        const isSelected = preset.color === currentColor
+        return (
+          <button
+            key={preset.color || 'default'}
+            title={preset.label}
+            onClick={() => { onSelect(preset.color); onClose() }}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 9999,
+              border: isSelected ? `2px solid ${colors.textPrimary}` : `1px solid ${colors.textTertiary}`,
+              background: preset.color || 'transparent',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              opacity: isSelected ? 1 : 0.7,
+            }}
+          >
+            {preset.color === null && <Prohibit size={12} color={colors.textTertiary} />}
+          </button>
+        )
+      })}
+    </motion.div>,
+    popoverLayer,
   )
 }
 
@@ -136,6 +232,10 @@ function TabPill({
   onRename,
   onConfirmClose,
   onCancelClose,
+  onSetPillColor,
+  colorPickerTabId,
+  onOpenColorPicker,
+  onCloseColorPicker,
   tabRefs,
 }: {
   tab: TabState
@@ -150,6 +250,10 @@ function TabPill({
   onRename: (newValue: string | null) => void
   onConfirmClose: () => void
   onCancelClose: () => void
+  onSetPillColor: (color: string | null) => void
+  colorPickerTabId: string | null
+  onOpenColorPicker: (tabId: string, anchor: { x: number; y: number }) => void
+  onCloseColorPicker: () => void
   tabRefs: React.MutableRefObject<Map<string, HTMLDivElement>>
 }) {
   const colors = useColors()
@@ -206,7 +310,9 @@ function TabPill({
       }`}
       style={{
         background: isActive ? colors.tabActive : 'transparent',
-        border: isActive ? `1px solid ${colors.tabActiveBorder}` : '1px solid transparent',
+        border: tab.pillColor
+          ? `1px solid ${tab.pillColor}${isActive ? '' : '80'}`
+          : isActive ? `1px solid ${colors.tabActiveBorder}` : '1px solid transparent',
         borderRadius: 9999,
         padding: '4px 10px',
         fontSize: 12,
@@ -214,7 +320,16 @@ function TabPill({
         fontWeight: isActive ? 500 : 400,
       }}
     >
-      <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} />
+      <span
+        className="flex-shrink-0 inline-flex"
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
+        }}
+      >
+        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} />
+      </span>
       {showDirLabel && tab.workingDirectory && (
         <span
           className="flex-shrink-0"
@@ -294,12 +409,15 @@ export function TabStrip() {
   const closeTab = useSessionStore((s) => s.closeTab)
   const reorderTabs = useSessionStore((s) => s.reorderTabs)
   const renameTab = useSessionStore((s) => s.renameTab)
+  const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
   const colors = useColors()
   const showDirLabel = useThemeStore((s) => s.showDirLabel)
   const tabsReady = useSessionStore((s) => s.tabsReady)
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
+  const [colorPickerTabId, setColorPickerTabId] = useState<string | null>(null)
+  const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
@@ -366,12 +484,32 @@ export function TabStrip() {
                 onRename={(newValue) => renameTab(tab.id, newValue)}
                 onConfirmClose={() => setConfirmingCloseId(tab.id)}
                 onCancelClose={() => setConfirmingCloseId(null)}
+                onSetPillColor={(color) => setTabPillColor(tab.id, color)}
+                colorPickerTabId={colorPickerTabId}
+                onOpenColorPicker={(tabId, anchor) => { setColorPickerTabId(tabId); setColorPickerAnchor(anchor) }}
+                onCloseColorPicker={() => setColorPickerTabId(null)}
                 tabRefs={tabRefs}
               />
             ))}
           </Reorder.Group>
         </div>
       </div>
+
+      <AnimatePresence>
+        {colorPickerTabId && (() => {
+          const pickerTab = tabs.find((t) => t.id === colorPickerTabId)
+          if (!pickerTab) return null
+          return (
+            <PillColorPicker
+              key="pill-color-picker"
+              anchor={colorPickerAnchor}
+              currentColor={pickerTab.pillColor}
+              onSelect={(color) => setTabPillColor(colorPickerTabId, color)}
+              onClose={() => setColorPickerTabId(null)}
+            />
+          )
+        })()}
+      </AnimatePresence>
 
       {/* Pinned action buttons — always visible on the right */}
       <div className="flex items-center gap-0.5 flex-shrink-0 ml-1 pr-2">
