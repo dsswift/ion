@@ -453,13 +453,14 @@ function InterruptButton({ tabId }: { tabId: string }) {
 
 function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: boolean }) {
   const colors = useColors()
+  const isBashCmd = !!message.userExecuted
   const content = (
     <div
       className="text-[13px] leading-[1.5] px-3 py-1.5 max-w-[85%]"
       style={{
         background: colors.userBubble,
         color: colors.userBubbleText,
-        border: `1px solid ${colors.userBubbleBorder}`,
+        border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
         borderRadius: '14px 14px 4px 14px',
         whiteSpace: 'pre-wrap',
       }}
@@ -723,7 +724,7 @@ function getToolDescription(name: string, input?: string): string {
 }
 
 function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<typeof useColors> }) {
-  const [showResult, setShowResult] = useState(false)
+  const [showResult, setShowResult] = useState(!!tool.userExecuted)
   const isError = tool.toolStatus === 'error'
   const hasContent = !!tool.content
   const lineCount = hasContent ? tool.content.split('\n').length : 0
@@ -770,7 +771,8 @@ function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<t
 
 function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boolean }) {
   const hasRunning = tools.some((t) => t.toolStatus === 'running')
-  const [expanded, setExpanded] = useState(false)
+  const hasUserExecuted = tools.some((t) => t.userExecuted)
+  const [expanded, setExpanded] = useState(hasUserExecuted)
   const colors = useColors()
 
   const isOpen = expanded || hasRunning

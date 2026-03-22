@@ -67,6 +67,7 @@ interface State {
   buildYourOwn: () => void
   resumeSession: (sessionId: string, title?: string, projectPath?: string) => Promise<string>
   addSystemMessage: (content: string) => void
+  addBashResult: (command: string, stdout: string, stderr: string, exitCode: number | null) => void
   sendMessage: (prompt: string, projectPath?: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
   addDirectory: (dir: string) => void
@@ -123,6 +124,7 @@ function makeLocalTab(): TabState {
     hasChosenDirectory: false,
     additionalDirs: [],
     permissionMode: useThemeStore.getState().defaultPermissionMode,
+    bashResults: [],
   }
 }
 
@@ -406,6 +408,7 @@ export const useSessionStore = create<State>((set, get) => ({
         toolId: m.toolId,
         toolInput: m.toolInput,
         toolStatus: m.toolName ? 'completed' as const : undefined,
+        userExecuted: m.userExecuted,
         timestamp: m.timestamp,
       }))
 
@@ -461,6 +464,34 @@ export const useSessionStore = create<State>((set, get) => ({
             }
           : t
       ),
+    }))
+  },
+
+  addBashResult: (command, stdout, stderr, exitCode) => {
+    const { activeTabId } = get()
+    // Build tool output for display
+    const outputParts: string[] = []
+    if (stdout) outputParts.push(stdout.trimEnd())
+    if (stderr) outputParts.push(`stderr: ${stderr.trimEnd()}`)
+    if (exitCode !== null && exitCode !== 0) outputParts.push(`exit code: ${exitCode}`)
+    const now = Date.now()
+    set((s) => ({
+      tabs: s.tabs.map((t) => {
+        if (t.id !== activeTabId) return t
+        const title = t.messages.length === 0
+          ? (command.length > 30 ? command.substring(0, 27) + '...' : command)
+          : t.title
+        return {
+          ...t,
+          title,
+          bashResults: [...t.bashResults, { command, stdout, stderr }],
+          messages: [
+            ...t.messages,
+            { id: nextMsgId(), role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now },
+            { id: nextMsgId(), role: 'tool' as const, content: outputParts.join('\n'), toolName: 'Bash', toolInput: JSON.stringify({ command }), userExecuted: true, timestamp: now },
+          ],
+        }
+      }),
     }))
   },
 
@@ -581,13 +612,22 @@ export const useSessionStore = create<State>((set, get) => ({
     const isBusy = tab.status === 'running'
     const requestId = crypto.randomUUID()
 
-    // Build full prompt with attachment context
+    // Build full prompt with bash results and attachment context
     let fullPrompt = prompt
+    if (tab.bashResults.length > 0) {
+      const bashCtx = tab.bashResults.map((b) => {
+        const parts = [`$ ${b.command}`]
+        if (b.stdout) parts.push('```\n' + b.stdout.trimEnd() + '\n```')
+        if (b.stderr) parts.push('stderr:\n```\n' + b.stderr.trimEnd() + '\n```')
+        return parts.join('\n')
+      }).join('\n\n')
+      fullPrompt = bashCtx + '\n\n' + fullPrompt
+    }
     if (tab.attachments.length > 0) {
       const attachmentCtx = tab.attachments
         .map((a) => `[Attached ${a.type}: ${a.path}]`)
         .join('\n')
-      fullPrompt = `${attachmentCtx}\n\n${prompt}`
+      fullPrompt = `${attachmentCtx}\n\n${fullPrompt}`
     }
 
     const title = tab.messages.length === 0
@@ -613,6 +653,7 @@ export const useSessionStore = create<State>((set, get) => ({
             ...withEffectiveBase,
             title,
             attachments: [],
+            bashResults: [],
             queuedPrompts: [...withEffectiveBase.queuedPrompts, prompt],
           }
         }
@@ -623,6 +664,7 @@ export const useSessionStore = create<State>((set, get) => ({
           currentActivity: 'Starting...',
           title,
           attachments: [],
+          bashResults: [],
           permissionDenied: null,
           messages: [
             ...withEffectiveBase.messages,
@@ -985,6 +1027,7 @@ function persistTabs(): void {
       hasChosenDirectory: t.hasChosenDirectory,
       additionalDirs: t.additionalDirs,
       permissionMode: t.permissionMode,
+      ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
     }))
 
   const data: PersistedTabState = {

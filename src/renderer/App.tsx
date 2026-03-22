@@ -4,7 +4,7 @@ import { Paperclip, Camera, HeadCircuit } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
-import { InputBar } from './components/InputBar'
+import { InputBar, useBashModeStore } from './components/InputBar'
 import { StatusBar } from './components/StatusBar'
 import { MarketplacePanel } from './components/MarketplacePanel'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -26,6 +26,7 @@ export default function App() {
   const colors = useColors()
   const setSystemTheme = useThemeStore((s) => s.setSystemTheme)
   const expandedUI = useThemeStore((s) => s.expandedUI)
+  const bashModeActive = useBashModeStore((s) => s.active)
 
   // ─── Theme initialization ───
   useEffect(() => {
@@ -76,6 +77,7 @@ export default function App() {
                     hasChosenDirectory: st.hasChosenDirectory,
                     additionalDirs: st.additionalDirs,
                     permissionMode: st.permissionMode,
+                    bashResults: st.bashResults || [],
                   }
                 : t
             ),
@@ -355,7 +357,7 @@ export default function App() {
             <div
               data-clui-ui
               className="glass-surface w-full"
-              style={{ minHeight: 50, borderRadius: 25, padding: '0 6px 0 16px', background: colors.inputPillBg }}
+              style={{ minHeight: 50, borderRadius: 25, padding: '0 6px 0 16px', background: colors.inputPillBg, boxShadow: bashModeActive ? 'inset 0 0 0 2px rgba(244, 114, 182, 0.5)' : undefined, transition: 'box-shadow 0.15s' }}
             >
               <InputBar />
             </div>

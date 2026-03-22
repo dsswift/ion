@@ -174,6 +174,8 @@ export interface TabState {
   additionalDirs: string[]
   /** Per-tab permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
   permissionMode: 'ask' | 'auto' | 'plan'
+  /** Pending bash command results to send as context with next prompt */
+  bashResults: Array<{ command: string; stdout: string; stderr: string }>
 }
 
 export interface Message {
@@ -184,6 +186,8 @@ export interface Message {
   toolInput?: string
   toolId?: string
   toolStatus?: 'running' | 'completed' | 'error'
+  /** True for messages originating from user bash command entry (! prefix) */
+  userExecuted?: boolean
   timestamp: number
 }
 
@@ -282,6 +286,7 @@ export interface SessionLoadMessage {
   toolName?: string
   toolId?: string
   toolInput?: string
+  userExecuted?: boolean
   timestamp: number
 }
 
@@ -396,6 +401,10 @@ export const IPC = {
   GIT_DISCARD: 'clui:git-discard',
   GIT_DELETE_BRANCH: 'clui:git-delete-branch',
 
+  // Bash command execution
+  EXECUTE_BASH: 'clui:execute-bash',
+  CANCEL_BASH: 'clui:cancel-bash',
+
   // Legacy (kept for backward compat during migration)
   STREAM_EVENT: 'clui:stream-event',
   RUN_COMPLETE: 'clui:run-complete',
@@ -412,6 +421,7 @@ export interface PersistedTab {
   hasChosenDirectory: boolean
   additionalDirs: string[]
   permissionMode: 'ask' | 'auto' | 'plan'
+  bashResults?: Array<{ command: string; stdout: string; stderr: string }>
 }
 
 export interface PersistedTabState {

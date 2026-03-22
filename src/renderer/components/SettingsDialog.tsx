@@ -18,6 +18,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const setDefaultPermissionMode = useThemeStore((s) => s.setDefaultPermissionMode)
   const expandOnTabSwitch = useThemeStore((s) => s.expandOnTabSwitch)
   const setExpandOnTabSwitch = useThemeStore((s) => s.setExpandOnTabSwitch)
+  const bashCommandEntry = useThemeStore((s) => s.bashCommandEntry)
+  const setBashCommandEntry = useThemeStore((s) => s.setBashCommandEntry)
 
   const handleBrowse = async () => {
     const dir = await window.clui.selectDirectory()
@@ -403,6 +405,71 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </div>
             <span style={{ color: colors.textPrimary, fontSize: 13 }}>
               Show "Implement, clear context"
+            </span>
+          </label>
+        </div>
+
+        {/* Bash Command Entry */}
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: 'block',
+              color: colors.textSecondary,
+              fontSize: 12,
+              fontWeight: 500,
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Bash Command Entry
+          </label>
+          <p
+            style={{
+              color: colors.textTertiary,
+              fontSize: 12,
+              margin: '0 0 10px',
+              lineHeight: 1.4,
+            }}
+          >
+            Type ! as the first character to run bash commands directly in the conversation.
+          </p>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer',
+            }}
+          >
+            <div
+              onClick={() => setBashCommandEntry(!bashCommandEntry)}
+              style={{
+                width: 36,
+                height: 20,
+                borderRadius: 10,
+                background: bashCommandEntry ? colors.accent : colors.surfaceSecondary,
+                position: 'relative',
+                transition: 'background 0.15s',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: bashCommandEntry ? '#fff' : colors.textTertiary,
+                  position: 'absolute',
+                  top: 2,
+                  left: bashCommandEntry ? 18 : 2,
+                  transition: 'left 0.15s, background 0.15s',
+                }}
+              />
+            </div>
+            <span style={{ color: colors.textPrimary, fontSize: 13 }}>
+              Enable bash command mode
             </span>
           </label>
         </div>

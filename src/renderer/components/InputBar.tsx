@@ -1,10 +1,17 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Microphone, ArrowUp, SpinnerGap, X, Check } from '@phosphor-icons/react'
+import { create } from 'zustand'
 import { useSessionStore, AVAILABLE_MODELS } from '../stores/sessionStore'
 import { AttachmentChips } from './AttachmentChips'
 import { SlashCommandMenu, getFilteredCommandsWithExtras, type SlashCommand } from './SlashCommandMenu'
-import { useColors } from '../theme'
+import { useColors, useThemeStore } from '../theme'
+
+/** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
+export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
+  active: false,
+  set: (v) => set({ active: v }),
+}))
 
 const INPUT_MIN_HEIGHT = 20
 const INPUT_MAX_HEIGHT = 140
@@ -24,6 +31,10 @@ export function InputBar() {
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [slashFilter, setSlashFilter] = useState<string | null>(null)
   const [slashIndex, setSlashIndex] = useState(0)
+  const bashMode = useBashModeStore((s) => s.active)
+  const setBashMode = useBashModeStore((s) => s.set)
+  const [bashExecuting, setBashExecuting] = useState(false)
+  const bashExecIdRef = useRef<string | null>(null)
   const [isMultiLine, setIsMultiLine] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -34,6 +45,7 @@ export function InputBar() {
   const sendMessage = useSessionStore((s) => s.sendMessage)
   const clearTab = useSessionStore((s) => s.clearTab)
   const addSystemMessage = useSessionStore((s) => s.addSystemMessage)
+  const addBashResult = useSessionStore((s) => s.addBashResult)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const removeAttachment = useSessionStore((s) => s.removeAttachment)
 
@@ -42,9 +54,11 @@ export function InputBar() {
   const preferredModel = useSessionStore((s) => s.preferredModel)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const tabsReady = useSessionStore((s) => s.tabsReady)
+  const bashCommandEntry = useThemeStore((s) => s.bashCommandEntry)
   const colors = useColors()
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
-  const isConnecting = tab?.status === 'connecting'
+  const isConnecting = tab?.status === 'connecting' || !tabsReady
   const hasContent = input.trim().length > 0 || (tab?.attachments?.length ?? 0) > 0
   const canSend = !!tab && !isConnecting && hasContent
   const attachments = tab?.attachments || []
@@ -57,6 +71,7 @@ export function InputBar() {
 
   useEffect(() => {
     textareaRef.current?.focus()
+    setBashMode(false)
   }, [activeTabId])
 
   // Focus textarea when window is shown (shortcut toggle, screenshot return)
@@ -251,6 +266,29 @@ export function InputBar() {
         return
       }
     }
+    // Bash command mode: execute directly and store result as pending context
+    if (bashMode) {
+      const cmd = input.trim()
+      if (!cmd) return
+      if (bashExecuting) return
+      if (isConnecting) return
+      const cwd = tab?.workingDirectory || '~'
+      const execId = crypto.randomUUID()
+      bashExecIdRef.current = execId
+      setInput('')
+      setBashExecuting(true)
+      if (textareaRef.current) {
+        textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
+      }
+      window.clui.executeBash(execId, cmd, cwd).then((result) => {
+        bashExecIdRef.current = null
+        setBashExecuting(false)
+        setBashMode(false)
+        addBashResult(cmd, result.stdout, result.stderr, result.exitCode)
+        requestAnimationFrame(() => textareaRef.current?.focus())
+      })
+      return
+    }
     const prompt = input.trim()
     const modelMatch = prompt.match(/^\/model\s+(\S+)/i)
     if (modelMatch) {
@@ -280,10 +318,22 @@ export function InputBar() {
     sendMessage(prompt || 'See attached files')
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect])
+  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, addBashResult])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Cancel running bash command
+    if (bashExecuting && e.key === 'Escape') {
+      e.preventDefault()
+      if (bashExecIdRef.current) window.clui.cancelBash(bashExecIdRef.current)
+      return
+    }
+    // Exit bash mode on backspace when input is empty
+    if (bashMode && e.key === 'Backspace' && input === '') {
+      e.preventDefault()
+      setBashMode(false)
+      return
+    }
     if (showSlashMenu) {
       const filtered = getFilteredCommandsWithExtras(slashFilter!, skillCommands)
       if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex((i) => (i + 1) % filtered.length); return }
@@ -297,8 +347,14 @@ export function InputBar() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
+    // Enter bash mode when ! is typed as first character on empty input
+    if (!bashMode && bashCommandEntry && value === '!') {
+      setBashMode(true)
+      setInput('')
+      return
+    }
     setInput(value)
-    updateSlashFilter(value)
+    if (!bashMode) updateSlashFilter(value)
   }
 
   // ─── Paste image ───
@@ -375,6 +431,8 @@ export function InputBar() {
 
   const hasAttachments = attachments.length > 0
 
+  const bashPlaceholder = 'Enter bash command...'
+
   return (
     <div ref={wrapperRef} data-clui-ui className="flex flex-col w-full relative">
       {/* Slash command menu */}
@@ -408,15 +466,19 @@ export function InputBar() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={
-                isConnecting
-                  ? 'Initializing...'
-                  : voiceState === 'recording'
-                    ? 'Recording... ✓ to confirm, ✕ to cancel'
-                    : voiceState === 'transcribing'
-                      ? 'Transcribing...'
-                      : isBusy
-                        ? 'Type to queue a message...'
-                        : 'Ask Claude Code anything...'
+                bashExecuting
+                  ? 'Running... (Esc to cancel)'
+                  : bashMode
+                    ? bashPlaceholder
+                    : isConnecting
+                      ? 'Initializing...'
+                      : voiceState === 'recording'
+                        ? 'Recording... ✓ to confirm, ✕ to cancel'
+                        : voiceState === 'transcribing'
+                          ? 'Transcribing...'
+                          : isBusy
+                            ? 'Type to queue a message...'
+                            : 'Ask Claude Code anything...'
               }
               rows={1}
               className="w-full bg-transparent resize-none"
@@ -466,15 +528,19 @@ export function InputBar() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={
-                isConnecting
-                  ? 'Initializing...'
-                  : voiceState === 'recording'
-                    ? 'Recording... ✓ to confirm, ✕ to cancel'
-                    : voiceState === 'transcribing'
-                      ? 'Transcribing...'
-                      : isBusy
-                        ? 'Type to queue a message...'
-                        : 'Ask Claude Code anything...'
+                bashExecuting
+                  ? 'Running... (Esc to cancel)'
+                  : bashMode
+                    ? bashPlaceholder
+                    : isConnecting
+                      ? 'Initializing...'
+                      : voiceState === 'recording'
+                        ? 'Recording... ✓ to confirm, ✕ to cancel'
+                        : voiceState === 'transcribing'
+                          ? 'Transcribing...'
+                          : isBusy
+                            ? 'Type to queue a message...'
+                            : 'Ask Claude Code anything...'
               }
               rows={1}
               className="flex-1 bg-transparent resize-none"

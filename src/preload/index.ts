@@ -32,11 +32,13 @@ export interface CluiAPI {
   listInstalledPlugins(): Promise<string[]>
   installPlugin(repo: string, pluginName: string, marketplace: string, sourcePath?: string, isSkillMd?: boolean): Promise<{ ok: boolean; error?: string }>
   uninstallPlugin(pluginName: string): Promise<{ ok: boolean; error?: string }>
+  executeBash(id: string, command: string, cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>
+  cancelBash(id: string): void
   setPermissionMode(tabId: string, mode: string): void
   getTheme(): Promise<{ isDark: boolean }>
   onThemeChange(callback: (isDark: boolean) => void): () => void
-  loadSettings(): Promise<{ themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string }>
-  saveSettings(data: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string }): Promise<void>
+  loadSettings(): Promise<Record<string, any>>
+  saveSettings(data: Record<string, any>): Promise<void>
   loadTabs(): Promise<PersistedTabState | null>
   saveTabs(data: PersistedTabState): Promise<void>
 
@@ -108,6 +110,8 @@ const api: CluiAPI = {
     ipcRenderer.invoke(IPC.MARKETPLACE_INSTALL, { repo, pluginName, marketplace, sourcePath, isSkillMd }),
   uninstallPlugin: (pluginName) =>
     ipcRenderer.invoke(IPC.MARKETPLACE_UNINSTALL, { pluginName }),
+  executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
+  cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   setPermissionMode: (tabId, mode) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode }),
   getTheme: () => ipcRenderer.invoke(IPC.GET_THEME),
   onThemeChange: (callback) => {

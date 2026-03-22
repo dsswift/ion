@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writ
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
-import { execFile as execFileCb } from 'child_process'
+import { execFile as execFileCb, spawn, type ChildProcess } from 'child_process'
 import { promisify } from 'util'
 import { ControlPlane } from './claude/control-plane'
 import { ensureSkills, type SkillStatus } from './skills/installer'
@@ -396,6 +396,47 @@ ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: str
   controlPlane.setPermissionMode(tabId, mode)
 })
 
+// ─── Bash command execution ───
+
+const bashProcesses = new Map<string, ChildProcess>()
+
+ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: string; command: string; cwd: string }) => {
+  log(`IPC EXECUTE_BASH [${id}]: ${command} (cwd=${cwd})`)
+  return new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
+    const shell = process.env.SHELL || '/bin/bash'
+    const child = spawn(shell, ['-lc', command], { cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+    bashProcesses.set(id, child)
+
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+
+    child.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
+    child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+
+    child.on('close', (code) => {
+      bashProcesses.delete(id)
+      resolve({
+        stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
+        exitCode: code,
+      })
+    })
+
+    child.on('error', (err) => {
+      bashProcesses.delete(id)
+      resolve({ stdout: '', stderr: err.message, exitCode: 1 })
+    })
+  })
+})
+
+ipcMain.on(IPC.CANCEL_BASH, (_event, id: string) => {
+  const child = bashProcesses.get(id)
+  if (child) {
+    log(`IPC CANCEL_BASH [${id}]: sending SIGINT`)
+    child.kill('SIGINT')
+  }
+})
+
 ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }: { tabId: string; questionId: string; optionId: string }) => {
   log(`IPC RESPOND_PERMISSION: tab=${tabId} question=${questionId} option=${optionId}`)
   return controlPlane.respondToPermission(tabId, questionId, optionId)
@@ -460,7 +501,13 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
                 const cmd = extractTag(raw, 'bash-input')
                 if (cmd) meta.firstMessage = `! ${cmd.trim()}`.substring(0, 100)
               } else {
-                meta.firstMessage = cleanCliTags(raw).substring(0, 100) || null
+                const cleaned = cleanCliTags(raw)
+                const { bashEntries, remainder } = extractBashEntries(cleaned)
+                if (bashEntries.length > 0) {
+                  meta.firstMessage = `! ${bashEntries[0].command}`.substring(0, 100)
+                } else {
+                  meta.firstMessage = cleaned.substring(0, 100) || null
+                }
               }
             }
           } catch {}
@@ -507,6 +554,28 @@ function extractTag(text: string, tag: string): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * Extract CLUI-prepended bash command results from a user message.
+ * Pattern: "$ command\n```\noutput\n```" optionally followed by more bash entries,
+ * then the actual user message.
+ */
+function extractBashEntries(text: string): { bashEntries: Array<{ command: string; output: string }>; remainder: string } {
+  const bashEntries: Array<{ command: string; output: string }>[] = []
+  const entries: Array<{ command: string; output: string }> = []
+  let rest = text
+
+  // Match pattern: $ command\n```\noutput\n``` (possibly with stderr blocks too)
+  const pattern = /^\$ (.+)\n```\n([\s\S]*?)\n```(?:\nstderr:\n```\n[\s\S]*?\n```)?\s*/
+  let match = rest.match(pattern)
+  while (match) {
+    entries.push({ command: match[1], output: match[2] })
+    rest = rest.slice(match[0].length)
+    match = rest.match(pattern)
+  }
+
+  return { bashEntries: entries, remainder: rest }
+}
+
 ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPath?: string } | string) => {
   const sessionId = typeof arg === 'string' ? arg : arg.sessionId
   const projectPath = typeof arg === 'string' ? undefined : arg.projectPath
@@ -517,7 +586,7 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
     const filePath = join(homedir(), '.claude', 'projects', encodedPath, `${sessionId}.jsonl`)
     if (!existsSync(filePath)) return []
 
-    const messages: Array<{ role: string; content: string; toolName?: string; toolId?: string; timestamp: number }> = []
+    const messages: Array<{ role: string; content: string; toolName?: string; toolInput?: string; toolId?: string; userExecuted?: boolean; timestamp: number }> = []
     await new Promise<void>((resolve) => {
       const rl = createInterface({ input: createReadStream(filePath) })
       rl.on('line', (line: string) => {
@@ -562,7 +631,7 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
               // Internal hint — discard entirely
             } else if (raw.includes('<bash-input')) {
               const cmd = extractTag(raw, 'bash-input') || raw
-              messages.push({ role: 'user', content: cmd.trim(), timestamp: ts })
+              messages.push({ role: 'user', content: `! ${cmd.trim()}`, userExecuted: true, timestamp: ts })
             } else if (raw.includes('<bash-stdout') || raw.includes('<bash-stderr')) {
               // Emit as a Bash tool card so it renders like agent tool output
               const stdout = extractTag(raw, 'bash-stdout') || ''
@@ -575,12 +644,28 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
                 content: '',
                 toolName: 'Bash',
                 toolInput: cmdInput ? JSON.stringify({ command: cmdInput }) : undefined,
+                userExecuted: true,
                 timestamp: ts,
               })
             } else {
               const text = cleanCliTags(raw)
               if (text) {
-                messages.push({ role: 'user', content: text, timestamp: ts })
+                // Detect CLUI bash command results prepended to prompts: $ cmd\n```\noutput\n```
+                const { bashEntries, remainder } = extractBashEntries(text)
+                for (const entry of bashEntries) {
+                  messages.push({ role: 'user', content: `! ${entry.command}`, userExecuted: true, timestamp: ts })
+                  messages.push({
+                    role: 'tool',
+                    content: entry.output,
+                    toolName: 'Bash',
+                    toolInput: JSON.stringify({ command: entry.command }),
+                    userExecuted: true,
+                    timestamp: ts,
+                  })
+                }
+                if (remainder.trim()) {
+                  messages.push({ role: 'user', content: remainder.trim(), timestamp: ts })
+                }
               }
             }
           } else if (obj.type === 'assistant') {
@@ -631,7 +716,7 @@ ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
   // Unparented avoids modal dimming on the transparent overlay.
   // Activation is fine here — user is actively interacting with CLUI.
   if (process.platform === 'darwin') app.focus()
-  const options = { properties: ['openDirectory'] as const }
+  const options = { properties: ['openDirectory' as const] }
   const result = process.platform === 'darwin'
     ? await dialog.showOpenDialog(options)
     : await dialog.showOpenDialog(mainWindow, options)
@@ -654,7 +739,7 @@ ipcMain.handle(IPC.ATTACH_FILES, async () => {
   // macOS: activate app so unparented dialog appears on top
   if (process.platform === 'darwin') app.focus()
   const options = {
-    properties: ['openFile', 'multiSelections'],
+    properties: ['openFile' as const, 'multiSelections' as const],
     filters: [
       { name: 'All Files', extensions: ['*'] },
       { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
