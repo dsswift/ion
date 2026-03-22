@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
@@ -410,6 +410,8 @@ export function TabStrip() {
   const reorderTabs = useSessionStore((s) => s.reorderTabs)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+  const toggleTerminal = useSessionStore((s) => s.toggleTerminal)
+  const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
   const colors = useColors()
   const showDirLabel = useThemeStore((s) => s.showDirLabel)
   const tabsReady = useSessionStore((s) => s.tabsReady)
@@ -520,6 +522,15 @@ export function TabStrip() {
           title="New tab"
         >
           <Plus size={14} />
+        </button>
+
+        <button
+          onClick={() => toggleTerminal(activeTabId)}
+          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
+          style={{ color: terminalOpenTabIds.has(activeTabId) ? colors.accent : colors.textTertiary }}
+          title="Toggle terminal"
+        >
+          <Terminal size={14} />
         </button>
 
         <HistoryPicker />

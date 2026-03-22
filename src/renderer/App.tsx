@@ -8,6 +8,7 @@ import { InputBar, useBashModeStore } from './components/InputBar'
 import { StatusBar } from './components/StatusBar'
 import { MarketplacePanel } from './components/MarketplacePanel'
 import { SettingsDialog } from './components/SettingsDialog'
+import { TerminalPanel } from './components/TerminalPanel'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { useClaudeEvents } from './hooks/useClaudeEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
@@ -176,6 +177,9 @@ export default function App() {
   const isExpanded = useSessionStore((s) => s.isExpanded)
   const marketplaceOpen = useSessionStore((s) => s.marketplaceOpen)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const terminalOpen = useSessionStore((s) => s.terminalOpenTabIds.has(s.activeTabId))
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 
   // Layout dimensions — expandedUI widens and heightens the panel
@@ -273,6 +277,37 @@ export default function App() {
                   </div>
                 </motion.div>
               </div>
+            )}
+          </AnimatePresence>
+
+          {/* ─── Terminal panel ─── */}
+          <AnimatePresence initial={false}>
+            {terminalOpen && (
+              <motion.div
+                data-clui-ui
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={TRANSITION}
+                style={{ marginBottom: 10, position: 'relative', zIndex: 20 }}
+              >
+                <div
+                  data-clui-ui
+                  className="glass-surface overflow-hidden no-drag"
+                  style={{
+                    width: cardExpandedWidth,
+                    borderRadius: 20,
+                    background: colors.containerBg,
+                    border: `1px solid ${colors.containerBorder}`,
+                    boxShadow: colors.cardShadow,
+                    height: 420,
+                  }}
+                >
+                  {activeTab && (
+                    <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
+                  )}
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
 

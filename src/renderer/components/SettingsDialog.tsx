@@ -1,6 +1,10 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, FolderOpen, Trash } from '@phosphor-icons/react'
 import { useColors, useThemeStore } from '../theme'
+
+// Pre-fetch font list at module load so it's ready before settings dialog opens
+let fontCache: string[] | null = null
+const fontPromise = window.clui?.listFonts().then((fonts) => { fontCache = fonts }).catch(() => {})
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -22,6 +26,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const setBashCommandEntry = useThemeStore((s) => s.setBashCommandEntry)
   const expandToolResults = useThemeStore((s) => s.expandToolResults)
   const setExpandToolResults = useThemeStore((s) => s.setExpandToolResults)
+  const terminalFontFamily = useThemeStore((s) => s.terminalFontFamily)
+  const setTerminalFontFamily = useThemeStore((s) => s.setTerminalFontFamily)
+  const terminalFontSize = useThemeStore((s) => s.terminalFontSize)
+  const setTerminalFontSize = useThemeStore((s) => s.setTerminalFontSize)
+  const [availableFonts, setAvailableFonts] = useState<string[]>(fontCache || [])
+  useEffect(() => {
+    if (fontCache) return
+    fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) })
+  }, [])
 
   const handleBrowse = async () => {
     const dir = await window.clui.selectDirectory()
@@ -539,6 +552,112 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               Expand write and edit results
             </span>
           </label>
+        </div>
+
+        {/* Terminal Font Family */}
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: 'block',
+              color: colors.textSecondary,
+              fontSize: 12,
+              fontWeight: 500,
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Terminal
+          </label>
+          <p
+            style={{
+              color: colors.textTertiary,
+              fontSize: 12,
+              margin: '0 0 10px',
+              lineHeight: 1.4,
+            }}
+          >
+            Font family for the terminal panel. Use a Nerd Font for prompt symbol support.
+          </p>
+          <select
+            value={availableFonts.includes(terminalFontFamily) ? terminalFontFamily : ''}
+            onChange={(e) => setTerminalFontFamily(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              fontSize: 13,
+              fontFamily: 'inherit',
+              color: colors.textPrimary,
+              background: colors.surfacePrimary,
+              border: `1px solid ${colors.inputBorder}`,
+              borderRadius: 8,
+              outline: 'none',
+              boxSizing: 'border-box',
+              cursor: 'pointer',
+            }}
+          >
+            {!availableFonts.includes(terminalFontFamily) && (
+              <option value="">{terminalFontFamily}</option>
+            )}
+            {availableFonts.map((font) => (
+              <option key={font} value={font}>{font}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Terminal Font Size */}
+        <div style={{ marginBottom: 20 }}>
+          <p
+            style={{
+              color: colors.textTertiary,
+              fontSize: 12,
+              margin: '0 0 10px',
+              lineHeight: 1.4,
+            }}
+          >
+            Font size in pixels.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => setTerminalFontSize(Math.max(8, terminalFontSize - 1))}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                border: `1px solid ${colors.inputBorder}`,
+                background: colors.surfacePrimary,
+                color: colors.textPrimary,
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              -
+            </button>
+            <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
+              {terminalFontSize}
+            </span>
+            <button
+              onClick={() => setTerminalFontSize(Math.min(24, terminalFontSize + 1))}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                border: `1px solid ${colors.inputBorder}`,
+                background: colors.surfacePrimary,
+                color: colors.textPrimary,
+                fontSize: 16,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              +
+            </button>
+          </div>
         </div>
       </div>
     </div>

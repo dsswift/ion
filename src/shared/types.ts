@@ -405,6 +405,17 @@ export const IPC = {
   GIT_DISCARD: 'clui:git-discard',
   GIT_DELETE_BRANCH: 'clui:git-delete-branch',
 
+  // Fonts
+  LIST_FONTS: 'clui:list-fonts',
+
+  // Terminal PTY
+  TERMINAL_CREATE: 'clui:terminal-create',
+  TERMINAL_DATA: 'clui:terminal-data',
+  TERMINAL_RESIZE: 'clui:terminal-resize',
+  TERMINAL_INCOMING: 'clui:terminal-incoming',
+  TERMINAL_EXIT: 'clui:terminal-exit',
+  TERMINAL_DESTROY: 'clui:terminal-destroy',
+
   // Bash command execution
   EXECUTE_BASH: 'clui:execute-bash',
   CANCEL_BASH: 'clui:cancel-bash',

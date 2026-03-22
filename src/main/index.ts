@@ -13,6 +13,7 @@ import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
 import type { RunOptions, NormalizedEvent, EnrichedError } from '../shared/types'
+import { TerminalManager } from './terminal-manager'
 
 const gitExec = promisify(execFileCb)
 
@@ -33,6 +34,9 @@ const INTERACTIVE_PTY = process.env.CLUI_INTERACTIVE_PERMISSIONS_PTY === '1'
 
 const controlPlane = new ControlPlane(INTERACTIVE_PTY)
 
+// Forward-declared — initialized after broadcast() is defined
+let terminalManager: TerminalManager
+
 // The native window covers the full screen work area so that floating panels
 // (plan viewer, diff viewer, git panel) can be positioned anywhere without clipping.
 // The UI itself renders at the bottom center; all other regions are transparent/click-through.
@@ -44,6 +48,8 @@ function broadcast(channel: string, ...args: unknown[]): void {
     mainWindow.webContents.send(channel, ...args)
   }
 }
+
+terminalManager = new TerminalManager(broadcast)
 
 function snapshotWindowState(reason: string): void {
   if (!SPACES_DEBUG) return
@@ -158,6 +164,7 @@ function createWindow(): void {
     })
     if (choice === 0) {
       forceQuit = true
+      terminalManager.destroyAll()
       if (tray) {
         tray.destroy()
         tray = null
@@ -392,6 +399,7 @@ ipcMain.handle(IPC.TAB_HEALTH, () => {
 ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
   log(`IPC CLOSE_TAB: ${tabId}`)
   controlPlane.closeTab(tabId)
+  terminalManager.destroy(tabId)
 })
 
 ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string }) => {
@@ -443,6 +451,61 @@ ipcMain.on(IPC.CANCEL_BASH, (_event, id: string) => {
     log(`IPC CANCEL_BASH [${id}]: sending SIGINT`)
     child.kill('SIGINT')
   }
+})
+
+// ─── Fonts ───
+
+let cachedFonts: string[] | null = null
+
+ipcMain.handle(IPC.LIST_FONTS, async () => {
+  if (cachedFonts) return cachedFonts
+  try {
+    const script = `
+use framework "AppKit"
+set fm to current application's NSFontManager's sharedFontManager()
+set families to fm's availableFontFamilies() as list
+set output to ""
+repeat with f in families
+  set fl to f as text
+  if fl contains "Nerd" then
+    set output to output & fl & linefeed
+  else
+    set members to fm's availableMembersOfFontFamily:f
+    if members is not missing value and (count of members) > 0 then
+      set traits to item 4 of (item 1 of members) as integer
+      if (traits div 1024) mod 2 = 1 then
+        set output to output & fl & linefeed
+      end if
+    end if
+  end if
+end repeat
+return output`
+    const { stdout } = await gitExec('/usr/bin/osascript', ['-e', script])
+    cachedFonts = stdout.split('\n').map((s) => s.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b))
+    return cachedFonts
+  } catch {
+    return ['Menlo', 'Monaco', 'Courier New']
+  }
+})
+
+// ─── Terminal PTY ───
+
+ipcMain.handle(IPC.TERMINAL_CREATE, (_event, { tabId, cwd }: { tabId: string; cwd: string }) => {
+  log(`IPC TERMINAL_CREATE: tab=${tabId} cwd=${cwd}`)
+  terminalManager.create(tabId, cwd)
+})
+
+ipcMain.on(IPC.TERMINAL_DATA, (_event, { tabId, data }: { tabId: string; data: string }) => {
+  terminalManager.write(tabId, data)
+})
+
+ipcMain.on(IPC.TERMINAL_RESIZE, (_event, { tabId, cols, rows }: { tabId: string; cols: number; rows: number }) => {
+  terminalManager.resize(tabId, cols, rows)
+})
+
+ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { tabId }: { tabId: string }) => {
+  log(`IPC TERMINAL_DESTROY: tab=${tabId}`)
+  terminalManager.destroy(tabId)
 })
 
 ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }: { tabId: string; questionId: string; optionId: string }) => {
@@ -1151,7 +1214,7 @@ ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { plugi
 
 const SETTINGS_DIR = join(homedir(), '.clui')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13 }
 
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {

@@ -32,6 +32,13 @@ export interface CluiAPI {
   listInstalledPlugins(): Promise<string[]>
   installPlugin(repo: string, pluginName: string, marketplace: string, sourcePath?: string, isSkillMd?: boolean): Promise<{ ok: boolean; error?: string }>
   uninstallPlugin(pluginName: string): Promise<{ ok: boolean; error?: string }>
+  listFonts(): Promise<string[]>
+  terminalCreate(tabId: string, cwd: string): Promise<void>
+  terminalWrite(tabId: string, data: string): void
+  terminalResize(tabId: string, cols: number, rows: number): void
+  terminalDestroy(tabId: string): Promise<void>
+  onTerminalData(callback: (tabId: string, data: string) => void): () => void
+  onTerminalExit(callback: (tabId: string, exitCode: number) => void): () => void
   executeBash(id: string, command: string, cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>
   cancelBash(id: string): void
   setPermissionMode(tabId: string, mode: string): void
@@ -110,6 +117,21 @@ const api: CluiAPI = {
     ipcRenderer.invoke(IPC.MARKETPLACE_INSTALL, { repo, pluginName, marketplace, sourcePath, isSkillMd }),
   uninstallPlugin: (pluginName) =>
     ipcRenderer.invoke(IPC.MARKETPLACE_UNINSTALL, { pluginName }),
+  listFonts: () => ipcRenderer.invoke(IPC.LIST_FONTS),
+  terminalCreate: (tabId, cwd) => ipcRenderer.invoke(IPC.TERMINAL_CREATE, { tabId, cwd }),
+  terminalWrite: (tabId, data) => ipcRenderer.send(IPC.TERMINAL_DATA, { tabId, data }),
+  terminalResize: (tabId, cols, rows) => ipcRenderer.send(IPC.TERMINAL_RESIZE, { tabId, cols, rows }),
+  terminalDestroy: (tabId) => ipcRenderer.invoke(IPC.TERMINAL_DESTROY, { tabId }),
+  onTerminalData: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, tabId: string, data: string) => callback(tabId, data)
+    ipcRenderer.on(IPC.TERMINAL_INCOMING, handler)
+    return () => ipcRenderer.removeListener(IPC.TERMINAL_INCOMING, handler)
+  },
+  onTerminalExit: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, tabId: string, exitCode: number) => callback(tabId, exitCode)
+    ipcRenderer.on(IPC.TERMINAL_EXIT, handler)
+    return () => ipcRenderer.removeListener(IPC.TERMINAL_EXIT, handler)
+  },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   setPermissionMode: (tabId, mode) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode }),

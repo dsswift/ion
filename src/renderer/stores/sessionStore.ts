@@ -32,6 +32,8 @@ interface State {
   preferredModel: string | null
   /** Whether the git side panel is open */
   gitPanelOpen: boolean
+  /** Tab IDs with their terminal panel visible */
+  terminalOpenTabIds: Set<string>
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
 
@@ -61,6 +63,7 @@ interface State {
   closeMarketplace: () => void
   toggleGitPanel: () => void
   closeGitPanel: () => void
+  toggleTerminal: (tabId: string) => void
   loadMarketplace: (forceRefresh?: boolean) => Promise<void>
   setMarketplaceSearch: (query: string) => void
   setMarketplaceFilter: (filter: string) => void
@@ -141,6 +144,7 @@ export const useSessionStore = create<State>((set, get) => ({
   staticInfo: null,
   preferredModel: null,
   gitPanelOpen: false,
+  terminalOpenTabIds: new Set<string>(),
   tabsReady: false,
 
   // Marketplace
@@ -270,6 +274,18 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({ gitPanelOpen: !s.gitPanelOpen }))
   },
 
+  toggleTerminal: (tabId) => {
+    set((s) => {
+      const next = new Set(s.terminalOpenTabIds)
+      if (next.has(tabId)) {
+        next.delete(tabId)
+      } else {
+        next.add(tabId)
+      }
+      return { terminalOpenTabIds: next }
+    })
+  },
+
   closeGitPanel: () => {
     set({ gitPanelOpen: false })
   },
@@ -355,6 +371,14 @@ export const useSessionStore = create<State>((set, get) => ({
 
   closeTab: (tabId) => {
     window.clui.closeTab(tabId).catch(() => {})
+    window.clui.terminalDestroy(tabId).catch(() => {})
+    // Clean up terminal UI state
+    const termIds = get().terminalOpenTabIds
+    if (termIds.has(tabId)) {
+      const next = new Set(termIds)
+      next.delete(tabId)
+      set({ terminalOpenTabIds: next })
+    }
 
     const s = get()
     const remaining = s.tabs.filter((t) => t.id !== tabId)
@@ -1089,5 +1113,17 @@ useSessionStore.subscribe((state, prev) => {
   if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId) {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(persistTabs, 100)
+  }
+})
+
+// Close terminal panel when conversation collapses (regardless of which code path collapsed it)
+useSessionStore.subscribe((state, prev) => {
+  if (prev.isExpanded && !state.isExpanded) {
+    const { activeTabId, terminalOpenTabIds } = state
+    if (terminalOpenTabIds.has(activeTabId)) {
+      const next = new Set(terminalOpenTabIds)
+      next.delete(activeTabId)
+      useSessionStore.setState({ terminalOpenTabIds: next })
+    }
   }
 })

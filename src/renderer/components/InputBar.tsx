@@ -76,8 +76,11 @@ export function InputBar() {
   }, [activeTabId])
 
   // Focus textarea when window is shown (shortcut toggle, screenshot return)
+  // Skip if focus is inside the terminal panel (xterm manages its own focus)
   useEffect(() => {
     const unsub = window.clui.onWindowShown(() => {
+      const active = document.activeElement
+      if (active && active.closest('.xterm')) return
       textareaRef.current?.focus()
     })
     return unsub
