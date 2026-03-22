@@ -14,6 +14,7 @@ import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
 import type { RunOptions, NormalizedEvent, EnrichedError } from '../shared/types'
 import { TerminalManager } from './terminal-manager'
+import { isValidProjectPath, isValidSessionId, validateExternalUrl, buildTerminalCommand } from './ipc-validation'
 
 const gitExec = promisify(execFileCb)
 
@@ -517,6 +518,10 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
   log(`IPC LIST_SESSIONS ${projectPath ? `(path=${projectPath})` : ''}`)
   try {
     const cwd = projectPath || process.cwd()
+    if (!isValidProjectPath(cwd)) {
+      log(`LIST_SESSIONS: rejected invalid projectPath: ${cwd}`)
+      return []
+    }
     // Claude stores project sessions at ~/.claude/projects/<encoded-path>/
     // Path encoding: replace all '/' with '-' (leading '/' becomes leading '-')
     const encodedPath = cwd.replace(/\//g, '-')
@@ -652,7 +657,15 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
   const projectPath = typeof arg === 'string' ? undefined : arg.projectPath
   log(`IPC LOAD_SESSION ${sessionId}${projectPath ? ` (path=${projectPath})` : ''}`)
   try {
+    if (!isValidSessionId(sessionId)) {
+      log(`LOAD_SESSION: rejected invalid sessionId: ${sessionId}`)
+      return []
+    }
     const cwd = projectPath || process.cwd()
+    if (!isValidProjectPath(cwd)) {
+      log(`LOAD_SESSION: rejected invalid projectPath: ${cwd}`)
+      return []
+    }
     const encodedPath = cwd.replace(/\//g, '-')
     const filePath = join(homedir(), '.claude', 'projects', encodedPath, `${sessionId}.jsonl`)
     if (!existsSync(filePath)) return []
@@ -795,10 +808,10 @@ ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
 })
 
 ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
+  const validUrl = validateExternalUrl(url)
+  if (!validUrl) return false
   try {
-    // Only allow http(s) links from markdown content.
-    if (!/^https?:\/\//i.test(url)) return false
-    await shell.openExternal(url)
+    await shell.openExternal(validUrl)
     return true
   } catch {
     return false
@@ -1139,14 +1152,19 @@ ipcMain.handle(IPC.OPEN_IN_TERMINAL, (_event, arg: string | null | { sessionId?:
     projectPath = arg.projectPath && arg.projectPath !== '~' ? arg.projectPath : process.cwd()
   }
 
-  // Escape for AppleScript: double quotes → backslash-escaped, backslashes doubled
-  const projectDir = projectPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  let cmd: string
-  if (sessionId) {
-    cmd = `cd \\"${projectDir}\\" && ${claudeBin} --resume ${sessionId}`
-  } else {
-    cmd = `cd \\"${projectDir}\\" && ${claudeBin}`
+  // Validate sessionId
+  if (sessionId && !isValidSessionId(sessionId)) {
+    log(`OPEN_IN_TERMINAL: rejected invalid sessionId: ${sessionId}`)
+    return false
   }
+
+  // Sanitize projectPath
+  if (!isValidProjectPath(projectPath)) {
+    log(`OPEN_IN_TERMINAL: rejected invalid projectPath: ${projectPath}`)
+    return false
+  }
+
+  const cmd = buildTerminalCommand(projectPath, claudeBin, sessionId)
 
   const script = `tell application "Terminal"
   activate
