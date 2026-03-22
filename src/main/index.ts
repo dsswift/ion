@@ -154,6 +154,7 @@ function createWindow(): void {
       message: hasRunning
         ? 'Sessions are still running. Quitting will stop them.'
         : 'Are you sure you want to quit?',
+      detail: 'Tip: Press ⌥Space to hide/show the app without quitting.',
     })
     if (choice === 0) {
       forceQuit = true
