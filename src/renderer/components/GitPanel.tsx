@@ -983,18 +983,25 @@ export function GitPanel() {
   const splitRatio = useThemeStore((s) => s.gitPanelSplitRatio)
   const setSplitRatio = useThemeStore((s) => s.setGitPanelSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
+  const prevSignatureRef = useRef<string>('')
 
   const refresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
   }, [])
 
-  // Load changes
+  // Load changes (auto-refresh every 5s, also triggers graph reload on change)
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
         const result = await window.coda.gitChanges(directory)
-        if (!cancelled) setFiles(result.files)
+        if (cancelled) return
+        setFiles(result.files)
+        const sig = result.branch + '\n' + result.files.map((f) => f.status + f.path).join('\n')
+        if (prevSignatureRef.current && sig !== prevSignatureRef.current) {
+          setRefreshKey((k) => k + 1)
+        }
+        prevSignatureRef.current = sig
       } catch {}
     }
     load()
