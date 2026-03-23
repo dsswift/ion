@@ -887,7 +887,8 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) => {
         if (t.id !== activeTabId) return t
-        const title = t.messages.length === 0
+        const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
+        const title = needsTitle
           ? (command.length > 30 ? command.substring(0, 27) + '...' : command)
           : t.title
         return {
@@ -1061,7 +1062,8 @@ export const useSessionStore = create<State>((set, get) => ({
       fullPrompt = `${attachmentCtx}\n\n${fullPrompt}`
     }
 
-    const title = tab.messages.length === 0
+    const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
+    const title = needsTitle
       ? (prompt.length > 30 ? prompt.substring(0, 27) + '...' : prompt)
       : tab.title
 
