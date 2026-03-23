@@ -15,6 +15,48 @@ interface StaticInfo {
   homePath: string
 }
 
+// ─── File Editor Types ───
+
+export interface FileEditorTab {
+  id: string
+  filePath: string | null
+  fileName: string
+  content: string
+  savedContent: string
+  isDirty: boolean
+  isReadOnly: boolean
+  isPreview: boolean
+}
+
+export interface FileEditorDirState {
+  activeFileId: string | null
+  files: FileEditorTab[]
+}
+
+/** Extensions that open editable by default */
+const EDITABLE_EXTS = new Set(['.md', '.txt'])
+
+/** Extensions that should NOT open in the editor (native app only) */
+const NON_TEXT_EXTS = new Set([
+  '.csv', '.docx', '.xlsx', '.pptx', '.pdf', '.png', '.jpg', '.jpeg', '.gif',
+  '.svg', '.ico', '.bmp', '.webp', '.tiff', '.zip', '.tar', '.gz', '.7z',
+  '.rar', '.dmg', '.app', '.exe', '.dll', '.so', '.dylib', '.woff', '.woff2',
+  '.ttf', '.otf', '.eot', '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+])
+
+export function isTextFile(name: string): boolean {
+  const ext = name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : ''
+  return !NON_TEXT_EXTS.has(ext)
+}
+
+function isEditableByDefault(name: string): boolean {
+  const ext = name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : ''
+  return EDITABLE_EXTS.has(ext)
+}
+
+let editorFileCounter = 0
+const nextEditorFileId = () => `ef-${++editorFileCounter}`
+
 interface State {
   tabs: TabState[]
   activeTabId: string
@@ -28,6 +70,16 @@ interface State {
   gitPanelOpen: boolean
   /** Tab IDs with their terminal panel visible */
   terminalOpenTabIds: Set<string>
+  /** Tab IDs with file explorer visible */
+  fileExplorerOpenTabIds: Set<string>
+  /** Per-directory explorer state (expanded nodes, selection). Key = working directory path */
+  fileExplorerStates: Map<string, { expandedPaths: Set<string>; selectedPath: string | null }>
+  /** Tab IDs with file editor visible */
+  fileEditorOpenTabIds: Set<string>
+  /** Whether file editor floating window is in the foreground */
+  fileEditorFocused: boolean
+  /** Per-directory editor state (open files, active file). Key = working directory path */
+  fileEditorStates: Map<string, FileEditorDirState>
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
 
@@ -63,6 +115,22 @@ interface State {
   toggleGitPanel: () => void
   closeGitPanel: () => void
   toggleTerminal: (tabId: string) => void
+  toggleFileExplorer: (tabId: string) => void
+  setFileExplorerExpanded: (dir: string, path: string, expanded: boolean) => void
+  setFileExplorerSelected: (dir: string, path: string | null) => void
+  collapseAllExplorer: (dir: string) => void
+  toggleFileEditor: (tabId: string) => void
+  focusFileEditor: () => void
+  blurFileEditor: () => void
+  openFileInEditor: (dir: string, tabId: string, filePath: string) => void
+  closeFileEditorTab: (dir: string, fileId: string) => void
+  setActiveEditorFile: (dir: string, fileId: string) => void
+  createScratchFile: (dir: string) => void
+  updateEditorContent: (dir: string, fileId: string, content: string) => void
+  markEditorSaved: (dir: string, fileId: string, filePath: string) => void
+  reorderEditorFiles: (dir: string, reordered: FileEditorTab[]) => void
+  toggleEditorPreview: (dir: string, fileId: string) => void
+  toggleEditorReadOnly: (dir: string, fileId: string) => void
   loadMarketplace: (forceRefresh?: boolean) => Promise<void>
   setMarketplaceSearch: (query: string) => void
   setMarketplaceFilter: (filter: string) => void
@@ -144,6 +212,11 @@ export const useSessionStore = create<State>((set, get) => ({
   preferredModel: null,
   gitPanelOpen: false,
   terminalOpenTabIds: new Set<string>(),
+  fileExplorerOpenTabIds: new Set<string>(),
+  fileExplorerStates: new Map(),
+  fileEditorOpenTabIds: new Set<string>(),
+  fileEditorFocused: true,
+  fileEditorStates: new Map(),
   tabsReady: false,
 
   // Settings dialog
@@ -303,6 +376,253 @@ export const useSessionStore = create<State>((set, get) => ({
     set({ gitPanelOpen: false })
   },
 
+  // ─── File Explorer Actions ───
+
+  toggleFileExplorer: (tabId) => {
+    set((s) => {
+      const next = new Set(s.fileExplorerOpenTabIds)
+      if (next.has(tabId)) next.delete(tabId)
+      else next.add(tabId)
+      return { fileExplorerOpenTabIds: next }
+    })
+  },
+
+  setFileExplorerExpanded: (dir, path, expanded) => {
+    set((s) => {
+      const states = new Map(s.fileExplorerStates)
+      const current = states.get(dir) || { expandedPaths: new Set<string>(), selectedPath: null }
+      const expandedPaths = new Set(current.expandedPaths)
+      if (expanded) expandedPaths.add(path)
+      else expandedPaths.delete(path)
+      states.set(dir, { ...current, expandedPaths })
+      return { fileExplorerStates: states }
+    })
+  },
+
+  setFileExplorerSelected: (dir, path) => {
+    set((s) => {
+      const states = new Map(s.fileExplorerStates)
+      const current = states.get(dir) || { expandedPaths: new Set<string>(), selectedPath: null }
+      states.set(dir, { ...current, selectedPath: path })
+      return { fileExplorerStates: states }
+    })
+  },
+
+  collapseAllExplorer: (dir) => {
+    set((s) => {
+      const states = new Map(s.fileExplorerStates)
+      const current = states.get(dir)
+      if (current) states.set(dir, { ...current, expandedPaths: new Set() })
+      return { fileExplorerStates: states }
+    })
+  },
+
+  // ─── File Editor Actions ───
+
+  toggleFileEditor: (tabId) => {
+    set((s) => {
+      const next = new Set(s.fileEditorOpenTabIds)
+      if (next.has(tabId)) {
+        next.delete(tabId)
+        return { fileEditorOpenTabIds: next }
+      }
+      next.add(tabId)
+      // Bring editor to front when toggling on
+      set({ fileEditorFocused: true })
+      // If no files open for this tab's directory, create a scratch .md file
+      const tab = s.tabs.find((t) => t.id === tabId)
+      const dir = tab?.workingDirectory
+      if (dir) {
+        const current = s.fileEditorStates.get(dir)
+        if (!current || current.files.length === 0) {
+          const states = new Map(s.fileEditorStates)
+          const id = nextEditorFileId()
+          const newFile: FileEditorTab = {
+            id,
+            filePath: null,
+            fileName: 'Untitled.md',
+            content: '',
+            savedContent: '',
+            isDirty: false,
+            isReadOnly: false,
+            isPreview: false,
+          }
+          states.set(dir, { activeFileId: id, files: [newFile] })
+          return { fileEditorOpenTabIds: next, fileEditorStates: states }
+        }
+      }
+      return { fileEditorOpenTabIds: next }
+    })
+  },
+
+  focusFileEditor: () => set({ fileEditorFocused: true }),
+  blurFileEditor: () => set({ fileEditorFocused: false }),
+
+  openFileInEditor: (dir, tabId, filePath) => {
+    const { closeExplorerOnFileOpen, openMarkdownInPreview } = useThemeStore.getState()
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir) || { activeFileId: null, files: [] }
+      // If file is already open, just activate it
+      const existing = current.files.find((f) => f.filePath === filePath)
+      if (existing) {
+        states.set(dir, { ...current, activeFileId: existing.id })
+      } else {
+        const fileName = filePath.split('/').pop() || filePath
+        const ext = fileName.includes('.') ? '.' + fileName.split('.').pop()!.toLowerCase() : ''
+        const isMd = ext === '.md'
+        const id = nextEditorFileId()
+        const newFile: FileEditorTab = {
+          id,
+          filePath,
+          fileName,
+          content: '',
+          savedContent: '',
+          isDirty: false,
+          isReadOnly: !isEditableByDefault(fileName),
+          isPreview: isMd && openMarkdownInPreview,
+        }
+        states.set(dir, { activeFileId: id, files: [...current.files, newFile] })
+      }
+      // Also make editor visible for this tab
+      const editorOpen = new Set(s.fileEditorOpenTabIds)
+      editorOpen.add(tabId)
+      // Close explorer if setting enabled
+      const result: Record<string, any> = { fileEditorStates: states, fileEditorOpenTabIds: editorOpen }
+      if (closeExplorerOnFileOpen) {
+        const explorerIds = new Set(s.fileExplorerOpenTabIds)
+        explorerIds.delete(tabId)
+        result.fileExplorerOpenTabIds = explorerIds
+      }
+      return result
+    })
+  },
+
+  closeFileEditorTab: (dir, fileId) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      const files = current.files.filter((f) => f.id !== fileId)
+      let activeFileId = current.activeFileId
+      if (activeFileId === fileId) {
+        activeFileId = files.length > 0 ? files[files.length - 1].id : null
+      }
+      states.set(dir, { activeFileId, files })
+      // If last file closed, also close the editor panel for all tabs sharing this dir
+      if (files.length === 0) {
+        const editorOpen = new Set(s.fileEditorOpenTabIds)
+        for (const tab of s.tabs) {
+          if (tab.workingDirectory === dir) editorOpen.delete(tab.id)
+        }
+        return { fileEditorStates: states, fileEditorOpenTabIds: editorOpen }
+      }
+      return { fileEditorStates: states }
+    })
+  },
+
+  setActiveEditorFile: (dir, fileId) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      states.set(dir, { ...current, activeFileId: fileId })
+      return { fileEditorStates: states }
+    })
+  },
+
+  createScratchFile: (dir) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir) || { activeFileId: null, files: [] }
+      const id = nextEditorFileId()
+      const newFile: FileEditorTab = {
+        id,
+        filePath: null,
+        fileName: 'Untitled',
+        content: '',
+        savedContent: '',
+        isDirty: false,
+        isReadOnly: false,
+        isPreview: false,
+      }
+      states.set(dir, { activeFileId: id, files: [...current.files, newFile] })
+      return { fileEditorStates: states }
+    })
+  },
+
+  updateEditorContent: (dir, fileId, content) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      states.set(dir, {
+        ...current,
+        files: current.files.map((f) =>
+          f.id === fileId ? { ...f, content, isDirty: content !== f.savedContent } : f
+        ),
+      })
+      return { fileEditorStates: states }
+    })
+  },
+
+  markEditorSaved: (dir, fileId, filePath) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      states.set(dir, {
+        ...current,
+        files: current.files.map((f) =>
+          f.id === fileId
+            ? { ...f, filePath, fileName: filePath.split('/').pop() || filePath, savedContent: f.content, isDirty: false }
+            : f
+        ),
+      })
+      return { fileEditorStates: states }
+    })
+  },
+
+  reorderEditorFiles: (dir, reordered) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      states.set(dir, { ...current, files: reordered })
+      return { fileEditorStates: states }
+    })
+  },
+
+  toggleEditorPreview: (dir, fileId) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      states.set(dir, {
+        ...current,
+        files: current.files.map((f) =>
+          f.id === fileId ? { ...f, isPreview: !f.isPreview } : f
+        ),
+      })
+      return { fileEditorStates: states }
+    })
+  },
+
+  toggleEditorReadOnly: (dir, fileId) => {
+    set((s) => {
+      const states = new Map(s.fileEditorStates)
+      const current = states.get(dir)
+      if (!current) return {}
+      states.set(dir, {
+        ...current,
+        files: current.files.map((f) =>
+          f.id === fileId ? { ...f, isReadOnly: !f.isReadOnly } : f
+        ),
+      })
+      return { fileEditorStates: states }
+    })
+  },
+
   loadMarketplace: async (forceRefresh) => {
     set({ marketplaceLoading: true, marketplaceError: null })
     try {
@@ -391,6 +711,19 @@ export const useSessionStore = create<State>((set, get) => ({
       const next = new Set(termIds)
       next.delete(tabId)
       set({ terminalOpenTabIds: next })
+    }
+    // Clean up file explorer/editor visibility
+    const explorerIds = get().fileExplorerOpenTabIds
+    if (explorerIds.has(tabId)) {
+      const next = new Set(explorerIds)
+      next.delete(tabId)
+      set({ fileExplorerOpenTabIds: next })
+    }
+    const editorIds = get().fileEditorOpenTabIds
+    if (editorIds.has(tabId)) {
+      const next = new Set(editorIds)
+      next.delete(tabId)
+      set({ fileEditorOpenTabIds: next })
     }
 
     const s = get()
@@ -1114,29 +1447,62 @@ function persistTabs(): void {
       ...(t.pillColor ? { pillColor: t.pillColor } : {}),
     }))
 
+  // Serialize editor states (per-directory, includes unsaved content)
+  const { fileEditorStates } = useSessionStore.getState()
+  const editorStates: Record<string, any> = {}
+  for (const [dir, dirState] of fileEditorStates) {
+    if (dirState.files.length > 0) {
+      editorStates[dir] = {
+        activeFileId: dirState.activeFileId,
+        files: dirState.files.map((f) => ({
+          filePath: f.filePath,
+          fileName: f.fileName,
+          content: f.content,
+          savedContent: f.savedContent,
+          isDirty: f.isDirty,
+          isReadOnly: f.isReadOnly,
+          isPreview: f.isPreview,
+        })),
+      }
+    }
+  }
+
   const data: PersistedTabState = {
     activeSessionId: activeTab?.claudeSessionId || null,
     tabs: persistedTabs,
+    editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
   }
   window.clui.saveTabs(data)
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 useSessionStore.subscribe((state, prev) => {
-  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId) {
+  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates) {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(persistTabs, 100)
   }
 })
 
-// Close terminal panel when conversation collapses (regardless of which code path collapsed it)
+// Close terminal, explorer, and git panel when conversation collapses
 useSessionStore.subscribe((state, prev) => {
   if (prev.isExpanded && !state.isExpanded) {
-    const { activeTabId, terminalOpenTabIds } = state
+    const { activeTabId, terminalOpenTabIds, fileExplorerOpenTabIds } = state
+    const updates: Record<string, any> = {}
     if (terminalOpenTabIds.has(activeTabId)) {
       const next = new Set(terminalOpenTabIds)
       next.delete(activeTabId)
-      useSessionStore.setState({ terminalOpenTabIds: next })
+      updates.terminalOpenTabIds = next
+    }
+    if (fileExplorerOpenTabIds.has(activeTabId)) {
+      const next = new Set(fileExplorerOpenTabIds)
+      next.delete(activeTabId)
+      updates.fileExplorerOpenTabIds = next
+    }
+    if (state.gitPanelOpen) {
+      updates.gitPanelOpen = false
+    }
+    if (Object.keys(updates).length > 0) {
+      useSessionStore.setState(updates)
     }
   }
 })

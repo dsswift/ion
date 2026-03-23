@@ -128,12 +128,6 @@ export function FloatingPanel({
         }}
         onMouseDown={handleDragStart}
       >
-        <span
-          className="text-[11px] truncate"
-          style={{ color: colors.textSecondary, fontFamily: 'monospace' }}
-        >
-          {title}
-        </span>
         <button
           onClick={onClose}
           className="flex-shrink-0 p-0.5 rounded transition-colors"
@@ -142,6 +136,12 @@ export function FloatingPanel({
         >
           <X size={12} />
         </button>
+        <span
+          className="text-[11px] truncate"
+          style={{ color: colors.textSecondary, fontFamily: 'monospace' }}
+        >
+          {title}
+        </span>
       </div>
 
       {/* Content area */}

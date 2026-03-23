@@ -9,6 +9,8 @@ import { StatusBar } from './components/StatusBar'
 import { MarketplacePanel } from './components/MarketplacePanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
+import { FileExplorer } from './components/FileExplorer'
+import { FileEditor } from './components/FileEditor'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { useClaudeEvents } from './hooks/useClaudeEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
@@ -103,6 +105,31 @@ export default function App() {
           }))
         }
 
+        // Restore editor states (per-directory)
+        if (saved.editorStates) {
+          const restoredEditorStates = new Map<string, any>()
+          for (const [dir, dirState] of Object.entries(saved.editorStates as Record<string, any>)) {
+            if (dirState && dirState.files && dirState.files.length > 0) {
+              let fileIdCounter = 0
+              const files = dirState.files.map((f: any) => ({
+                id: `restored-${dir}-${fileIdCounter++}`,
+                filePath: f.filePath,
+                fileName: f.fileName,
+                content: f.content || '',
+                savedContent: f.savedContent || '',
+                isDirty: f.isDirty || false,
+                isReadOnly: f.isReadOnly || false,
+                isPreview: f.isPreview || false,
+              }))
+              const activeFileId = files.length > 0 ? files[0].id : null
+              restoredEditorStates.set(dir, { activeFileId, files })
+            }
+          }
+          if (restoredEditorStates.size > 0) {
+            useSessionStore.setState({ fileEditorStates: restoredEditorStates })
+          }
+        }
+
         // Auto-expand if setting enabled, otherwise stay collapsed
         const expandOnSwitch = useThemeStore.getState().expandOnTabSwitch
         useSessionStore.setState({ isExpanded: expandOnSwitch, tabsReady: true })
@@ -174,13 +201,48 @@ export default function App() {
     }
   }, [])
 
+  // ─── Keyboard shortcuts for file explorer / editor ───
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === '1') {
+        e.preventDefault()
+        const id = useSessionStore.getState().activeTabId
+        useSessionStore.getState().toggleFileExplorer(id)
+      }
+      if (e.metaKey && e.key === 'e') {
+        e.preventDefault()
+        const id = useSessionStore.getState().activeTabId
+        useSessionStore.getState().toggleFileEditor(id)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
+
   const isExpanded = useSessionStore((s) => s.isExpanded)
   const marketplaceOpen = useSessionStore((s) => s.marketplaceOpen)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const terminalOpen = useSessionStore((s) => s.terminalOpenTabIds.has(s.activeTabId))
+  const explorerOpen = useSessionStore((s) => s.fileExplorerOpenTabIds.has(s.activeTabId))
+  const editorOpen = useSessionStore((s) => s.fileEditorOpenTabIds.has(s.activeTabId))
+  const editorDirState = useSessionStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId)
+    return tab ? s.fileEditorStates.get(tab.workingDirectory) : undefined
+  })
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
+
+  // When editor is open for this tab but the current dir has no files
+  // (e.g. base directory changed), auto-create a scratch file so the editor stays visible
+  useEffect(() => {
+    if (!editorOpen || !activeTab) return
+    const dir = activeTab.workingDirectory
+    const dirState = useSessionStore.getState().fileEditorStates.get(dir)
+    if (!dirState || dirState.files.length === 0) {
+      useSessionStore.getState().createScratchFile(dir)
+    }
+  }, [editorOpen, activeTab?.workingDirectory])
 
   // Layout dimensions — expandedUI widens and heightens the panel
   const contentWidth = expandedUI ? 700 : spacing.contentWidth
@@ -188,6 +250,12 @@ export default function App() {
   const cardCollapsedWidth = expandedUI ? 670 : 430
   const cardCollapsedMargin = expandedUI ? 15 : 15
   const bodyMaxHeight = expandedUI ? 520 : 400
+
+  const handleMainUIMouseDown = useCallback(() => {
+    if (useSessionStore.getState().fileEditorFocused) {
+      useSessionStore.getState().blurFileEditor()
+    }
+  }, [])
 
   const handleScreenshot = useCallback(async () => {
     const result = await window.clui.takeScreenshot()
@@ -206,7 +274,7 @@ export default function App() {
       <div className="flex flex-col justify-end h-full" style={{ background: 'transparent' }}>
 
         {/* ─── 460px content column, centered. Circles overflow left. ─── */}
-        <div style={{ width: contentWidth, position: 'relative', margin: '0 auto', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
+        <div onMouseDown={handleMainUIMouseDown} style={{ width: contentWidth, position: 'relative', margin: '0 auto', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
 
           <AnimatePresence initial={false}>
             {marketplaceOpen && (
@@ -376,6 +444,28 @@ export default function App() {
               <InputBar />
             </div>
           </div>
+          {/* File explorer — anchored to left edge of content column */}
+          <AnimatePresence>
+            {explorerOpen && (
+              <motion.div
+                data-clui-ui
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={TRANSITION}
+                style={{
+                  position: 'absolute',
+                  right: '100%',
+                  bottom: 60,
+                  marginRight: 8,
+                  width: 240,
+                  zIndex: 25,
+                }}
+              >
+                <FileExplorer />
+              </motion.div>
+            )}
+          </AnimatePresence>
           {/* Git side panel — anchored to right edge of content column */}
           <AnimatePresence>
             {gitPanelOpen && (
@@ -399,6 +489,11 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* File editor floating panel */}
+        {editorOpen && editorDirState && editorDirState.files.length > 0 && activeTab && (
+          <FileEditor dir={activeTab.workingDirectory} tabId={activeTabId} />
+        )}
       </div>
     </PopoverLayerProvider>
   )

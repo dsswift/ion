@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
 import { join } from 'path'
-import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
@@ -1590,6 +1590,122 @@ ipcMain.handle(IPC.GIT_DISCARD, async (_event, { directory, paths }: { directory
 ipcMain.handle(IPC.GIT_DELETE_BRANCH, async (_event, { directory, branch }: { directory: string; branch: string }) => {
   try {
     await runGit(directory, ['branch', '-d', branch])
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+// ─── Filesystem Operations ───
+
+ipcMain.handle(IPC.FS_READ_DIR, async (_event, { directory }: { directory: string }) => {
+  if (!isValidProjectPath(directory)) return { entries: [], error: 'Invalid path' }
+  try {
+    const dirents = readdirSync(directory, { withFileTypes: true })
+    const entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }> = []
+    for (const d of dirents) {
+      if (d.name === '.DS_Store') continue
+      const fullPath = join(directory, d.name)
+      try {
+        const st = statSync(fullPath)
+        entries.push({ name: d.name, path: fullPath, isDirectory: d.isDirectory(), size: st.size, modifiedMs: st.mtimeMs })
+      } catch {
+        // skip entries we can't stat (broken symlinks, permission errors)
+      }
+    }
+    // Sort: directories first, then alphabetical case-insensitive
+    entries.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+    return { entries }
+  } catch (err: any) {
+    return { entries: [], error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_READ_FILE, async (_event, { filePath }: { filePath: string }) => {
+  if (!isValidProjectPath(filePath)) return { content: null, error: 'Invalid path' }
+  try {
+    const st = statSync(filePath)
+    if (st.size > 2 * 1024 * 1024) return { content: null, error: 'File too large (>2MB)' }
+    const buf = readFileSync(filePath)
+    // Check for binary content (null bytes in first 8KB)
+    const check = buf.subarray(0, Math.min(8192, buf.length))
+    if (check.includes(0)) return { content: null, error: 'Binary file' }
+    return { content: buf.toString('utf-8') }
+  } catch (err: any) {
+    return { content: null, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_WRITE_FILE, async (_event, { filePath, content }: { filePath: string; content: string }) => {
+  if (!isValidProjectPath(filePath)) return { ok: false, error: 'Invalid path' }
+  try {
+    writeFileSync(filePath, content, 'utf-8')
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_CREATE_DIR, async (_event, { dirPath }: { dirPath: string }) => {
+  if (!isValidProjectPath(dirPath)) return { ok: false, error: 'Invalid path' }
+  try {
+    mkdirSync(dirPath, { recursive: true })
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_CREATE_FILE, async (_event, { filePath }: { filePath: string }) => {
+  if (!isValidProjectPath(filePath)) return { ok: false, error: 'Invalid path' }
+  try {
+    if (existsSync(filePath)) return { ok: false, error: 'File already exists' }
+    writeFileSync(filePath, '', 'utf-8')
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_RENAME, async (_event, { oldPath, newPath }: { oldPath: string; newPath: string }) => {
+  if (!isValidProjectPath(oldPath) || !isValidProjectPath(newPath)) return { ok: false, error: 'Invalid path' }
+  try {
+    renameSync(oldPath, newPath)
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_DELETE, async (_event, { targetPath }: { targetPath: string }) => {
+  if (!isValidProjectPath(targetPath)) return { ok: false, error: 'Invalid path' }
+  try {
+    rmSync(targetPath, { recursive: true, force: true })
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_SAVE_DIALOG, async (_event, { defaultPath }: { defaultPath?: string }) => {
+  if (!mainWindow) return { filePath: null }
+  const result = await dialog.showSaveDialog(mainWindow, { defaultPath: defaultPath || undefined })
+  return { filePath: result.canceled ? null : result.filePath || null }
+})
+
+ipcMain.handle(IPC.FS_REVEAL_IN_FINDER, async (_event, { targetPath }: { targetPath: string }) => {
+  if (!isValidProjectPath(targetPath)) return
+  shell.showItemInFolder(targetPath)
+})
+
+ipcMain.handle(IPC.FS_OPEN_NATIVE, async (_event, { targetPath }: { targetPath: string }) => {
+  if (!isValidProjectPath(targetPath)) return { ok: false, error: 'Invalid path' }
+  try {
+    const err = await shell.openPath(targetPath)
+    if (err) return { ok: false, error: err }
     return { ok: true }
   } catch (err: any) {
     return { ok: false, error: err.message }

@@ -408,6 +408,18 @@ export const IPC = {
   GIT_DISCARD: 'clui:git-discard',
   GIT_DELETE_BRANCH: 'clui:git-delete-branch',
 
+  // Filesystem operations
+  FS_READ_DIR: 'clui:fs-read-dir',
+  FS_READ_FILE: 'clui:fs-read-file',
+  FS_WRITE_FILE: 'clui:fs-write-file',
+  FS_CREATE_DIR: 'clui:fs-create-dir',
+  FS_CREATE_FILE: 'clui:fs-create-file',
+  FS_RENAME: 'clui:fs-rename',
+  FS_DELETE: 'clui:fs-delete',
+  FS_SAVE_DIALOG: 'clui:fs-save-dialog',
+  FS_REVEAL_IN_FINDER: 'clui:fs-reveal-in-finder',
+  FS_OPEN_NATIVE: 'clui:fs-open-native',
+
   // Fonts
   LIST_FONTS: 'clui:list-fonts',
 
@@ -443,9 +455,26 @@ export interface PersistedTab {
   pillColor?: string | null
 }
 
+export interface PersistedEditorFile {
+  filePath: string | null
+  fileName: string
+  content: string
+  savedContent: string
+  isDirty: boolean
+  isReadOnly: boolean
+  isPreview: boolean
+}
+
+export interface PersistedEditorState {
+  activeFileId: string | null
+  files: PersistedEditorFile[]
+}
+
 export interface PersistedTabState {
   activeSessionId: string | null
   tabs: PersistedTab[]
+  /** Per-directory editor state. Key = working directory path */
+  editorStates?: Record<string, PersistedEditorState>
 }
 
 // ─── Git Types ───
@@ -490,4 +519,14 @@ export interface GitBranchInfo {
   isCurrent: boolean
   upstream: string | null
   isRemote: boolean
+}
+
+// ─── Filesystem Types ───
+
+export interface FsEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+  size: number
+  modifiedMs: number
 }

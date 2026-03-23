@@ -19,6 +19,10 @@ export function GeneralTab() {
   const setBashCommandEntry = useThemeStore((s) => s.setBashCommandEntry)
   const soundEnabled = useThemeStore((s) => s.soundEnabled)
   const setSoundEnabled = useThemeStore((s) => s.setSoundEnabled)
+  const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
+  const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
+  const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
+  const setOpenMarkdownInPreview = useThemeStore((s) => s.setOpenMarkdownInPreview)
 
   const handleBrowse = async () => {
     const dir = await window.clui.selectDirectory()
@@ -161,6 +165,23 @@ export function GeneralTab() {
         description="Play a sound when a task completes."
         checked={soundEnabled}
         onChange={setSoundEnabled}
+      />
+
+      {/* ── File Explorer / Editor ── */}
+      <SettingHeading>File Explorer</SettingHeading>
+
+      <SettingToggle
+        label="Close Explorer on File Open"
+        description="Automatically close the file explorer when a file is opened in the editor."
+        checked={closeExplorerOnFileOpen}
+        onChange={setCloseExplorerOnFileOpen}
+      />
+
+      <SettingToggle
+        label="Open Markdown in Preview"
+        description="Open saved .md files in preview mode by default. New unsaved files always open in edit mode."
+        checked={openMarkdownInPreview}
+        onChange={setOpenMarkdownInPreview}
       />
     </>
   )

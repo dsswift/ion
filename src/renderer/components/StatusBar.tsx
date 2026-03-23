@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code } from '@phosphor-icons/react'
+import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil } from '@phosphor-icons/react'
 import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
@@ -433,6 +433,11 @@ export function StatusBar() {
   const setBaseDirectory = useSessionStore((s) => s.setBaseDirectory)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const toggleGitPanel = useSessionStore((s) => s.toggleGitPanel)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const explorerOpen = useSessionStore((s) => s.fileExplorerOpenTabIds.has(s.activeTabId))
+  const toggleFileExplorer = useSessionStore((s) => s.toggleFileExplorer)
+  const editorOpen = useSessionStore((s) => s.fileEditorOpenTabIds.has(s.activeTabId))
+  const toggleFileEditor = useSessionStore((s) => s.toggleFileEditor)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -520,8 +525,27 @@ export function StatusBar() {
       className="flex items-center justify-between px-4 py-1.5"
       style={{ minHeight: 28 }}
     >
-      {/* Left — directory + model picker */}
+      {/* Left — explorer/editor toggles + directory + model picker */}
       <div className="flex items-center gap-2 text-[11px] min-w-0" style={{ color: colors.textTertiary }}>
+        {/* File explorer toggle */}
+        <button
+          onClick={() => toggleFileExplorer(activeTabId)}
+          className="flex items-center rounded-full px-1 py-0.5 transition-colors flex-shrink-0"
+          style={{ color: explorerOpen ? colors.accent : colors.textTertiary, cursor: 'pointer' }}
+          title={explorerOpen ? 'Close file explorer (⌘1)' : 'Open file explorer (⌘1)'}
+        >
+          <TreeStructure size={11} />
+        </button>
+        {/* File editor toggle */}
+        <button
+          onClick={() => toggleFileEditor(activeTabId)}
+          className="flex items-center rounded-full px-1 py-0.5 transition-colors flex-shrink-0"
+          style={{ color: editorOpen ? colors.accent : colors.textTertiary, cursor: 'pointer' }}
+          title={editorOpen ? 'Close file editor (⌘E)' : 'Open file editor (⌘E)'}
+        >
+          <NotePencil size={11} />
+        </button>
+        <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
         {/* Directory button */}
         <button
           ref={dirRef}

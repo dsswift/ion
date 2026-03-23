@@ -1052,7 +1052,17 @@ export function GitPanel() {
           flexShrink: 0,
         }}
       >
-        <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>Git</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={() => useSessionStore.getState().closeGitPanel()}
+            className="flex items-center justify-center rounded transition-colors"
+            style={{ color: colors.textTertiary, cursor: 'pointer', padding: 1 }}
+            title="Close git panel"
+          >
+            <X size={11} />
+          </button>
+          <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>Git</span>
+        </div>
         <button
           onClick={refresh}
           className="p-0.5 rounded transition-colors"

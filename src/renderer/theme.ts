@@ -304,6 +304,9 @@ interface ThemeState {
   expandToolResults: boolean
   terminalFontFamily: string
   terminalFontSize: number
+  closeExplorerOnFileOpen: boolean
+  openMarkdownInPreview: boolean
+  editorWordWrap: boolean
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
@@ -323,6 +326,9 @@ interface ThemeState {
   setExpandToolResults: (enabled: boolean) => void
   setTerminalFontFamily: (font: string) => void
   setTerminalFontSize: (size: number) => void
+  setCloseExplorerOnFileOpen: (enabled: boolean) => void
+  setOpenMarkdownInPreview: (enabled: boolean) => void
+  setEditorWordWrap: (enabled: boolean) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -346,7 +352,7 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13 }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true }
 
 function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; expandOnTabSwitch: boolean; bashCommandEntry: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean; expandToolResults: boolean; terminalFontFamily: string; terminalFontSize: number }): void {
   window.clui?.saveSettings(s)
@@ -378,6 +384,9 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   expandToolResults: saved.expandToolResults,
   terminalFontFamily: saved.terminalFontFamily,
   terminalFontSize: saved.terminalFontSize,
+  closeExplorerOnFileOpen: saved.closeExplorerOnFileOpen,
+  openMarkdownInPreview: saved.openMarkdownInPreview,
+  editorWordWrap: saved.editorWordWrap,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -449,6 +458,18 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ terminalFontSize: size })
     saveSettings(getAllSettings(get))
   },
+  setCloseExplorerOnFileOpen: (enabled) => {
+    set({ closeExplorerOnFileOpen: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setOpenMarkdownInPreview: (enabled) => {
+    set({ openMarkdownInPreview: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setEditorWordWrap: (enabled) => {
+    set({ editorWordWrap: enabled })
+    saveSettings(getAllSettings(get))
+  },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -482,7 +503,10 @@ window.clui?.loadSettings().then((disk) => {
   const expandTools = typeof disk.expandToolResults === 'boolean' ? disk.expandToolResults : false
   const termFont = typeof disk.terminalFontFamily === 'string' ? disk.terminalFontFamily : 'Menlo, Monaco, monospace'
   const termSize = typeof disk.terminalFontSize === 'number' ? disk.terminalFontSize : 13
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize })
+  const closeExplorer = typeof disk.closeExplorerOnFileOpen === 'boolean' ? disk.closeExplorerOnFileOpen : true
+  const mdPreview = typeof disk.openMarkdownInPreview === 'boolean' ? disk.openMarkdownInPreview : true
+  const wordWrap = typeof disk.editorWordWrap === 'boolean' ? disk.editorWordWrap : true
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap })
   applyTheme(resolved)
 })
 

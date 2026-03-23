@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry } from '../shared/types'
 import type { DiscoveredCommand } from '../main/claude/command-discovery'
 
 export interface CluiAPI {
@@ -67,6 +67,18 @@ export interface CluiAPI {
   gitUnstage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDiscard(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDeleteBranch(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
+
+  // ─── Filesystem operations ───
+  fsReadDir(directory: string): Promise<{ entries: FsEntry[]; error?: string }>
+  fsReadFile(filePath: string): Promise<{ content: string | null; error?: string }>
+  fsWriteFile(filePath: string, content: string): Promise<{ ok: boolean; error?: string }>
+  fsCreateDir(dirPath: string): Promise<{ ok: boolean; error?: string }>
+  fsCreateFile(filePath: string): Promise<{ ok: boolean; error?: string }>
+  fsRename(oldPath: string, newPath: string): Promise<{ ok: boolean; error?: string }>
+  fsDelete(targetPath: string): Promise<{ ok: boolean; error?: string }>
+  fsSaveDialog(defaultPath?: string): Promise<{ filePath: string | null }>
+  fsRevealInFinder(targetPath: string): Promise<void>
+  fsOpenNative(targetPath: string): Promise<{ ok: boolean; error?: string }>
 
   // ─── Window management ───
   resizeHeight(height: number): void
@@ -165,6 +177,18 @@ const api: CluiAPI = {
   gitUnstage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_UNSTAGE, { directory, paths }),
   gitDiscard: (directory, paths) => ipcRenderer.invoke(IPC.GIT_DISCARD, { directory, paths }),
   gitDeleteBranch: (directory, branch) => ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { directory, branch }),
+
+  // ─── Filesystem operations ───
+  fsReadDir: (directory) => ipcRenderer.invoke(IPC.FS_READ_DIR, { directory }),
+  fsReadFile: (filePath) => ipcRenderer.invoke(IPC.FS_READ_FILE, { filePath }),
+  fsWriteFile: (filePath, content) => ipcRenderer.invoke(IPC.FS_WRITE_FILE, { filePath, content }),
+  fsCreateDir: (dirPath) => ipcRenderer.invoke(IPC.FS_CREATE_DIR, { dirPath }),
+  fsCreateFile: (filePath) => ipcRenderer.invoke(IPC.FS_CREATE_FILE, { filePath }),
+  fsRename: (oldPath, newPath) => ipcRenderer.invoke(IPC.FS_RENAME, { oldPath, newPath }),
+  fsDelete: (targetPath) => ipcRenderer.invoke(IPC.FS_DELETE, { targetPath }),
+  fsSaveDialog: (defaultPath) => ipcRenderer.invoke(IPC.FS_SAVE_DIALOG, { defaultPath }),
+  fsRevealInFinder: (targetPath) => ipcRenderer.invoke(IPC.FS_REVEAL_IN_FINDER, { targetPath }),
+  fsOpenNative: (targetPath) => ipcRenderer.invoke(IPC.FS_OPEN_NATIVE, { targetPath }),
 
   // ─── Window management ───
   resizeHeight: (height) => ipcRenderer.send(IPC.RESIZE_HEIGHT, height),
