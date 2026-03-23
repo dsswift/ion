@@ -421,7 +421,29 @@ export default function App() {
           })
         }
       }
-      if (e.metaKey && e.key === 'n') {
+      if (e.metaKey && !e.shiftKey && e.key === 'n') {
+        e.preventDefault()
+        const s = useSessionStore.getState()
+        const tab = s.tabs.find((t) => t.id === s.activeTabId)
+        if (!tab) return
+        const dir = tab.workingDirectory
+        if (s.fileEditorOpenTabIds.has(s.activeTabId)) {
+          s.createScratchFile(dir)
+        } else {
+          s.toggleFileEditor(s.activeTabId)
+        }
+      }
+      if (e.metaKey && e.shiftKey && e.key === 't') {
+        e.preventDefault()
+        const s = useSessionStore.getState()
+        const tab = s.tabs.find((t) => t.id === s.activeTabId)
+        if (tab?.workingDirectory) {
+          s.createTabInDirectory(tab.workingDirectory)
+        } else {
+          s.createTab()
+        }
+      }
+      if (e.metaKey && !e.shiftKey && e.key === 't') {
         e.preventDefault()
         useSessionStore.getState().createTab()
       }
