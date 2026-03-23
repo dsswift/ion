@@ -142,6 +142,15 @@ input::placeholder {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
+/* ─── Tab waiting-state border pulse ─── */
+@keyframes border-pulse {
+  0%, 100% { border-color: var(--border-waiting); }
+  50% { border-color: var(--border-default); }
+}
+.animate-border-pulse {
+  animation: border-pulse 2.5s ease-in-out infinite;
+}
+
 /* ─── Bouncing dots for thinking ─── */
 @keyframes bounce-dot {
   0%, 80%, 100% { transform: translateY(0); }

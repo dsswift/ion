@@ -144,6 +144,12 @@ const darkColors = {
   infoBorder: 'rgba(96, 165, 250, 0.25)',
   infoText: 'rgba(96, 165, 250, 0.85)',
   infoShadow: 'rgba(96, 165, 250, 0.06)',
+
+  // Tab waiting-state glows
+  tabGlowPlanReady: 'rgba(122, 172, 140, 0.5)',
+  tabGlowPlanReadyShadow: 'rgba(122, 172, 140, 0.25)',
+  tabGlowQuestion: 'rgba(96, 165, 250, 0.5)',
+  tabGlowQuestionShadow: 'rgba(96, 165, 250, 0.25)',
 } as const
 
 const lightColors = {
@@ -283,6 +289,12 @@ const lightColors = {
   infoBorder: 'rgba(96, 165, 250, 0.25)',
   infoText: 'rgba(59, 130, 246, 0.9)',
   infoShadow: 'rgba(96, 165, 250, 0.06)',
+
+  // Tab waiting-state glows
+  tabGlowPlanReady: 'rgba(90, 158, 111, 0.5)',
+  tabGlowPlanReadyShadow: 'rgba(90, 158, 111, 0.2)',
+  tabGlowQuestion: 'rgba(59, 130, 246, 0.5)',
+  tabGlowQuestionShadow: 'rgba(59, 130, 246, 0.2)',
 } as const
 
 export type ColorPalette = { [K in keyof typeof darkColors]: string }

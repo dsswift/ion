@@ -160,6 +160,7 @@ interface State {
   addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
+  setDraftInput: (tabId: string, text: string) => void
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
   handleStatusChange: (tabId: string, newStatus: string, oldStatus: string) => void
   handleError: (tabId: string, error: EnrichedError) => void
@@ -194,6 +195,7 @@ function makeLocalTab(): TabState {
     permissionQueue: [],
     permissionDenied: null,
     attachments: [],
+    draftInput: '',
     messages: [],
     title: 'New Tab',
     customTitle: null,
@@ -1236,6 +1238,14 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === activeTabId ? { ...t, attachments: [] } : t
+      ),
+    }))
+  },
+
+  setDraftInput: (tabId, text) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, draftInput: text } : t
       ),
     }))
   },

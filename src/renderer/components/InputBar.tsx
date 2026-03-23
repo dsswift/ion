@@ -48,6 +48,7 @@ export function InputBar() {
   const completeBashCommand = useSessionStore((s) => s.completeBashCommand)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const removeAttachment = useSessionStore((s) => s.removeAttachment)
+  const setDraftInput = useSessionStore((s) => s.setDraftInput)
 
   const setPreferredModel = useSessionStore((s) => s.setPreferredModel)
   const staticInfo = useSessionStore((s) => s.staticInfo)
@@ -83,7 +84,20 @@ export function InputBar() {
     group: dc.scope === 'project' ? 'project' as const : 'user' as const,
   }))
 
+  // ─── Per-tab draft input sync ───
+  // Save current input to departing tab, restore arriving tab's draft
+  const prevTabIdRef = useRef(activeTabId)
   useEffect(() => {
+    const prevId = prevTabIdRef.current
+    if (prevId && prevId !== activeTabId) {
+      // Save what was typed to the tab we're leaving
+      setDraftInput(prevId, input)
+      // Load the arriving tab's draft
+      const arriving = useSessionStore.getState().tabs.find((t) => t.id === activeTabId)
+      setInput(arriving?.draftInput ?? '')
+      setSlashFilter(null)
+    }
+    prevTabIdRef.current = activeTabId
     textareaRef.current?.focus()
     setBashMode(false)
   }, [activeTabId])
@@ -293,6 +307,7 @@ export function InputBar() {
       const cwd = tab?.workingDirectory || '~'
       const execId = crypto.randomUUID()
       setInput('')
+      if (activeTabId) setDraftInput(activeTabId, '')
       setBashMode(false)
       if (textareaRef.current) {
         textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
@@ -328,6 +343,7 @@ export function InputBar() {
     if (!prompt && attachments.length === 0) return
     if (isConnecting) return
     setInput('')
+    if (activeTabId) setDraftInput(activeTabId, '')
     setSlashFilter(null)
     if (textareaRef.current) {
       textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`

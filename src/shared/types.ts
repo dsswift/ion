@@ -161,6 +161,8 @@ export interface TabState {
   /** Fallback card when tools were denied and no interactive permission is available */
   permissionDenied: { tools: Array<{ toolName: string; toolUseId: string }> } | null
   attachments: FileAttachment[]
+  /** Draft input text for this tab's input bar (scoped per-tab) */
+  draftInput: string
   messages: Message[]
   title: string
   /** User-provided custom tab name (overrides auto-generated title when set) */

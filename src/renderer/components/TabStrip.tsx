@@ -27,7 +27,7 @@ const PILL_COLOR_PRESETS = [
   { color: '#c4a84d', label: 'Gold' },
 ] as const
 
-function StatusDot({ status, hasUnread, hasPermission, bashExecuting }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean; bashExecuting: boolean }) {
+function StatusDot({ status, hasUnread, hasPermission, bashExecuting, waitingState }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean; bashExecuting: boolean; waitingState: 'plan-ready' | 'question' | null }) {
   const colors = useColors()
   let bg: string = colors.statusIdle
   let pulse = false
@@ -39,6 +39,14 @@ function StatusDot({ status, hasUnread, hasPermission, bashExecuting }: { status
   } else if (hasPermission) {
     bg = colors.statusPermission
     glow = true
+  } else if (waitingState === 'plan-ready') {
+    bg = colors.statusComplete
+    glow = true
+    glowColor = colors.tabGlowPlanReady
+  } else if (waitingState === 'question') {
+    bg = colors.infoText
+    glow = true
+    glowColor = colors.tabGlowQuestion
   } else if (status === 'connecting' || status === 'running') {
     bg = colors.statusRunning
     pulse = true
@@ -558,6 +566,22 @@ function TabPill({
   const displayTitle = tab.customTitle || tab.title
   const hasCustomTitle = !!tab.customTitle
 
+  // Derive waiting-for-user state from permission denials
+  const waitingState: 'plan-ready' | 'question' | null = (() => {
+    const tools = tab.permissionDenied?.tools
+    if (!tools?.length) return null
+    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
+    if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
+    return null
+  })()
+
+  // Waiting-state border color (thin rim, no boxShadow bleed)
+  const waitingBorder = waitingState === 'plan-ready'
+    ? colors.tabGlowPlanReady
+    : waitingState === 'question'
+      ? colors.tabGlowQuestion
+      : null
+
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button === 1) { e.preventDefault(); if (!isRunning && !tab.bashExecuting) onClose(); return }
     if (e.button !== 0) return
@@ -601,18 +625,25 @@ function TabPill({
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onOpenTabMenu(tab.id, { x: e.clientX, y: e.clientY }) }}
       className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ${
         hasCustomTitle || isEditing || isConfirmingClose ? '' : 'max-w-[160px]'
-      }`}
+      } ${waitingBorder ? 'animate-border-pulse' : ''}`}
       style={{
-        background: isActive ? colors.tabActive : 'transparent',
-        border: tab.pillColor
-          ? `1px solid ${tab.pillColor}${isActive ? '' : '80'}`
-          : isActive ? `1px solid ${colors.tabActiveBorder}` : '1px solid transparent',
+        '--border-waiting': waitingBorder ?? 'transparent',
+        '--border-default': tab.pillColor
+          ? `${tab.pillColor}${isActive ? '40' : '25'}`
+          : isActive ? colors.tabActiveBorder : 'transparent',
+        background: tab.pillColor
+          ? `${tab.pillColor}${isActive ? '18' : '10'}`
+          : isActive ? colors.tabActive : 'transparent',
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: waitingBorder
+          ?? (tab.pillColor ? `${tab.pillColor}${isActive ? '40' : '25'}` : isActive ? colors.tabActiveBorder : 'transparent'),
         borderRadius: 9999,
         padding: '4px 10px',
         fontSize: 12,
         color: isActive ? colors.textPrimary : colors.textTertiary,
         fontWeight: isActive ? 500 : 400,
-      }}
+      } as React.CSSProperties}
     >
       <span
         className="flex-shrink-0 inline-flex"
@@ -622,7 +653,7 @@ function TabPill({
           onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
         }}
       >
-        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} />
+        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} />
       </span>
       {tab.worktree ? (
         <GitBranch size={11} color={colors.textTertiary} className="flex-shrink-0" />
