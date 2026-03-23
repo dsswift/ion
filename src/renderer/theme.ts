@@ -3,6 +3,7 @@
  * Colors derived from ChatCN oklch system and design-fixed.html reference.
  */
 import { create } from 'zustand'
+import type { GitOpsMode, WorktreeCompletionStrategy } from '../shared/types'
 
 // ─── Color palettes ───
 
@@ -312,6 +313,14 @@ interface ThemeState {
   closeExplorerOnFileOpen: boolean
   openMarkdownInPreview: boolean
   editorWordWrap: boolean
+  /** Git operations mode: manual (no automation) or worktree (managed per-tab worktrees) */
+  gitOpsMode: GitOpsMode
+  /** How to complete worktree work: merge --no-ff or push + PR */
+  worktreeCompletionStrategy: WorktreeCompletionStrategy
+  /** Map of repo path -> default source branch for worktree creation */
+  worktreeBranchDefaults: Record<string, string>
+  /** Skip the PR title dialog and always use auto-generated branch name */
+  worktreeSkipPrTitle: boolean
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
@@ -335,6 +344,11 @@ interface ThemeState {
   setCloseExplorerOnFileOpen: (enabled: boolean) => void
   setOpenMarkdownInPreview: (enabled: boolean) => void
   setEditorWordWrap: (enabled: boolean) => void
+  setGitOpsMode: (mode: GitOpsMode) => void
+  setWorktreeCompletionStrategy: (strategy: WorktreeCompletionStrategy) => void
+  setWorktreeBranchDefault: (repoPath: string, branch: string) => void
+  removeWorktreeBranchDefault: (repoPath: string) => void
+  setWorktreeSkipPrTitle: (skip: boolean) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -358,15 +372,15 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false }
 
-function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; recentBaseDirectories: string[]; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; expandOnTabSwitch: boolean; bashCommandEntry: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean; expandToolResults: boolean; terminalFontFamily: string; terminalFontSize: number }): void {
+function saveSettings(s: Record<string, unknown>): void {
   window.coda?.saveSettings(s)
 }
 
-function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; recentBaseDirectories: string[]; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; expandOnTabSwitch: boolean; bashCommandEntry: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean; expandToolResults: boolean; terminalFontFamily: string; terminalFontSize: number } {
+function getAllSettings(get: () => ThemeState): Record<string, unknown> {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle }
 }
 
 // Start with defaults; async load from disk will update immediately after mount.
@@ -394,6 +408,10 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   closeExplorerOnFileOpen: saved.closeExplorerOnFileOpen,
   openMarkdownInPreview: saved.openMarkdownInPreview,
   editorWordWrap: saved.editorWordWrap,
+  gitOpsMode: saved.gitOpsMode,
+  worktreeCompletionStrategy: saved.worktreeCompletionStrategy,
+  worktreeBranchDefaults: saved.worktreeBranchDefaults,
+  worktreeSkipPrTitle: saved.worktreeSkipPrTitle,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -483,6 +501,29 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ editorWordWrap: enabled })
     saveSettings(getAllSettings(get))
   },
+  setGitOpsMode: (mode) => {
+    set({ gitOpsMode: mode })
+    saveSettings(getAllSettings(get))
+  },
+  setWorktreeCompletionStrategy: (strategy) => {
+    set({ worktreeCompletionStrategy: strategy })
+    saveSettings(getAllSettings(get))
+  },
+  setWorktreeBranchDefault: (repoPath, branch) => {
+    const current = get().worktreeBranchDefaults
+    set({ worktreeBranchDefaults: { ...current, [repoPath]: branch } })
+    saveSettings(getAllSettings(get))
+  },
+  removeWorktreeBranchDefault: (repoPath) => {
+    const current = { ...get().worktreeBranchDefaults }
+    delete current[repoPath]
+    set({ worktreeBranchDefaults: current })
+    saveSettings(getAllSettings(get))
+  },
+  setWorktreeSkipPrTitle: (skip) => {
+    set({ worktreeSkipPrTitle: skip })
+    saveSettings(getAllSettings(get))
+  },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -520,7 +561,11 @@ window.coda?.loadSettings().then((disk) => {
   const closeExplorer = typeof disk.closeExplorerOnFileOpen === 'boolean' ? disk.closeExplorerOnFileOpen : true
   const mdPreview = typeof disk.openMarkdownInPreview === 'boolean' ? disk.openMarkdownInPreview : true
   const wordWrap = typeof disk.editorWordWrap === 'boolean' ? disk.editorWordWrap : true
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap })
+  const gitOpsMode = (disk.gitOpsMode === 'manual' || disk.gitOpsMode === 'worktree') ? disk.gitOpsMode : 'manual'
+  const wtStrategy = (disk.worktreeCompletionStrategy === 'merge' || disk.worktreeCompletionStrategy === 'pr') ? disk.worktreeCompletionStrategy : 'merge'
+  const wtDefaults = (disk.worktreeBranchDefaults && typeof disk.worktreeBranchDefaults === 'object' && !Array.isArray(disk.worktreeBranchDefaults)) ? disk.worktreeBranchDefaults as Record<string, string> : {}
+  const wtSkipPr = typeof disk.worktreeSkipPrTitle === 'boolean' ? disk.worktreeSkipPrTitle : false
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr })
   applyTheme(resolved)
 })
 

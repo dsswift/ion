@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
+import { randomBytes } from 'crypto'
 import { execFile as execFileCb, spawn, type ChildProcess } from 'child_process'
 import { promisify } from 'util'
 import { ControlPlane } from './claude/control-plane'
@@ -13,7 +14,7 @@ import { discoverCommands } from './claude/command-discovery'
 import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, EnrichedError } from '../shared/types'
+import type { RunOptions, NormalizedEvent, EnrichedError, WorktreeInfo, WorktreeStatus } from '../shared/types'
 import { TerminalManager } from './terminal-manager'
 import { isValidProjectPath, isValidSessionId, validateExternalUrl, buildTerminalCommand } from './ipc-validation'
 
@@ -1388,6 +1389,28 @@ ipcMain.handle(IPC.SAVE_TABS, (_event, data: Record<string, unknown>) => {
   }
 })
 
+// ─── Git Worktree Cleanup ───
+
+async function cleanOrphanedWorktrees(): Promise<void> {
+  const worktreeDir = join(homedir(), '.coda', 'worktrees')
+  if (!existsSync(worktreeDir)) return
+  try {
+    const entries = readdirSync(worktreeDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const wtPath = join(worktreeDir, entry.name)
+      try {
+        await gitExec('git', ['rev-parse', '--git-dir'], { cwd: wtPath })
+      } catch {
+        log(`Cleaning orphaned worktree: ${wtPath}`)
+        try { rmSync(wtPath, { recursive: true, force: true }) } catch {}
+      }
+    }
+  } catch (err: any) {
+    log(`Worktree cleanup error: ${err.message}`)
+  }
+}
+
 // ─── Git IPC Handlers ───
 
 async function runGit(directory: string, args: string[]): Promise<string> {
@@ -1690,6 +1713,138 @@ ipcMain.handle(IPC.GIT_DELETE_BRANCH, async (_event, { directory, branch }: { di
   }
 })
 
+// ─── Git Worktree Handlers ───
+
+ipcMain.handle(IPC.GIT_WORKTREE_ADD, async (_event, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
+  try {
+    const id = randomBytes(4).toString('hex')
+    const branchName = `wt/${randomBytes(4).toString('hex')}`
+    const worktreeDir = join(homedir(), '.coda', 'worktrees')
+    const worktreePath = join(worktreeDir, `${basename(repoPath)}-${id}`)
+    mkdirSync(worktreeDir, { recursive: true })
+    await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
+    const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }
+    return { ok: true, worktree }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_WORKTREE_REMOVE, async (_event, { repoPath, worktreePath, branchName, force }: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }) => {
+  try {
+    const removeArgs = ['worktree', 'remove', worktreePath]
+    if (force) removeArgs.push('--force')
+    await runGit(repoPath, removeArgs)
+    // Delete the branch -- ignore errors if already gone
+    try { await runGit(repoPath, ['branch', '-D', branchName]) } catch {}
+    // Try to remove parent directory if empty
+    try {
+      const parent = join(worktreePath, '..')
+      const entries = readdirSync(parent)
+      if (entries.length === 0) rmSync(parent, { recursive: true })
+    } catch {}
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_WORKTREE_LIST, async (_event, { repoPath }: { repoPath: string }) => {
+  try {
+    const raw = await runGit(repoPath, ['worktree', 'list', '--porcelain'])
+    const worktrees: Array<{ path: string; branch: string; head: string }> = []
+    const blocks = raw.trim().split('\n\n')
+    for (const block of blocks) {
+      if (!block.trim()) continue
+      const lines = block.trim().split('\n')
+      let wtPath = ''
+      let head = ''
+      let branch = ''
+      for (const line of lines) {
+        if (line.startsWith('worktree ')) wtPath = line.slice('worktree '.length)
+        else if (line.startsWith('HEAD ')) head = line.slice('HEAD '.length)
+        else if (line.startsWith('branch ')) branch = line.slice('branch refs/heads/'.length)
+      }
+      if (wtPath) worktrees.push({ path: wtPath, branch, head })
+    }
+    return { worktrees }
+  } catch (err: any) {
+    return { worktrees: [] }
+  }
+})
+
+ipcMain.handle(IPC.GIT_WORKTREE_STATUS, async (_event, { worktreePath, sourceBranch }: { worktreePath: string; sourceBranch: string }) => {
+  try {
+    const statusOutput = await runGit(worktreePath, ['status', '--porcelain'])
+    const hasUncommittedChanges = statusOutput.trim().length > 0
+
+    let aheadCount = 0
+    let behindCount = 0
+    try {
+      const ahead = await runGit(worktreePath, ['rev-list', '--count', `${sourceBranch}..HEAD`])
+      aheadCount = parseInt(ahead.trim(), 10) || 0
+    } catch {}
+    try {
+      const behind = await runGit(worktreePath, ['rev-list', '--count', `HEAD..${sourceBranch}`])
+      behindCount = parseInt(behind.trim(), 10) || 0
+    } catch {}
+
+    let isMerged = false
+    try {
+      await runGit(worktreePath, ['merge-base', '--is-ancestor', 'HEAD', sourceBranch])
+      isMerged = true
+    } catch {}
+
+    const status: WorktreeStatus = {
+      hasUncommittedChanges,
+      hasUnpushedCommits: aheadCount > 0,
+      isMerged,
+      aheadCount,
+      behindCount,
+    }
+    return status
+  } catch (err: any) {
+    return { hasUncommittedChanges: false, hasUnpushedCommits: false, isMerged: false, aheadCount: 0, behindCount: 0 }
+  }
+})
+
+ipcMain.handle(IPC.GIT_WORKTREE_MERGE, async (_event, { repoPath, worktreeBranch, sourceBranch }: { repoPath: string; worktreeBranch: string; sourceBranch: string }) => {
+  try {
+    await runGit(repoPath, ['checkout', sourceBranch])
+    await runGit(repoPath, ['merge', '--no-ff', worktreeBranch])
+    return { ok: true }
+  } catch (err: any) {
+    const msg = err.message || ''
+    if (msg.includes('CONFLICT') || msg.includes('Merge conflict')) {
+      return { ok: false, hasConflicts: true, error: msg }
+    }
+    return { ok: false, error: msg }
+  }
+})
+
+ipcMain.handle(IPC.GIT_WORKTREE_PUSH, async (_event, { worktreePath }: { worktreePath: string }) => {
+  try {
+    await runGit(worktreePath, ['push', '-u', 'origin', 'HEAD'])
+    const remoteUrl = (await runGit(worktreePath, ['remote', 'get-url', 'origin'])).trim()
+    const remoteBranch = (await runGit(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+    return { ok: true, remoteBranch, remoteUrl }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.GIT_WORKTREE_REBASE, async (_event, { worktreePath, sourceBranch }: { worktreePath: string; sourceBranch: string }) => {
+  try {
+    await runGit(worktreePath, ['fetch', 'origin'])
+    await runGit(worktreePath, ['rebase', sourceBranch])
+    return { ok: true }
+  } catch (err: any) {
+    const msg = err.message || ''
+    const hasConflicts = msg.includes('CONFLICT') || msg.includes('could not apply')
+    return { ok: false, error: msg, hasConflicts }
+  }
+})
+
 // ─── Filesystem Operations ───
 
 ipcMain.handle(IPC.FS_READ_DIR, async (_event, { directory }: { directory: string }) => {
@@ -1858,6 +2013,9 @@ app.whenReady().then(async () => {
     log(`Skill ${status.name}: ${status.state}${status.error ? ` — ${status.error}` : ''}`)
     broadcast(IPC.SKILL_STATUS, status)
   }).catch((err: Error) => log(`Skill provisioning error: ${err.message}`))
+
+  // Clean up orphaned worktree directories (fire and forget)
+  cleanOrphanedWorktrees().catch((err: Error) => log(`Worktree cleanup failed: ${err.message}`))
 
   createWindow()
   snapshotWindowState('after createWindow')

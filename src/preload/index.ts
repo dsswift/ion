@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileFileAttachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus } from '../shared/types'
 import type { DiscoveredCommand } from '../main/claude/command-discovery'
 
 export interface CodaAPI {
@@ -67,6 +67,15 @@ export interface CodaAPI {
   gitUnstage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDiscard(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDeleteBranch(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
+
+  // ─── Git worktree operations ───
+  gitWorktreeAdd(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; worktree?: WorktreeInfo; error?: string }>
+  gitWorktreeRemove(repoPath: string, worktreePath: string, branchName: string, force?: boolean): Promise<{ ok: boolean; error?: string }>
+  gitWorktreeList(repoPath: string): Promise<{ worktrees: Array<{ path: string; branch: string; head: string }> }>
+  gitWorktreeStatus(worktreePath: string, sourceBranch: string): Promise<WorktreeStatus>
+  gitWorktreeMerge(repoPath: string, worktreeBranch: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
+  gitWorktreePush(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; remoteBranch?: string; remoteUrl?: string }>
+  gitWorktreeRebase(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
 
   // ─── Filesystem operations ───
   fsReadDir(directory: string): Promise<{ entries: FsEntry[]; error?: string }>
@@ -177,6 +186,15 @@ const api: CodaAPI = {
   gitUnstage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_UNSTAGE, { directory, paths }),
   gitDiscard: (directory, paths) => ipcRenderer.invoke(IPC.GIT_DISCARD, { directory, paths }),
   gitDeleteBranch: (directory, branch) => ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { directory, branch }),
+
+  // ─── Git worktree operations ───
+  gitWorktreeAdd: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, { repoPath, sourceBranch }),
+  gitWorktreeRemove: (repoPath, worktreePath, branchName, force) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, { repoPath, worktreePath, branchName, force }),
+  gitWorktreeList: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST, { repoPath }),
+  gitWorktreeStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_STATUS, { worktreePath, sourceBranch }),
+  gitWorktreeMerge: (repoPath, worktreeBranch, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE, { repoPath, worktreeBranch, sourceBranch }),
+  gitWorktreePush: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_PUSH, { worktreePath, sourceBranch }),
+  gitWorktreeRebase: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REBASE, { worktreePath, sourceBranch }),
 
   // ─── Filesystem operations ───
   fsReadDir: (directory) => ipcRenderer.invoke(IPC.FS_READ_DIR, { directory }),

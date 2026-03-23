@@ -1,13 +1,21 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, FolderSimple, CheckCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
+import { WorktreeCloseDialog } from './WorktreeCloseDialog'
+import { BranchPickerDialog } from './BranchPickerDialog'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
-import type { TabStatus, TabState } from '../../shared/types'
+import type { TabStatus, TabState, WorktreeStatus } from '../../shared/types'
+
+/** Check whether this tab-creation event should use worktree mode, inverting the default when Alt is held */
+const shouldUseWorktree = (altKey: boolean): boolean => {
+  const gitOpsMode = useThemeStore.getState().gitOpsMode
+  return altKey ? gitOpsMode !== 'worktree' : gitOpsMode === 'worktree'
+}
 
 const PILL_COLOR_PRESETS = [
   { color: null, label: 'Default' },
@@ -212,13 +220,119 @@ function DirContextMenu({
   )
 }
 
+function TabContextMenu({
+  anchor,
+  tab,
+  onCloneTab,
+  onNewTabInDir,
+  onFinishWork,
+  onClose,
+}: {
+  anchor: { x: number; y: number }
+  tab: TabState
+  onCloneTab: () => void
+  onNewTabInDir: () => void
+  onFinishWork: () => void
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  if (!popoverLayer) return null
+
+  const menuItemStyle = {
+    fontSize: 12,
+    color: colors.textPrimary,
+    background: 'transparent' as string,
+    border: 'none' as const,
+    cursor: 'pointer' as const,
+  }
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-coda-ui
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left: anchor.x,
+        top: anchor.y + 8,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        padding: 4,
+        zIndex: 10000,
+        minWidth: 160,
+      }}
+    >
+      {tab.workingDirectory && (
+        <>
+          <button
+            onClick={() => { onCloneTab(); onClose() }}
+            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+            style={menuItemStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <FolderPlus size={14} color={colors.textSecondary} />
+            <span>Clone tab</span>
+          </button>
+          <button
+            onClick={() => { onNewTabInDir(); onClose() }}
+            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+            style={menuItemStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <FolderOpen size={14} color={colors.textSecondary} />
+            <span>New tab in directory</span>
+          </button>
+        </>
+      )}
+      {tab.worktree && (
+        <button
+          onClick={() => { onFinishWork(); onClose() }}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={menuItemStyle}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <CheckCircle size={14} color={colors.textSecondary} />
+          <span>Finish work</span>
+        </button>
+      )}
+    </motion.div>,
+    popoverLayer,
+  )
+}
+
 function RecentDirsContextMenu({
   anchor,
   onSelectDir,
   onClose,
 }: {
   anchor: { x: number; y: number }
-  onSelectDir: (dir: string) => void
+  onSelectDir: (dir: string, altKey: boolean) => void
   onClose: () => void
 }) {
   const colors = useColors()
@@ -278,7 +392,7 @@ function RecentDirsContextMenu({
           return (
             <button
               key={dir}
-              onClick={() => { onSelectDir(dir); onClose() }}
+              onClick={(e) => { onSelectDir(dir, e.altKey); onClose() }}
               className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
               style={{
                 fontSize: 12,
@@ -409,6 +523,7 @@ function TabPill({
   onOpenDirMenu,
   onCreateTabInDir,
   dirMenuTabId,
+  onOpenTabMenu,
   tabRefs,
 }: {
   tab: TabState
@@ -430,9 +545,11 @@ function TabPill({
   onOpenDirMenu: (tabId: string, anchor: { x: number; y: number }) => void
   onCreateTabInDir: (dir: string) => void
   dirMenuTabId: string | null
+  onOpenTabMenu: (tabId: string, anchor: { x: number; y: number }) => void
   tabRefs: React.MutableRefObject<Map<string, HTMLDivElement>>
 }) {
   const colors = useColors()
+  const gitOpsMode = useThemeStore((s) => s.gitOpsMode)
   const dragControls = useDragControls()
   const dragOrigin = useRef({ x: 0, y: 0 })
   const isDragging = useRef(false)
@@ -481,6 +598,7 @@ function TabPill({
       layout
       onClick={() => { if (isDragging.current) return; onCancelClose(); onSelect() }}
       onPointerDown={onPointerDown}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onOpenTabMenu(tab.id, { x: e.clientX, y: e.clientY }) }}
       className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ${
         hasCustomTitle || isEditing || isConfirmingClose ? '' : 'max-w-[160px]'
       }`}
@@ -506,6 +624,11 @@ function TabPill({
       >
         <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} />
       </span>
+      {tab.worktree ? (
+        <GitBranch size={11} color={colors.textTertiary} className="flex-shrink-0" />
+      ) : gitOpsMode === 'worktree' ? (
+        <FolderSimple size={11} color={colors.textTertiary} className="flex-shrink-0" />
+      ) : null}
       {showDirLabel && tab.workingDirectory && (
         <span
           className="flex-shrink-0"
@@ -606,6 +729,10 @@ export function TabStrip() {
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [recentDirsMenu, setRecentDirsMenu] = useState<{ x: number; y: number } | null>(null)
+  const [tabMenuId, setTabMenuId] = useState<string | null>(null)
+  const [tabMenuAnchor, setTabMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [worktreeCloseTabId, setWorktreeCloseTabId] = useState<string | null>(null)
+  const [worktreeCloseStatus, setWorktreeCloseStatus] = useState<WorktreeStatus | null>(null)
   const plusButtonRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -678,19 +805,41 @@ export function TabStrip() {
                 isConfirmingClose={confirmingCloseId === tab.id}
                 showDirLabel={showDirLabel}
                 onSelect={() => selectTab(tab.id)}
-                onClose={() => closeTab(tab.id)}
+                onClose={() => {
+                  if (tab.worktree) {
+                    setWorktreeCloseTabId(tab.id)
+                    setWorktreeCloseStatus(null)
+                    window.coda.gitWorktreeStatus(tab.worktree.worktreePath, tab.worktree.sourceBranch)
+                      .then((status) => setWorktreeCloseStatus(status))
+                      .catch(() => setWorktreeCloseStatus({ hasUncommittedChanges: false, hasUnpushedCommits: false, isMerged: false, aheadCount: 0, behindCount: 0 }))
+                  } else {
+                    closeTab(tab.id)
+                  }
+                }}
                 onStartEdit={() => setEditingTabId(tab.id)}
                 onStopEdit={() => setEditingTabId(null)}
                 onRename={(newValue) => renameTab(tab.id, newValue)}
-                onConfirmClose={() => setConfirmingCloseId(tab.id)}
+                onConfirmClose={() => {
+                  if (tab.worktree) {
+                    // Worktree tab: show the WorktreeCloseDialog instead of inline confirmation
+                    setWorktreeCloseTabId(tab.id)
+                    setWorktreeCloseStatus(null)
+                    window.coda.gitWorktreeStatus(tab.worktree.worktreePath, tab.worktree.sourceBranch)
+                      .then((status) => setWorktreeCloseStatus(status))
+                      .catch(() => setWorktreeCloseStatus({ hasUncommittedChanges: false, hasUnpushedCommits: false, isMerged: false, aheadCount: 0, behindCount: 0 }))
+                  } else {
+                    setConfirmingCloseId(tab.id)
+                  }
+                }}
                 onCancelClose={() => setConfirmingCloseId(null)}
                 onSetPillColor={(color) => setTabPillColor(tab.id, color)}
                 colorPickerTabId={colorPickerTabId}
                 onOpenColorPicker={(tabId, anchor) => { setColorPickerTabId(tabId); setColorPickerAnchor(anchor) }}
                 onCloseColorPicker={() => setColorPickerTabId(null)}
                 onOpenDirMenu={(tabId, anchor) => { setDirMenuTabId(tabId); setDirMenuAnchor(anchor) }}
-                onCreateTabInDir={(dir) => createTabInDirectory(dir)}
+                onCreateTabInDir={(dir) => createTabInDirectory(dir, shouldUseWorktree(false))}
                 dirMenuTabId={dirMenuTabId}
+                onOpenTabMenu={(tabId, anchor) => { setTabMenuId(tabId); setTabMenuAnchor(anchor) }}
                 tabRefs={tabRefs}
               />
             ))}
@@ -724,7 +873,7 @@ export function TabStrip() {
               key="dir-context-menu"
               anchor={dirMenuAnchor}
               dirName={dirName}
-              onCreateTab={() => createTabInDirectory(menuTab.workingDirectory)}
+              onCreateTab={() => createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))}
               onClose={() => setDirMenuTabId(null)}
             />
           )
@@ -736,17 +885,84 @@ export function TabStrip() {
           <RecentDirsContextMenu
             key="recent-dirs-menu"
             anchor={recentDirsMenu}
-            onSelectDir={(dir) => createTabInDirectory(dir)}
+            onSelectDir={(dir, altKey) => createTabInDirectory(dir, shouldUseWorktree(altKey))}
             onClose={() => setRecentDirsMenu(null)}
           />
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {tabMenuId && (() => {
+          const menuTab = tabs.find((t) => t.id === tabMenuId)
+          if (!menuTab) return null
+          return (
+            <TabContextMenu
+              key="tab-context-menu"
+              anchor={tabMenuAnchor}
+              tab={menuTab}
+              onCloneTab={() => {
+                if (menuTab.workingDirectory) createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
+              }}
+              onNewTabInDir={() => {
+                if (menuTab.workingDirectory) createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
+              }}
+              onFinishWork={() => {
+                useSessionStore.getState().finishWorktreeTab(menuTab.id)
+              }}
+              onClose={() => setTabMenuId(null)}
+            />
+          )
+        })()}
+      </AnimatePresence>
+
+      {worktreeCloseTabId && worktreeCloseStatus && (() => {
+        const wtTab = tabs.find((t) => t.id === worktreeCloseTabId)
+        if (!wtTab) return null
+        const strategy = useThemeStore.getState().worktreeCompletionStrategy
+        return (
+          <WorktreeCloseDialog
+            uncommittedCount={worktreeCloseStatus.hasUncommittedChanges ? 1 : 0}
+            unpushedCount={worktreeCloseStatus.aheadCount}
+            defaultStrategy={strategy}
+            onFinish={(s) => {
+              useSessionStore.getState().finishWorktreeTab(worktreeCloseTabId, s)
+              setWorktreeCloseTabId(null)
+              setWorktreeCloseStatus(null)
+            }}
+            onDiscard={() => {
+              closeTab(worktreeCloseTabId)
+              setWorktreeCloseTabId(null)
+              setWorktreeCloseStatus(null)
+            }}
+            onCancel={() => {
+              setWorktreeCloseTabId(null)
+              setWorktreeCloseStatus(null)
+            }}
+          />
+        )
+      })()}
+
+      {(() => {
+        const activeTab = tabs.find((t) => t.id === activeTabId)
+        if (!activeTab?.pendingWorktreeSetup) return null
+        return (
+          <BranchPickerDialog
+            repoPath={activeTab.workingDirectory}
+            onSelect={(branch, setAsDefault) => {
+              useSessionStore.getState().setupWorktree(activeTab.id, branch, setAsDefault)
+            }}
+            onCancel={() => {
+              useSessionStore.getState().cancelWorktreeSetup(activeTab.id)
+            }}
+          />
+        )
+      })()}
+
       {/* Pinned action buttons — always visible on the right */}
       <div className="flex items-center gap-0.5 flex-shrink-0 ml-1 pr-2">
         <button
           ref={plusButtonRef}
-          onClick={() => createTab()}
+          onClick={(e) => createTab(shouldUseWorktree(e.altKey))}
           onContextMenu={(e) => { e.preventDefault(); setRecentDirsMenu({ x: e.clientX, y: e.clientY }) }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
           style={{ color: colors.textTertiary }}

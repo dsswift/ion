@@ -177,6 +177,18 @@ export default function App() {
             restoredTabIds.push({ tabId, sessionId: st.claudeSessionId, index: i })
 
             // Patch extra per-tab settings that resumeSession doesn't handle
+            // Restore worktree info if present (verify path still exists)
+            let restoredWorktree = st.worktree || null
+            if (restoredWorktree) {
+              try {
+                const { entries } = await window.coda.fsReadDir(restoredWorktree.worktreePath)
+                // Directory exists, keep the worktree info
+              } catch {
+                // Worktree was cleaned up externally
+                restoredWorktree = null
+              }
+            }
+
             useSessionStore.setState((s) => ({
               tabs: s.tabs.map((t) =>
                 t.id === tabId
@@ -188,6 +200,9 @@ export default function App() {
                       permissionMode: st.permissionMode,
                       bashResults: st.bashResults || [],
                       pillColor: st.pillColor || null,
+                      worktree: restoredWorktree,
+                      // If worktree was cleaned up, fall back to original repo path
+                      ...(st.worktree && !restoredWorktree ? { workingDirectory: st.worktree.repoPath } : {}),
                     }
                   : t
               ),
@@ -207,6 +222,7 @@ export default function App() {
                       additionalDirs: st.additionalDirs,
                       permissionMode: st.permissionMode,
                       pillColor: st.pillColor || null,
+                      worktree: st.worktree || null,
                     }
                   : t
               ),

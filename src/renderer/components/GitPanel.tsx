@@ -93,10 +93,12 @@ function BranchPicker({
   directory,
   currentBranch,
   onRefresh,
+  worktree,
 }: {
   directory: string
   currentBranch: string
   onRefresh: () => void
+  worktree?: { branchName: string; sourceBranch: string; worktreePath: string; repoPath: string } | null
 }) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
@@ -183,14 +185,18 @@ function BranchPicker({
     <>
       <button
         ref={triggerRef}
-        onClick={handleToggle}
+        onClick={worktree ? undefined : handleToggle}
         className="flex items-center gap-0.5 text-[10px] rounded px-1 py-0.5 truncate"
-        style={{ color: colors.textSecondary, maxWidth: 100 }}
-        title={currentBranch}
+        style={{
+          color: colors.textSecondary,
+          maxWidth: 100,
+          ...(worktree ? { pointerEvents: 'none' as const, opacity: 0.6 } : {}),
+        }}
+        title={worktree ? 'Branch is managed by worktree mode' : currentBranch}
       >
         <GitBranch size={10} style={{ flexShrink: 0 }} />
         <span className="truncate">{currentBranch || 'detached'}</span>
-        <CaretDown size={8} style={{ flexShrink: 0, opacity: 0.6 }} />
+        {!worktree && <CaretDown size={8} style={{ flexShrink: 0, opacity: 0.6 }} />}
       </button>
 
       {popoverLayer && open && createPortal(
@@ -233,7 +239,7 @@ function BranchPicker({
                   {b.isCurrent && <Check size={10} style={{ color: colors.accent, flexShrink: 0 }} />}
                   <span className="truncate">{b.name}</span>
                 </button>
-                {!b.isCurrent && (
+                {!b.isCurrent && !(worktree && (b.name === worktree.branchName || b.name === worktree.sourceBranch)) && (
                   <button
                     onClick={() => handleDelete(b.name)}
                     className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 transition-opacity"
@@ -275,7 +281,7 @@ function BranchPicker({
           )}
 
           {/* Create branch */}
-          <div style={{ borderTop: `1px solid ${colors.popoverBorder}` }}>
+          {!worktree && <div style={{ borderTop: `1px solid ${colors.popoverBorder}` }}>
             {creating ? (
               <div className="flex items-center gap-1 px-2 py-1.5">
                 <input
@@ -301,7 +307,7 @@ function BranchPicker({
                 New branch...
               </button>
             )}
-          </div>
+          </div>}
         </motion.div>,
         popoverLayer,
       )}
@@ -744,10 +750,12 @@ function GitGraphSection({
   directory,
   onRefresh,
   refreshKey,
+  worktree,
 }: {
   directory: string
   onRefresh: () => void
   refreshKey: number
+  worktree?: { branchName: string; sourceBranch: string; worktreePath: string; repoPath: string } | null
 }) {
   const colors = useColors()
   const [commits, setCommits] = useState<GitCommit[]>([])
@@ -756,6 +764,7 @@ function GitGraphSection({
   const [branch, setBranch] = useState('')
   const [fetchingAction, setFetchingAction] = useState<string | null>(null)
   const [pushConfirm, setPushConfirm] = useState(false)
+  const [rebaseError, setRebaseError] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const commitsRef = useRef<GitCommit[]>([])
@@ -818,13 +827,25 @@ function GitGraphSection({
 
   const handlePull = async () => {
     setFetchingAction('pull')
-    await window.coda.gitPull(directory)
+    if (worktree) {
+      try {
+        const result = await window.coda.gitWorktreeRebase(worktree.worktreePath, worktree.sourceBranch)
+        if (result.hasConflicts) {
+          setRebaseError(result.error || 'Rebase has conflicts -- resolve them before continuing')
+        }
+      } catch (e: unknown) {
+        setRebaseError(e instanceof Error ? e.message : 'Rebase failed')
+      }
+    } else {
+      await window.coda.gitPull(directory)
+    }
     setFetchingAction(null)
     loadGraph()
     onRefresh()
   }
 
   const handlePush = async () => {
+    if (worktree) return
     if (!pushConfirm) {
       setPushConfirm(true)
       return
@@ -849,7 +870,7 @@ function GitGraphSection({
         className="flex items-center justify-between px-2"
         style={{ height: 24, borderBottom: `1px solid ${colors.containerBorder}` }}
       >
-        <BranchPicker directory={directory} currentBranch={branch} onRefresh={handleBranchRefresh} />
+        <BranchPicker directory={directory} currentBranch={branch} onRefresh={handleBranchRefresh} worktree={worktree} />
         <div className="flex items-center gap-0.5">
           {pushConfirm ? (
             <div className="flex items-center gap-0.5 text-[9px]">
@@ -885,23 +906,51 @@ function GitGraphSection({
                 disabled={!!fetchingAction}
                 className="p-0.5 rounded transition-colors"
                 style={{ color: colors.textTertiary }}
-                title="Pull"
+                title={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}
               >
                 {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
               </button>
-              <button
-                onClick={handlePush}
-                disabled={!!fetchingAction}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary }}
-                title="Push"
-              >
-                {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
-              </button>
+              {worktree ? (
+                <button
+                  disabled
+                  className="p-0.5 rounded transition-colors"
+                  style={{ color: colors.textTertiary, opacity: 0.35, cursor: 'not-allowed' }}
+                  title="Use Finish Work to push and create a PR"
+                >
+                  <ArrowUp size={11} />
+                </button>
+              ) : (
+                <button
+                  onClick={handlePush}
+                  disabled={!!fetchingAction}
+                  className="p-0.5 rounded transition-colors"
+                  style={{ color: colors.textTertiary }}
+                  title="Push"
+                >
+                  {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
+
+      {/* Rebase error */}
+      {rebaseError && (
+        <div
+          className="flex items-center justify-between px-2 py-1.5 text-[10px]"
+          style={{ color: '#c47060', borderBottom: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary, flexShrink: 0 }}
+        >
+          <span className="truncate flex-1">{rebaseError}</span>
+          <button
+            onClick={() => setRebaseError(null)}
+            className="ml-1 flex-shrink-0"
+            style={{ color: colors.textTertiary }}
+          >
+            <X size={10} />
+          </button>
+        </div>
+      )}
 
       {/* Commit list */}
       <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
@@ -970,9 +1019,10 @@ export function GitPanel() {
   const expandedUI = useThemeStore((s) => s.expandedUI)
   const tab = useSessionStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b && a.workingDirectory === b.workingDirectory),
+    (a, b) => a === b || (!!a && !!b && a.workingDirectory === b.workingDirectory && a.worktree === b.worktree),
   )
   const directory = tab?.workingDirectory || '~'
+  const worktree = tab?.worktree ?? null
 
   const changesOpen = useThemeStore((s) => s.gitPanelChangesOpen)
   const setChangesOpen = useThemeStore((s) => s.setGitPanelChangesOpen)
@@ -1181,7 +1231,7 @@ export function GitPanel() {
         </button>
         {graphOpen && (
           <div style={{ height: graphContentHeight, minHeight: 0, overflow: 'hidden' }}>
-            <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} />
+            <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} worktree={worktree} />
           </div>
         )}
       </div>

@@ -105,8 +105,8 @@ interface State {
   initStaticInfo: () => Promise<void>
   setPreferredModel: (model: string | null) => void
   setPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
-  createTab: () => Promise<string>
-  createTabInDirectory: (dir: string) => Promise<string>
+  createTab: (useWorktree?: boolean) => Promise<string>
+  createTabInDirectory: (dir: string, useWorktree?: boolean) => Promise<string>
   selectTab: (tabId: string) => void
   closeTab: (tabId: string) => void
   reorderTabs: (reorderedTabs: TabState[]) => void
@@ -154,6 +154,9 @@ interface State {
   addDirectory: (dir: string) => void
   removeDirectory: (dir: string) => void
   setBaseDirectory: (dir: string) => void
+  setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
+  cancelWorktreeSetup: (tabId: string) => void
+  finishWorktreeTab: (tabId: string, strategyOverride?: 'merge' | 'pr') => Promise<void>
   addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
@@ -209,6 +212,8 @@ function makeLocalTab(): TabState {
     bashExecuting: false,
     bashExecId: null,
     pillColor: null,
+    worktree: null,
+    pendingWorktreeSetup: false,
   }
 }
 
@@ -273,7 +278,7 @@ export const useSessionStore = create<State>((set, get) => ({
     window.coda.setPermissionMode(activeTabId, mode)
   },
 
-  createTab: async () => {
+  createTab: async (useWorktree) => {
     const homeDir = get().staticInfo?.homePath || '~'
     const defaultBase = useThemeStore.getState().defaultBaseDirectory
     const startDir = defaultBase || homeDir
@@ -281,63 +286,95 @@ export const useSessionStore = create<State>((set, get) => ({
     const { activeTabId: prevTabId, tabs: prevTabs, fileEditorOpenTabIds: prevEditorOpen } = get()
     const prevTab = prevTabs.find((t) => t.id === prevTabId)
     const inheritEditor = prevTab && prevEditorOpen.has(prevTab.id) && prevTab.workingDirectory === startDir
+
+    let tabId: string
     try {
-      const { tabId } = await window.coda.createTab()
-      const tab: TabState = {
-        ...makeLocalTab(),
-        id: tabId,
-        workingDirectory: startDir,
-        hasChosenDirectory: hasChosen,
-      }
-      set((s) => ({
-        tabs: [...s.tabs, tab],
-        activeTabId: tab.id,
-        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
-      }))
-      return tabId
+      const res = await window.coda.createTab()
+      tabId = res.tabId
     } catch {
-      const tab = makeLocalTab()
-      tab.workingDirectory = startDir
-      tab.hasChosenDirectory = hasChosen
-      set((s) => ({
-        tabs: [...s.tabs, tab],
-        activeTabId: tab.id,
-        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
-      }))
-      return tab.id
+      tabId = crypto.randomUUID()
     }
+
+    const tab: TabState = {
+      ...makeLocalTab(),
+      id: tabId,
+      workingDirectory: startDir,
+      hasChosenDirectory: hasChosen,
+    }
+
+    // If worktree mode requested, check if directory is a git repo
+    if (useWorktree) {
+      const { isRepo } = await window.coda.gitIsRepo(startDir)
+      if (isRepo) {
+        const defaults = useThemeStore.getState().worktreeBranchDefaults
+        const defaultBranch = defaults[startDir]
+        if (defaultBranch) {
+          // Auto-create worktree with saved default
+          const result = await window.coda.gitWorktreeAdd(startDir, defaultBranch)
+          if (result.ok && result.worktree) {
+            tab.worktree = result.worktree
+            tab.workingDirectory = result.worktree.worktreePath
+          }
+        } else {
+          // Need user to pick a branch
+          tab.pendingWorktreeSetup = true
+        }
+      }
+    }
+
+    set((s) => ({
+      tabs: [...s.tabs, tab],
+      activeTabId: tab.id,
+      ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
+    }))
+    return tabId
   },
 
-  createTabInDirectory: async (dir) => {
+  createTabInDirectory: async (dir, useWorktree) => {
     useThemeStore.getState().addRecentBaseDirectory(dir)
     const { activeTabId: prevTabId, tabs: prevTabs, fileEditorOpenTabIds: prevEditorOpen } = get()
     const prevTab = prevTabs.find((t) => t.id === prevTabId)
     const inheritEditor = prevTab && prevEditorOpen.has(prevTab.id) && prevTab.workingDirectory === dir
+
+    let tabId: string
     try {
-      const { tabId } = await window.coda.createTab()
-      const tab: TabState = {
-        ...makeLocalTab(),
-        id: tabId,
-        workingDirectory: dir,
-        hasChosenDirectory: true,
-      }
-      set((s) => ({
-        tabs: [...s.tabs, tab],
-        activeTabId: tab.id,
-        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
-      }))
-      return tabId
+      const res = await window.coda.createTab()
+      tabId = res.tabId
     } catch {
-      const tab = makeLocalTab()
-      tab.workingDirectory = dir
-      tab.hasChosenDirectory = true
-      set((s) => ({
-        tabs: [...s.tabs, tab],
-        activeTabId: tab.id,
-        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
-      }))
-      return tab.id
+      tabId = crypto.randomUUID()
     }
+
+    const tab: TabState = {
+      ...makeLocalTab(),
+      id: tabId,
+      workingDirectory: dir,
+      hasChosenDirectory: true,
+    }
+
+    // If worktree mode requested, check if directory is a git repo
+    if (useWorktree) {
+      const { isRepo } = await window.coda.gitIsRepo(dir)
+      if (isRepo) {
+        const defaults = useThemeStore.getState().worktreeBranchDefaults
+        const defaultBranch = defaults[dir]
+        if (defaultBranch) {
+          const result = await window.coda.gitWorktreeAdd(dir, defaultBranch)
+          if (result.ok && result.worktree) {
+            tab.worktree = result.worktree
+            tab.workingDirectory = result.worktree.worktreePath
+          }
+        } else {
+          tab.pendingWorktreeSetup = true
+        }
+      }
+    }
+
+    set((s) => ({
+      tabs: [...s.tabs, tab],
+      activeTabId: tab.id,
+      ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
+    }))
+    return tabId
   },
 
   selectTab: (tabId) => {
@@ -755,6 +792,16 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   closeTab: (tabId) => {
+    // Clean up worktree if this tab has one
+    const closingTab = get().tabs.find((t) => t.id === tabId)
+    if (closingTab?.worktree) {
+      window.coda.gitWorktreeRemove(
+        closingTab.worktree.repoPath,
+        closingTab.worktree.worktreePath,
+        closingTab.worktree.branchName,
+        true, // force
+      ).catch(() => {})
+    }
     window.coda.closeTab(tabId).catch(() => {})
     window.coda.terminalDestroy(tabId).catch(() => {})
     destroyTerminalInstance(tabId)
@@ -1014,6 +1061,18 @@ export const useSessionStore = create<State>((set, get) => ({
   setBaseDirectory: (dir) => {
     useThemeStore.getState().addRecentBaseDirectory(dir)
     const { activeTabId } = get()
+    const tab = get().tabs.find((t) => t.id === activeTabId)
+
+    // If tab has a worktree and no messages yet, clean it up before switching
+    if (tab?.worktree && tab.messages.length === 0) {
+      window.coda.gitWorktreeRemove(
+        tab.worktree.repoPath,
+        tab.worktree.worktreePath,
+        tab.worktree.branchName,
+        true,
+      ).catch(() => {})
+    }
+
     window.coda.resetTabSession(activeTabId)
     set((s) => ({
       tabs: s.tabs.map((t) =>
@@ -1024,10 +1083,128 @@ export const useSessionStore = create<State>((set, get) => ({
               hasChosenDirectory: true,
               claudeSessionId: null,
               additionalDirs: [],
+              worktree: null,
+              pendingWorktreeSetup: false,
             }
           : t
       ),
     }))
+
+    // If in worktree mode, re-setup for new directory
+    const gitOpsMode = useThemeStore.getState().gitOpsMode
+    if (gitOpsMode === 'worktree') {
+      window.coda.gitIsRepo(dir).then(({ isRepo }) => {
+        if (!isRepo) return
+        const defaults = useThemeStore.getState().worktreeBranchDefaults
+        const defaultBranch = defaults[dir]
+        if (defaultBranch) {
+          window.coda.gitWorktreeAdd(dir, defaultBranch).then((result) => {
+            if (result.ok && result.worktree) {
+              set((s) => ({
+                tabs: s.tabs.map((t) =>
+                  t.id === activeTabId
+                    ? { ...t, worktree: result.worktree!, workingDirectory: result.worktree!.worktreePath }
+                    : t
+                ),
+              }))
+            }
+          })
+        } else {
+          set((s) => ({
+            tabs: s.tabs.map((t) =>
+              t.id === activeTabId ? { ...t, pendingWorktreeSetup: true } : t
+            ),
+          }))
+        }
+      })
+    }
+  },
+
+  setupWorktree: async (tabId, sourceBranch, setAsDefault) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    const repoPath = tab.workingDirectory
+
+    if (setAsDefault) {
+      useThemeStore.getState().setWorktreeBranchDefault(repoPath, sourceBranch)
+    }
+
+    const result = await window.coda.gitWorktreeAdd(repoPath, sourceBranch)
+    if (result.ok && result.worktree) {
+      set((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                worktree: result.worktree!,
+                workingDirectory: result.worktree!.worktreePath,
+                pendingWorktreeSetup: false,
+              }
+            : t
+        ),
+      }))
+    }
+  },
+
+  cancelWorktreeSetup: (tabId) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, pendingWorktreeSetup: false } : t
+      ),
+    }))
+  },
+
+  finishWorktreeTab: async (tabId, strategyOverride) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab?.worktree) return
+
+    const strategy = strategyOverride || useThemeStore.getState().worktreeCompletionStrategy
+    const { repoPath, worktreePath, branchName, sourceBranch } = tab.worktree
+
+    if (strategy === 'merge') {
+      const result = await window.coda.gitWorktreeMerge(repoPath, branchName, sourceBranch)
+      if (!result.ok) {
+        // Show error in conversation
+        const msg = result.hasConflicts
+          ? `Merge conflict: resolve manually in ${repoPath} then close this tab.`
+          : `Merge failed: ${result.error}`
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? { ...t, messages: [...t.messages, { id: `msg-${++msgCounter}`, role: 'system' as const, content: msg, timestamp: Date.now() }] }
+              : t
+          ),
+        }))
+        return
+      }
+      // Clean up worktree and close
+      await window.coda.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch(() => {})
+      get().closeTab(tabId)
+    } else {
+      // PR strategy
+      const pushResult = await window.coda.gitWorktreePush(worktreePath, sourceBranch)
+      if (!pushResult.ok) {
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? { ...t, messages: [...t.messages, { id: `msg-${++msgCounter}`, role: 'system' as const, content: `Push failed: ${pushResult.error}`, timestamp: Date.now() }] }
+              : t
+          ),
+        }))
+        return
+      }
+      // Open PR URL in browser if we have a remote URL
+      if (pushResult.remoteUrl && pushResult.remoteBranch) {
+        // Construct GitHub/GitLab PR URL
+        const url = pushResult.remoteUrl
+          .replace(/\.git$/, '')
+          .replace(/^git@([^:]+):/, 'https://$1/')
+        window.coda.openExternal(`${url}/compare/${sourceBranch}...${pushResult.remoteBranch}`)
+      }
+      // Clean up worktree and close
+      await window.coda.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch(() => {})
+      get().closeTab(tabId)
+    }
   },
 
   // ─── Attachment management ───
@@ -1532,6 +1709,7 @@ function persistTabs(): void {
       permissionMode: t.permissionMode,
       ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
       ...(t.pillColor ? { pillColor: t.pillColor } : {}),
+      ...(t.worktree ? { worktree: t.worktree } : {}),
     }))
 
   // Serialize editor states (per-directory, includes unsaved content)
