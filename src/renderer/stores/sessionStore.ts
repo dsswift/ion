@@ -101,6 +101,7 @@ interface State {
   setPreferredModel: (model: string | null) => void
   setPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
   createTab: () => Promise<string>
+  createTabInDirectory: (dir: string) => Promise<string>
   selectTab: (tabId: string) => void
   closeTab: (tabId: string) => void
   reorderTabs: (reorderedTabs: TabState[]) => void
@@ -283,6 +284,32 @@ export const useSessionStore = create<State>((set, get) => ({
       const tab = makeLocalTab()
       tab.workingDirectory = startDir
       tab.hasChosenDirectory = hasChosen
+      set((s) => ({
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+      }))
+      return tab.id
+    }
+  },
+
+  createTabInDirectory: async (dir) => {
+    try {
+      const { tabId } = await window.clui.createTab()
+      const tab: TabState = {
+        ...makeLocalTab(),
+        id: tabId,
+        workingDirectory: dir,
+        hasChosenDirectory: true,
+      }
+      set((s) => ({
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+      }))
+      return tabId
+    } catch {
+      const tab = makeLocalTab()
+      tab.workingDirectory = dir
+      tab.hasChosenDirectory = true
       set((s) => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,

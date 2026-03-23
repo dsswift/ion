@@ -492,7 +492,7 @@ window.clui?.loadSettings().then((disk) => {
   const sound = typeof disk.soundEnabled === 'boolean' ? disk.soundEnabled : true
   const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
   const baseDir = typeof disk.defaultBaseDirectory === 'string' ? disk.defaultBaseDirectory : ''
-  const dirLabel = typeof disk.showDirLabel === 'boolean' ? disk.showDirLabel : false
+  const dirLabel = typeof disk.showDirLabel === 'boolean' ? disk.showDirLabel : true
   const openWith = (disk.preferredOpenWith === 'cli' || disk.preferredOpenWith === 'vscode') ? disk.preferredOpenWith : 'cli'
   const implClearCtx = typeof disk.showImplementClearContext === 'boolean' ? disk.showImplementClearContext : false
   const expandTabSwitch = typeof disk.expandOnTabSwitch === 'boolean' ? disk.expandOnTabSwitch : true

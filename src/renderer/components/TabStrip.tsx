@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit, Terminal } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal, FolderPlus } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
@@ -132,6 +132,80 @@ function PillColorPicker({
   )
 }
 
+function DirContextMenu({
+  anchor,
+  dirName,
+  onCreateTab,
+  onClose,
+}: {
+  anchor: { x: number; y: number }
+  dirName: string
+  onCreateTab: () => void
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  if (!popoverLayer) return null
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-clui-ui
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left: anchor.x,
+        top: anchor.y + 8,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        padding: 4,
+        zIndex: 10000,
+        minWidth: 140,
+      }}
+    >
+      <button
+        onClick={() => { onCreateTab(); onClose() }}
+        className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+        style={{
+          fontSize: 12,
+          color: colors.textPrimary,
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+      >
+        <FolderPlus size={14} color={colors.textSecondary} />
+        <span>New tab in {dirName}</span>
+      </button>
+    </motion.div>,
+    popoverLayer,
+  )
+}
+
 function InlineRenameInput({
   value,
   onCommit,
@@ -236,6 +310,9 @@ function TabPill({
   colorPickerTabId,
   onOpenColorPicker,
   onCloseColorPicker,
+  onOpenDirMenu,
+  onCreateTabInDir,
+  dirMenuTabId,
   tabRefs,
 }: {
   tab: TabState
@@ -254,6 +331,9 @@ function TabPill({
   colorPickerTabId: string | null
   onOpenColorPicker: (tabId: string, anchor: { x: number; y: number }) => void
   onCloseColorPicker: () => void
+  onOpenDirMenu: (tabId: string, anchor: { x: number; y: number }) => void
+  onCreateTabInDir: (dir: string) => void
+  dirMenuTabId: string | null
   tabRefs: React.MutableRefObject<Map<string, HTMLDivElement>>
 }) {
   const colors = useColors()
@@ -338,6 +418,12 @@ function TabPill({
             fontWeight: 500,
             color: colors.textSecondary,
             opacity: 0.5,
+            cursor: 'default',
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onOpenDirMenu(tab.id, { x: e.clientX, y: e.clientY })
           }}
         >
           {tab.workingDirectory.split('/').pop() || tab.workingDirectory}
@@ -410,6 +496,7 @@ export function TabStrip() {
   const reorderTabs = useSessionStore((s) => s.reorderTabs)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+  const createTabInDirectory = useSessionStore((s) => s.createTabInDirectory)
   const toggleTerminal = useSessionStore((s) => s.toggleTerminal)
   const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
   const colors = useColors()
@@ -420,6 +507,8 @@ export function TabStrip() {
   const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
   const [colorPickerTabId, setColorPickerTabId] = useState<string | null>(null)
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
+  const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
@@ -490,6 +579,9 @@ export function TabStrip() {
                 colorPickerTabId={colorPickerTabId}
                 onOpenColorPicker={(tabId, anchor) => { setColorPickerTabId(tabId); setColorPickerAnchor(anchor) }}
                 onCloseColorPicker={() => setColorPickerTabId(null)}
+                onOpenDirMenu={(tabId, anchor) => { setDirMenuTabId(tabId); setDirMenuAnchor(anchor) }}
+                onCreateTabInDir={(dir) => createTabInDirectory(dir)}
+                dirMenuTabId={dirMenuTabId}
                 tabRefs={tabRefs}
               />
             ))}
@@ -508,6 +600,23 @@ export function TabStrip() {
               currentColor={pickerTab.pillColor}
               onSelect={(color) => setTabPillColor(colorPickerTabId, color)}
               onClose={() => setColorPickerTabId(null)}
+            />
+          )
+        })()}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {dirMenuTabId && (() => {
+          const menuTab = tabs.find((t) => t.id === dirMenuTabId)
+          if (!menuTab?.workingDirectory) return null
+          const dirName = menuTab.workingDirectory.split('/').pop() || menuTab.workingDirectory
+          return (
+            <DirContextMenu
+              key="dir-context-menu"
+              anchor={dirMenuAnchor}
+              dirName={dirName}
+              onCreateTab={() => createTabInDirectory(menuTab.workingDirectory)}
+              onClose={() => setDirMenuTabId(null)}
             />
           )
         })()}
