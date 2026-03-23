@@ -21,6 +21,23 @@ const INITIAL_RENDER_CAP = 100
 const PAGE_SIZE = 100
 const REMARK_PLUGINS = [remarkGfm] // Hoisted — prevents re-parse on every render
 
+// ─── Helpers ───
+
+/** Serialize conversation messages into compact text context, filtering out
+ *  plan-mode artifacts. Used to prime a fresh session with prior context. */
+function serializeConversation(messages: Message[]): string {
+  const lines: string[] = []
+  for (const msg of messages) {
+    if (msg.toolName === 'ExitPlanMode' || msg.toolName === 'EnterPlanMode') continue
+    if (msg.role === 'user') {
+      lines.push(`User: ${msg.content}`)
+    } else if (msg.role === 'assistant' && msg.content && !msg.toolName) {
+      lines.push(`Assistant: ${msg.content}`)
+    }
+  }
+  return lines.join('\n\n')
+}
+
 // ─── Types ───
 
 type GroupedItem =
@@ -249,20 +266,23 @@ export function ConversationView() {
                   } catch {}
                 }
 
-                if (clearContext) {
-                  // Read plan content to embed in prompt
-                  let planContent: string | null = null
-                  if (planFilePath) {
-                    try {
-                      const result = await window.coda.readPlan(planFilePath)
-                      planContent = result.content
-                    } catch (err) {
-                      console.warn('Failed to read plan file:', err)
-                    }
+                // Read plan content for both paths
+                let planContent: string | null = null
+                if (planFilePath) {
+                  try {
+                    const result = await window.coda.readPlan(planFilePath)
+                    planContent = result.content
+                  } catch (err) {
+                    console.warn('Failed to read plan file:', err)
                   }
+                }
 
-                  // Reset session (fresh Claude context) and clear messages
-                  window.coda.resetTabSession(tab.id)
+                // Both paths start a fresh Claude session to break out of
+                // plan mode (known Claude Code bug: #32868, #32934).
+                window.coda.resetTabSession(tab.id)
+
+                if (clearContext) {
+                  // Clear UI messages
                   useSessionStore.setState((s) => ({
                     tabs: s.tabs.map((t) =>
                       t.id === tab.id
@@ -271,10 +291,29 @@ export function ConversationView() {
                     ),
                   }))
 
-                  // Include plan content in the prompt
                   if (planContent) {
                     implementPrompt = `Implement the following plan:\n\n${planContent}`
                   }
+                } else {
+                  // Keep UI messages but start fresh Claude session.
+                  // Prime the new session with serialized conversation context
+                  // so the model has full prior context without plan-mode history.
+                  useSessionStore.setState((s) => ({
+                    tabs: s.tabs.map((t) =>
+                      t.id === tab.id ? { ...t, claudeSessionId: null } : t
+                    ),
+                  }))
+
+                  const conversationContext = serializeConversation(tab.messages)
+                  const parts: string[] = []
+                  if (conversationContext) {
+                    parts.push(`<previous_conversation>\n${conversationContext}\n</previous_conversation>`)
+                  }
+                  if (planContent) {
+                    parts.push(`<plan>\n${planContent}\n</plan>`)
+                  }
+                  parts.push('The plan above has been approved. Implement it now, making changes directly.')
+                  implementPrompt = parts.join('\n\n')
                 }
 
                 // Build plan attachment for the message

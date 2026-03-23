@@ -113,6 +113,15 @@ export class ControlPlane extends EventEmitter {
       const tabMode = this._getPermissionMode(tabId)
       log(`Permission request [${questionId}]: tool=${toolRequest.tool_name} tab=${tabId.substring(0, 8)}… mode=${tabMode}`)
 
+      // Deny plan-mode tools when not in plan mode — the model may follow
+      // conversation-history patterns and attempt to plan even after the
+      // user exited plan mode (known Claude Code bug: #32868, #32934).
+      if (tabMode !== 'plan' && (toolRequest.tool_name === 'ExitPlanMode' || toolRequest.tool_name === 'EnterPlanMode')) {
+        log(`Denying ${toolRequest.tool_name} — tab is in ${tabMode} mode, not plan`)
+        this.permissionServer.respondToPermission(questionId, 'deny', 'Plan mode is not active. Implement changes directly without creating plans.')
+        return
+      }
+
       // Auto/Plan mode: immediately allow without showing UI
       if (tabMode === 'auto' || tabMode === 'plan') {
         this.permissionServer.respondToPermission(questionId, 'allow', 'Auto mode')
