@@ -743,9 +743,11 @@ function relativeDate(iso: string): string {
 function GitGraphSection({
   directory,
   onRefresh,
+  refreshKey,
 }: {
   directory: string
   onRefresh: () => void
+  refreshKey: number
 }) {
   const colors = useColors()
   const [commits, setCommits] = useState<GitCommit[]>([])
@@ -780,6 +782,13 @@ function GitGraphSection({
     loadGraph()
     window.clui.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
   }, [directory, loadGraph])
+
+  // Reload graph when parent triggers a refresh (e.g. after commit)
+  const initialRef = useRef(true)
+  useEffect(() => {
+    if (initialRef.current) { initialRef.current = false; return }
+    loadGraph()
+  }, [refreshKey, loadGraph])
 
   // Infinite scroll
   useEffect(() => {
@@ -1165,7 +1174,7 @@ export function GitPanel() {
         </button>
         {graphOpen && (
           <div style={{ height: graphContentHeight, minHeight: 0, overflow: 'hidden' }}>
-            <GitGraphSection directory={directory} onRefresh={refresh} />
+            <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} />
           </div>
         )}
       </div>
