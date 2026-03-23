@@ -295,6 +295,7 @@ export interface SessionMeta {
   sessionId: string
   slug: string | null
   firstMessage: string | null
+  lastResponse: string | null
   lastTimestamp: string
   size: number
 }

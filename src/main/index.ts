@@ -552,7 +552,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
     }
     const files = readdirSync(sessionsDir).filter((f: string) => f.endsWith('.jsonl'))
 
-    const sessions: Array<{ sessionId: string; slug: string | null; firstMessage: string | null; lastTimestamp: string; size: number }> = []
+    const sessions: Array<{ sessionId: string; slug: string | null; firstMessage: string | null; lastResponse: string | null; lastTimestamp: string; size: number }> = []
 
     // UUID v4 regex — only consider files named as valid UUIDs
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -567,8 +567,8 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
       if (stat.size < 100) continue // skip trivially small files
 
       // Read lines to extract metadata and validate transcript schema
-      const meta: { validated: boolean; slug: string | null; firstMessage: string | null; lastTimestamp: string | null } = {
-        validated: false, slug: null, firstMessage: null, lastTimestamp: null,
+      const meta: { validated: boolean; slug: string | null; firstMessage: string | null; lastResponse: string | null; lastTimestamp: string | null } = {
+        validated: false, slug: null, firstMessage: null, lastResponse: null, lastTimestamp: null,
       }
 
       await new Promise<void>((resolve) => {
@@ -606,6 +606,20 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
                 }
               }
             }
+            // Extract last assistant response (overwrites each time so we keep the final one)
+            if (obj.type === 'assistant') {
+              const content = obj.message?.content
+              let raw = ''
+              if (typeof content === 'string') {
+                raw = content
+              } else if (Array.isArray(content)) {
+                raw = (content.find((p: any) => p.type === 'text')?.text) || ''
+              }
+              if (raw) {
+                const cleaned = cleanCliTags(raw).substring(0, 100)
+                if (cleaned) meta.lastResponse = cleaned
+              }
+            }
           } catch {}
           // Read all lines to get the last timestamp
         })
@@ -617,6 +631,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
           sessionId: fileSessionId,
           slug: meta.slug,
           firstMessage: meta.firstMessage,
+          lastResponse: meta.lastResponse,
           lastTimestamp: meta.lastTimestamp || stat.mtime.toISOString(),
           size: stat.size,
         })

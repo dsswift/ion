@@ -146,7 +146,7 @@ export function HistoryPicker() {
             Recent Sessions
           </div>
 
-          <div className="overflow-y-auto py-1" style={{ maxHeight: pos.maxHeight != null ? undefined : 180 }}>
+          <div className="overflow-y-auto py-1" style={{ maxHeight: pos.maxHeight != null ? undefined : 280 }}>
             {loading && (
               <div className="px-3 py-4 text-center text-[11px]" style={{ color: colors.textTertiary }}>
                 Loading...
@@ -170,6 +170,11 @@ export function HistoryPicker() {
                   <div className="text-[11px] truncate" style={{ color: colors.textPrimary }}>
                     {session.firstMessage || session.slug || session.sessionId.substring(0, 8)}
                   </div>
+                  {session.lastResponse && (
+                    <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
+                      {session.lastResponse}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-[10px] mt-0.5" style={{ color: colors.textTertiary }}>
                     <span>{formatTimeAgo(session.lastTimestamp)}</span>
                     <span>{formatSize(session.size)}</span>
