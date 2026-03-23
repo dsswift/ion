@@ -443,7 +443,7 @@ function TabPill({
   const hasCustomTitle = !!tab.customTitle
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button === 1) { e.preventDefault(); onClose(); return }
+    if (e.button === 1) { e.preventDefault(); if (!isRunning && !tab.bashExecuting) onClose(); return }
     if (e.button !== 0) return
     dragOrigin.current = { x: e.clientX, y: e.clientY }
     isDragging.current = false
