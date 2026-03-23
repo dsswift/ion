@@ -2,7 +2,7 @@ import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, FileText, Image, FileCode, File } from '@phosphor-icons/react'
 import { useColors } from '../theme'
-import type { Attachment } from '../../shared/types'
+import type { FileAttachment } from '../../shared/types'
 
 const FILE_ICONS: Record<string, React.ReactNode> = {
   'image/png': <Image size={14} />,
@@ -21,7 +21,7 @@ export function AttachmentChips({
   attachments,
   onRemove,
 }: {
-  attachments: Attachment[]
+  attachments: FileAttachment[]
   onRemove: (id: string) => void
 }) {
   const colors = useColors()

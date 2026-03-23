@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileFileAttachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry } from '../shared/types'
 import type { DiscoveredCommand } from '../main/claude/command-discovery'
 
 export interface CodaAPI {
@@ -18,9 +18,9 @@ export interface CodaAPI {
   openExternal(url: string): Promise<boolean>
   openInTerminal(sessionId: string | null, projectPath?: string): Promise<boolean>
   openInVSCode(projectPath: string): Promise<boolean>
-  attachFiles(): Promise<Attachment[] | null>
-  takeScreenshot(): Promise<Attachment | null>
-  pasteImage(dataUrl: string): Promise<Attachment | null>
+  attachFiles(): Promise<FileAttachment[] | null>
+  takeScreenshot(): Promise<FileAttachment | null>
+  pasteImage(dataUrl: string): Promise<FileAttachment | null>
   transcribeAudio(audioBase64: string): Promise<{ error: string | null; transcript: string | null }>
   getDiagnostics(): Promise<any>
   respondPermission(tabId: string, questionId: string, optionId: string): Promise<boolean>

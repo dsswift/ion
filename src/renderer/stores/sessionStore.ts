@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, CatalogPlugin, PluginStatus, PersistedTabState } from '../../shared/types'
+import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, FileAttachment, CatalogPlugin, PluginStatus, PersistedTabState } from '../../shared/types'
 import { useThemeStore } from '../theme'
 import { destroyTerminalInstance } from '../components/TerminalPanel'
 import notificationSrc from '../../../resources/notification.mp3'
@@ -146,12 +146,12 @@ interface State {
   addSystemMessage: (content: string) => void
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
-  sendMessage: (prompt: string, projectPath?: string) => void
+  sendMessage: (prompt: string, projectPath?: string, extraAttachments?: Attachment[]) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
   addDirectory: (dir: string) => void
   removeDirectory: (dir: string) => void
   setBaseDirectory: (dir: string) => void
-  addAttachments: (attachments: Attachment[]) => void
+  addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
@@ -843,6 +843,7 @@ export const useSessionStore = create<State>((set, get) => ({
         toolInput: m.toolInput,
         toolStatus: m.toolName ? 'completed' as const : undefined,
         userExecuted: m.userExecuted,
+        attachments: m.attachments,
         timestamp: m.timestamp,
       }))
 
@@ -1059,7 +1060,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   // ─── Send ───
 
-  sendMessage: (prompt, projectPath) => {
+  sendMessage: (prompt, projectPath, extraAttachments) => {
     const { activeTabId, tabs, staticInfo } = get()
     const tab = tabs.find((t) => t.id === activeTabId)
     // Use explicitly chosen directory, otherwise fall back to user home
@@ -1069,8 +1070,20 @@ export const useSessionStore = create<State>((set, get) => ({
     // Guard: don't send while connecting (warmup in progress)
     if (tab.status === 'connecting') return
 
+    // Slash commands are action-oriented -- auto-switch out of plan mode
+    // so the command can execute tools without manual approval
+    if (!tab.claudeSessionId && tab.permissionMode === 'plan' && prompt.startsWith('/')) {
+      get().setPermissionMode('auto')
+    }
+
     const isBusy = tab.status === 'running'
     const requestId = crypto.randomUUID()
+
+    // Combine file attachments from tab with any extra attachments (e.g. plan)
+    const msgAttachments: Attachment[] = [
+      ...tab.attachments,
+      ...(extraAttachments || []),
+    ]
 
     // Build full prompt with bash results and attachment context
     let fullPrompt = prompt
@@ -1129,7 +1142,13 @@ export const useSessionStore = create<State>((set, get) => ({
           permissionDenied: null,
           messages: [
             ...withEffectiveBase.messages,
-            { id: nextMsgId(), role: 'user' as const, content: prompt, timestamp: Date.now() },
+            {
+              id: nextMsgId(),
+              role: 'user' as const,
+              content: prompt,
+              attachments: msgAttachments.length > 0 ? msgAttachments : undefined,
+              timestamp: Date.now(),
+            },
           ],
         }
       }),

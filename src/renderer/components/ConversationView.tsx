@@ -5,13 +5,14 @@ import remarkGfm from 'remark-gfm'
 import {
   FileText, PencilSimple, FileArrowUp, Terminal, MagnifyingGlass, Globe,
   Robot, Question, Wrench, FolderOpen, Copy, Check, CaretRight, CaretDown,
-  SpinnerGap, ArrowCounterClockwise, Square,
+  SpinnerGap, ArrowCounterClockwise, Square, Image, FileCode, File, ListChecks,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
+import { PlanViewer } from './PlanViewer'
 import { useColors, useThemeStore } from '../theme'
-import type { Message } from '../../shared/types'
+import type { Message, Attachment } from '../../shared/types'
 
 // ─── Constants ───
 
@@ -234,23 +235,26 @@ export function ConversationView() {
 
                 let implementPrompt = 'Implement the plan'
 
-                if (clearContext) {
-                  // Snapshot messages BEFORE any async work or state clearing
-                  const messages = [...tab.messages]
+                // Extract plan file path from messages for the plan attachment
+                const msgs = [...tab.messages]
+                const exitMsg = msgs.reverse().find(
+                  (m) => m.toolName === 'ExitPlanMode' && m.toolInput
+                )
+                let planFilePath: string | null = null
+                if (exitMsg?.toolInput) {
+                  try {
+                    const input = JSON.parse(exitMsg.toolInput)
+                    planFilePath = (input.planFilePath as string) || null
+                  } catch {}
+                }
 
-                  // Extract plan file path from messages
-                  const exitMsg = messages.reverse().find(
-                    (m) => m.toolName === 'ExitPlanMode' && m.toolInput
-                  )
+                if (clearContext) {
+                  // Read plan content to embed in prompt
                   let planContent: string | null = null
-                  if (exitMsg?.toolInput) {
+                  if (planFilePath) {
                     try {
-                      const input = JSON.parse(exitMsg.toolInput)
-                      const planFilePath = input.planFilePath as string
-                      if (planFilePath) {
-                        const result = await window.coda.readPlan(planFilePath)
-                        planContent = result.content
-                      }
+                      const result = await window.coda.readPlan(planFilePath)
+                      planContent = result.content
                     } catch (err) {
                       console.warn('Failed to read plan file:', err)
                     }
@@ -272,7 +276,15 @@ export function ConversationView() {
                   }
                 }
 
-                sendMessage(implementPrompt)
+                // Build plan attachment for the message
+                const planAttachment = planFilePath ? [{
+                  id: crypto.randomUUID(),
+                  type: 'plan' as const,
+                  name: planFilePath.split('/').pop() || 'plan.md',
+                  path: planFilePath,
+                }] : undefined
+
+                sendMessage(implementPrompt, undefined, planAttachment)
               }}
             />
           )}
@@ -453,11 +465,107 @@ function InterruptButton({ tabId, bashExecId }: { tabId: string; bashExecId: str
   )
 }
 
+// ─── Message Attachments ───
+
+const FILE_ICONS: Record<string, React.ReactNode> = {
+  'image/png': <Image size={12} />,
+  'image/jpeg': <Image size={12} />,
+  'image/gif': <Image size={12} />,
+  'image/webp': <Image size={12} />,
+  'image/svg+xml': <Image size={12} />,
+  'text/plain': <FileText size={12} />,
+  'text/markdown': <FileText size={12} />,
+  'application/json': <FileCode size={12} />,
+  'text/yaml': <FileCode size={12} />,
+  'text/toml': <FileCode size={12} />,
+}
+
+const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.py', '.rs', '.go', '.css', '.html'])
+
+function MessageAttachments({ attachments }: { attachments: Attachment[] }) {
+  const colors = useColors()
+  const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
+  const { openFileInEditor } = useSessionStore.getState()
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const workingDir = useSessionStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId)
+    return tab?.workingDirectory || '~'
+  })
+
+  const handleClick = async (a: Attachment) => {
+    if (a.type === 'plan') {
+      const result = await window.coda.readPlan(a.path)
+      if (result.content && result.fileName) {
+        setPlanData({ content: result.content, fileName: result.fileName })
+      }
+      return
+    }
+    // File attachment
+    const ext = a.name.includes('.') ? '.' + a.name.split('.').pop()!.toLowerCase() : ''
+    if (EDITABLE_EXTS.has(ext) && activeTabId) {
+      openFileInEditor(workingDir, activeTabId, a.path)
+    } else {
+      const result = await window.coda.fsOpenNative(a.path)
+      if (!result.ok) {
+        console.warn('Failed to open file:', result.error)
+      }
+    }
+  }
+
+  return (
+    <>
+      <div className="flex gap-1 flex-wrap mt-1" style={{ maxWidth: '100%' }}>
+        {attachments.map((a) => (
+          <button
+            key={a.id}
+            onClick={() => handleClick(a)}
+            className="flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
+            style={{
+              background: a.type === 'plan' ? 'rgba(34, 197, 94, 0.1)' : colors.surfacePrimary,
+              border: `1px solid ${a.type === 'plan' ? 'rgba(34, 197, 94, 0.3)' : colors.surfaceSecondary}`,
+              borderRadius: 10,
+              padding: '2px 7px',
+              maxWidth: 180,
+            }}
+          >
+            <span className="flex-shrink-0" style={{ color: a.type === 'plan' ? 'rgba(34, 197, 94, 0.85)' : colors.textTertiary }}>
+              {a.type === 'plan'
+                ? <ListChecks size={12} />
+                : (a.type !== 'plan' && FILE_ICONS[(a as any).mimeType || '']) || <File size={12} />}
+            </span>
+            <span
+              className="text-[10px] font-medium truncate"
+              style={{ color: a.type === 'plan' ? 'rgba(34, 197, 94, 0.85)' : colors.textSecondary }}
+            >
+              {a.name}
+            </span>
+          </button>
+        ))}
+      </div>
+      {planData && (
+        <PlanViewer
+          content={planData.content}
+          fileName={planData.fileName}
+          onClose={() => setPlanData(null)}
+        />
+      )}
+    </>
+  )
+}
+
 // ─── User Message ───
 
 function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: boolean }) {
   const colors = useColors()
   const isBashCmd = !!message.userExecuted
+
+  // Strip attachment context lines that may be in historical messages
+  const displayContent = message.content
+    .replace(/^\[Attached (?:image|file): .+\]\n*/gm, '')
+    .trim()
+
+  const hasAttachments = message.attachments && message.attachments.length > 0
+
   const content = (
     <div
       className="text-[13px] leading-[1.5] px-3 py-1.5 max-w-[85%]"
@@ -469,7 +577,8 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
         whiteSpace: 'pre-wrap',
       }}
     >
-      {message.content}
+      {displayContent}
+      {hasAttachments && <MessageAttachments attachments={message.attachments!} />}
     </div>
   )
 
