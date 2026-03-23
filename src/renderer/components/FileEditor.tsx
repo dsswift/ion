@@ -76,12 +76,27 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   const colors = useColors()
 
   // Panel position and size — use refs + direct DOM mutation during drag to avoid
-  // re-renders that interfere with framer-motion Reorder layout animations
-  const posRef = useRef({ x: 60, y: 80 })
-  const [size, setSize] = useState({ w: 680, h: 480 })
+  // re-renders that interfere with framer-motion Reorder layout animations.
+  // Initialized from global store geometry (persisted across restarts).
+  const storeGeo = useSessionStore((s) => s.editorGeometry)
+  const setEditorGeometry = useSessionStore((s) => s.setEditorGeometry)
+  const posRef = useRef({ x: storeGeo.x, y: storeGeo.y })
+  const [size, setSize] = useState({ w: storeGeo.w, h: storeGeo.h })
+  const sizeRef = useRef({ w: storeGeo.w, h: storeGeo.h })
   const minWidth = 400
   const minHeight = 280
   const panelRef = useRef<HTMLDivElement>(null)
+
+  // Keep refs in sync when store geometry changes (e.g. restored on startup)
+  useEffect(() => {
+    posRef.current = { x: storeGeo.x, y: storeGeo.y }
+    sizeRef.current = { w: storeGeo.w, h: storeGeo.h }
+    if (panelRef.current) {
+      panelRef.current.style.left = `${storeGeo.x}px`
+      panelRef.current.style.top = `${storeGeo.y}px`
+    }
+    setSize({ w: storeGeo.w, h: storeGeo.h })
+  }, [storeGeo])
 
   // Drag and resize refs
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
@@ -141,15 +156,25 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
       if (resizeRef.current) {
         const dx = e.clientX - resizeRef.current.startX
         const dy = e.clientY - resizeRef.current.startY
-        setSize({
-          w: Math.max(minWidth, resizeRef.current.originW + dx),
-          h: Math.max(minHeight, resizeRef.current.originH + dy),
-        })
+        const newW = Math.max(minWidth, resizeRef.current.originW + dx)
+        const newH = Math.max(minHeight, resizeRef.current.originH + dy)
+        sizeRef.current = { w: newW, h: newH }
+        setSize({ w: newW, h: newH })
       }
     }
     const handleMouseUp = () => {
+      const didDrag = dragRef.current !== null
+      const didResize = resizeRef.current !== null
       dragRef.current = null
       resizeRef.current = null
+      // Persist geometry to global store on drag/resize end
+      if (didDrag || didResize) {
+        const pos = posRef.current
+        const sz = sizeRef.current
+        useSessionStore.getState().setEditorGeometry({
+          x: pos.x, y: pos.y, w: sz.w, h: sz.h,
+        })
+      }
     }
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
