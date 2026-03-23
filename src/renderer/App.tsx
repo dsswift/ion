@@ -162,36 +162,66 @@ export default function App() {
       // Try restoring saved tabs
       const saved = await window.coda.loadTabs().catch(() => null)
       if (saved && saved.tabs && saved.tabs.length > 0) {
-        // Restore each saved tab via resumeSession
-        const restoredTabIds: Array<{ tabId: string; sessionId: string }> = []
-        for (const st of saved.tabs) {
-          const tabId = await useSessionStore.getState().resumeSession(
-            st.claudeSessionId,
-            st.title,
-            st.workingDirectory,
-          )
-          restoredTabIds.push({ tabId, sessionId: st.claudeSessionId })
+        // Restore each saved tab
+        const restoredTabIds: Array<{ tabId: string; sessionId: string | null; index: number }> = []
+        for (let i = 0; i < saved.tabs.length; i++) {
+          const st = saved.tabs[i]
 
-          // Patch extra per-tab settings that resumeSession doesn't handle
-          useSessionStore.setState((s) => ({
-            tabs: s.tabs.map((t) =>
-              t.id === tabId
-                ? {
-                    ...t,
-                    customTitle: st.customTitle || null,
-                    hasChosenDirectory: st.hasChosenDirectory,
-                    additionalDirs: st.additionalDirs,
-                    permissionMode: st.permissionMode,
-                    bashResults: st.bashResults || [],
-                    pillColor: st.pillColor || null,
-                  }
-                : t
-            ),
-          }))
+          if (st.claudeSessionId) {
+            // Tab with a Claude session -- resume it
+            const tabId = await useSessionStore.getState().resumeSession(
+              st.claudeSessionId,
+              st.title,
+              st.workingDirectory,
+            )
+            restoredTabIds.push({ tabId, sessionId: st.claudeSessionId, index: i })
+
+            // Patch extra per-tab settings that resumeSession doesn't handle
+            useSessionStore.setState((s) => ({
+              tabs: s.tabs.map((t) =>
+                t.id === tabId
+                  ? {
+                      ...t,
+                      customTitle: st.customTitle || null,
+                      hasChosenDirectory: st.hasChosenDirectory,
+                      additionalDirs: st.additionalDirs,
+                      permissionMode: st.permissionMode,
+                      bashResults: st.bashResults || [],
+                      pillColor: st.pillColor || null,
+                    }
+                  : t
+              ),
+            }))
+          } else {
+            // Sessionless tab (e.g. has editor state but no messages sent yet)
+            const tabId = await useSessionStore.getState().createTabInDirectory(st.workingDirectory)
+            restoredTabIds.push({ tabId, sessionId: null, index: i })
+
+            useSessionStore.setState((s) => ({
+              tabs: s.tabs.map((t) =>
+                t.id === tabId
+                  ? {
+                      ...t,
+                      customTitle: st.customTitle || null,
+                      hasChosenDirectory: st.hasChosenDirectory,
+                      additionalDirs: st.additionalDirs,
+                      permissionMode: st.permissionMode,
+                      pillColor: st.pillColor || null,
+                    }
+                  : t
+              ),
+            }))
+          }
         }
 
-        // Set active tab by matching activeSessionId
-        if (saved.activeSessionId) {
+        // Set active tab by index (handles both session and sessionless tabs)
+        if (typeof saved.activeTabIndex === 'number') {
+          const activeEntry = restoredTabIds.find((r) => r.index === saved.activeTabIndex)
+          if (activeEntry) {
+            useSessionStore.setState({ activeTabId: activeEntry.tabId })
+          }
+        } else if (saved.activeSessionId) {
+          // Backwards compat: fall back to session ID matching
           const activeEntry = restoredTabIds.find((r) => r.sessionId === saved.activeSessionId)
           if (activeEntry) {
             useSessionStore.setState({ activeTabId: activeEntry.tabId })
@@ -223,7 +253,10 @@ export default function App() {
                 isReadOnly: f.isReadOnly || false,
                 isPreview: f.isPreview || false,
               }))
-              const activeFileId = files.length > 0 ? files[0].id : null
+              // Restore active file by saved index (IDs are regenerated on each restore)
+              const savedIdx = typeof dirState.activeFileIndex === 'number' ? dirState.activeFileIndex : 0
+              const activeIdx = savedIdx >= 0 && savedIdx < files.length ? savedIdx : 0
+              const activeFileId = files.length > 0 ? files[activeIdx].id : null
               restoredEditorStates.set(dir, { activeFileId, files })
             }
           }
@@ -232,9 +265,36 @@ export default function App() {
           }
         }
 
-        // Auto-expand if setting enabled, otherwise stay collapsed
-        const expandOnSwitch = useThemeStore.getState().expandOnTabSwitch
-        useSessionStore.setState({ isExpanded: expandOnSwitch, tabsReady: true })
+        // Restore which tabs had the file editor open (by index)
+        if (saved.editorOpenSessionIds && saved.editorOpenSessionIds.length > 0) {
+          const openIndexSet = new Set(saved.editorOpenSessionIds)
+          const editorOpenTabIds = new Set(
+            restoredTabIds
+              .filter((r) => openIndexSet.has(r.index))
+              .map((r) => r.tabId)
+          )
+          if (editorOpenTabIds.size > 0) {
+            useSessionStore.setState({ fileEditorOpenTabIds: editorOpenTabIds })
+          }
+        }
+
+        // Restore global editor geometry (clamped to current screen)
+        if (saved.editorGeometry) {
+          const g = saved.editorGeometry
+          const clampedGeo = {
+            x: Math.max(-200, Math.min(window.innerWidth - 100, g.x)),
+            y: Math.max(0, Math.min(window.innerHeight - 32, g.y)),
+            w: Math.max(400, g.w),
+            h: Math.max(280, g.h),
+          }
+          useSessionStore.setState({ editorGeometry: clampedGeo })
+        }
+
+        // Restore expanded/collapsed state, or fall back to setting
+        const restoredExpanded = typeof saved.isExpanded === 'boolean'
+          ? saved.isExpanded
+          : useThemeStore.getState().expandOnTabSwitch
+        useSessionStore.setState({ isExpanded: restoredExpanded, tabsReady: true })
         return
       }
 

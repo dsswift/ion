@@ -448,7 +448,7 @@ export const IPC = {
 // ─── Persisted Tab State ───
 
 export interface PersistedTab {
-  claudeSessionId: string
+  claudeSessionId: string | null
   title: string
   customTitle: string | null
   workingDirectory: string
@@ -470,15 +470,24 @@ export interface PersistedEditorFile {
 }
 
 export interface PersistedEditorState {
-  activeFileId: string | null
+  /** Index of the active file in the files array (replaces activeFileId since IDs are regenerated) */
+  activeFileIndex: number
   files: PersistedEditorFile[]
 }
 
 export interface PersistedTabState {
   activeSessionId: string | null
+  /** Index of active tab in the tabs array (handles sessionless tabs) */
+  activeTabIndex?: number | null
   tabs: PersistedTab[]
   /** Per-directory editor state. Key = working directory path */
   editorStates?: Record<string, PersistedEditorState>
+  /** Whether the conversation view was expanded */
+  isExpanded?: boolean
+  /** Indices into tabs array for tabs that had the file editor open */
+  editorOpenSessionIds?: number[]
+  /** Global file editor window position and size */
+  editorGeometry?: { x: number; y: number; w: number; h: number }
 }
 
 // ─── Git Types ───

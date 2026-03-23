@@ -81,6 +81,8 @@ interface State {
   fileEditorFocused: boolean
   /** Per-directory editor state (open files, active file). Key = working directory path */
   fileEditorStates: Map<string, FileEditorDirState>
+  /** Global file editor window position and size (persisted across restarts) */
+  editorGeometry: { x: number; y: number; w: number; h: number }
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
 
@@ -133,6 +135,7 @@ interface State {
   reorderEditorFiles: (dir: string, reordered: FileEditorTab[]) => void
   toggleEditorPreview: (dir: string, fileId: string) => void
   toggleEditorReadOnly: (dir: string, fileId: string) => void
+  setEditorGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   loadMarketplace: (forceRefresh?: boolean) => Promise<void>
   setMarketplaceSearch: (query: string) => void
   setMarketplaceFilter: (filter: string) => void
@@ -221,6 +224,7 @@ export const useSessionStore = create<State>((set, get) => ({
   fileEditorOpenTabIds: new Set<string>(),
   fileEditorFocused: true,
   fileEditorStates: new Map(),
+  editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
   tabsReady: false,
 
   // Settings dialog
@@ -653,6 +657,8 @@ export const useSessionStore = create<State>((set, get) => ({
       return { fileEditorStates: states }
     })
   },
+
+  setEditorGeometry: (geo) => set({ editorGeometry: geo }),
 
   loadMarketplace: async (forceRefresh) => {
     set({ marketplaceLoading: true, marketplaceError: null })
@@ -1474,10 +1480,16 @@ export const useSessionStore = create<State>((set, get) => ({
 function persistTabs(): void {
   const { tabs, activeTabId } = useSessionStore.getState()
   const activeTab = tabs.find((t) => t.id === activeTabId)
+  // Persist tabs with a session OR tabs that have editor state for their directory
+  const dirsWithEditorState = new Set<string>()
+  for (const [dir, dirState] of useSessionStore.getState().fileEditorStates) {
+    if (dirState.files.length > 0) dirsWithEditorState.add(dir)
+  }
+
   const persistedTabs = tabs
-    .filter((t) => t.claudeSessionId)
+    .filter((t) => t.claudeSessionId || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory)))
     .map((t) => ({
-      claudeSessionId: t.claudeSessionId!,
+      claudeSessionId: t.claudeSessionId,
       title: t.customTitle || t.title,
       customTitle: t.customTitle,
       workingDirectory: t.workingDirectory,
@@ -1493,8 +1505,11 @@ function persistTabs(): void {
   const editorStates: Record<string, any> = {}
   for (const [dir, dirState] of fileEditorStates) {
     if (dirState.files.length > 0) {
+      const activeIdx = dirState.activeFileId
+        ? dirState.files.findIndex((f) => f.id === dirState.activeFileId)
+        : -1
       editorStates[dir] = {
-        activeFileId: dirState.activeFileId,
+        activeFileIndex: activeIdx >= 0 ? activeIdx : 0,
         files: dirState.files.map((f) => ({
           filePath: f.filePath,
           fileName: f.fileName,
@@ -1508,17 +1523,47 @@ function persistTabs(): void {
     }
   }
 
+  // Resolve which persisted tabs have the editor open (by index into persistedTabs)
+  const { isExpanded, fileEditorOpenTabIds, editorGeometry } = useSessionStore.getState()
+  const editorOpenIndices: number[] = []
+  // Build a lookup from tab id -> persisted index
+  let persistedIdx = 0
+  for (const t of tabs) {
+    const isPersisted = t.claudeSessionId || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory))
+    if (isPersisted) {
+      if (fileEditorOpenTabIds.has(t.id)) {
+        editorOpenIndices.push(persistedIdx)
+      }
+      persistedIdx++
+    }
+  }
+
+  // Resolve active tab as index into persistedTabs (handles sessionless tabs)
+  let activeTabIndex: number | null = null
+  persistedIdx = 0
+  for (const t of tabs) {
+    const isPersisted = t.claudeSessionId || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory))
+    if (isPersisted) {
+      if (t.id === activeTabId) activeTabIndex = persistedIdx
+      persistedIdx++
+    }
+  }
+
   const data: PersistedTabState = {
     activeSessionId: activeTab?.claudeSessionId || null,
+    activeTabIndex,
     tabs: persistedTabs,
     editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
+    isExpanded,
+    editorOpenSessionIds: editorOpenIndices.length > 0 ? editorOpenIndices : undefined,
+    editorGeometry,
   }
   window.coda.saveTabs(data)
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 useSessionStore.subscribe((state, prev) => {
-  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates) {
+  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenTabIds !== prev.fileEditorOpenTabIds || state.editorGeometry !== prev.editorGeometry) {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(persistTabs, 100)
   }
