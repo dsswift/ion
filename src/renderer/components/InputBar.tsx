@@ -296,6 +296,7 @@ export function InputBar() {
       bashExecIdRef.current = execId
       setInput('')
       setBashExecuting(true)
+      setBashMode(false)
       if (textareaRef.current) {
         textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
       }
@@ -303,7 +304,6 @@ export function InputBar() {
       window.coda.executeBash(execId, cmd, cwd).then((result) => {
         bashExecIdRef.current = null
         setBashExecuting(false)
-        setBashMode(false)
         completeBashCommand(toolMsgId, cmd, result.stdout, result.stderr, result.exitCode)
         requestAnimationFrame(() => textareaRef.current?.focus())
       })
@@ -485,7 +485,7 @@ export function InputBar() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={
-                bashExecuting
+                tab?.bashExecuting
                   ? 'Running... (Esc to cancel)'
                   : bashMode
                     ? bashPlaceholder
@@ -547,7 +547,7 @@ export function InputBar() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={
-                bashExecuting
+                tab?.bashExecuting
                   ? 'Running... (Esc to cancel)'
                   : bashMode
                     ? bashPlaceholder

@@ -200,6 +200,7 @@ function makeLocalTab(): TabState {
     additionalDirs: [],
     permissionMode: useThemeStore.getState().defaultPermissionMode,
     bashResults: [],
+    bashExecuting: false,
     pillColor: null,
   }
 }
@@ -897,6 +898,7 @@ export const useSessionStore = create<State>((set, get) => ({
         return {
           ...t,
           title,
+          bashExecuting: true,
           messages: [
             ...t.messages,
             { id: nextMsgId(), role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now },
@@ -909,7 +911,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   completeBashCommand: (toolMsgId, command, stdout, stderr, exitCode) => {
-    const { activeTabId } = get()
+    const { activeTabId, isExpanded } = get()
     const outputParts: string[] = []
     if (stdout) outputParts.push(stdout.trimEnd())
     if (stderr) outputParts.push(`stderr: ${stderr.trimEnd()}`)
@@ -919,6 +921,8 @@ export const useSessionStore = create<State>((set, get) => ({
         if (t.id !== activeTabId) return t
         return {
           ...t,
+          bashExecuting: false,
+          hasUnread: (t.id !== activeTabId || !isExpanded) ? true : t.hasUnread,
           bashResults: [...t.bashResults, { command, stdout, stderr }],
           messages: t.messages.map((m) =>
             m.id === toolMsgId
@@ -928,6 +932,7 @@ export const useSessionStore = create<State>((set, get) => ({
         }
       }),
     }))
+    playNotificationIfHidden()
   },
 
   // ─── Permission response ───

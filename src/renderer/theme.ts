@@ -47,6 +47,8 @@ const darkColors = {
   statusError: '#c47060',
   statusErrorBg: 'rgba(196, 112, 96, 0.08)',
   statusDead: '#c47060',
+  statusBash: '#cc6b9a',
+  statusBashGlow: 'rgba(204, 107, 154, 0.4)',
   statusPermission: '#d97757',
   statusPermissionGlow: 'rgba(217, 119, 87, 0.4)',
 
@@ -184,6 +186,8 @@ const lightColors = {
   statusError: '#c47060',
   statusErrorBg: 'rgba(196, 112, 96, 0.06)',
   statusDead: '#c47060',
+  statusBash: '#cc6b9a',
+  statusBashGlow: 'rgba(204, 107, 154, 0.3)',
   statusPermission: '#d97757',
   statusPermissionGlow: 'rgba(217, 119, 87, 0.3)',
 

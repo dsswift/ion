@@ -19,11 +19,12 @@ const PILL_COLOR_PRESETS = [
   { color: '#c4a84d', label: 'Gold' },
 ] as const
 
-function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean }) {
+function StatusDot({ status, hasUnread, hasPermission, bashExecuting }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean; bashExecuting: boolean }) {
   const colors = useColors()
   let bg: string = colors.statusIdle
   let pulse = false
   let glow = false
+  let glowColor = colors.statusPermissionGlow
 
   if (status === 'dead' || status === 'failed') {
     bg = colors.statusError
@@ -33,6 +34,11 @@ function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; ha
   } else if (status === 'connecting' || status === 'running') {
     bg = colors.statusRunning
     pulse = true
+  } else if (bashExecuting) {
+    bg = colors.statusBash
+    pulse = true
+    glow = true
+    glowColor = colors.statusBashGlow
   } else if (hasUnread) {
     bg = colors.statusComplete
   }
@@ -42,7 +48,7 @@ function StatusDot({ status, hasUnread, hasPermission }: { status: TabStatus; ha
       className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
       style={{
         background: bg,
-        ...(glow ? { boxShadow: `0 0 6px 2px ${colors.statusPermissionGlow}` } : {}),
+        ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
       }}
     />
   )
@@ -499,7 +505,7 @@ function TabPill({
           onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
         }}
       >
-        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} />
+        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} />
       </span>
       {showDirLabel && tab.workingDirectory && (
         <span
