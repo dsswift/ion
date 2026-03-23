@@ -18,29 +18,19 @@ The user tests with the **packaged macOS app**, not the dev server.
 ### Build + install cycle
 
 ```bash
-npm run dist                    # builds to release/mac-arm64/
-# Then copy to /Applications:
-cp -R "release/mac-arm64/CODA.app" "/Applications/CODA.app"
+make install
 ```
 
-Or use the install script which does both:
+This delegates to `commands/install-app.command`, which handles everything: graceful shutdown of the running instance (waits for active agents to finish via SIGUSR1 drain), build, copy to `/Applications`, and relaunch.
 
-```bash
-bash install-app.command
-```
+**Never kill CODA processes directly or copy over the app bundle manually.** Always use `make install` or `bash commands/install-app.command` so that active agents finish gracefully before the binary is replaced.
 
 ### Key distinction
 
 - `npm run build` -- builds to `dist/` only (dev server uses this, packaged app does NOT)
 - `npm run dist` -- builds to `dist/` then packages into `release/mac-arm64/CODA.app`
 
-**After any code change, you must run `npm run dist` and reinstall to `/Applications/` for the user to see changes.** Running `npm run build` alone will NOT update the installed app.
-
-### Quick reinstall (skip whisper/setup)
-
-```bash
-pkill -9 -f "CODA" 2>/dev/null; sleep 1; npm run dist && rm -rf "/Applications/CODA.app" && cp -R "release/mac-arm64/CODA.app" "/Applications/CODA.app"
-```
+**After any code change, you must run `make install` for the user to see changes.** Running `npm run build` alone will NOT update the installed app.
 
 ## Transparent Window + Click-Through
 

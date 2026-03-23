@@ -4,32 +4,54 @@
 cd "$(dirname "$0")/.."
 
 REPO_DIR="$(pwd)"
-PID_FILE=".coda.pid"
 stopped=0
 
-# ── 1. Try tracked PID first ──
+# ── Resolve PID ──
 
-if [ -f "$PID_FILE" ]; then
-  APP_PID=$(cat "$PID_FILE" 2>/dev/null)
-  if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
-    # Kill the process group (app + all child helpers)
-    kill -TERM -"$APP_PID" 2>/dev/null || kill -TERM "$APP_PID" 2>/dev/null
+APP_PID=""
 
-    # Wait up to 3 seconds for graceful shutdown
+# Check packaged-app PID file
+PACKAGED_PID_FILE="$HOME/Library/Application Support/CODA/coda.pid"
+if [ -f "$PACKAGED_PID_FILE" ]; then
+  APP_PID=$(cat "$PACKAGED_PID_FILE" 2>/dev/null)
+fi
+
+# Fallback: dev PID file
+if [ -z "$APP_PID" ] || ! kill -0 "$APP_PID" 2>/dev/null; then
+  if [ -f ".coda.pid" ]; then
+    APP_PID=$(cat ".coda.pid" 2>/dev/null)
+  fi
+fi
+
+# ── 1. Try graceful drain (SIGUSR1) then SIGTERM ──
+
+if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
+  # Signal drain mode — lets active agents finish
+  kill -USR1 "$APP_PID" 2>/dev/null || true
+
+  # Wait up to 10 seconds for graceful drain+quit
+  for i in $(seq 1 10); do
+    kill -0 "$APP_PID" 2>/dev/null || break
+    sleep 1
+  done
+
+  # Escalate to SIGTERM if still alive
+  if kill -0 "$APP_PID" 2>/dev/null; then
+    kill -TERM "$APP_PID" 2>/dev/null || true
     for i in 1 2 3; do
       kill -0 "$APP_PID" 2>/dev/null || break
       sleep 1
     done
-
-    # Force kill if still alive
-    if kill -0 "$APP_PID" 2>/dev/null; then
-      kill -KILL -"$APP_PID" 2>/dev/null || kill -KILL "$APP_PID" 2>/dev/null
-      sleep 0.5
-    fi
-
-    stopped=1
   fi
-  rm -f "$PID_FILE"
+
+  # Force kill if still alive
+  if kill -0 "$APP_PID" 2>/dev/null; then
+    kill -KILL "$APP_PID" 2>/dev/null || true
+    sleep 0.5
+  fi
+
+  stopped=1
+  rm -f ".coda.pid"
 fi
 
 # ── 2. Fallback: pattern-based kill for anything missed ──

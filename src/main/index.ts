@@ -30,6 +30,7 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let screenshotCounter = 0
 let toggleSequence = 0
+let forceQuit = false
 
 // Feature flag: enable PTY interactive permissions transport
 const INTERACTIVE_PTY = process.env.CODA_INTERACTIVE_PERMISSIONS_PTY === '1'
@@ -148,7 +149,6 @@ function createWindow(): void {
     }
   })
 
-  let forceQuit = false
   app.on('before-quit', (e) => {
     if (forceQuit) return
     e.preventDefault()
@@ -167,11 +167,14 @@ function createWindow(): void {
     if (choice === 0) {
       forceQuit = true
       terminalManager.destroyAll()
+      controlPlane.shutdown()
+      globalShortcut.unregisterAll()
       if (tray) {
         tray.destroy()
         tray = null
       }
-      app.quit()
+      flushLogs()
+      app.exit(0)
     }
   })
   mainWindow.on('close', (e) => {
@@ -433,6 +436,7 @@ ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: stri
 
     child.on('close', (code) => {
       bashProcesses.delete(id)
+      controlPlane.notifyExternalWorkDone()
       resolve({
         stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
         stderr: Buffer.concat(stderrChunks).toString('utf-8'),
@@ -442,6 +446,7 @@ ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: stri
 
     child.on('error', (err) => {
       bashProcesses.delete(id)
+      controlPlane.notifyExternalWorkDone()
       resolve({ stdout: '', stderr: err.message, exitCode: 1 })
     })
   })
@@ -1768,6 +1773,12 @@ app.whenReady().then(async () => {
   createWindow()
   snapshotWindowState('after createWindow')
 
+  // Write PID file so install/stop scripts can signal this process
+  const pidDir = app.getPath('userData')
+  const pidPath = join(pidDir, 'coda.pid')
+  writeFileSync(pidPath, String(process.pid))
+  log(`PID file written: ${pidPath} (${process.pid})`)
+
   // Custom application menu: preserve standard edit shortcuts but remove Cmd+W close-window
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
@@ -1846,7 +1857,38 @@ app.on('will-quit', () => {
     tray.destroy()
     tray = null
   }
+  // Remove PID file
+  try { rmSync(join(app.getPath('userData'), 'coda.pid')) } catch {}
   flushLogs()
+})
+
+// Graceful drain: install script sends SIGUSR1 to let active agents finish before quit
+process.on('SIGUSR1', () => {
+  log('SIGUSR1 received — draining active work before quit')
+  const timeout = setTimeout(() => {
+    log('Drain timeout (5min) — force quitting')
+    forceQuit = true
+    terminalManager.destroyAll()
+    controlPlane.shutdown()
+    globalShortcut.unregisterAll()
+    if (tray) { tray.destroy(); tray = null }
+    try { rmSync(join(app.getPath('userData'), 'coda.pid')) } catch {}
+    flushLogs()
+    app.exit(0)
+  }, 5 * 60 * 1000)
+
+  controlPlane.drain(() => bashProcesses.size > 0).then(() => {
+    clearTimeout(timeout)
+    log('All agents finished — quitting')
+    forceQuit = true
+    terminalManager.destroyAll()
+    controlPlane.shutdown()
+    globalShortcut.unregisterAll()
+    if (tray) { tray.destroy(); tray = null }
+    try { rmSync(join(app.getPath('userData'), 'coda.pid')) } catch {}
+    flushLogs()
+    app.exit(0)
+  })
 })
 
 app.on('window-all-closed', () => {

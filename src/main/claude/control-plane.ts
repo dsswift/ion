@@ -67,6 +67,10 @@ export class ControlPlane extends EventEmitter {
   private ptyRuns = new Set<string>()
   /** Tracks requestIds that are warmup init requests (invisible to renderer) */
   private initRequestIds = new Set<string>()
+  /** When true, no new queued work will start; resolves when all running tabs finish */
+  private draining = false
+  private drainResolve: (() => void) | null = null
+  private hasExternalWork: (() => boolean) | null = null
   /** Permission hook server for PreToolUse HTTP hooks */
   private permissionServer: PermissionServer
   /** Per-run tokens: requestId → runToken (for cleanup on exit/error) */
@@ -794,6 +798,8 @@ export class ControlPlane extends EventEmitter {
   // ─── Queue Processing ───
 
   private _processQueue(tabId: string): void {
+    if (this.draining) return
+
     // Find next queued request for this specific tab
     const idx = this.requestQueue.findIndex((r) => r.tabId === tabId)
     if (idx === -1) return
@@ -836,6 +842,9 @@ export class ControlPlane extends EventEmitter {
     tab.status = newStatus
     log(`Tab ${tabId}: ${oldStatus} → ${newStatus}`)
     this.emit('tab-status-change', tabId, newStatus, oldStatus)
+
+    // If draining, check whether all running work has finished
+    if (this.draining) this._checkDrainComplete()
   }
 
   hasRunningTabs(): boolean {
@@ -845,7 +854,52 @@ export class ControlPlane extends EventEmitter {
     return false
   }
 
-  // ─── Shutdown ───
+  // ─── Drain & Shutdown ───
+
+  /**
+   * Enter drain mode: reject all queued requests and resolve when every
+   * running tab reaches a terminal state AND no external work remains.
+   * @param hasExternalWork Optional callback checked alongside hasRunningTabs.
+   *   Used by the main process to include bash processes in the drain check.
+   */
+  drain(hasExternalWork?: () => boolean): Promise<void> {
+    this.draining = true
+    this.hasExternalWork = hasExternalWork ?? null
+
+    // Reject everything in the queue (same pattern as closeTab)
+    for (const req of this.requestQueue) {
+      const reason = new Error('Draining — request rejected')
+      req.reject(reason)
+      for (const w of req.extraWaiters) w.reject(reason)
+    }
+    this.requestQueue = []
+
+    if (this._isDrainComplete()) {
+      log('Drain: no running work — resolving immediately')
+      return Promise.resolve()
+    }
+
+    log('Drain: waiting for running work to finish')
+    return new Promise<void>((resolve) => {
+      this.drainResolve = resolve
+    })
+  }
+
+  /** Called when external work finishes (e.g. a bash process exits). */
+  notifyExternalWorkDone(): void {
+    if (this.draining) this._checkDrainComplete()
+  }
+
+  private _isDrainComplete(): boolean {
+    return !this.hasRunningTabs() && !(this.hasExternalWork?.())
+  }
+
+  private _checkDrainComplete(): void {
+    if (this._isDrainComplete()) {
+      this.drainResolve?.()
+      this.drainResolve = null
+    }
+  }
 
   shutdown(): void {
     log('Shutting down control plane')

@@ -176,6 +176,8 @@ export interface TabState {
   permissionMode: 'ask' | 'auto' | 'plan'
   /** Pending bash command results to send as context with next prompt */
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
+  /** Whether a bash command is currently executing in this tab */
+  bashExecuting: boolean
   /** Custom pill outline color (null = use theme default) */
   pillColor: string | null
 }
