@@ -1768,6 +1768,34 @@ app.whenReady().then(async () => {
   createWindow()
   snapshotWindowState('after createWindow')
 
+  // Custom application menu: preserve standard edit shortcuts but remove Cmd+W close-window
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+  ]))
+
   if (SPACES_DEBUG) {
     mainWindow?.on('show', () => snapshotWindowState('event window show'))
     mainWindow?.on('hide', () => snapshotWindowState('event window hide'))
