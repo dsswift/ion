@@ -262,7 +262,6 @@ function RecentDirsContextMenu({
         padding: 4,
         zIndex: 10000,
         minWidth: 180,
-        maxWidth: 320,
       }}
     >
       {recentDirs.length === 0 ? (
@@ -293,7 +292,7 @@ function RecentDirsContextMenu({
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
               <FolderOpen size={14} color={colors.textSecondary} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayPath}</span>
+              <span style={{ whiteSpace: 'nowrap' }}>{displayPath}</span>
             </button>
           )
         })
