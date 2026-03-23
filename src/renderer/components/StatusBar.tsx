@@ -18,12 +18,15 @@ function ModelPicker() {
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
+  const activeTabId = useSessionStore((s) => s.activeTabId)
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
+
+  useEffect(() => { setOpen(false) }, [activeTabId])
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
@@ -133,6 +136,7 @@ function PermissionModePicker() {
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.permissionMode ?? 'plan'
   )
   const setPermissionMode = useSessionStore((s) => s.setPermissionMode)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -140,6 +144,8 @@ function PermissionModePicker() {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
+
+  useEffect(() => { setOpen(false) }, [activeTabId])
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
@@ -282,6 +288,7 @@ function OpenWithPicker() {
   )
   const preferredOpenWith = useThemeStore((s) => s.preferredOpenWith)
   const setPreferredOpenWith = useThemeStore((s) => s.setPreferredOpenWith)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -289,6 +296,8 @@ function OpenWithPicker() {
   const containerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ bottom: 0, right: 0 })
+
+  useEffect(() => { setOpen(false) }, [activeTabId])
 
   const updatePos = useCallback(() => {
     if (!containerRef.current) return
@@ -446,6 +455,9 @@ export function StatusBar() {
   const dirRef = useRef<HTMLButtonElement>(null)
   const dirPopRef = useRef<HTMLDivElement>(null)
   const [dirPos, setDirPos] = useState({ bottom: 0, left: 0 })
+
+  // Close popover on tab change
+  useEffect(() => { setDirOpen(false) }, [activeTabId])
 
   // Close popover on outside click
   useEffect(() => {
