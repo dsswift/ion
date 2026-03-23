@@ -34,7 +34,6 @@ export function InputBar() {
   const [slashIndex, setSlashIndex] = useState(0)
   const bashMode = useBashModeStore((s) => s.active)
   const setBashMode = useBashModeStore((s) => s.set)
-  const [bashExecuting, setBashExecuting] = useState(false)
   const [isMultiLine, setIsMultiLine] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -55,6 +54,7 @@ export function InputBar() {
   const preferredModel = useSessionStore((s) => s.preferredModel)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const bashExecuting = tab?.bashExecuting ?? false
   const tabsReady = useSessionStore((s) => s.tabsReady)
   const bashCommandEntry = useThemeStore((s) => s.bashCommandEntry)
   const colors = useColors()
@@ -293,16 +293,16 @@ export function InputBar() {
       const cwd = tab?.workingDirectory || '~'
       const execId = crypto.randomUUID()
       setInput('')
-      setBashExecuting(true)
       setBashMode(false)
       if (textareaRef.current) {
         textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
       }
-      const toolMsgId = startBashCommand(cmd, execId)
+      const { toolMsgId, tabId } = startBashCommand(cmd, execId)
       window.coda.executeBash(execId, cmd, cwd).then((result) => {
-        setBashExecuting(false)
-        completeBashCommand(toolMsgId, cmd, result.stdout, result.stderr, result.exitCode)
+        completeBashCommand(tabId, toolMsgId, cmd, result.stdout, result.stderr, result.exitCode)
         requestAnimationFrame(() => textareaRef.current?.focus())
+      }).catch(() => {
+        completeBashCommand(tabId, toolMsgId, cmd, '', 'IPC error: bash execution failed', 1)
       })
       return
     }
@@ -335,7 +335,7 @@ export function InputBar() {
     sendMessage(prompt || 'See attached files')
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands])
+  }, [input, isBusy, sendMessage, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
