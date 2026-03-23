@@ -657,10 +657,12 @@ export function StatusBar() {
         <PermissionModePicker />
       </div>
 
-      {/* Right — Git + Open in CLI */}
+      {/* Right — Open in CLI + Git */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        <OpenWithPicker />
         {isGitRepo && (
           <>
+            <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
             <button
               onClick={toggleGitPanel}
               className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 transition-colors"
@@ -669,10 +671,8 @@ export function StatusBar() {
             >
               <GitBranch size={11} />
             </button>
-            <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
           </>
         )}
-        <OpenWithPicker />
       </div>
     </div>
   )
