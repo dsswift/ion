@@ -362,7 +362,6 @@ export function InputBar() {
       if (e.key === 'Escape') { e.preventDefault(); setSlashFilter(null); return }
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
-    if (e.key === 'Escape' && !showSlashMenu) { window.clui.hideWindow() }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
