@@ -21,7 +21,9 @@ The user tests with the **packaged macOS app**, not the dev server.
 make install
 ```
 
-This delegates to `commands/install-app.command`, which handles everything: graceful shutdown of the running instance (waits for active agents to finish via SIGUSR1 drain), build, copy to `/Applications`, and relaunch.
+This launches the installer as a **detached background process** (via `commands/install-bg.command`) so it returns immediately. The installer handles graceful shutdown (SIGUSR1 drain -- waits for active agents and bash commands to finish), build, copy to `/Applications`, and relaunch. Output is logged to `/tmp/coda-install.log`.
+
+The detached design breaks the deadlock when developing CODA inside CODA: the agent's bash command returns immediately, the agent completes, the drain proceeds, and the orphaned installer continues.
 
 **Never kill CODA processes directly or copy over the app bundle manually.** Always use `make install` or `bash commands/install-app.command` so that active agents finish gracefully before the binary is replaced.
 

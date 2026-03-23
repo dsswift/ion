@@ -1,4 +1,4 @@
 .PHONY: install
 
 install:
-	@bash commands/install-app.command
+	@bash commands/install-bg.command
