@@ -274,6 +274,9 @@ export const useSessionStore = create<State>((set, get) => ({
     const defaultBase = useThemeStore.getState().defaultBaseDirectory
     const startDir = defaultBase || homeDir
     const hasChosen = !!defaultBase
+    const { activeTabId: prevTabId, tabs: prevTabs, fileEditorOpenTabIds: prevEditorOpen } = get()
+    const prevTab = prevTabs.find((t) => t.id === prevTabId)
+    const inheritEditor = prevTab && prevEditorOpen.has(prevTab.id) && prevTab.workingDirectory === startDir
     try {
       const { tabId } = await window.coda.createTab()
       const tab: TabState = {
@@ -285,6 +288,7 @@ export const useSessionStore = create<State>((set, get) => ({
       set((s) => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,
+        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
       }))
       return tabId
     } catch {
@@ -294,6 +298,7 @@ export const useSessionStore = create<State>((set, get) => ({
       set((s) => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,
+        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
       }))
       return tab.id
     }
@@ -301,6 +306,9 @@ export const useSessionStore = create<State>((set, get) => ({
 
   createTabInDirectory: async (dir) => {
     useThemeStore.getState().addRecentBaseDirectory(dir)
+    const { activeTabId: prevTabId, tabs: prevTabs, fileEditorOpenTabIds: prevEditorOpen } = get()
+    const prevTab = prevTabs.find((t) => t.id === prevTabId)
+    const inheritEditor = prevTab && prevEditorOpen.has(prevTab.id) && prevTab.workingDirectory === dir
     try {
       const { tabId } = await window.coda.createTab()
       const tab: TabState = {
@@ -312,6 +320,7 @@ export const useSessionStore = create<State>((set, get) => ({
       set((s) => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,
+        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
       }))
       return tabId
     } catch {
@@ -321,6 +330,7 @@ export const useSessionStore = create<State>((set, get) => ({
       set((s) => ({
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,
+        ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
       }))
       return tab.id
     }
