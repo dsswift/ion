@@ -579,7 +579,9 @@ export function StatusBar() {
               position: 'fixed',
               bottom: dirPos.bottom,
               left: dirPos.left,
-              width: 220,
+              width: 'auto',
+              minWidth: 220,
+              maxWidth: 500,
               pointerEvents: 'auto',
               background: colors.popoverBg,
               backdropFilter: 'blur(20px)',
@@ -593,14 +595,15 @@ export function StatusBar() {
               <button
                 onClick={handleChangeBaseDir}
                 disabled={isRunning || baseLocked}
-                className="w-full text-left px-2 py-1 rounded-lg transition-colors"
+                className="w-full text-left px-2 py-1 rounded-lg transition-colors hover:bg-white/5"
                 style={{ cursor: isRunning || baseLocked ? 'default' : 'pointer', opacity: baseLocked ? 0.7 : 1 }}
                 title={baseLocked ? 'Base directory is locked after the conversation starts' : tab.hasChosenDirectory ? `${tab.workingDirectory} — click to change` : 'Click to choose a base directory'}
               >
                 <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: colors.textTertiary }}>
                   Base directory
                 </div>
-                <div className="text-[11px] truncate" style={{ color: tab.hasChosenDirectory ? colors.textSecondary : colors.textMuted }}>
+                <div className="flex items-center gap-1.5 text-[11px]" style={{ color: tab.hasChosenDirectory ? colors.textSecondary : colors.textMuted, whiteSpace: 'nowrap' }}>
+                  <FolderOpen size={13} className="flex-shrink-0" style={{ color: colors.accent }} />
                   {tab.hasChosenDirectory ? tab.workingDirectory : 'None (defaults to ~)'}
                 </div>
               </button>
