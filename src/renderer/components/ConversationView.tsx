@@ -12,6 +12,7 @@ import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { PlanViewer } from './PlanViewer'
 import { useColors, useThemeStore } from '../theme'
+import { InlineEditDiff } from './InlineEditDiff'
 import type { Message, Attachment } from '../../shared/types'
 
 // ─── Constants ───
@@ -837,10 +838,29 @@ function getToolDescription(name: string, input?: string): string {
 }
 
 function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<typeof useColors> }) {
-  const [showResult, setShowResult] = useState(!!tool.userExecuted || !!tool.autoExpandResult)
+  const expandToolResults = useThemeStore((s) => s.expandToolResults)
+  const shouldAutoExpand = !!tool.autoExpandResult ||
+    (expandToolResults && ['Edit', 'Write'].includes(tool.toolName || ''))
+  const [showResult, setShowResult] = useState(!!tool.userExecuted || shouldAutoExpand)
   const isError = tool.toolStatus === 'error'
-  const hasContent = !!tool.content
-  const lineCount = hasContent ? tool.content.split('\n').length : 0
+
+  // Parse Edit/Write tool input for diff rendering
+  const editDiff = useMemo(() => {
+    if (tool.toolName !== 'Edit' || !tool.toolInput) return null
+    try {
+      const input = JSON.parse(tool.toolInput)
+      if (typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+        return { oldString: input.old_string, newString: input.new_string }
+      }
+    } catch { /* fallback to raw content */ }
+    return null
+  }, [tool.toolName, tool.toolInput])
+
+  const hasContent = !!tool.content || !!editDiff
+  const lineCount = editDiff
+    ? (editDiff.oldString ? editDiff.oldString.split('\n').length : 0) +
+      (editDiff.newString ? editDiff.newString.split('\n').length : 0)
+    : tool.content ? tool.content.split('\n').length : 0
 
   return (
     <>
@@ -864,14 +884,17 @@ function ToolResultBadge({ tool, colors }: { tool: Message; colors: ReturnType<t
           </span>
         )}
       </span>
-      {showResult && tool.content && (
+      {showResult && editDiff && (
+        <InlineEditDiff oldString={editDiff.oldString} newString={editDiff.newString} />
+      )}
+      {showResult && !editDiff && tool.content && (
         <pre
           className="text-[11px] leading-[1.4] p-2 rounded overflow-auto whitespace-pre-wrap break-words"
           style={{
             margin: '4px 0 0 0',
             background: colors.surfaceHover,
             color: colors.textSecondary,
-            maxHeight: tool.autoExpandResult ? undefined : 200,
+            maxHeight: shouldAutoExpand ? undefined : 200,
             border: `1px solid ${colors.toolBorder}`,
           }}
         >

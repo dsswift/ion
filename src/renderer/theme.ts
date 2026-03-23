@@ -150,6 +150,12 @@ const darkColors = {
   tabGlowPlanReadyShadow: 'rgba(122, 172, 140, 0.25)',
   tabGlowQuestion: 'rgba(96, 165, 250, 0.5)',
   tabGlowQuestionShadow: 'rgba(96, 165, 250, 0.25)',
+
+  // Diff (inline edit diffs + git diff viewer)
+  diffAddBg: 'rgba(122, 172, 140, 0.12)',
+  diffAddText: '#7aac8c',
+  diffRemoveBg: 'rgba(196, 112, 96, 0.1)',
+  diffRemoveText: '#c47060',
 } as const
 
 const lightColors = {
@@ -295,6 +301,12 @@ const lightColors = {
   tabGlowPlanReadyShadow: 'rgba(90, 158, 111, 0.2)',
   tabGlowQuestion: 'rgba(59, 130, 246, 0.5)',
   tabGlowQuestionShadow: 'rgba(59, 130, 246, 0.2)',
+
+  // Diff (inline edit diffs + git diff viewer)
+  diffAddBg: 'rgba(90, 158, 111, 0.12)',
+  diffAddText: '#5a9e6f',
+  diffRemoveBg: 'rgba(196, 112, 96, 0.08)',
+  diffRemoveText: '#c47060',
 } as const
 
 export type ColorPalette = { [K in keyof typeof darkColors]: string }

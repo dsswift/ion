@@ -101,15 +101,15 @@ export function DiffViewer({ diff, fileName, onClose }: DiffViewerProps) {
                 }
 
                 const bgColor = line.type === 'add'
-                  ? 'rgba(122, 172, 140, 0.12)'
+                  ? colors.diffAddBg
                   : line.type === 'remove'
-                  ? 'rgba(196, 112, 96, 0.1)'
+                  ? colors.diffRemoveBg
                   : 'transparent'
 
                 const textColor = line.type === 'add'
-                  ? '#7aac8c'
+                  ? colors.diffAddText
                   : line.type === 'remove'
-                  ? '#c47060'
+                  ? colors.diffRemoveText
                   : colors.textSecondary
 
                 return (
