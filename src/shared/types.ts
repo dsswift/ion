@@ -178,6 +178,8 @@ export interface TabState {
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
   /** Whether a bash command is currently executing in this tab */
   bashExecuting: boolean
+  /** ID of the currently executing bash command (for cancellation) */
+  bashExecId: string | null
   /** Custom pill outline color (null = use theme default) */
   pillColor: string | null
 }

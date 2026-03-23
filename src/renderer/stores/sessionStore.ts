@@ -141,7 +141,7 @@ interface State {
   buildYourOwn: () => void
   resumeSession: (sessionId: string, title?: string, projectPath?: string) => Promise<string>
   addSystemMessage: (content: string) => void
-  startBashCommand: (command: string) => string
+  startBashCommand: (command: string, execId: string) => string
   completeBashCommand: (toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
   sendMessage: (prompt: string, projectPath?: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
@@ -201,6 +201,7 @@ function makeLocalTab(): TabState {
     permissionMode: useThemeStore.getState().defaultPermissionMode,
     bashResults: [],
     bashExecuting: false,
+    bashExecId: null,
     pillColor: null,
   }
 }
@@ -884,7 +885,7 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
 
-  startBashCommand: (command) => {
+  startBashCommand: (command, execId) => {
     const { activeTabId } = get()
     const toolMsgId = nextMsgId()
     const now = Date.now()
@@ -899,6 +900,7 @@ export const useSessionStore = create<State>((set, get) => ({
           ...t,
           title,
           bashExecuting: true,
+          bashExecId: execId,
           messages: [
             ...t.messages,
             { id: nextMsgId(), role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now },
@@ -922,6 +924,7 @@ export const useSessionStore = create<State>((set, get) => ({
         return {
           ...t,
           bashExecuting: false,
+          bashExecId: null,
           hasUnread: (t.id !== activeTabId || !isExpanded) ? true : t.hasUnread,
           bashResults: [...t.bashResults, { command, stdout, stderr }],
           messages: t.messages.map((m) =>

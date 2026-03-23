@@ -35,7 +35,6 @@ export function InputBar() {
   const bashMode = useBashModeStore((s) => s.active)
   const setBashMode = useBashModeStore((s) => s.set)
   const [bashExecuting, setBashExecuting] = useState(false)
-  const bashExecIdRef = useRef<string | null>(null)
   const [isMultiLine, setIsMultiLine] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -293,16 +292,14 @@ export function InputBar() {
       if (isConnecting) return
       const cwd = tab?.workingDirectory || '~'
       const execId = crypto.randomUUID()
-      bashExecIdRef.current = execId
       setInput('')
       setBashExecuting(true)
       setBashMode(false)
       if (textareaRef.current) {
         textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
       }
-      const toolMsgId = startBashCommand(cmd)
+      const toolMsgId = startBashCommand(cmd, execId)
       window.coda.executeBash(execId, cmd, cwd).then((result) => {
-        bashExecIdRef.current = null
         setBashExecuting(false)
         completeBashCommand(toolMsgId, cmd, result.stdout, result.stderr, result.exitCode)
         requestAnimationFrame(() => textareaRef.current?.focus())
@@ -342,12 +339,6 @@ export function InputBar() {
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Cancel running bash command
-    if (bashExecuting && e.key === 'Escape') {
-      e.preventDefault()
-      if (bashExecIdRef.current) window.coda.cancelBash(bashExecIdRef.current)
-      return
-    }
     // Exit bash mode on backspace when input is empty
     if (bashMode && e.key === 'Backspace' && input === '') {
       e.preventDefault()
@@ -486,7 +477,7 @@ export function InputBar() {
               onPaste={handlePaste}
               placeholder={
                 tab?.bashExecuting
-                  ? 'Running... (Esc to cancel)'
+                  ? 'Running...'
                   : bashMode
                     ? bashPlaceholder
                     : isConnecting
@@ -548,7 +539,7 @@ export function InputBar() {
               onPaste={handlePaste}
               placeholder={
                 tab?.bashExecuting
-                  ? 'Running... (Esc to cancel)'
+                  ? 'Running...'
                   : bashMode
                     ? bashPlaceholder
                     : isConnecting

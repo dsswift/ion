@@ -124,7 +124,7 @@ export function ConversationView() {
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const isDead = tab.status === 'dead'
   const isFailed = tab.status === 'failed'
-  const showInterrupt = isRunning && tab.messages.some((m) => m.role === 'user')
+  const showInterrupt = (isRunning || tab.bashExecuting) && tab.messages.some((m) => m.role === 'user')
 
   if (tab.messages.length === 0) {
     return <EmptyState />
@@ -335,7 +335,7 @@ export function ConversationView() {
         <div className="flex items-center flex-shrink-0">
           <AnimatePresence>
             {showInterrupt && (
-              <InterruptButton tabId={tab.id} />
+              <InterruptButton tabId={tab.id} bashExecId={tab.bashExecId} />
             )}
           </AnimatePresence>
         </div>
@@ -419,11 +419,15 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Interrupt Button ───
 
-function InterruptButton({ tabId }: { tabId: string }) {
+function InterruptButton({ tabId, bashExecId }: { tabId: string; bashExecId: string | null }) {
   const colors = useColors()
 
   const handleStop = () => {
-    window.coda.stopTab(tabId)
+    if (bashExecId) {
+      window.coda.cancelBash(bashExecId)
+    } else {
+      window.coda.stopTab(tabId)
+    }
   }
 
   return (
