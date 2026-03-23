@@ -20,7 +20,7 @@ export function useHealthReconciliation() {
       if (runningTabs.length === 0) return
 
       try {
-        const health = await window.clui.tabHealth()
+        const health = await window.coda.tabHealth()
         if (!health?.tabs || !Array.isArray(health.tabs)) return
 
         const stateByTab = new Map(

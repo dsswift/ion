@@ -91,7 +91,7 @@ export function MarketplacePanel() {
 
   return (
     <div
-      data-clui-ui
+      data-coda-ui
       style={{
         height: 470,
         display: 'flex',
@@ -111,7 +111,7 @@ export function MarketplacePanel() {
               Skills Marketplace
             </div>
             <div style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>
-              Install skills and plugins without leaving CLUI
+              Install skills and plugins without leaving CODA
             </div>
           </div>
         </div>
@@ -330,7 +330,7 @@ function PluginCard({ plugin, status, colors, expanded, onToggleExpand, scrollCo
   const handleGithubClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     const url = `https://github.com/${plugin.repo || 'unknown/repo'}/tree/main/${plugin.sourcePath || ''}`
-    window.clui.openExternal(url)
+    window.coda.openExternal(url)
   }
 
   // Collapse → clear confirm

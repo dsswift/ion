@@ -4,7 +4,7 @@
  * Tests for getModelDisplayLabel which converts raw model IDs
  * (e.g. 'claude-opus-4-6[1m]') into human-readable display labels.
  *
- * Related spec: specs/issue-clui-4-model-display-label-normalization.tests.md
+ * Related spec: specs/issue-coda-4-model-display-label-normalization.tests.md
  */
 
 import { describe, it, expect } from 'vitest'

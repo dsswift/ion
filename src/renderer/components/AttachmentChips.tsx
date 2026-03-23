@@ -29,7 +29,7 @@ export function AttachmentChips({
   if (attachments.length === 0) return null
 
   return (
-    <div data-clui-ui className="flex gap-1.5 pb-1" style={{ overflowX: 'auto', scrollbarWidth: 'none' }}>
+    <div data-coda-ui className="flex gap-1.5 pb-1" style={{ overflowX: 'auto', scrollbarWidth: 'none' }}>
       <AnimatePresence mode="popLayout">
         {attachments.map((a) => (
           <motion.div

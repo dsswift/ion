@@ -1,6 +1,6 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────
-#  Clui CC — Install App
+#  CODA — Install App
 #
 #  Double-click this file in Finder to:
 #   1. Set up dependencies
@@ -15,7 +15,7 @@ set -e
 # Resolve to repo root (one level up from commands/)
 cd "$(dirname "$0")/.."
 
-APP_NAME="Clui CC"
+APP_NAME="CODA"
 DEST="/Applications/${APP_NAME}.app"
 
 step() { echo; echo "═══ $1 ═══"; echo; }
@@ -141,7 +141,7 @@ fi
 step "Step 4/6 — Installing to /Applications"
 
 # Kill running instance before replacing the binary
-if pgrep -f "Clui CC" &>/dev/null; then
+if pgrep -f "CODA" &>/dev/null; then
   echo "${APP_NAME} is currently running."
   echo
   echo "  Switch to it now and close it cleanly, then come back"
@@ -150,7 +150,7 @@ if pgrep -f "Clui CC" &>/dev/null; then
   read -r -p "Press Enter when ready... "
   echo
   echo "Force-killing any remaining ${APP_NAME} processes..."
-  pkill -9 -f "Clui CC" 2>/dev/null || true
+  pkill -9 -f "CODA" 2>/dev/null || true
   sleep 1
 fi
 

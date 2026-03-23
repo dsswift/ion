@@ -97,15 +97,15 @@ function ContextMenu({
     return [
       { label: 'Copy Path', action: () => navigator.clipboard.writeText(menu.entry.path) },
       { label: 'Copy Relative Path', action: () => navigator.clipboard.writeText(relativePath) },
-      { label: 'Reveal in Finder', action: () => window.clui.fsRevealInFinder(menu.entry.path) },
-      { label: 'Open in Native App', action: () => window.clui.fsOpenNative(menu.entry.path) },
+      { label: 'Reveal in Finder', action: () => window.coda.fsRevealInFinder(menu.entry.path) },
+      { label: 'Open in Native App', action: () => window.coda.fsOpenNative(menu.entry.path) },
     ]
   }, [menu.entry.path, workingDir])
 
   return createPortal(
     <div
       ref={ref}
-      data-clui-ui
+      data-coda-ui
       className="glass-surface"
       style={{
         position: 'fixed',
@@ -315,7 +315,7 @@ export function FileExplorer() {
   const refreshCounter = useRef(0)
 
   const fetchDir = useCallback(async (dirPath: string) => {
-    const result = await window.clui.fsReadDir(dirPath)
+    const result = await window.coda.fsReadDir(dirPath)
     if (result.entries) {
       setDirCache((prev) => {
         const next = new Map(prev)
@@ -439,9 +439,9 @@ export function FileExplorer() {
     if (!inlineInput) return
     const fullPath = `${inlineInput.parentDir}/${name}`
     if (inlineInput.type === 'file') {
-      await window.clui.fsCreateFile(fullPath)
+      await window.coda.fsCreateFile(fullPath)
     } else {
-      await window.clui.fsCreateDir(fullPath)
+      await window.coda.fsCreateDir(fullPath)
     }
     setInlineInput(null)
     // Refresh the parent directory
@@ -504,7 +504,7 @@ export function FileExplorer() {
 
   return (
     <div
-      data-clui-ui
+      data-coda-ui
       className="glass-surface"
       style={{
         width: '100%',

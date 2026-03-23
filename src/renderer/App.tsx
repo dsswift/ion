@@ -47,7 +47,7 @@ function CloseTabConfirmDialog({
 
   return createPortal(
     <motion.div
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -64,7 +64,7 @@ function CloseTabConfirmDialog({
       }}
     >
       <motion.div
-        data-clui-ui
+        data-coda-ui
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
@@ -136,12 +136,12 @@ export default function App() {
   // ─── Theme initialization ───
   useEffect(() => {
     // Get initial OS theme — setSystemTheme respects themeMode (system/light/dark)
-    window.clui.getTheme().then(({ isDark }) => {
+    window.coda.getTheme().then(({ isDark }) => {
       setSystemTheme(isDark)
     }).catch(() => {})
 
     // Listen for OS theme changes
-    const unsub = window.clui.onThemeChange((isDark) => {
+    const unsub = window.coda.onThemeChange((isDark) => {
       setSystemTheme(isDark)
     })
     return unsub
@@ -149,7 +149,7 @@ export default function App() {
 
   // Listen for show-settings IPC from tray menu
   useEffect(() => {
-    const unsub = window.clui.onShowSettings(() => {
+    const unsub = window.coda.onShowSettings(() => {
       useSessionStore.getState().openSettings()
     })
     return unsub
@@ -160,7 +160,7 @@ export default function App() {
       const homeDir = useSessionStore.getState().staticInfo?.homePath || '~'
 
       // Try restoring saved tabs
-      const saved = await window.clui.loadTabs().catch(() => null)
+      const saved = await window.coda.loadTabs().catch(() => null)
       if (saved && saved.tabs && saved.tabs.length > 0) {
         // Restore each saved tab via resumeSession
         const restoredTabIds: Array<{ tabId: string; sessionId: string }> = []
@@ -250,7 +250,7 @@ export default function App() {
         const registerInitialTab = async (retries = 5): Promise<void> => {
           for (let i = 0; i < retries; i++) {
             try {
-              const { tabId } = await window.clui.createTab()
+              const { tabId } = await window.coda.createTab()
               useSessionStore.setState((s) => ({
                 tabs: s.tabs.map((t, idx) => (idx === 0 ? { ...t, id: tabId } : t)),
                 activeTabId: tabId,
@@ -271,19 +271,19 @@ export default function App() {
 
   // OS-level click-through (RAF-throttled to avoid per-pixel IPC)
   useEffect(() => {
-    if (!window.clui?.setIgnoreMouseEvents) return
+    if (!window.coda?.setIgnoreMouseEvents) return
     let lastIgnored: boolean | null = null
 
     const onMouseMove = (e: MouseEvent) => {
       const el = document.elementFromPoint(e.clientX, e.clientY)
-      const isUI = !!(el && el.closest('[data-clui-ui]'))
+      const isUI = !!(el && el.closest('[data-coda-ui]'))
       const shouldIgnore = !isUI
       if (shouldIgnore !== lastIgnored) {
         lastIgnored = shouldIgnore
         if (shouldIgnore) {
-          window.clui.setIgnoreMouseEvents(true, { forward: true })
+          window.coda.setIgnoreMouseEvents(true, { forward: true })
         } else {
-          window.clui.setIgnoreMouseEvents(false)
+          window.coda.setIgnoreMouseEvents(false)
         }
       }
     }
@@ -291,7 +291,7 @@ export default function App() {
     const onMouseLeave = () => {
       if (lastIgnored !== true) {
         lastIgnored = true
-        window.clui.setIgnoreMouseEvents(true, { forward: true })
+        window.coda.setIgnoreMouseEvents(true, { forward: true })
       }
     }
 
@@ -367,7 +367,7 @@ export default function App() {
       }
       if (e.metaKey && e.key === 'r') {
         e.preventDefault()
-        window.dispatchEvent(new CustomEvent('clui:open-recent-dirs'))
+        window.dispatchEvent(new CustomEvent('coda:open-recent-dirs'))
       }
     }
     document.addEventListener('keydown', handler)
@@ -413,13 +413,13 @@ export default function App() {
   }, [])
 
   const handleScreenshot = useCallback(async () => {
-    const result = await window.clui.takeScreenshot()
+    const result = await window.coda.takeScreenshot()
     if (!result) return
     addAttachments([result])
   }, [addAttachments])
 
   const handleAttachFile = useCallback(async () => {
-    const files = await window.clui.attachFiles()
+    const files = await window.coda.attachFiles()
     if (!files || files.length === 0) return
     addAttachments(files)
   }, [addAttachments])
@@ -434,7 +434,7 @@ export default function App() {
           <AnimatePresence initial={false}>
             {marketplaceOpen && (
               <div
-                data-clui-ui
+                data-coda-ui
                 style={{
                   width: 720,
                   maxWidth: 720,
@@ -452,7 +452,7 @@ export default function App() {
                   transition={TRANSITION}
                 >
                   <div
-                    data-clui-ui
+                    data-coda-ui
                     className="glass-surface overflow-hidden no-drag"
                     style={{
                       borderRadius: 24,
@@ -488,7 +488,7 @@ export default function App() {
           <AnimatePresence initial={false}>
             {terminalOpen && (
               <motion.div
-                data-clui-ui
+                data-coda-ui
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
@@ -496,7 +496,7 @@ export default function App() {
                 style={{ marginBottom: 10, position: 'relative', zIndex: 20 }}
               >
                 <div
-                  data-clui-ui
+                  data-coda-ui
                   className="glass-surface overflow-hidden no-drag"
                   style={{
                     width: cardExpandedWidth,
@@ -521,7 +521,7 @@ export default function App() {
             panel rendered above it, never inside it.
           */}
           <motion.div
-            data-clui-ui
+            data-coda-ui
             className="overflow-hidden flex flex-col drag-region"
             animate={{
               width: isExpanded ? cardExpandedWidth : cardCollapsedWidth,
@@ -565,10 +565,10 @@ export default function App() {
 
           {/* ─── Input row — circles float outside left ─── */}
           {/* marginBottom: shadow buffer so the glass-surface drop shadow isn't clipped at the native window edge */}
-          <div data-clui-ui className="relative" style={{ minHeight: 46, zIndex: 15, marginBottom: 60 }}>
+          <div data-coda-ui className="relative" style={{ minHeight: 46, zIndex: 15, marginBottom: 60 }}>
             {/* Stacked circle buttons — expand on hover */}
             <div
-              data-clui-ui
+              data-coda-ui
               className="circles-out"
             >
               <div className="btn-stack">
@@ -604,7 +604,7 @@ export default function App() {
 
             {/* Input pill */}
             <div
-              data-clui-ui
+              data-coda-ui
               className="glass-surface w-full"
               style={{ minHeight: 50, borderRadius: 25, padding: '0 6px 0 16px', background: colors.inputPillBg, boxShadow: bashModeActive ? 'inset 0 0 0 2px rgba(244, 114, 182, 0.5)' : undefined, transition: 'box-shadow 0.15s' }}
             >
@@ -615,7 +615,7 @@ export default function App() {
           <AnimatePresence>
             {explorerOpen && (
               <motion.div
-                data-clui-ui
+                data-coda-ui
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -637,7 +637,7 @@ export default function App() {
           <AnimatePresence>
             {gitPanelOpen && (
               <motion.div
-                data-clui-ui
+                data-coda-ui
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}

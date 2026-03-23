@@ -4,7 +4,7 @@
  * Tests for the security validation functions used by IPC handlers
  * to reject malicious input from the renderer process.
  *
- * Related spec: specs/issue-clui-1-harden-ipc-input-validation.tests.md
+ * Related spec: specs/issue-coda-1-harden-ipc-input-validation.tests.md
  */
 
 import { describe, it, expect } from 'vitest'

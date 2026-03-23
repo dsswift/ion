@@ -166,7 +166,7 @@ notificationAudio.volume = 1.0
 async function playNotificationIfHidden(): Promise<void> {
   if (!useThemeStore.getState().soundEnabled) return
   try {
-    const visible = await window.clui.isVisible()
+    const visible = await window.coda.isVisible()
     if (!visible) {
       notificationAudio.currentTime = 0
       notificationAudio.play().catch(() => {})
@@ -236,7 +236,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   initStaticInfo: async () => {
     try {
-      const result = await window.clui.start()
+      const result = await window.coda.start()
       set({
         staticInfo: {
           version: result.version || 'unknown',
@@ -260,7 +260,7 @@ export const useSessionStore = create<State>((set, get) => ({
         t.id === activeTabId ? { ...t, permissionMode: mode } : t
       ),
     }))
-    window.clui.setPermissionMode(activeTabId, mode)
+    window.coda.setPermissionMode(activeTabId, mode)
   },
 
   createTab: async () => {
@@ -269,7 +269,7 @@ export const useSessionStore = create<State>((set, get) => ({
     const startDir = defaultBase || homeDir
     const hasChosen = !!defaultBase
     try {
-      const { tabId } = await window.clui.createTab()
+      const { tabId } = await window.coda.createTab()
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
@@ -296,7 +296,7 @@ export const useSessionStore = create<State>((set, get) => ({
   createTabInDirectory: async (dir) => {
     useThemeStore.getState().addRecentBaseDirectory(dir)
     try {
-      const { tabId } = await window.clui.createTab()
+      const { tabId } = await window.coda.createTab()
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
@@ -656,8 +656,8 @@ export const useSessionStore = create<State>((set, get) => ({
     set({ marketplaceLoading: true, marketplaceError: null })
     try {
       const [catalog, installed] = await Promise.all([
-        window.clui.fetchMarketplace(forceRefresh),
-        window.clui.listInstalledPlugins(),
+        window.coda.fetchMarketplace(forceRefresh),
+        window.coda.listInstalledPlugins(),
       ])
       if (catalog.error && catalog.plugins.length === 0) {
         set({ marketplaceError: catalog.error, marketplaceLoading: false })
@@ -700,7 +700,7 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'installing' },
     }))
-    const result = await window.clui.installPlugin(plugin.repo, plugin.installName, plugin.marketplace, plugin.sourcePath, plugin.isSkillMd)
+    const result = await window.coda.installPlugin(plugin.repo, plugin.installName, plugin.marketplace, plugin.sourcePath, plugin.isSkillMd)
     if (result.ok) {
       set((s) => ({
         marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'installed' as PluginStatus },
@@ -714,7 +714,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   uninstallMarketplacePlugin: async (plugin) => {
-    const result = await window.clui.uninstallPlugin(plugin.installName)
+    const result = await window.coda.uninstallPlugin(plugin.installName)
     if (result.ok) {
       set((s) => ({
         marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'not_installed' as PluginStatus },
@@ -732,8 +732,8 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   closeTab: (tabId) => {
-    window.clui.closeTab(tabId).catch(() => {})
-    window.clui.terminalDestroy(tabId).catch(() => {})
+    window.coda.closeTab(tabId).catch(() => {})
+    window.coda.terminalDestroy(tabId).catch(() => {})
     destroyTerminalInstance(tabId)
     // Clean up terminal UI state
     const termIds = get().terminalOpenTabIds
@@ -812,10 +812,10 @@ export const useSessionStore = create<State>((set, get) => ({
   resumeSession: async (sessionId, title, projectPath) => {
     const defaultDir = projectPath || get().staticInfo?.homePath || '~'
     try {
-      const { tabId } = await window.clui.createTab()
+      const { tabId } = await window.coda.createTab()
 
       // Load previous conversation messages from the JSONL file
-      const history = await window.clui.loadSession(sessionId, defaultDir).catch(() => [])
+      const history = await window.coda.loadSession(sessionId, defaultDir).catch(() => [])
       const messages: Message[] = history.map((m) => ({
         id: nextMsgId(),
         role: m.role as Message['role'],
@@ -934,7 +934,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   respondPermission: (tabId, questionId, optionId) => {
     // Send to backend
-    window.clui.respondPermission(tabId, questionId, optionId).catch(() => {})
+    window.coda.respondPermission(tabId, questionId, optionId).catch(() => {})
 
     // Remove answered item from queue; show next tool's activity or clear
     set((s) => ({
@@ -984,7 +984,7 @@ export const useSessionStore = create<State>((set, get) => ({
   setBaseDirectory: (dir) => {
     useThemeStore.getState().addRecentBaseDirectory(dir)
     const { activeTabId } = get()
-    window.clui.resetTabSession(activeTabId)
+    window.coda.resetTabSession(activeTabId)
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === activeTabId
@@ -1113,7 +1113,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
     // Send to backend — ControlPlane will queue if a run is active
     const { preferredModel } = get()
-    window.clui.prompt(activeTabId, requestId, {
+    window.coda.prompt(activeTabId, requestId, {
       prompt: fullPrompt,
       projectPath: resolvedPath,
       sessionId: tab.claudeSessionId || undefined,
@@ -1505,7 +1505,7 @@ function persistTabs(): void {
     tabs: persistedTabs,
     editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
   }
-  window.clui.saveTabs(data)
+  window.coda.saveTabs(data)
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null

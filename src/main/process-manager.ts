@@ -7,7 +7,7 @@ import { StreamParser } from './stream-parser'
 import { getCliEnv } from './cli-env'
 import type { ClaudeEvent, RunOptions } from '../shared/types'
 
-const LOG_FILE = join(homedir(), '.clui-debug.log')
+const LOG_FILE = join(homedir(), '.coda-debug.log')
 
 function log(msg: string): void {
   const line = `[${new Date().toISOString()}] ${msg}\n`

@@ -45,7 +45,7 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
 
   const handleViewPlan = async () => {
     if (!planFilePath) return
-    const result = await window.clui.readPlan(planFilePath)
+    const result = await window.coda.readPlan(planFilePath)
     if (result.content && result.fileName) {
       setPlanData({ content: result.content, fileName: result.fileName })
     }
@@ -53,7 +53,7 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
 
   const handleOpenInCli = () => {
     if (sessionId) {
-      window.clui.openInTerminal(sessionId, projectPath)
+      window.coda.openInTerminal(sessionId, projectPath)
     }
     onDismiss()
   }

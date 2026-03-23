@@ -4,7 +4,7 @@ import { SettingSection } from './SettingSection'
 
 // Pre-fetch font list at module load so it's ready before the tab renders
 let fontCache: string[] | null = null
-const fontPromise = window.clui?.listFonts().then((fonts) => { fontCache = fonts }).catch(() => {})
+const fontPromise = window.coda?.listFonts().then((fonts) => { fontCache = fonts }).catch(() => {})
 
 export function TerminalTab() {
   const colors = useColors()

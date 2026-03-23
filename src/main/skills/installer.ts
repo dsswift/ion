@@ -4,7 +4,7 @@
  * Runs on app startup (non-blocking). Uses atomic install:
  *   tmp dir → validate → rename into place.
  *
- * Respects user-managed skills: if a skill dir exists without .clui-version,
+ * Respects user-managed skills: if a skill dir exists without .coda-version,
  * it was placed there by the user and we don't touch it.
  */
 
@@ -19,7 +19,7 @@ import { SKILLS, type SkillEntry } from './manifest'
 const BUNDLED_SKILLS_DIR = join(__dirname, '../../skills')
 
 const SKILLS_DIR = join(homedir(), '.claude', 'skills')
-const VERSION_FILE = '.clui-version'
+const VERSION_FILE = '.coda-version'
 
 export type SkillState = 'pending' | 'downloading' | 'validating' | 'installed' | 'failed' | 'skipped'
 
@@ -40,7 +40,7 @@ interface VersionMeta {
 function log(msg: string): void {
   const { appendFileSync } = require('fs')
   const line = `[${new Date().toISOString()}] [skills] ${msg}\n`
-  try { appendFileSync(join(homedir(), '.clui-debug.log'), line) } catch {}
+  try { appendFileSync(join(homedir(), '.coda-debug.log'), line) } catch {}
 }
 
 function readVersionFile(skillDir: string): VersionMeta | null {
@@ -59,7 +59,7 @@ function writeVersionFile(skillDir: string, entry: SkillEntry): void {
     source: entry.source.type === 'github'
       ? `github:${entry.source.repo}@${entry.source.commitSha}`
       : 'bundled',
-    installedBy: 'clui',
+    installedBy: 'coda',
     installedAt: new Date().toISOString(),
   }
   writeFileSync(join(skillDir, VERSION_FILE), JSON.stringify(meta, null, 2) + '\n')
@@ -110,10 +110,10 @@ async function installGithubSkill(
       throw new Error(`Validation failed: ${err}`)
     }
 
-    // Atomic swap: remove old (if CLUI-managed), rename tmp into place
+    // Atomic swap: remove old (if CODA-managed), rename tmp into place
     if (existsSync(targetDir)) {
       const existing = readVersionFile(targetDir)
-      if (existing?.installedBy === 'clui') {
+      if (existing?.installedBy === 'coda') {
         rmSync(targetDir, { recursive: true, force: true })
       } else {
         // User-managed — shouldn't reach here (checked earlier), but be safe
@@ -168,7 +168,7 @@ async function installBundledSkill(
     // Atomic swap
     if (existsSync(targetDir)) {
       const existing = readVersionFile(targetDir)
-      if (existing?.installedBy === 'clui') {
+      if (existing?.installedBy === 'coda') {
         rmSync(targetDir, { recursive: true, force: true })
       } else {
         rmSync(tmpDir, { recursive: true, force: true })
@@ -201,13 +201,13 @@ async function installSkill(
     const meta = readVersionFile(targetDir)
 
     if (!meta) {
-      // Dir exists but no .clui-version — user-managed, don't touch
+      // Dir exists but no .coda-version — user-managed, don't touch
       log(`Skipping ${entry.name}: user-managed (no ${VERSION_FILE})`)
       onStatus({ name: entry.name, state: 'skipped', reason: 'user-managed' })
       return
     }
 
-    if (meta.version === entry.version && meta.installedBy === 'clui') {
+    if (meta.version === entry.version && meta.installedBy === 'coda') {
       // Re-validate required files to detect corrupt/partial installs
       const validationErr = validateSkill(targetDir, entry.requiredFiles)
       if (!validationErr) {

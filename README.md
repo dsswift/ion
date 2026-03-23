@@ -1,30 +1,17 @@
-# Clui CC — Command Line User Interface for Claude Code
+# CODA -- Claude Overlay Dev Assistant
 
-A lightweight, transparent desktop overlay for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) on macOS. Clui CC wraps the Claude Code CLI in a floating pill interface with multi-tab sessions, a permission approval UI, voice input, and a skills marketplace.
-
-## Demo
-
-[![Watch the demo](https://img.youtube.com/vi/NqRBIpaA4Fk/maxresdefault.jpg)](https://www.youtube.com/watch?v=NqRBIpaA4Fk)
-
-<p align="center"><a href="https://www.youtube.com/watch?v=NqRBIpaA4Fk">▶ Watch the full demo on YouTube</a></p>
+A lightweight, transparent desktop overlay for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) on macOS. CODA wraps the Claude Code CLI in a floating pill interface with multi-tab sessions, a permission approval UI, voice input, and a skills marketplace.
 
 ## Features
 
-- **Floating overlay** — transparent, click-through window that stays on top. Toggle with `⌥ + Space` (fallback: `Cmd+Shift+K`).
-- **Multi-tab sessions** — each tab spawns its own `claude -p` process with independent session state.
-- **Permission approval UI** — intercepts tool calls via PreToolUse HTTP hooks so you can review and approve/deny from the UI.
-- **Conversation history** — browse and resume past Claude Code sessions.
-- **Skills marketplace** — install plugins from Anthropic's GitHub repos without leaving Clui CC.
-- **Voice input** — local speech-to-text via Whisper (required, installed automatically).
-- **File & screenshot attachments** — paste images or attach files directly.
-- **Dual theme** — dark/light mode with system-follow option.
-
-## Why Clui CC
-
-- **Claude Code, but visual** — keep CLI power while getting a fast desktop UX for approvals, history, and multitasking.
-- **Human-in-the-loop safety** — tool calls are reviewed and approved in-app before execution.
-- **Session-native workflow** — each tab runs an independent Claude session you can resume later.
-- **Local-first** — everything runs through your local Claude CLI. No telemetry, no cloud dependency.
+- **Floating overlay** -- transparent, click-through window that stays on top. Toggle with `⌥ + Space` (fallback: `Cmd+Shift+K`).
+- **Multi-tab sessions** -- each tab spawns its own `claude -p` process with independent session state.
+- **Permission approval UI** -- intercepts tool calls via PreToolUse HTTP hooks so you can review and approve/deny from the UI.
+- **Conversation history** -- browse and resume past Claude Code sessions.
+- **Skills marketplace** -- install plugins from Anthropic's GitHub repos without leaving CODA.
+- **Voice input** -- local speech-to-text via Whisper (required, installed automatically).
+- **File & screenshot attachments** -- paste images or attach files directly.
+- **Dual theme** -- dark/light mode with system-follow option.
 
 ## How It Works
 
@@ -37,24 +24,23 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full deep-dive.
 
 ## Install App (Recommended)
 
-The fastest way to get Clui CC running as a regular Mac app. This installs dependencies, voice support (Whisper), builds the app, copies it to `/Applications`, and launches it.
+The fastest way to get CODA running as a regular Mac app. This installs dependencies, voice support (Whisper), builds the app, copies it to `/Applications`, and launches it.
 
 **1) Clone the repo**
 
 ```bash
-git clone https://github.com/lcoutodemos/clui-cc.git
+git clone https://github.com/dsswift/coda.git
 ```
 
 **2) Double-click `install-app.command`**
 
-Open the `clui-cc` folder in Finder and double-click `install-app.command`.
+Open the `coda` folder in Finder and double-click `install-app.command`.
 
 > **First launch:** macOS may block the app because it's unsigned. Go to **System Settings → Privacy & Security → Open Anyway**. You only need to do this once.
 > **Folder cleanup:** the installer removes temporary `dist/` and `release/` folders after a successful install to keep the repo tidy.
+<p align="center"><img src="docs/shortcut.png" width="520" alt="Press Option + Space to show or hide CODA" /></p>
 
-<p align="center"><img src="docs/shortcut.png" width="520" alt="Press Option + Space to show or hide Clui CC" /></p>
-
-After the initial install, just open **Clui CC** from your Applications folder or Spotlight.
+After the initial install, just open **CODA** from your Applications folder or Spotlight.
 
 <details>
 <summary><strong>Terminal / Developer Commands</strong></summary>
@@ -64,11 +50,11 @@ Only `install-app.command` is kept at root intentionally for non-technical users
 ### Quick Start (Terminal)
 
 ```bash
-git clone https://github.com/lcoutodemos/clui-cc.git
+git clone https://github.com/dsswift/coda.git
 ```
 
 ```bash
-cd clui-cc
+cd coda
 ```
 
 ```bash
@@ -105,7 +91,7 @@ Renderer changes update instantly. Main-process changes require restarting `npm 
 |---------|---------|
 | `./commands/setup.command` | Environment check + install dependencies |
 | `./commands/start.command` | Build and launch from source |
-| `./commands/stop.command` | Stop all Clui CC processes |
+| `./commands/stop.command` | Stop all CODA processes |
 | `npm run build` | Production build (no packaging) |
 | `npm run dist` | Package as macOS `.app` into `release/` |
 | `npm run doctor` | Run environment diagnostic |
@@ -115,7 +101,7 @@ Renderer changes update instantly. Main-process changes require restarting `npm 
 <details>
 <summary><strong>Setup Prerequisites (Detailed)</strong></summary>
 
-You need **macOS 13+**. Then install these one at a time — copy each command and paste it into Terminal.
+You need **macOS 13+**. Then install these one at a time -- copy each command and paste it into Terminal.
 
 **Step 1.** Install Xcode Command Line Tools (needed to compile native modules):
 
@@ -156,13 +142,13 @@ claude
 **Step 6.** Install Whisper for voice input:
 
 ```bash
-# Apple Silicon (M1/M2/M3/M4) — preferred:
+# Apple Silicon (M1/M2/M3/M4) -- preferred:
 brew install whisperkit-cli
 # Apple Silicon fallback, or Intel Mac:
 brew install whisper-cpp
 ```
 
-> **No API keys or `.env` file required.** Clui CC uses your existing Claude Code CLI authentication (Pro/Team/Enterprise subscription).
+> **No API keys or `.env` file required.** CODA uses your existing Claude Code CLI authentication (Pro/Team/Enterprise subscription).
 
 </details>
 
@@ -184,7 +170,7 @@ src/
 │   ├── stores/             # Zustand session store
 │   ├── hooks/              # Event listeners, health reconciliation
 │   └── theme.ts            # Dual palette + CSS custom properties
-├── preload/                # Secure IPC bridge (window.clui API)
+├── preload/                # Secure IPC bridge (window.coda API)
 └── shared/                 # Canonical types, IPC channel definitions
 ```
 
@@ -199,12 +185,12 @@ src/
 
 ### Network Behavior
 
-Clui CC operates almost entirely offline. The only outbound network calls are:
+CODA operates almost entirely offline. The only outbound network calls are:
 
 | Endpoint | Purpose | Required |
 |----------|---------|----------|
-| `raw.githubusercontent.com/anthropics/*` | Marketplace catalog (cached 5 min) | No — graceful fallback |
-| `api.github.com/repos/anthropics/*/tarball/*` | Skill auto-install on startup | No — skipped on failure |
+| `raw.githubusercontent.com/anthropics/*` | Marketplace catalog (cached 5 min) | No -- graceful fallback |
+| `api.github.com/repos/anthropics/*/tarball/*` | Skill auto-install on startup | No -- skipped on failure |
 
 No telemetry, analytics, or auto-update mechanisms. All core Claude Code interaction goes through the local CLI.
 
@@ -232,9 +218,9 @@ npm run doctor
 
 ## Known Limitations
 
-- **macOS only** — transparent overlay, tray icon, and node-pty are macOS-specific. Windows/Linux support is not currently implemented.
-- **Requires Claude Code CLI** — Clui CC is a UI layer, not a standalone AI client. You need an authenticated `claude` CLI.
-- **Permission mode** — uses `--permission-mode default`. The PTY interactive transport is legacy and disabled by default.
+- **macOS only** -- transparent overlay, tray icon, and node-pty are macOS-specific. Windows/Linux support is not currently implemented.
+- **Requires Claude Code CLI** -- CODA is a UI layer, not a standalone AI client. You need an authenticated `claude` CLI.
+- **Permission mode** -- uses `--permission-mode default`. The PTY interactive transport is legacy and disabled by default.
 
 ## License
 

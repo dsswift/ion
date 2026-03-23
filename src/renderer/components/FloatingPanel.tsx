@@ -94,7 +94,7 @@ export function FloatingPanel({
 
   const panel = (
     <motion.div
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
@@ -118,7 +118,7 @@ export function FloatingPanel({
     >
       {/* Draggable header */}
       <div
-        data-clui-ui
+        data-coda-ui
         className="flex items-center justify-between px-3 py-2"
         style={{
           borderBottom: `1px solid ${colors.containerBorder}`,
@@ -151,7 +151,7 @@ export function FloatingPanel({
 
       {/* Resize handle (bottom-right corner) */}
       <div
-        data-clui-ui
+        data-coda-ui
         onMouseDown={handleResizeStart}
         style={{
           position: 'absolute',

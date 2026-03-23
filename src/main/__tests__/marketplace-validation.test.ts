@@ -5,7 +5,7 @@
  * that reject malicious plugin names, repo formats, source paths,
  * and directory traversal attempts.
  *
- * Related spec: specs/issue-clui-2-add-marketplace-input-validation.tests.md
+ * Related spec: specs/issue-coda-2-add-marketplace-input-validation.tests.md
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'

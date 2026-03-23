@@ -163,7 +163,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   useEffect(() => {
     if (!activeFile) return
     if (activeFile.filePath && activeFile.content === '' && activeFile.savedContent === '') {
-      window.clui.fsReadFile(activeFile.filePath).then((result) => {
+      window.coda.fsReadFile(activeFile.filePath).then((result) => {
         if (result.content !== null) {
           // Set both content and savedContent so isDirty starts false
           useSessionStore.setState((s) => {
@@ -189,14 +189,14 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   const handleSave = useCallback(async () => {
     if (!activeFile || activeFile.isReadOnly) return
     if (activeFile.filePath) {
-      const result = await window.clui.fsWriteFile(activeFile.filePath, activeFile.content)
+      const result = await window.coda.fsWriteFile(activeFile.filePath, activeFile.content)
       if (result.ok) {
         markEditorSaved(dir, activeFile.id, activeFile.filePath)
       }
     } else {
-      const dialog = await window.clui.fsSaveDialog()
+      const dialog = await window.coda.fsSaveDialog()
       if (dialog.filePath) {
-        const result = await window.clui.fsWriteFile(dialog.filePath, activeFile.content)
+        const result = await window.coda.fsWriteFile(dialog.filePath, activeFile.content)
         if (result.ok) {
           markEditorSaved(dir, activeFile.id, dialog.filePath)
         }
@@ -209,7 +209,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   saveHandlerRef.current = handleSave
 
   // ---- CodeMirror theme ----
-  const cluiTheme = useMemo(() => EditorView.theme({
+  const codaTheme = useMemo(() => EditorView.theme({
     '&': {
       backgroundColor: colors.containerBg,
       color: colors.textPrimary,
@@ -249,7 +249,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   const buildExtensions = useCallback((file: FileEditorTab): Extension[] => {
     const exts: Extension[] = [
       oneDark,
-      cluiTheme,
+      codaTheme,
       lineNumbers(),
       highlightActiveLine(),
       highlightSpecialChars(),
@@ -292,7 +292,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
     }
 
     return exts
-  }, [cluiTheme, dir, updateEditorContent, editorWordWrap])
+  }, [codaTheme, dir, updateEditorContent, editorWordWrap])
 
   // ---- CodeMirror lifecycle ----
   useEffect(() => {
@@ -367,7 +367,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
         onClick={() => {
-          if (href) window.clui.openExternal(String(href))
+          if (href) window.coda.openExternal(String(href))
         }}
       >
         {children}
@@ -394,7 +394,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   const panel = (
     <motion.div
       ref={panelRef}
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
@@ -421,7 +421,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
     >
       {/* Draggable header */}
       <div
-        data-clui-ui
+        data-coda-ui
         className="flex items-center px-3"
         style={{
           height: 32,
@@ -451,7 +451,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
 
       {/* Tab strip */}
       <div
-        data-clui-ui
+        data-coda-ui
         className="flex items-center"
         style={{
           height: 30,
@@ -607,7 +607,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
 
       {/* Resize handle */}
       <div
-        data-clui-ui
+        data-coda-ui
         onMouseDown={handleResizeStart}
         style={{
           position: 'absolute',

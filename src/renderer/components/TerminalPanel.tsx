@@ -97,24 +97,24 @@ export function TerminalPanel({ tabId, cwd }: Props) {
       // terminal.open() is a one-shot call -- the host element must survive
       // across React mount/unmount cycles.
       const hostEl = document.createElement('div')
-      hostEl.setAttribute('data-clui-ui', '')
+      hostEl.setAttribute('data-coda-ui', '')
       hostEl.style.height = '100%'
       hostEl.style.background = 'transparent'
       terminal.open(hostEl)
 
       // Module-level IPC listeners -- stay active even when component is unmounted
       // so PTY output is always captured in the xterm buffer
-      const unsubData = window.clui.onTerminalData((tid, data) => {
+      const unsubData = window.coda.onTerminalData((tid, data) => {
         if (tid === tabId) terminal.write(data)
       })
-      const unsubExit = window.clui.onTerminalExit((tid, _exitCode) => {
+      const unsubExit = window.coda.onTerminalExit((tid, _exitCode) => {
         if (tid !== tabId) return
         const e = terminalInstances.get(tabId)
         if (!e) return
         terminal.reset()
-        window.clui.terminalCreate(tabId, e.cwd).then(() => {
+        window.coda.terminalCreate(tabId, e.cwd).then(() => {
           const dims = e.fitAddon.proposeDimensions()
-          if (dims) window.clui.terminalResize(tabId, dims.cols, dims.rows)
+          if (dims) window.coda.terminalResize(tabId, dims.cols, dims.rows)
         })
       })
 
@@ -132,9 +132,9 @@ export function TerminalPanel({ tabId, cwd }: Props) {
       if (isNew && !entry!.created) {
         entry!.created = true
         const dims = entry!.fitAddon.proposeDimensions()
-        window.clui.terminalCreate(tabId, cwd).then(() => {
+        window.coda.terminalCreate(tabId, cwd).then(() => {
           if (dims) {
-            window.clui.terminalResize(tabId, dims.cols, dims.rows)
+            window.coda.terminalResize(tabId, dims.cols, dims.rows)
           }
         })
       }
@@ -142,7 +142,7 @@ export function TerminalPanel({ tabId, cwd }: Props) {
 
     // Wire keystrokes -> PTY (only while mounted/visible)
     const disposeOnData = entry.terminal.onData((data) => {
-      window.clui.terminalWrite(tabId, data)
+      window.coda.terminalWrite(tabId, data)
     })
 
     // Resize observer
@@ -151,7 +151,7 @@ export function TerminalPanel({ tabId, cwd }: Props) {
       entry.fitAddon.fit()
       const dims = entry.fitAddon.proposeDimensions()
       if (dims) {
-        window.clui.terminalResize(tabId, dims.cols, dims.rows)
+        window.coda.terminalResize(tabId, dims.cols, dims.rows)
       }
     })
     ro.observe(container)
@@ -175,14 +175,14 @@ export function TerminalPanel({ tabId, cwd }: Props) {
     entry.fitAddon.fit()
     const dims = entry.fitAddon.proposeDimensions()
     if (dims) {
-      window.clui.terminalResize(tabId, dims.cols, dims.rows)
+      window.coda.terminalResize(tabId, dims.cols, dims.rows)
     }
   }, [tabId, terminalFontFamily, terminalFontSize])
 
   return (
     <div
       ref={containerRef}
-      data-clui-ui
+      data-coda-ui
       style={{
         height: '100%',
         padding: '12px 12px 0 12px',

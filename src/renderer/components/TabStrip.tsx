@@ -83,7 +83,7 @@ function PillColorPicker({
   return createPortal(
     <motion.div
       ref={ref}
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
@@ -167,7 +167,7 @@ function DirContextMenu({
   return createPortal(
     <motion.div
       ref={ref}
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
@@ -240,7 +240,7 @@ function RecentDirsContextMenu({
   return createPortal(
     <motion.div
       ref={ref}
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
@@ -621,8 +621,8 @@ export function TabStrip() {
       const rect = plusButtonRef.current.getBoundingClientRect()
       setRecentDirsMenu({ x: rect.left, y: rect.bottom })
     }
-    window.addEventListener('clui:open-recent-dirs', handler)
-    return () => window.removeEventListener('clui:open-recent-dirs', handler)
+    window.addEventListener('coda:open-recent-dirs', handler)
+    return () => window.removeEventListener('coda:open-recent-dirs', handler)
   }, [])
 
   // Convert vertical wheel to horizontal scroll
@@ -633,12 +633,12 @@ export function TabStrip() {
   }, [])
 
   if (!tabsReady) {
-    return <div data-clui-ui className="flex items-center no-drag" style={{ padding: '8px 0', height: 40 }} />
+    return <div data-coda-ui className="flex items-center no-drag" style={{ padding: '8px 0', height: 40 }} />
   }
 
   return (
     <div
-      data-clui-ui
+      data-coda-ui
       className="flex items-center no-drag"
       style={{ padding: '8px 0' }}
     >

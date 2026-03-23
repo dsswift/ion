@@ -6,7 +6,7 @@
  * - WhisperKit fallback logic triggers only when first run produces no stdout
  * - No execSync calls remain in the handler (static analysis)
  *
- * Related spec: specs/issue-clui-3-async-execfile-transcription.tests.md
+ * Related spec: specs/issue-coda-3-async-execfile-transcription.tests.md
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -184,7 +184,7 @@ describe('TC-003: WhisperKit fallback runs when first run produces no stdout', (
     })
 
     // Simulate the handler's WhisperKit branch
-    const tmpWav = '/tmp/clui-voice-test.wav'
+    const tmpWav = '/tmp/coda-voice-test.wav'
     const reportDir = '/tmp'
 
     // First call: with --report
@@ -196,7 +196,7 @@ describe('TC-003: WhisperKit fallback runs when first run produces no stdout', (
     const firstOutput = await runExecFile(whisperBin, firstArgs, 60000)
 
     // Check report file
-    const wavBasename = 'clui-voice-test'
+    const wavBasename = 'coda-voice-test'
     const reportPath = join(reportDir, `${wavBasename}.json`)
     const reportExists = mockExistsSync(reportPath)
 
@@ -244,10 +244,10 @@ describe('TC-003: WhisperKit fallback runs when first run produces no stdout', (
     })
 
     // Simulate handler result shape
-    const tmpWav = '/tmp/clui-voice-test.wav'
+    const tmpWav = '/tmp/coda-voice-test.wav'
     const firstOutput = await runExecFile(whisperBin, ['transcribe', '--report', '--report-path', '/tmp', '--audio-path', tmpWav, '--model', 'tiny', '--without-timestamps', '--skip-special-tokens'], 60000)
 
-    const reportExists = mockExistsSync(join('/tmp', 'clui-voice-test.json'))
+    const reportExists = mockExistsSync(join('/tmp', 'coda-voice-test.json'))
     let result: { error: null | string; transcript: string }
 
     if (!reportExists && !firstOutput) {
@@ -290,7 +290,7 @@ describe('TC-004: WhisperKit fallback skipped when first run produces stdout', (
     })
 
     // Simulate the handler's WhisperKit branch
-    const tmpWav = '/tmp/clui-voice-test.wav'
+    const tmpWav = '/tmp/coda-voice-test.wav'
     const reportDir = '/tmp'
 
     const firstArgs = [
@@ -300,7 +300,7 @@ describe('TC-004: WhisperKit fallback skipped when first run produces stdout', (
     ]
     const firstOutput = await runExecFile(whisperBin, firstArgs, 60000)
 
-    const wavBasename = 'clui-voice-test'
+    const wavBasename = 'coda-voice-test'
     const reportPath = join(reportDir, `${wavBasename}.json`)
     const reportExists = mockExistsSync(reportPath)
 

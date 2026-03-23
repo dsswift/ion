@@ -43,7 +43,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   return createPortal(
     <motion.div
-      data-clui-ui
+      data-coda-ui
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -60,7 +60,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       }}
     >
       <motion.div
-        data-clui-ui
+        data-coda-ui
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}

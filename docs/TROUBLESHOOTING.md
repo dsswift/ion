@@ -132,7 +132,7 @@ To allow it:
 
 1. Open **System Settings → Privacy & Security**
 2. Scroll to the security section
-3. Click **Open Anyway** next to the Clui CC message
+3. Click **Open Anyway** next to the CODA message
 
 You only need to do this once. This is a local build, not App Store distribution.
 

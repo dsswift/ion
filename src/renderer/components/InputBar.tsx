@@ -71,7 +71,7 @@ export function InputBar() {
   // Discover commands from filesystem on mount and when working directory changes
   useEffect(() => {
     let cancelled = false
-    window.clui.discoverCommands(workingDir).then((cmds) => {
+    window.coda.discoverCommands(workingDir).then((cmds) => {
       if (!cancelled) setDiscoveredCommands(cmds)
     }).catch(() => {})
     return () => { cancelled = true }
@@ -92,7 +92,7 @@ export function InputBar() {
   // Focus textarea when window is shown (shortcut toggle, screenshot return)
   // Skip if focus is inside the terminal panel (xterm manages its own focus)
   useEffect(() => {
-    const unsub = window.clui.onWindowShown(() => {
+    const unsub = window.coda.onWindowShown(() => {
       const active = document.activeElement
       if (active && active.closest('.xterm')) return
       textareaRef.current?.focus()
@@ -300,7 +300,7 @@ export function InputBar() {
         textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
       }
       const toolMsgId = startBashCommand(cmd)
-      window.clui.executeBash(execId, cmd, cwd).then((result) => {
+      window.coda.executeBash(execId, cmd, cwd).then((result) => {
         bashExecIdRef.current = null
         setBashExecuting(false)
         setBashMode(false)
@@ -345,7 +345,7 @@ export function InputBar() {
     // Cancel running bash command
     if (bashExecuting && e.key === 'Escape') {
       e.preventDefault()
-      if (bashExecIdRef.current) window.clui.cancelBash(bashExecIdRef.current)
+      if (bashExecIdRef.current) window.coda.cancelBash(bashExecIdRef.current)
       return
     }
     // Exit bash mode on backspace when input is empty
@@ -388,7 +388,7 @@ export function InputBar() {
         const reader = new FileReader()
         reader.onload = async () => {
           const dataUrl = reader.result as string
-          const attachment = await window.clui.pasteImage(dataUrl)
+          const attachment = await window.coda.pasteImage(dataUrl)
           if (attachment) addAttachments([attachment])
         }
         reader.readAsDataURL(blob)
@@ -431,7 +431,7 @@ export function InputBar() {
       try {
         const blob = new Blob(chunksRef.current, { type: mimeType })
         const wavBase64 = await blobToWavBase64(blob)
-        const result = await window.clui.transcribeAudio(wavBase64)
+        const result = await window.coda.transcribeAudio(wavBase64)
         if (result.error) setVoiceError(result.error)
         else if (result.transcript) setInput((prev) => (prev ? `${prev} ${result.transcript}` : result.transcript!))
       } catch (err: any) { setVoiceError(`Voice failed: ${err.message}`) }
@@ -453,7 +453,7 @@ export function InputBar() {
   const bashPlaceholder = 'Enter bash command...'
 
   return (
-    <div ref={wrapperRef} data-clui-ui className="flex flex-col w-full relative">
+    <div ref={wrapperRef} data-coda-ui className="flex flex-col w-full relative">
       {/* Slash command menu */}
       <AnimatePresence>
         {showSlashMenu && (

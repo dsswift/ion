@@ -1,16 +1,16 @@
 {
-  "name": "clui",
+  "name": "coda",
   "version": "0.1.0",
-  "description": "Clui CC — Command Line User Interface for Claude Code",
+  "description": "CODA — Claude Overlay Dev Assistant",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lcoutodemos/clui-cc.git"
+    "url": "https://github.com/dsswift/coda.git"
   },
   "bugs": {
-    "url": "https://github.com/lcoutodemos/clui-cc/issues"
+    "url": "https://github.com/dsswift/coda/issues"
   },
-  "homepage": "https://github.com/lcoutodemos/clui-cc#readme",
+  "homepage": "https://github.com/dsswift/coda#readme",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -51,8 +51,8 @@
     "zustand": "^5.0.0"
   },
   "build": {
-    "appId": "com.clui.app",
-    "productName": "Clui CC",
+    "appId": "com.dsswift.coda",
+    "productName": "CODA",
     "directories": {
       "output": "release"
     },
@@ -68,7 +68,7 @@
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Clui CC uses your microphone to transcribe voice input locally with Whisper."
+        "NSMicrophoneUsageDescription": "CODA uses your microphone to transcribe voice input locally with Whisper."
       }
     }
   },

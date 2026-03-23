@@ -1,5 +1,5 @@
 /**
- * CLUI Design Tokens — Dual theme (dark + light)
+ * CODA Design Tokens — Dual theme (dark + light)
  * Colors derived from ChatCN oklch system and design-fixed.html reference.
  */
 import { create } from 'zustand'
@@ -335,7 +335,7 @@ interface ThemeState {
   setSystemTheme: (isDark: boolean) => void
 }
 
-/** Convert camelCase token name to --clui-kebab-case CSS custom property */
+/** Convert camelCase token name to --coda-kebab-case CSS custom property */
 function camelToKebab(s: string): string {
   return s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)
 }
@@ -344,7 +344,7 @@ function camelToKebab(s: string): string {
 function syncTokensToCss(tokens: ColorPalette): void {
   const style = document.documentElement.style
   for (const [key, value] of Object.entries(tokens)) {
-    style.setProperty(`--clui-${camelToKebab(key)}`, value)
+    style.setProperty(`--coda-${camelToKebab(key)}`, value)
   }
 }
 
@@ -357,7 +357,7 @@ function applyTheme(isDark: boolean): void {
 const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true }
 
 function saveSettings(s: { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; recentBaseDirectories: string[]; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; expandOnTabSwitch: boolean; bashCommandEntry: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean; expandToolResults: boolean; terminalFontFamily: string; terminalFontSize: number }): void {
-  window.clui?.saveSettings(s)
+  window.coda?.saveSettings(s)
 }
 
 function getAllSettings(get: () => ThemeState): { themeMode: string; soundEnabled: boolean; expandedUI: boolean; defaultBaseDirectory: string; recentBaseDirectories: string[]; showDirLabel: boolean; preferredOpenWith: string; showImplementClearContext: boolean; defaultPermissionMode: string; expandOnTabSwitch: boolean; bashCommandEntry: boolean; gitPanelSplitRatio: number; gitPanelChangesOpen: boolean; gitPanelGraphOpen: boolean; expandToolResults: boolean; terminalFontFamily: string; terminalFontSize: number } {
@@ -493,7 +493,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 syncTokensToCss(saved.themeMode === 'light' ? lightColors : darkColors)
 
 // Load persisted settings from disk (async, fires once on startup)
-window.clui?.loadSettings().then((disk) => {
+window.coda?.loadSettings().then((disk) => {
   if (!disk) return
   const store = useThemeStore.getState()
   const mode = (['light', 'dark'].includes(disk.themeMode) ? disk.themeMode : 'dark') as ThemeMode

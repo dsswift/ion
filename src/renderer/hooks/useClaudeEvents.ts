@@ -31,7 +31,7 @@ export function useClaudeEvents() {
       buffer.clear()
     }
 
-    const unsubEvent = window.clui.onEvent((tabId, event) => {
+    const unsubEvent = window.coda.onEvent((tabId, event) => {
       if (event.type === 'text_chunk') {
         // Buffer text chunks and flush on next animation frame
         const buffer = chunkBufferRef.current
@@ -59,17 +59,17 @@ export function useClaudeEvents() {
       }
     })
 
-    const unsubStatus = window.clui.onTabStatusChange((tabId, newStatus, oldStatus) => {
+    const unsubStatus = window.coda.onTabStatusChange((tabId, newStatus, oldStatus) => {
       handleStatusChange(tabId, newStatus, oldStatus)
     })
 
-    const unsubError = window.clui.onError((tabId, error) => {
+    const unsubError = window.coda.onError((tabId, error) => {
       handleError(tabId, error)
     })
 
-    const unsubSkill = window.clui.onSkillStatus((status) => {
+    const unsubSkill = window.coda.onSkillStatus((status) => {
       if (status.state === 'failed') {
-        console.warn(`[CLUI] Skill install failed: ${status.name} — ${status.error}`)
+        console.warn(`[CODA] Skill install failed: ${status.name} — ${status.error}`)
       }
     })
 
@@ -83,6 +83,6 @@ export function useClaudeEvents() {
     }
   }, [handleNormalizedEvent, handleStatusChange, handleError])
 
-  // Note: window.clui.start() is called via sessionStore.initStaticInfo() in App.tsx.
+  // Note: window.coda.start() is called via sessionStore.initStaticInfo() in App.tsx.
   // No duplicate call needed here.
 }

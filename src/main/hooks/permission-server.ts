@@ -6,7 +6,7 @@
  * The server forwards it to the renderer (PermissionCard), waits for the
  * user's decision, and returns the structured hook response.
  *
- * This is a CLUI-owned permission broker that approximates Claude Code's
+ * This is a CODA-owned permission broker that approximates Claude Code's
  * practical permission cadence. It does not reproduce native permission
  * semantics exactly — it intercepts the small set of tool classes that
  * map to real, user-meaningful approval moments.
@@ -15,7 +15,7 @@
  *   - Per-launch app secret in URL path (prevents local spoofing)
  *   - Per-run token in URL path (prevents cross-run confusion)
  *   - Deny-by-default on every failure path
- *   - Per-run settings files (only CLUI-spawned sessions see the hook)
+ *   - Per-run settings files (only CODA-spawned sessions see the hook)
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http'
@@ -29,7 +29,7 @@ const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 const DEFAULT_PORT = 19836
 const MAX_BODY_SIZE = 1024 * 1024 // 1MB
 
-const DEBUG = process.env.CLUI_DEBUG === '1'
+const DEBUG = process.env.CODA_DEBUG === '1'
 
 // Tools that need explicit user approval via the permission card.
 // This is the small set of tool classes that map to real, user-meaningful
@@ -441,10 +441,10 @@ export class PermissionServer extends EventEmitter {
       },
     }
 
-    const dir = join(tmpdir(), 'clui-hook-config')
+    const dir = join(tmpdir(), 'coda-hook-config')
     try { mkdirSync(dir, { recursive: true, mode: 0o700 }) } catch {}
 
-    const filePath = join(dir, `clui-hook-${runToken}.json`)
+    const filePath = join(dir, `coda-hook-${runToken}.json`)
     writeFileSync(filePath, JSON.stringify(settings, null, 2), { mode: 0o600 })
     this.settingsFiles.set(runToken, filePath)
     if (DEBUG) {

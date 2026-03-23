@@ -28,10 +28,10 @@ Desktop.ini
 
 # Logs
 *.log
-~/.clui-debug.log
+~/.coda-debug.log
 
 # Runtime
-.clui.pid
+.coda.pid
 
 # Temporary files
 *.tmp

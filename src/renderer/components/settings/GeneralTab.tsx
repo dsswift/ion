@@ -25,7 +25,7 @@ export function GeneralTab() {
   const setOpenMarkdownInPreview = useThemeStore((s) => s.setOpenMarkdownInPreview)
 
   const handleBrowse = async () => {
-    const dir = await window.clui.selectDirectory()
+    const dir = await window.coda.selectDirectory()
     if (dir) setDefaultBaseDirectory(dir)
   }
 

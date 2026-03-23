@@ -2,7 +2,7 @@ import { appendFile, appendFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
-const LOG_FILE = join(homedir(), '.clui-debug.log')
+const LOG_FILE = join(homedir(), '.coda-debug.log')
 const FLUSH_INTERVAL_MS = 500
 const MAX_BUFFER_SIZE = 64
 

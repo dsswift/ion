@@ -22,7 +22,7 @@ export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
         onClick={() => {
-          if (href) window.clui.openExternal(String(href))
+          if (href) window.coda.openExternal(String(href))
         }}
       >
         {children}

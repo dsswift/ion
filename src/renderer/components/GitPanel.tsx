@@ -111,7 +111,7 @@ function BranchPicker({
 
   const loadBranches = useCallback(async () => {
     try {
-      const result = await window.clui.gitBranches(directory)
+      const result = await window.coda.gitBranches(directory)
       setBranches(result.branches)
       setError(null)
     } catch {}
@@ -145,7 +145,7 @@ function BranchPicker({
   }
 
   const handleCheckout = async (branch: string) => {
-    const result = await window.clui.gitCheckout(directory, branch)
+    const result = await window.coda.gitCheckout(directory, branch)
     if (result.ok) {
       setOpen(false)
       onRefresh()
@@ -156,7 +156,7 @@ function BranchPicker({
 
   const handleCreate = async () => {
     if (!newName.trim()) return
-    const result = await window.clui.gitCreateBranch(directory, newName.trim())
+    const result = await window.coda.gitCreateBranch(directory, newName.trim())
     if (result.ok) {
       setOpen(false)
       setCreating(false)
@@ -168,7 +168,7 @@ function BranchPicker({
   }
 
   const handleDelete = async (branch: string) => {
-    const result = await window.clui.gitDeleteBranch(directory, branch)
+    const result = await window.coda.gitDeleteBranch(directory, branch)
     if (result.ok) {
       loadBranches()
     } else {
@@ -196,7 +196,7 @@ function BranchPicker({
       {popoverLayer && open && createPortal(
         <motion.div
           ref={popoverRef}
-          data-clui-ui
+          data-coda-ui
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.12 }}
@@ -409,12 +409,12 @@ function GitChangesSection({
   const unstagedFiles = files.filter((f) => !f.staged)
 
   const handleStage = async (path: string) => {
-    await window.clui.gitStage(directory, [path])
+    await window.coda.gitStage(directory, [path])
     onRefresh()
   }
 
   const handleUnstage = async (path: string) => {
-    await window.clui.gitUnstage(directory, [path])
+    await window.coda.gitUnstage(directory, [path])
     onRefresh()
   }
 
@@ -424,7 +424,7 @@ function GitChangesSection({
   }
   const confirmDiscard = async () => {
     if (!discardConfirm) return
-    await window.clui.gitDiscard(directory, [discardConfirm])
+    await window.coda.gitDiscard(directory, [discardConfirm])
     setDiscardConfirm(null)
     onRefresh()
   }
@@ -432,7 +432,7 @@ function GitChangesSection({
   const handleStageAll = async () => {
     const paths = unstagedFiles.map((f) => f.path)
     if (paths.length > 0) {
-      await window.clui.gitStage(directory, paths)
+      await window.coda.gitStage(directory, paths)
       onRefresh()
     }
   }
@@ -440,14 +440,14 @@ function GitChangesSection({
   const handleUnstageAll = async () => {
     const paths = stagedFiles.map((f) => f.path)
     if (paths.length > 0) {
-      await window.clui.gitUnstage(directory, paths)
+      await window.coda.gitUnstage(directory, paths)
       onRefresh()
     }
   }
 
   const handleCommit = async () => {
     if (!commitMsg.trim() || stagedFiles.length === 0) return
-    const result = await window.clui.gitCommit(directory, commitMsg.trim())
+    const result = await window.coda.gitCommit(directory, commitMsg.trim())
     if (result.ok) {
       setCommitMsg('')
       onRefresh()
@@ -465,7 +465,7 @@ function GitChangesSection({
       return
     }
     setDiffFile({ path: file.path, staged: file.staged })
-    const data = await window.clui.gitDiff(directory, file.path, file.staged)
+    const data = await window.coda.gitDiff(directory, file.path, file.staged)
     setDiffData(data)
   }
 
@@ -765,7 +765,7 @@ function GitGraphSection({
     setLoading(true)
     try {
       const skip = append ? commitsRef.current.length : 0
-      const result = await window.clui.gitGraph(directory, skip, 100)
+      const result = await window.coda.gitGraph(directory, skip, 100)
       if (result.isGitRepo) {
         const newCommits = append ? [...commitsRef.current, ...result.commits] : result.commits
         setCommits(newCommits)
@@ -780,7 +780,7 @@ function GitGraphSection({
     setCommits([])
     setTotalCount(0)
     loadGraph()
-    window.clui.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
+    window.coda.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
   }, [directory, loadGraph])
 
   // Reload graph when parent triggers a refresh (e.g. after commit)
@@ -810,7 +810,7 @@ function GitGraphSection({
 
   const handleFetch = async () => {
     setFetchingAction('fetch')
-    await window.clui.gitFetch(directory)
+    await window.coda.gitFetch(directory)
     setFetchingAction(null)
     loadGraph()
     onRefresh()
@@ -818,7 +818,7 @@ function GitGraphSection({
 
   const handlePull = async () => {
     setFetchingAction('pull')
-    await window.clui.gitPull(directory)
+    await window.coda.gitPull(directory)
     setFetchingAction(null)
     loadGraph()
     onRefresh()
@@ -831,14 +831,14 @@ function GitGraphSection({
     }
     setPushConfirm(false)
     setFetchingAction('push')
-    await window.clui.gitPush(directory)
+    await window.coda.gitPush(directory)
     setFetchingAction(null)
     loadGraph()
   }
 
   const handleBranchRefresh = () => {
     loadGraph()
-    window.clui.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
+    window.coda.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
     onRefresh()
   }
 
@@ -993,7 +993,7 @@ export function GitPanel() {
     let cancelled = false
     const load = async () => {
       try {
-        const result = await window.clui.gitChanges(directory)
+        const result = await window.coda.gitChanges(directory)
         if (!cancelled) setFiles(result.files)
       } catch {}
     }
@@ -1041,7 +1041,7 @@ export function GitPanel() {
   return (
     <div
       ref={containerRef}
-      data-clui-ui
+      data-coda-ui
       className="glass-surface rounded-xl flex flex-col"
       style={{
         width: 280,
@@ -1121,7 +1121,7 @@ export function GitPanel() {
       {/* Draggable divider */}
       {bothOpen && (
         <div
-          data-clui-ui
+          data-coda-ui
           onMouseDown={onDividerMouseDown}
           style={{
             height: 6,

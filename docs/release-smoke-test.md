@@ -5,11 +5,11 @@
 ### Fresh Clone Bootstrap
 
 ```bash
-git clone https://github.com/lcoutodemos/clui-cc.git
-cd clui-cc
-npm run doctor     # verify environment — all checks should pass
+git clone https://github.com/dsswift/coda.git
+cd coda
+npm run doctor     # verify environment -- all checks should pass
 npm install        # installs deps + runs postinstall (electron-builder install-app-deps + icon patch)
-npm run build      # production build — must exit 0 with no errors
+npm run build      # production build -- must exit 0 with no errors
 ```
 
 **Prerequisites check (verified by `npm run doctor`):**
@@ -22,16 +22,16 @@ npm run build      # production build — must exit 0 with no errors
 - `claude --version` returns 2.1+
 
 **Expected output:**
-- `dist/main/index.js` — ~117 KB
-- `dist/preload/index.js` — ~6 KB
+- `dist/main/index.js` -- ~117 KB
+- `dist/preload/index.js` -- ~6 KB
 - `dist/renderer/index.html` + `assets/index-*.js` (~1.5 MB) + `assets/index-*.css` (~25 KB)
 
 ### TypeScript
 
-- `npm run build` — passes (uses esbuild, tolerant of some strict-mode warnings)
-- `npx tsc --noEmit` — has pre-existing warnings (68 as of v0.1.0, non-blocking)
+- `npm run build` -- passes (uses esbuild, tolerant of some strict-mode warnings)
+- `npx tsc --noEmit` -- has pre-existing warnings (68 as of v0.1.0, non-blocking)
   - These are narrowing/equality warnings from Zustand selector patterns and a legacy PTY file
-  - Does NOT affect runtime behavior — electron-vite builds successfully
+  - Does NOT affect runtime behavior -- electron-vite builds successfully
 
 ## Runtime Smoke Test Checklist
 
@@ -89,7 +89,7 @@ npm run build      # production build — must exit 0 with no errors
 - [ ] Install flow shows confirmation with exact CLI commands
 - [ ] Graceful error state when offline
 
-### Voice Input (Whisper required — installed by install-app.command)
+### Voice Input (Whisper required -- installed by install-app.command)
 - [ ] Microphone button starts recording
 - [ ] Stop button ends recording and transcribes
 - [ ] Transcribed text appears in input bar

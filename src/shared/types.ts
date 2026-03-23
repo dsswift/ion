@@ -231,7 +231,7 @@ export interface RunOptions {
   maxBudgetUsd?: number
   systemPrompt?: string
   model?: string
-  /** Path to CLUI-scoped settings file with hook config (passed via --settings) */
+  /** Path to CODA-scoped settings file with hook config (passed via --settings) */
   hookSettingsPath?: string
   /** Extra directories to add via --add-dir (session-preserving) */
   addDirs?: string[]
@@ -317,128 +317,128 @@ export interface CatalogPlugin {
 
 export const IPC = {
   // Request-response (renderer → main)
-  START: 'clui:start',
-  CREATE_TAB: 'clui:create-tab',
-  PROMPT: 'clui:prompt',
-  CANCEL: 'clui:cancel',
-  STOP_TAB: 'clui:stop-tab',
-  RETRY: 'clui:retry',
-  STATUS: 'clui:status',
-  TAB_HEALTH: 'clui:tab-health',
-  CLOSE_TAB: 'clui:close-tab',
-  SELECT_DIRECTORY: 'clui:select-directory',
-  OPEN_EXTERNAL: 'clui:open-external',
-  OPEN_IN_TERMINAL: 'clui:open-in-terminal',
-  OPEN_IN_VSCODE: 'clui:open-in-vscode',
-  ATTACH_FILES: 'clui:attach-files',
-  TAKE_SCREENSHOT: 'clui:take-screenshot',
-  TRANSCRIBE_AUDIO: 'clui:transcribe-audio',
-  PASTE_IMAGE: 'clui:paste-image',
-  GET_DIAGNOSTICS: 'clui:get-diagnostics',
-  RESPOND_PERMISSION: 'clui:respond-permission',
-  INIT_SESSION: 'clui:init-session',
-  RESET_TAB_SESSION: 'clui:reset-tab-session',
-  ANIMATE_HEIGHT: 'clui:animate-height',
-  LIST_SESSIONS: 'clui:list-sessions',
-  LOAD_SESSION: 'clui:load-session',
-  READ_PLAN: 'clui:read-plan',
+  START: 'coda:start',
+  CREATE_TAB: 'coda:create-tab',
+  PROMPT: 'coda:prompt',
+  CANCEL: 'coda:cancel',
+  STOP_TAB: 'coda:stop-tab',
+  RETRY: 'coda:retry',
+  STATUS: 'coda:status',
+  TAB_HEALTH: 'coda:tab-health',
+  CLOSE_TAB: 'coda:close-tab',
+  SELECT_DIRECTORY: 'coda:select-directory',
+  OPEN_EXTERNAL: 'coda:open-external',
+  OPEN_IN_TERMINAL: 'coda:open-in-terminal',
+  OPEN_IN_VSCODE: 'coda:open-in-vscode',
+  ATTACH_FILES: 'coda:attach-files',
+  TAKE_SCREENSHOT: 'coda:take-screenshot',
+  TRANSCRIBE_AUDIO: 'coda:transcribe-audio',
+  PASTE_IMAGE: 'coda:paste-image',
+  GET_DIAGNOSTICS: 'coda:get-diagnostics',
+  RESPOND_PERMISSION: 'coda:respond-permission',
+  INIT_SESSION: 'coda:init-session',
+  RESET_TAB_SESSION: 'coda:reset-tab-session',
+  ANIMATE_HEIGHT: 'coda:animate-height',
+  LIST_SESSIONS: 'coda:list-sessions',
+  LOAD_SESSION: 'coda:load-session',
+  READ_PLAN: 'coda:read-plan',
 
   // One-way events (main → renderer)
-  TEXT_CHUNK: 'clui:text-chunk',
-  TOOL_CALL: 'clui:tool-call',
-  TOOL_CALL_UPDATE: 'clui:tool-call-update',
-  TOOL_CALL_COMPLETE: 'clui:tool-call-complete',
-  TASK_UPDATE: 'clui:task-update',
-  TASK_COMPLETE: 'clui:task-complete',
-  SESSION_DEAD: 'clui:session-dead',
-  SESSION_INIT: 'clui:session-init',
-  ERROR: 'clui:error',
-  RATE_LIMIT: 'clui:rate-limit',
+  TEXT_CHUNK: 'coda:text-chunk',
+  TOOL_CALL: 'coda:tool-call',
+  TOOL_CALL_UPDATE: 'coda:tool-call-update',
+  TOOL_CALL_COMPLETE: 'coda:tool-call-complete',
+  TASK_UPDATE: 'coda:task-update',
+  TASK_COMPLETE: 'coda:task-complete',
+  SESSION_DEAD: 'coda:session-dead',
+  SESSION_INIT: 'coda:session-init',
+  ERROR: 'coda:error',
+  RATE_LIMIT: 'coda:rate-limit',
 
   // Window management
-  RESIZE_HEIGHT: 'clui:resize-height',
-  SET_WINDOW_WIDTH: 'clui:set-window-width',
-  HIDE_WINDOW: 'clui:hide-window',
-  WINDOW_SHOWN: 'clui:window-shown',
-  SET_IGNORE_MOUSE_EVENTS: 'clui:set-ignore-mouse-events',
-  IS_VISIBLE: 'clui:is-visible',
+  RESIZE_HEIGHT: 'coda:resize-height',
+  SET_WINDOW_WIDTH: 'coda:set-window-width',
+  HIDE_WINDOW: 'coda:hide-window',
+  WINDOW_SHOWN: 'coda:window-shown',
+  SET_IGNORE_MOUSE_EVENTS: 'coda:set-ignore-mouse-events',
+  IS_VISIBLE: 'coda:is-visible',
 
   // Skill provisioning (main → renderer)
-  SKILL_STATUS: 'clui:skill-status',
+  SKILL_STATUS: 'coda:skill-status',
 
   // Theme
-  GET_THEME: 'clui:get-theme',
-  THEME_CHANGED: 'clui:theme-changed',
+  GET_THEME: 'coda:get-theme',
+  THEME_CHANGED: 'coda:theme-changed',
 
   // Command discovery
-  DISCOVER_COMMANDS: 'clui:discover-commands',
+  DISCOVER_COMMANDS: 'coda:discover-commands',
 
   // Marketplace
-  MARKETPLACE_FETCH: 'clui:marketplace-fetch',
-  MARKETPLACE_INSTALLED: 'clui:marketplace-installed',
-  MARKETPLACE_INSTALL: 'clui:marketplace-install',
-  MARKETPLACE_UNINSTALL: 'clui:marketplace-uninstall',
+  MARKETPLACE_FETCH: 'coda:marketplace-fetch',
+  MARKETPLACE_INSTALLED: 'coda:marketplace-installed',
+  MARKETPLACE_INSTALL: 'coda:marketplace-install',
+  MARKETPLACE_UNINSTALL: 'coda:marketplace-uninstall',
 
   // Permission mode
-  SET_PERMISSION_MODE: 'clui:set-permission-mode',
+  SET_PERMISSION_MODE: 'coda:set-permission-mode',
 
   // Settings persistence
-  LOAD_SETTINGS: 'clui:load-settings',
-  SAVE_SETTINGS: 'clui:save-settings',
-  SHOW_SETTINGS: 'clui:show-settings',
+  LOAD_SETTINGS: 'coda:load-settings',
+  SAVE_SETTINGS: 'coda:save-settings',
+  SHOW_SETTINGS: 'coda:show-settings',
 
   // Tab persistence
-  LOAD_TABS: 'clui:load-tabs',
-  SAVE_TABS: 'clui:save-tabs',
+  LOAD_TABS: 'coda:load-tabs',
+  SAVE_TABS: 'coda:save-tabs',
 
   // Git operations
-  GIT_GRAPH: 'clui:git-graph',
-  GIT_CHANGES: 'clui:git-changes',
-  GIT_IS_REPO: 'clui:git-is-repo',
-  GIT_COMMIT: 'clui:git-commit',
-  GIT_FETCH: 'clui:git-fetch',
-  GIT_PULL: 'clui:git-pull',
-  GIT_PUSH: 'clui:git-push',
-  GIT_BRANCHES: 'clui:git-branches',
-  GIT_CHECKOUT: 'clui:git-checkout',
-  GIT_CREATE_BRANCH: 'clui:git-create-branch',
-  GIT_DIFF: 'clui:git-diff',
-  GIT_STAGE: 'clui:git-stage',
-  GIT_UNSTAGE: 'clui:git-unstage',
-  GIT_DISCARD: 'clui:git-discard',
-  GIT_DELETE_BRANCH: 'clui:git-delete-branch',
+  GIT_GRAPH: 'coda:git-graph',
+  GIT_CHANGES: 'coda:git-changes',
+  GIT_IS_REPO: 'coda:git-is-repo',
+  GIT_COMMIT: 'coda:git-commit',
+  GIT_FETCH: 'coda:git-fetch',
+  GIT_PULL: 'coda:git-pull',
+  GIT_PUSH: 'coda:git-push',
+  GIT_BRANCHES: 'coda:git-branches',
+  GIT_CHECKOUT: 'coda:git-checkout',
+  GIT_CREATE_BRANCH: 'coda:git-create-branch',
+  GIT_DIFF: 'coda:git-diff',
+  GIT_STAGE: 'coda:git-stage',
+  GIT_UNSTAGE: 'coda:git-unstage',
+  GIT_DISCARD: 'coda:git-discard',
+  GIT_DELETE_BRANCH: 'coda:git-delete-branch',
 
   // Filesystem operations
-  FS_READ_DIR: 'clui:fs-read-dir',
-  FS_READ_FILE: 'clui:fs-read-file',
-  FS_WRITE_FILE: 'clui:fs-write-file',
-  FS_CREATE_DIR: 'clui:fs-create-dir',
-  FS_CREATE_FILE: 'clui:fs-create-file',
-  FS_RENAME: 'clui:fs-rename',
-  FS_DELETE: 'clui:fs-delete',
-  FS_SAVE_DIALOG: 'clui:fs-save-dialog',
-  FS_REVEAL_IN_FINDER: 'clui:fs-reveal-in-finder',
-  FS_OPEN_NATIVE: 'clui:fs-open-native',
+  FS_READ_DIR: 'coda:fs-read-dir',
+  FS_READ_FILE: 'coda:fs-read-file',
+  FS_WRITE_FILE: 'coda:fs-write-file',
+  FS_CREATE_DIR: 'coda:fs-create-dir',
+  FS_CREATE_FILE: 'coda:fs-create-file',
+  FS_RENAME: 'coda:fs-rename',
+  FS_DELETE: 'coda:fs-delete',
+  FS_SAVE_DIALOG: 'coda:fs-save-dialog',
+  FS_REVEAL_IN_FINDER: 'coda:fs-reveal-in-finder',
+  FS_OPEN_NATIVE: 'coda:fs-open-native',
 
   // Fonts
-  LIST_FONTS: 'clui:list-fonts',
+  LIST_FONTS: 'coda:list-fonts',
 
   // Terminal PTY
-  TERMINAL_CREATE: 'clui:terminal-create',
-  TERMINAL_DATA: 'clui:terminal-data',
-  TERMINAL_RESIZE: 'clui:terminal-resize',
-  TERMINAL_INCOMING: 'clui:terminal-incoming',
-  TERMINAL_EXIT: 'clui:terminal-exit',
-  TERMINAL_DESTROY: 'clui:terminal-destroy',
+  TERMINAL_CREATE: 'coda:terminal-create',
+  TERMINAL_DATA: 'coda:terminal-data',
+  TERMINAL_RESIZE: 'coda:terminal-resize',
+  TERMINAL_INCOMING: 'coda:terminal-incoming',
+  TERMINAL_EXIT: 'coda:terminal-exit',
+  TERMINAL_DESTROY: 'coda:terminal-destroy',
 
   // Bash command execution
-  EXECUTE_BASH: 'clui:execute-bash',
-  CANCEL_BASH: 'clui:cancel-bash',
+  EXECUTE_BASH: 'coda:execute-bash',
+  CANCEL_BASH: 'coda:cancel-bash',
 
   // Legacy (kept for backward compat during migration)
-  STREAM_EVENT: 'clui:stream-event',
-  RUN_COMPLETE: 'clui:run-complete',
-  RUN_ERROR: 'clui:run-error',
+  STREAM_EVENT: 'coda:stream-event',
+  RUN_COMPLETE: 'coda:run-complete',
+  RUN_ERROR: 'coda:run-error',
 } as const
 
 // ─── Persisted Tab State ───

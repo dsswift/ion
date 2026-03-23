@@ -3,7 +3,7 @@ import { IPC } from '../shared/types'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, Attachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry } from '../shared/types'
 import type { DiscoveredCommand } from '../main/claude/command-discovery'
 
-export interface CluiAPI {
+export interface CodaAPI {
   // ─── Request-response (renderer → main) ───
   start(): Promise<{ version: string; auth: { email?: string; subscriptionType?: string; authMethod?: string }; mcpServers: string[]; projectPath: string; homePath: string }>
   createTab(): Promise<{ tabId: string }>
@@ -98,7 +98,7 @@ export interface CluiAPI {
   onShowSettings(callback: () => void): () => void
 }
 
-const api: CluiAPI = {
+const api: CodaAPI = {
   // ─── Request-response ───
   start: () => ipcRenderer.invoke(IPC.START),
   createTab: () => ipcRenderer.invoke(IPC.CREATE_TAB),
@@ -209,22 +209,22 @@ const api: CluiAPI = {
     ]
     // Single unified handler — all normalized events come through one channel
     const handler = (_e: Electron.IpcRendererEvent, tabId: string, event: NormalizedEvent) => callback(tabId, event)
-    ipcRenderer.on('clui:normalized-event', handler)
-    return () => ipcRenderer.removeListener('clui:normalized-event', handler)
+    ipcRenderer.on('coda:normalized-event', handler)
+    return () => ipcRenderer.removeListener('coda:normalized-event', handler)
   },
 
   onTabStatusChange: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, tabId: string, newStatus: string, oldStatus: string) =>
       callback(tabId, newStatus, oldStatus)
-    ipcRenderer.on('clui:tab-status-change', handler)
-    return () => ipcRenderer.removeListener('clui:tab-status-change', handler)
+    ipcRenderer.on('coda:tab-status-change', handler)
+    return () => ipcRenderer.removeListener('coda:tab-status-change', handler)
   },
 
   onError: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, tabId: string, error: EnrichedError) =>
       callback(tabId, error)
-    ipcRenderer.on('clui:enriched-error', handler)
-    return () => ipcRenderer.removeListener('clui:enriched-error', handler)
+    ipcRenderer.on('coda:enriched-error', handler)
+    return () => ipcRenderer.removeListener('coda:enriched-error', handler)
   },
 
   onSkillStatus: (callback) => {
@@ -246,4 +246,4 @@ const api: CluiAPI = {
   },
 }
 
-contextBridge.exposeInMainWorld('clui', api)
+contextBridge.exposeInMainWorld('coda', api)

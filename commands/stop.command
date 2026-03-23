@@ -4,7 +4,7 @@
 cd "$(dirname "$0")/.."
 
 REPO_DIR="$(pwd)"
-PID_FILE=".clui.pid"
+PID_FILE=".coda.pid"
 stopped=0
 
 # ── 1. Try tracked PID first ──
@@ -67,8 +67,8 @@ if [ -n "$remaining" ]; then
   echo "    kill -9 $remaining"
 else
   if [ "$stopped" -eq 1 ]; then
-    echo "Clui CC stopped."
+    echo "CODA stopped."
   else
-    echo "Clui CC was not running."
+    echo "CODA was not running."
   fi
 fi

@@ -17,7 +17,7 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Clean stale PID file
-PID_FILE=".clui.pid"
+PID_FILE=".coda.pid"
 if [ -f "$PID_FILE" ]; then
   old_pid=$(cat "$PID_FILE" 2>/dev/null)
   if [ -n "$old_pid" ] && ! kill -0 "$old_pid" 2>/dev/null; then
@@ -25,14 +25,14 @@ if [ -f "$PID_FILE" ]; then
   fi
 fi
 
-echo "Building Clui CC..."
+echo "Building CODA..."
 if ! npx electron-vite build --mode production; then
   echo
   echo "Build failed. Try: rm -rf node_modules && npm install"
   exit 1
 fi
 
-echo "Clui CC running. ⌥ + Space to toggle. Use ./commands/stop.command or tray icon > Quit to close."
+echo "CODA running. ⌥ + Space to toggle. Use ./commands/stop.command or tray icon > Quit to close."
 
 # Launch in a new process group and record the PID
 npx electron . &

@@ -84,7 +84,7 @@ function ModelPicker() {
       {popoverLayer && open && createPortal(
         <motion.div
           ref={popoverRef}
-          data-clui-ui
+          data-coda-ui
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 4 }}
@@ -198,7 +198,7 @@ function PermissionModePicker() {
       {popoverLayer && open && createPortal(
         <motion.div
           ref={popoverRef}
-          data-clui-ui
+          data-coda-ui
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 4 }}
@@ -323,9 +323,9 @@ function OpenWithPicker() {
   const handleExecute = () => {
     if (!tab) return
     if (preferredOpenWith === 'cli') {
-      window.clui.openInTerminal(tab.claudeSessionId, tab.workingDirectory)
+      window.coda.openInTerminal(tab.claudeSessionId, tab.workingDirectory)
     } else {
-      window.clui.openInVSCode(tab.workingDirectory)
+      window.coda.openInVSCode(tab.workingDirectory)
     }
   }
 
@@ -367,7 +367,7 @@ function OpenWithPicker() {
       {popoverLayer && open && createPortal(
         <motion.div
           ref={popoverRef}
-          data-clui-ui
+          data-coda-ui
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 4 }}
@@ -481,7 +481,7 @@ export function StatusBar() {
       closeGitPanel()
       return
     }
-    window.clui.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
+    window.coda.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
       setIsGitRepo(isRepo)
       if (!isRepo) closeGitPanel()
     }).catch(() => {
@@ -510,7 +510,7 @@ export function StatusBar() {
   }
 
   const handleAddDir = async () => {
-    const dir = await window.clui.selectDirectory()
+    const dir = await window.coda.selectDirectory()
     if (dir) {
       if (!tab.hasChosenDirectory && !baseLocked) {
         setBaseDirectory(dir)
@@ -522,7 +522,7 @@ export function StatusBar() {
 
   const handleChangeBaseDir = async () => {
     if (isRunning || baseLocked) return
-    const dir = await window.clui.selectDirectory()
+    const dir = await window.coda.selectDirectory()
     if (dir) {
       setBaseDirectory(dir)
     }
@@ -582,7 +582,7 @@ export function StatusBar() {
         {popoverLayer && dirOpen && createPortal(
           <motion.div
             ref={dirPopRef}
-            data-clui-ui
+            data-coda-ui
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.12 }}

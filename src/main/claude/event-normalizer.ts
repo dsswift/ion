@@ -11,7 +11,7 @@ import type {
 } from '../../shared/types'
 
 /**
- * Maps raw Claude stream-json events to canonical CLUI events.
+ * Maps raw Claude stream-json events to canonical CODA events.
  *
  * The normalizer is stateless — it takes one raw event and returns
  * zero or more normalized events. The caller (RunManager) is responsible
@@ -42,7 +42,7 @@ export function normalize(raw: ClaudeEvent): NormalizedEvent[] {
 
     default:
       // Unknown event type — log for diagnostics
-      if (process.env.CLUI_DEBUG === '1') {
+      if (process.env.CODA_DEBUG === '1') {
         console.log(`[event-normalizer] unknown event type: ${raw.type}`, JSON.stringify(raw).substring(0, 300))
       }
       return []

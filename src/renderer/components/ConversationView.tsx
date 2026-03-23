@@ -142,7 +142,7 @@ export function ConversationView() {
 
   return (
     <div
-      data-clui-ui
+      data-coda-ui
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -248,7 +248,7 @@ export function ConversationView() {
                       const input = JSON.parse(exitMsg.toolInput)
                       const planFilePath = input.planFilePath as string
                       if (planFilePath) {
-                        const result = await window.clui.readPlan(planFilePath)
+                        const result = await window.coda.readPlan(planFilePath)
                         planContent = result.content
                       }
                     } catch (err) {
@@ -257,7 +257,7 @@ export function ConversationView() {
                   }
 
                   // Reset session (fresh Claude context) and clear messages
-                  window.clui.resetTabSession(tab.id)
+                  window.coda.resetTabSession(tab.id)
                   useSessionStore.setState((s) => ({
                     tabs: s.tabs.map((t) =>
                       t.id === tab.id
@@ -351,7 +351,7 @@ function EmptyState() {
   const colors = useColors()
 
   const handleChooseFolder = async () => {
-    const dir = await window.clui.selectDirectory()
+    const dir = await window.coda.selectDirectory()
     if (dir) {
       setBaseDirectory(dir)
     }
@@ -423,7 +423,7 @@ function InterruptButton({ tabId }: { tabId: string }) {
   const colors = useColors()
 
   const handleStop = () => {
-    window.clui.stopTab(tabId)
+    window.coda.stopTab(tabId)
   }
 
   return (
@@ -579,7 +579,7 @@ function ImageCard({ src, alt, colors }: { src?: string; alt?: string; colors: R
   // Reset failed state when src changes (e.g. during streaming)
   useEffect(() => { setFailed(false) }, [src])
   const label = alt || 'Image'
-  const open = () => { if (src) window.clui.openExternal(String(src)) }
+  const open = () => { if (src) window.coda.openExternal(String(src)) }
 
   if (failed || !src) {
     return (
@@ -639,7 +639,7 @@ const AssistantMessage = React.memo(function AssistantMessage({
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
         onClick={() => {
-          if (href) window.clui.openExternal(String(href))
+          if (href) window.coda.openExternal(String(href))
         }}
       >
         {children}

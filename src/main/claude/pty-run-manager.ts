@@ -6,7 +6,7 @@
  * to extract text, tool calls, and permission requests, then emits
  * normalized events identical to RunManager.
  *
- * This module is behind the `CLUI_INTERACTIVE_PERMISSIONS_PTY` feature flag.
+ * This module is behind the `CODA_INTERACTIVE_PERMISSIONS_PTY` feature flag.
  *
  * Known limitations:
  * - Parsing depends on Claude CLI's terminal output format (Ink-based)
@@ -32,7 +32,7 @@ try {
   // Will be set when first needed — fail at startRun() time, not import time
 }
 
-const LOG_FILE = join(homedir(), '.clui-debug.log')
+const LOG_FILE = join(homedir(), '.coda-debug.log')
 const MAX_RING_LINES = 100
 const PTY_BUFFER_SIZE = 50 // rolling window of cleaned lines for parser context
 const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes

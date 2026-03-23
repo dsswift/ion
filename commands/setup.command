@@ -30,13 +30,13 @@ step "Checking environment"
 
 # macOS
 if [ "$(uname)" != "Darwin" ]; then
-  fail "Clui CC requires macOS 13+. Detected: $(uname). This project does not run on Linux or Windows."
+  fail "CODA requires macOS 13+. Detected: $(uname). This project does not run on Linux or Windows."
 else
   macos_ver=$(sw_vers -productVersion 2>/dev/null || echo "0")
   if version_gte "$macos_ver" "13.0"; then
     pass "macOS $macos_ver"
   else
-    fail "macOS $macos_ver is too old. Clui CC requires macOS 13+."
+    fail "macOS $macos_ver is too old. CODA requires macOS 13+."
     echo "  Update macOS in System Settings > General > Software Update."
   fi
 fi
@@ -47,7 +47,7 @@ if command -v node &>/dev/null; then
   if version_gte "$node_ver" "18.0.0"; then
     pass "Node.js v$node_ver"
   else
-    fail "Node.js v$node_ver is too old. Clui CC requires Node 18+."
+    fail "Node.js v$node_ver is too old. CODA requires Node 18+."
     fix "brew install node"
   fi
 else
