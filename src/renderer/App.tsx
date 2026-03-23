@@ -365,6 +365,10 @@ export default function App() {
         e.preventDefault()
         useSessionStore.getState().createTab()
       }
+      if (e.metaKey && e.key === 'r') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('clui:open-recent-dirs'))
+      }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)

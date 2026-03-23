@@ -294,6 +294,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   createTabInDirectory: async (dir) => {
+    useThemeStore.getState().addRecentBaseDirectory(dir)
     try {
       const { tabId } = await window.clui.createTab()
       const tab: TabState = {
@@ -981,6 +982,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   setBaseDirectory: (dir) => {
+    useThemeStore.getState().addRecentBaseDirectory(dir)
     const { activeTabId } = get()
     window.clui.resetTabSession(activeTabId)
     set((s) => ({
