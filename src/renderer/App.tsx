@@ -290,6 +290,18 @@ export default function App() {
           useSessionStore.setState({ editorGeometry: clampedGeo })
         }
 
+        // Restore global plan preview geometry (clamped to current screen)
+        if (saved.planGeometry) {
+          const g = saved.planGeometry
+          const clampedGeo = {
+            x: Math.max(-200, Math.min(window.innerWidth - 100, g.x)),
+            y: Math.max(0, Math.min(window.innerHeight - 32, g.y)),
+            w: Math.max(280, g.w),
+            h: Math.max(180, g.h),
+          }
+          useSessionStore.setState({ planGeometry: clampedGeo })
+        }
+
         // Restore expanded/collapsed state, or fall back to setting
         const restoredExpanded = typeof saved.isExpanded === 'boolean'
           ? saved.isExpanded

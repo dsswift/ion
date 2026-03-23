@@ -83,6 +83,8 @@ interface State {
   fileEditorStates: Map<string, FileEditorDirState>
   /** Global file editor window position and size (persisted across restarts) */
   editorGeometry: { x: number; y: number; w: number; h: number }
+  /** Global plan preview window position and size (persisted across restarts) */
+  planGeometry: { x: number; y: number; w: number; h: number }
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
 
@@ -136,6 +138,7 @@ interface State {
   toggleEditorPreview: (dir: string, fileId: string) => void
   toggleEditorReadOnly: (dir: string, fileId: string) => void
   setEditorGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
+  setPlanGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   loadMarketplace: (forceRefresh?: boolean) => Promise<void>
   setMarketplaceSearch: (query: string) => void
   setMarketplaceFilter: (filter: string) => void
@@ -225,6 +228,7 @@ export const useSessionStore = create<State>((set, get) => ({
   fileEditorFocused: true,
   fileEditorStates: new Map(),
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
+  planGeometry: { x: 60, y: 80, w: 720, h: 420 },
   tabsReady: false,
 
   // Settings dialog
@@ -669,6 +673,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   setEditorGeometry: (geo) => set({ editorGeometry: geo }),
+  setPlanGeometry: (geo) => set({ planGeometry: geo }),
 
   loadMarketplace: async (forceRefresh) => {
     set({ marketplaceLoading: true, marketplaceError: null })
@@ -1553,7 +1558,7 @@ function persistTabs(): void {
   }
 
   // Resolve which persisted tabs have the editor open (by index into persistedTabs)
-  const { isExpanded, fileEditorOpenTabIds, editorGeometry } = useSessionStore.getState()
+  const { isExpanded, fileEditorOpenTabIds, editorGeometry, planGeometry } = useSessionStore.getState()
   const editorOpenIndices: number[] = []
   // Build a lookup from tab id -> persisted index
   let persistedIdx = 0
@@ -1586,13 +1591,14 @@ function persistTabs(): void {
     isExpanded,
     editorOpenSessionIds: editorOpenIndices.length > 0 ? editorOpenIndices : undefined,
     editorGeometry,
+    planGeometry,
   }
   window.coda.saveTabs(data)
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 useSessionStore.subscribe((state, prev) => {
-  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenTabIds !== prev.fileEditorOpenTabIds || state.editorGeometry !== prev.editorGeometry) {
+  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenTabIds !== prev.fileEditorOpenTabIds || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry) {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(persistTabs, 100)
   }

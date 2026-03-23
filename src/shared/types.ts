@@ -500,6 +500,8 @@ export interface PersistedTabState {
   editorOpenSessionIds?: number[]
   /** Global file editor window position and size */
   editorGeometry?: { x: number; y: number; w: number; h: number }
+  /** Global plan preview window position and size */
+  planGeometry?: { x: number; y: number; w: number; h: number }
 }
 
 // ─── Git Types ───

@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useCallback } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
+import { useSessionStore } from '../stores/sessionStore'
 
 const REMARK_PLUGINS = [remarkGfm]
 
@@ -14,6 +15,12 @@ interface PlanViewerProps {
 
 export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
   const colors = useColors()
+  const planGeometry = useSessionStore((s) => s.planGeometry)
+  const setPlanGeometry = useSessionStore((s) => s.setPlanGeometry)
+  const handleGeometryChange = useCallback(
+    (geo: { x: number; y: number; w: number; h: number }) => setPlanGeometry(geo),
+    [setPlanGeometry],
+  )
 
   const markdownComponents = useMemo(() => ({
     a: ({ href, children }: any) => (
@@ -31,7 +38,15 @@ export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
   }), [colors])
 
   return (
-    <FloatingPanel title={fileName} onClose={onClose} defaultWidth={720} defaultHeight={420}>
+    <FloatingPanel
+      title={fileName}
+      onClose={onClose}
+      defaultWidth={720}
+      defaultHeight={420}
+      initialPos={{ x: planGeometry.x, y: planGeometry.y }}
+      initialSize={{ w: planGeometry.w, h: planGeometry.h }}
+      onGeometryChange={handleGeometryChange}
+    >
       <div
         style={{
           overflowY: 'auto',

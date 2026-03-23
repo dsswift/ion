@@ -12,6 +12,9 @@ interface FloatingPanelProps {
   defaultHeight?: number
   minWidth?: number
   minHeight?: number
+  initialPos?: { x: number; y: number }
+  initialSize?: { w: number; h: number }
+  onGeometryChange?: (geo: { x: number; y: number; w: number; h: number }) => void
   children: React.ReactNode
 }
 
@@ -22,19 +25,27 @@ export function FloatingPanel({
   defaultHeight = 420,
   minWidth = 280,
   minHeight = 180,
+  initialPos,
+  initialSize,
+  onGeometryChange,
   children,
 }: FloatingPanelProps) {
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
   // Position: start offset toward the left so it doesn't cover the main conversation column
-  const [pos, setPos] = useState({ x: 60, y: 80 })
-  const [size, setSize] = useState({ w: defaultWidth, h: defaultHeight })
+  const [pos, setPos] = useState(initialPos ?? { x: 60, y: 80 })
+  const [size, setSize] = useState(initialSize ?? { w: defaultWidth, h: defaultHeight })
 
   // Drag state
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   // Resize state
   const resizeRef = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null)
+  // Track latest pos/size for geometry callback
+  const posRef = useRef(pos)
+  const sizeRef = useRef(size)
+  posRef.current = pos
+  sizeRef.current = size
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     // Only drag from header (left button)
@@ -70,8 +81,12 @@ export function FloatingPanel({
       }
     }
     const handleMouseUp = () => {
+      const wasDragging = dragRef.current !== null || resizeRef.current !== null
       dragRef.current = null
       resizeRef.current = null
+      if (wasDragging && onGeometryChange) {
+        onGeometryChange({ ...posRef.current, ...sizeRef.current })
+      }
     }
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
