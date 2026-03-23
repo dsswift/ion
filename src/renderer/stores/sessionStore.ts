@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, CatalogPlugin, PluginStatus, PersistedTabState } from '../../shared/types'
 import { useThemeStore } from '../theme'
+import { destroyTerminalInstance } from '../components/TerminalPanel'
 import notificationSrc from '../../../resources/notification.mp3'
 
 export { AVAILABLE_MODELS, getModelDisplayLabel } from './model-labels'
@@ -732,6 +733,7 @@ export const useSessionStore = create<State>((set, get) => ({
   closeTab: (tabId) => {
     window.clui.closeTab(tabId).catch(() => {})
     window.clui.terminalDestroy(tabId).catch(() => {})
+    destroyTerminalInstance(tabId)
     // Clean up terminal UI state
     const termIds = get().terminalOpenTabIds
     if (termIds.has(tabId)) {

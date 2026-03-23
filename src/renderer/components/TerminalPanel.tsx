@@ -8,6 +8,7 @@ interface TerminalEntry {
   terminal: Terminal
   fitAddon: FitAddon
   created: boolean
+  cwd: string
   hostEl: HTMLDivElement
   unsubData: () => void
   unsubExit: () => void
@@ -106,11 +107,18 @@ export function TerminalPanel({ tabId, cwd }: Props) {
       const unsubData = window.clui.onTerminalData((tid, data) => {
         if (tid === tabId) terminal.write(data)
       })
-      const unsubExit = window.clui.onTerminalExit((tid, exitCode) => {
-        if (tid === tabId) terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`)
+      const unsubExit = window.clui.onTerminalExit((tid, _exitCode) => {
+        if (tid !== tabId) return
+        const e = terminalInstances.get(tabId)
+        if (!e) return
+        terminal.reset()
+        window.clui.terminalCreate(tabId, e.cwd).then(() => {
+          const dims = e.fitAddon.proposeDimensions()
+          if (dims) window.clui.terminalResize(tabId, dims.cols, dims.rows)
+        })
       })
 
-      entry = { terminal, fitAddon, created: false, hostEl, unsubData, unsubExit }
+      entry = { terminal, fitAddon, created: false, cwd, hostEl, unsubData, unsubExit }
       terminalInstances.set(tabId, entry)
     }
 
