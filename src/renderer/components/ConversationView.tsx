@@ -48,6 +48,10 @@ type GroupedItem =
 
 // ─── Helpers ───
 
+const HIDDEN_MESSAGES = [
+  'Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.',
+]
+
 function groupMessages(messages: Message[]): GroupedItem[] {
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
@@ -60,6 +64,7 @@ function groupMessages(messages: Message[]): GroupedItem[] {
   }
 
   for (const msg of messages) {
+    if (msg.role === 'assistant' && HIDDEN_MESSAGES.includes(msg.content.trim())) continue
     if (msg.role === 'tool') {
       toolBuf.push(msg)
     } else {
