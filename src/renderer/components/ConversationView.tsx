@@ -88,6 +88,7 @@ export function ConversationView() {
   const prevTabIdRef = useRef(activeTabId)
   const colors = useColors()
   const expandedUI = useThemeStore((s) => s.expandedUI)
+  const isTallView = useSessionStore((s) => s.tallViewTabId === s.activeTabId)
 
   const tab = tabs.find((t) => t.id === activeTabId)
 
@@ -169,7 +170,7 @@ export function ConversationView() {
       <div
         ref={scrollRef}
         className="overflow-y-auto overflow-x-hidden px-4 pt-2 conversation-selectable"
-        style={{ maxHeight: expandedUI ? 460 : 336, paddingBottom: 28 }}
+        style={{ maxHeight: isTallView ? 'calc(100vh - 260px)' : expandedUI ? 460 : 336, paddingBottom: 28 }}
         onScroll={handleScroll}
       >
         {/* Load older button */}
@@ -296,24 +297,16 @@ export function ConversationView() {
                   }
                 } else {
                   // Keep UI messages but start fresh Claude session.
-                  // Prime the new session with serialized conversation context
-                  // so the model has full prior context without plan-mode history.
+                  // Conversation context goes via system prompt (invisible to user).
                   useSessionStore.setState((s) => ({
                     tabs: s.tabs.map((t) =>
                       t.id === tab.id ? { ...t, claudeSessionId: null } : t
                     ),
                   }))
 
-                  const conversationContext = serializeConversation(tab.messages)
-                  const parts: string[] = []
-                  if (conversationContext) {
-                    parts.push(`<previous_conversation>\n${conversationContext}\n</previous_conversation>`)
-                  }
                   if (planContent) {
-                    parts.push(`<plan>\n${planContent}\n</plan>`)
+                    implementPrompt = `Implement the following plan:\n\n${planContent}`
                   }
-                  parts.push('The plan above has been approved. Implement it now, making changes directly.')
-                  implementPrompt = parts.join('\n\n')
                 }
 
                 // Build plan attachment for the message
@@ -324,7 +317,17 @@ export function ConversationView() {
                   path: planFilePath,
                 }] : undefined
 
-                sendMessage(implementPrompt, undefined, planAttachment)
+                // For non-clear-context, inject prior conversation as system
+                // prompt context so the model has full history without plan-mode
+                // patterns, but the user only sees "Implement the plan".
+                const contextPrompt = !clearContext
+                  ? serializeConversation(tab.messages)
+                  : undefined
+                const appendSys = contextPrompt
+                  ? `The following is the conversation history from the planning session. Use it as context for implementation.\n\n<previous_conversation>\n${contextPrompt}\n</previous_conversation>`
+                  : undefined
+
+                sendMessage(implementPrompt, undefined, planAttachment, appendSys)
               }}
             />
           )}
