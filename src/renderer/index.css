@@ -133,6 +133,32 @@ input::placeholder {
   font-weight: 600;
 }
 
+/* ─── User bubble prose overrides ─── */
+.prose-cloud-user {
+  color: inherit;
+}
+.prose-cloud-user code {
+  background: rgba(0, 0, 0, 0.12);
+  color: inherit;
+}
+.prose-cloud-user pre {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.prose-cloud-user h1,
+.prose-cloud-user h2,
+.prose-cloud-user h3,
+.prose-cloud-user h4 {
+  color: inherit;
+}
+.prose-cloud-user blockquote {
+  color: inherit;
+  opacity: 0.8;
+}
+.prose-cloud-user th {
+  background: rgba(0, 0, 0, 0.08);
+}
+
 /* ─── Pulsing dot animation ─── */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }

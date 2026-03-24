@@ -638,6 +638,23 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
 
   const hasAttachments = message.attachments && message.attachments.length > 0
 
+  const userMarkdownComponents = useMemo(() => ({
+    table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
+    a: ({ href, children }: any) => (
+      <button
+        type="button"
+        className="underline decoration-dotted underline-offset-2 cursor-pointer"
+        style={{ color: colors.accent }}
+        onClick={() => {
+          if (href) window.coda.openExternal(String(href))
+        }}
+      >
+        {children}
+      </button>
+    ),
+    img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} />,
+  }), [colors])
+
   const content = (
     <div
       className="text-[13px] leading-[1.5] px-3 py-1.5 max-w-[85%]"
@@ -646,10 +663,13 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
         color: colors.userBubbleText,
         border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
         borderRadius: '14px 14px 4px 14px',
-        whiteSpace: 'pre-wrap',
       }}
     >
-      {displayContent}
+      <div className="prose-cloud prose-cloud-user">
+        <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+          {displayContent}
+        </Markdown>
+      </div>
       {hasAttachments && <MessageAttachments attachments={message.attachments!} />}
     </div>
   )
