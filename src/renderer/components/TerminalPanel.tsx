@@ -68,10 +68,7 @@ export function TerminalPanel({ tabId, cwd }: Props) {
         const isMeta = ev.metaKey
 
         if (isMeta && ev.key === 'v') {
-          navigator.clipboard.readText().then((text) => {
-            if (text) terminal.paste(text)
-          })
-          return false
+          return true // let Electron menu role handle paste
         }
 
         if (isMeta && ev.key === 'c') {
