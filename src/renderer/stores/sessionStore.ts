@@ -192,6 +192,7 @@ function makeLocalTab(): TabState {
   return {
     id: crypto.randomUUID(),
     claudeSessionId: null,
+    historicalSessionIds: [],
     status: 'idle',
     activeRequestId: null,
     hasUnread: false,
@@ -1096,6 +1097,7 @@ export const useSessionStore = create<State>((set, get) => ({
               ...t,
               workingDirectory: dir,
               hasChosenDirectory: true,
+              historicalSessionIds: [],
               claudeSessionId: null,
               additionalDirs: [],
               worktree: null,
@@ -1390,6 +1392,10 @@ export const useSessionStore = create<State>((set, get) => ({
 
         switch (event.type) {
           case 'session_init':
+            if (updated.claudeSessionId && updated.claudeSessionId !== event.sessionId
+                && !updated.historicalSessionIds.includes(updated.claudeSessionId)) {
+              updated.historicalSessionIds = [...updated.historicalSessionIds, updated.claudeSessionId]
+            }
             updated.claudeSessionId = event.sessionId
             updated.sessionModel = event.model
             updated.sessionTools = event.tools
@@ -1735,7 +1741,7 @@ function persistTabs(): void {
   }
 
   const persistedTabs = tabs
-    .filter((t) => t.claudeSessionId || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory)))
+    .filter((t) => t.claudeSessionId || t.historicalSessionIds.length > 0 || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory)))
     .map((t) => ({
       claudeSessionId: t.claudeSessionId,
       title: t.customTitle || t.title,
@@ -1744,6 +1750,7 @@ function persistTabs(): void {
       hasChosenDirectory: t.hasChosenDirectory,
       additionalDirs: t.additionalDirs,
       permissionMode: t.permissionMode,
+      ...(t.historicalSessionIds.length > 0 ? { historicalSessionIds: t.historicalSessionIds } : {}),
       ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
       ...(t.pillColor ? { pillColor: t.pillColor } : {}),
       ...(t.worktree ? { worktree: t.worktree } : {}),

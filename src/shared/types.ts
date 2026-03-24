@@ -153,6 +153,7 @@ export type Attachment = FileAttachment | PlanAttachment
 export interface TabState {
   id: string
   claudeSessionId: string | null
+  historicalSessionIds: string[]
   status: TabStatus
   activeRequestId: string | null
   hasUnread: boolean
@@ -480,6 +481,7 @@ export const IPC = {
 
 export interface PersistedTab {
   claudeSessionId: string | null
+  historicalSessionIds?: string[]
   title: string
   customTitle: string | null
   workingDirectory: string

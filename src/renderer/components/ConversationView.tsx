@@ -292,7 +292,21 @@ export function ConversationView() {
                   useSessionStore.setState((s) => ({
                     tabs: s.tabs.map((t) =>
                       t.id === tab.id
-                        ? { ...t, messages: [], claudeSessionId: null, lastResult: null, currentActivity: '', permissionQueue: [], permissionDenied: null, queuedPrompts: [] }
+                        ? {
+                            ...t,
+                            messages: [],
+                            historicalSessionIds: [
+                              ...t.historicalSessionIds,
+                              ...(t.claudeSessionId && !t.historicalSessionIds.includes(t.claudeSessionId)
+                                ? [t.claudeSessionId] : []),
+                            ],
+                            claudeSessionId: null,
+                            lastResult: null,
+                            currentActivity: '',
+                            permissionQueue: [],
+                            permissionDenied: null,
+                            queuedPrompts: [],
+                          }
                         : t
                     ),
                   }))
@@ -305,7 +319,17 @@ export function ConversationView() {
                   // Conversation context goes via system prompt (invisible to user).
                   useSessionStore.setState((s) => ({
                     tabs: s.tabs.map((t) =>
-                      t.id === tab.id ? { ...t, claudeSessionId: null } : t
+                      t.id === tab.id
+                        ? {
+                            ...t,
+                            historicalSessionIds: [
+                              ...t.historicalSessionIds,
+                              ...(t.claudeSessionId && !t.historicalSessionIds.includes(t.claudeSessionId)
+                                ? [t.claudeSessionId] : []),
+                            ],
+                            claudeSessionId: null,
+                          }
+                        : t
                     ),
                   }))
 

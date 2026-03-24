@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react'
+import type { Message } from '../shared/types'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, HeadCircuit } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
@@ -201,6 +202,7 @@ export default function App() {
                       bashResults: st.bashResults || [],
                       pillColor: st.pillColor || null,
                       worktree: restoredWorktree,
+                      historicalSessionIds: st.historicalSessionIds || [],
                       // If worktree was cleaned up, fall back to original repo path
                       ...(st.worktree && !restoredWorktree ? { workingDirectory: st.worktree.repoPath } : {}),
                     }
@@ -223,10 +225,46 @@ export default function App() {
                       permissionMode: st.permissionMode,
                       pillColor: st.pillColor || null,
                       worktree: st.worktree || null,
+                      historicalSessionIds: st.historicalSessionIds || [],
                     }
                   : t
               ),
             }))
+          }
+        }
+
+        // Load historical session messages for tabs that have them
+        for (const { tabId, index } of restoredTabIds) {
+          const st = saved.tabs[index]
+          const historicalIds = st.historicalSessionIds || []
+          if (historicalIds.length > 0) {
+            const allHistoricalMessages: Message[] = []
+            for (const hid of historicalIds) {
+              const history = await window.coda.loadSession(hid, st.workingDirectory).catch(() => [])
+              const msgs = history.map((m) => ({
+                id: crypto.randomUUID(),
+                role: m.role as Message['role'],
+                content: m.content,
+                toolName: m.toolName,
+                toolId: m.toolId,
+                toolInput: m.toolInput,
+                toolStatus: m.toolName ? 'completed' as const : undefined,
+                userExecuted: m.userExecuted,
+                attachments: m.attachments,
+                timestamp: m.timestamp,
+              }))
+              allHistoricalMessages.push(...msgs)
+            }
+
+            if (allHistoricalMessages.length > 0) {
+              useSessionStore.setState((s) => ({
+                tabs: s.tabs.map((t) =>
+                  t.id === tabId
+                    ? { ...t, messages: [...allHistoricalMessages, ...t.messages] }
+                    : t
+                ),
+              }))
+            }
           }
         }
 
