@@ -430,6 +430,7 @@ export const IPC = {
   GIT_UNSTAGE: 'coda:git-unstage',
   GIT_DISCARD: 'coda:git-discard',
   GIT_DELETE_BRANCH: 'coda:git-delete-branch',
+  GIT_COMMIT_DETAIL: 'coda:git-commit-detail',
 
   // Git worktree operations
   GIT_WORKTREE_ADD: 'coda:git-worktree-add',
@@ -537,6 +538,12 @@ export interface GitRef {
   name: string
   type: 'head' | 'remote' | 'tag'
   isCurrent: boolean
+}
+
+export interface GitCommitDetail {
+  filesChanged: number
+  insertions: number
+  deletions: number
 }
 
 export interface GitGraphData {

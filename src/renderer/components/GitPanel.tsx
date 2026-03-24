@@ -11,7 +11,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { DiffViewer } from './DiffViewer'
-import type { GitChangedFile, GitCommit, GitBranchInfo } from '../../shared/types'
+import type { GitChangedFile, GitCommit, GitCommitDetail, GitBranchInfo } from '../../shared/types'
 import type { GitGraphNode } from '../utils/gitGraphLayout'
 
 // ─── Status badge colors ───
@@ -637,19 +637,40 @@ function GitChangesSection({
 
 // ─── Graph Section ───
 
-const LANE_SPACING = 16
-const MAX_GRAPH_WIDTH = 80
+const LANE_SPACING = 12
+const LANE_OFFSET = 8
+const MAX_GRAPH_WIDTH = 60
 const ROW_HEIGHT = 32
 
-function GraphRow({ node, maxLanes }: { node: GitGraphNode; maxLanes: number }) {
+function GraphRow({ node, onHover, onLeave, onContextMenu }: {
+  node: GitGraphNode
+  onHover: (commit: GitCommit, rect: DOMRect) => void
+  onLeave: () => void
+  onContextMenu: (e: React.MouseEvent, commit: GitCommit) => void
+}) {
   const colors = useColors()
   const commit = node.commit
-  const graphWidth = Math.min(MAX_GRAPH_WIDTH, Math.max(28, (maxLanes + 1) * LANE_SPACING))
-  const cx = node.lane * LANE_SPACING + 12
+  const rowMaxLane = Math.max(
+    node.lane,
+    ...node.passThroughLanes.map(pt => pt.lane),
+    ...node.connections.map(c => Math.max(c.fromLane, c.toLane))
+  )
+  const graphWidth = Math.min(MAX_GRAPH_WIDTH, (rowMaxLane + 1) * LANE_SPACING + LANE_OFFSET)
+  const cx = node.lane * LANE_SPACING + LANE_OFFSET
   const cy = ROW_HEIGHT / 2
+  const rowRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="flex" style={{ height: ROW_HEIGHT }}>
+    <div
+      ref={rowRef}
+      className="flex"
+      style={{ height: ROW_HEIGHT, whiteSpace: 'nowrap', minWidth: 'fit-content' }}
+      onMouseEnter={() => {
+        if (rowRef.current) onHover(commit, rowRef.current.getBoundingClientRect())
+      }}
+      onMouseLeave={onLeave}
+      onContextMenu={(e) => onContextMenu(e, commit)}
+    >
       {/* SVG lane column */}
       <svg
         width={graphWidth}
@@ -658,7 +679,7 @@ function GraphRow({ node, maxLanes }: { node: GitGraphNode; maxLanes: number }) 
       >
         {/* Pass-through lanes: other active branches that run through this row */}
         {node.passThroughLanes.map((pt, i) => {
-          const px = pt.lane * LANE_SPACING + 12
+          const px = pt.lane * LANE_SPACING + LANE_OFFSET
           return (
             <line key={`pt-${i}`} x1={px} y1={0} x2={px} y2={ROW_HEIGHT}
               stroke={pt.color} strokeWidth={1.5} opacity={0.4} />
@@ -667,25 +688,22 @@ function GraphRow({ node, maxLanes }: { node: GitGraphNode; maxLanes: number }) 
 
         {/* Connections from this commit to its parents */}
         {node.connections.map((conn, i) => {
-          const x1 = conn.fromLane * LANE_SPACING + 12
-          const x2 = conn.toLane * LANE_SPACING + 12
+          const x1 = conn.fromLane * LANE_SPACING + LANE_OFFSET
+          const x2 = conn.toLane * LANE_SPACING + LANE_OFFSET
 
           if (conn.type === 'straight') {
-            // Vertical line from dot center down to bottom (continues to next row)
             return (
               <line key={i} x1={x1} y1={cy} x2={x2} y2={ROW_HEIGHT}
                 stroke={conn.color} strokeWidth={1.5} opacity={0.6} />
             )
           }
           if (conn.type === 'fork') {
-            // Curve from dot center down to the forked lane at bottom
             return (
               <path key={i}
                 d={`M ${x1} ${cy} C ${x1} ${ROW_HEIGHT}, ${x2} ${cy}, ${x2} ${ROW_HEIGHT}`}
                 stroke={conn.color} strokeWidth={1.5} fill="none" opacity={0.5} />
             )
           }
-          // Merge: curve from dot center down to the target lane at bottom
           return (
             <path key={i}
               d={`M ${x1} ${cy} C ${x1} ${ROW_HEIGHT}, ${x2} ${cy}, ${x2} ${ROW_HEIGHT}`}
@@ -693,7 +711,7 @@ function GraphRow({ node, maxLanes }: { node: GitGraphNode; maxLanes: number }) 
           )
         })}
 
-        {/* Incoming line: draw from top of row to dot center (connects to previous row) */}
+        {/* Incoming line */}
         {node.hasIncoming && (
           <line x1={cx} y1={0} x2={cx} y2={cy}
             stroke={node.color} strokeWidth={1.5} opacity={0.6} />
@@ -704,28 +722,28 @@ function GraphRow({ node, maxLanes }: { node: GitGraphNode; maxLanes: number }) 
       </svg>
 
       {/* Info column */}
-      <div className="flex-1 flex flex-col justify-center overflow-hidden px-1" style={{ minWidth: 0 }}>
+      <div className="flex flex-col justify-center px-1" style={{ minWidth: 0 }}>
         <div className="flex items-center gap-1">
           {/* Ref badges */}
           {commit.refs.map((ref, i) => (
             <span
               key={i}
-              className="text-[9px] px-1 rounded-sm truncate"
+              className="text-[9px] px-1 rounded-sm"
               style={{
                 border: `1px solid ${ref.isCurrent ? colors.accent : colors.containerBorder}`,
                 background: ref.isCurrent ? colors.accentLight : 'transparent',
                 color: ref.isCurrent ? colors.accent : colors.textTertiary,
-                maxWidth: 80,
+                flexShrink: 0,
               }}
             >
               {ref.name}
             </span>
           ))}
-          <span className="text-[11px] truncate" style={{ color: colors.textSecondary }}>
+          <span className="text-[11px]" style={{ color: colors.textSecondary }}>
             {commit.subject}
           </span>
         </div>
-        <div className="text-[10px] truncate" style={{ color: colors.textTertiary }}>
+        <div className="text-[10px]" style={{ color: colors.textTertiary }}>
           {commit.authorName} · {relativeDate(commit.authorDate)}
         </div>
       </div>
@@ -766,6 +784,7 @@ function GitGraphSection({
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const commitsRef = useRef<GitCommit[]>([])
   commitsRef.current = commits
@@ -815,7 +834,55 @@ function GitGraphSection({
   }, [commits.length, totalCount, loading, loadGraph])
 
   const graphNodes = useMemo(() => computeGraphLayout(commits), [commits])
-  const maxLanes = graphNodes.reduce((max, n) => Math.max(max, n.lane), 0) + 1
+
+
+  // ─── Commit hover popup ───
+  const popoverLayer = usePopoverLayer()
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: GitCommit } | null>(null)
+  const [hoveredCommit, setHoveredCommit] = useState<GitCommit | null>(null)
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null)
+  const [commitDetail, setCommitDetail] = useState<GitCommitDetail | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeHashRef = useRef<string | null>(null)
+
+  const handleRowHover = useCallback((commit: GitCommit, rect: DOMRect) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredCommit(commit)
+      setHoverRect(rect)
+      setCommitDetail(null)
+      activeHashRef.current = commit.hash
+      window.coda.gitCommitDetail(directory, commit.hash).then((detail) => {
+        if (activeHashRef.current === commit.hash) setCommitDetail(detail)
+      }).catch(() => {})
+    }, 300)
+  }, [directory])
+
+  const handleRowLeave = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = null
+    activeHashRef.current = null
+    setHoveredCommit(null)
+    setHoverRect(null)
+    setCommitDetail(null)
+  }, [])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, commit: GitCommit) => {
+    e.preventDefault()
+    // Dismiss hover popup so it doesn't overlap
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = null
+    activeHashRef.current = null
+    setHoveredCommit(null)
+    setHoverRect(null)
+    setCommitDetail(null)
+    setContextMenu({ x: e.clientX, y: e.clientY, commit })
+  }, [])
+
+  // Clean up timer on unmount
+  useEffect(() => () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+  }, [])
 
   const handleFetch = async () => {
     setFetchingAction('fetch')
@@ -953,9 +1020,15 @@ function GitGraphSection({
       )}
 
       {/* Commit list */}
-      <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+      <div ref={scrollRef} className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
         {graphNodes.map((node, idx) => (
-          <GraphRow key={node.commit.hash} node={node} maxLanes={maxLanes} />
+          <GraphRow
+            key={node.commit.hash}
+            node={node}
+            onHover={handleRowHover}
+            onLeave={handleRowLeave}
+            onContextMenu={handleContextMenu}
+          />
         ))}
         {commits.length < totalCount && (
           <div ref={sentinelRef} className="py-2 text-center text-[10px]" style={{ color: colors.textTertiary }}>
@@ -968,7 +1041,192 @@ function GitGraphSection({
           </div>
         )}
       </div>
+
+      {/* Commit detail popup */}
+      {popoverLayer && hoveredCommit && hoverRect && createPortal(
+        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={commitDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? rect.right} />,
+        popoverLayer,
+      )}
+
+      {/* Commit context menu */}
+      {popoverLayer && contextMenu && createPortal(
+        <CommitContextMenu anchor={contextMenu} commit={contextMenu.commit} onClose={() => setContextMenu(null)} />,
+        popoverLayer,
+      )}
     </>
+  )
+}
+
+// ─── Commit detail popup ───
+
+function CommitPopup({ commit, rect, detail, panelRight }: {
+  commit: GitCommit
+  rect: DOMRect
+  detail: GitCommitDetail | null
+  panelRight: number
+}) {
+  const colors = useColors()
+  const POPUP_WIDTH = 300
+  const GAP = 8
+
+  // Position to the right of the panel edge, fall back to left
+  const spaceRight = window.innerWidth - panelRight - GAP - POPUP_WIDTH
+  const left = spaceRight >= 0 ? panelRight + GAP : rect.left - GAP - POPUP_WIDTH
+  // Vertically center on the row, clamp to viewport
+  const top = Math.max(8, Math.min(rect.top - 40, window.innerHeight - 200))
+
+  const absDate = new Date(commit.authorDate)
+  const dateStr = absDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const timeStr = absDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+
+  return (
+    <motion.div
+      data-coda-ui
+      initial={{ opacity: 0, x: spaceRight >= 0 ? -4 : 4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        width: POPUP_WIDTH,
+        pointerEvents: 'none',
+        background: colors.popoverBg,
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        boxShadow: colors.popoverShadow,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 10,
+        padding: '10px 12px',
+        zIndex: 9999,
+      }}
+    >
+      {/* Author + date */}
+      <div className="flex items-center gap-1.5 text-[11px]" style={{ color: colors.textSecondary }}>
+        <span style={{ fontWeight: 500 }}>{commit.authorName},</span>
+        <span>{relativeDate(commit.authorDate)}</span>
+        <span style={{ color: colors.textTertiary }}>({dateStr} at {timeStr})</span>
+      </div>
+
+      {/* Subject */}
+      <div className="text-[11px] mt-1.5" style={{ color: colors.textPrimary, whiteSpace: 'pre-wrap' }}>
+        {commit.subject}
+      </div>
+
+      {/* Diff stats */}
+      {detail && (detail.filesChanged > 0 || detail.insertions > 0 || detail.deletions > 0) && (
+        <div className="text-[10px] mt-2" style={{ color: colors.textSecondary }}>
+          {detail.filesChanged} {detail.filesChanged === 1 ? 'file' : 'files'} changed
+          {detail.insertions > 0 && (
+            <span>, <span style={{ color: '#7aac8c' }}>{detail.insertions} {detail.insertions === 1 ? 'insertion' : 'insertions'}(+)</span></span>
+          )}
+          {detail.deletions > 0 && (
+            <span>, <span style={{ color: '#c47060' }}>{detail.deletions} {detail.deletions === 1 ? 'deletion' : 'deletions'}(-)</span></span>
+          )}
+        </div>
+      )}
+
+      {/* Ref badges */}
+      {commit.refs.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {commit.refs.map((ref, i) => (
+            <span
+              key={i}
+              className="text-[9px] px-1.5 py-0.5 rounded-sm flex items-center gap-0.5"
+              style={{
+                border: `1px solid ${ref.isCurrent ? colors.accent : colors.containerBorder}`,
+                background: ref.isCurrent ? colors.accentLight : 'transparent',
+                color: ref.isCurrent ? colors.accent : colors.textTertiary,
+              }}
+            >
+              <GitBranch size={9} />
+              {ref.name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Hash */}
+      <div className="text-[10px] mt-2" style={{ color: colors.accent, fontFamily: 'monospace' }}>
+        {commit.hash}
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Commit context menu ───
+
+function CommitContextMenu({ anchor, commit, onClose }: {
+  anchor: { x: number; y: number }
+  commit: GitCommit
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  const items = [
+    { label: 'Copy Commit Hash', action: () => navigator.clipboard.writeText(commit.fullHash) },
+  ]
+
+  return (
+    <motion.div
+      ref={ref}
+      data-coda-ui
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left: anchor.x,
+        top: anchor.y,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        boxShadow: colors.popoverShadow,
+        padding: '4px 0',
+        zIndex: 10000,
+        minWidth: 160,
+      }}
+    >
+      {items.map((item) => (
+        <div
+          key={item.label}
+          onClick={() => { item.action(); onClose() }}
+          style={{
+            height: 28,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 12px',
+            fontSize: 11,
+            color: colors.textPrimary,
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+        >
+          {item.label}
+        </div>
+      ))}
+    </motion.div>
   )
 }
 
@@ -1212,7 +1470,6 @@ export function GitPanel() {
         height: graphOpen ? (graphContentHeight! + 28) : 28,
         flex: (!changesOpen && !graphOpen) ? 1 : undefined,
         minHeight: 0,
-        overflow: 'hidden',
       }}>
         <button
           onClick={() => setGraphOpen(!graphOpen)}
@@ -1230,7 +1487,7 @@ export function GitPanel() {
           Graph
         </button>
         {graphOpen && (
-          <div style={{ height: graphContentHeight, minHeight: 0, overflow: 'hidden' }}>
+          <div style={{ height: graphContentHeight, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} worktree={worktree} />
           </div>
         )}

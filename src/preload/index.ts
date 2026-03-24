@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus } from '../shared/types'
 import type { DiscoveredCommand } from '../main/claude/command-discovery'
 
 export interface CodaAPI {
@@ -67,6 +67,7 @@ export interface CodaAPI {
   gitUnstage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDiscard(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDeleteBranch(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
+  gitCommitDetail(directory: string, hash: string): Promise<GitCommitDetail>
 
   // ─── Git worktree operations ───
   gitWorktreeAdd(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; worktree?: WorktreeInfo; error?: string }>
@@ -186,6 +187,7 @@ const api: CodaAPI = {
   gitUnstage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_UNSTAGE, { directory, paths }),
   gitDiscard: (directory, paths) => ipcRenderer.invoke(IPC.GIT_DISCARD, { directory, paths }),
   gitDeleteBranch: (directory, branch) => ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { directory, branch }),
+  gitCommitDetail: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_DETAIL, { directory, hash }),
 
   // ─── Git worktree operations ───
   gitWorktreeAdd: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, { repoPath, sourceBranch }),

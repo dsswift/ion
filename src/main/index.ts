@@ -1486,6 +1486,25 @@ ipcMain.handle(IPC.GIT_GRAPH, async (_event, { directory, skip = 0, limit = 100 
   }
 })
 
+ipcMain.handle(IPC.GIT_COMMIT_DETAIL, async (_event, { directory, hash }: { directory: string; hash: string }) => {
+  try {
+    const output = await runGit(directory, ['show', '--stat', '--format=', hash])
+    // Last non-empty line is the summary, e.g. " 10 files changed, 344 insertions(+), 49 deletions(-)"
+    const lines = output.trim().split('\n')
+    const summary = lines[lines.length - 1] || ''
+    const filesMatch = summary.match(/(\d+)\s+files?\s+changed/)
+    const insMatch = summary.match(/(\d+)\s+insertions?\(\+\)/)
+    const delMatch = summary.match(/(\d+)\s+deletions?\(-\)/)
+    return {
+      filesChanged: filesMatch ? parseInt(filesMatch[1], 10) : 0,
+      insertions: insMatch ? parseInt(insMatch[1], 10) : 0,
+      deletions: delMatch ? parseInt(delMatch[1], 10) : 0,
+    }
+  } catch {
+    return { filesChanged: 0, insertions: 0, deletions: 0 }
+  }
+})
+
 ipcMain.handle(IPC.GIT_CHANGES, async (_event, { directory }: { directory: string }) => {
   try {
     await runGit(directory, ['rev-parse', '--is-inside-work-tree'])

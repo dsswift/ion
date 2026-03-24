@@ -1571,9 +1571,15 @@ export const useSessionStore = create<State>((set, get) => ({
             if (tabId !== activeTabId || !s.isExpanded) {
               updated.hasUnread = true
             }
-            // Show fallback card when tools were denied by permission settings
+            // Show fallback card when tools were denied by permission settings.
+            // Filter out ExitPlanMode denials when not in plan mode — the model
+            // may call ExitPlanMode from conversation-history patterns even after
+            // the user exited plan mode (known Claude Code bug).
             if (event.permissionDenials && event.permissionDenials.length > 0) {
-              updated.permissionDenied = { tools: event.permissionDenials }
+              const denials = updated.permissionMode === 'plan'
+                ? event.permissionDenials
+                : event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
+              updated.permissionDenied = denials.length > 0 ? { tools: denials } : null
             } else {
               updated.permissionDenied = null
             }
