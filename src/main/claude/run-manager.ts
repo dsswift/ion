@@ -188,7 +188,11 @@ export class RunManager extends EventEmitter {
       args.push('--system-prompt', options.systemPrompt)
     }
     // Always tell Claude it's inside CODA (additive, doesn't replace base prompt)
-    args.push('--append-system-prompt', CODA_SYSTEM_HINT)
+    const appendParts = [CODA_SYSTEM_HINT]
+    if (options.appendSystemPrompt) {
+      appendParts.push(options.appendSystemPrompt)
+    }
+    args.push('--append-system-prompt', appendParts.join('\n\n'))
 
     if (DEBUG) {
       log(`Starting run ${requestId}: ${this.claudeBinary} ${args.join(' ')}`)

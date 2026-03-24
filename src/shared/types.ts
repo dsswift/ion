@@ -258,6 +258,8 @@ export interface RunOptions {
   addDirs?: string[]
   /** CLI permission mode override (e.g. 'plan') passed as --permission-mode */
   permissionModeCli?: string
+  /** Extra context appended to the system prompt (additive, not replacement) */
+  appendSystemPrompt?: string
 }
 
 // ─── Control Plane Types ───
