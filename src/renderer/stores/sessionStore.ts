@@ -88,6 +88,9 @@ interface State {
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
 
+  /** Which tab (if any) is in ephemeral tall view (null = normal) */
+  tallViewTabId: string | null
+
   // Settings dialog state
   settingsOpen: boolean
 
@@ -114,6 +117,7 @@ interface State {
   setTabPillColor: (tabId: string, color: string | null) => void
   clearTab: () => void
   toggleExpanded: () => void
+  toggleTallView: (tabId: string) => void
   openSettings: () => void
   closeSettings: () => void
   toggleMarketplace: () => void
@@ -149,7 +153,7 @@ interface State {
   addSystemMessage: (content: string) => void
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
-  sendMessage: (prompt: string, projectPath?: string, extraAttachments?: Attachment[]) => void
+  sendMessage: (prompt: string, projectPath?: string, extraAttachments?: Attachment[], appendSystemPrompt?: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
   addDirectory: (dir: string) => void
   removeDirectory: (dir: string) => void
@@ -237,6 +241,8 @@ export const useSessionStore = create<State>((set, get) => ({
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
   planGeometry: { x: 60, y: 80, w: 720, h: 420 },
   tabsReady: false,
+
+  tallViewTabId: null,
 
   // Settings dialog
   settingsOpen: false,
@@ -399,6 +405,7 @@ export const useSessionStore = create<State>((set, get) => ({
       set((prev) => ({
         activeTabId: tabId,
         isExpanded: expandOnSwitch ? true : prev.isExpanded,
+        tallViewTabId: null,
         marketplaceOpen: false,
         settingsOpen: false,
         tabs: prev.tabs.map((t) =>
@@ -419,6 +426,12 @@ export const useSessionStore = create<State>((set, get) => ({
       tabs: willExpand
         ? s.tabs.map((t) => t.id === activeTabId ? { ...t, hasUnread: false } : t)
         : s.tabs,
+    }))
+  },
+
+  toggleTallView: (tabId) => {
+    set((s) => ({
+      tallViewTabId: s.tallViewTabId === tabId ? null : tabId,
     }))
   },
 
@@ -1252,7 +1265,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   // ─── Send ───
 
-  sendMessage: (prompt, projectPath, extraAttachments) => {
+  sendMessage: (prompt, projectPath, extraAttachments, appendSystemPrompt) => {
     const { activeTabId, tabs, staticInfo } = get()
     const tab = tabs.find((t) => t.id === activeTabId)
     // Use explicitly chosen directory, otherwise fall back to user home
@@ -1354,6 +1367,7 @@ export const useSessionStore = create<State>((set, get) => ({
       sessionId: tab.claudeSessionId || undefined,
       model: preferredModel || undefined,
       addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
+      appendSystemPrompt: appendSystemPrompt || undefined,
     }).catch((err: Error) => {
       get().handleError(activeTabId, {
         message: err.message,
@@ -1572,14 +1586,21 @@ export const useSessionStore = create<State>((set, get) => ({
               updated.hasUnread = true
             }
             // Show fallback card when tools were denied by permission settings.
-            // Filter out ExitPlanMode denials when not in plan mode — the model
-            // may call ExitPlanMode from conversation-history patterns even after
-            // the user exited plan mode (known Claude Code bug).
             if (event.permissionDenials && event.permissionDenials.length > 0) {
-              const denials = updated.permissionMode === 'plan'
-                ? event.permissionDenials
-                : event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
-              updated.permissionDenied = denials.length > 0 ? { tools: denials } : null
+              const hadPlanExit = event.permissionDenials.some((d) => d.toolName === 'ExitPlanMode')
+              if (hadPlanExit && updated.permissionMode !== 'plan') {
+                // Model called ExitPlanMode outside plan mode (known Claude Code
+                // bug: #32868). Don't show the Plan Ready card — auto-recover by
+                // sending a corrective message so the model implements directly.
+                const nonPlanDenials = event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
+                updated.permissionDenied = nonPlanDenials.length > 0 ? { tools: nonPlanDenials } : null
+                // Schedule auto-recovery after state update completes
+                setTimeout(() => {
+                  get().sendMessage('Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.')
+                }, 100)
+              } else {
+                updated.permissionDenied = { tools: event.permissionDenials }
+              }
             } else {
               updated.permissionDenied = null
             }

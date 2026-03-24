@@ -485,6 +485,7 @@ export default function App() {
   }, [])
 
   const isExpanded = useSessionStore((s) => s.isExpanded)
+  const isTallView = useSessionStore((s) => s.tallViewTabId === s.activeTabId)
   const marketplaceOpen = useSessionStore((s) => s.marketplaceOpen)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const activeTabId = useSessionStore((s) => s.activeTabId)
@@ -514,7 +515,18 @@ export default function App() {
   const cardExpandedWidth = expandedUI ? 700 : 460
   const cardCollapsedWidth = expandedUI ? 670 : 430
   const cardCollapsedMargin = expandedUI ? 15 : 15
-  const bodyMaxHeight = expandedUI ? 520 : 400
+  const bodyMaxHeightNormal = expandedUI ? 520 : 400
+
+  // Dynamic window height for tall view
+  const [winHeight, setWinHeight] = useState(window.innerHeight)
+  useEffect(() => {
+    const onResize = () => setWinHeight(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // In tall view: fill available vertical space (minus tab strip, status bar, input bar, margins)
+  const bodyMaxHeight = isTallView ? winHeight - 200 : bodyMaxHeightNormal
 
   const handleMainUIMouseDown = useCallback(() => {
     if (useSessionStore.getState().fileEditorFocused) {
@@ -594,9 +606,9 @@ export default function App() {
             />
           )}
 
-          {/* ─── Terminal panel ─── */}
+          {/* ─── Terminal panel (hidden in tall view) ─── */}
           <AnimatePresence initial={false}>
-            {terminalOpen && (
+            {terminalOpen && !isTallView && (
               <motion.div
                 data-coda-ui
                 initial={{ opacity: 0, height: 0 }}

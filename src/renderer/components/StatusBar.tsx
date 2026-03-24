@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil } from '@phosphor-icons/react'
+import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil, ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
@@ -416,6 +416,26 @@ function OpenWithPicker() {
   )
 }
 
+/* ─── Tall View Toggle ─── */
+
+function TallViewToggle() {
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const isTall = useSessionStore((s) => s.tallViewTabId === s.activeTabId)
+  const toggleTallView = useSessionStore((s) => s.toggleTallView)
+  const colors = useColors()
+
+  return (
+    <button
+      onClick={() => toggleTallView(activeTabId)}
+      className="flex items-center rounded-full px-1 py-0.5 transition-colors"
+      style={{ color: isTall ? colors.accent : colors.textTertiary, cursor: 'pointer' }}
+      title={isTall ? 'Exit tall view' : 'Expand to tall view'}
+    >
+      {isTall ? <ArrowsInSimple size={11} /> : <ArrowsOutSimple size={11} />}
+    </button>
+  )
+}
+
 /* ─── StatusBar ─── */
 
 /** Get a compact display path: basename for deep paths, ~ for home */
@@ -672,8 +692,10 @@ export function StatusBar() {
         <PermissionModePicker />
       </div>
 
-      {/* Right — Open in CLI + Git */}
+      {/* Right — Tall view + Open in CLI + Git */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        <TallViewToggle />
+        <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
         <OpenWithPicker />
         {isGitRepo && (
           <>
