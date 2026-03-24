@@ -295,6 +295,7 @@ export function GeneralTab() {
         description='Show the "Implement, clear context" option when exiting plan mode.'
         checked={showImplementClearContext}
         onChange={setShowImplementClearContext}
+        warning="Advanced feature — not recommended for typical use. Clearing context discards the conversation history that helps Claude maintain continuity."
       />
 
       <SettingToggle

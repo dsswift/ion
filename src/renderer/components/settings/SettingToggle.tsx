@@ -6,9 +6,10 @@ interface SettingToggleProps {
   description: string
   checked: boolean
   onChange: (next: boolean) => void
+  warning?: string
 }
 
-export function SettingToggle({ label, description, checked, onChange }: SettingToggleProps) {
+export function SettingToggle({ label, description, checked, onChange, warning }: SettingToggleProps) {
   const colors = useColors()
 
   return (
@@ -71,6 +72,19 @@ export function SettingToggle({ label, description, checked, onChange }: Setting
           />
         </div>
       </label>
+      {checked && warning && (
+        <p
+          style={{
+            color: '#d97706',
+            fontSize: 11,
+            margin: '8px 0 0',
+            lineHeight: 1.4,
+            opacity: 0.85,
+          }}
+        >
+          {warning}
+        </p>
+      )}
     </div>
   )
 }
