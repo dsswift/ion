@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
+import { useNavigableText, NavigableText } from '../hooks/useNavigableLinks'
 
 const REMARK_PLUGINS = [remarkGfm]
 
@@ -15,6 +16,7 @@ interface PlanViewerProps {
 
 export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
   const colors = useColors()
+  const { onOpenFile, onOpenUrl } = useNavigableText()
   const planGeometry = useSessionStore((s) => s.planGeometry)
   const setPlanGeometry = useSessionStore((s) => s.setPlanGeometry)
   const handleGeometryChange = useCallback(
@@ -35,7 +37,8 @@ export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
         {children}
       </button>
     ),
-  }), [colors])
+    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
+  }), [colors, onOpenFile, onOpenUrl])
 
   return (
     <FloatingPanel

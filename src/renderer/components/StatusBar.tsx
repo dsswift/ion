@@ -177,6 +177,11 @@ function PermissionModePicker() {
   const modeIcon = permissionMode === 'plan'
     ? <ListChecks size={11} weight="bold" />
     : <ShieldCheck size={11} weight={permissionMode === 'auto' ? 'fill' : 'regular'} />
+  const modeColor = permissionMode === 'plan'
+    ? '#2eb8a6'
+    : permissionMode === 'ask'
+      ? '#e86840'
+      : colors.textTertiary
 
   return (
     <>
@@ -185,7 +190,7 @@ function PermissionModePicker() {
         onClick={handleToggle}
         className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 transition-colors"
         style={{
-          color: colors.textTertiary,
+          color: modeColor,
           cursor: 'pointer',
         }}
         title="Permission mode (this tab)"
