@@ -175,11 +175,11 @@ export function ConversationView() {
       onMouseLeave={() => setHovered(false)}
     >
       {/* Scroll area wrapper — relative so activity row can overlay */}
-      <div className="relative flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0 flex flex-col">
         {/* Scrollable messages area */}
         <div
           ref={scrollRef}
-          className="h-full overflow-y-auto overflow-x-hidden px-4 pt-2 conversation-selectable"
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pt-2 conversation-selectable"
           style={{ paddingBottom: 28 }}
           onScroll={handleScroll}
         >
@@ -442,6 +442,7 @@ export function ConversationView() {
             )}
           </AnimatePresence>
         </div>
+      </div>{/* end activity row */}
       </div>{/* end scroll + activity wrapper */}
 
       {/* Task list — pinned below scroll area */}
