@@ -97,10 +97,11 @@ export function HistoryPicker() {
 
   const handleSelect = (session: SessionMeta) => {
     setOpen(false)
-    const title = session.firstMessage
-      ? (session.firstMessage.length > 30 ? session.firstMessage.substring(0, 27) + '...' : session.firstMessage)
-      : session.slug || 'Resumed'
-    void resumeSession(session.sessionId, title, effectiveProjectPath)
+    const title = session.customTitle
+      || (session.firstMessage
+        ? (session.firstMessage.length > 30 ? session.firstMessage.substring(0, 27) + '...' : session.firstMessage)
+        : session.slug || 'Resumed')
+    void resumeSession(session.sessionId, title, effectiveProjectPath, session.customTitle)
   }
 
   return (
@@ -168,9 +169,14 @@ export function HistoryPicker() {
                 <ChatCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: colors.textTertiary }} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] truncate" style={{ color: colors.textPrimary }}>
-                    {session.firstMessage || session.slug || session.sessionId.substring(0, 8)}
+                    {session.customTitle || session.firstMessage || session.slug || session.sessionId.substring(0, 8)}
                   </div>
-                  {session.lastResponse && (
+                  {session.customTitle && session.firstMessage && (
+                    <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
+                      {session.firstMessage}
+                    </div>
+                  )}
+                  {!session.customTitle && session.lastResponse && (
                     <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
                       {session.lastResponse}
                     </div>

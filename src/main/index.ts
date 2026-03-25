@@ -641,7 +641,14 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
 
     // Sort by last timestamp, most recent first
     sessions.sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime())
-    return sessions.slice(0, 20) // Return top 20
+    const top = sessions.slice(0, 20)
+
+    // Merge in persisted custom titles
+    const labels = loadSessionLabels()
+    for (const s of top) {
+      (s as any).customTitle = labels[s.sessionId] || null
+    }
+    return top
   } catch (err) {
     log(`LIST_SESSIONS error: ${err}`)
     return []
@@ -721,11 +728,11 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
 
     // Extract [Attached type: path] lines from text, returning attachments and cleaned text
     const parseAttachmentLines = (text: string) => {
-      const attachmentRegex = /^\[Attached (image|file): (.+)\]$/gm
-      const attachments: Array<{ id: string; type: 'image' | 'file'; name: string; path: string; mimeType?: string }> = []
+      const attachmentRegex = /^\[Attached (image|file|plan): (.+)\]$/gm
+      const attachments: Array<{ id: string; type: 'image' | 'file' | 'plan'; name: string; path: string; mimeType?: string }> = []
       let match
       while ((match = attachmentRegex.exec(text)) !== null) {
-        const aType = match[1] as 'image' | 'file'
+        const aType = match[1] as 'image' | 'file' | 'plan'
         const aPath = match[2]
         const aName = aPath.split('/').pop() || aPath
         const aExt = aName.includes('.') ? '.' + aName.split('.').pop()!.toLowerCase() : ''
@@ -737,7 +744,7 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
           mimeType: extToMime[aExt],
         })
       }
-      const cleaned = text.replace(/^\[Attached (?:image|file): .+\]\n*/gm, '').trim()
+      const cleaned = text.replace(/^\[Attached (?:image|file|plan): .+\]\n*/gm, '').trim()
       return { attachments, cleaned }
     }
 
@@ -834,13 +841,13 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
                   const { attachments: fileAttachments, cleaned } = parseAttachmentLines(remainder.trim())
                   const allAttachments: typeof fileAttachments = [...fileAttachments]
 
-                  // Detect plan implementation messages and attach plan reference
+                  // Detect plan implementation messages and attach plan reference (fallback for old sessions)
                   const isImplementMsg = cleaned === 'Implement the plan' || cleaned.startsWith('Implement the following plan:')
-                  if (isImplementMsg) {
+                  if (isImplementMsg && !allAttachments.some(a => a.type === 'plan')) {
                     const planPath = findLastPlanFilePath()
                     if (planPath) {
                       const planName = planPath.split('/').pop() || planPath
-                      allAttachments.push({ id: `plan-${Date.now()}`, type: 'plan' as any, name: planName, path: planPath })
+                      allAttachments.push({ id: `plan-${Date.now()}`, type: 'plan', name: planName, path: planPath })
                     }
                   }
 
@@ -1387,6 +1394,44 @@ ipcMain.handle(IPC.SAVE_TABS, (_event, data: Record<string, unknown>) => {
   } catch (err) {
     log(`Failed to save tabs: ${err}`)
   }
+})
+
+// ─── Session Labels (custom tab names persisted across tab close/restore) ───
+
+const SESSION_LABELS_FILE = join(SETTINGS_DIR, 'session-labels.json')
+
+function loadSessionLabels(): Record<string, string> {
+  try {
+    if (existsSync(SESSION_LABELS_FILE)) {
+      return JSON.parse(readFileSync(SESSION_LABELS_FILE, 'utf-8'))
+    }
+  } catch (err) {
+    log(`Failed to load session labels: ${err}`)
+  }
+  return {}
+}
+
+function saveSessionLabels(labels: Record<string, string>): void {
+  try {
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+    writeFileSync(SESSION_LABELS_FILE, JSON.stringify(labels, null, 2))
+  } catch (err) {
+    log(`Failed to save session labels: ${err}`)
+  }
+}
+
+ipcMain.handle(IPC.SAVE_SESSION_LABEL, (_event, { sessionId, customTitle }: { sessionId: string; customTitle: string | null }) => {
+  const labels = loadSessionLabels()
+  if (customTitle) {
+    labels[sessionId] = customTitle
+  } else {
+    delete labels[sessionId]
+  }
+  saveSessionLabels(labels)
+})
+
+ipcMain.handle(IPC.LOAD_SESSION_LABELS, () => {
+  return loadSessionLabels()
 })
 
 // ─── Git Worktree Cleanup ───

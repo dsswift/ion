@@ -307,6 +307,7 @@ export interface SessionMeta {
   lastResponse: string | null
   lastTimestamp: string
   size: number
+  customTitle: string | null
 }
 
 export interface SessionLoadMessage {
@@ -416,6 +417,10 @@ export const IPC = {
   // Tab persistence
   LOAD_TABS: 'coda:load-tabs',
   SAVE_TABS: 'coda:save-tabs',
+
+  // Session labels
+  SAVE_SESSION_LABEL: 'coda:save-session-label',
+  LOAD_SESSION_LABELS: 'coda:load-session-labels',
 
   // Git operations
   GIT_GRAPH: 'coda:git-graph',

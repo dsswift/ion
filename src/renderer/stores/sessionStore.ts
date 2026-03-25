@@ -149,7 +149,7 @@ interface State {
   installMarketplacePlugin: (plugin: CatalogPlugin) => Promise<void>
   uninstallMarketplacePlugin: (plugin: CatalogPlugin) => Promise<void>
   buildYourOwn: () => void
-  resumeSession: (sessionId: string, title?: string, projectPath?: string) => Promise<string>
+  resumeSession: (sessionId: string, title?: string, projectPath?: string, customTitle?: string | null) => Promise<string>
   addSystemMessage: (content: string) => void
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
@@ -874,6 +874,11 @@ export const useSessionStore = create<State>((set, get) => ({
         t.id === tabId ? { ...t, customTitle } : t
       ),
     }))
+    // Persist custom title to session-labels.json so it survives tab close/restore
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (tab?.claudeSessionId) {
+      void window.coda.saveSessionLabel(tab.claudeSessionId, customTitle)
+    }
   },
 
   setTabPillColor: (tabId, color) => {
@@ -895,7 +900,7 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
 
-  resumeSession: async (sessionId, title, projectPath) => {
+  resumeSession: async (sessionId, title, projectPath, customTitle) => {
     const defaultDir = projectPath || get().staticInfo?.homePath || '~'
     try {
       const { tabId } = await window.coda.createTab()
@@ -926,6 +931,7 @@ export const useSessionStore = create<State>((set, get) => ({
         id: tabId,
         claudeSessionId: sessionId,
         title: title || 'Resumed Session',
+        customTitle: customTitle || null,
         workingDirectory: defaultDir,
         hasChosenDirectory: !!projectPath,
         messages,
@@ -942,6 +948,7 @@ export const useSessionStore = create<State>((set, get) => ({
       const tab = makeLocalTab()
       tab.claudeSessionId = sessionId
       tab.title = title || 'Resumed Session'
+      tab.customTitle = customTitle || null
       tab.workingDirectory = defaultDir
       tab.hasChosenDirectory = !!projectPath
       set((s) => ({
@@ -1303,8 +1310,8 @@ export const useSessionStore = create<State>((set, get) => ({
       }).join('\n\n')
       fullPrompt = bashCtx + '\n\n' + fullPrompt
     }
-    if (tab.attachments.length > 0) {
-      const attachmentCtx = tab.attachments
+    if (msgAttachments.length > 0) {
+      const attachmentCtx = msgAttachments
         .map((a) => `[Attached ${a.type}: ${a.path}]`)
         .join('\n')
       fullPrompt = `${attachmentCtx}\n\n${fullPrompt}`

@@ -50,6 +50,8 @@ export interface CodaAPI {
   saveSettings(data: Record<string, any>): Promise<void>
   loadTabs(): Promise<PersistedTabState | null>
   saveTabs(data: PersistedTabState): Promise<void>
+  saveSessionLabel(sessionId: string, customTitle: string | null): Promise<void>
+  loadSessionLabels(): Promise<Record<string, string>>
 
   // ─── Git operations ───
   gitIsRepo(directory: string): Promise<{ isRepo: boolean }>
@@ -170,6 +172,8 @@ const api: CodaAPI = {
   saveSettings: (data) => ipcRenderer.invoke(IPC.SAVE_SETTINGS, data),
   loadTabs: () => ipcRenderer.invoke(IPC.LOAD_TABS),
   saveTabs: (data) => ipcRenderer.invoke(IPC.SAVE_TABS, data),
+  saveSessionLabel: (sessionId, customTitle) => ipcRenderer.invoke(IPC.SAVE_SESSION_LABEL, { sessionId, customTitle }),
+  loadSessionLabels: () => ipcRenderer.invoke(IPC.LOAD_SESSION_LABELS),
 
   // ─── Git operations ───
   gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),
