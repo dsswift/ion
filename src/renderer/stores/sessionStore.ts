@@ -169,6 +169,8 @@ interface State {
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
   handleStatusChange: (tabId: string, newStatus: string, oldStatus: string) => void
   handleError: (tabId: string, error: EnrichedError) => void
+  moveTabToGroup: (tabId: string, groupId: string) => void
+  setTabGroupId: (tabId: string, groupId: string | null) => void
 }
 
 let msgCounter = 0
@@ -223,6 +225,7 @@ function makeLocalTab(): TabState {
     forkedFromSessionId: null,
     worktree: null,
     pendingWorktreeSetup: false,
+    groupId: null,
   }
 }
 
@@ -306,11 +309,16 @@ export const useSessionStore = create<State>((set, get) => ({
       tabId = crypto.randomUUID()
     }
 
+    // In manual group mode, assign new tabs to the default group
+    const { tabGroupMode, tabGroups } = useThemeStore.getState()
+    const defaultGroupId = tabGroupMode === 'manual' ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null) : null
+
     const tab: TabState = {
       ...makeLocalTab(),
       id: tabId,
       workingDirectory: startDir,
       hasChosenDirectory: hasChosen,
+      groupId: defaultGroupId,
     }
 
     // If worktree mode requested, check if directory is a git repo
@@ -355,11 +363,16 @@ export const useSessionStore = create<State>((set, get) => ({
       tabId = crypto.randomUUID()
     }
 
+    // In manual group mode, assign new tabs to the default group
+    const { tabGroupMode: tgm2, tabGroups: tgs2 } = useThemeStore.getState()
+    const defaultGroupId2 = tgm2 === 'manual' ? (tgs2.find((g) => g.isDefault)?.id || tgs2[0]?.id || null) : null
+
     const tab: TabState = {
       ...makeLocalTab(),
       id: tabId,
       workingDirectory: dir,
       hasChosenDirectory: true,
+      groupId: defaultGroupId2,
     }
 
     // If worktree mode requested, check if directory is a git repo
@@ -391,17 +404,17 @@ export const useSessionStore = create<State>((set, get) => ({
   selectTab: (tabId) => {
     const s = get()
     if (tabId === s.activeTabId) {
-      // Clicking the already-active tab: toggle global expand/collapse
-      const willExpand = !s.isExpanded
-      set((prev) => ({
-        isExpanded: willExpand,
-        marketplaceOpen: false,
-        settingsOpen: false,
-        // Expanding = reading: clear unread flag
-        tabs: willExpand
-          ? prev.tabs.map((t) => t.id === tabId ? { ...t, hasUnread: false } : t)
-          : prev.tabs,
-      }))
+      // Clicking the already-active tab while collapsed: expand it
+      if (!s.isExpanded) {
+        set((prev) => ({
+          isExpanded: true,
+          marketplaceOpen: false,
+          settingsOpen: false,
+          tabs: prev.tabs.map((t) => t.id === tabId ? { ...t, hasUnread: false } : t),
+        }))
+      }
+      // If already expanded: no-op
+      return
     } else {
       // Switching to a different tab: mark as read, auto-expand if setting enabled
       const expandOnSwitch = useThemeStore.getState().expandOnTabSwitch
@@ -1798,6 +1811,16 @@ export const useSessionStore = create<State>((set, get) => ({
       }),
     }))
   },
+  moveTabToGroup: (tabId, groupId) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) => t.id === tabId ? { ...t, groupId } : t),
+    }))
+  },
+  setTabGroupId: (tabId, groupId) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) => t.id === tabId ? { ...t, groupId } : t),
+    }))
+  },
 }))
 
 // ─── Real-time tab persistence ───
@@ -1826,6 +1849,7 @@ function persistTabs(): void {
       ...(t.pillColor ? { pillColor: t.pillColor } : {}),
       ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
       ...(t.worktree ? { worktree: t.worktree } : {}),
+      ...(t.groupId ? { groupId: t.groupId } : {}),
     }))
 
   // Serialize editor states (per-directory, includes unsaved content)

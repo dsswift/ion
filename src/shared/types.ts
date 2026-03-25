@@ -117,6 +117,18 @@ export interface UnknownEvent {
   [key: string]: unknown
 }
 
+// ─── Tab Grouping ───
+
+export type TabGroupMode = 'off' | 'auto' | 'manual'
+
+export interface TabGroup {
+  id: string          // nanoid
+  label: string       // user-provided name (manual) or dir name (auto)
+  isDefault: boolean  // manual mode: where new tabs land
+  order: number       // position in strip
+  collapsed: boolean  // whether the group shows as a single pill
+}
+
 // ─── Tab State Machine (v2 — from execution plan) ───
 
 export type TabStatus = 'connecting' | 'idle' | 'running' | 'completed' | 'failed' | 'dead'
@@ -200,6 +212,8 @@ export interface TabState {
   worktree: WorktreeInfo | null
   /** True while waiting for the user to pick a source branch in the BranchPickerDialog */
   pendingWorktreeSetup: boolean
+  /** Tab group assignment (null = ungrouped / auto-computed) */
+  groupId: string | null
 }
 
 export interface Message {
@@ -499,6 +513,7 @@ export interface PersistedTab {
   pillColor?: string | null
   forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
+  groupId?: string | null
 }
 
 export interface PersistedEditorFile {

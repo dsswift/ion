@@ -227,6 +227,7 @@ export default function App() {
                       forkedFromSessionId: st.forkedFromSessionId || null,
                       worktree: st.worktree || null,
                       historicalSessionIds: st.historicalSessionIds || [],
+                      groupId: st.groupId || null,
                     }
                   : t
               ),

@@ -3,7 +3,7 @@
  * Colors derived from ChatCN oklch system and design-fixed.html reference.
  */
 import { create } from 'zustand'
-import type { GitOpsMode, WorktreeCompletionStrategy } from '../shared/types'
+import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode, TabGroup } from '../shared/types'
 
 // ─── Color palettes ───
 
@@ -322,7 +322,6 @@ interface ThemeState {
   expandedUI: boolean
   defaultBaseDirectory: string
   recentBaseDirectories: string[]
-  showDirLabel: boolean
   preferredOpenWith: 'cli' | 'vscode'
   showImplementClearContext: boolean
   defaultPermissionMode: 'ask' | 'auto' | 'plan'
@@ -345,6 +344,10 @@ interface ThemeState {
   worktreeBranchDefaults: Record<string, string>
   /** Skip the PR title dialog and always use auto-generated branch name */
   worktreeSkipPrTitle: boolean
+  /** Tab grouping mode: off (flat), auto (by directory), manual (user-defined groups) */
+  tabGroupMode: TabGroupMode
+  /** Manual/auto tab group definitions */
+  tabGroups: TabGroup[]
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
@@ -353,7 +356,6 @@ interface ThemeState {
   setExpandedUI: (expanded: boolean) => void
   setDefaultBaseDirectory: (dir: string) => void
   addRecentBaseDirectory: (dir: string) => void
-  setShowDirLabel: (show: boolean) => void
   setPreferredOpenWith: (app: 'cli' | 'vscode') => void
   setShowImplementClearContext: (show: boolean) => void
   setDefaultPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
@@ -373,6 +375,12 @@ interface ThemeState {
   setWorktreeBranchDefault: (repoPath: string, branch: string) => void
   removeWorktreeBranchDefault: (repoPath: string) => void
   setWorktreeSkipPrTitle: (skip: boolean) => void
+  setTabGroupMode: (mode: TabGroupMode) => void
+  setTabGroups: (groups: TabGroup[]) => void
+  createTabGroup: (label: string) => string
+  deleteTabGroup: (groupId: string) => void
+  renameTabGroup: (groupId: string, label: string) => void
+  setDefaultTabGroup: (groupId: string) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
 }
@@ -396,7 +404,7 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], showDirLabel: false, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[] }
 
 function saveSettings(s: Record<string, unknown>): void {
   window.coda?.saveSettings(s)
@@ -404,7 +412,7 @@ function saveSettings(s: Record<string, unknown>): void {
 
 function getAllSettings(get: () => ThemeState): Record<string, unknown> {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, showDirLabel: s.showDirLabel, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups }
 }
 
 // Start with defaults; async load from disk will update immediately after mount.
@@ -417,7 +425,6 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   expandedUI: saved.expandedUI,
   defaultBaseDirectory: saved.defaultBaseDirectory,
   recentBaseDirectories: saved.recentBaseDirectories,
-  showDirLabel: saved.showDirLabel,
   preferredOpenWith: saved.preferredOpenWith,
   showImplementClearContext: saved.showImplementClearContext,
   defaultPermissionMode: saved.defaultPermissionMode,
@@ -436,6 +443,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   worktreeCompletionStrategy: saved.worktreeCompletionStrategy,
   worktreeBranchDefaults: saved.worktreeBranchDefaults,
   worktreeSkipPrTitle: saved.worktreeSkipPrTitle,
+  tabGroupMode: saved.tabGroupMode,
+  tabGroups: saved.tabGroups,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -463,10 +472,6 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const current = get().recentBaseDirectories.filter((d) => d !== dir)
     const updated = [dir, ...current].slice(0, 8)
     set({ recentBaseDirectories: updated })
-    saveSettings(getAllSettings(get))
-  },
-  setShowDirLabel: (show) => {
-    set({ showDirLabel: show })
     saveSettings(getAllSettings(get))
   },
   setPreferredOpenWith: (app) => {
@@ -548,6 +553,44 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ worktreeSkipPrTitle: skip })
     saveSettings(getAllSettings(get))
   },
+  setTabGroupMode: (mode) => {
+    set({ tabGroupMode: mode })
+    saveSettings(getAllSettings(get))
+  },
+  setTabGroups: (groups) => {
+    set({ tabGroups: groups })
+    saveSettings(getAllSettings(get))
+  },
+  createTabGroup: (label) => {
+    const id = crypto.randomUUID()
+    const current = get().tabGroups
+    const isFirst = current.length === 0
+    const group: TabGroup = { id, label, isDefault: isFirst, order: current.length, collapsed: true }
+    set({ tabGroups: [...current, group] })
+    saveSettings(getAllSettings(get))
+    return id
+  },
+  deleteTabGroup: (groupId) => {
+    const current = get().tabGroups
+    const removing = current.find((g) => g.id === groupId)
+    let updated = current.filter((g) => g.id !== groupId)
+    // If we removed the default, assign default to first remaining
+    if (removing?.isDefault && updated.length > 0) {
+      updated = updated.map((g, i) => i === 0 ? { ...g, isDefault: true } : g)
+    }
+    // Reindex order
+    updated = updated.map((g, i) => ({ ...g, order: i }))
+    set({ tabGroups: updated })
+    saveSettings(getAllSettings(get))
+  },
+  renameTabGroup: (groupId, label) => {
+    set({ tabGroups: get().tabGroups.map((g) => g.id === groupId ? { ...g, label } : g) })
+    saveSettings(getAllSettings(get))
+  },
+  setDefaultTabGroup: (groupId) => {
+    set({ tabGroups: get().tabGroups.map((g) => ({ ...g, isDefault: g.id === groupId })) })
+    saveSettings(getAllSettings(get))
+  },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -571,7 +614,6 @@ window.coda?.loadSettings().then((disk) => {
   const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
   const baseDir = typeof disk.defaultBaseDirectory === 'string' ? disk.defaultBaseDirectory : ''
   const recentDirs = Array.isArray(disk.recentBaseDirectories) ? disk.recentBaseDirectories.filter((d: unknown) => typeof d === 'string').slice(0, 8) : []
-  const dirLabel = typeof disk.showDirLabel === 'boolean' ? disk.showDirLabel : true
   const openWith = (disk.preferredOpenWith === 'cli' || disk.preferredOpenWith === 'vscode') ? disk.preferredOpenWith : 'cli'
   const implClearCtx = typeof disk.showImplementClearContext === 'boolean' ? disk.showImplementClearContext : false
   const expandTabSwitch = typeof disk.expandOnTabSwitch === 'boolean' ? disk.expandOnTabSwitch : true
@@ -589,7 +631,9 @@ window.coda?.loadSettings().then((disk) => {
   const wtStrategy = (disk.worktreeCompletionStrategy === 'merge' || disk.worktreeCompletionStrategy === 'pr') ? disk.worktreeCompletionStrategy : 'merge'
   const wtDefaults = (disk.worktreeBranchDefaults && typeof disk.worktreeBranchDefaults === 'object' && !Array.isArray(disk.worktreeBranchDefaults)) ? disk.worktreeBranchDefaults as Record<string, string> : {}
   const wtSkipPr = typeof disk.worktreeSkipPrTitle === 'boolean' ? disk.worktreeSkipPrTitle : false
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, showDirLabel: dirLabel, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr })
+  const tabGroupMode = (disk.tabGroupMode === 'off' || disk.tabGroupMode === 'auto' || disk.tabGroupMode === 'manual') ? disk.tabGroupMode : 'off'
+  const tabGroups = Array.isArray(disk.tabGroups) ? (disk.tabGroups as TabGroup[]).filter((g: any) => g && typeof g.id === 'string' && typeof g.label === 'string') : []
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups })
   applyTheme(resolved)
 })
 

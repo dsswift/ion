@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle, CaretDown, Rows, PencilSimple, Trash, Star, ArrowRight, ArrowsInSimple, ArrowsOutSimple } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
@@ -9,6 +9,8 @@ import { WorktreeCloseDialog } from './WorktreeCloseDialog'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
+import { useTabGroups } from '../hooks/useTabGroups'
+import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabStatus, TabState, WorktreeStatus } from '../../shared/types'
 
 /** Check whether this tab-creation event should use worktree mode, inverting the default when Alt is held */
@@ -266,13 +268,16 @@ function TabContextMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
+  const moveItemRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (ref.current && !ref.current.contains(e.target as Node)) { setMoveSubmenu(null); onClose() }
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') { setMoveSubmenu(null); onClose() }
     }
     window.addEventListener('mousedown', handleClick)
     window.addEventListener('keydown', handleKey)
@@ -348,6 +353,42 @@ function TabContextMenu({
           <CheckCircle size={14} color={colors.textSecondary} />
           <span>Finish work</span>
         </button>
+      )}
+      {tabGroupMode === 'manual' && (
+        <>
+          <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
+          <button
+            ref={moveItemRef}
+            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+            style={menuItemStyle}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = colors.tabActive
+              if (moveItemRef.current) {
+                const rect = moveItemRef.current.getBoundingClientRect()
+                setMoveSubmenu({ x: rect.right, y: rect.top })
+              }
+            }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            onClick={() => {
+              if (moveItemRef.current) {
+                const rect = moveItemRef.current.getBoundingClientRect()
+                setMoveSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
+              }
+            }}
+          >
+            <Rows size={14} color={colors.textSecondary} />
+            <span>Move to group</span>
+            <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
+          </button>
+        </>
+      )}
+      {moveSubmenu && (
+        <MoveToGroupSubmenu
+          anchor={moveSubmenu}
+          tabId={tab.id}
+          currentGroupId={tab.groupId || ''}
+          onClose={() => { setMoveSubmenu(null); onClose() }}
+        />
       )}
     </motion.div>,
     popoverLayer,
@@ -529,6 +570,829 @@ function InlineRenameInput({
   )
 }
 
+/* ─── Stacked status dots for group pills ─── */
+
+function getTabStatusColor(tab: TabState, colors: ReturnType<typeof useColors>): { bg: string; pulse: boolean; glow: boolean; glowColor: string } {
+  let bg = colors.statusIdle
+  let pulse = false
+  let glow = false
+  let glowColor = colors.statusPermissionGlow
+
+  const waitingState = (() => {
+    const tools = tab.permissionDenied?.tools
+    if (!tools?.length) return null
+    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
+    if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
+    return null
+  })()
+
+  if (tab.status === 'dead' || tab.status === 'failed') {
+    bg = colors.statusError
+  } else if (tab.permissionQueue.length > 0) {
+    bg = colors.statusPermission; glow = true
+  } else if (waitingState === 'plan-ready') {
+    bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
+  } else if (waitingState === 'question') {
+    bg = colors.infoText; glow = true; glowColor = colors.tabGlowQuestion
+  } else if (tab.status === 'connecting' || tab.status === 'running') {
+    bg = colors.statusRunning; pulse = true
+  } else if (tab.bashExecuting) {
+    bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow
+  } else if (tab.hasUnread) {
+    bg = colors.statusComplete
+  }
+
+  return { bg, pulse, glow, glowColor }
+}
+
+function StackedStatusDots({ tabs }: { tabs: TabState[] }) {
+  const colors = useColors()
+  const maxVisible = 5
+  const visible = tabs.slice(0, maxVisible)
+  const overflow = tabs.length - maxVisible
+
+  return (
+    <div className="flex items-center flex-shrink-0" style={{ marginRight: 2 }}>
+      {visible.map((tab, i) => {
+        const { bg, pulse, glow, glowColor } = getTabStatusColor(tab, colors)
+        return (
+          <span
+            key={tab.id}
+            className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
+            style={{
+              background: bg,
+              marginLeft: i === 0 ? 0 : -3,
+              zIndex: maxVisible - i,
+              position: 'relative',
+              ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
+            }}
+          />
+        )
+      })}
+      {overflow > 0 && (
+        <span
+          className="text-[8px] flex-shrink-0"
+          style={{ color: colors.textTertiary, marginLeft: 2 }}
+        >
+          +{overflow}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/* ─── Group picker dropdown ─── */
+
+function GroupPickerDropdown({
+  group,
+  anchor,
+  onSelectTab,
+  onCloseTab,
+  onClose,
+}: {
+  group: TabGroupView
+  anchor: { x: number; y: number }
+  onSelectTab: (tabId: string) => void
+  onCloseTab: (tabId: string) => void
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const renameTab = useSessionStore((s) => s.renameTab)
+  const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+
+  // Sub-interaction state
+  const [contextTabId, setContextTabId] = useState<string | null>(null)
+  const [contextAnchor, setContextAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
+  const [colorPickerTabId, setColorPickerTabId] = useState<string | null>(null)
+  const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
+  const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+
+  // Track whether a sub-popover is open so outside-click doesn't dismiss the dropdown
+  const hasSubPopover = colorPickerTabId != null || dirMenuTabId != null || contextTabId != null
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (e.button !== 0) return
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        // If a sub-popover is open, close it but keep the dropdown open
+        if (hasSubPopover) {
+          setColorPickerTabId(null)
+          setDirMenuTabId(null)
+          setContextTabId(null)
+          return
+        }
+        onClose()
+      }
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Close sub-popovers first, then dropdown
+        if (hasSubPopover) {
+          setColorPickerTabId(null)
+          setDirMenuTabId(null)
+          setContextTabId(null)
+          return
+        }
+        if (editingTabId) {
+          setEditingTabId(null)
+          return
+        }
+        setConfirmingCloseId(null)
+        onClose()
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose, hasSubPopover, editingTabId])
+
+  if (!popoverLayer) return null
+
+  const top = Math.min(anchor.y + 8, window.innerHeight - 300)
+  const left = Math.min(anchor.x, window.innerWidth - 280)
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-coda-ui
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 10,
+        padding: 4,
+        zIndex: 10000,
+        minWidth: 220,
+        maxWidth: 340,
+        maxHeight: 300,
+        overflowY: 'auto',
+      }}
+    >
+      {group.tabs.map((tab) => {
+        const { bg, pulse, glow, glowColor } = getTabStatusColor(tab, colors)
+        const isActive = tab.id === activeTabId
+        const isRunning = tab.status === 'running' || tab.status === 'connecting'
+        const isConfirming = confirmingCloseId === tab.id
+        const isEditing = editingTabId === tab.id
+        const displayTitle = tab.customTitle || tab.title
+        const dirName = tab.workingDirectory?.split('/').pop() || ''
+
+        // Derive waiting-for-user state (same logic as TabPill)
+        const waitingState: 'plan-ready' | 'question' | null = (() => {
+          const tools = tab.permissionDenied?.tools
+          if (!tools?.length) return null
+          if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
+          if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
+          return null
+        })()
+
+        const waitingBorder = waitingState === 'plan-ready'
+          ? colors.tabGlowPlanReady
+          : waitingState === 'question'
+            ? colors.tabGlowQuestion
+            : null
+
+        const defaultBorder = tab.pillColor ? `${tab.pillColor}40` : 'transparent'
+
+        return (
+          <div
+            key={tab.id}
+            className={`flex items-center gap-1.5 w-full rounded px-2 py-1.5 cursor-pointer ${waitingBorder ? 'animate-border-pulse' : ''}`}
+            style={{
+              '--border-waiting': waitingBorder ?? 'transparent',
+              '--border-default': defaultBorder,
+              background: tab.pillColor
+                ? `${tab.pillColor}${isActive ? '18' : '10'}`
+                : isActive ? colors.tabActive : 'transparent',
+              borderLeft: `2px solid ${waitingBorder ?? defaultBorder}`,
+              fontSize: 12,
+            } as React.CSSProperties}
+            onClick={() => {
+              if (!isConfirming && !isEditing) {
+                setConfirmingCloseId(null)
+                onSelectTab(tab.id)
+                onClose()
+              }
+            }}
+            onMouseDown={(e) => {
+              if (e.button === 1) {
+                e.preventDefault()
+                if (!isRunning && !tab.bashExecuting) onCloseTab(tab.id)
+              }
+            }}
+            onContextMenu={(e) => {
+              // Row-level right-click: "Move to group" (manual mode only)
+              // Zone-specific handlers stopPropagation so this only fires on dead zones
+              if (tabGroupMode === 'manual') {
+                e.preventDefault()
+                e.stopPropagation()
+                setContextTabId(tab.id)
+                setContextAnchor({ x: e.clientX, y: e.clientY })
+              }
+            }}
+            onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = tab.pillColor ? `${tab.pillColor}18` : colors.surfaceHover }}
+            onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = tab.pillColor ? `${tab.pillColor}10` : 'transparent' }}
+          >
+            {/* Status dot zone: right-click -> color picker */}
+            <span
+              className="flex-shrink-0 inline-flex items-center justify-center"
+              style={{ width: 14, height: 14, cursor: 'default' }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setColorPickerTabId(tab.id)
+                setColorPickerAnchor({ x: e.clientX, y: e.clientY })
+              }}
+            >
+              <span
+                className={`w-[6px] h-[6px] rounded-full ${pulse ? 'animate-pulse-dot' : ''}`}
+                style={{
+                  background: bg,
+                  ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
+                }}
+              />
+            </span>
+
+            {/* Dir label zone: right-click -> dir context menu */}
+            {tab.workingDirectory && (
+              <span
+                className="flex-shrink-0"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 500,
+                  color: colors.textSecondary,
+                  opacity: 0.5,
+                  cursor: 'default',
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setDirMenuTabId(tab.id)
+                  setDirMenuAnchor({ x: e.clientX, y: e.clientY })
+                }}
+              >
+                {dirName}
+              </span>
+            )}
+
+            {/* Title zone: right-click -> inline rename */}
+            {isEditing ? (
+              <InlineRenameInput
+                value={displayTitle}
+                color={isActive ? colors.textPrimary : colors.textSecondary}
+                fontWeight={isActive ? 500 : 400}
+                onCommit={(newValue) => {
+                  setEditingTabId(null)
+                  renameTab(tab.id, newValue || null)
+                }}
+                onCancel={() => setEditingTabId(null)}
+              />
+            ) : (
+              <span
+                className="truncate flex-1"
+                style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setEditingTabId(tab.id)
+                }}
+              >
+                {displayTitle}
+              </span>
+            )}
+
+            {/* Close button zone */}
+            {isConfirming ? (
+              <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setConfirmingCloseId(null)}
+                  className="px-1 rounded"
+                  style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  No
+                </button>
+                <button
+                  onClick={() => { onCloseTab(tab.id); setConfirmingCloseId(null) }}
+                  className="px-1 rounded"
+                  style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  Yes
+                </button>
+              </div>
+            ) : !isRunning && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmingCloseId(tab.id) }}
+                className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+                style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Sub-popovers: color picker */}
+      <AnimatePresence>
+        {colorPickerTabId && (() => {
+          const pickerTab = group.tabs.find((t) => t.id === colorPickerTabId)
+          if (!pickerTab) return null
+          return (
+            <PillColorPicker
+              key="dropdown-color-picker"
+              anchor={colorPickerAnchor}
+              currentColor={pickerTab.pillColor}
+              onSelect={(color) => { setTabPillColor(colorPickerTabId, color); setColorPickerTabId(null) }}
+              onClose={() => setColorPickerTabId(null)}
+            />
+          )
+        })()}
+      </AnimatePresence>
+
+      {/* Sub-popovers: dir context menu */}
+      <AnimatePresence>
+        {dirMenuTabId && (() => {
+          const menuTab = group.tabs.find((t) => t.id === dirMenuTabId)
+          if (!menuTab?.workingDirectory) return null
+          const menuDirName = menuTab.workingDirectory.split('/').pop() || menuTab.workingDirectory
+          return (
+            <DirContextMenu
+              key="dropdown-dir-menu"
+              anchor={dirMenuAnchor}
+              dirName={menuDirName}
+              onCreateTab={() => {
+                useSessionStore.getState().createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
+                setDirMenuTabId(null)
+              }}
+              onForkTab={menuTab.claudeSessionId ? () => {
+                useSessionStore.getState().forkTab(menuTab.id)
+                setDirMenuTabId(null)
+              } : undefined}
+              onClose={() => setDirMenuTabId(null)}
+            />
+          )
+        })()}
+      </AnimatePresence>
+
+      {/* Sub-popovers: move to group (manual mode only) */}
+      {contextTabId && tabGroupMode === 'manual' && (
+        <MoveToGroupSubmenu
+          anchor={contextAnchor}
+          tabId={contextTabId}
+          currentGroupId={group.groupId}
+          onClose={() => setContextTabId(null)}
+        />
+      )}
+    </motion.div>,
+    popoverLayer,
+  )
+}
+
+/* ─── Move to group submenu ─── */
+
+function MoveToGroupSubmenu({
+  anchor,
+  tabId,
+  currentGroupId,
+  onClose,
+}: {
+  anchor: { x: number; y: number }
+  tabId: string
+  currentGroupId: string
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const tabGroups = useThemeStore((s) => s.tabGroups)
+  const tabs = useSessionStore((s) => s.tabs)
+  const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  useEffect(() => {
+    if (showNewGroupInput) inputRef.current?.focus()
+  }, [showNewGroupInput])
+
+  if (!popoverLayer) return null
+
+  // Build available targets
+  let targets: Array<{ id: string; label: string }> = []
+
+  if (tabGroupMode === 'auto') {
+    // Available directories that have 2+ tabs
+    const dirMap = new Map<string, string>()
+    for (const t of tabs) {
+      const key = t.workingDirectory || '~'
+      if (!dirMap.has(key)) dirMap.set(key, key.split('/').pop() || key)
+    }
+    targets = Array.from(dirMap.entries())
+      .filter(([dir]) => `auto-${dir}` !== currentGroupId)
+      .map(([dir, label]) => ({ id: `auto-${dir}`, label }))
+  } else if (tabGroupMode === 'manual') {
+    targets = tabGroups
+      .filter((g) => g.id !== currentGroupId)
+      .map((g) => ({ id: g.id, label: g.label }))
+  }
+
+  const top = Math.min(anchor.y, window.innerHeight - 200)
+  const left = Math.min(anchor.x + 8, window.innerWidth - 180)
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-coda-ui
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.1 }}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        padding: 4,
+        zIndex: 10001,
+        minWidth: 160,
+      }}
+    >
+      <div className="px-2 py-1 text-[10px] font-medium" style={{ color: colors.textTertiary }}>
+        Move to group
+      </div>
+      {targets.map((t) => (
+        <button
+          key={t.id}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          onClick={() => {
+            if (tabGroupMode === 'auto') {
+              // For auto mode, set the workingDirectory
+              const dir = t.id.replace('auto-', '')
+              useSessionStore.setState((s) => ({
+                tabs: s.tabs.map((tab) => tab.id === tabId ? { ...tab, groupId: t.id } : tab),
+              }))
+            } else {
+              moveTabToGroup(tabId, t.id)
+            }
+            onClose()
+          }}
+        >
+          <ArrowRight size={12} color={colors.textTertiary} />
+          <span>{t.label}</span>
+        </button>
+      ))}
+      {tabGroupMode === 'manual' && (
+        <>
+          <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
+          {showNewGroupInput ? (
+            <div className="flex items-center gap-1 px-2 py-1">
+              <input
+                ref={inputRef}
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newGroupName.trim()) {
+                    const id = useThemeStore.getState().createTabGroup(newGroupName.trim())
+                    moveTabToGroup(tabId, id)
+                    onClose()
+                  }
+                  if (e.key === 'Escape') setShowNewGroupInput(false)
+                }}
+                placeholder="Group name..."
+                style={{
+                  flex: 1, fontSize: 12, background: 'transparent', border: `1px solid ${colors.inputBorder}`,
+                  borderRadius: 4, padding: '2px 6px', color: colors.textPrimary, outline: 'none',
+                }}
+              />
+            </div>
+          ) : (
+            <button
+              className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+              style={{ fontSize: 12, color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              onClick={() => setShowNewGroupInput(true)}
+            >
+              <Plus size={12} color={colors.accent} />
+              <span>New group...</span>
+            </button>
+          )}
+        </>
+      )}
+    </motion.div>,
+    popoverLayer,
+  )
+}
+
+/* ─── Group management context menu (manual mode) ─── */
+
+function GroupManagementMenu({
+  anchor,
+  groupId,
+  groupLabel,
+  isDefault,
+  onClose,
+}: {
+  anchor: { x: number; y: number }
+  groupId: string
+  groupLabel: string
+  isDefault: boolean
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState(groupLabel)
+  const renameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  useEffect(() => {
+    if (renaming) renameRef.current?.focus()
+  }, [renaming])
+
+  if (!popoverLayer) return null
+
+  const top = Math.min(anchor.y + 8, window.innerHeight - 200)
+  const left = Math.min(anchor.x, window.innerWidth - 180)
+
+  const menuItemStyle = { fontSize: 12, color: colors.textPrimary, background: 'transparent' as string, border: 'none' as const, cursor: 'pointer' as const }
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-coda-ui
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        padding: 4,
+        zIndex: 10001,
+        minWidth: 160,
+      }}
+    >
+      {renaming ? (
+        <div className="flex items-center gap-1 px-2 py-1">
+          <input
+            ref={renameRef}
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && renameValue.trim()) {
+                useThemeStore.getState().renameTabGroup(groupId, renameValue.trim())
+                onClose()
+              }
+              if (e.key === 'Escape') setRenaming(false)
+            }}
+            onBlur={() => {
+              if (renameValue.trim()) {
+                useThemeStore.getState().renameTabGroup(groupId, renameValue.trim())
+              }
+              onClose()
+            }}
+            style={{
+              flex: 1, fontSize: 12, background: 'transparent', border: `1px solid ${colors.inputBorder}`,
+              borderRadius: 4, padding: '2px 6px', color: colors.textPrimary, outline: 'none',
+            }}
+          />
+        </div>
+      ) : (
+        <>
+          <button
+            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+            style={menuItemStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            onClick={() => setRenaming(true)}
+          >
+            <PencilSimple size={14} color={colors.textSecondary} />
+            <span>Rename group</span>
+          </button>
+          {!isDefault && (
+            <button
+              className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+              style={menuItemStyle}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              onClick={() => { useThemeStore.getState().setDefaultTabGroup(groupId); onClose() }}
+            >
+              <Star size={14} color={colors.textSecondary} />
+              <span>Set as default</span>
+            </button>
+          )}
+          <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
+          <button
+            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+            style={{ ...menuItemStyle, color: colors.statusError }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            onClick={() => {
+              // Move tabs from deleted group to default, then delete
+              const defaultGroup = useThemeStore.getState().tabGroups.find((g) => g.isDefault && g.id !== groupId)
+              if (defaultGroup) {
+                useSessionStore.setState((s) => ({
+                  tabs: s.tabs.map((t) => t.groupId === groupId ? { ...t, groupId: defaultGroup.id } : t),
+                }))
+              }
+              useThemeStore.getState().deleteTabGroup(groupId)
+              onClose()
+            }}
+          >
+            <Trash size={14} color={colors.statusError} />
+            <span>Delete group</span>
+          </button>
+        </>
+      )}
+    </motion.div>,
+    popoverLayer,
+  )
+}
+
+/* ─── Group pill ─── */
+
+function GroupPill({
+  group,
+  isActive,
+  onSelect,
+}: {
+  group: TabGroupView
+  isActive: boolean
+  onSelect: (tabId: string) => void
+}) {
+  const colors = useColors()
+  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
+  const pillRef = useRef<HTMLDivElement>(null)
+
+  const selectedTab = group.tabs.find((t) => t.id === group.selectedTabId) || group.tabs[0]
+  const displayTitle = selectedTab ? (selectedTab.customTitle || selectedTab.title) : ''
+
+  // Derive aggregate waiting state: if ANY tab in the group is waiting on the user
+  const groupWaitingState: 'plan-ready' | 'question' | null = (() => {
+    for (const t of group.tabs) {
+      const tools = t.permissionDenied?.tools
+      if (!tools?.length) continue
+      if (tools.some((x) => x.toolName === 'ExitPlanMode')) return 'plan-ready'
+      if (tools.some((x) => x.toolName === 'AskUserQuestion')) return 'question'
+    }
+    return null
+  })()
+
+  const waitingBorder = groupWaitingState === 'plan-ready'
+    ? colors.tabGlowPlanReady
+    : groupWaitingState === 'question'
+      ? colors.tabGlowQuestion
+      : null
+
+  const handleClick = useCallback(() => {
+    if (pillRef.current) {
+      const rect = pillRef.current.getBoundingClientRect()
+      setPickerAnchor({ x: rect.left, y: rect.bottom })
+    }
+    setPickerOpen((o) => !o)
+  }, [])
+
+  return (
+    <>
+      <div
+        ref={pillRef}
+        className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ${waitingBorder ? 'animate-border-pulse' : ''}`}
+        style={{
+          '--border-waiting': waitingBorder ?? 'transparent',
+          '--border-default': isActive ? colors.tabActiveBorder : 'transparent',
+          background: isActive ? colors.tabActive : 'transparent',
+          borderWidth: 1,
+          borderStyle: 'solid',
+          borderColor: waitingBorder ?? (isActive ? colors.tabActiveBorder : 'transparent'),
+          borderRadius: 9999,
+          padding: '4px 10px',
+          fontSize: 12,
+          color: isActive ? colors.textPrimary : colors.textTertiary,
+          fontWeight: isActive ? 500 : 400,
+        } as React.CSSProperties}
+        onClick={handleClick}
+        onContextMenu={(e) => {
+          if (tabGroupMode === 'manual') {
+            e.preventDefault()
+            e.stopPropagation()
+            setMgmtMenu({ x: e.clientX, y: e.clientY })
+          }
+        }}
+      >
+        <StackedStatusDots tabs={group.tabs} />
+        <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: colors.textSecondary, opacity: 0.5 }}>
+          {group.label}
+        </span>
+        <span className="truncate max-w-[100px]">
+          {displayTitle}
+        </span>
+        <span className="text-[10px] flex-shrink-0" style={{ color: colors.textTertiary }}>
+          {group.tabs.length}
+        </span>
+        <CaretDown
+          size={10}
+          className="flex-shrink-0 transition-transform"
+          style={{
+            color: colors.textTertiary,
+            transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}
+        />
+      </div>
+
+      <AnimatePresence>
+        {pickerOpen && (
+          <GroupPickerDropdown
+            key="group-picker"
+            group={group}
+            anchor={pickerAnchor}
+            onSelectTab={(tabId) => { onSelect(tabId) }}
+            onCloseTab={(tabId) => useSessionStore.getState().closeTab(tabId)}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mgmtMenu && (
+          <GroupManagementMenu
+            key="group-mgmt"
+            anchor={mgmtMenu}
+            groupId={group.groupId}
+            groupLabel={group.label}
+            isDefault={group.isDefault}
+            onClose={() => setMgmtMenu(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
 const DRAG_THRESHOLD = 8
 
 function TabPill({
@@ -536,7 +1400,6 @@ function TabPill({
   isActive,
   isEditing,
   isConfirmingClose,
-  showDirLabel,
   onSelect,
   onClose,
   onStartEdit,
@@ -558,7 +1421,6 @@ function TabPill({
   isActive: boolean
   isEditing: boolean
   isConfirmingClose: boolean
-  showDirLabel: boolean
   onSelect: () => void
   onClose: () => void
   onStartEdit: () => void
@@ -682,7 +1544,7 @@ function TabPill({
       ) : gitOpsMode === 'worktree' ? (
         <FolderSimple size={11} color={colors.textTertiary} className="flex-shrink-0" />
       ) : null}
-      {showDirLabel && tab.workingDirectory && (
+      {tab.workingDirectory && (
         <span
           className="flex-shrink-0"
           style={{
@@ -772,8 +1634,10 @@ export function TabStrip() {
   const toggleTerminal = useSessionStore((s) => s.toggleTerminal)
   const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
   const colors = useColors()
-  const showDirLabel = useThemeStore((s) => s.showDirLabel)
+  const isExpanded = useSessionStore((s) => s.isExpanded)
+  const toggleExpanded = useSessionStore((s) => s.toggleExpanded)
   const tabsReady = useSessionStore((s) => s.tabsReady)
+  const { mode: groupMode, groups, ungrouped } = useTabGroups()
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
@@ -827,6 +1691,18 @@ export function TabStrip() {
       className="flex items-center no-drag"
       style={{ padding: '8px 0' }}
     >
+      {/* Minimize / maximize toggle */}
+      <button
+        onClick={toggleExpanded}
+        className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors ml-1"
+        style={{ color: isExpanded ? colors.textTertiary : colors.accent }}
+        title={isExpanded ? 'Minimize (Cmd+J)' : 'Maximize (Cmd+K)'}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textPrimary }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = isExpanded ? colors.textTertiary : colors.accent }}
+      >
+        {isExpanded ? <ArrowsInSimple size={13} /> : <ArrowsOutSimple size={13} />}
+      </button>
+
       {/* Scrollable tabs area — clipped by master card edge */}
       <div className="relative min-w-0 flex-1">
         <div
@@ -841,22 +1717,14 @@ export function TabStrip() {
             WebkitMaskImage: 'linear-gradient(to right, black 0%, black calc(100% - 40px), transparent 100%)',
           }}
         >
-          <Reorder.Group
-            as="div"
-            axis="x"
-            values={tabs}
-            onReorder={reorderTabs}
-            className="flex items-center gap-1"
-            layoutScroll
-          >
-            {tabs.map((tab) => (
+          {(() => {
+            const renderTabPill = (tab: TabState) => (
               <TabPill
                 key={tab.id}
                 tab={tab}
                 isActive={tab.id === activeTabId}
                 isEditing={editingTabId === tab.id}
                 isConfirmingClose={confirmingCloseId === tab.id}
-                showDirLabel={showDirLabel}
                 onSelect={() => selectTab(tab.id)}
                 onClose={() => {
                   if (tab.worktree) {
@@ -874,7 +1742,6 @@ export function TabStrip() {
                 onRename={(newValue) => renameTab(tab.id, newValue)}
                 onConfirmClose={() => {
                   if (tab.worktree) {
-                    // Worktree tab: show the WorktreeCloseDialog instead of inline confirmation
                     setWorktreeCloseTabId(tab.id)
                     setWorktreeCloseStatus(null)
                     window.coda.gitWorktreeStatus(tab.worktree.worktreePath, tab.worktree.sourceBranch)
@@ -895,8 +1762,70 @@ export function TabStrip() {
                 onOpenTabMenu={(tabId, anchor) => { setTabMenuId(tabId); setTabMenuAnchor(anchor) }}
                 tabRefs={tabRefs}
               />
-            ))}
-          </Reorder.Group>
+            )
+
+            if (groupMode === 'off') {
+              // Original flat tab rendering
+              return (
+                <Reorder.Group
+                  as="div"
+                  axis="x"
+                  values={tabs}
+                  onReorder={reorderTabs}
+                  className="flex items-center gap-1"
+                  layoutScroll
+                >
+                  {tabs.map(renderTabPill)}
+                </Reorder.Group>
+              )
+            }
+
+            // Grouped rendering: interleave GroupPills and ungrouped TabPills
+            // Wrap in Reorder.Group so ungrouped TabPills (which are Reorder.Items) have a parent
+            const groupedTabIds = new Set(groups.flatMap((g) => g.tabs.map((t) => t.id)))
+            const renderedGroupIds = new Set<string>()
+
+            return (
+              <Reorder.Group
+                as="div"
+                axis="x"
+                values={ungrouped}
+                onReorder={(reordered) => {
+                  // Rebuild the full tab list preserving grouped tab positions
+                  const ungroupedOrder = new Map(reordered.map((t, i) => [t.id, i]))
+                  const result = [...tabs].sort((a, b) => {
+                    const aIdx = ungroupedOrder.get(a.id)
+                    const bIdx = ungroupedOrder.get(b.id)
+                    if (aIdx != null && bIdx != null) return aIdx - bIdx
+                    return 0
+                  })
+                  reorderTabs(result)
+                }}
+                className="flex items-center gap-1"
+                layoutScroll
+              >
+                {tabs.map((tab) => {
+                  if (groupedTabIds.has(tab.id)) {
+                    // Find which group this tab belongs to
+                    const group = groups.find((g) => g.tabs.some((t) => t.id === tab.id))
+                    if (!group || renderedGroupIds.has(group.groupId)) return null
+                    renderedGroupIds.add(group.groupId)
+                    const isGroupActive = group.tabs.some((t) => t.id === activeTabId)
+                    return (
+                      <GroupPill
+                        key={group.groupId}
+                        group={group}
+                        isActive={isGroupActive}
+                        onSelect={(tabId) => selectTab(tabId)}
+                      />
+                    )
+                  }
+                  // Ungrouped tab: render as Reorder.Item pill
+                  return renderTabPill(tab)
+                })}
+              </Reorder.Group>
+            )
+          })()}
         </div>
       </div>
 
