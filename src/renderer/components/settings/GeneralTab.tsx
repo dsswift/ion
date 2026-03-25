@@ -1,10 +1,11 @@
-import React from 'react'
+import React, { useCallback } from 'react'
 import { FolderOpen, Trash } from '@phosphor-icons/react'
 import { useColors, useThemeStore } from '../../theme'
+import { useSessionStore } from '../../stores/sessionStore'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
-import type { GitOpsMode, WorktreeCompletionStrategy } from '../../../shared/types'
+import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode } from '../../../shared/types'
 
 export function GeneralTab() {
   const colors = useColors()
@@ -36,6 +37,50 @@ export function GeneralTab() {
   const removeWorktreeBranchDefault = useThemeStore((s) => s.removeWorktreeBranchDefault)
   const worktreeSkipPrTitle = useThemeStore((s) => s.worktreeSkipPrTitle)
   const setWorktreeSkipPrTitle = useThemeStore((s) => s.setWorktreeSkipPrTitle)
+  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const setTabGroupMode = useThemeStore((s) => s.setTabGroupMode)
+
+  const handleTabGroupModeChange = useCallback((newMode: TabGroupMode, oldMode: TabGroupMode) => {
+    if (newMode === oldMode) return
+    const sessionStore = useSessionStore.getState()
+
+    if (newMode === 'manual' && oldMode === 'off') {
+      const id = crypto.randomUUID()
+      const group = { id, label: 'General', isDefault: true, order: 0, collapsed: true }
+      useThemeStore.getState().setTabGroups([group])
+      useSessionStore.setState((s) => ({
+        tabs: s.tabs.map((t) => ({ ...t, groupId: id })),
+      }))
+    } else if (newMode === 'manual' && oldMode === 'auto') {
+      const dirMap = new Map<string, typeof sessionStore.tabs>()
+      for (const t of sessionStore.tabs) {
+        const key = t.workingDirectory || '~'
+        const arr = dirMap.get(key)
+        if (arr) arr.push(t)
+        else dirMap.set(key, [t])
+      }
+      const newGroups: Array<{ id: string; label: string; isDefault: boolean; order: number; collapsed: boolean }> = []
+      const tabUpdates = new Map<string, string>()
+      let order = 0
+      for (const [dir, dirTabs] of dirMap) {
+        const id = crypto.randomUUID()
+        const label = dir.split('/').pop() || dir
+        newGroups.push({ id, label, isDefault: order === 0, order, collapsed: true })
+        for (const t of dirTabs) tabUpdates.set(t.id, id)
+        order++
+      }
+      useThemeStore.getState().setTabGroups(newGroups)
+      useSessionStore.setState((s) => ({
+        tabs: s.tabs.map((t) => ({ ...t, groupId: tabUpdates.get(t.id) || null })),
+      }))
+    } else if (newMode === 'auto' && oldMode === 'manual') {
+      useSessionStore.setState((s) => ({
+        tabs: s.tabs.map((t) => ({ ...t, groupId: null })),
+      }))
+    }
+
+    setTabGroupMode(newMode)
+  }, [setTabGroupMode])
 
   const handleBrowse = async () => {
     const dir = await window.coda.selectDirectory()
@@ -290,6 +335,41 @@ export function GeneralTab() {
         checked={expandOnTabSwitch}
         onChange={setExpandOnTabSwitch}
       />
+
+      <SettingSection
+        label="Tab Groups"
+        description="Off: no grouping. Auto: group by directory. Manual: create and assign groups yourself."
+      >
+        <div
+          style={{
+            display: 'flex',
+            background: colors.surfacePrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          {([{ key: 'off', label: 'Off' }, { key: 'auto', label: 'Auto' }, { key: 'manual', label: 'Manual' }] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => handleTabGroupModeChange(key as TabGroupMode, tabGroupMode)}
+              style={{
+                flex: 1,
+                padding: '7px 0',
+                background: tabGroupMode === key ? colors.accent : 'transparent',
+                color: tabGroupMode === key ? '#fff' : colors.textSecondary,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: tabGroupMode === key ? 600 : 400,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
 
       {/* ── Behavior ── */}
       <SettingHeading>Behavior</SettingHeading>

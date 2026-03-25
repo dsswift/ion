@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear, Rows, ListChecks } from '@phosphor-icons/react'
+import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear, ListChecks } from '@phosphor-icons/react'
 import { useThemeStore } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
-import type { TabGroupMode } from '../../shared/types'
 
 function RowToggle({
   checked,
@@ -44,42 +43,6 @@ function RowToggle({
 
 /* ─── Settings popover ─── */
 
-function SegmentedControl({
-  value,
-  options,
-  onChange,
-  colors,
-}: {
-  value: string
-  options: Array<{ value: string; label: string }>
-  onChange: (value: string) => void
-  colors: ReturnType<typeof useColors>
-}) {
-  return (
-    <div
-      className="flex rounded-full overflow-hidden"
-      style={{ background: colors.surfacePrimary, border: `1px solid ${colors.containerBorder}` }}
-    >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className="px-2 py-0.5 text-[10px] font-medium transition-colors"
-          style={{
-            background: value === opt.value ? colors.accent : 'transparent',
-            color: value === opt.value ? colors.textOnAccent : colors.textTertiary,
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function SettingsPopover() {
   const soundEnabled = useThemeStore((s) => s.soundEnabled)
   const setSoundEnabled = useThemeStore((s) => s.setSoundEnabled)
@@ -90,52 +53,8 @@ export function SettingsPopover() {
   const isExpanded = useSessionStore((s) => s.isExpanded)
   const showTodoList = useThemeStore((s) => s.showTodoList)
   const setShowTodoList = useThemeStore((s) => s.setShowTodoList)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
-  const setTabGroupMode = useThemeStore((s) => s.setTabGroupMode)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
-
-  const handleTabGroupModeChange = useCallback((newMode: TabGroupMode, oldMode: TabGroupMode) => {
-    if (newMode === oldMode) return
-    const sessionStore = useSessionStore.getState()
-
-    if (newMode === 'manual' && oldMode === 'off') {
-      const id = crypto.randomUUID()
-      const group = { id, label: 'General', isDefault: true, order: 0, collapsed: true }
-      useThemeStore.getState().setTabGroups([group])
-      useSessionStore.setState((s) => ({
-        tabs: s.tabs.map((t) => ({ ...t, groupId: id })),
-      }))
-    } else if (newMode === 'manual' && oldMode === 'auto') {
-      const dirMap = new Map<string, typeof sessionStore.tabs>()
-      for (const t of sessionStore.tabs) {
-        const key = t.workingDirectory || '~'
-        const arr = dirMap.get(key)
-        if (arr) arr.push(t)
-        else dirMap.set(key, [t])
-      }
-      const newGroups: Array<{ id: string; label: string; isDefault: boolean; order: number; collapsed: boolean }> = []
-      const tabUpdates = new Map<string, string>()
-      let order = 0
-      for (const [dir, dirTabs] of dirMap) {
-        const id = crypto.randomUUID()
-        const label = dir.split('/').pop() || dir
-        newGroups.push({ id, label, isDefault: order === 0, order, collapsed: true })
-        for (const t of dirTabs) tabUpdates.set(t.id, id)
-        order++
-      }
-      useThemeStore.getState().setTabGroups(newGroups)
-      useSessionStore.setState((s) => ({
-        tabs: s.tabs.map((t) => ({ ...t, groupId: tabUpdates.get(t.id) || null })),
-      }))
-    } else if (newMode === 'auto' && oldMode === 'manual') {
-      useSessionStore.setState((s) => ({
-        tabs: s.tabs.map((t) => ({ ...t, groupId: null })),
-      }))
-    }
-
-    setTabGroupMode(newMode)
-  }, [setTabGroupMode])
 
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -321,33 +240,6 @@ export function SettingsPopover() {
                   onChange={setShowTodoList}
                   colors={colors}
                   label="Toggle task list visibility"
-                />
-              </div>
-            </div>
-
-            <div style={{ height: 1, background: colors.popoverBorder }} />
-
-            {/* Group tabs */}
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Rows size={14} style={{ color: colors.textTertiary }} />
-                  <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                    Group tabs
-                  </div>
-                </div>
-                <SegmentedControl
-                  value={tabGroupMode}
-                  options={[
-                    { value: 'off', label: 'Off' },
-                    { value: 'auto', label: 'Auto' },
-                    { value: 'manual', label: 'Manual' },
-                  ]}
-                  onChange={(v) => {
-                    const mode = v as TabGroupMode
-                    handleTabGroupModeChange(mode, tabGroupMode)
-                  }}
-                  colors={colors}
                 />
               </div>
             </div>
