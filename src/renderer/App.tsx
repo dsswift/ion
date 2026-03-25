@@ -725,7 +725,7 @@ export default function App() {
               transition={TRANSITION}
               className="overflow-hidden no-drag"
             >
-              <div style={{ maxHeight: bodyMaxHeight }}>
+              <div style={{ maxHeight: bodyMaxHeight, display: 'flex', flexDirection: 'column' }}>
                 <ConversationView />
                 <StatusBar />
               </div>

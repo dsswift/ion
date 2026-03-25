@@ -22,6 +22,8 @@ export function GeneralTab() {
   const setAllowSettingsEdits = useThemeStore((s) => s.setAllowSettingsEdits)
   const soundEnabled = useThemeStore((s) => s.soundEnabled)
   const setSoundEnabled = useThemeStore((s) => s.setSoundEnabled)
+  const showTodoList = useThemeStore((s) => s.showTodoList)
+  const setShowTodoList = useThemeStore((s) => s.setShowTodoList)
   const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
   const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
   const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
@@ -320,6 +322,13 @@ export function GeneralTab() {
         description="Play a sound when a task completes."
         checked={soundEnabled}
         onChange={setSoundEnabled}
+      />
+
+      <SettingToggle
+        label="Show Task List"
+        description="Display the agent's todo/task checklist at the bottom of the conversation while working."
+        checked={showTodoList}
+        onChange={setShowTodoList}
       />
 
       {/* ── File Explorer / Editor ── */}

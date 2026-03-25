@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear, Rows } from '@phosphor-icons/react'
+import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear, Rows, ListChecks } from '@phosphor-icons/react'
 import { useThemeStore } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -88,6 +88,8 @@ export function SettingsPopover() {
   const expandedUI = useThemeStore((s) => s.expandedUI)
   const setExpandedUI = useThemeStore((s) => s.setExpandedUI)
   const isExpanded = useSessionStore((s) => s.isExpanded)
+  const showTodoList = useThemeStore((s) => s.showTodoList)
+  const setShowTodoList = useThemeStore((s) => s.setShowTodoList)
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const setTabGroupMode = useThemeStore((s) => s.setTabGroupMode)
   const popoverLayer = usePopoverLayer()
@@ -299,6 +301,26 @@ export function SettingsPopover() {
                   onChange={(next) => setThemeMode(next ? 'dark' : 'light')}
                   colors={colors}
                   label="Toggle dark theme"
+                />
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: colors.popoverBorder }} />
+
+            {/* Task list */}
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ListChecks size={14} style={{ color: colors.textTertiary }} />
+                  <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                    Task list
+                  </div>
+                </div>
+                <RowToggle
+                  checked={showTodoList}
+                  onChange={setShowTodoList}
+                  colors={colors}
+                  label="Toggle task list visibility"
                 />
               </div>
             </div>

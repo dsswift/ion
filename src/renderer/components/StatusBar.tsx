@@ -555,7 +555,7 @@ export function StatusBar() {
   return (
     <div
       className="flex items-center justify-between px-4 py-1.5"
-      style={{ minHeight: 28 }}
+      style={{ minHeight: 28, flexShrink: 0 }}
     >
       {/* Left — explorer/editor toggles + directory + model picker */}
       <div className="flex items-center gap-2 text-[11px] min-w-0" style={{ color: colors.textTertiary }}>

@@ -13,6 +13,7 @@ import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { PlanViewer } from './PlanViewer'
 import { useColors, useThemeStore } from '../theme'
 import { InlineEditDiff } from './InlineEditDiff'
+import { TodoListPanel } from './TodoListPanel'
 import type { Message, Attachment } from '../../shared/types'
 
 // ─── Constants ───
@@ -168,16 +169,20 @@ export function ConversationView() {
   return (
     <div
       data-coda-ui
+      className="flex flex-col min-h-0"
+      style={{ flex: 1 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Scrollable messages area */}
-      <div
-        ref={scrollRef}
-        className="overflow-y-auto overflow-x-hidden px-4 pt-2 conversation-selectable"
-        style={{ maxHeight: isTallView ? 'calc(100vh - 260px)' : expandedUI ? 460 : 336, paddingBottom: 28 }}
-        onScroll={handleScroll}
-      >
+      {/* Scroll area wrapper — relative so activity row can overlay */}
+      <div className="relative flex-1 min-h-0">
+        {/* Scrollable messages area */}
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto overflow-x-hidden px-4 pt-2 conversation-selectable"
+          style={{ paddingBottom: 28 }}
+          onScroll={handleScroll}
+        >
         {/* Load older button */}
         {hasOlder && (
           <div className="flex justify-center py-2">
@@ -384,17 +389,19 @@ export function ConversationView() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Activity row — overlaps bottom of scroll area as a fade strip */}
-      <div
-        className="flex items-center justify-between px-4 relative"
-        style={{
-          height: 28,
-          minHeight: 28,
-          marginTop: -28,
-          background: `linear-gradient(to bottom, transparent, ${colors.containerBg} 70%)`,
-          zIndex: 2,
-        }}
-      >
+        {/* Activity row — absolutely positioned over bottom of scroll area */}
+        <div
+          className="flex items-center justify-between px-4"
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 28,
+            background: `linear-gradient(to bottom, transparent, ${colors.containerBg} 70%)`,
+            zIndex: 2,
+          }}
+        >
         {/* Left: status indicator */}
         <div className="flex items-center gap-1.5 text-[11px] min-w-0">
           {isRunning && (
@@ -435,7 +442,10 @@ export function ConversationView() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </div>{/* end scroll + activity wrapper */}
+
+      {/* Task list — pinned below scroll area */}
+      <TodoListPanel messages={tab.messages} isRunning={isRunning} />
     </div>
   )
 }

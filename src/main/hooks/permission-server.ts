@@ -21,7 +21,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { EventEmitter } from 'events'
 import { writeFileSync, mkdirSync, unlinkSync } from 'fs'
-import { tmpdir } from 'os'
+import { tmpdir, homedir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { log as _log } from '../logger'
@@ -567,6 +567,21 @@ export class PermissionServer extends EventEmitter {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(allowResponse('Safe read-only command')))
       return
+    }
+
+    // Auto-approve writes to ~/.claude/plans/ — Claude's internal planning directory.
+    // Blocking these breaks plan mode, which is a core agent mechanic, not a user action.
+    if ((toolName === 'Write' || toolName === 'Edit' || toolName === 'MultiEdit')) {
+      const filePath = typeof toolRequest.tool_input?.file_path === 'string'
+        ? toolRequest.tool_input.file_path
+        : ''
+      const plansDir = join(homedir(), '.claude', 'plans')
+      if (filePath.startsWith(plansDir + '/')) {
+        if (DEBUG) log(`Auto-allowing ${toolName} to plans dir: ${filePath}`)
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(allowResponse('Claude internal plans directory')))
+        return
+      }
     }
 
     // Generate question ID and wait for user decision
