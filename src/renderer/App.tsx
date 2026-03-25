@@ -209,6 +209,7 @@ export default function App() {
                   : t
               ),
             }))
+            window.coda.setPermissionMode(tabId, st.permissionMode)
           } else {
             // Sessionless tab (e.g. has editor state but no messages sent yet)
             const tabId = await useSessionStore.getState().createTabInDirectory(st.workingDirectory)
@@ -232,6 +233,7 @@ export default function App() {
                   : t
               ),
             }))
+            window.coda.setPermissionMode(tabId, st.permissionMode)
           }
         }
 

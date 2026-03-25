@@ -515,7 +515,7 @@ export class ControlPlane extends EventEmitter {
   }
 
   private _getPermissionMode(tabId: string): 'ask' | 'auto' | 'plan' {
-    return this.permissionModes.get(tabId) ?? 'plan'
+    return this.permissionModes.get(tabId) ?? 'auto'
   }
 
   closeTab(tabId: string): void {

@@ -346,6 +346,7 @@ export const useSessionStore = create<State>((set, get) => ({
       activeTabId: tab.id,
       ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
     }))
+    window.coda.setPermissionMode(tabId, tab.permissionMode)
     return tabId
   },
 
@@ -398,6 +399,7 @@ export const useSessionStore = create<State>((set, get) => ({
       activeTabId: tab.id,
       ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
     }))
+    window.coda.setPermissionMode(tabId, tab.permissionMode)
     return tabId
   },
 
@@ -953,6 +955,7 @@ export const useSessionStore = create<State>((set, get) => ({
         activeTabId: tab.id,
         isExpanded: true,
       }))
+      window.coda.setPermissionMode(tabId, tab.permissionMode)
       return tabId
     } catch {
       return null
