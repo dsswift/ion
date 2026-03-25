@@ -194,6 +194,8 @@ export interface TabState {
   bashExecId: string | null
   /** Custom pill outline color (null = use theme default) */
   pillColor: string | null
+  /** Session ID this tab was forked from (null if not a fork) */
+  forkedFromSessionId: string | null
   /** Worktree metadata when tab operates inside a managed worktree */
   worktree: WorktreeInfo | null
   /** True while waiting for the user to pick a source branch in the BranchPickerDialog */
@@ -495,6 +497,7 @@ export interface PersistedTab {
   permissionMode: 'ask' | 'auto' | 'plan'
   bashResults?: Array<{ command: string; stdout: string; stderr: string }>
   pillColor?: string | null
+  forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
 }
 

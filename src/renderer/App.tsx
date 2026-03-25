@@ -224,6 +224,7 @@ export default function App() {
                       additionalDirs: st.additionalDirs,
                       permissionMode: st.permissionMode,
                       pillColor: st.pillColor || null,
+                      forkedFromSessionId: st.forkedFromSessionId || null,
                       worktree: st.worktree || null,
                       historicalSessionIds: st.historicalSessionIds || [],
                     }

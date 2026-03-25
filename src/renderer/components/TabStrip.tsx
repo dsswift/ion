@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, FolderSimple, CheckCircle } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
@@ -158,11 +158,13 @@ function DirContextMenu({
   anchor,
   dirName,
   onCreateTab,
+  onForkTab,
   onClose,
 }: {
   anchor: { x: number; y: number }
   dirName: string
   onCreateTab: () => void
+  onForkTab?: () => void
   onClose: () => void
 }) {
   const colors = useColors()
@@ -223,6 +225,24 @@ function DirContextMenu({
         <FolderPlus size={14} color={colors.textSecondary} />
         <span>New tab in {dirName}</span>
       </button>
+      {onForkTab && (
+        <button
+          onClick={() => { onForkTab(); onClose() }}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={{
+            fontSize: 12,
+            color: colors.textPrimary,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <GitFork size={14} color={colors.textSecondary} />
+          <span>Fork conversation</span>
+        </button>
+      )}
     </motion.div>,
     popoverLayer,
   )
@@ -231,14 +251,14 @@ function DirContextMenu({
 function TabContextMenu({
   anchor,
   tab,
-  onCloneTab,
+  onForkTab,
   onNewTabInDir,
   onFinishWork,
   onClose,
 }: {
   anchor: { x: number; y: number }
   tab: TabState
-  onCloneTab: () => void
+  onForkTab?: () => void
   onNewTabInDir: () => void
   onFinishWork: () => void
   onClose: () => void
@@ -293,29 +313,29 @@ function TabContextMenu({
         minWidth: 160,
       }}
     >
+      {onForkTab && (
+        <button
+          onClick={() => { onForkTab(); onClose() }}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={menuItemStyle}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <GitFork size={14} color={colors.textSecondary} />
+          <span>Fork conversation</span>
+        </button>
+      )}
       {tab.workingDirectory && (
-        <>
-          <button
-            onClick={() => { onCloneTab(); onClose() }}
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={menuItemStyle}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <FolderPlus size={14} color={colors.textSecondary} />
-            <span>Clone tab</span>
-          </button>
-          <button
-            onClick={() => { onNewTabInDir(); onClose() }}
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={menuItemStyle}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <FolderOpen size={14} color={colors.textSecondary} />
-            <span>New tab in directory</span>
-          </button>
-        </>
+        <button
+          onClick={() => { onNewTabInDir(); onClose() }}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={menuItemStyle}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <FolderOpen size={14} color={colors.textSecondary} />
+          <span>New tab in directory</span>
+        </button>
       )}
       {tab.worktree && (
         <button
@@ -655,7 +675,9 @@ function TabPill({
       >
         <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} />
       </span>
-      {tab.worktree ? (
+      {tab.forkedFromSessionId && !tab.worktree ? (
+        <GitFork size={11} color={colors.textTertiary} className="flex-shrink-0" />
+      ) : tab.worktree ? (
         <GitBranch size={11} color={colors.textTertiary} className="flex-shrink-0" />
       ) : gitOpsMode === 'worktree' ? (
         <FolderSimple size={11} color={colors.textTertiary} className="flex-shrink-0" />
@@ -905,6 +927,7 @@ export function TabStrip() {
               anchor={dirMenuAnchor}
               dirName={dirName}
               onCreateTab={() => createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))}
+              onForkTab={menuTab.claudeSessionId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
               onClose={() => setDirMenuTabId(null)}
             />
           )
@@ -931,9 +954,7 @@ export function TabStrip() {
               key="tab-context-menu"
               anchor={tabMenuAnchor}
               tab={menuTab}
-              onCloneTab={() => {
-                if (menuTab.workingDirectory) createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
-              }}
+              onForkTab={menuTab.claudeSessionId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
               onNewTabInDir={() => {
                 if (menuTab.workingDirectory) createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
               }}
