@@ -71,12 +71,12 @@ interface State {
   gitPanelOpen: boolean
   /** Tab IDs with their terminal panel visible */
   terminalOpenTabIds: Set<string>
-  /** Tab IDs with file explorer visible */
-  fileExplorerOpenTabIds: Set<string>
+  /** Directories with file explorer visible */
+  fileExplorerOpenDirs: Set<string>
   /** Per-directory explorer state (expanded nodes, selection). Key = working directory path */
   fileExplorerStates: Map<string, { expandedPaths: Set<string>; selectedPath: string | null }>
-  /** Tab IDs with file editor visible */
-  fileEditorOpenTabIds: Set<string>
+  /** Directories with file editor visible */
+  fileEditorOpenDirs: Set<string>
   /** Whether file editor floating window is in the foreground */
   fileEditorFocused: boolean
   /** Per-directory editor state (open files, active file). Key = working directory path */
@@ -239,9 +239,9 @@ export const useSessionStore = create<State>((set, get) => ({
   preferredModel: null,
   gitPanelOpen: false,
   terminalOpenTabIds: new Set<string>(),
-  fileExplorerOpenTabIds: new Set<string>(),
+  fileExplorerOpenDirs: new Set<string>(),
   fileExplorerStates: new Map(),
-  fileEditorOpenTabIds: new Set<string>(),
+  fileEditorOpenDirs: new Set<string>(),
   fileEditorFocused: true,
   fileEditorStates: new Map(),
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
@@ -297,10 +297,6 @@ export const useSessionStore = create<State>((set, get) => ({
     const defaultBase = useThemeStore.getState().defaultBaseDirectory
     const startDir = defaultBase || homeDir
     const hasChosen = !!defaultBase
-    const { activeTabId: prevTabId, tabs: prevTabs, fileEditorOpenTabIds: prevEditorOpen } = get()
-    const prevTab = prevTabs.find((t) => t.id === prevTabId)
-    const inheritEditor = prevTab && prevEditorOpen.has(prevTab.id) && prevTab.workingDirectory === startDir
-
     let tabId: string
     try {
       const res = await window.coda.createTab()
@@ -344,7 +340,6 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
-      ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
     }))
     window.coda.setPermissionMode(tabId, tab.permissionMode)
     return tabId
@@ -352,9 +347,6 @@ export const useSessionStore = create<State>((set, get) => ({
 
   createTabInDirectory: async (dir, useWorktree) => {
     useThemeStore.getState().addRecentBaseDirectory(dir)
-    const { activeTabId: prevTabId, tabs: prevTabs, fileEditorOpenTabIds: prevEditorOpen } = get()
-    const prevTab = prevTabs.find((t) => t.id === prevTabId)
-    const inheritEditor = prevTab && prevEditorOpen.has(prevTab.id) && prevTab.workingDirectory === dir
 
     let tabId: string
     try {
@@ -397,7 +389,6 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
-      ...(inheritEditor ? { fileEditorOpenTabIds: new Set([...s.fileEditorOpenTabIds, tab.id]) } : {}),
     }))
     window.coda.setPermissionMode(tabId, tab.permissionMode)
     return tabId
@@ -499,10 +490,13 @@ export const useSessionStore = create<State>((set, get) => ({
 
   toggleFileExplorer: (tabId) => {
     set((s) => {
-      const next = new Set(s.fileExplorerOpenTabIds)
-      if (next.has(tabId)) next.delete(tabId)
-      else next.add(tabId)
-      return { fileExplorerOpenTabIds: next }
+      const tab = s.tabs.find((t) => t.id === tabId)
+      if (!tab) return {}
+      const dir = tab.workingDirectory
+      const next = new Set(s.fileExplorerOpenDirs)
+      if (next.has(dir)) next.delete(dir)
+      else next.add(dir)
+      return { fileExplorerOpenDirs: next }
     })
   },
 
@@ -540,37 +534,36 @@ export const useSessionStore = create<State>((set, get) => ({
 
   toggleFileEditor: (tabId) => {
     set((s) => {
-      const next = new Set(s.fileEditorOpenTabIds)
-      if (next.has(tabId)) {
-        next.delete(tabId)
-        return { fileEditorOpenTabIds: next }
+      const tab = s.tabs.find((t) => t.id === tabId)
+      if (!tab) return {}
+      const dir = tab.workingDirectory
+      const next = new Set(s.fileEditorOpenDirs)
+      if (next.has(dir)) {
+        next.delete(dir)
+        return { fileEditorOpenDirs: next }
       }
-      next.add(tabId)
+      next.add(dir)
       // Bring editor to front when toggling on
       set({ fileEditorFocused: true })
       // If no files open for this tab's directory, create a scratch .md file
-      const tab = s.tabs.find((t) => t.id === tabId)
-      const dir = tab?.workingDirectory
-      if (dir) {
-        const current = s.fileEditorStates.get(dir)
-        if (!current || current.files.length === 0) {
-          const states = new Map(s.fileEditorStates)
-          const id = nextEditorFileId()
-          const newFile: FileEditorTab = {
-            id,
-            filePath: null,
-            fileName: 'Untitled.md',
-            content: '',
-            savedContent: '',
-            isDirty: false,
-            isReadOnly: false,
-            isPreview: false,
-          }
-          states.set(dir, { activeFileId: id, files: [newFile] })
-          return { fileEditorOpenTabIds: next, fileEditorStates: states }
+      const current = s.fileEditorStates.get(dir)
+      if (!current || current.files.length === 0) {
+        const states = new Map(s.fileEditorStates)
+        const id = nextEditorFileId()
+        const newFile: FileEditorTab = {
+          id,
+          filePath: null,
+          fileName: 'Untitled.md',
+          content: '',
+          savedContent: '',
+          isDirty: false,
+          isReadOnly: false,
+          isPreview: false,
         }
+        states.set(dir, { activeFileId: id, files: [newFile] })
+        return { fileEditorOpenDirs: next, fileEditorStates: states }
       }
-      return { fileEditorOpenTabIds: next }
+      return { fileEditorOpenDirs: next }
     })
   },
 
@@ -603,15 +596,15 @@ export const useSessionStore = create<State>((set, get) => ({
         }
         states.set(dir, { activeFileId: id, files: [...current.files, newFile] })
       }
-      // Also make editor visible for this tab
-      const editorOpen = new Set(s.fileEditorOpenTabIds)
-      editorOpen.add(tabId)
+      // Also make editor visible for this directory
+      const editorOpen = new Set(s.fileEditorOpenDirs)
+      editorOpen.add(dir)
       // Close explorer if setting enabled
-      const result: Record<string, any> = { fileEditorStates: states, fileEditorOpenTabIds: editorOpen }
+      const result: Record<string, any> = { fileEditorStates: states, fileEditorOpenDirs: editorOpen }
       if (closeExplorerOnFileOpen) {
-        const explorerIds = new Set(s.fileExplorerOpenTabIds)
-        explorerIds.delete(tabId)
-        result.fileExplorerOpenTabIds = explorerIds
+        const explorerIds = new Set(s.fileExplorerOpenDirs)
+        explorerIds.delete(dir)
+        result.fileExplorerOpenDirs = explorerIds
       }
       return result
     })
@@ -628,13 +621,11 @@ export const useSessionStore = create<State>((set, get) => ({
         activeFileId = files.length > 0 ? files[files.length - 1].id : null
       }
       states.set(dir, { activeFileId, files })
-      // If last file closed, also close the editor panel for all tabs sharing this dir
+      // If last file closed, also close the editor panel for this directory
       if (files.length === 0) {
-        const editorOpen = new Set(s.fileEditorOpenTabIds)
-        for (const tab of s.tabs) {
-          if (tab.workingDirectory === dir) editorOpen.delete(tab.id)
-        }
-        return { fileEditorStates: states, fileEditorOpenTabIds: editorOpen }
+        const editorOpen = new Set(s.fileEditorOpenDirs)
+        editorOpen.delete(dir)
+        return { fileEditorStates: states, fileEditorOpenDirs: editorOpen }
       }
       return { fileEditorStates: states }
     })
@@ -845,18 +836,26 @@ export const useSessionStore = create<State>((set, get) => ({
       next.delete(tabId)
       set({ terminalOpenTabIds: next })
     }
-    // Clean up file explorer/editor visibility
-    const explorerIds = get().fileExplorerOpenTabIds
-    if (explorerIds.has(tabId)) {
-      const next = new Set(explorerIds)
-      next.delete(tabId)
-      set({ fileExplorerOpenTabIds: next })
-    }
-    const editorIds = get().fileEditorOpenTabIds
-    if (editorIds.has(tabId)) {
-      const next = new Set(editorIds)
-      next.delete(tabId)
-      set({ fileEditorOpenTabIds: next })
+    // Clean up dir-based explorer/editor visibility if no other tabs share this directory
+    if (closingTab) {
+      const dir = closingTab.workingDirectory
+      const otherTabInDir = get().tabs.some((t) => t.id !== tabId && t.workingDirectory === dir)
+      if (!otherTabInDir) {
+        const updates: Record<string, any> = {}
+        const explorerDirs = get().fileExplorerOpenDirs
+        if (explorerDirs.has(dir)) {
+          const next = new Set(explorerDirs)
+          next.delete(dir)
+          updates.fileExplorerOpenDirs = next
+        }
+        const editorDirs = get().fileEditorOpenDirs
+        if (editorDirs.has(dir)) {
+          const next = new Set(editorDirs)
+          next.delete(dir)
+          updates.fileEditorOpenDirs = next
+        }
+        if (Object.keys(updates).length > 0) set(updates)
+      }
     }
 
     const s = get()
@@ -1048,7 +1047,7 @@ export const useSessionStore = create<State>((set, get) => ({
         if (t.id !== activeTabId) return t
         const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
         const title = needsTitle
-          ? (command.length > 30 ? command.substring(0, 27) + '...' : command)
+          ? (command.length > 40 ? command.substring(0, 37) + '...' : command)
           : t.title
         return {
           ...t,
@@ -1381,7 +1380,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
     const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
     const title = needsTitle
-      ? (prompt.length > 30 ? prompt.substring(0, 27) + '...' : prompt)
+      ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
       : tab.title
 
     // Optimistic update: clear attachments
@@ -1878,24 +1877,11 @@ function persistTabs(): void {
     }
   }
 
-  // Resolve which persisted tabs have the editor open (by index into persistedTabs)
-  const { isExpanded, fileEditorOpenTabIds, editorGeometry, planGeometry } = useSessionStore.getState()
-  const editorOpenIndices: number[] = []
-  // Build a lookup from tab id -> persisted index
-  let persistedIdx = 0
-  for (const t of tabs) {
-    const isPersisted = t.claudeSessionId || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory))
-    if (isPersisted) {
-      if (fileEditorOpenTabIds.has(t.id)) {
-        editorOpenIndices.push(persistedIdx)
-      }
-      persistedIdx++
-    }
-  }
+  const { isExpanded, fileEditorOpenDirs, editorGeometry, planGeometry } = useSessionStore.getState()
 
   // Resolve active tab as index into persistedTabs (handles sessionless tabs)
   let activeTabIndex: number | null = null
-  persistedIdx = 0
+  let persistedIdx = 0
   for (const t of tabs) {
     const isPersisted = t.claudeSessionId || (t.hasChosenDirectory && dirsWithEditorState.has(t.workingDirectory))
     if (isPersisted) {
@@ -1910,7 +1896,7 @@ function persistTabs(): void {
     tabs: persistedTabs,
     editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
     isExpanded,
-    editorOpenSessionIds: editorOpenIndices.length > 0 ? editorOpenIndices : undefined,
+    editorOpenDirs: fileEditorOpenDirs.size > 0 ? [...fileEditorOpenDirs] : undefined,
     editorGeometry,
     planGeometry,
   }
@@ -1919,7 +1905,7 @@ function persistTabs(): void {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 useSessionStore.subscribe((state, prev) => {
-  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenTabIds !== prev.fileEditorOpenTabIds || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry) {
+  if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry) {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(persistTabs, 100)
   }
@@ -1928,17 +1914,18 @@ useSessionStore.subscribe((state, prev) => {
 // Close terminal, explorer, and git panel when conversation collapses
 useSessionStore.subscribe((state, prev) => {
   if (prev.isExpanded && !state.isExpanded) {
-    const { activeTabId, terminalOpenTabIds, fileExplorerOpenTabIds } = state
+    const { activeTabId, terminalOpenTabIds, fileExplorerOpenDirs, tabs: currentTabs } = state
     const updates: Record<string, any> = {}
     if (terminalOpenTabIds.has(activeTabId)) {
       const next = new Set(terminalOpenTabIds)
       next.delete(activeTabId)
       updates.terminalOpenTabIds = next
     }
-    if (fileExplorerOpenTabIds.has(activeTabId)) {
-      const next = new Set(fileExplorerOpenTabIds)
-      next.delete(activeTabId)
-      updates.fileExplorerOpenTabIds = next
+    const activeDir = currentTabs.find((t) => t.id === activeTabId)?.workingDirectory
+    if (activeDir && fileExplorerOpenDirs.has(activeDir)) {
+      const next = new Set(fileExplorerOpenDirs)
+      next.delete(activeDir)
+      updates.fileExplorerOpenDirs = next
     }
     if (state.gitPanelOpen) {
       updates.gitPanelOpen = false

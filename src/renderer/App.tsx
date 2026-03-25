@@ -323,16 +323,21 @@ export default function App() {
           }
         }
 
-        // Restore which tabs had the file editor open (by index)
-        if (saved.editorOpenSessionIds && saved.editorOpenSessionIds.length > 0) {
+        // Restore which directories had the file editor open
+        if (saved.editorOpenDirs && saved.editorOpenDirs.length > 0) {
+          useSessionStore.setState({ fileEditorOpenDirs: new Set(saved.editorOpenDirs) })
+        } else if (saved.editorOpenSessionIds && saved.editorOpenSessionIds.length > 0) {
+          // Backwards compat: map old per-tab indices to directories
           const openIndexSet = new Set(saved.editorOpenSessionIds)
-          const editorOpenTabIds = new Set(
-            restoredTabIds
-              .filter((r) => openIndexSet.has(r.index))
-              .map((r) => r.tabId)
-          )
-          if (editorOpenTabIds.size > 0) {
-            useSessionStore.setState({ fileEditorOpenTabIds: editorOpenTabIds })
+          const dirs = new Set<string>()
+          for (const r of restoredTabIds) {
+            if (openIndexSet.has(r.index)) {
+              const st = saved.tabs[r.index]
+              if (st?.workingDirectory) dirs.add(st.workingDirectory)
+            }
+          }
+          if (dirs.size > 0) {
+            useSessionStore.setState({ fileEditorOpenDirs: dirs })
           }
         }
 
@@ -497,7 +502,7 @@ export default function App() {
         const tab = s.tabs.find((t) => t.id === s.activeTabId)
         if (!tab) return
         const dir = tab.workingDirectory
-        if (s.fileEditorOpenTabIds.has(s.activeTabId)) {
+        if (s.fileEditorOpenDirs.has(dir)) {
           s.createScratchFile(dir)
         } else {
           s.toggleFileEditor(s.activeTabId)
@@ -533,8 +538,8 @@ export default function App() {
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const terminalOpen = useSessionStore((s) => s.terminalOpenTabIds.has(s.activeTabId))
-  const explorerOpen = useSessionStore((s) => s.fileExplorerOpenTabIds.has(s.activeTabId))
-  const editorOpen = useSessionStore((s) => s.fileEditorOpenTabIds.has(s.activeTabId))
+  const explorerOpen = useSessionStore((s) => s.fileExplorerOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
+  const editorOpen = useSessionStore((s) => s.fileEditorOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
   const editorDirState = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
     return tab ? s.fileEditorStates.get(tab.workingDirectory) : undefined

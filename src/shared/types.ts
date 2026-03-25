@@ -542,7 +542,9 @@ export interface PersistedTabState {
   editorStates?: Record<string, PersistedEditorState>
   /** Whether the conversation view was expanded */
   isExpanded?: boolean
-  /** Indices into tabs array for tabs that had the file editor open */
+  /** Directories that had the file editor open */
+  editorOpenDirs?: string[]
+  /** @deprecated Indices into tabs array for tabs that had the file editor open */
   editorOpenSessionIds?: number[]
   /** Global file editor window position and size */
   editorGeometry?: { x: number; y: number; w: number; h: number }

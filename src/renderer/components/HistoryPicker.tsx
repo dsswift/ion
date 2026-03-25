@@ -110,7 +110,7 @@ export function HistoryPicker() {
     }
     const title = session.customTitle
       || (session.firstMessage
-        ? (session.firstMessage.length > 30 ? session.firstMessage.substring(0, 27) + '...' : session.firstMessage)
+        ? (session.firstMessage.length > 40 ? session.firstMessage.substring(0, 37) + '...' : session.firstMessage)
         : session.slug || 'Resumed')
     void resumeSession(session.sessionId, title, effectiveProjectPath, session.customTitle)
   }
