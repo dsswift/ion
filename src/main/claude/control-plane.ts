@@ -1,4 +1,7 @@
 import { EventEmitter } from 'events'
+import { homedir } from 'os'
+import { join, dirname } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { RunManager } from './run-manager'
 import { PtyRunManager } from './pty-run-manager'
 import { PermissionServer, maskSensitiveFields } from '../hooks/permission-server'
@@ -12,6 +15,10 @@ import type {
   RunOptions,
   EnrichedError,
 } from '../../shared/types'
+
+const SETTINGS_DIR = join(homedir(), '.coda')
+const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
+const CLAUDE_CONFIG_DIR = join(homedir(), '.claude')
 
 const MAX_QUEUE_DEPTH = 32
 
@@ -77,6 +84,12 @@ export class ControlPlane extends EventEmitter {
   private runTokens = new Map<string, string>()
   /** Per-tab permission modes */
   private permissionModes = new Map<string, 'ask' | 'auto' | 'plan'>()
+  /** Per-tab tools approved via the denied-tools card */
+  private tabApprovedTools = new Map<string, Set<string>>()
+  /** Pending settings file write requests (questionId → original tool request) */
+  private settingsFileRequests = new Map<string, HookToolRequest>()
+  /** Tabs where the user chose "Allow for Session" on settings file writes */
+  private settingsAutoApproved = new Set<string>()
 
   /** Resolves when the permission server is ready (or failed). Dispatch awaits this. */
   private hookServerReady: Promise<void>
@@ -122,10 +135,42 @@ export class ControlPlane extends EventEmitter {
         return
       }
 
+      // Detect writes to ~/.claude/ (Claude Code settings files).
+      // Claude Code has a "sensitive file" guard that denies these even after
+      // the hook approves — so we intercept here and perform the write ourselves.
+      const isSettingsFile = this._isSettingsPath(toolRequest.tool_input?.file_path)
+        && ['Write', 'Edit', 'MultiEdit'].includes(toolRequest.tool_name)
+
+      // Settings file with session-wide auto-approve: perform write immediately
+      if (isSettingsFile && this.settingsAutoApproved.has(tabId)) {
+        const filePath = toolRequest.tool_input?.file_path as string
+        try {
+          this._performSettingsFileOp(toolRequest)
+          log(`Settings file auto-approved for tab ${tabId.substring(0, 8)}…: ${filePath}`)
+          this.permissionServer.respondToPermission(questionId, 'deny',
+            `Handled by CODA: successfully wrote ${filePath}. The file has been updated.`)
+        } catch (err) {
+          log(`Settings file auto-write failed: ${(err as Error).message}`)
+          this.permissionServer.respondToPermission(questionId, 'deny',
+            `Settings file write failed: ${(err as Error).message}`)
+        }
+        return
+      }
+
       // Auto/Plan mode: immediately allow without showing UI
       if (tabMode === 'auto' || tabMode === 'plan') {
-        this.permissionServer.respondToPermission(questionId, 'allow', 'Auto mode')
-        return
+        // Settings files need explicit user approval (if the setting is on)
+        if (isSettingsFile && this._isAllowSettingsEditsEnabled()) {
+          log(`Settings file detected in ${tabMode} mode — showing approval card`)
+          this.settingsFileRequests.set(questionId, toolRequest)
+          // Fall through to show the permission card
+        } else {
+          this.permissionServer.respondToPermission(questionId, 'allow', 'Auto mode')
+          return
+        }
+      } else if (isSettingsFile && this._isAllowSettingsEditsEnabled()) {
+        // Ask mode + settings file: track for special handling on approve
+        this.settingsFileRequests.set(questionId, toolRequest)
       }
 
       // Mask sensitive fields before sending to renderer (defense-in-depth)
@@ -547,8 +592,17 @@ export class ControlPlane extends EventEmitter {
     })
 
     this.permissionModes.delete(tabId)
+    this.tabApprovedTools.delete(tabId)
+    this.settingsAutoApproved.delete(tabId)
     this.tabs.delete(tabId)
     log(`Tab closed: ${tabId}`)
+  }
+
+  approveToolsForTab(tabId: string, toolNames: string[]): void {
+    let approved = this.tabApprovedTools.get(tabId)
+    if (!approved) { approved = new Set(); this.tabApprovedTools.set(tabId, approved) }
+    for (const name of toolNames) approved.add(name)
+    log(`Approved tools for tab ${tabId}: ${toolNames.join(', ')}`)
   }
 
   // ─── Submit Prompt ───
@@ -642,6 +696,12 @@ export class ControlPlane extends EventEmitter {
     log(`Dispatch [${requestId.substring(0, 8)}]: mode=${tabMode}, resume=${!!tab.claudeSessionId}, session=${tab.claudeSessionId?.substring(0, 8) || 'new'}`)
     if (tabMode === 'plan') {
       options = { ...options, permissionModeCli: 'plan' }
+    }
+
+    // Include any tools the user approved via the denied-tools card
+    const extraAllowed = this.tabApprovedTools.get(tabId)
+    if (extraAllowed?.size) {
+      options = { ...options, allowedTools: [...(options.allowedTools || []), ...extraAllowed] }
     }
 
     tab.activeRequestId = requestId
@@ -745,6 +805,29 @@ export class ControlPlane extends EventEmitter {
     // Pass optionId directly — it matches the permission card option IDs
     // (allow, allow-session, allow-domain, deny).
     if (questionId.startsWith('hook-')) {
+      // Settings file writes: if approved, perform the write ourselves and deny
+      // the hook (Claude Code's "sensitive file" guard would deny it anyway).
+      const settingsReq = this.settingsFileRequests.get(questionId)
+      if (settingsReq && optionId !== 'deny') {
+        const filePath = settingsReq.tool_input?.file_path as string
+        // Track session-wide auto-approve for this tab
+        if (optionId === 'allow-session') {
+          this.settingsAutoApproved.add(tabId)
+          log(`Settings file writes auto-approved for tab ${tabId.substring(0, 8)}…`)
+        }
+        try {
+          this._performSettingsFileOp(settingsReq)
+          this.settingsFileRequests.delete(questionId)
+          return this.permissionServer.respondToPermission(questionId, 'deny',
+            `Handled by CODA: successfully wrote ${filePath}. The file has been updated.`)
+        } catch (err) {
+          log(`Settings file write failed: ${(err as Error).message}`)
+          this.settingsFileRequests.delete(questionId)
+          return this.permissionServer.respondToPermission(questionId, 'deny',
+            `Settings file write failed: ${(err as Error).message}`)
+        }
+      }
+      this.settingsFileRequests.delete(questionId)
       return this.permissionServer.respondToPermission(questionId, optionId)
     }
 
@@ -907,6 +990,49 @@ export class ControlPlane extends EventEmitter {
     if (this._isDrainComplete()) {
       this.drainResolve?.()
       this.drainResolve = null
+    }
+  }
+
+  // ─── Settings File Operations ───
+
+  /** Check if a file path is inside ~/.claude/ (Claude Code's config directory) */
+  private _isSettingsPath(filePath: unknown): boolean {
+    if (typeof filePath !== 'string') return false
+    return filePath.startsWith(CLAUDE_CONFIG_DIR + '/')
+  }
+
+  /** Read the allowSettingsEdits setting from disk */
+  private _isAllowSettingsEditsEnabled(): boolean {
+    try {
+      if (existsSync(SETTINGS_FILE)) {
+        const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+        return data.allowSettingsEdits === true
+      }
+    } catch {}
+    return false
+  }
+
+  /** Perform a Write/Edit operation on a settings file directly from Node.js */
+  private _performSettingsFileOp(toolRequest: HookToolRequest): void {
+    const input = toolRequest.tool_input
+    const filePath = input.file_path as string
+
+    if (toolRequest.tool_name === 'Write') {
+      const content = input.content as string
+      const dir = dirname(filePath)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      writeFileSync(filePath, content, 'utf-8')
+      log(`Settings file written: ${filePath}`)
+    } else if (toolRequest.tool_name === 'Edit' || toolRequest.tool_name === 'MultiEdit') {
+      const oldStr = input.old_string as string
+      const newStr = input.new_string as string
+      if (existsSync(filePath)) {
+        const current = readFileSync(filePath, 'utf-8')
+        writeFileSync(filePath, current.replace(oldStr, newStr), 'utf-8')
+        log(`Settings file edited: ${filePath}`)
+      } else {
+        throw new Error(`File does not exist: ${filePath}`)
+      }
     }
   }
 

@@ -247,6 +247,18 @@ export function ConversationView() {
                 // Resume session with the answer (no mode change, no context clear)
                 sendMessage(answer)
               }}
+              onApprove={(toolNames) => {
+                // Approve the denied tools for future runs on this tab
+                window.coda.approveDeniedTools(tab.id, toolNames)
+                // Dismiss the card
+                useSessionStore.setState((s) => ({
+                  tabs: s.tabs.map((t) =>
+                    t.id === tab.id ? { ...t, permissionDenied: null } : t
+                  ),
+                }))
+                // Tell the agent to retry
+                sendMessage('The denied tools have been approved. Please retry the operation.')
+              }}
               onImplement={async (mode, clearContext) => {
                 // Dismiss the card
                 useSessionStore.setState((s) => ({

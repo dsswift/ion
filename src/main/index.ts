@@ -521,6 +521,11 @@ ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }:
   return controlPlane.respondToPermission(tabId, questionId, optionId)
 })
 
+ipcMain.handle(IPC.APPROVE_DENIED_TOOLS, (_event, { tabId, toolNames }: { tabId: string; toolNames: string[] }) => {
+  log(`IPC APPROVE_DENIED_TOOLS: tab=${tabId} tools=${toolNames.join(',')}`)
+  controlPlane.approveToolsForTab(tabId, toolNames)
+})
+
 ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
   log(`IPC DISCOVER_COMMANDS (path=${projectPath})`)
   try {
@@ -1350,7 +1355,7 @@ ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { plugi
 
 const SETTINGS_DIR = join(homedir(), '.coda')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13 }
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, allowSettingsEdits: false }
 
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {

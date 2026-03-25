@@ -379,6 +379,7 @@ export const IPC = {
   PASTE_IMAGE: 'coda:paste-image',
   GET_DIAGNOSTICS: 'coda:get-diagnostics',
   RESPOND_PERMISSION: 'coda:respond-permission',
+  APPROVE_DENIED_TOOLS: 'coda:approve-denied-tools',
   INIT_SESSION: 'coda:init-session',
   RESET_TAB_SESSION: 'coda:reset-tab-session',
   ANIMATE_HEIGHT: 'coda:animate-height',

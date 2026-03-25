@@ -18,6 +18,8 @@ export function GeneralTab() {
   const setShowImplementClearContext = useThemeStore((s) => s.setShowImplementClearContext)
   const bashCommandEntry = useThemeStore((s) => s.bashCommandEntry)
   const setBashCommandEntry = useThemeStore((s) => s.setBashCommandEntry)
+  const allowSettingsEdits = useThemeStore((s) => s.allowSettingsEdits)
+  const setAllowSettingsEdits = useThemeStore((s) => s.setAllowSettingsEdits)
   const soundEnabled = useThemeStore((s) => s.soundEnabled)
   const setSoundEnabled = useThemeStore((s) => s.setSoundEnabled)
   const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
@@ -303,6 +305,14 @@ export function GeneralTab() {
         description="Type ! as the first character to run bash commands directly in the conversation."
         checked={bashCommandEntry}
         onChange={setBashCommandEntry}
+      />
+
+      <SettingToggle
+        label="Allow Settings Edits"
+        description="Show an approval card when the agent tries to edit its own settings files, instead of blocking."
+        checked={allowSettingsEdits}
+        onChange={setAllowSettingsEdits}
+        warning="The agent will be able to modify Claude Code settings (CLAUDE.md, settings.json) after your approval."
       />
 
       <SettingToggle
