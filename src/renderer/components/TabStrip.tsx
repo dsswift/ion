@@ -1488,6 +1488,7 @@ function GroupPill({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number } | null>(null)
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
@@ -1550,7 +1551,11 @@ function GroupPill({
           if (tabGroupMode === 'manual') {
             e.preventDefault()
             e.stopPropagation()
-            setMgmtMenu({ x: e.clientX, y: e.clientY })
+            if (group.tabs.length === 1) {
+              setTabMenu({ x: e.clientX, y: e.clientY })
+            } else {
+              setMgmtMenu({ x: e.clientX, y: e.clientY })
+            }
           }
         }}
       >
@@ -1658,6 +1663,23 @@ function GroupPill({
             onClose={() => setMgmtMenu(null)}
           />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {tabMenu && group.tabs.length === 1 && (() => {
+          const tab = group.tabs[0]
+          return (
+            <TabContextMenu
+              key="group-tab-ctx"
+              anchor={tabMenu}
+              tab={tab}
+              onForkTab={tab.claudeSessionId ? () => { useSessionStore.getState().forkTab(tab.id) } : undefined}
+              onNewTabInDir={() => useSessionStore.getState().createTabInDirectory(tab.workingDirectory, shouldUseWorktree(false))}
+              onFinishWork={() => { if (tab.worktree) useSessionStore.getState().finishWorktreeTab(tab.id) }}
+              onClose={() => setTabMenu(null)}
+            />
+          )
+        })()}
       </AnimatePresence>
     </>
   )
