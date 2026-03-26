@@ -55,7 +55,7 @@ function segmentText(text: string): TextSegment[] {
 
 // ─── LinkSegment — interactive span for detected file/url when CMD held ───
 
-const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.py', '.rs', '.go', '.css', '.html'])
+export const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.py', '.rs', '.go', '.css', '.html'])
 
 export function LinkSegment({
   segment,
