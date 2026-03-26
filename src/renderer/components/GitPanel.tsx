@@ -11,6 +11,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { DiffViewer } from './DiffViewer'
+import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
 import type { GitChangedFile, GitCommit, GitCommitDetail, GitBranchInfo } from '../../shared/types'
 import type { GitGraphNode } from '../utils/gitGraphLayout'
 
@@ -320,6 +321,7 @@ function BranchPicker({
 function FileRow({
   file,
   depth,
+  directory,
   onStage,
   onUnstage,
   onDiscard,
@@ -328,6 +330,7 @@ function FileRow({
 }: {
   file: GitChangedFile
   depth: number
+  directory: string
   onStage: (path: string) => void
   onUnstage: (path: string) => void
   onDiscard: (path: string) => void
@@ -335,6 +338,8 @@ function FileRow({
   isSelected: boolean
 }) {
   const colors = useColors()
+  const cmdHeld = useCmdHeld()
+  const { onOpenFile } = useNavigableText()
   const fileName = file.path.split('/').pop() || file.path
 
   return (
@@ -346,7 +351,14 @@ function FileRow({
         paddingRight: 4,
         background: isSelected ? colors.surfaceHover : undefined,
       }}
-      onClick={() => onClick(file)}
+      onClick={(e) => {
+        if (e.metaKey) {
+          e.preventDefault()
+          onOpenFile(directory + '/' + file.path)
+          return
+        }
+        onClick(file)
+      }}
     >
       <span
         className="text-[10px] font-mono flex-shrink-0"
@@ -356,7 +368,12 @@ function FileRow({
       </span>
       <span
         className="text-[10px] truncate flex-1"
-        style={{ color: colors.textSecondary, marginLeft: 6 }}
+        style={{
+          color: cmdHeld ? colors.accent : colors.textSecondary,
+          textDecoration: cmdHeld ? 'underline' : undefined,
+          textUnderlineOffset: 2,
+          marginLeft: 6,
+        }}
         title={file.path}
       >
         {fileName}
@@ -544,6 +561,7 @@ function GitChangesSection({
                 key={`s-${file.path}`}
                 file={file}
                 depth={0}
+                directory={directory}
                 onStage={handleStage}
                 onUnstage={handleUnstage}
                 onDiscard={handleDiscard}
@@ -576,6 +594,7 @@ function GitChangesSection({
                 key={`u-${file.path}`}
                 file={file}
                 depth={0}
+                directory={directory}
                 onStage={handleStage}
                 onUnstage={handleUnstage}
                 onDiscard={handleDiscard}

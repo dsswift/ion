@@ -17,7 +17,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('blur', () => { _cmdHeld = false; _notifyCmdListeners() })
 }
 
-function useCmdHeld(): boolean {
+export function useCmdHeld(): boolean {
   return useSyncExternalStore(
     (cb) => { _cmdListeners.add(cb); return () => { _cmdListeners.delete(cb) } },
     () => _cmdHeld,
