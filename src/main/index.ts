@@ -139,6 +139,14 @@ function createWindow(): void {
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   mainWindow.setAlwaysOnTop(true, 'screen-saver')
 
+  // Log renderer crashes and errors for diagnostics
+  mainWindow.webContents.on('console-message', (_e, level, message) => {
+    if (level >= 2) log(`[renderer:error] ${message}`)
+  })
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    log(`[renderer:gone] reason=${details.reason} exitCode=${details.exitCode}`)
+  })
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
     // Enable OS-level click-through for transparent regions.
@@ -2048,10 +2056,16 @@ async function requestPermissions(): Promise<void> {
   if (process.platform !== 'darwin') return
 
   // ── Microphone (for voice input via Whisper) ──
+  // CRITICAL: fire-and-forget. Do NOT await this call.
+  // macOS can stall the dialog (ad-hoc signature, reinstall, Sequoia changes)
+  // which blocks createWindow() and makes the app appear dead -- no window,
+  // no shortcuts, no tray response. The await version caused a full outage.
   try {
     const micStatus = systemPreferences.getMediaAccessStatus('microphone')
     if (micStatus === 'not-determined') {
-      await systemPreferences.askForMediaAccess('microphone')
+      systemPreferences.askForMediaAccess('microphone').catch((err: any) => {
+        log(`Permission preflight: microphone request failed — ${err.message}`)
+      })
     }
   } catch (err: any) {
     log(`Permission preflight: microphone check failed — ${err.message}`)

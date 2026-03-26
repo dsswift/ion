@@ -228,6 +228,7 @@ function makeLocalTab(): TabState {
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,
+    contextTokens: null,
   }
 }
 
@@ -1729,6 +1730,10 @@ export const useSessionStore = create<State>((set, get) => ({
                 }
               }
             }
+            // Track context usage from assistant message
+            if (event.message?.usage?.input_tokens) {
+              updated.contextTokens = event.message.usage.input_tokens
+            }
             break
           }
 
@@ -1743,6 +1748,9 @@ export const useSessionStore = create<State>((set, get) => ({
               numTurns: event.numTurns,
               usage: event.usage,
               sessionId: event.sessionId,
+            }
+            if (event.usage?.input_tokens) {
+              updated.contextTokens = event.usage.input_tokens
             }
             // ── Final text fallback ──
             // If neither text_chunks nor task_update text produced an assistant message,

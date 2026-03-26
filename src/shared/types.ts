@@ -216,6 +216,8 @@ export interface TabState {
   pendingWorktreeSetup: boolean
   /** Tab group assignment (null = ungrouped / auto-computed) */
   groupId: string | null
+  /** Latest input_tokens from API response (total context sent to model) */
+  contextTokens: number | null
 }
 
 export interface Message {

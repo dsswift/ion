@@ -129,6 +129,34 @@ function ModelPicker() {
   )
 }
 
+/* ─── Context Percentage Indicator ─── */
+
+function ContextIndicator() {
+  const colors = useColors()
+  const { contextTokens, sessionModel } = useSessionStore(
+    (s) => {
+      const tab = s.tabs.find((t) => t.id === s.activeTabId)
+      return { contextTokens: tab?.contextTokens ?? null, sessionModel: tab?.sessionModel ?? null }
+    },
+    (a, b) => a.contextTokens === b.contextTokens && a.sessionModel === b.sessionModel,
+  )
+
+  if (contextTokens === null) return null
+
+  const windowSize = sessionModel?.includes('[1m]') ? 1_000_000 : 200_000
+  const pct = Math.round((contextTokens / windowSize) * 100)
+
+  let color = colors.textTertiary
+  if (pct >= 70) color = '#e06040'
+  else if (pct >= 50) color = '#d4a017'
+
+  return (
+    <span className="text-[10px] px-0.5" style={{ color }}>
+      {pct}%
+    </span>
+  )
+}
+
 /* ─── Permission Mode Picker (per-tab) ─── */
 
 function PermissionModePicker() {
@@ -691,6 +719,7 @@ export function StatusBar() {
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 
         <ModelPicker />
+        <ContextIndicator />
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 

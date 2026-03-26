@@ -20,7 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "doctor": "bash scripts/doctor.sh",
-    "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh"
+    "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh && bash scripts/patch-zustand.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -48,7 +48,7 @@
     "node-pty": "^1.1.0",
     "react-markdown": "^9.0.0",
     "remark-gfm": "^4.0.0",
-    "zustand": "^5.0.0"
+    "zustand": "^5.0.11"
   },
   "build": {
     "appId": "com.dsswift.coda",
@@ -82,8 +82,8 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^3.0.0",
     "postcss": "^8.4.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
