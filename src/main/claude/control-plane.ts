@@ -691,11 +691,19 @@ export class ControlPlane extends EventEmitter {
       options = { ...options, hookSettingsPath }
     }
 
-    // Inject CLI permission mode for plan mode
+    // Map CODA permission modes to CLI permission modes.
+    // In -p (programmatic) mode, '--permission-mode default' fails because there's
+    // no TTY for interactive approval — the SDK denies tools before hooks can fire.
+    // For 'ask' mode: use 'auto' so the SDK doesn't interfere; the hook server
+    // handles all permission gating via PreToolUse hooks.
+    // For 'auto' mode: use 'auto' — everything auto-approved, no hooks needed.
+    // For 'plan' mode: use 'plan' — SDK handles plan-mode logic.
     const tabMode = this._getPermissionMode(tabId)
     log(`Dispatch [${requestId.substring(0, 8)}]: mode=${tabMode}, resume=${!!tab.claudeSessionId}, session=${tab.claudeSessionId?.substring(0, 8) || 'new'}`)
     if (tabMode === 'plan') {
       options = { ...options, permissionModeCli: 'plan' }
+    } else {
+      options = { ...options, permissionModeCli: 'auto' }
     }
 
     // Include any tools the user approved via the denied-tools card
