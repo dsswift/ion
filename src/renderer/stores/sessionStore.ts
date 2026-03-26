@@ -91,6 +91,9 @@ interface State {
   /** Which tab (if any) is in ephemeral tall view (null = normal) */
   tallViewTabId: string | null
 
+  /** Incremented on every sendMessage to force ConversationView scroll-to-bottom */
+  scrollToBottomCounter: number
+
   // Settings dialog state
   settingsOpen: boolean
 
@@ -252,6 +255,8 @@ export const useSessionStore = create<State>((set, get) => ({
   tabsReady: false,
 
   tallViewTabId: null,
+
+  scrollToBottomCounter: 0,
 
   // Settings dialog
   settingsOpen: false,
@@ -1499,6 +1504,7 @@ export const useSessionStore = create<State>((set, get) => ({
     // Optimistic update: clear attachments
     // If busy, add to queuedPrompts (shown at bottom); otherwise add to messages and set connecting
     set((s) => ({
+      scrollToBottomCounter: s.scrollToBottomCounter + 1,
       tabs: s.tabs.map((t) => {
         if (t.id !== activeTabId) return t
         const withEffectiveBase = t.hasChosenDirectory
