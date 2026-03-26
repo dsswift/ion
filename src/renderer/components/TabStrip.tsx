@@ -647,8 +647,8 @@ function getTabStatusColor(tab: TabState, colors: ReturnType<typeof useColors>):
   const waitingState = (() => {
     const tools = tab.permissionDenied?.tools
     if (!tools?.length) return null
-    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
     if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
+    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
     return null
   })()
 
@@ -983,8 +983,8 @@ function DropdownTabRow({
   const waitingState: 'plan-ready' | 'question' | null = (() => {
     const tools = tab.permissionDenied?.tools
     if (!tools?.length) return null
-    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
     if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
+    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
     return null
   })()
 
@@ -1471,14 +1471,16 @@ function GroupPill({
   const displayTitle = selectedTab ? (selectedTab.customTitle || selectedTab.title) : ''
 
   // Derive aggregate waiting state: if ANY tab in the group is waiting on the user
+  // Question takes priority over plan-ready across all tabs in the group
   const groupWaitingState: 'plan-ready' | 'question' | null = (() => {
+    let hasPlanReady = false
     for (const t of group.tabs) {
       const tools = t.permissionDenied?.tools
       if (!tools?.length) continue
-      if (tools.some((x) => x.toolName === 'ExitPlanMode')) return 'plan-ready'
       if (tools.some((x) => x.toolName === 'AskUserQuestion')) return 'question'
+      if (tools.some((x) => x.toolName === 'ExitPlanMode')) hasPlanReady = true
     }
-    return null
+    return hasPlanReady ? 'plan-ready' : null
   })()
 
   const waitingBorder = groupWaitingState === 'plan-ready'
@@ -1632,8 +1634,8 @@ function TabPill({
   const waitingState: 'plan-ready' | 'question' | null = (() => {
     const tools = tab.permissionDenied?.tools
     if (!tools?.length) return null
-    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
     if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
+    if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
     return null
   })()
 
