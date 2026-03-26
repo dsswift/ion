@@ -1118,15 +1118,20 @@ function DropdownTabRow({
         <span
           className="truncate flex-1"
           style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            setEditingTabId(tab.id)
-          }}
         >
           {displayTitle}
         </span>
       )}
+
+      <button
+        onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id) }}
+        className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+        style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+      >
+        <PencilSimple size={10} />
+      </button>
 
       {isConfirming ? (
         <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -1584,18 +1589,20 @@ function GroupPill({
               onCancel={() => setRenamingTitle(false)}
             />
           ) : (
-            <span
-              className="truncate max-w-[100px]"
-              onContextMenu={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setRenamingTitle(true)
-              }}
-            >
+            <span className="truncate max-w-[100px]">
               {displayTitle}
             </span>
           )
         )}
+        <button
+          onClick={(e) => { e.stopPropagation(); setRenamingTitle(true) }}
+          className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+          style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+        >
+          <PencilSimple size={10} />
+        </button>
         <span className="text-[10px] flex-shrink-0" style={{ color: colors.textTertiary }}>
           {group.tabs.length}
         </span>
