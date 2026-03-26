@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle, CaretDown, Rows, PencilSimple, Trash, Star, ArrowRight, ArrowsInSimple, ArrowsOutSimple } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle, CaretDown, Rows, PencilSimple, Trash, ArrowRight, ArrowsInSimple, ArrowsOutSimple } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
@@ -320,6 +320,7 @@ function TabContextMenu({
   onNewTabInDir,
   onFinishWork,
   onClose,
+  groupTabs,
 }: {
   anchor: { x: number; y: number }
   tab: TabState
@@ -327,22 +328,38 @@ function TabContextMenu({
   onNewTabInDir: () => void
   onFinishWork: () => void
   onClose: () => void
+  groupTabs?: TabState[]
 }) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const tabGroups = useThemeStore((s) => s.tabGroups)
+  const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
   const moveItemRef = useRef<HTMLButtonElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
+  const [moveAllSubmenu, setMoveAllSubmenu] = useState<{ x: number; y: number } | null>(null)
+  const moveAllItemRef = useRef<HTMLButtonElement>(null)
+  const moveAllSubmenuRef = useRef<HTMLDivElement>(null)
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const newGroupInputRef = useRef<HTMLInputElement>(null)
+
+  const showMoveAll = groupTabs && groupTabs.length > 1
+
+  useEffect(() => {
+    if (showNewGroupInput) newGroupInputRef.current?.focus()
+  }, [showNewGroupInput])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node) &&
-          (!submenuRef.current || !submenuRef.current.contains(e.target as Node))) { setMoveSubmenu(null); onClose() }
+          (!submenuRef.current || !submenuRef.current.contains(e.target as Node)) &&
+          (!moveAllSubmenuRef.current || !moveAllSubmenuRef.current.contains(e.target as Node))) { setMoveSubmenu(null); setMoveAllSubmenu(null); onClose() }
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setMoveSubmenu(null); onClose() }
+      if (e.key === 'Escape') { setMoveSubmenu(null); setMoveAllSubmenu(null); onClose() }
     }
     window.addEventListener('mousedown', handleClick)
     window.addEventListener('keydown', handleKey)
@@ -428,6 +445,7 @@ function TabContextMenu({
             style={menuItemStyle}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.background = colors.tabActive
+              setMoveAllSubmenu(null)
               if (moveItemRef.current) {
                 const rect = moveItemRef.current.getBoundingClientRect()
                 setMoveSubmenu({ x: rect.right, y: rect.top })
@@ -447,6 +465,32 @@ function TabContextMenu({
           </button>
         </>
       )}
+      {showMoveAll && tabGroupMode === 'manual' && (
+        <button
+          ref={moveAllItemRef}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={menuItemStyle}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = colors.tabActive
+            setMoveSubmenu(null)
+            if (moveAllItemRef.current) {
+              const rect = moveAllItemRef.current.getBoundingClientRect()
+              setMoveAllSubmenu({ x: rect.right, y: rect.top })
+            }
+          }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          onClick={() => {
+            if (moveAllItemRef.current) {
+              const rect = moveAllItemRef.current.getBoundingClientRect()
+              setMoveAllSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
+            }
+          }}
+        >
+          <ArrowsInSimple size={14} color={colors.textSecondary} />
+          <span>Move all to group</span>
+          <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
+        </button>
+      )}
       {moveSubmenu && (
         <MoveToGroupSubmenu
           anchor={moveSubmenu}
@@ -456,6 +500,90 @@ function TabContextMenu({
           onClose={() => { setMoveSubmenu(null); onClose() }}
         />
       )}
+      {moveAllSubmenu && showMoveAll && popoverLayer && (() => {
+        const currentGroupId = tab.groupId || ''
+        const effectiveGroups = getEffectiveTabGroups(tabGroups)
+        const targets = effectiveGroups
+          .filter((g) => g.id !== currentGroupId)
+          .map((g) => ({ id: g.id, label: g.label }))
+        const moveAllToGroup = (targetGroupId: string) => {
+          for (const t of groupTabs) moveTabToGroup(t.id, targetGroupId)
+          onClose()
+        }
+        return createPortal(
+          <motion.div
+            ref={(node) => { (moveAllSubmenuRef as React.MutableRefObject<HTMLDivElement | null>).current = node }}
+            data-coda-ui
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.1 }}
+            style={{
+              position: 'fixed',
+              left: Math.min(moveAllSubmenu.x + 8, window.innerWidth - 180),
+              top: Math.min(moveAllSubmenu.y, window.innerHeight - 200),
+              pointerEvents: 'auto',
+              background: colors.popoverBg,
+              border: `1px solid ${colors.popoverBorder}`,
+              borderRadius: 8,
+              padding: 4,
+              zIndex: 10001,
+              minWidth: 160,
+            }}
+          >
+            <div className="px-2 py-1 text-[10px] font-medium" style={{ color: colors.textTertiary }}>
+              Move all to group
+            </div>
+            {targets.map((t) => (
+              <button
+                key={t.id}
+                className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+                style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                onClick={() => moveAllToGroup(t.id)}
+              >
+                <ArrowRight size={12} color={colors.textTertiary} />
+                <span>{t.label}</span>
+              </button>
+            ))}
+            <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
+            {showNewGroupInput ? (
+              <div className="flex items-center gap-1 px-2 py-1">
+                <input
+                  ref={newGroupInputRef}
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newGroupName.trim()) {
+                      const id = useThemeStore.getState().createTabGroup(newGroupName.trim())
+                      moveAllToGroup(id)
+                    }
+                    if (e.key === 'Escape') setShowNewGroupInput(false)
+                  }}
+                  placeholder="Group name..."
+                  style={{
+                    flex: 1, fontSize: 12, background: 'transparent', border: `1px solid ${colors.inputBorder}`,
+                    borderRadius: 4, padding: '2px 6px', color: colors.textPrimary, outline: 'none',
+                  }}
+                />
+              </div>
+            ) : (
+              <button
+                className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+                style={{ fontSize: 12, color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                onClick={() => setShowNewGroupInput(true)}
+              >
+                <Plus size={12} color={colors.accent} />
+                <span>New group...</span>
+              </button>
+            )}
+          </motion.div>,
+          popoverLayer,
+        )
+      })()}
     </motion.div>,
     popoverLayer,
   )
@@ -1332,34 +1460,37 @@ function MoveToGroupSubmenu({
   )
 }
 
-/* ─── Group management context menu (manual mode) ─── */
+/* ─── Inactive group context menu (move all tabs) ─── */
 
-function GroupManagementMenu({
+function InactiveGroupMenu({
   anchor,
-  groupId,
-  groupLabel,
-  isDefault,
+  group,
   onClose,
 }: {
   anchor: { x: number; y: number }
-  groupId: string
-  groupLabel: string
-  isDefault: boolean
+  group: TabGroupView
   onClose: () => void
 }) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const [renaming, setRenaming] = useState(false)
-  const [renameValue, setRenameValue] = useState(groupLabel)
-  const renameRef = useRef<HTMLInputElement>(null)
+  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const tabGroups = useThemeStore((s) => s.tabGroups)
+  const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
+  const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
+  const moveItemRef = useRef<HTMLButtonElement>(null)
+  const submenuRef = useRef<HTMLDivElement>(null)
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (ref.current && !ref.current.contains(e.target as Node) &&
+          (!submenuRef.current || !submenuRef.current.contains(e.target as Node))) { setMoveSubmenu(null); onClose() }
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') { setMoveSubmenu(null); onClose() }
     }
     window.addEventListener('mousedown', handleClick)
     window.addEventListener('keydown', handleKey)
@@ -1370,8 +1501,8 @@ function GroupManagementMenu({
   }, [onClose])
 
   useEffect(() => {
-    if (renaming) renameRef.current?.focus()
-  }, [renaming])
+    if (showNewGroupInput) inputRef.current?.focus()
+  }, [showNewGroupInput])
 
   if (!popoverLayer) return null
 
@@ -1379,6 +1510,19 @@ function GroupManagementMenu({
   const left = Math.min(anchor.x, window.innerWidth - 180)
 
   const menuItemStyle = { fontSize: 12, color: colors.textPrimary, background: 'transparent' as string, border: 'none' as const, cursor: 'pointer' as const }
+
+  const moveAllToGroup = (targetGroupId: string) => {
+    for (const tab of group.tabs) {
+      moveTabToGroup(tab.id, targetGroupId)
+    }
+    onClose()
+  }
+
+  // Build available targets
+  const effectiveGroups = getEffectiveTabGroups(tabGroups)
+  const targets = effectiveGroups
+    .filter((g) => g.id !== group.groupId)
+    .map((g) => ({ id: g.id, label: g.label }))
 
   return createPortal(
     <motion.div
@@ -1397,81 +1541,109 @@ function GroupManagementMenu({
         border: `1px solid ${colors.popoverBorder}`,
         borderRadius: 8,
         padding: 4,
-        zIndex: 10001,
+        zIndex: 10000,
         minWidth: 160,
       }}
     >
-      {renaming ? (
-        <div className="flex items-center gap-1 px-2 py-1">
-          <input
-            ref={renameRef}
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && renameValue.trim()) {
-                useThemeStore.getState().renameTabGroup(groupId, renameValue.trim())
-                onClose()
-              }
-              if (e.key === 'Escape') setRenaming(false)
-            }}
-            onBlur={() => {
-              if (renameValue.trim()) {
-                useThemeStore.getState().renameTabGroup(groupId, renameValue.trim())
-              }
-              onClose()
-            }}
-            style={{
-              flex: 1, fontSize: 12, background: 'transparent', border: `1px solid ${colors.inputBorder}`,
-              borderRadius: 4, padding: '2px 6px', color: colors.textPrimary, outline: 'none',
-            }}
-          />
-        </div>
-      ) : (
-        <>
-          <button
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={menuItemStyle}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            onClick={() => setRenaming(true)}
-          >
-            <PencilSimple size={14} color={colors.textSecondary} />
-            <span>Rename group</span>
-          </button>
-          {!isDefault && (
+      <button
+        ref={moveItemRef}
+        className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+        style={menuItemStyle}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.background = colors.tabActive
+          if (moveItemRef.current) {
+            const rect = moveItemRef.current.getBoundingClientRect()
+            setMoveSubmenu({ x: rect.right, y: rect.top })
+          }
+        }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        onClick={() => {
+          if (moveItemRef.current) {
+            const rect = moveItemRef.current.getBoundingClientRect()
+            setMoveSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
+          }
+        }}
+      >
+        <Rows size={14} color={colors.textSecondary} />
+        <span>Move all to group</span>
+        <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
+      </button>
+      {moveSubmenu && createPortal(
+        <motion.div
+          ref={(node) => { (submenuRef as React.MutableRefObject<HTMLDivElement | null>).current = node }}
+          data-coda-ui
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.1 }}
+          style={{
+            position: 'fixed',
+            left: Math.min(moveSubmenu.x + 8, window.innerWidth - 180),
+            top: Math.min(moveSubmenu.y, window.innerHeight - 200),
+            pointerEvents: 'auto',
+            background: colors.popoverBg,
+            border: `1px solid ${colors.popoverBorder}`,
+            borderRadius: 8,
+            padding: 4,
+            zIndex: 10001,
+            minWidth: 160,
+          }}
+        >
+          <div className="px-2 py-1 text-[10px] font-medium" style={{ color: colors.textTertiary }}>
+            Move all to group
+          </div>
+          {targets.map((t) => (
             <button
+              key={t.id}
               className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-              style={menuItemStyle}
+              style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-              onClick={() => { useThemeStore.getState().setDefaultTabGroup(groupId); onClose() }}
+              onClick={() => moveAllToGroup(t.id)}
             >
-              <Star size={14} color={colors.textSecondary} />
-              <span>Set as default</span>
+              <ArrowRight size={12} color={colors.textTertiary} />
+              <span>{t.label}</span>
             </button>
+          ))}
+          {tabGroupMode === 'manual' && (
+            <>
+              <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
+              {showNewGroupInput ? (
+                <div className="flex items-center gap-1 px-2 py-1">
+                  <input
+                    ref={inputRef}
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newGroupName.trim()) {
+                        const id = useThemeStore.getState().createTabGroup(newGroupName.trim())
+                        moveAllToGroup(id)
+                      }
+                      if (e.key === 'Escape') setShowNewGroupInput(false)
+                    }}
+                    placeholder="Group name..."
+                    style={{
+                      flex: 1, fontSize: 12, background: 'transparent', border: `1px solid ${colors.inputBorder}`,
+                      borderRadius: 4, padding: '2px 6px', color: colors.textPrimary, outline: 'none',
+                    }}
+                  />
+                </div>
+              ) : (
+                <button
+                  className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+                  style={{ fontSize: 12, color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  onClick={() => setShowNewGroupInput(true)}
+                >
+                  <Plus size={12} color={colors.accent} />
+                  <span>New group...</span>
+                </button>
+              )}
+            </>
           )}
-          <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
-          <button
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={{ ...menuItemStyle, color: colors.statusError }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-            onClick={() => {
-              // Move tabs from deleted group to default, then delete
-              const defaultGroup = useThemeStore.getState().tabGroups.find((g) => g.isDefault && g.id !== groupId)
-              if (defaultGroup) {
-                useSessionStore.setState((s) => ({
-                  tabs: s.tabs.map((t) => t.groupId === groupId ? { ...t, groupId: defaultGroup.id } : t),
-                }))
-              }
-              useThemeStore.getState().deleteTabGroup(groupId)
-              onClose()
-            }}
-          >
-            <Trash size={14} color={colors.statusError} />
-            <span>Delete group</span>
-          </button>
-        </>
+        </motion.div>,
+        popoverLayer,
       )}
     </motion.div>,
     popoverLayer,
@@ -1566,7 +1738,7 @@ function GroupPill({
           if (tabGroupMode === 'manual') {
             e.preventDefault()
             e.stopPropagation()
-            if (group.tabs.length === 1) {
+            if (isActive) {
               setTabMenu({ x: e.clientX, y: e.clientY })
             } else {
               setMgmtMenu({ x: e.clientX, y: e.clientY })
@@ -1673,20 +1845,18 @@ function GroupPill({
 
       <AnimatePresence>
         {mgmtMenu && (
-          <GroupManagementMenu
-            key="group-mgmt"
+          <InactiveGroupMenu
+            key="inactive-group"
             anchor={mgmtMenu}
-            groupId={group.groupId}
-            groupLabel={group.label}
-            isDefault={group.isDefault}
+            group={group}
             onClose={() => setMgmtMenu(null)}
           />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {tabMenu && group.tabs.length === 1 && (() => {
-          const tab = group.tabs[0]
+        {tabMenu && selectedTab && (() => {
+          const tab = selectedTab
           return (
             <TabContextMenu
               key="group-tab-ctx"
@@ -1696,6 +1866,7 @@ function GroupPill({
               onNewTabInDir={() => useSessionStore.getState().createTabInDirectory(tab.workingDirectory, shouldUseWorktree(false))}
               onFinishWork={() => { if (tab.worktree) useSessionStore.getState().finishWorktreeTab(tab.id) }}
               onClose={() => setTabMenu(null)}
+              groupTabs={group.tabs}
             />
           )
         })()}
