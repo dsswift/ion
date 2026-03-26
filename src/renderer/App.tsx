@@ -511,6 +511,7 @@ export default function App() {
       }
       if (e.metaKey && e.shiftKey && e.key === 't') {
         e.preventDefault()
+        window.dispatchEvent(new CustomEvent('coda:close-group-pickers'))
         const s = useSessionStore.getState()
         const tab = s.tabs.find((t) => t.id === s.activeTabId)
         if (tab?.workingDirectory) {
@@ -521,6 +522,7 @@ export default function App() {
       }
       if (e.metaKey && !e.shiftKey && e.key === 't') {
         e.preventDefault()
+        window.dispatchEvent(new CustomEvent('coda:close-group-pickers'))
         useSessionStore.getState().createTab()
       }
       if (e.metaKey && e.key === 'r') {

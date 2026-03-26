@@ -907,6 +907,7 @@ function GroupPickerDropdown({
               tabId={menuTab.id}
               tabGroupId={menuTab.groupId || undefined}
               onCreateTab={() => {
+                window.dispatchEvent(new CustomEvent('coda:close-group-pickers'))
                 useSessionStore.getState().createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
                 setDirMenuTabId(null)
               }}
@@ -1492,6 +1493,13 @@ function GroupPill({
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
+
+  // Close picker when any new tab is created (from +button, keyboard shortcut, or another picker)
+  useEffect(() => {
+    const handler = () => setPickerOpen(false)
+    window.addEventListener('coda:close-group-pickers', handler)
+    return () => window.removeEventListener('coda:close-group-pickers', handler)
+  }, [])
 
   const selectedTab = group.tabs.find((t) => t.id === group.selectedTabId) || group.tabs[0]
   const displayTitle = selectedTab ? (selectedTab.customTitle || selectedTab.title) : ''
@@ -2254,7 +2262,7 @@ export function TabStrip() {
       <div className="flex items-center gap-0.5 flex-shrink-0 ml-1 pr-2">
         <button
           ref={plusButtonRef}
-          onClick={(e) => createTab(shouldUseWorktree(e.altKey))}
+          onClick={(e) => { window.dispatchEvent(new CustomEvent('coda:close-group-pickers')); createTab(shouldUseWorktree(e.altKey)) }}
           onContextMenu={(e) => { e.preventDefault(); setRecentDirsMenu({ x: e.clientX, y: e.clientY }) }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
           style={{ color: colors.textTertiary }}
