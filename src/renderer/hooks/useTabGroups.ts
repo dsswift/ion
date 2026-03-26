@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
-import { useThemeStore } from '../theme'
+import { useThemeStore, getEffectiveTabGroups } from '../theme'
 import type { TabState, TabGroupMode, TabGroup } from '../../shared/types'
 
 export interface TabGroupView {
@@ -24,6 +24,7 @@ export function useTabGroups(): TabGroupsResult {
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const tabGroups = useThemeStore((s) => s.tabGroups)
+  const autoGroupOrder = useThemeStore((s) => s.autoGroupOrder)
 
   return useMemo(() => {
     if (tabGroupMode === 'off') {
@@ -31,15 +32,16 @@ export function useTabGroups(): TabGroupsResult {
     }
 
     if (tabGroupMode === 'auto') {
-      return buildAutoGroups(tabs, activeTabId)
+      return buildAutoGroups(tabs, activeTabId, autoGroupOrder)
     }
 
-    // Manual mode
-    return buildManualGroups(tabs, activeTabId, tabGroups)
-  }, [tabs, activeTabId, tabGroupMode, tabGroups])
+    // Manual mode -- use effective groups (includes defaults when empty)
+    const effective = getEffectiveTabGroups(tabGroups)
+    return buildManualGroups(tabs, activeTabId, effective)
+  }, [tabs, activeTabId, tabGroupMode, tabGroups, autoGroupOrder])
 }
 
-function buildAutoGroups(tabs: TabState[], activeTabId: string): TabGroupsResult {
+function buildAutoGroups(tabs: TabState[], activeTabId: string, autoGroupOrder: string[]): TabGroupsResult {
   // Group tabs by workingDirectory
   const dirMap = new Map<string, TabState[]>()
   for (const tab of tabs) {
@@ -70,6 +72,19 @@ function buildAutoGroups(tabs: TabState[], activeTabId: string): TabGroupsResult
         order: order++,
       })
     }
+  }
+
+  // Sort groups by persisted autoGroupOrder
+  if (autoGroupOrder.length > 0) {
+    groups.sort((a, b) => {
+      const dirA = a.groupId.replace('auto-', '')
+      const dirB = b.groupId.replace('auto-', '')
+      const idxA = autoGroupOrder.indexOf(dirA)
+      const idxB = autoGroupOrder.indexOf(dirB)
+      const orderA = idxA >= 0 ? idxA : Infinity
+      const orderB = idxB >= 0 ? idxB : Infinity
+      return orderA - orderB
+    })
   }
 
   return { mode: 'auto', groups, ungrouped }

@@ -203,6 +203,7 @@ export default function App() {
                       pillColor: st.pillColor || null,
                       worktree: restoredWorktree,
                       historicalSessionIds: st.historicalSessionIds || [],
+                      groupId: st.groupId || null,
                       // If worktree was cleaned up, fall back to original repo path
                       ...(st.worktree && !restoredWorktree ? { workingDirectory: st.worktree.repoPath } : {}),
                     }
