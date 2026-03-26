@@ -1102,14 +1102,12 @@ ipcMain.handle(IPC.READ_PLAN, async (_e, filePath: string) => {
 
 ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
   if (!mainWindow) return null
-  // macOS: activate app so unparented dialog appears on top (not behind other apps).
-  // Unparented avoids modal dimming on the transparent overlay.
-  // Activation is fine here — user is actively interacting with CODA.
-  if (process.platform === 'darwin') app.focus()
+  mainWindow.hide()
   const options = { properties: ['openDirectory' as const] }
   const result = process.platform === 'darwin'
     ? await dialog.showOpenDialog(options)
     : await dialog.showOpenDialog(mainWindow, options)
+  showWindow('dialog-return')
   return result.canceled ? null : result.filePaths[0]
 })
 
@@ -1126,8 +1124,7 @@ ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
 
 ipcMain.handle(IPC.ATTACH_FILES, async () => {
   if (!mainWindow) return null
-  // macOS: activate app so unparented dialog appears on top
-  if (process.platform === 'darwin') app.focus()
+  mainWindow.hide()
   // macOS NSOpenPanel doesn't reliably handle extensions: ['*'] — omit filters
   // so all files are selectable. Other platforms get type filter dropdowns.
   const options: Electron.OpenDialogOptions = {
@@ -1143,6 +1140,7 @@ ipcMain.handle(IPC.ATTACH_FILES, async () => {
   const result = process.platform === 'darwin'
     ? await dialog.showOpenDialog(options)
     : await dialog.showOpenDialog(mainWindow, options)
+  showWindow('dialog-return')
   if (result.canceled || result.filePaths.length === 0) return null
 
   const { basename, extname } = require('path')
@@ -2198,7 +2196,9 @@ ipcMain.handle(IPC.FS_DELETE, async (_event, { targetPath }: { targetPath: strin
 
 ipcMain.handle(IPC.FS_SAVE_DIALOG, async (_event, { defaultPath }: { defaultPath?: string }) => {
   if (!mainWindow) return { filePath: null }
+  mainWindow.hide()
   const result = await dialog.showSaveDialog(mainWindow, { defaultPath: defaultPath || undefined })
+  showWindow('dialog-return')
   return { filePath: result.canceled ? null : result.filePath || null }
 })
 
