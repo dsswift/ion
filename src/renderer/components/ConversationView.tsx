@@ -548,7 +548,7 @@ function MessageActions({ message, variant }: { message: Message; variant: 'user
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const rewindToMessage = useSessionStore((s) => s.rewindToMessage)
   const forkFromMessage = useSessionStore((s) => s.forkFromMessage)
-  const isIdle = tab?.status === 'idle'
+  const isIdle = tab != null && tab.status !== 'running' && tab.status !== 'connecting'
   const [confirmRewind, setConfirmRewind] = useState(false)
 
   // Reset confirmation after timeout
