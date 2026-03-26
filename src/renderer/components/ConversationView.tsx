@@ -243,6 +243,7 @@ export function ConversationView() {
           {tab.permissionDenied && (
             <PermissionDeniedCard
               tools={tab.permissionDenied.tools}
+              tabId={tab.id}
               sessionId={tab.claudeSessionId}
               projectPath={staticInfo?.projectPath || process.cwd()}
               messages={tab.messages}

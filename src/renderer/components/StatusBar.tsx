@@ -353,10 +353,12 @@ function OpenWithPicker() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  const openCliInTerminal = useSessionStore((s) => s.openCliInTerminal)
+
   const handleExecute = () => {
     if (!tab) return
     if (preferredOpenWith === 'cli') {
-      window.coda.openInTerminal(tab.claudeSessionId, tab.workingDirectory)
+      openCliInTerminal(tab.id, tab.claudeSessionId, tab.workingDirectory)
     } else {
       window.coda.openInVSCode(tab.workingDirectory)
     }

@@ -2,11 +2,13 @@ import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShieldWarning, ShieldCheck, Terminal, ArrowSquareOut, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
 import { useColors, useThemeStore } from '../theme'
+import { useSessionStore } from '../stores/sessionStore'
 import { PlanViewer } from './PlanViewer'
 import type { Message } from '../../shared/types'
 
 interface Props {
   tools: Array<{ toolName: string; toolUseId: string }>
+  tabId: string
   sessionId: string | null
   projectPath: string
   messages: Message[]
@@ -27,10 +29,11 @@ interface AskData {
   options: AskOption[]
 }
 
-export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, onDismiss, onImplement, onAnswer, onApprove }: Props) {
+export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, onDismiss, onImplement, onAnswer, onApprove }: Props) {
   const colors = useColors()
   const showClearContext = useThemeStore((s) => s.showImplementClearContext)
   const allowSettingsEdits = useThemeStore((s) => s.allowSettingsEdits)
+  const openCliInTerminal = useSessionStore((s) => s.openCliInTerminal)
   const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
 
   // Extract planFilePath from the last ExitPlanMode tool message's input
@@ -55,7 +58,7 @@ export function PermissionDeniedCard({ tools, sessionId, projectPath, messages, 
 
   const handleOpenInCli = () => {
     if (sessionId) {
-      window.coda.openInTerminal(sessionId, projectPath)
+      openCliInTerminal(tabId, sessionId, projectPath)
     }
     onDismiss()
   }

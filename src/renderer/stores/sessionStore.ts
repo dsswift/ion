@@ -71,6 +71,8 @@ interface State {
   gitPanelOpen: boolean
   /** Tab IDs with their terminal panel visible */
   terminalOpenTabIds: Set<string>
+  /** Pending commands to run in terminal after PTY creation. Key = tabId */
+  terminalPendingCommands: Map<string, string>
   /** Directories with file explorer visible */
   fileExplorerOpenDirs: Set<string>
   /** Per-directory explorer state (expanded nodes, selection). Key = working directory path */
@@ -128,6 +130,8 @@ interface State {
   toggleGitPanel: () => void
   closeGitPanel: () => void
   toggleTerminal: (tabId: string) => void
+  openCliInTerminal: (tabId: string, sessionId: string | null, cwd: string) => void
+  consumeTerminalPendingCommand: (tabId: string) => string | undefined
   toggleFileExplorer: (tabId: string) => void
   setFileExplorerExpanded: (dir: string, path: string, expanded: boolean) => void
   setFileExplorerSelected: (dir: string, path: string | null) => void
@@ -245,6 +249,7 @@ export const useSessionStore = create<State>((set, get) => ({
   preferredModel: null,
   gitPanelOpen: false,
   terminalOpenTabIds: new Set<string>(),
+  terminalPendingCommands: new Map<string, string>(),
   fileExplorerOpenDirs: new Set<string>(),
   fileExplorerStates: new Map(),
   fileEditorOpenDirs: new Set<string>(),
@@ -488,6 +493,38 @@ export const useSessionStore = create<State>((set, get) => ({
       }
       return { terminalOpenTabIds: next }
     })
+  },
+
+  openCliInTerminal: (tabId, sessionId, cwd) => {
+    const safeCwd = cwd.replace(/'/g, "'\\''")
+    const cmd = sessionId
+      ? `cd '${safeCwd}' && claude --resume ${sessionId}`
+      : `cd '${safeCwd}' && claude`
+    set((s) => {
+      const nextOpen = new Set(s.terminalOpenTabIds)
+      const nextPending = new Map(s.terminalPendingCommands)
+      nextPending.set(tabId, cmd)
+      if (nextOpen.has(tabId)) {
+        // Terminal already open -- write command directly
+        window.coda.terminalWrite(tabId, cmd + '\n')
+        nextPending.delete(tabId)
+      } else {
+        nextOpen.add(tabId)
+      }
+      return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
+    })
+  },
+
+  consumeTerminalPendingCommand: (tabId) => {
+    const cmd = get().terminalPendingCommands.get(tabId)
+    if (cmd) {
+      set((s) => {
+        const next = new Map(s.terminalPendingCommands)
+        next.delete(tabId)
+        return { terminalPendingCommands: next }
+      })
+    }
+    return cmd
   },
 
   closeGitPanel: () => {

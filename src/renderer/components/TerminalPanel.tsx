@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { useColors, useThemeStore } from '../theme'
+import { useSessionStore } from '../stores/sessionStore'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalEntry {
@@ -132,6 +133,11 @@ export function TerminalPanel({ tabId, cwd }: Props) {
         window.coda.terminalCreate(tabId, cwd).then(() => {
           if (dims) {
             window.coda.terminalResize(tabId, dims.cols, dims.rows)
+          }
+          // Execute any pending command (e.g. "open in CLI" session resume)
+          const pendingCmd = useSessionStore.getState().consumeTerminalPendingCommand(tabId)
+          if (pendingCmd) {
+            setTimeout(() => window.coda.terminalWrite(tabId, pendingCmd + '\n'), 100)
           }
         })
       }
