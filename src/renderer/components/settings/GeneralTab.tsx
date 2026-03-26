@@ -25,6 +25,8 @@ export function GeneralTab() {
   const setSoundEnabled = useThemeStore((s) => s.setSoundEnabled)
   const showTodoList = useThemeStore((s) => s.showTodoList)
   const setShowTodoList = useThemeStore((s) => s.setShowTodoList)
+  const hideOnExternalLaunch = useThemeStore((s) => s.hideOnExternalLaunch)
+  const setHideOnExternalLaunch = useThemeStore((s) => s.setHideOnExternalLaunch)
   const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
   const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
   const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
@@ -638,6 +640,13 @@ export function GeneralTab() {
         description="Automatically close the file explorer when a file is opened in the editor."
         checked={closeExplorerOnFileOpen}
         onChange={setCloseExplorerOnFileOpen}
+      />
+
+      <SettingToggle
+        label="Close Explorer on External Launch"
+        description="Close the file explorer when using Reveal in Finder or Open in Native App."
+        checked={hideOnExternalLaunch}
+        onChange={setHideOnExternalLaunch}
       />
 
       <SettingToggle

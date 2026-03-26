@@ -9,6 +9,7 @@ import {
 import { useSessionStore, isTextFile } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
+import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
 import type { FsEntry } from '../../shared/types'
 
 // ─── File icon mapping ───
@@ -97,8 +98,8 @@ function ContextMenu({
     return [
       { label: 'Copy Path', action: () => navigator.clipboard.writeText(menu.entry.path) },
       { label: 'Copy Relative Path', action: () => navigator.clipboard.writeText(relativePath) },
-      { label: 'Reveal in Finder', action: () => window.coda.fsRevealInFinder(menu.entry.path) },
-      { label: 'Open in Native App', action: () => window.coda.fsOpenNative(menu.entry.path) },
+      { label: 'Reveal in Finder', action: () => { maybeCloseExplorerBeforeExternal(); window.coda.fsRevealInFinder(menu.entry.path) } },
+      { label: 'Open in Native App', action: () => { maybeCloseExplorerBeforeExternal(); window.coda.fsOpenNative(menu.entry.path) } },
     ]
   }, [menu.entry.path, workingDir])
 
