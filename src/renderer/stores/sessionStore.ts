@@ -930,10 +930,10 @@ export const useSessionStore = create<State>((set, get) => ({
         id: nextMsgId(),
       }))
 
-      // Restore plan-ready state if last tool message was ExitPlanMode
+      // Restore plan-ready / ask-user state if last tool message needs user response
       const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
-      const restoredDenied = lastToolMsg?.toolName === 'ExitPlanMode'
-        ? { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'restored' }] }
+      const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
+        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
         : null
 
       const tab: TabState = {
@@ -974,20 +974,26 @@ export const useSessionStore = create<State>((set, get) => ({
       ? [...tab.historicalSessionIds, oldSessionId]
       : [...tab.historicalSessionIds]
 
+    const rewoundMessages = tab.messages.slice(0, idx + 1)
+    const lastToolMsg = [...rewoundMessages].reverse().find((m) => m.toolName)
+    const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
+      ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+      : null
+
     window.coda.resetTabSession(tabId)
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === tabId
           ? {
               ...t,
-              messages: t.messages.slice(0, idx + 1),
+              messages: rewoundMessages,
               claudeSessionId: null,
               historicalSessionIds,
               forkedFromSessionId: oldSessionId,
               lastResult: null,
               currentActivity: '',
               permissionQueue: [],
-              permissionDenied: null,
+              permissionDenied: restoredDenied,
               queuedPrompts: [],
             }
           : t
@@ -1008,6 +1014,12 @@ export const useSessionStore = create<State>((set, get) => ({
         id: nextMsgId(),
       }))
 
+      // Restore plan-ready / ask-user state if last tool message needs user response
+      const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
+      const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
+        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+        : null
+
       const tab: TabState = {
         ...makeLocalTab(),
         id: newTabId,
@@ -1021,6 +1033,7 @@ export const useSessionStore = create<State>((set, get) => ({
         permissionMode: source.permissionMode,
         pillColor: source.pillColor,
         messages,
+        permissionDenied: restoredDenied,
       }
       set((s) => ({
         tabs: [...s.tabs, tab],
@@ -1054,10 +1067,10 @@ export const useSessionStore = create<State>((set, get) => ({
         timestamp: m.timestamp,
       }))
 
-      // Restore plan-ready state if last tool message was ExitPlanMode
+      // Restore plan-ready / ask-user state if last tool message needs user response
       const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
-      const restoredDenied = lastToolMsg?.toolName === 'ExitPlanMode'
-        ? { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'restored' }] }
+      const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
+        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
         : null
 
       const tab: TabState = {
