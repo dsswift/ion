@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Clock, ChatCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors } from '../theme'
+import { useColors, useThemeStore } from '../theme'
 import type { SessionMeta } from '../../shared/types'
 
 function formatTimeAgo(isoDate: string): string {
@@ -25,6 +25,8 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`
 }
 
+type HistoryMode = 'all' | 'project'
+
 export function HistoryPicker() {
   const resumeSession = useSessionStore((s) => s.resumeSession)
   const selectTab = useSessionStore((s) => s.selectTab)
@@ -42,6 +44,7 @@ export function HistoryPicker() {
     : (staticInfo?.homePath || activeTab?.workingDirectory || '~')
 
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<HistoryMode>('all')
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [loading, setLoading] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -66,10 +69,12 @@ export function HistoryPicker() {
     }
   }, [isExpanded])
 
-  const loadSessions = useCallback(async () => {
+  const loadSessions = useCallback(async (m: HistoryMode) => {
     setLoading(true)
     try {
-      const result = await window.coda.listSessions(effectiveProjectPath)
+      const result = m === 'all'
+        ? await window.coda.listAllSessions()
+        : await window.coda.listSessions(effectiveProjectPath)
       setSessions(result)
     } catch {
       setSessions([])
@@ -92,9 +97,14 @@ export function HistoryPicker() {
   const handleToggle = () => {
     if (!open) {
       updatePos()
-      void loadSessions()
+      void loadSessions(mode)
     }
     setOpen((o) => !o)
+  }
+
+  const handleModeSwitch = (m: HistoryMode) => {
+    setMode(m)
+    void loadSessions(m)
   }
 
   const handleSelect = (session: SessionMeta) => {
@@ -112,7 +122,76 @@ export function HistoryPicker() {
       || (session.firstMessage
         ? (session.firstMessage.length > 40 ? session.firstMessage.substring(0, 37) + '...' : session.firstMessage)
         : session.slug || 'Resumed')
-    void resumeSession(session.sessionId, title, effectiveProjectPath, session.customTitle)
+
+    // Use the session's own project path when available (global history), fall back to current tab's path
+    const sessionProjectPath = session.projectPath || effectiveProjectPath
+    void resumeSession(session.sessionId, title, sessionProjectPath, session.customTitle, session.encodedDir)
+
+    // Add the directory to recent base directories so it appears in the new-tab picker
+    if (session.projectPath) {
+      useThemeStore.getState().addRecentBaseDirectory(session.projectPath)
+    }
+  }
+
+  // Group sessions by projectLabel in "all" mode
+  const grouped = useMemo(() => {
+    if (mode !== 'all') return null
+    const groups: Array<{ label: string; projectPath: string | null; sessions: SessionMeta[] }> = []
+    const groupMap = new Map<string, number>()
+    for (const s of sessions) {
+      const key = s.encodedDir || s.projectPath || '__unknown__'
+      const existing = groupMap.get(key)
+      if (existing != null) {
+        groups[existing].sessions.push(s)
+      } else {
+        groupMap.set(key, groups.length)
+        groups.push({
+          label: s.projectLabel || 'Unknown',
+          projectPath: s.projectPath,
+          sessions: [s],
+        })
+      }
+    }
+    // Groups are already sorted by most recent session (since sessions come sorted by mtime)
+    return groups
+  }, [mode, sessions])
+
+  const renderSession = (session: SessionMeta) => {
+    const isOpen = tabs.some((t) =>
+      t.claudeSessionId === session.sessionId
+      || t.historicalSessionIds.includes(session.sessionId)
+    )
+    return (
+      <button
+        key={session.sessionId}
+        onClick={() => handleSelect(session)}
+        className="w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors"
+        style={isOpen ? { opacity: 0.5 } : undefined}
+      >
+        <ChatCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: colors.textTertiary }} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] truncate" style={{ color: colors.textPrimary }}>
+            {session.customTitle || session.firstMessage || session.slug || session.sessionId.substring(0, 8)}
+          </div>
+          {session.customTitle && session.firstMessage && (
+            <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
+              {session.firstMessage}
+            </div>
+          )}
+          {!session.customTitle && session.lastResponse && (
+            <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
+              {session.lastResponse}
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-[10px] mt-0.5" style={{ color: colors.textTertiary }}>
+            <span>{formatTimeAgo(session.lastTimestamp)}</span>
+            <span>{formatSize(session.size)}</span>
+            {session.slug && <span className="truncate">{session.slug}</span>}
+            {isOpen && <span style={{ color: colors.textSecondary }}>open</span>}
+          </div>
+        </div>
+      </button>
+    )
   }
 
   return (
@@ -141,7 +220,7 @@ export function HistoryPicker() {
             ...(pos.top != null ? { top: pos.top } : {}),
             ...(pos.bottom != null ? { bottom: pos.bottom } : {}),
             right: pos.right,
-            width: 280,
+            width: 300,
             pointerEvents: 'auto',
             background: colors.popoverBg,
             backdropFilter: 'blur(20px)',
@@ -154,11 +233,30 @@ export function HistoryPicker() {
             flexDirection: 'column' as const,
           }}
         >
-          <div className="px-3 py-2 text-[11px] font-medium flex-shrink-0" style={{ color: colors.textTertiary, borderBottom: `1px solid ${colors.popoverBorder}` }}>
-            Recent Sessions
+          {/* Header with mode toggle */}
+          <div className="px-3 py-2 flex items-center justify-between flex-shrink-0" style={{ borderBottom: `1px solid ${colors.popoverBorder}` }}>
+            <span className="text-[11px] font-medium" style={{ color: colors.textTertiary }}>
+              Recent Sessions
+            </span>
+            <div className="flex gap-0.5 rounded-md p-0.5" style={{ background: colors.inputBg }}>
+              {(['all', 'project'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => handleModeSwitch(m)}
+                  className="px-2 py-0.5 rounded text-[10px] transition-colors"
+                  style={{
+                    color: mode === m ? colors.textPrimary : colors.textTertiary,
+                    background: mode === m ? colors.popoverBg : 'transparent',
+                    fontWeight: mode === m ? 600 : 400,
+                  }}
+                >
+                  {m === 'all' ? 'All' : 'This Project'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="overflow-y-auto py-1" style={{ maxHeight: pos.maxHeight != null ? undefined : 280 }}>
+          <div className="overflow-y-auto py-1" style={{ maxHeight: pos.maxHeight != null ? undefined : 360 }}>
             {loading && (
               <div className="px-3 py-4 text-center text-[11px]" style={{ color: colors.textTertiary }}>
                 Loading...
@@ -171,43 +269,23 @@ export function HistoryPicker() {
               </div>
             )}
 
-            {!loading && sessions.map((session) => {
-              const isOpen = tabs.some((t) =>
-                t.claudeSessionId === session.sessionId
-                || t.historicalSessionIds.includes(session.sessionId)
-              )
-              return (
-              <button
-                key={session.sessionId}
-                onClick={() => handleSelect(session)}
-                className="w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors"
-                style={isOpen ? { opacity: 0.5 } : undefined}
-              >
-                <ChatCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: colors.textTertiary }} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] truncate" style={{ color: colors.textPrimary }}>
-                    {session.customTitle || session.firstMessage || session.slug || session.sessionId.substring(0, 8)}
-                  </div>
-                  {session.customTitle && session.firstMessage && (
-                    <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
-                      {session.firstMessage}
-                    </div>
-                  )}
-                  {!session.customTitle && session.lastResponse && (
-                    <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
-                      {session.lastResponse}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 text-[10px] mt-0.5" style={{ color: colors.textTertiary }}>
-                    <span>{formatTimeAgo(session.lastTimestamp)}</span>
-                    <span>{formatSize(session.size)}</span>
-                    {session.slug && <span className="truncate">{session.slug}</span>}
-                    {isOpen && <span style={{ color: colors.textSecondary }}>open</span>}
-                  </div>
+            {/* "All" mode: grouped by directory */}
+            {!loading && mode === 'all' && grouped && grouped.map((group) => (
+              <div key={group.projectPath || group.label}>
+                <div
+                  className="px-3 pt-2 pb-1 text-[10px] font-semibold truncate"
+                  style={{ color: colors.textTertiary, opacity: group.projectPath ? 1 : 0.5 }}
+                  title={group.projectPath || undefined}
+                >
+                  {group.label}
+                  {!group.projectPath && <span className="ml-1 font-normal">(removed)</span>}
                 </div>
-              </button>
-              )
-            })}
+                {group.sessions.map(renderSession)}
+              </div>
+            ))}
+
+            {/* "This Project" mode: flat list */}
+            {!loading && mode === 'project' && sessions.map(renderSession)}
           </div>
         </motion.div>,
         popoverLayer,

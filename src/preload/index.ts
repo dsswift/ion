@@ -27,7 +27,8 @@ export interface CodaAPI {
   initSession(tabId: string): void
   resetTabSession(tabId: string): void
   listSessions(projectPath?: string): Promise<SessionMeta[]>
-  loadSession(sessionId: string, projectPath?: string): Promise<SessionLoadMessage[]>
+  listAllSessions(): Promise<SessionMeta[]>
+  loadSession(sessionId: string, projectPath?: string, encodedDir?: string): Promise<SessionLoadMessage[]>
   readPlan(filePath: string): Promise<{ content: string | null; fileName: string | null }>
   discoverCommands(projectPath: string): Promise<DiscoveredCommand[]>
   fetchMarketplace(forceRefresh?: boolean): Promise<{ plugins: CatalogPlugin[]; error: string | null }>
@@ -137,7 +138,8 @@ const api: CodaAPI = {
   initSession: (tabId) => ipcRenderer.send(IPC.INIT_SESSION, tabId),
   resetTabSession: (tabId) => ipcRenderer.send(IPC.RESET_TAB_SESSION, tabId),
   listSessions: (projectPath?: string) => ipcRenderer.invoke(IPC.LIST_SESSIONS, projectPath),
-  loadSession: (sessionId: string, projectPath?: string) => ipcRenderer.invoke(IPC.LOAD_SESSION, { sessionId, projectPath }),
+  listAllSessions: () => ipcRenderer.invoke(IPC.LIST_ALL_SESSIONS),
+  loadSession: (sessionId: string, projectPath?: string, encodedDir?: string) => ipcRenderer.invoke(IPC.LOAD_SESSION, { sessionId, projectPath, encodedDir }),
   readPlan: (filePath: string) => ipcRenderer.invoke(IPC.READ_PLAN, filePath),
   discoverCommands: (projectPath: string) => ipcRenderer.invoke(IPC.DISCOVER_COMMANDS, projectPath),
   fetchMarketplace: (forceRefresh) => ipcRenderer.invoke(IPC.MARKETPLACE_FETCH, { forceRefresh }),
