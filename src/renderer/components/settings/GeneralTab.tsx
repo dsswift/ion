@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react'
-import { FolderOpen, Trash, PencilSimple, Star, Plus } from '@phosphor-icons/react'
+import { FolderOpen, Trash, PencilSimple, Star, Plus, Lightning } from '@phosphor-icons/react'
 import { useColors, useThemeStore, getEffectiveTabGroups } from '../../theme'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SettingToggle } from './SettingToggle'
@@ -40,6 +40,7 @@ export function GeneralTab() {
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const setTabGroupMode = useThemeStore((s) => s.setTabGroupMode)
   const tabGroups = useThemeStore((s) => s.tabGroups)
+  const inProgressGroupId = useThemeStore((s) => s.inProgressGroupId)
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -413,6 +414,28 @@ export function GeneralTab() {
                   }}
                 >
                   <Star size={14} weight={group.isDefault ? 'fill' : 'regular'} />
+                </button>
+
+                {/* Lightning icon -- set as in-progress group */}
+                <button
+                  onClick={() => {
+                    const groups = materializeDefaults()
+                    const target = groups.find(g => g.label === group.label) || groups[0]
+                    const current = useThemeStore.getState().inProgressGroupId
+                    useThemeStore.getState().setInProgressGroupId(current === target.id ? null : target.id)
+                  }}
+                  title={inProgressGroupId === group.id ? 'In-progress group (click to unset)' : 'Set as in-progress group'}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: inProgressGroupId === group.id ? '#d4a024' : colors.textTertiary,
+                  }}
+                >
+                  <Lightning size={14} weight={inProgressGroupId === group.id ? 'fill' : 'regular'} />
                 </button>
 
                 {/* Label -- double-click to rename, or editable input */}

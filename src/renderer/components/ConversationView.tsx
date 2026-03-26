@@ -276,6 +276,12 @@ export function ConversationView() {
                 // Switch permission mode
                 useSessionStore.getState().setPermissionMode(mode)
 
+                // Auto-move tab to in-progress group if designated
+                const { inProgressGroupId, tabGroupMode } = useThemeStore.getState()
+                if (inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
+                  useSessionStore.getState().moveTabToGroup(tab.id, inProgressGroupId)
+                }
+
                 let implementPrompt = 'Implement the plan'
 
                 // Extract plan file path from messages for the plan attachment
