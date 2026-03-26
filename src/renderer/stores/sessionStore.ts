@@ -1435,6 +1435,12 @@ export const useSessionStore = create<State>((set, get) => ({
     // so the command can execute tools without manual approval
     if (!tab.claudeSessionId && tab.permissionMode === 'plan' && prompt.startsWith('/')) {
       get().setPermissionMode('auto')
+
+      // Move to in-progress group (same as plan-ready implement)
+      const { inProgressGroupId, tabGroupMode } = useThemeStore.getState()
+      if (inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
+        get().moveTabToGroup(tab.id, inProgressGroupId)
+      }
     }
 
     const isBusy = tab.status === 'running'
