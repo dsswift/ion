@@ -365,6 +365,7 @@ interface ThemeState {
   setExpandedUI: (expanded: boolean) => void
   setDefaultBaseDirectory: (dir: string) => void
   addRecentBaseDirectory: (dir: string) => void
+  removeRecentBaseDirectory: (dir: string) => void
   setPreferredOpenWith: (app: 'cli' | 'vscode') => void
   setShowImplementClearContext: (show: boolean) => void
   setDefaultPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
@@ -501,6 +502,11 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   addRecentBaseDirectory: (dir) => {
     const current = get().recentBaseDirectories.filter((d) => d !== dir)
     const updated = [dir, ...current].slice(0, 8)
+    set({ recentBaseDirectories: updated })
+    saveSettings(getAllSettings(get))
+  },
+  removeRecentBaseDirectory: (dir) => {
+    const updated = get().recentBaseDirectories.filter((d) => d !== dir)
     set({ recentBaseDirectories: updated })
     saveSettings(getAllSettings(get))
   },

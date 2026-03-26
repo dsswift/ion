@@ -525,24 +525,46 @@ function RecentDirsContextMenu({
           const homePath = useSessionStore.getState().staticInfo?.homePath || ''
           const displayPath = homePath && dir.startsWith(homePath) ? '~' + dir.slice(homePath.length) : dir
           return (
-            <button
+            <div
               key={dir}
-              onClick={(e) => { onSelectDir(dir, e.altKey); onClose() }}
-              className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+              className="flex items-center w-full rounded px-2 py-1.5"
               style={{
                 fontSize: 12,
                 color: colors.textPrimary,
                 background: 'transparent',
-                border: 'none',
                 cursor: 'pointer',
               }}
               title={dir}
+              onClick={(e) => { onSelectDir(dir, e.altKey); onClose() }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              <FolderOpen size={14} color={colors.textSecondary} style={{ flexShrink: 0 }} />
-              <span style={{ whiteSpace: 'nowrap' }}>{displayPath}</span>
-            </button>
+              <FolderOpen size={14} color={colors.textSecondary} style={{ flexShrink: 0, marginRight: 8 }} />
+              <span style={{ whiteSpace: 'nowrap', flex: 1 }}>{displayPath}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  useThemeStore.getState().removeRecentBaseDirectory(dir)
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 2,
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexShrink: 0,
+                  marginLeft: 8,
+                  opacity: 0.5,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+                title="Remove from recents"
+              >
+                <Trash size={12} color={colors.textTertiary} />
+              </button>
+            </div>
           )
         })
       )}
@@ -1462,9 +1484,11 @@ function GroupPill({
 }) {
   const colors = useColors()
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const renameTab = useSessionStore((s) => s.renameTab)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
+  const [renamingTitle, setRenamingTitle] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
 
   const selectedTab = group.tabs.find((t) => t.id === group.selectedTabId) || group.tabs[0]
@@ -1490,12 +1514,17 @@ function GroupPill({
       : null
 
   const handleClick = useCallback(() => {
+    // Single-tab group: activate the tab directly
+    if (group.tabs.length === 1) {
+      onSelect(group.tabs[0].id)
+      return
+    }
     if (pillRef.current) {
       const rect = pillRef.current.getBoundingClientRect()
       setPickerAnchor({ x: rect.left, y: rect.bottom })
     }
     setPickerOpen((o) => !o)
-  }, [])
+  }, [group.tabs, onSelect])
 
   return (
     <>
@@ -1528,22 +1557,44 @@ function GroupPill({
         <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: colors.textSecondary, opacity: 0.5 }}>
           {group.label}
         </span>
-        {isActive && (
-          <span className="truncate max-w-[100px]">
-            {displayTitle}
-          </span>
+        {isActive && selectedTab && (
+          renamingTitle ? (
+            <InlineRenameInput
+              value={displayTitle}
+              color={colors.textPrimary}
+              fontWeight={500}
+              onCommit={(newValue) => {
+                setRenamingTitle(false)
+                renameTab(selectedTab.id, newValue || null)
+              }}
+              onCancel={() => setRenamingTitle(false)}
+            />
+          ) : (
+            <span
+              className="truncate max-w-[100px]"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setRenamingTitle(true)
+              }}
+            >
+              {displayTitle}
+            </span>
+          )
         )}
         <span className="text-[10px] flex-shrink-0" style={{ color: colors.textTertiary }}>
           {group.tabs.length}
         </span>
-        <CaretDown
-          size={10}
-          className="flex-shrink-0 transition-transform"
-          style={{
-            color: colors.textTertiary,
-            transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-          }}
-        />
+        {group.tabs.length > 1 && (
+          <CaretDown
+            size={10}
+            className="flex-shrink-0 transition-transform"
+            style={{
+              color: colors.textTertiary,
+              transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
+          />
+        )}
       </div>
 
       <AnimatePresence>
