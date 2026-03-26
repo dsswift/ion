@@ -1492,6 +1492,7 @@ export const useSessionStore = create<State>((set, get) => ({
             if (!event.isWarmup) {
               updated.status = 'running'
               updated.currentActivity = 'Thinking...'
+              updated.permissionDenied = null
               // Move the first queued prompt into the timeline (it's now being processed)
               if (updated.queuedPrompts.length > 0) {
                 const [nextPrompt, ...rest] = updated.queuedPrompts
