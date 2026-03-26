@@ -6,6 +6,7 @@ import {
   FileText, PencilSimple, FileArrowUp, Terminal, MagnifyingGlass, Globe,
   Robot, Question, Wrench, FolderOpen, Copy, Check, CaretRight, CaretDown,
   SpinnerGap, ArrowCounterClockwise, Square, Image, FileCode, File, ListChecks,
+  GitFork,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { PermissionCard } from './PermissionCard'
@@ -525,6 +526,80 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+// ─── Message Actions (hover overlay for user & assistant messages) ───
+
+function MessageActions({ message, variant }: { message: Message; variant: 'user' | 'assistant' }) {
+  const colors = useColors()
+  const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const rewindToMessage = useSessionStore((s) => s.rewindToMessage)
+  const forkFromMessage = useSessionStore((s) => s.forkFromMessage)
+  const isIdle = tab?.status === 'idle'
+  const [confirmRewind, setConfirmRewind] = useState(false)
+
+  // Reset confirmation after timeout
+  useEffect(() => {
+    if (!confirmRewind) return
+    const timer = setTimeout(() => setConfirmRewind(false), 2500)
+    return () => clearTimeout(timer)
+  }, [confirmRewind])
+
+  const handleRewind = () => {
+    if (!tab || !isIdle) return
+    if (!confirmRewind) {
+      setConfirmRewind(true)
+      return
+    }
+    setConfirmRewind(false)
+    rewindToMessage(tab.id, message.id)
+  }
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <CopyButton text={message.content} />
+      {variant === 'user' && (
+        <>
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={handleRewind}
+            disabled={!isIdle}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{
+              background: confirmRewind ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+              color: confirmRewind ? '#ef4444' : colors.textTertiary,
+              border: 'none',
+            }}
+            title="Rewind conversation to this message"
+          >
+            <ArrowCounterClockwise size={11} />
+            <span>{confirmRewind ? 'Sure?' : 'Rewind'}</span>
+          </motion.button>
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={() => tab && isIdle && forkFromMessage(tab.id, message.id)}
+            disabled={!isIdle}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{
+              background: 'transparent',
+              color: colors.textTertiary,
+              border: 'none',
+            }}
+            title="Fork conversation from this message"
+          >
+            <GitFork size={11} />
+            <span>Fork</span>
+          </motion.button>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Interrupt Button ───
 
 function InterruptButton({ tabId, bashExecId }: { tabId: string; bashExecId: string | null }) {
@@ -683,21 +758,28 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
   }), [colors, onOpenFile, onOpenUrl])
 
   const content = (
-    <div
-      className="text-[13px] leading-[1.5] px-3 py-1.5 max-w-[85%]"
-      style={{
-        background: colors.userBubble,
-        color: colors.userBubbleText,
-        border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
-        borderRadius: '14px 14px 4px 14px',
-      }}
-    >
-      <div className="prose-cloud prose-cloud-user">
-        <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
-          {displayContent}
-        </Markdown>
+    <div className="group/msg relative inline-flex flex-col items-end max-w-[85%]">
+      <div
+        className="text-[13px] leading-[1.5] px-3 py-1.5"
+        style={{
+          background: colors.userBubble,
+          color: colors.userBubbleText,
+          border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
+          borderRadius: '14px 14px 4px 14px',
+        }}
+      >
+        <div className="prose-cloud prose-cloud-user">
+          <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+            {displayContent}
+          </Markdown>
+        </div>
+        {hasAttachments && <MessageAttachments attachments={message.attachments!} />}
       </div>
-      {hasAttachments && <MessageAttachments attachments={message.attachments!} />}
+      {displayContent.trim() && (
+        <div className="absolute -bottom-5 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
+          <MessageActions message={message} variant="user" />
+        </div>
+      )}
     </div>
   )
 
@@ -894,7 +976,7 @@ const AssistantMessage = React.memo(function AssistantMessage({
           Absolute positioning so it never shifts the text layout. */}
       {message.content.trim() && (
         <div className="absolute bottom-0 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
-          <CopyButton text={message.content} />
+          <MessageActions message={message} variant="assistant" />
         </div>
       )}
     </div>

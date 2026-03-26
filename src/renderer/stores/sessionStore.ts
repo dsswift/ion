@@ -150,6 +150,8 @@ interface State {
   uninstallMarketplacePlugin: (plugin: CatalogPlugin) => Promise<void>
   buildYourOwn: () => void
   forkTab: (sourceTabId: string) => Promise<string | null>
+  rewindToMessage: (tabId: string, messageId: string) => void
+  forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>
   resumeSession: (sessionId: string, title?: string, projectPath?: string, customTitle?: string | null) => Promise<string>
   addSystemMessage: (content: string) => void
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
@@ -956,6 +958,77 @@ export const useSessionStore = create<State>((set, get) => ({
       }))
       window.coda.setPermissionMode(tabId, tab.permissionMode)
       return tabId
+    } catch {
+      return null
+    }
+  },
+
+  rewindToMessage: (tabId, messageId) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    const idx = tab.messages.findIndex((m) => m.id === messageId)
+    if (idx < 0) return
+
+    const oldSessionId = tab.claudeSessionId
+    const historicalSessionIds = oldSessionId
+      ? [...tab.historicalSessionIds, oldSessionId]
+      : [...tab.historicalSessionIds]
+
+    window.coda.resetTabSession(tabId)
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId
+          ? {
+              ...t,
+              messages: t.messages.slice(0, idx + 1),
+              claudeSessionId: null,
+              historicalSessionIds,
+              forkedFromSessionId: oldSessionId,
+              lastResult: null,
+              currentActivity: '',
+              permissionQueue: [],
+              permissionDenied: null,
+              queuedPrompts: [],
+            }
+          : t
+      ),
+    }))
+  },
+
+  forkFromMessage: async (tabId, messageId) => {
+    const source = get().tabs.find((t) => t.id === tabId)
+    if (!source) return null
+    const idx = source.messages.findIndex((m) => m.id === messageId)
+    if (idx < 0) return null
+
+    try {
+      const { tabId: newTabId } = await window.coda.createTab()
+      const messages: Message[] = source.messages.slice(0, idx + 1).map((m) => ({
+        ...m,
+        id: nextMsgId(),
+      }))
+
+      const tab: TabState = {
+        ...makeLocalTab(),
+        id: newTabId,
+        claudeSessionId: null,
+        forkedFromSessionId: source.claudeSessionId,
+        title: source.title,
+        customTitle: source.customTitle,
+        workingDirectory: source.workingDirectory,
+        hasChosenDirectory: source.hasChosenDirectory,
+        additionalDirs: [...source.additionalDirs],
+        permissionMode: source.permissionMode,
+        pillColor: source.pillColor,
+        messages,
+      }
+      set((s) => ({
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+        isExpanded: true,
+      }))
+      window.coda.setPermissionMode(newTabId, tab.permissionMode)
+      return newTabId
     } catch {
       return null
     }
