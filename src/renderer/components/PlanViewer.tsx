@@ -59,7 +59,7 @@ export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
           padding: '12px 16px',
         }}
       >
-        <div className="text-[13px] leading-[1.6] prose-cloud" style={{ color: colors.textSecondary }}>
+        <div className="text-[13px] leading-[1.6] prose-cloud min-w-0 overflow-hidden" style={{ color: colors.textSecondary, maxWidth: '100%' }}>
           <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
             {content}
           </Markdown>

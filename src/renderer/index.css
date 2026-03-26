@@ -76,6 +76,7 @@ input::placeholder {
   padding: 0.75em 1em;
   font-size: 12px;
   overflow-x: auto;
+  max-width: 100%;
 }
 .prose-cloud code {
   background: var(--coda-accent-light);
@@ -116,8 +117,9 @@ input::placeholder {
 }
 .prose-cloud table {
   border-collapse: collapse;
-  width: max-content;
-  min-width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
   font-size: 12px;
 }
 .prose-cloud th, .prose-cloud td {
