@@ -1489,6 +1489,7 @@ function GroupPill({
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
   const [renamingTitle, setRenamingTitle] = useState(false)
+  const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
 
   const selectedTab = group.tabs.find((t) => t.id === group.selectedTabId) || group.tabs[0]
@@ -1595,6 +1596,42 @@ function GroupPill({
             }}
           />
         )}
+        {group.tabs.length === 1 && (() => {
+          const tab = group.tabs[0]
+          const isRunning = tab.status === 'running' || tab.status === 'connecting'
+          if (isRunning || tab.bashExecuting) return null
+          if (confirmingClose) {
+            return (
+              <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setConfirmingClose(false)}
+                  className="px-1 rounded"
+                  style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  No
+                </button>
+                <button
+                  onClick={() => { useSessionStore.getState().closeTab(tab.id); setConfirmingClose(false) }}
+                  className="px-1 rounded"
+                  style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  Yes
+                </button>
+              </div>
+            )
+          }
+          return (
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirmingClose(true) }}
+              className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+              style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+            >
+              <X size={10} />
+            </button>
+          )
+        })()}
       </div>
 
       <AnimatePresence>
