@@ -690,6 +690,17 @@ interface TabItemProps {
 }
 
 function TabItem({ file, isActive, colors, onSelect, onClose }: TabItemProps) {
+  const [confirmingClose, setConfirmingClose] = useState(false)
+
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (file.isDirty) {
+      setConfirmingClose(true)
+    } else {
+      onClose(e)
+    }
+  }
+
   return (
     <div
       className="flex items-center gap-1.5 px-2 cursor-pointer transition-colors"
@@ -703,35 +714,56 @@ function TabItem({ file, isActive, colors, onSelect, onClose }: TabItemProps) {
         whiteSpace: 'nowrap',
       }}
       onClick={onSelect}
-      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); onClose(e) } }}
+      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); handleClose(e) } }}
     >
       <span style={{ fontStyle: file.filePath === null ? 'italic' : 'normal' }}>
         {file.fileName}
       </span>
-      {file.isDirty && (
-        <span
-          style={{
-            display: 'inline-block',
-            width: 5,
-            height: 5,
-            borderRadius: '50%',
-            backgroundColor: colors.accent,
-            flexShrink: 0,
-          }}
-        />
+      {confirmingClose ? (
+        <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => setConfirmingClose(false)}
+            className="px-1 rounded"
+            style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            No
+          </button>
+          <button
+            onClick={(e) => { onClose(e); setConfirmingClose(false) }}
+            className="px-1 rounded"
+            style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            Yes
+          </button>
+        </div>
+      ) : (
+        <>
+          {file.isDirty && (
+            <span
+              style={{
+                display: 'inline-block',
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                backgroundColor: colors.accent,
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <button
+            className="flex items-center justify-center rounded p-0.5 transition-colors"
+            style={{
+              color: colors.textTertiary,
+              cursor: 'pointer',
+              opacity: 0.6,
+              flexShrink: 0,
+            }}
+            onClick={handleClose}
+          >
+            <X size={10} />
+          </button>
+        </>
       )}
-      <button
-        className="flex items-center justify-center rounded p-0.5 transition-colors"
-        style={{
-          color: colors.textTertiary,
-          cursor: 'pointer',
-          opacity: 0.6,
-          flexShrink: 0,
-        }}
-        onClick={onClose}
-      >
-        <X size={10} />
-      </button>
     </div>
   )
 }
