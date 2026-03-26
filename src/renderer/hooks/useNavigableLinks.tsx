@@ -28,7 +28,9 @@ function useCmdHeld(): boolean {
 
 type TextSegment = { type: 'plain' | 'file' | 'url'; value: string }
 
-const LINK_RE = /(https?:\/\/[^\s<>"')\]]+|\/(?:[a-zA-Z0-9._~-]+\/)+[a-zA-Z0-9._~-]+)/g
+// Matches: URLs (https://...), absolute paths (/foo/bar), and relative paths (src/foo/bar.ext)
+// Relative paths require a file extension to avoid false positives on plain text with slashes
+const LINK_RE = /(https?:\/\/[^\s<>"')\]]+|\/(?:[a-zA-Z0-9._~-]+\/)+[a-zA-Z0-9._~-]+|[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)+\.[a-zA-Z0-9]+)/g
 
 function segmentText(text: string): TextSegment[] {
   const segments: TextSegment[] = []
@@ -130,11 +132,12 @@ export function useNavigableText() {
   })
 
   const onOpenFile = useCallback((path: string) => {
-    const ext = path.includes('.') ? '.' + path.split('.').pop()!.toLowerCase() : ''
+    const resolved = path.startsWith('/') ? path : workingDir + '/' + path
+    const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
-      useSessionStore.getState().openFileInEditor(workingDir, activeTabId, path)
+      useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)
     } else {
-      window.coda.fsOpenNative(path)
+      window.coda.fsOpenNative(resolved)
     }
   }, [activeTabId, workingDir])
 
@@ -155,4 +158,22 @@ export function NavigableText({ children, onOpenFile, onOpenUrl }: {
   const segments = segmentText(children)
   if (segments.length === 1 && segments[0].type === 'plain') return <>{children}</>
   return <>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} />)}</>
+}
+
+/** Markdown `code` component — applies navigable links to inline code spans */
+export function NavigableCode({ children, className, onOpenFile, onOpenUrl, ...props }: {
+  children: any
+  className?: string
+  onOpenFile: (path: string) => void
+  onOpenUrl: (url: string) => void
+  [key: string]: any
+}) {
+  // Don't touch code blocks (they have a language-* className)
+  if (className) return <code className={className} {...props}>{children}</code>
+  // For inline code, apply link detection to the text content
+  const text = typeof children === 'string' ? children : Array.isArray(children) ? children.join('') : null
+  if (!text) return <code {...props}>{children}</code>
+  const segments = segmentText(text)
+  if (segments.length === 1 && segments[0].type === 'plain') return <code {...props}>{children}</code>
+  return <code {...props}>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} />)}</code>
 }

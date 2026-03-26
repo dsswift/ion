@@ -12,7 +12,7 @@ import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { PlanViewer } from './PlanViewer'
 import { useColors, useThemeStore } from '../theme'
-import { useNavigableText, NavigableText } from '../hooks/useNavigableLinks'
+import { useNavigableText, NavigableText, NavigableCode } from '../hooks/useNavigableLinks'
 import { InlineEditDiff } from './InlineEditDiff'
 import { TodoListPanel } from './TodoListPanel'
 import type { Message, Attachment } from '../../shared/types'
@@ -679,6 +679,7 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
     ),
     img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} />,
     text: ({ children }: any) => <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
+    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, onOpenFile, onOpenUrl])
 
   const content = (
@@ -879,6 +880,7 @@ const AssistantMessage = React.memo(function AssistantMessage({
     ),
     img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} />,
     text: ({ children }: any) => <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
+    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, onOpenFile, onOpenUrl])
 
   const inner = (
