@@ -1001,6 +1001,7 @@ function DropdownTabRow({
   const isConfirming = confirmingCloseId === tab.id
   const isEditing = editingTabId === tab.id
   const displayTitle = tab.customTitle || tab.title
+  const hasCustomTitle = !!tab.customTitle
   const dirName = tab.workingDirectory?.split('/').pop() || ''
 
   const waitingState: 'plan-ready' | 'question' | null = (() => {
@@ -1116,7 +1117,7 @@ function DropdownTabRow({
         />
       ) : (
         <span
-          className="truncate flex-1"
+          className={hasCustomTitle ? 'flex-1 whitespace-nowrap' : 'truncate flex-1'}
           style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
         >
           {displayTitle}
@@ -1508,6 +1509,7 @@ function GroupPill({
 
   const selectedTab = group.tabs.find((t) => t.id === group.selectedTabId) || group.tabs[0]
   const displayTitle = selectedTab ? (selectedTab.customTitle || selectedTab.title) : ''
+  const hasCustomTitle = !!selectedTab?.customTitle
 
   // Derive aggregate waiting state: if ANY tab in the group is waiting on the user
   // Question takes priority over plan-ready across all tabs in the group
@@ -1589,20 +1591,22 @@ function GroupPill({
               onCancel={() => setRenamingTitle(false)}
             />
           ) : (
-            <span className="truncate max-w-[100px]">
+            <span className={hasCustomTitle ? 'whitespace-nowrap' : 'truncate max-w-[100px]'}>
               {displayTitle}
             </span>
           )
         )}
-        <button
-          onClick={(e) => { e.stopPropagation(); setRenamingTitle(true) }}
-          className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
-          style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
-        >
-          <PencilSimple size={10} />
-        </button>
+        {isActive && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setRenamingTitle(true) }}
+            className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+            style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+          >
+            <PencilSimple size={10} />
+          </button>
+        )}
         <span className="text-[10px] flex-shrink-0" style={{ color: colors.textTertiary }}>
           {group.tabs.length}
         </span>
