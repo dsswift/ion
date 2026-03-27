@@ -19,6 +19,7 @@ export interface CodaAPI {
   openInTerminal(sessionId: string | null, projectPath?: string): Promise<boolean>
   openInVSCode(projectPath: string): Promise<boolean>
   attachFiles(): Promise<FileAttachment[] | null>
+  attachFileByPath(path: string): Promise<FileAttachment | null>
   takeScreenshot(): Promise<FileAttachment | null>
   pasteImage(dataUrl: string): Promise<FileAttachment | null>
   transcribeAudio(audioBase64: string): Promise<{ error: string | null; transcript: string | null }>
@@ -127,6 +128,7 @@ const api: CodaAPI = {
   openInTerminal: (sessionId, projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_TERMINAL, { sessionId, projectPath }),
   openInVSCode: (projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, projectPath),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
+  attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),
   takeScreenshot: () => ipcRenderer.invoke(IPC.TAKE_SCREENSHOT),
   pasteImage: (dataUrl) => ipcRenderer.invoke(IPC.PASTE_IMAGE, dataUrl),
   transcribeAudio: (audioBase64) => ipcRenderer.invoke(IPC.TRANSCRIBE_AUDIO, audioBase64),

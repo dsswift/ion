@@ -384,6 +384,7 @@ export const IPC = {
   OPEN_IN_TERMINAL: 'coda:open-in-terminal',
   OPEN_IN_VSCODE: 'coda:open-in-vscode',
   ATTACH_FILES: 'coda:attach-files',
+  ATTACH_FILE_BY_PATH: 'coda:attach-file-by-path',
   TAKE_SCREENSHOT: 'coda:take-screenshot',
   TRANSCRIBE_AUDIO: 'coda:transcribe-audio',
   PASTE_IMAGE: 'coda:paste-image',
