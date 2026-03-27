@@ -63,6 +63,19 @@ export function editorDirForTab(tab: TabState): string {
 let editorFileCounter = 0
 const nextEditorFileId = () => `ef-${++editorFileCounter}`
 
+function nextUntitledName(states: Map<string, FileEditorDirState>): string {
+  const used = new Set<number>()
+  for (const state of states.values()) {
+    for (const f of state.files) {
+      const m = f.fileName.match(/^Untitled-(\d+)\.md$/)
+      if (m) used.add(Number(m[1]))
+    }
+  }
+  let n = 1
+  while (used.has(n)) n++
+  return `Untitled-${n}.md`
+}
+
 interface State {
   tabs: TabState[]
   activeTabId: string
@@ -644,7 +657,7 @@ export const useSessionStore = create<State>((set, get) => ({
         const newFile: FileEditorTab = {
           id,
           filePath: null,
-          fileName: 'Untitled.md',
+          fileName: nextUntitledName(s.fileEditorStates),
           content: '',
           savedContent: '',
           isDirty: false,
@@ -747,7 +760,7 @@ export const useSessionStore = create<State>((set, get) => ({
       const newFile: FileEditorTab = {
         id,
         filePath: null,
-        fileName: 'Untitled',
+        fileName: nextUntitledName(s.fileEditorStates),
         content: '',
         savedContent: '',
         isDirty: false,
