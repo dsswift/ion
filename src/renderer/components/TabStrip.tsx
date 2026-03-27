@@ -1812,11 +1812,15 @@ function GroupPill({
   const colors = useColors()
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const renameTab = useSessionStore((s) => s.renameTab)
+  const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+  const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
   const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number } | null>(null)
+  const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
@@ -1909,7 +1913,17 @@ function GroupPill({
           }
         }}
       >
-        <StackedStatusDots tabs={group.tabs} />
+        <span
+          className="flex-shrink-0 inline-flex"
+          onContextMenu={group.tabs.length === 1 ? (e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setColorPickerAnchor({ x: e.clientX, y: e.clientY })
+            setColorPickerOpen(true)
+          } : undefined}
+        >
+          <StackedStatusDots tabs={group.tabs} />
+        </span>
         <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: colors.textSecondary, opacity: 0.5 }}>
           {group.label}
         </span>
@@ -2037,6 +2051,23 @@ function GroupPill({
               finishWorkDisabled={tab.worktree ? (worktreeUncommittedMap.has(tab.id) ? worktreeUncommittedMap.get(tab.id)! : 'checking') : undefined}
               onClose={() => setTabMenu(null)}
               groupTabs={group.tabs}
+            />
+          )
+        })()}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {colorPickerOpen && group.tabs.length === 1 && (() => {
+          const tab = group.tabs[0]
+          return (
+            <PillColorPicker
+              key="group-pill-color-picker"
+              anchor={colorPickerAnchor}
+              currentColor={tab.pillColor}
+              onSelect={(color) => setTabPillColor(tab.id, color)}
+              currentIcon={tab.pillIcon}
+              onSelectIcon={(icon) => setTabPillIcon(tab.id, icon)}
+              onClose={() => setColorPickerOpen(false)}
             />
           )
         })()}
