@@ -311,6 +311,15 @@ export const useSessionStore = create<State>((set, get) => ({
     const defaultBase = useThemeStore.getState().defaultBaseDirectory
     const startDir = defaultBase || homeDir
     const hasChosen = !!defaultBase
+
+    const existingBlank = get().tabs.find(
+      (t) => t.messages.length === 0 && t.workingDirectory === startDir
+    )
+    if (existingBlank) {
+      set({ activeTabId: existingBlank.id })
+      return existingBlank.id
+    }
+
     let tabId: string
     try {
       const res = await window.coda.createTab()
@@ -360,6 +369,14 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   createTabInDirectory: async (dir, useWorktree) => {
+    const existingBlank = get().tabs.find(
+      (t) => t.messages.length === 0 && t.workingDirectory === dir
+    )
+    if (existingBlank) {
+      set({ activeTabId: existingBlank.id })
+      return existingBlank.id
+    }
+
     useThemeStore.getState().addRecentBaseDirectory(dir)
 
     let tabId: string
