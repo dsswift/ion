@@ -952,6 +952,8 @@ function ImageCard({ src, alt, colors }: { src?: string; alt?: string; colors: R
 
 // ─── Assistant Message (memoized — only re-renders when content changes) ───
 
+const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
+
 const AssistantMessage = React.memo(function AssistantMessage({
   message,
   skipMotion,
@@ -981,16 +983,21 @@ const AssistantMessage = React.memo(function AssistantMessage({
     code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, onOpenFile, onOpenUrl])
 
+  const displayContent = useMemo(() => message.content.replace(TASK_NOTIFICATION_RE, '').trim(), [message.content])
+
+  // Message was entirely a task-notification (internal plumbing) -- hide it
+  if (!displayContent) return null
+
   const inner = (
     <div className="group/msg relative">
       <div className="text-[13px] leading-[1.6] prose-cloud min-w-0 max-w-[92%] overflow-hidden">
         <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
-          {message.content}
+          {displayContent}
         </Markdown>
       </div>
       {/* Copy button — always in DOM, shown via CSS :hover (no React state needed).
           Absolute positioning so it never shifts the text layout. */}
-      {message.content.trim() && (
+      {displayContent && (
         <div className="absolute bottom-0 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
           <MessageActions message={message} variant="assistant" />
         </div>
