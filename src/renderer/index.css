@@ -77,6 +77,8 @@ input::placeholder {
   font-size: 12px;
   overflow-x: auto;
   max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 .prose-cloud code {
   background: var(--coda-accent-light);

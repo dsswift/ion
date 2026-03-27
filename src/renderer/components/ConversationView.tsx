@@ -180,13 +180,13 @@ export function ConversationView() {
   return (
     <div
       data-coda-ui
-      className="flex flex-col min-h-0"
+      className="flex flex-col min-h-0 min-w-0 overflow-hidden"
       style={{ flex: 1 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Scroll area wrapper — relative so activity row can overlay */}
-      <div className="relative flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-0 min-w-0 flex flex-col">
         {/* Scrollable messages area */}
         <div
           ref={scrollRef}
@@ -207,7 +207,7 @@ export function ConversationView() {
           </div>
         )}
 
-        <div className="space-y-1 relative">
+        <div className="space-y-1 relative min-w-0">
           {grouped.map((item, idx) => {
             const msgIndex = startIndex + idx
             const isHistorical = msgIndex < historicalThreshold
