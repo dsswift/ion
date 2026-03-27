@@ -12,6 +12,7 @@ import { useColors, useThemeStore } from '../theme'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { DiffViewer } from './DiffViewer'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
+import { useGitPollingStore } from '../hooks/useGitPolling'
 import type { GitChangedFile, GitCommit, GitCommitDetail, GitBranchInfo } from '../../shared/types'
 import type { GitGraphNode } from '../utils/gitGraphLayout'
 
@@ -747,7 +748,7 @@ function GitGraphSection({
   const [commits, setCommits] = useState<GitCommit[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [branch, setBranch] = useState('')
+  const branch = useGitPollingStore((s) => s.branch)
   const [fetchingAction, setFetchingAction] = useState<string | null>(null)
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
@@ -779,7 +780,6 @@ function GitGraphSection({
     setCommits([])
     setTotalCount(0)
     loadGraph()
-    window.coda.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
   }, [directory, loadGraph])
 
   // Reload graph when parent triggers a refresh (e.g. after commit)
@@ -897,7 +897,6 @@ function GitGraphSection({
 
   const handleBranchRefresh = () => {
     loadGraph()
-    window.coda.gitChanges(directory).then((r) => setBranch(r.branch)).catch(() => {})
     onRefresh()
   }
 
@@ -1378,12 +1377,11 @@ export function GitPanel() {
   const setChangesOpen = useThemeStore((s) => s.setGitPanelChangesOpen)
   const graphOpen = useThemeStore((s) => s.gitPanelGraphOpen)
   const setGraphOpen = useThemeStore((s) => s.setGitPanelGraphOpen)
-  const [files, setFiles] = useState<GitChangedFile[]>([])
-  const [refreshKey, setRefreshKey] = useState(0)
+  const files = useGitPollingStore((s) => s.files)
+  const refreshKey = useGitPollingStore((s) => s.refreshKey)
   const splitRatio = useThemeStore((s) => s.gitPanelSplitRatio)
   const setSplitRatio = useThemeStore((s) => s.setGitPanelSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
-  const prevSignatureRef = useRef<string>('')
   const commitCommand = useThemeStore((s) => s.commitCommand)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const [commitMsg, setCommitMsg] = useState('')
@@ -1422,34 +1420,14 @@ export function GitPanel() {
     }
   }, [commitCommand, directory, activeTabId])
 
-  const refresh = useCallback(() => {
-    setRefreshKey((k) => k + 1)
-  }, [])
+  const refresh = useGitPollingStore((s) => s.refresh)
 
-  // Load changes (auto-refresh every 5s, also triggers graph reload on change)
+  // Track uncommitted changes for worktree tabs (used by context menus + finish button)
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const result = await window.coda.gitChanges(directory)
-        if (cancelled) return
-        setFiles(result.files)
-        // Track uncommitted changes for worktree tabs (used by context menus + finish button)
-        if (worktree) {
-          useSessionStore.getState().setWorktreeUncommitted(activeTabId, result.files.length > 0)
-        }
-        const sig = result.branch + '\n' + result.files.map((f) => f.status + f.path).join('\n')
-        if (prevSignatureRef.current && sig !== prevSignatureRef.current) {
-          setRefreshKey((k) => k + 1)
-        }
-        prevSignatureRef.current = sig
-      } catch {}
+    if (worktree) {
+      useSessionStore.getState().setWorktreeUncommitted(activeTabId, files.length > 0)
     }
-    load()
-    // Auto-refresh every 5s
-    const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [directory, refreshKey])
+  }, [worktree, activeTabId, files])
 
   // Drag split between Changes and Graph
   const FIXED_CHROME = 28 + 28 + 28 + 6 // panel header + changes header + graph header + divider

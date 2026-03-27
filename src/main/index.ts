@@ -1963,12 +1963,19 @@ ipcMain.handle(IPC.GIT_CHANGES, async (_event, { directory }: { directory: strin
   try {
     await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
   } catch {
-    return { files: [], branch: '', isGitRepo: false }
+    return { files: [], branch: '', isGitRepo: false, ahead: 0, behind: 0 }
   }
 
   let branch = ''
   try {
     branch = (await runGit(directory, ['branch', '--show-current'])).trim()
+  } catch {}
+
+  let ahead = 0
+  let behind = 0
+  try {
+    ahead = parseInt((await runGit(directory, ['rev-list', '--count', '@{upstream}..HEAD'])).trim(), 10) || 0
+    behind = parseInt((await runGit(directory, ['rev-list', '--count', 'HEAD..@{upstream}'])).trim(), 10) || 0
   } catch {}
 
   try {
@@ -2013,9 +2020,9 @@ ipcMain.handle(IPC.GIT_CHANGES, async (_event, { directory }: { directory: strin
       }
     }
 
-    return { files: result, branch, isGitRepo: true }
+    return { files: result, branch, isGitRepo: true, ahead, behind }
   } catch {
-    return { files: [], branch, isGitRepo: true }
+    return { files: [], branch, isGitRepo: true, ahead, behind }
   }
 })
 

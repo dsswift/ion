@@ -626,6 +626,8 @@ export interface GitChangesData {
   files: GitChangedFile[]
   branch: string
   isGitRepo: boolean
+  ahead: number
+  behind: number
 }
 
 export interface GitBranchInfo {
