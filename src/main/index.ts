@@ -2236,16 +2236,12 @@ async function requestPermissions(): Promise<void> {
   if (process.platform !== 'darwin') return
 
   // ── Microphone (for voice input via Whisper) ──
-  // CRITICAL: fire-and-forget. Do NOT await this call.
-  // macOS can stall the dialog (ad-hoc signature, reinstall, Sequoia changes)
-  // which blocks createWindow() and makes the app appear dead -- no window,
-  // no shortcuts, no tray response. The await version caused a full outage.
+  // Await the permission dialog so it doesn't get lost behind the overlay.
+  // This runs before createWindow(), so there's no window to appear dead.
   try {
     const micStatus = systemPreferences.getMediaAccessStatus('microphone')
     if (micStatus === 'not-determined') {
-      systemPreferences.askForMediaAccess('microphone').catch((err: any) => {
-        log(`Permission preflight: microphone request failed — ${err.message}`)
-      })
+      await systemPreferences.askForMediaAccess('microphone')
     }
   } catch (err: any) {
     log(`Permission preflight: microphone check failed — ${err.message}`)
