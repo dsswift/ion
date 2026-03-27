@@ -316,6 +316,7 @@ function DirContextMenu({
 function TabContextMenu({
   anchor,
   tab,
+  onRename,
   onForkTab,
   onNewTabInDir,
   onFinishWork,
@@ -324,6 +325,7 @@ function TabContextMenu({
 }: {
   anchor: { x: number; y: number }
   tab: TabState
+  onRename?: () => void
   onForkTab?: () => void
   onNewTabInDir: () => void
   onFinishWork: () => void
@@ -400,6 +402,18 @@ function TabContextMenu({
         minWidth: 160,
       }}
     >
+      {onRename && (
+        <button
+          onClick={() => { onRename(); onClose() }}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={menuItemStyle}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <PencilSimple size={14} color={colors.textSecondary} />
+          <span>Rename</span>
+        </button>
+      )}
       {onForkTab && (
         <button
           onClick={() => { onForkTab(); onClose() }}
@@ -1021,33 +1035,31 @@ function GroupPickerDropdown({
         })()}
       </AnimatePresence>
 
-      {/* Sub-popovers: dir context menu */}
+      {/* Sub-popovers: tab context menu */}
       <AnimatePresence>
         {dirMenuTabId && (() => {
           const menuTab = group.tabs.find((t) => t.id === dirMenuTabId)
-          if (!menuTab?.workingDirectory) return null
-          const menuDirName = menuTab.workingDirectory.split('/').pop() || menuTab.workingDirectory
+          if (!menuTab) return null
           return (
-            <DirContextMenu
-              key="dropdown-dir-menu"
+            <TabContextMenu
+              key="dropdown-tab-menu"
               anchor={dirMenuAnchor}
-              dirName={menuDirName}
-              tabId={menuTab.id}
-              tabGroupId={menuTab.groupId || undefined}
-              onCreateTab={() => {
-                window.dispatchEvent(new CustomEvent('coda:close-group-pickers'))
-                useSessionStore.getState().createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
-                setDirMenuTabId(null)
-              }}
+              tab={menuTab}
+              onRename={() => { setDirMenuTabId(null); setEditingTabId(menuTab.id) }}
               onForkTab={menuTab.claudeSessionId ? () => {
                 useSessionStore.getState().forkTab(menuTab.id)
                 setDirMenuTabId(null)
               } : undefined}
-              onFinishWork={menuTab.worktree ? () => {
+              onNewTabInDir={() => {
+                window.dispatchEvent(new CustomEvent('coda:close-group-pickers'))
+                useSessionStore.getState().createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
+              }}
+              onFinishWork={() => {
                 useSessionStore.getState().finishWorktreeTab(menuTab.id)
                 setDirMenuTabId(null)
-              } : undefined}
+              }}
               onClose={() => setDirMenuTabId(null)}
+              groupTabs={group.tabs}
             />
           )
         })()}
@@ -1867,6 +1879,7 @@ function GroupPill({
               key="group-tab-ctx"
               anchor={tabMenu}
               tab={tab}
+              onRename={() => { setTabMenu(null); setRenamingTitle(true) }}
               onForkTab={tab.claudeSessionId ? () => { useSessionStore.getState().forkTab(tab.id) } : undefined}
               onNewTabInDir={() => useSessionStore.getState().createTabInDirectory(tab.workingDirectory, shouldUseWorktree(false))}
               onFinishWork={() => { if (tab.worktree) useSessionStore.getState().finishWorktreeTab(tab.id) }}
@@ -2389,6 +2402,7 @@ export function TabStrip() {
               key="tab-context-menu"
               anchor={tabMenuAnchor}
               tab={menuTab}
+              onRename={() => { setTabMenuId(null); setEditingTabId(menuTab.id) }}
               onForkTab={menuTab.claudeSessionId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
               onNewTabInDir={() => {
                 if (menuTab.workingDirectory) createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
