@@ -461,6 +461,13 @@ export default function App() {
         e.preventDefault()
         useSessionStore.getState().toggleGitPanel()
       }
+      if (e.shiftKey && e.key === 'Tab') {
+        e.preventDefault()
+        const s = useSessionStore.getState()
+        const tab = s.tabs.find((t) => t.id === s.activeTabId)
+        const current = tab?.permissionMode ?? 'plan'
+        s.setPermissionMode(current === 'plan' ? 'auto' : 'plan')
+      }
       if (e.metaKey && e.key === 'k') {
         e.preventDefault()
         const s = useSessionStore.getState()
