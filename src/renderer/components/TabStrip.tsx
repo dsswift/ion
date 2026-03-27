@@ -1781,6 +1781,16 @@ function GroupPill({
           color: isActive ? colors.textPrimary : colors.textTertiary,
           fontWeight: isActive ? 500 : 400,
         } as React.CSSProperties}
+        onMouseDown={(e) => {
+          if (e.button === 1) {
+            e.preventDefault()
+            if (!isActive || !selectedTab || selectedTab.worktree) return
+            const running = selectedTab.status === 'running' || selectedTab.status === 'connecting'
+            if (!running && !selectedTab.bashExecuting) {
+              useSessionStore.getState().closeTab(selectedTab.id)
+            }
+          }
+        }}
         onClick={handleClick}
         onContextMenu={(e) => {
           if (tabGroupMode === 'manual') {
