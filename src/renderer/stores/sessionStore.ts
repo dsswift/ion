@@ -176,6 +176,7 @@ interface State {
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
   setDraftInput: (tabId: string, text: string) => void
+  clearPendingInput: (tabId: string) => void
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
   handleStatusChange: (tabId: string, newStatus: string, oldStatus: string) => void
   handleError: (tabId: string, error: EnrichedError) => void
@@ -1052,12 +1053,14 @@ export const useSessionStore = create<State>((set, get) => ({
     const idx = tab.messages.findIndex((m) => m.id === messageId)
     if (idx < 0) return
 
+    const targetMessage = tab.messages[idx]
     const oldSessionId = tab.claudeSessionId
     const historicalSessionIds = oldSessionId
       ? [...tab.historicalSessionIds, oldSessionId]
       : [...tab.historicalSessionIds]
 
-    const rewoundMessages = tab.messages.slice(0, idx + 1)
+    // Slice to right before the target message so user can re-send it
+    const rewoundMessages = tab.messages.slice(0, idx)
     const lastToolMsg = [...rewoundMessages].reverse().find((m) => m.toolName)
     const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
       ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
@@ -1078,6 +1081,8 @@ export const useSessionStore = create<State>((set, get) => ({
               permissionQueue: [],
               permissionDenied: restoredDenied,
               queuedPrompts: [],
+              pendingInput: targetMessage.content,
+              draftInput: targetMessage.content,
             }
           : t
       ),
@@ -1511,6 +1516,14 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === tabId ? { ...t, draftInput: text } : t
+      ),
+    }))
+  },
+
+  clearPendingInput: (tabId) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, pendingInput: undefined } : t
       ),
     }))
   },

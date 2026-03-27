@@ -178,6 +178,8 @@ export interface TabState {
   attachments: FileAttachment[]
   /** Draft input text for this tab's input bar (scoped per-tab) */
   draftInput: string
+  /** One-shot field: set by rewind, consumed by InputBar to pre-fill input, then cleared */
+  pendingInput?: string
   messages: Message[]
   title: string
   /** User-provided custom tab name (overrides auto-generated title when set) */

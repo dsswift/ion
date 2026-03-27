@@ -49,6 +49,7 @@ export function InputBar() {
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const removeAttachment = useSessionStore((s) => s.removeAttachment)
   const setDraftInput = useSessionStore((s) => s.setDraftInput)
+  const clearPendingInput = useSessionStore((s) => s.clearPendingInput)
 
   const setPreferredModel = useSessionStore((s) => s.setPreferredModel)
   const staticInfo = useSessionStore((s) => s.staticInfo)
@@ -101,6 +102,16 @@ export function InputBar() {
     textareaRef.current?.focus()
     setBashMode(false)
   }, [activeTabId])
+
+  // ─── Rewind: restore user message to input bar ───
+  const pendingInput = tab?.pendingInput
+  useEffect(() => {
+    if (pendingInput && activeTabId) {
+      setInput(pendingInput)
+      clearPendingInput(activeTabId)
+      textareaRef.current?.focus()
+    }
+  }, [pendingInput, activeTabId])
 
   // Focus textarea when window is shown (shortcut toggle, screenshot return)
   // Skip if focus is inside the terminal panel (xterm manages its own focus)
