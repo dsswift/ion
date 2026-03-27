@@ -5,6 +5,7 @@ import {
   FilePlus, FolderPlus, ArrowsClockwise, ArrowsInLineVertical,
   File, FileTs, FileJs, FileCode, FileText, FileCss, FileHtml, FilePy,
   Image, GearSix,
+  Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut,
 } from '@phosphor-icons/react'
 import { useSessionStore, isTextFile } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -91,15 +92,26 @@ function ContextMenu({
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const items = useMemo(() => {
+  const { addAttachments } = useSessionStore.getState()
+
+  type MenuItem = { label: string; action: () => void; icon: React.ComponentType<{ size?: number; color?: string }>} | { separator: true }
+
+  const items: MenuItem[] = useMemo(() => {
     const relativePath = menu.entry.path.startsWith(workingDir + '/')
       ? menu.entry.path.slice(workingDir.length + 1)
       : menu.entry.path
     return [
-      { label: 'Copy Path', action: () => navigator.clipboard.writeText(menu.entry.path) },
-      { label: 'Copy Relative Path', action: () => navigator.clipboard.writeText(relativePath) },
-      { label: 'Reveal in Finder', action: () => { maybeCloseExplorerBeforeExternal(); window.coda.fsRevealInFinder(menu.entry.path) } },
-      { label: 'Open in Native App', action: () => { maybeCloseExplorerBeforeExternal(); window.coda.fsOpenNative(menu.entry.path) } },
+      { label: 'Attach to Conversation', icon: Paperclip, action: async () => {
+        const attachment = await window.coda.attachFileByPath(menu.entry.path)
+        if (attachment) addAttachments([attachment])
+        maybeCloseExplorerBeforeExternal()
+      }},
+      { separator: true as const },
+      { label: 'Copy Path', icon: Copy, action: () => navigator.clipboard.writeText(menu.entry.path) },
+      { label: 'Copy Relative Path', icon: Copy, action: () => navigator.clipboard.writeText(relativePath) },
+      { separator: true as const },
+      { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); window.coda.fsRevealInFinder(menu.entry.path) } },
+      { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); window.coda.fsOpenNative(menu.entry.path) } },
     ]
   }, [menu.entry.path, workingDir])
 
@@ -122,26 +134,34 @@ function ContextMenu({
         minWidth: 160,
       }}
     >
-      {items.map((item) => (
-        <div
-          key={item.label}
-          onClick={() => { item.action(); onClose() }}
-          style={{
-            height: 28,
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 12px',
-            fontSize: 11,
-            color: colors.textPrimary,
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-        >
-          {item.label}
-        </div>
-      ))}
+      {items.map((item, i) => {
+        if ('separator' in item) {
+          return <div key={`sep-${i}`} style={{ height: 1, background: colors.containerBorder, margin: '4px 8px' }} />
+        }
+        const Icon = item.icon
+        return (
+          <div
+            key={item.label}
+            onClick={() => { item.action(); onClose() }}
+            style={{
+              height: 28,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0 12px',
+              fontSize: 11,
+              color: colors.textPrimary,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+          >
+            <Icon size={14} color={colors.textTertiary} />
+            {item.label}
+          </div>
+        )
+      })}
     </div>,
     portalTarget,
   )
