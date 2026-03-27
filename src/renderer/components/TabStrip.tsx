@@ -2295,7 +2295,7 @@ export function TabStrip() {
                   {groups.map((group) => {
                     const isGroupActive = group.tabs.some((t) => t.id === activeTabId)
                     return (
-                      <Reorder.Item key={group.groupId} value={group.groupId} as="div" style={{ listStyle: 'none' }}>
+                      <Reorder.Item key={group.groupId} value={group.groupId} as="div" style={{ listStyle: 'none', flexShrink: 0 }}>
                         <GroupPill
                           group={group}
                           isActive={isGroupActive}
