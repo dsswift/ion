@@ -212,6 +212,8 @@ export interface TabState {
   pillColor: string | null
   /** Session ID this tab was forked from (null if not a fork) */
   forkedFromSessionId: string | null
+  /** True once a file-writing tool (Write, Edit, NotebookEdit, MultiEdit) completes successfully */
+  hasFileActivity: boolean
   /** Worktree metadata when tab operates inside a managed worktree */
   worktree: WorktreeInfo | null
   /** True while waiting for the user to pick a source branch in the BranchPickerDialog */

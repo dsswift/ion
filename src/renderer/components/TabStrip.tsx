@@ -349,6 +349,13 @@ function TabContextMenu({
   const newGroupInputRef = useRef<HTMLInputElement>(null)
 
   const showMoveAll = groupTabs && groupTabs.length > 1
+  const [isGitRepo, setIsGitRepo] = useState(false)
+
+  useEffect(() => {
+    if (tab.workingDirectory && !tab.worktree) {
+      window.coda.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => setIsGitRepo(isRepo)).catch(() => setIsGitRepo(false))
+    }
+  }, [tab.workingDirectory, tab.worktree])
 
   useEffect(() => {
     if (showNewGroupInput) newGroupInputRef.current?.focus()
@@ -436,6 +443,21 @@ function TabContextMenu({
         >
           <FolderOpen size={14} color={colors.textSecondary} />
           <span>New tab in directory</span>
+        </button>
+      )}
+      {!tab.worktree && isGitRepo && (
+        <button
+          onClick={tab.hasFileActivity ? undefined : () => { useSessionStore.getState().convertToWorktree(tab.id); onClose() }}
+          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+          style={{
+            ...menuItemStyle,
+            ...(tab.hasFileActivity ? { color: colors.textTertiary, cursor: 'not-allowed', opacity: 0.5 } : {}),
+          }}
+          onMouseEnter={(e) => { if (!tab.hasFileActivity) (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <GitBranch size={14} color={tab.hasFileActivity ? colors.textTertiary : colors.textSecondary} />
+          <span>Convert to worktree</span>
         </button>
       )}
       {tab.worktree && (

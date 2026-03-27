@@ -170,6 +170,7 @@ interface State {
   removeDirectory: (dir: string) => void
   setBaseDirectory: (dir: string) => void
   setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
+  convertToWorktree: (tabId: string) => void
   cancelWorktreeSetup: (tabId: string) => void
   finishWorktreeTab: (tabId: string, strategyOverride?: 'merge' | 'pr') => Promise<void>
   addAttachments: (attachments: FileAttachment[]) => void
@@ -234,6 +235,7 @@ function makeLocalTab(): TabState {
     bashExecId: null,
     pillColor: null,
     forkedFromSessionId: null,
+    hasFileActivity: false,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,
@@ -1418,6 +1420,14 @@ export const useSessionStore = create<State>((set, get) => ({
     }
   },
 
+  convertToWorktree: (tabId) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, pendingWorktreeSetup: true } : t
+      ),
+    }))
+  },
+
   cancelWorktreeSetup: (tabId) => {
     set((s) => ({
       tabs: s.tabs.map((t) =>
@@ -1771,6 +1781,10 @@ export const useSessionStore = create<State>((set, get) => ({
               }
               if (useThemeStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
                 targetTool.autoExpandResult = true
+              }
+              const FILE_WRITE_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'MultiEdit']
+              if (!event.isError && FILE_WRITE_TOOLS.includes(targetTool.toolName || '')) {
+                updated.hasFileActivity = true
               }
             }
             updated.messages = msgs3
