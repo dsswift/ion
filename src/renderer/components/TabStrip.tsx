@@ -1464,15 +1464,7 @@ function MoveToGroupSubmenu({
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           onClick={() => {
-            if (tabGroupMode === 'auto') {
-              // For auto mode, set the workingDirectory
-              const dir = t.id.replace('auto-', '')
-              useSessionStore.setState((s) => ({
-                tabs: s.tabs.map((tab) => tab.id === tabId ? { ...tab, groupId: t.id } : tab),
-              }))
-            } else {
-              moveTabToGroup(tabId, t.id)
-            }
+            moveTabToGroup(tabId, t.id)
             onClose()
           }}
         >

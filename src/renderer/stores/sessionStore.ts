@@ -2143,14 +2143,42 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
   moveTabToGroup: (tabId, groupId) => {
-    set((s) => ({
-      tabs: s.tabs.map((t) => t.id === tabId ? { ...t, groupId } : t),
-    }))
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === tabId)
+      if (!tab) return s
+      const updated = { ...tab, groupId }
+      const without = s.tabs.filter((t) => t.id !== tabId)
+      let insertIdx = -1
+      for (let i = without.length - 1; i >= 0; i--) {
+        if (without[i].groupId === groupId) { insertIdx = i; break }
+      }
+      const newTabs = [...without]
+      if (insertIdx >= 0) {
+        newTabs.splice(insertIdx + 1, 0, updated)
+      } else {
+        newTabs.push(updated)
+      }
+      return { tabs: newTabs }
+    })
   },
   setTabGroupId: (tabId, groupId) => {
-    set((s) => ({
-      tabs: s.tabs.map((t) => t.id === tabId ? { ...t, groupId } : t),
-    }))
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === tabId)
+      if (!tab) return s
+      const updated = { ...tab, groupId }
+      const without = s.tabs.filter((t) => t.id !== tabId)
+      let insertIdx = -1
+      for (let i = without.length - 1; i >= 0; i--) {
+        if (without[i].groupId === groupId) { insertIdx = i; break }
+      }
+      const newTabs = [...without]
+      if (insertIdx >= 0) {
+        newTabs.splice(insertIdx + 1, 0, updated)
+      } else {
+        newTabs.push(updated)
+      }
+      return { tabs: newTabs }
+    })
   },
   setWorktreeUncommitted: (tabId, hasChanges) => {
     const map = new Map(get().worktreeUncommittedMap)
