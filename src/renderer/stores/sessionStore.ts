@@ -55,6 +55,11 @@ function isEditableByDefault(name: string): boolean {
   return EDITABLE_EXTS.has(ext)
 }
 
+/** For file-editor state keying, worktree tabs use their source repo path */
+export function editorDirForTab(tab: TabState): string {
+  return tab.worktree?.repoPath ?? tab.workingDirectory
+}
+
 let editorFileCounter = 0
 const nextEditorFileId = () => `ef-${++editorFileCounter}`
 
@@ -622,7 +627,7 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId)
       if (!tab) return {}
-      const dir = tab.workingDirectory
+      const dir = editorDirForTab(tab)
       const next = new Set(s.fileEditorOpenDirs)
       if (next.has(dir)) {
         next.delete(dir)

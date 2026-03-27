@@ -16,7 +16,7 @@ import { PopoverLayerProvider, usePopoverLayer } from './components/PopoverLayer
 import { createPortal } from 'react-dom'
 import { useClaudeEvents } from './hooks/useClaudeEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
-import { useSessionStore } from './stores/sessionStore'
+import { useSessionStore, editorDirForTab } from './stores/sessionStore'
 import { useColors, useThemeStore, spacing } from './theme'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -550,10 +550,13 @@ export default function App() {
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const terminalOpen = useSessionStore((s) => s.terminalOpenTabIds.has(s.activeTabId))
   const explorerOpen = useSessionStore((s) => s.fileExplorerOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
-  const editorOpen = useSessionStore((s) => s.fileEditorOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
+  const editorOpen = useSessionStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId)
+    return tab ? s.fileEditorOpenDirs.has(editorDirForTab(tab)) : false
+  })
   const editorDirState = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    return tab ? s.fileEditorStates.get(tab.workingDirectory) : undefined
+    return tab ? s.fileEditorStates.get(editorDirForTab(tab)) : undefined
   })
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 
@@ -561,12 +564,12 @@ export default function App() {
   // (e.g. base directory changed), auto-create a scratch file so the editor stays visible
   useEffect(() => {
     if (!editorOpen || !activeTab) return
-    const dir = activeTab.workingDirectory
+    const dir = editorDirForTab(activeTab)
     const dirState = useSessionStore.getState().fileEditorStates.get(dir)
     if (!dirState || dirState.files.length === 0) {
       useSessionStore.getState().createScratchFile(dir)
     }
-  }, [editorOpen, activeTab?.workingDirectory])
+  }, [editorOpen, activeTab ? editorDirForTab(activeTab) : undefined])
 
   // Layout dimensions — three width tiers based on expandedUI + ultraWide
   //   ultraWide OFF: collapsed 460 / expanded 700
@@ -843,7 +846,7 @@ export default function App() {
 
         {/* File editor floating panel */}
         {editorOpen && editorDirState && editorDirState.files.length > 0 && activeTab && (
-          <FileEditor dir={activeTab.workingDirectory} tabId={activeTabId} />
+          <FileEditor dir={editorDirForTab(activeTab)} tabId={activeTabId} />
         )}
       </div>
     </PopoverLayerProvider>
