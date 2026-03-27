@@ -64,17 +64,6 @@ else
   check "Python 3" "0" "not found — brew install python@3.11"
 fi
 
-# distutils
-if command -v python3 &>/dev/null; then
-  if python3 -c "import distutils" 2>/dev/null; then
-    check "distutils" "1" "importable"
-  else
-    check "distutils" "0" "missing — python3 -m pip install --upgrade pip setuptools"
-  fi
-else
-  check "distutils" "0" "skipped (no python3)"
-fi
-
 # Xcode CLT
 if xcode-select -p &>/dev/null; then
   check "Xcode CLT" "1" "$(xcode-select -p)"
