@@ -163,6 +163,7 @@ interface State {
   rewindToMessage: (tabId: string, messageId: string) => void
   forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>
   resumeSession: (sessionId: string, title?: string, projectPath?: string, customTitle?: string | null, encodedDir?: string | null) => Promise<string>
+  resumeSessionWithChain: (sessionId: string, historicalSessionIds: string[], title?: string, projectPath?: string, customTitle?: string | null, encodedDir?: string | null) => Promise<string>
   addSystemMessage: (content: string) => void
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
@@ -1214,6 +1215,101 @@ export const useSessionStore = create<State>((set, get) => ({
     }
   },
 
+  resumeSessionWithChain: async (sessionId, historicalSessionIds, title, projectPath, customTitle, encodedDir) => {
+    const defaultDir = projectPath || get().staticInfo?.homePath || '~'
+    try {
+      const { tabId } = await window.coda.createTab()
+
+      // Load all historical sessions + the current one as a composite conversation
+      const allMessages: Message[] = []
+      for (const histId of historicalSessionIds) {
+        const history = await window.coda.loadSession(histId, defaultDir, encodedDir || undefined).catch(() => [])
+        for (const m of history) {
+          allMessages.push({
+            id: nextMsgId(),
+            role: m.role as Message['role'],
+            content: m.content,
+            toolName: m.toolName,
+            toolId: m.toolId,
+            toolInput: m.toolInput,
+            toolStatus: m.toolName ? 'completed' as const : undefined,
+            userExecuted: m.userExecuted,
+            attachments: m.attachments,
+            timestamp: m.timestamp,
+          })
+        }
+      }
+
+      // Load current/latest session
+      const currentHistory = await window.coda.loadSession(sessionId, defaultDir, encodedDir || undefined).catch(() => [])
+      for (const m of currentHistory) {
+        allMessages.push({
+          id: nextMsgId(),
+          role: m.role as Message['role'],
+          content: m.content,
+          toolName: m.toolName,
+          toolId: m.toolId,
+          toolInput: m.toolInput,
+          toolStatus: m.toolName ? 'completed' as const : undefined,
+          userExecuted: m.userExecuted,
+          attachments: m.attachments,
+          timestamp: m.timestamp,
+        })
+      }
+
+      // Restore plan-ready / ask-user state if last tool message needs user response
+      const lastToolMsg = [...allMessages].reverse().find((m) => m.toolName)
+      const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
+        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+        : null
+
+      const { tabGroupMode, tabGroups } = useThemeStore.getState()
+      const groupId = tabGroupMode === 'manual'
+        ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null)
+        : null
+
+      const tab: TabState = {
+        ...makeLocalTab(),
+        id: tabId,
+        claudeSessionId: sessionId,
+        historicalSessionIds,
+        title: title || 'Resumed Session',
+        customTitle: customTitle || null,
+        workingDirectory: defaultDir,
+        hasChosenDirectory: !!projectPath,
+        messages: allMessages,
+        permissionDenied: restoredDenied,
+        groupId,
+      }
+      set((s) => ({
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+        isExpanded: true,
+      }))
+      return tabId
+    } catch {
+      const { tabGroupMode: tgm, tabGroups: tgs } = useThemeStore.getState()
+      const groupId = tgm === 'manual'
+        ? (tgs.find((g) => g.isDefault)?.id || tgs[0]?.id || null)
+        : null
+
+      const tab = makeLocalTab()
+      tab.claudeSessionId = sessionId
+      tab.historicalSessionIds = historicalSessionIds
+      tab.title = title || 'Resumed Session'
+      tab.customTitle = customTitle || null
+      tab.workingDirectory = defaultDir
+      tab.hasChosenDirectory = !!projectPath
+      tab.groupId = groupId
+      set((s) => ({
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+        isExpanded: true,
+      }))
+      return tab.id
+    }
+  },
+
   addSystemMessage: (content) => {
     const { activeTabId } = get()
     set((s) => ({
@@ -2134,6 +2230,38 @@ function persistTabs(): void {
     planGeometry,
   }
   window.coda.saveTabs(data)
+
+  // Persist session chains for composite conversation grouping in history picker
+  void persistSessionChains()
+}
+
+async function persistSessionChains(): Promise<void> {
+  try {
+    const { tabs } = useSessionStore.getState()
+    // Load existing chains so closed-tab chains survive
+    const existing = await window.coda.loadSessionChains()
+    const chains: Record<string, string[]> = { ...existing.chains }
+    const reverse: Record<string, string> = { ...existing.reverse }
+
+    // Update chains from currently open tabs
+    for (const tab of tabs) {
+      if (tab.historicalSessionIds.length > 0 && tab.claudeSessionId) {
+        // The first historical session is the root; all others + current are continuations
+        const rootId = tab.historicalSessionIds[0]
+        const continuations = [...tab.historicalSessionIds.slice(1), tab.claudeSessionId]
+        chains[rootId] = continuations
+        for (const cId of continuations) {
+          reverse[cId] = rootId
+        }
+        // Clean up: if root was previously a continuation of something else, remove that
+        delete reverse[rootId]
+      }
+    }
+
+    await window.coda.saveSessionChains({ chains, reverse })
+  } catch {
+    // Non-critical -- silently ignore
+  }
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null

@@ -329,6 +329,7 @@ export interface SessionMeta {
   slug: string | null
   firstMessage: string | null
   lastResponse: string | null
+  firstTimestamp?: string
   lastTimestamp: string
   size: number
   customTitle: string | null
@@ -338,6 +339,18 @@ export interface SessionMeta {
   projectLabel: string | null
   /** Raw encoded directory name under ~/.claude/projects/ (for loading sessions from deleted dirs) */
   encodedDir: string | null
+  /** All session IDs in this composite conversation chain (including self) */
+  chainSessionIds?: string[]
+  /** Number of sessions in the chain (1 = standalone) */
+  chainLength?: number
+}
+
+/** Maps root session IDs to their continuation chains for composite conversation grouping */
+export interface SessionChainIndex {
+  /** root session ID -> ordered list of continuation session IDs */
+  chains: Record<string, string[]>
+  /** any continuation session ID -> its root session ID */
+  reverse: Record<string, string>
 }
 
 export interface SessionLoadMessage {
@@ -454,6 +467,10 @@ export const IPC = {
   // Session labels
   SAVE_SESSION_LABEL: 'coda:save-session-label',
   LOAD_SESSION_LABELS: 'coda:load-session-labels',
+
+  // Session chains (composite conversation grouping)
+  LOAD_SESSION_CHAINS: 'coda:load-session-chains',
+  SAVE_SESSION_CHAINS: 'coda:save-session-chains',
 
   // Git operations
   GIT_GRAPH: 'coda:git-graph',

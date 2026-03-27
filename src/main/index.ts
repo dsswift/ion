@@ -548,6 +548,140 @@ ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
   }
 })
 
+/** Extract plan slug from an "[Attached plan: .../slug.md]" first message */
+const PLAN_SLUG_RE = /^\[Attached plan: .*\/([^/]+)\.md\]/
+
+/**
+ * Discover plan->implementation chains by matching plan file slugs.
+ * When CODA accepts a plan, it creates a new session whose first message is
+ * "[Attached plan: ~/.claude/plans/<slug>.md]". The slug IS the planning
+ * session's Claude slug, giving us a deterministic link regardless of time gap.
+ */
+function discoverImplicitChains(sessions: any[], chainIndex: { chains: Record<string, string[]>; reverse: Record<string, string> }): void {
+  // Build slug -> session lookup
+  const slugMap = new Map<string, any>()
+  for (const s of sessions) {
+    if (s.slug) slugMap.set(s.slug, s)
+  }
+
+  for (const s of sessions) {
+    // Skip sessions already in a chain
+    if (chainIndex.reverse[s.sessionId] || chainIndex.chains[s.sessionId]) continue
+    if (!s.firstMessage) continue
+
+    const match = PLAN_SLUG_RE.exec(s.firstMessage)
+    if (!match) continue
+
+    const planSlug = match[1]
+    const planningSession = slugMap.get(planSlug)
+    if (!planningSession || planningSession.sessionId === s.sessionId) continue
+    // Skip if planning session is already a continuation in another chain
+    if (chainIndex.reverse[planningSession.sessionId]) continue
+
+    // If the planning session is already a chain root, append this as another continuation
+    if (chainIndex.chains[planningSession.sessionId]) {
+      chainIndex.chains[planningSession.sessionId].push(s.sessionId)
+    } else {
+      chainIndex.chains[planningSession.sessionId] = [s.sessionId]
+    }
+    chainIndex.reverse[s.sessionId] = planningSession.sessionId
+  }
+}
+
+/**
+ * Collapse sessions that belong to the same chain into a single composite entry.
+ * Root session provides title/firstMessage; latest session provides lastTimestamp; sizes are summed.
+ */
+function collapseSessionChains(sessions: any[]): any[] {
+  const chainIndex = loadSessionChains()
+
+  // Discover implicit chains from plan->implementation patterns
+  discoverImplicitChains(sessions, chainIndex)
+
+  if (Object.keys(chainIndex.chains).length === 0) {
+    return sessions.map((s) => ({ ...s, chainSessionIds: [s.sessionId], chainLength: 1 }))
+  }
+
+  const sessionMap = new Map<string, any>()
+  for (const s of sessions) sessionMap.set(s.sessionId, s)
+
+  const consumed = new Set<string>()
+  const result: any[] = []
+
+  for (const s of sessions) {
+    if (consumed.has(s.sessionId)) continue
+
+    // Check if this session is a non-root chain member
+    const rootId = chainIndex.reverse[s.sessionId]
+    if (rootId && rootId !== s.sessionId) {
+      if (sessionMap.has(rootId)) {
+        // Root is in the scan -- this continuation will be folded into it
+        continue
+      }
+      // Root is NOT in the scan (too old) -- treat this continuation as a fallback root
+      const rootChain = chainIndex.chains[rootId]
+      if (rootChain) {
+        const allIds = [rootId, ...rootChain]
+        const presentSessions = allIds.map((id) => sessionMap.get(id)).filter(Boolean)
+        if (presentSessions.length > 1) {
+          const latest = presentSessions.reduce((a, b) =>
+            new Date(b.lastTimestamp).getTime() > new Date(a.lastTimestamp).getTime() ? b : a
+          )
+          const totalSize = presentSessions.reduce((sum, p) => sum + p.size, 0)
+          const earliest = presentSessions.reduce((a, b) =>
+            new Date(a.lastTimestamp).getTime() < new Date(b.lastTimestamp).getTime() ? a : b
+          )
+          result.push({
+            ...earliest,
+            lastTimestamp: latest.lastTimestamp,
+            lastResponse: latest.lastResponse,
+            size: totalSize,
+            chainSessionIds: allIds,
+            chainLength: allIds.length,
+          })
+          for (const id of allIds) consumed.add(id)
+          continue
+        }
+      }
+      // Fallback: show as standalone
+    }
+
+    // Check if this session is a chain root
+    const chainMembers = chainIndex.chains[s.sessionId]
+    if (chainMembers && chainMembers.length > 0) {
+      const allIds = [s.sessionId, ...chainMembers]
+      const presentSessions = allIds.map((id) => sessionMap.get(id)).filter(Boolean)
+
+      if (presentSessions.length <= 1) {
+        result.push({ ...s, chainSessionIds: [s.sessionId], chainLength: 1 })
+        consumed.add(s.sessionId)
+        continue
+      }
+
+      const root = sessionMap.get(s.sessionId) || presentSessions[0]
+      const latest = presentSessions.reduce((a, b) =>
+        new Date(b.lastTimestamp).getTime() > new Date(a.lastTimestamp).getTime() ? b : a
+      )
+      const totalSize = presentSessions.reduce((sum, p) => sum + p.size, 0)
+
+      result.push({
+        ...root,
+        lastTimestamp: latest.lastTimestamp,
+        lastResponse: latest.lastResponse,
+        size: totalSize,
+        chainSessionIds: allIds,
+        chainLength: allIds.length,
+      })
+      for (const id of allIds) consumed.add(id)
+    } else {
+      result.push({ ...s, chainSessionIds: [s.sessionId], chainLength: 1 })
+      consumed.add(s.sessionId)
+    }
+  }
+
+  return result
+}
+
 ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
   log(`IPC LIST_SESSIONS ${projectPath ? `(path=${projectPath})` : ''}`)
   try {
@@ -566,7 +700,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
     }
     const files = readdirSync(sessionsDir).filter((f: string) => f.endsWith('.jsonl'))
 
-    const sessions: Array<{ sessionId: string; slug: string | null; firstMessage: string | null; lastResponse: string | null; lastTimestamp: string; size: number }> = []
+    const sessions: Array<{ sessionId: string; slug: string | null; firstMessage: string | null; lastResponse: string | null; firstTimestamp: string; lastTimestamp: string; size: number }> = []
 
     // UUID v4 regex — only consider files named as valid UUIDs
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -581,8 +715,8 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
       if (stat.size < 100) continue // skip trivially small files
 
       // Read lines to extract metadata and validate transcript schema
-      const meta: { validated: boolean; slug: string | null; firstMessage: string | null; lastResponse: string | null; lastTimestamp: string | null } = {
-        validated: false, slug: null, firstMessage: null, lastResponse: null, lastTimestamp: null,
+      const meta: { validated: boolean; slug: string | null; firstMessage: string | null; lastResponse: string | null; firstTimestamp: string | null; lastTimestamp: string | null } = {
+        validated: false, slug: null, firstMessage: null, lastResponse: null, firstTimestamp: null, lastTimestamp: null,
       }
 
       await new Promise<void>((resolve) => {
@@ -595,7 +729,10 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
               meta.validated = true
             }
             if (obj.slug && !meta.slug) meta.slug = obj.slug
-            if (obj.timestamp) meta.lastTimestamp = obj.timestamp
+            if (obj.timestamp) {
+              if (!meta.firstTimestamp) meta.firstTimestamp = obj.timestamp
+              meta.lastTimestamp = obj.timestamp
+            }
             if (obj.type === 'user' && !meta.firstMessage) {
               const content = obj.message?.content
               let raw = ''
@@ -646,6 +783,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
           slug: meta.slug,
           firstMessage: meta.firstMessage,
           lastResponse: meta.lastResponse,
+          firstTimestamp: meta.firstTimestamp || stat.mtime.toISOString(),
           lastTimestamp: meta.lastTimestamp || stat.mtime.toISOString(),
           size: stat.size,
         })
@@ -664,7 +802,9 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
       ;(s as any).projectLabel = null
       ;(s as any).encodedDir = null
     }
-    return top
+
+    // Collapse chain members into their root session
+    return collapseSessionChains(top as any)
   } catch (err) {
     log(`LIST_SESSIONS error: ${err}`)
     return []
@@ -708,12 +848,13 @@ interface ParsedSessionMeta {
   slug: string | null
   firstMessage: string | null
   lastResponse: string | null
+  firstTimestamp: string
   lastTimestamp: string
   size: number
 }
 
 async function parseSessionMeta(filePath: string, fileSessionId: string, fileSize: number, fileMtime: Date): Promise<ParsedSessionMeta | null> {
-  const meta = { validated: false, slug: null as string | null, firstMessage: null as string | null, lastResponse: null as string | null, lastTimestamp: null as string | null }
+  const meta = { validated: false, slug: null as string | null, firstMessage: null as string | null, lastResponse: null as string | null, firstTimestamp: null as string | null, lastTimestamp: null as string | null }
 
   await new Promise<void>((resolve) => {
     const rl = createInterface({ input: createReadStream(filePath) })
@@ -722,7 +863,10 @@ async function parseSessionMeta(filePath: string, fileSessionId: string, fileSiz
         const obj = JSON.parse(line)
         if (!meta.validated && obj.type && obj.uuid && obj.timestamp) meta.validated = true
         if (obj.slug && !meta.slug) meta.slug = obj.slug
-        if (obj.timestamp) meta.lastTimestamp = obj.timestamp
+        if (obj.timestamp) {
+          if (!meta.firstTimestamp) meta.firstTimestamp = obj.timestamp
+          meta.lastTimestamp = obj.timestamp
+        }
         if (obj.type === 'user' && !meta.firstMessage) {
           const content = obj.message?.content
           let raw = ''
@@ -761,6 +905,7 @@ async function parseSessionMeta(filePath: string, fileSessionId: string, fileSiz
     slug: meta.slug,
     firstMessage: meta.firstMessage,
     lastResponse: meta.lastResponse,
+    firstTimestamp: meta.firstTimestamp || fileMtime.toISOString(),
     lastTimestamp: meta.lastTimestamp || fileMtime.toISOString(),
     size: fileSize,
   }
@@ -833,8 +978,10 @@ ipcMain.handle(IPC.LIST_ALL_SESSIONS, async () => {
       })
     }
 
-    log(`LIST_ALL_SESSIONS: found ${sessions.length} sessions across ${pathCache.size} directories`)
-    return sessions
+    // Collapse chain members into their root session
+    const collapsed = collapseSessionChains(sessions)
+    log(`LIST_ALL_SESSIONS: found ${sessions.length} sessions (${collapsed.length} after chain grouping) across ${pathCache.size} directories`)
+    return collapsed
   } catch (err) {
     log(`LIST_ALL_SESSIONS error: ${err}`)
     return []
@@ -1662,6 +1809,38 @@ ipcMain.handle(IPC.SAVE_SESSION_LABEL, (_event, { sessionId, customTitle }: { se
 
 ipcMain.handle(IPC.LOAD_SESSION_LABELS, () => {
   return loadSessionLabels()
+})
+
+// ─── Session Chains (composite conversation grouping) ───
+
+const SESSION_CHAINS_FILE = join(SETTINGS_DIR, 'session-chains.json')
+
+function loadSessionChains(): { chains: Record<string, string[]>; reverse: Record<string, string> } {
+  try {
+    if (existsSync(SESSION_CHAINS_FILE)) {
+      return JSON.parse(readFileSync(SESSION_CHAINS_FILE, 'utf-8'))
+    }
+  } catch (err) {
+    log(`Failed to load session chains: ${err}`)
+  }
+  return { chains: {}, reverse: {} }
+}
+
+function saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): void {
+  try {
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+    writeFileSync(SESSION_CHAINS_FILE, JSON.stringify(data, null, 2))
+  } catch (err) {
+    log(`Failed to save session chains: ${err}`)
+  }
+}
+
+ipcMain.handle(IPC.LOAD_SESSION_CHAINS, () => {
+  return loadSessionChains()
+})
+
+ipcMain.handle(IPC.SAVE_SESSION_CHAINS, (_event, data: { chains: Record<string, string[]>; reverse: Record<string, string> }) => {
+  saveSessionChains(data)
 })
 
 // ─── Git Worktree Cleanup ───

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Clock, ChatCircle } from '@phosphor-icons/react'
+import { Clock, ChatCircle, Stack } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
@@ -107,12 +107,16 @@ export function HistoryPicker() {
     void loadSessions(m)
   }
 
+  const resumeSessionWithChain = useSessionStore((s) => s.resumeSessionWithChain)
+
   const handleSelect = (session: SessionMeta) => {
     setOpen(false)
-    // If this session is already open in a tab, switch to it instead of duplicating
+    const allChainIds = session.chainSessionIds || [session.sessionId]
+
+    // If any session in the chain is already open in a tab, switch to it
     const existingTab = tabs.find((t) =>
-      t.claudeSessionId === session.sessionId
-      || t.historicalSessionIds.includes(session.sessionId)
+      allChainIds.includes(t.claudeSessionId || '')
+      || allChainIds.some((id) => t.historicalSessionIds.includes(id))
     )
     if (existingTab) {
       selectTab(existingTab.id)
@@ -125,7 +129,15 @@ export function HistoryPicker() {
 
     // Use the session's own project path when available (global history), fall back to current tab's path
     const sessionProjectPath = session.projectPath || effectiveProjectPath
-    void resumeSession(session.sessionId, title, sessionProjectPath, session.customTitle, session.encodedDir)
+
+    if (allChainIds.length > 1) {
+      // Resume as composite conversation: load all historical sessions
+      const latestId = allChainIds[allChainIds.length - 1]
+      const historicalIds = allChainIds.slice(0, -1)
+      void resumeSessionWithChain(latestId, historicalIds, title, sessionProjectPath, session.customTitle, session.encodedDir)
+    } else {
+      void resumeSession(session.sessionId, title, sessionProjectPath, session.customTitle, session.encodedDir)
+    }
 
     // Add the directory to recent base directories so it appears in the new-tab picker
     if (session.projectPath) {
@@ -157,10 +169,12 @@ export function HistoryPicker() {
   }, [mode, sessions])
 
   const renderSession = (session: SessionMeta) => {
+    const allChainIds = session.chainSessionIds || [session.sessionId]
     const isOpen = tabs.some((t) =>
-      t.claudeSessionId === session.sessionId
-      || t.historicalSessionIds.includes(session.sessionId)
+      allChainIds.includes(t.claudeSessionId || '')
+      || allChainIds.some((id) => t.historicalSessionIds.includes(id))
     )
+    const chainLen = session.chainLength || 1
     return (
       <button
         key={session.sessionId}
@@ -168,10 +182,18 @@ export function HistoryPicker() {
         className="w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors"
         style={isOpen ? { opacity: 0.5 } : undefined}
       >
-        <ChatCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: colors.textTertiary }} />
+        {chainLen > 1
+          ? <Stack size={13} className="flex-shrink-0 mt-0.5" style={{ color: colors.textTertiary }} />
+          : <ChatCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: colors.textTertiary }} />
+        }
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] truncate" style={{ color: colors.textPrimary }}>
-            {session.customTitle || session.firstMessage || session.slug || session.sessionId.substring(0, 8)}
+          <div className="text-[11px] truncate flex items-center gap-1.5" style={{ color: colors.textPrimary }}>
+            <span className="truncate">{session.customTitle || session.firstMessage || session.slug || session.sessionId.substring(0, 8)}</span>
+            {chainLen > 1 && (
+              <span className="flex-shrink-0 text-[9px]" style={{ color: colors.textTertiary }}>
+                ({chainLen} sessions)
+              </span>
+            )}
           </div>
           {session.customTitle && session.firstMessage && (
             <div className="text-[10px] truncate mt-0.5" style={{ color: colors.textSecondary, opacity: 0.7 }}>
