@@ -43,9 +43,10 @@ export function useHealthReconciliation() {
           }
 
           // Backend says idle but UI thinks it's running → unstick
+          // Preserve permissionDenied: if a plan-ready card was set by task_complete, keep it
           if (healthEntry.status === 'idle' && !healthEntry.alive) {
             changed = true
-            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [], permissionDenied: null }
+            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [] }
           }
 
           // Backend says failed → unstick
@@ -55,9 +56,10 @@ export function useHealthReconciliation() {
           }
 
           // Backend says completed → unstick
+          // Preserve permissionDenied: task_complete already set the correct value
           if (healthEntry.status === 'completed') {
             changed = true
-            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [], permissionDenied: null }
+            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [] }
           }
 
           // Backend says running but process is dead → unstick (exit handler missed)

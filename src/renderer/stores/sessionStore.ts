@@ -2107,10 +2107,14 @@ export const useSessionStore = create<State>((set, get) => ({
           ? {
               ...t,
               status: newStatus as TabStatus,
-              // Clear transient state on idle or terminal transitions
-              ...(newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead' || newStatus === 'completed'
+              // Clear transient state on idle or terminal transitions.
+              // 'completed' preserves permissionDenied — task_complete already set the
+              // correct value (plan-ready card or null). Clearing here would race with it.
+              ...(newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead'
                 ? { activeRequestId: null, currentActivity: '', permissionQueue: [] as import('../../shared/types').PermissionRequest[], permissionDenied: null }
-                : {}),
+                : newStatus === 'completed'
+                  ? { activeRequestId: null, currentActivity: '', permissionQueue: [] as import('../../shared/types').PermissionRequest[] }
+                  : {}),
             }
           : t
       ),

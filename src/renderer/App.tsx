@@ -174,7 +174,7 @@ export default function App() {
             const tabId = await useSessionStore.getState().resumeSession(
               st.claudeSessionId,
               st.title,
-              st.worktree?.repoPath || st.workingDirectory,
+              st.workingDirectory,
             )
             restoredTabIds.push({ tabId, sessionId: st.claudeSessionId, index: i })
 
@@ -249,7 +249,7 @@ export default function App() {
           if (historicalIds.length > 0) {
             const allHistoricalMessages: Message[] = []
             for (const hid of historicalIds) {
-              const history = await window.coda.loadSession(hid, st.worktree?.repoPath || st.workingDirectory).catch(() => [])
+              const history = await window.coda.loadSession(hid, st.workingDirectory).catch(() => [])
               const msgs = history.map((m) => ({
                 id: crypto.randomUUID(),
                 role: m.role as Message['role'],
