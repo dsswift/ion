@@ -1751,6 +1751,11 @@ function GroupPill({
           {group.label}
         </span>
         {isActive && selectedTab && (
+          <span className="flex-shrink-0 text-[10px]" style={{ color: colors.textTertiary }}>
+            {selectedTab.workingDirectory.split('/').pop() || selectedTab.workingDirectory}
+          </span>
+        )}
+        {isActive && selectedTab && (
           renamingTitle ? (
             <InlineRenameInput
               value={displayTitle}
