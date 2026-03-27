@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle, CaretDown, Rows, PencilSimple, Trash, ArrowRight, ArrowsInSimple, ArrowsOutSimple } from '@phosphor-icons/react'
+import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle, CaretDown, Rows, PencilSimple, Trash, ArrowRight, ArrowsInSimple, ArrowsOutSimple, Diamond, Square, StarFour, Triangle, Heart, Hexagon, Lightning } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
@@ -38,7 +38,28 @@ const PILL_COLOR_PRESETS = [
   { color: '#c4a84d', label: 'Gold' },
 ] as const
 
-function StatusDot({ status, hasUnread, hasPermission, bashExecuting, waitingState }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean; bashExecuting: boolean; waitingState: 'plan-ready' | 'question' | null }) {
+const PILL_ICON_PRESETS = [
+  { icon: null, label: 'Default' },
+  { icon: 'diamond', label: 'Diamond' },
+  { icon: 'square', label: 'Square' },
+  { icon: 'star', label: 'Star' },
+  { icon: 'triangle', label: 'Triangle' },
+  { icon: 'heart', label: 'Heart' },
+  { icon: 'hexagon', label: 'Hexagon' },
+  { icon: 'lightning', label: 'Lightning' },
+] as const
+
+const PILL_ICON_MAP: Record<string, React.ComponentType<any>> = {
+  diamond: Diamond,
+  square: Square,
+  star: StarFour,
+  triangle: Triangle,
+  heart: Heart,
+  hexagon: Hexagon,
+  lightning: Lightning,
+}
+
+function StatusDot({ status, hasUnread, hasPermission, bashExecuting, waitingState, pillIcon }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean; bashExecuting: boolean; waitingState: 'plan-ready' | 'question' | null; pillIcon?: string | null }) {
   const colors = useColors()
   let bg: string = colors.statusIdle
   let pulse = false
@@ -70,6 +91,18 @@ function StatusDot({ status, hasUnread, hasPermission, bashExecuting, waitingSta
     bg = colors.statusComplete
   }
 
+  const IconComponent = pillIcon ? PILL_ICON_MAP[pillIcon] : null
+  if (IconComponent) {
+    return (
+      <span
+        className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'animate-pulse-dot' : ''}`}
+        style={{ width: 8, height: 8, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
+      >
+        <IconComponent size={8} weight="fill" color={bg} />
+      </span>
+    )
+  }
+
   return (
     <span
       className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
@@ -85,11 +118,15 @@ function PillColorPicker({
   anchor,
   currentColor,
   onSelect,
+  currentIcon,
+  onSelectIcon,
   onClose,
 }: {
   anchor: { x: number; y: number }
   currentColor: string | null
   onSelect: (color: string | null) => void
+  currentIcon?: string | null
+  onSelectIcon?: (icon: string | null) => void
   onClose: () => void
 }) {
   const colors = useColors()
@@ -131,35 +168,75 @@ function PillColorPicker({
         borderRadius: 8,
         padding: 6,
         display: 'flex',
+        flexDirection: 'column',
         gap: 4,
         zIndex: 10000,
       }}
     >
-      {PILL_COLOR_PRESETS.map((preset) => {
-        const isSelected = preset.color === currentColor
-        return (
-          <button
-            key={preset.color || 'default'}
-            title={preset.label}
-            onClick={() => { onSelect(preset.color); onClose() }}
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: 9999,
-              border: isSelected ? `2px solid ${colors.textPrimary}` : `1px solid ${colors.textTertiary}`,
-              background: preset.color || 'transparent',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-              opacity: isSelected ? 1 : 0.7,
-            }}
-          >
-            {preset.color === null && <Prohibit size={12} color={colors.textTertiary} />}
-          </button>
-        )
-      })}
+      <div style={{ display: 'flex', gap: 4 }}>
+        {PILL_COLOR_PRESETS.map((preset) => {
+          const isSelected = preset.color === currentColor
+          return (
+            <button
+              key={preset.color || 'default'}
+              title={preset.label}
+              onClick={() => { onSelect(preset.color); onClose() }}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 9999,
+                border: isSelected ? `2px solid ${colors.textPrimary}` : `1px solid ${colors.textTertiary}`,
+                background: preset.color || 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                opacity: isSelected ? 1 : 0.7,
+              }}
+            >
+              {preset.color === null && <Prohibit size={12} color={colors.textTertiary} />}
+            </button>
+          )
+        })}
+      </div>
+      {onSelectIcon && (
+        <>
+          <div style={{ height: 1, background: colors.textTertiary, opacity: 0.15 }} />
+          <div style={{ display: 'flex', gap: 4 }}>
+            {PILL_ICON_PRESETS.map((preset) => {
+              const isSelected = preset.icon === currentIcon
+              const Icon = preset.icon ? PILL_ICON_MAP[preset.icon] : null
+              return (
+                <button
+                  key={preset.icon || 'default'}
+                  title={preset.label}
+                  onClick={() => { onSelectIcon(preset.icon); onClose() }}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 9999,
+                    border: isSelected ? `2px solid ${colors.textPrimary}` : `1px solid ${colors.textTertiary}`,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    opacity: isSelected ? 1 : 0.7,
+                  }}
+                >
+                  {Icon ? (
+                    <Icon size={12} weight="fill" color={colors.textSecondary} />
+                  ) : (
+                    <span style={{ width: 6, height: 6, borderRadius: 9999, background: colors.textSecondary }} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
     </motion.div>,
     popoverLayer,
   )
@@ -938,6 +1015,7 @@ function GroupPickerDropdown({
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+  const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
   const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
 
   // Sub-interaction state
@@ -1079,6 +1157,8 @@ function GroupPickerDropdown({
               anchor={colorPickerAnchor}
               currentColor={pickerTab.pillColor}
               onSelect={(color) => { setTabPillColor(colorPickerTabId, color); setColorPickerTabId(null) }}
+              currentIcon={pickerTab.pillIcon}
+              onSelectIcon={(icon) => { setTabPillIcon(colorPickerTabId, icon); setColorPickerTabId(null) }}
               onClose={() => setColorPickerTabId(null)}
             />
           )
@@ -1265,13 +1345,25 @@ function DropdownTabRow({
           setColorPickerAnchor({ x: e.clientX, y: e.clientY })
         }}
       >
-        <span
-          className={`w-[6px] h-[6px] rounded-full ${pulse ? 'animate-pulse-dot' : ''}`}
-          style={{
-            background: bg,
-            ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
-          }}
-        />
+        {tab.pillIcon && PILL_ICON_MAP[tab.pillIcon] ? (() => {
+          const Icon = PILL_ICON_MAP[tab.pillIcon!]
+          return (
+            <span
+              className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'animate-pulse-dot' : ''}`}
+              style={{ width: 8, height: 8, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
+            >
+              <Icon size={8} weight="fill" color={bg} />
+            </span>
+          )
+        })() : (
+          <span
+            className={`w-[6px] h-[6px] rounded-full ${pulse ? 'animate-pulse-dot' : ''}`}
+            style={{
+              background: bg,
+              ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
+            }}
+          />
+        )}
       </span>
 
       {tab.workingDirectory && (
@@ -2095,7 +2187,7 @@ function TabPill({
           onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
         }}
       >
-        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} />
+        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} />
       </span>
       {tab.forkedFromSessionId && !tab.worktree ? (
         <GitFork size={11} color={colors.textTertiary} className="flex-shrink-0" />
@@ -2190,6 +2282,7 @@ export function TabStrip() {
   const reorderTabs = useSessionStore((s) => s.reorderTabs)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+  const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
   const createTabInDirectory = useSessionStore((s) => s.createTabInDirectory)
   const toggleTerminal = useSessionStore((s) => s.toggleTerminal)
   const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
@@ -2399,6 +2492,8 @@ export function TabStrip() {
               anchor={colorPickerAnchor}
               currentColor={pickerTab.pillColor}
               onSelect={(color) => setTabPillColor(colorPickerTabId, color)}
+              currentIcon={pickerTab.pillIcon}
+              onSelectIcon={(icon) => setTabPillIcon(colorPickerTabId, icon)}
               onClose={() => setColorPickerTabId(null)}
             />
           )

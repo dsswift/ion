@@ -140,6 +140,7 @@ interface State {
   reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
   setTabPillColor: (tabId: string, color: string | null) => void
+  setTabPillIcon: (tabId: string, icon: string | null) => void
   clearTab: () => void
   toggleExpanded: () => void
   toggleTallView: (tabId: string) => void
@@ -256,6 +257,7 @@ function makeLocalTab(): TabState {
     bashExecuting: false,
     bashExecId: null,
     pillColor: null,
+    pillIcon: null,
     forkedFromSessionId: null,
     hasFileActivity: false,
     worktree: null,
@@ -1016,6 +1018,14 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
 
+  setTabPillIcon: (tabId, icon) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, pillIcon: icon } : t
+      ),
+    }))
+  },
+
   clearTab: () => {
     const { activeTabId } = get()
     set((s) => ({
@@ -1057,6 +1067,7 @@ export const useSessionStore = create<State>((set, get) => ({
         additionalDirs: [...source.additionalDirs],
         permissionMode: source.permissionMode,
         pillColor: source.pillColor,
+        pillIcon: source.pillIcon,
         messages,
         permissionDenied: restoredDenied,
       }
@@ -1145,6 +1156,7 @@ export const useSessionStore = create<State>((set, get) => ({
         additionalDirs: [...source.additionalDirs],
         permissionMode: source.permissionMode,
         pillColor: source.pillColor,
+        pillIcon: source.pillIcon,
         messages,
         permissionDenied: restoredDenied,
       }
@@ -2233,6 +2245,7 @@ function persistTabs(): void {
       ...(t.historicalSessionIds.length > 0 ? { historicalSessionIds: t.historicalSessionIds } : {}),
       ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
       ...(t.pillColor ? { pillColor: t.pillColor } : {}),
+      ...(t.pillIcon ? { pillIcon: t.pillIcon } : {}),
       ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
       ...(t.worktree ? { worktree: t.worktree } : {}),
       ...(t.groupId ? { groupId: t.groupId } : {}),

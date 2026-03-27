@@ -210,6 +210,8 @@ export interface TabState {
   bashExecId: string | null
   /** Custom pill outline color (null = use theme default) */
   pillColor: string | null
+  /** Custom pill icon shape (null = default circle dot) */
+  pillIcon: string | null
   /** Session ID this tab was forked from (null if not a fork) */
   forkedFromSessionId: string | null
   /** True once a file-writing tool (Write, Edit, NotebookEdit, MultiEdit) completes successfully */
@@ -545,6 +547,7 @@ export interface PersistedTab {
   permissionMode: 'ask' | 'auto' | 'plan'
   bashResults?: Array<{ command: string; stdout: string; stderr: string }>
   pillColor?: string | null
+  pillIcon?: string | null
   forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
   groupId?: string | null
