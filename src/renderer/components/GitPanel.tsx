@@ -1404,7 +1404,12 @@ export function GitPanel() {
           >
             <X size={11} />
           </button>
-          <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>Git</span>
+          <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>
+            Git
+            <span style={{ color: colors.textQuaternary, marginLeft: 4 }}>
+              {directory.split('/').filter(Boolean).pop() || '~'}
+            </span>
+          </span>
         </div>
         <button
           onClick={refresh}
