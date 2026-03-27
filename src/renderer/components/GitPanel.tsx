@@ -1270,6 +1270,13 @@ export function GitPanel() {
     if (result.ok) {
       setCommitMsg('')
       setRefreshKey((k) => k + 1)
+      // Move tab to done group after successful commit
+      const { doneGroupId, tabGroupMode } = useThemeStore.getState()
+      const { activeTabId: tabId, tabs: allTabs, moveTabToGroup } = useSessionStore.getState()
+      const tab = allTabs.find(t => t.id === tabId)
+      if (doneGroupId && tabGroupMode === 'manual' && tab && tab.groupId !== doneGroupId) {
+        moveTabToGroup(tab.id, doneGroupId)
+      }
     }
   }, [commitMsg, stagedCount, directory])
 
@@ -1279,6 +1286,13 @@ export function GitPanel() {
       useSessionStore.getState().runInTerminal(activeTabId, `cd '${safeCwd}' && ${commitCommand}`)
     } else {
       useSessionStore.getState().sendMessage('commit the current changes')
+    }
+    // Move tab to done group -- user explicitly chose to commit
+    const { doneGroupId, tabGroupMode } = useThemeStore.getState()
+    const { activeTabId: tabId, tabs: allTabs, moveTabToGroup } = useSessionStore.getState()
+    const tab = allTabs.find(t => t.id === tabId)
+    if (doneGroupId && tabGroupMode === 'manual' && tab && tab.groupId !== doneGroupId) {
+      moveTabToGroup(tab.id, doneGroupId)
     }
   }, [commitCommand, directory, activeTabId])
 

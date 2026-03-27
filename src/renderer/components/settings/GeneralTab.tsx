@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react'
-import { FolderOpen, Trash, PencilSimple, Star, Plus, Lightning } from '@phosphor-icons/react'
+import { FolderOpen, Trash, PencilSimple, Star, Plus, Lightning, CheckCircle } from '@phosphor-icons/react'
 import { useColors, useThemeStore, getEffectiveTabGroups } from '../../theme'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SettingToggle } from './SettingToggle'
@@ -51,6 +51,7 @@ export function GeneralTab() {
   const setTabGroupMode = useThemeStore((s) => s.setTabGroupMode)
   const tabGroups = useThemeStore((s) => s.tabGroups)
   const inProgressGroupId = useThemeStore((s) => s.inProgressGroupId)
+  const doneGroupId = useThemeStore((s) => s.doneGroupId)
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -66,6 +67,11 @@ export function GeneralTab() {
       useSessionStore.setState((s) => ({
         tabs: s.tabs.map((t) => ({ ...t, groupId: effectiveGroups[0].id })),
       }))
+      // Auto-assign role IDs to default groups
+      const ipGroup = effectiveGroups.find(g => g.label === 'In Progress')
+      const doneGroup = effectiveGroups.find(g => g.label === 'Testing')
+      if (ipGroup && !useThemeStore.getState().inProgressGroupId) useThemeStore.getState().setInProgressGroupId(ipGroup.id)
+      if (doneGroup && !useThemeStore.getState().doneGroupId) useThemeStore.getState().setDoneGroupId(doneGroup.id)
     } else if (newMode === 'auto' && oldMode === 'manual') {
       useSessionStore.setState((s) => ({
         tabs: s.tabs.map((t) => ({ ...t, groupId: null })),
@@ -92,6 +98,11 @@ export function GeneralTab() {
         return idx >= 0 ? { ...t, groupId: groups[idx].id } : t
       }),
     }))
+    // Auto-assign role IDs to materialized groups
+    const ipGroup = groups.find(g => g.label === 'In Progress')
+    const doneGroup = groups.find(g => g.label === 'Testing')
+    if (ipGroup && !useThemeStore.getState().inProgressGroupId) useThemeStore.getState().setInProgressGroupId(ipGroup.id)
+    if (doneGroup && !useThemeStore.getState().doneGroupId) useThemeStore.getState().setDoneGroupId(doneGroup.id)
     return groups
   }, [])
 
@@ -471,6 +482,28 @@ export function GeneralTab() {
                   }}
                 >
                   <Lightning size={14} weight={inProgressGroupId === group.id ? 'fill' : 'regular'} />
+                </button>
+
+                {/* CheckCircle icon -- set as done group */}
+                <button
+                  onClick={() => {
+                    const groups = materializeDefaults()
+                    const target = groups.find(g => g.label === group.label) || groups[0]
+                    const current = useThemeStore.getState().doneGroupId
+                    useThemeStore.getState().setDoneGroupId(current === target.id ? null : target.id)
+                  }}
+                  title={doneGroupId === group.id ? 'Done group (click to unset)' : 'Set as done group'}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: doneGroupId === group.id ? '#7aac8c' : colors.textTertiary,
+                  }}
+                >
+                  <CheckCircle size={14} weight={doneGroupId === group.id ? 'fill' : 'regular'} />
                 </button>
 
                 {/* Label -- double-click to rename, or editable input */}

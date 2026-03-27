@@ -119,7 +119,7 @@ export interface UnknownEvent {
 
 // ─── Tab Grouping ───
 
-export const DEFAULT_TAB_GROUP_LABELS = ['Planning', 'In Progress', 'Testing'] as const
+export const DEFAULT_TAB_GROUP_LABELS = ['Planning', 'On Deck', 'In Progress', 'Testing'] as const
 
 export type TabGroupMode = 'off' | 'auto' | 'manual'
 
