@@ -447,7 +447,7 @@ function TabContextMenu({
       )}
       {!tab.worktree && isGitRepo && (
         <button
-          onClick={tab.hasFileActivity ? undefined : () => { useSessionStore.getState().convertToWorktree(tab.id); onClose() }}
+          onClick={tab.hasFileActivity ? undefined : () => { useSessionStore.getState().convertToWorktree(tab.id); window.dispatchEvent(new CustomEvent('coda:close-group-pickers')); onClose() }}
           className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
           style={{
             ...menuItemStyle,
@@ -2466,16 +2466,16 @@ export function TabStrip() {
       })()}
 
       {(() => {
-        const activeTab = tabs.find((t) => t.id === activeTabId)
-        if (!activeTab?.pendingWorktreeSetup) return null
+        const pendingTab = tabs.find((t) => t.pendingWorktreeSetup)
+        if (!pendingTab) return null
         return (
           <BranchPickerDialog
-            repoPath={activeTab.workingDirectory}
+            repoPath={pendingTab.workingDirectory}
             onSelect={(branch, setAsDefault) => {
-              useSessionStore.getState().setupWorktree(activeTab.id, branch, setAsDefault)
+              useSessionStore.getState().setupWorktree(pendingTab.id, branch, setAsDefault)
             }}
             onCancel={() => {
-              useSessionStore.getState().cancelWorktreeSetup(activeTab.id)
+              useSessionStore.getState().cancelWorktreeSetup(pendingTab.id)
             }}
           />
         )
