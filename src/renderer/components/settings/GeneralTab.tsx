@@ -37,6 +37,8 @@ export function GeneralTab() {
   const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
   const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
   const setOpenMarkdownInPreview = useThemeStore((s) => s.setOpenMarkdownInPreview)
+  const commitCommand = useThemeStore((s) => s.commitCommand)
+  const setCommitCommand = useThemeStore((s) => s.setCommitCommand)
   const gitOpsMode = useThemeStore((s) => s.gitOpsMode)
   const setGitOpsMode = useThemeStore((s) => s.setGitOpsMode)
   const worktreeCompletionStrategy = useThemeStore((s) => s.worktreeCompletionStrategy)
@@ -300,6 +302,31 @@ export function GeneralTab() {
           )}
         </>
       )}
+
+      <SettingSection
+        label="Commit Command"
+        description="Bash command to run in the terminal instead of prompting the LLM. Leave empty for default behavior."
+      >
+        <input
+          type="text"
+          value={commitCommand}
+          onChange={(e) => setCommitCommand(e.target.value)}
+          placeholder="e.g. commit --smart"
+          style={{
+            width: '100%',
+            padding: '7px 10px',
+            fontSize: 13,
+            fontFamily: 'Menlo, Monaco, monospace',
+            background: colors.surfacePrimary,
+            color: colors.textPrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            outline: 'none',
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = colors.accent }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = colors.containerBorder }}
+        />
+      </SettingSection>
 
       {/* ── Tabs ── */}
       <SettingHeading>Tabs</SettingHeading>

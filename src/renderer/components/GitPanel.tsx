@@ -418,13 +418,16 @@ function GitChangesSection({
   directory,
   files,
   onRefresh,
+  commitMsg,
+  setCommitMsg,
 }: {
   directory: string
   files: GitChangedFile[]
   onRefresh: () => void
+  commitMsg: string
+  setCommitMsg: (msg: string) => void
 }) {
   const colors = useColors()
-  const [commitMsg, setCommitMsg] = useState('')
   const [diffFile, setDiffFile] = useState<{ path: string; staged: boolean } | null>(null)
   const [diffData, setDiffData] = useState<{ diff: string; fileName: string } | null>(null)
 
@@ -468,19 +471,6 @@ function GitChangesSection({
     }
   }
 
-  const handleCommit = async () => {
-    if (!commitMsg.trim() || stagedFiles.length === 0) return
-    const result = await window.coda.gitCommit(directory, commitMsg.trim())
-    if (result.ok) {
-      setCommitMsg('')
-      onRefresh()
-    }
-  }
-
-  const handleQuickCommit = () => {
-    useSessionStore.getState().sendMessage('commit the current changes')
-  }
-
   const handleFileClick = async (file: GitChangedFile) => {
     if (diffFile?.path === file.path && diffFile?.staged === file.staged) {
       setDiffFile(null)
@@ -494,49 +484,6 @@ function GitChangesSection({
 
   return (
     <>
-      {/* Commit controls (top) */}
-      <div
-        className="px-2 py-2 flex flex-col gap-1.5"
-        style={{ borderBottom: `1px solid ${colors.containerBorder}`, flexShrink: 0 }}
-      >
-        <input
-          value={commitMsg}
-          onChange={(e) => setCommitMsg(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleCommit() }}
-          placeholder="Commit message..."
-          className="w-full text-[11px] bg-transparent outline-none rounded px-2 py-1.5"
-          style={{
-            color: colors.textPrimary,
-            border: `1px solid ${colors.containerBorder}`,
-          }}
-        />
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleCommit}
-            disabled={!commitMsg.trim() || stagedFiles.length === 0}
-            className="flex-1 text-[10px] py-1 rounded transition-colors"
-            style={{
-              color: (!commitMsg.trim() || stagedFiles.length === 0) ? colors.textMuted : colors.textOnAccent,
-              background: (!commitMsg.trim() || stagedFiles.length === 0) ? colors.surfacePrimary : colors.accent,
-              cursor: (!commitMsg.trim() || stagedFiles.length === 0) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            Commit
-          </button>
-          <button
-            onClick={handleQuickCommit}
-            className="px-2 py-1 rounded transition-colors"
-            style={{
-              color: colors.textTertiary,
-              background: colors.surfacePrimary,
-            }}
-            title="Let Claude commit"
-          >
-            <Robot size={12} />
-          </button>
-        </div>
-      </div>
-
       {/* File list */}
       <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         {/* Staged changes */}
@@ -1311,6 +1258,29 @@ export function GitPanel() {
   const setSplitRatio = useThemeStore((s) => s.setGitPanelSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
   const prevSignatureRef = useRef<string>('')
+  const commitCommand = useThemeStore((s) => s.commitCommand)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const [commitMsg, setCommitMsg] = useState('')
+
+  const stagedCount = useMemo(() => files.filter((f) => f.staged).length, [files])
+
+  const handleCommit = useCallback(async () => {
+    if (!commitMsg.trim() || stagedCount === 0) return
+    const result = await window.coda.gitCommit(directory, commitMsg.trim())
+    if (result.ok) {
+      setCommitMsg('')
+      setRefreshKey((k) => k + 1)
+    }
+  }, [commitMsg, stagedCount, directory])
+
+  const handleQuickCommit = useCallback(() => {
+    if (commitCommand) {
+      const safeCwd = directory.replace(/'/g, "'\\''")
+      useSessionStore.getState().runInTerminal(activeTabId, `cd '${safeCwd}' && ${commitCommand}`)
+    } else {
+      useSessionStore.getState().sendMessage('commit the current changes')
+    }
+  }, [commitCommand, directory, activeTabId])
 
   const refresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
@@ -1427,9 +1397,8 @@ export function GitPanel() {
         flexShrink: 0,
         overflow: 'hidden',
       }}>
-        <button
-          onClick={() => setChangesOpen(!changesOpen)}
-          className="flex items-center gap-1 px-2.5 w-full text-left"
+        <div
+          className="flex items-center gap-1 px-2.5"
           style={{
             height: 28,
             background: colors.surfacePrimary,
@@ -1439,20 +1408,78 @@ export function GitPanel() {
             flexShrink: 0,
           }}
         >
-          {changesOpen ? <CaretDown size={10} /> : <CaretRight size={10} />}
-          Changes
+          <button
+            onClick={() => setChangesOpen(!changesOpen)}
+            className="flex items-center gap-1"
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
+          >
+            {changesOpen ? <CaretDown size={10} /> : <CaretRight size={10} />}
+            Changes
+          </button>
           {files.length > 0 && (
             <span
-              className="text-[9px] px-1 rounded-full ml-auto"
+              className="text-[9px] px-1 rounded-full"
               style={{ background: colors.accentLight, color: colors.accent }}
             >
               {files.length}
             </span>
           )}
-        </button>
+          {changesOpen && files.length > 0 && (
+            <>
+              <div style={{ flex: 1 }} />
+              <input
+                value={commitMsg}
+                onChange={(e) => setCommitMsg(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleCommit() }}
+                placeholder="Commit message..."
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] bg-transparent outline-none rounded px-1.5"
+                style={{
+                  color: colors.textPrimary,
+                  border: `1px solid ${colors.containerBorder}`,
+                  height: 20,
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  maxWidth: 160,
+                }}
+              />
+              <button
+                onClick={handleCommit}
+                disabled={!commitMsg.trim() || stagedCount === 0}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '0 2px',
+                  cursor: (!commitMsg.trim() || stagedCount === 0) ? 'not-allowed' : 'pointer',
+                  color: (!commitMsg.trim() || stagedCount === 0) ? colors.textMuted : colors.accent,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Commit staged changes"
+              >
+                <Check size={13} weight="bold" />
+              </button>
+              <button
+                onClick={handleQuickCommit}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '0 2px',
+                  cursor: 'pointer',
+                  color: colors.textTertiary,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title={commitCommand ? `Run: ${commitCommand}` : 'Let Claude commit'}
+              >
+                <Robot size={13} />
+              </button>
+            </>
+          )}
+        </div>
         {changesOpen && (
           <div style={{ height: changesContentHeight, overflow: 'auto' }}>
-            <GitChangesSection directory={directory} files={files} onRefresh={refresh} />
+            <GitChangesSection directory={directory} files={files} onRefresh={refresh} commitMsg={commitMsg} setCommitMsg={setCommitMsg} />
           </div>
         )}
       </div>

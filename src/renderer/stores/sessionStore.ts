@@ -131,6 +131,7 @@ interface State {
   closeGitPanel: () => void
   toggleTerminal: (tabId: string) => void
   openCliInTerminal: (tabId: string, sessionId: string | null, cwd: string) => void
+  runInTerminal: (tabId: string, cmd: string) => void
   consumeTerminalPendingCommand: (tabId: string) => string | undefined
   toggleFileExplorer: (tabId: string) => void
   setFileExplorerExpanded: (dir: string, path: string, expanded: boolean) => void
@@ -509,6 +510,20 @@ export const useSessionStore = create<State>((set, get) => ({
         window.coda.terminalWrite(tabId, cmd + '\n')
         nextPending.delete(tabId)
       } else {
+        nextOpen.add(tabId)
+      }
+      return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
+    })
+  },
+
+  runInTerminal: (tabId, cmd) => {
+    set((s) => {
+      const nextOpen = new Set(s.terminalOpenTabIds)
+      const nextPending = new Map(s.terminalPendingCommands)
+      if (nextOpen.has(tabId)) {
+        window.coda.terminalWrite(tabId, cmd + '\n')
+      } else {
+        nextPending.set(tabId, cmd)
         nextOpen.add(tabId)
       }
       return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
