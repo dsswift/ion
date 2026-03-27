@@ -1879,12 +1879,12 @@ ipcMain.handle(IPC.GIT_PUSH, async (_event, { directory }: { directory: string }
 ipcMain.handle(IPC.GIT_BRANCHES, async (_event, { directory }: { directory: string }) => {
   try {
     const output = await runGit(directory, [
-      'branch', '-a', '--format=%(refname:short)%x00%(HEAD)%x00%(upstream:short)',
+      'branch', '-a', '--format=%(refname:short)\t%(HEAD)\t%(upstream:short)',
     ])
     let current = ''
     const branches: Array<{ name: string; isCurrent: boolean; upstream: string | null; isRemote: boolean }> = []
     for (const line of output.trim().split('\n').filter(Boolean)) {
-      const [name, head, upstream] = line.split('\x00')
+      const [name, head, upstream] = line.split('\t')
       const isCurrent = head === '*'
       if (isCurrent) current = name
       const isRemote = name.startsWith('origin/') || name.includes('/')
