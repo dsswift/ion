@@ -1580,7 +1580,7 @@ ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { plugi
 
 const SETTINGS_DIR = join(homedir(), '.coda')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, allowSettingsEdits: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, allowSettingsEdits: false }
 
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {

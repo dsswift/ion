@@ -132,6 +132,7 @@ export default function App() {
   const colors = useColors()
   const setSystemTheme = useThemeStore((s) => s.setSystemTheme)
   const expandedUI = useThemeStore((s) => s.expandedUI)
+  const ultraWide = useThemeStore((s) => s.ultraWide)
   const bashModeActive = useBashModeStore((s) => s.active)
 
   // ─── Theme initialization ───
@@ -567,11 +568,15 @@ export default function App() {
     }
   }, [editorOpen, activeTab?.workingDirectory])
 
-  // Layout dimensions — expandedUI widens and heightens the panel
-  const contentWidth = expandedUI ? 700 : spacing.contentWidth
-  const cardExpandedWidth = expandedUI ? 700 : 460
-  const cardCollapsedWidth = expandedUI ? 670 : 430
-  const cardCollapsedMargin = expandedUI ? 15 : 15
+  // Layout dimensions — three width tiers based on expandedUI + ultraWide
+  //   ultraWide OFF: collapsed 460 / expanded 700
+  //   ultraWide ON:  collapsed 700 / expanded 910
+  const baseWidth = ultraWide ? 700 : spacing.contentWidth
+  const fullWidth = ultraWide ? 910 : 700
+  const contentWidth = expandedUI ? fullWidth : baseWidth
+  const cardExpandedWidth = expandedUI ? fullWidth : baseWidth
+  const cardCollapsedWidth = expandedUI ? (fullWidth - 30) : (baseWidth - 30)
+  const cardCollapsedMargin = 15
   const bodyMaxHeightNormal = expandedUI ? 520 : 400
 
   // Dynamic window height for tall view

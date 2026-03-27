@@ -5,6 +5,8 @@ import { SettingToggle } from './SettingToggle'
 export function AppearanceTab() {
   const expandedUI = useThemeStore((s) => s.expandedUI)
   const setExpandedUI = useThemeStore((s) => s.setExpandedUI)
+  const ultraWide = useThemeStore((s) => s.ultraWide)
+  const setUltraWide = useThemeStore((s) => s.setUltraWide)
   const themeMode = useThemeStore((s) => s.themeMode)
   const setThemeMode = useThemeStore((s) => s.setThemeMode)
   const expandToolResults = useThemeStore((s) => s.expandToolResults)
@@ -17,6 +19,13 @@ export function AppearanceTab() {
         description="Expand the UI to use more horizontal space."
         checked={expandedUI}
         onChange={setExpandedUI}
+      />
+
+      <SettingToggle
+        label="Ultra Wide"
+        description="Shift to wider sizes for large external monitors."
+        checked={ultraWide}
+        onChange={setUltraWide}
       />
 
       <SettingToggle
