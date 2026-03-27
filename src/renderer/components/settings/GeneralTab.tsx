@@ -27,6 +27,12 @@ export function GeneralTab() {
   const setShowTodoList = useThemeStore((s) => s.setShowTodoList)
   const hideOnExternalLaunch = useThemeStore((s) => s.hideOnExternalLaunch)
   const setHideOnExternalLaunch = useThemeStore((s) => s.setHideOnExternalLaunch)
+  const keepExplorerOnCollapse = useThemeStore((s) => s.keepExplorerOnCollapse)
+  const setKeepExplorerOnCollapse = useThemeStore((s) => s.setKeepExplorerOnCollapse)
+  const keepTerminalOnCollapse = useThemeStore((s) => s.keepTerminalOnCollapse)
+  const setKeepTerminalOnCollapse = useThemeStore((s) => s.setKeepTerminalOnCollapse)
+  const keepGitPanelOnCollapse = useThemeStore((s) => s.keepGitPanelOnCollapse)
+  const setKeepGitPanelOnCollapse = useThemeStore((s) => s.setKeepGitPanelOnCollapse)
   const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
   const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
   const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
@@ -630,6 +636,30 @@ export function GeneralTab() {
         description="Display the agent's todo/task checklist at the bottom of the conversation while working."
         checked={showTodoList}
         onChange={setShowTodoList}
+      />
+
+      {/* ── Minimize Behavior ── */}
+      <SettingHeading>Minimize Behavior</SettingHeading>
+
+      <SettingToggle
+        label="Keep Explorer Open"
+        description="Keep the file explorer open when the conversation is minimized."
+        checked={keepExplorerOnCollapse}
+        onChange={setKeepExplorerOnCollapse}
+      />
+
+      <SettingToggle
+        label="Keep Console Open"
+        description="Keep the terminal console open when the conversation is minimized."
+        checked={keepTerminalOnCollapse}
+        onChange={setKeepTerminalOnCollapse}
+      />
+
+      <SettingToggle
+        label="Keep Git Panel Open"
+        description="Keep the git panel open when the conversation is minimized."
+        checked={keepGitPanelOnCollapse}
+        onChange={setKeepGitPanelOnCollapse}
       />
 
       {/* ── File Explorer / Editor ── */}

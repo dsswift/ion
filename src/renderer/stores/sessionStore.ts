@@ -2076,22 +2076,24 @@ useSessionStore.subscribe((state, prev) => {
 })
 
 // Close terminal, explorer, and git panel when conversation collapses
+// (unless the user has toggled "keep on collapse" for that pane)
 useSessionStore.subscribe((state, prev) => {
   if (prev.isExpanded && !state.isExpanded) {
+    const { keepTerminalOnCollapse, keepExplorerOnCollapse, keepGitPanelOnCollapse } = useThemeStore.getState()
     const { activeTabId, terminalOpenTabIds, fileExplorerOpenDirs, tabs: currentTabs } = state
     const updates: Record<string, any> = {}
-    if (terminalOpenTabIds.has(activeTabId)) {
+    if (!keepTerminalOnCollapse && terminalOpenTabIds.has(activeTabId)) {
       const next = new Set(terminalOpenTabIds)
       next.delete(activeTabId)
       updates.terminalOpenTabIds = next
     }
     const activeDir = currentTabs.find((t) => t.id === activeTabId)?.workingDirectory
-    if (activeDir && fileExplorerOpenDirs.has(activeDir)) {
+    if (!keepExplorerOnCollapse && activeDir && fileExplorerOpenDirs.has(activeDir)) {
       const next = new Set(fileExplorerOpenDirs)
       next.delete(activeDir)
       updates.fileExplorerOpenDirs = next
     }
-    if (state.gitPanelOpen) {
+    if (!keepGitPanelOnCollapse && state.gitPanelOpen) {
       updates.gitPanelOpen = false
     }
     if (Object.keys(updates).length > 0) {
