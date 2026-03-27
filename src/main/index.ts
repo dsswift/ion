@@ -434,7 +434,7 @@ ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: stri
   log(`IPC EXECUTE_BASH [${id}]: ${command} (cwd=${cwd})`)
   return new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
     const shell = process.env.SHELL || '/bin/bash'
-    const child = spawn(shell, ['-lc', command], { cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(shell, ['-lc', command], { cwd, env: getCliEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
     bashProcesses.set(id, child)
 
     const stdoutChunks: Buffer[] = []

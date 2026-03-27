@@ -1,4 +1,5 @@
 import { IPC } from '../shared/types'
+import { getCliEnv } from './cli-env'
 import { homedir } from 'os'
 import type { IPty } from 'node-pty'
 
@@ -33,7 +34,7 @@ export class TerminalManager {
       cols: 80,
       rows: 24,
       cwd: resolvedCwd,
-      env: { ...process.env } as Record<string, string>,
+      env: getCliEnv() as Record<string, string>,
     })
 
     term.onData((data: string) => {

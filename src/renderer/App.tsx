@@ -174,7 +174,7 @@ export default function App() {
             const tabId = await useSessionStore.getState().resumeSession(
               st.claudeSessionId,
               st.title,
-              st.workingDirectory,
+              st.worktree?.repoPath || st.workingDirectory,
             )
             restoredTabIds.push({ tabId, sessionId: st.claudeSessionId, index: i })
 
@@ -205,8 +205,11 @@ export default function App() {
                       worktree: restoredWorktree,
                       historicalSessionIds: st.historicalSessionIds || [],
                       groupId: st.groupId || null,
+                      // If worktree is valid, restore workingDirectory to worktree path
                       // If worktree was cleaned up, fall back to original repo path
-                      ...(st.worktree && !restoredWorktree ? { workingDirectory: st.worktree.repoPath } : {}),
+                      ...(restoredWorktree
+                        ? { workingDirectory: restoredWorktree.worktreePath }
+                        : st.worktree ? { workingDirectory: st.worktree.repoPath } : {}),
                     }
                   : t
               ),
@@ -246,7 +249,7 @@ export default function App() {
           if (historicalIds.length > 0) {
             const allHistoricalMessages: Message[] = []
             for (const hid of historicalIds) {
-              const history = await window.coda.loadSession(hid, st.workingDirectory).catch(() => [])
+              const history = await window.coda.loadSession(hid, st.worktree?.repoPath || st.workingDirectory).catch(() => [])
               const msgs = history.map((m) => ({
                 id: crypto.randomUUID(),
                 role: m.role as Message['role'],
