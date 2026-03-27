@@ -513,12 +513,12 @@ export default function App() {
         const s = useSessionStore.getState()
         const tab = s.tabs.find((t) => t.id === s.activeTabId)
         if (!tab) return
-        const dir = tab.workingDirectory
-        if (s.fileEditorOpenDirs.has(dir)) {
-          s.createScratchFile(dir)
-        } else {
-          s.toggleFileEditor(s.activeTabId)
+        const dir = editorDirForTab(tab)
+        if (!s.fileEditorOpenDirs.has(dir)) {
+          // Open the editor panel (without creating a default file — we'll create one below)
+          useSessionStore.setState({ fileEditorOpenDirs: new Set([...s.fileEditorOpenDirs, dir]), fileEditorFocused: true })
         }
+        s.createScratchFile(dir)
       }
       if (e.metaKey && e.shiftKey && e.key === 't') {
         e.preventDefault()
