@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   CaretDown, CaretRight, Plus, Minus, ArrowCounterClockwise,
   ArrowsClockwise, ArrowDown, ArrowUp, GitBranch, Folder, FolderOpen,
-  Trash, Robot, Check, X, SpinnerGap,
+  Trash, Robot, Check, CheckCircle, X, SpinnerGap,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -735,11 +735,13 @@ function GitGraphSection({
   onRefresh,
   refreshKey,
   worktree,
+  hasUncommittedChanges,
 }: {
   directory: string
   onRefresh: () => void
   refreshKey: number
   worktree?: { branchName: string; sourceBranch: string; worktreePath: string; repoPath: string } | null
+  hasUncommittedChanges: boolean
 }) {
   const colors = useColors()
   const [commits, setCommits] = useState<GitCommit[]>([])
@@ -749,6 +751,9 @@ function GitGraphSection({
   const [fetchingAction, setFetchingAction] = useState<string | null>(null)
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
+  const [finishMenuAnchor, setFinishMenuAnchor] = useState<{ x: number; y: number } | null>(null)
+  const strategy = useThemeStore((s) => s.worktreeCompletionStrategy)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -945,12 +950,31 @@ function GitGraphSection({
               </button>
               {worktree ? (
                 <button
-                  disabled
+                  onClick={() => {
+                    if (!hasUncommittedChanges) {
+                      useSessionStore.getState().finishWorktreeTab(activeTabId)
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    if (!hasUncommittedChanges) {
+                      setFinishMenuAnchor({ x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                  disabled={hasUncommittedChanges}
                   className="p-0.5 rounded transition-colors"
-                  style={{ color: colors.textTertiary, opacity: 0.35, cursor: 'not-allowed' }}
-                  title="Use Finish Work to push and create a PR"
+                  style={{
+                    color: hasUncommittedChanges ? colors.textTertiary : '#4ade80',
+                    opacity: hasUncommittedChanges ? 0.35 : 1,
+                    cursor: hasUncommittedChanges ? 'not-allowed' : 'pointer',
+                  }}
+                  title={hasUncommittedChanges
+                    ? 'Commit all changes before finishing'
+                    : strategy === 'merge'
+                      ? `Finish: merge into ${worktree.sourceBranch}`
+                      : `Finish: push and create PR against ${worktree.sourceBranch}`}
                 >
-                  <ArrowUp size={11} />
+                  <CheckCircle size={11} weight="fill" />
                 </button>
               ) : (
                 <button
@@ -1018,6 +1042,15 @@ function GitGraphSection({
       {popoverLayer && contextMenu && createPortal(
         <CommitContextMenu anchor={contextMenu} commit={contextMenu.commit} onClose={() => setContextMenu(null)} />,
         popoverLayer,
+      )}
+
+      {/* Finish Work right-click context menu */}
+      {finishMenuAnchor && worktree && (
+        <FinishWorkContextMenu
+          anchor={finishMenuAnchor}
+          worktree={worktree}
+          onClose={() => setFinishMenuAnchor(null)}
+        />
       )}
     </>
   )
@@ -1117,6 +1150,99 @@ function CommitPopup({ commit, rect, detail, panelRight }: {
         {commit.hash}
       </div>
     </motion.div>
+  )
+}
+
+// ─── Finish Work context menu (right-click on finish button) ───
+
+function FinishWorkContextMenu({ anchor, worktree, onClose }: {
+  anchor: { x: number; y: number }
+  worktree: { branchName: string; sourceBranch: string; worktreePath: string; repoPath: string }
+  onClose: () => void
+}) {
+  const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const ref = useRef<HTMLDivElement>(null)
+  const strategy = useThemeStore((s) => s.worktreeCompletionStrategy)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousedown', handleClick)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  if (!popoverLayer) return null
+
+  const items = [
+    {
+      label: `Merge into ${worktree.sourceBranch}`,
+      isDefault: strategy === 'merge',
+      action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'merge'),
+    },
+    {
+      label: `Push & create PR`,
+      isDefault: strategy === 'pr',
+      action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'pr'),
+    },
+  ]
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      data-coda-ui
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.12 }}
+      style={{
+        position: 'fixed',
+        left: anchor.x,
+        top: anchor.y,
+        pointerEvents: 'auto',
+        background: colors.popoverBg,
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: `1px solid ${colors.popoverBorder}`,
+        borderRadius: 8,
+        boxShadow: colors.popoverShadow,
+        padding: '4px 0',
+        zIndex: 10000,
+        minWidth: 180,
+      }}
+    >
+      {items.map((item) => (
+        <div
+          key={item.label}
+          onClick={() => { item.action(); onClose() }}
+          style={{
+            height: 28,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 12px',
+            fontSize: 11,
+            color: colors.textPrimary,
+            fontWeight: item.isDefault ? 600 : 400,
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+        >
+          {item.isDefault && <Check size={10} style={{ marginRight: 6, flexShrink: 0 }} />}
+          {item.label}
+        </div>
+      ))}
+    </motion.div>,
+    popoverLayer,
   )
 }
 
@@ -1308,6 +1434,10 @@ export function GitPanel() {
         const result = await window.coda.gitChanges(directory)
         if (cancelled) return
         setFiles(result.files)
+        // Track uncommitted changes for worktree tabs (used by context menus + finish button)
+        if (worktree) {
+          useSessionStore.getState().setWorktreeUncommitted(activeTabId, result.files.length > 0)
+        }
         const sig = result.branch + '\n' + result.files.map((f) => f.status + f.path).join('\n')
         if (prevSignatureRef.current && sig !== prevSignatureRef.current) {
           setRefreshKey((k) => k + 1)
@@ -1553,7 +1683,7 @@ export function GitPanel() {
         </button>
         {graphOpen && (
           <div style={{ height: graphContentHeight, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} worktree={worktree} />
+            <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} worktree={worktree} hasUncommittedChanges={files.length > 0} />
           </div>
         )}
       </div>

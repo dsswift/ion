@@ -218,9 +218,7 @@ export function GeneralTab() {
         </div>
       </SettingSection>
 
-      {gitOpsMode === 'worktree' && (
-        <>
-          <SettingSection
+      <SettingSection
             label="Completion Strategy"
             description="How finished worktree work is integrated back into the source branch."
           >
@@ -255,7 +253,7 @@ export function GeneralTab() {
             </div>
           </SettingSection>
 
-          {worktreeCompletionStrategy === 'pr' && (
+      {worktreeCompletionStrategy === 'pr' && (
             <SettingToggle
               label="Skip PR Title Prompt"
               description="Always use the auto-generated branch name for PR titles without prompting."
@@ -264,7 +262,7 @@ export function GeneralTab() {
             />
           )}
 
-          {Object.keys(worktreeBranchDefaults).length > 0 && (
+      {gitOpsMode === 'worktree' && Object.keys(worktreeBranchDefaults).length > 0 && (
             <SettingSection
               label="Branch Defaults"
               description="Saved default source branches per directory. Remove entries to show the branch picker again."
@@ -311,8 +309,6 @@ export function GeneralTab() {
               </div>
             </SettingSection>
           )}
-        </>
-      )}
 
       <SettingSection
         label="Commit Command"

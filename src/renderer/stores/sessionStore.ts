@@ -89,6 +89,8 @@ interface State {
   planGeometry: { x: number; y: number; w: number; h: number }
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
+  /** Tracks whether each worktree tab has uncommitted changes (keyed by tabId) */
+  worktreeUncommittedMap: Map<string, boolean>
 
   /** Which tab (if any) is in ephemeral tall view (null = normal) */
   tallViewTabId: string | null
@@ -183,6 +185,7 @@ interface State {
   handleError: (tabId: string, error: EnrichedError) => void
   moveTabToGroup: (tabId: string, groupId: string) => void
   setTabGroupId: (tabId: string, groupId: string | null) => void
+  setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
 }
 
 let msgCounter = 0
@@ -262,6 +265,7 @@ export const useSessionStore = create<State>((set, get) => ({
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
   planGeometry: { x: 60, y: 80, w: 720, h: 420 },
   tabsReady: false,
+  worktreeUncommittedMap: new Map(),
 
   tallViewTabId: null,
 
@@ -2046,6 +2050,11 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) => t.id === tabId ? { ...t, groupId } : t),
     }))
+  },
+  setWorktreeUncommitted: (tabId, hasChanges) => {
+    const map = new Map(get().worktreeUncommittedMap)
+    map.set(tabId, hasChanges)
+    set({ worktreeUncommittedMap: map })
   },
 }))
 
