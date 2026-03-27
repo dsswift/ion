@@ -520,10 +520,11 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => {
       const nextOpen = new Set(s.terminalOpenTabIds)
       const nextPending = new Map(s.terminalPendingCommands)
+      nextPending.set(tabId, cmd)
       if (nextOpen.has(tabId)) {
         window.coda.terminalWrite(tabId, cmd + '\n')
+        nextPending.delete(tabId)
       } else {
-        nextPending.set(tabId, cmd)
         nextOpen.add(tabId)
       }
       return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
