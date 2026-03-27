@@ -15,7 +15,7 @@ export function useHealthReconciliation() {
     const timer = setInterval(async () => {
       const { tabs } = useSessionStore.getState()
       const runningTabs = tabs.filter(
-        (t) => (t.status === 'running' || t.status === 'connecting') && t.activeRequestId
+        (t) => t.status === 'running' || t.status === 'connecting'
       )
       if (runningTabs.length === 0) return
 
@@ -39,19 +39,31 @@ export function useHealthReconciliation() {
           // Backend says dead but UI thinks it's running → unstick
           if (healthEntry.status === 'dead') {
             changed = true
-            return { ...t, status: 'dead' as const, currentActivity: 'Session ended', activeRequestId: null }
+            return { ...t, status: 'dead' as const, currentActivity: 'Session ended', activeRequestId: null, permissionQueue: [], permissionDenied: null }
           }
 
           // Backend says idle but UI thinks it's running → unstick
           if (healthEntry.status === 'idle' && !healthEntry.alive) {
             changed = true
-            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null }
+            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [], permissionDenied: null }
           }
 
           // Backend says failed → unstick
           if (healthEntry.status === 'failed') {
             changed = true
-            return { ...t, status: 'failed' as const, currentActivity: '', activeRequestId: null }
+            return { ...t, status: 'failed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [], permissionDenied: null }
+          }
+
+          // Backend says completed → unstick
+          if (healthEntry.status === 'completed') {
+            changed = true
+            return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null, permissionQueue: [], permissionDenied: null }
+          }
+
+          // Backend says running but process is dead → unstick (exit handler missed)
+          if (healthEntry.status === 'running' && !healthEntry.alive) {
+            changed = true
+            return { ...t, status: 'dead' as const, currentActivity: 'Session ended', activeRequestId: null, permissionQueue: [], permissionDenied: null }
           }
 
           return t
