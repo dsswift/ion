@@ -1136,7 +1136,10 @@ function ToolGroup({ tools, skipMotion }: { tools: Message[]; skipMotion?: boole
   const hasRunning = tools.some((t) => t.toolStatus === 'running')
   const hasUserExecuted = tools.some((t) => t.userExecuted)
   const expandToolResults = useThemeStore((s) => s.expandToolResults)
-  const [expanded, setExpanded] = useState(hasUserExecuted)
+  const hasExpandableTools = expandToolResults && tools.some((t) =>
+    ['Edit', 'Write'].includes(t.toolName || '')
+  )
+  const [expanded, setExpanded] = useState(hasUserExecuted || hasExpandableTools)
   const prevHasRunning = useRef(hasRunning)
   const colors = useColors()
 
