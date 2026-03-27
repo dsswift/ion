@@ -12,6 +12,16 @@ import { useTabGroups } from '../hooks/useTabGroups'
 import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabStatus, TabState } from '../../shared/types'
 
+/** On-demand uncommitted check for worktree tabs whose status isn't in the map yet */
+function checkWorktreeUncommitted(tab: TabState | undefined) {
+  if (!tab?.worktree) return
+  const { worktreeUncommittedMap, setWorktreeUncommitted } = useSessionStore.getState()
+  if (worktreeUncommittedMap.has(tab.id)) return
+  window.coda.gitChanges(tab.workingDirectory).then((result) => {
+    setWorktreeUncommitted(tab.id, result.files.length > 0)
+  }).catch(() => {})
+}
+
 /** Check whether this tab-creation event should use worktree mode, inverting the default when Alt is held */
 const shouldUseWorktree = (altKey: boolean): boolean => {
   const gitOpsMode = useThemeStore.getState().gitOpsMode
@@ -173,7 +183,7 @@ function DirContextMenu({
   onCreateTab: () => void
   onForkTab?: () => void
   onFinishWork?: () => void
-  finishWorkDisabled?: boolean
+  finishWorkDisabled?: boolean | 'checking'
   onClose: () => void
 }) {
   const colors = useColors()
@@ -276,7 +286,7 @@ function DirContextMenu({
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         >
           <CheckCircle size={14} color={finishWorkDisabled ? colors.textTertiary : '#4ade80'} />
-          <span>{finishWorkDisabled ? 'Finish work (uncommitted changes)' : 'Finish work'}</span>
+          <span>{finishWorkDisabled === 'checking' ? 'Finish work (checking...)' : finishWorkDisabled ? 'Finish work (uncommitted changes)' : 'Finish work'}</span>
         </button>
       )}
       {tabGroupMode === 'manual' && (
@@ -338,7 +348,7 @@ function TabContextMenu({
   onForkTab?: () => void
   onNewTabInDir: () => void
   onFinishWork: () => void
-  finishWorkDisabled?: boolean
+  finishWorkDisabled?: boolean | 'checking'
   onClose: () => void
   groupTabs?: TabState[]
 }) {
@@ -482,7 +492,7 @@ function TabContextMenu({
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         >
           <CheckCircle size={14} color={finishWorkDisabled ? colors.textTertiary : '#4ade80'} />
-          <span>{finishWorkDisabled ? 'Finish work (uncommitted changes)' : 'Finish work'}</span>
+          <span>{finishWorkDisabled === 'checking' ? 'Finish work (checking...)' : finishWorkDisabled ? 'Finish work (uncommitted changes)' : 'Finish work'}</span>
         </button>
       )}
       {tabGroupMode === 'manual' && (
@@ -928,6 +938,7 @@ function GroupPickerDropdown({
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
+  const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
 
   // Sub-interaction state
   const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
@@ -937,6 +948,10 @@ function GroupPickerDropdown({
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [localTabs, setLocalTabs] = useState(group.tabs)
+
+  useEffect(() => {
+    if (dirMenuTabId) checkWorktreeUncommitted(group.tabs.find((t) => t.id === dirMenuTabId))
+  }, [dirMenuTabId])
 
   useEffect(() => {
     setLocalTabs(group.tabs)
@@ -1093,7 +1108,7 @@ function GroupPickerDropdown({
                 useSessionStore.getState().finishWorktreeTab(menuTab.id)
                 setDirMenuTabId(null)
               }}
-              finishWorkDisabled={menuTab.worktree ? useSessionStore.getState().worktreeUncommittedMap.get(menuTab.id) ?? false : undefined}
+              finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
               onClose={() => setDirMenuTabId(null)}
               groupTabs={group.tabs}
             />
@@ -1525,6 +1540,7 @@ function InactiveGroupMenu({
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const tabGroups = useThemeStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
+  const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
   const moveItemRef = useRef<HTMLButtonElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
@@ -1712,6 +1728,7 @@ function GroupPill({
   const colors = useColors()
   const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
   const renameTab = useSessionStore((s) => s.renameTab)
+  const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
@@ -1719,6 +1736,10 @@ function GroupPill({
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (tabMenu) checkWorktreeUncommitted(selectedTab)
+  }, [tabMenu])
 
   // Close picker when any new tab is created (from +button, keyboard shortcut, or another picker)
   useEffect(() => {
@@ -1929,6 +1950,7 @@ function GroupPill({
               onForkTab={tab.claudeSessionId ? () => { useSessionStore.getState().forkTab(tab.id) } : undefined}
               onNewTabInDir={() => useSessionStore.getState().createTabInDirectory(tab.workingDirectory, shouldUseWorktree(false))}
               onFinishWork={() => { if (tab.worktree) useSessionStore.getState().finishWorktreeTab(tab.id) }}
+              finishWorkDisabled={tab.worktree ? (worktreeUncommittedMap.has(tab.id) ? worktreeUncommittedMap.get(tab.id)! : 'checking') : undefined}
               onClose={() => setTabMenu(null)}
               groupTabs={group.tabs}
             />
@@ -2199,6 +2221,11 @@ export function TabStrip() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
+  useEffect(() => {
+    const id = dirMenuTabId || tabMenuId
+    if (id) checkWorktreeUncommitted(tabs.find((t) => t.id === id))
+  }, [dirMenuTabId, tabMenuId])
+
   // Scroll the confirming-close tab into view after it expands
   useEffect(() => {
     if (!confirmingCloseId) return
@@ -2401,7 +2428,7 @@ export function TabStrip() {
               onCreateTab={() => createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))}
               onForkTab={menuTab.claudeSessionId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
               onFinishWork={menuTab.worktree ? () => { useSessionStore.getState().finishWorktreeTab(menuTab.id) } : undefined}
-              finishWorkDisabled={menuTab.worktree ? worktreeUncommittedMap.get(menuTab.id) ?? false : undefined}
+              finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
               onClose={() => setDirMenuTabId(null)}
             />
           )
@@ -2436,7 +2463,7 @@ export function TabStrip() {
               onFinishWork={() => {
                 useSessionStore.getState().finishWorktreeTab(menuTab.id)
               }}
-              finishWorkDisabled={menuTab.worktree ? worktreeUncommittedMap.get(menuTab.id) ?? false : undefined}
+              finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
               onClose={() => setTabMenuId(null)}
             />
           )
