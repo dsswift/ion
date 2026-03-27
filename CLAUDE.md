@@ -13,9 +13,13 @@ IPC pattern: renderer calls `window.coda.method()` -> preload bridges via `ipcRe
 
 ## Build and Test
 
-The user tests with the **packaged macOS app**, not the dev server.
+The user tests with the **packaged macOS app**, not the dev server. Multiple worktrees may be open simultaneously, so the user controls which worktree gets installed.
 
-### Build + install cycle
+### Build verification (agent responsibility)
+
+After code changes, run `npm run build` to verify the build compiles cleanly. If the build succeeds, tell the user it's ready for testing. **Do NOT run `make install`** -- the user will run it themselves from the appropriate worktree.
+
+### Install cycle (user-initiated only)
 
 ```bash
 make install
@@ -23,16 +27,13 @@ make install
 
 This launches the installer as a **detached background process** (via `commands/install-bg.command`) so it returns immediately. The installer handles graceful shutdown (SIGUSR1 drain -- waits for active agents and bash commands to finish), build, copy to `/Applications`, and relaunch. Output is logged to `/tmp/coda-install.log`.
 
-The detached design breaks the deadlock when developing CODA inside CODA: the agent's bash command returns immediately, the agent completes, the drain proceeds, and the orphaned installer continues.
-
 **Never kill CODA processes directly or copy over the app bundle manually.** Always use `make install` or `bash commands/install-app.command` so that active agents finish gracefully before the binary is replaced.
 
 ### Key distinction
 
-- `npm run build` -- builds to `dist/` only (dev server uses this, packaged app does NOT)
+- `npm run build` -- builds to `dist/` only (verifies compilation)
 - `npm run dist` -- builds to `dist/` then packages into `release/mac-arm64/CODA.app`
-
-**After any code change, you must run `make install` for the user to see changes.** Running `npm run build` alone will NOT update the installed app.
+- `make install` -- full build + package + install to `/Applications` + relaunch (user-initiated only)
 
 ## Transparent Window + Click-Through
 
