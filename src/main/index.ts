@@ -2009,6 +2009,45 @@ ipcMain.handle(IPC.GIT_COMMIT_DETAIL, async (_event, { directory, hash }: { dire
   }
 })
 
+ipcMain.handle(IPC.GIT_COMMIT_FILES, async (_event, { directory, hash }: { directory: string; hash: string }) => {
+  try {
+    const output = await runGit(directory, ['diff-tree', '--no-commit-id', '-r', '--name-status', hash])
+    const files = output.trim().split('\n').filter(Boolean).map(line => {
+      const parts = line.split('\t')
+      const statusCode = parts[0][0]
+      const statusMap: Record<string, string> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed' }
+      const status = statusMap[statusCode] || 'modified'
+      if (statusCode === 'R') {
+        return { path: parts[2], status, oldPath: parts[1] }
+      }
+      return { path: parts[1], status }
+    })
+    return { files }
+  } catch {
+    return { files: [] }
+  }
+})
+
+ipcMain.handle(IPC.GIT_COMMIT_FILE_DIFF, async (_event, { directory, hash, path }: { directory: string; hash: string; path: string }) => {
+  try {
+    const output = await runGit(directory, ['diff-tree', '-p', '--root', hash, '--', path])
+    const fileName = path.split('/').pop() || path
+    return { diff: output, fileName }
+  } catch {
+    return { diff: '', fileName: path.split('/').pop() || path }
+  }
+})
+
+ipcMain.handle(IPC.GIT_IGNORED_FILES, async (_event, directory: string) => {
+  try {
+    const output = await runGit(directory, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'])
+    const paths = output.trim().split('\n').filter(Boolean).map(p => join(directory, p))
+    return { paths }
+  } catch {
+    return { paths: [] }
+  }
+})
+
 ipcMain.handle(IPC.GIT_CHANGES, async (_event, { directory }: { directory: string }) => {
   try {
     await runGit(directory, ['rev-parse', '--is-inside-work-tree'])

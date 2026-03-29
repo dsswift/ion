@@ -174,6 +174,7 @@ function TreeRow({
   depth,
   expanded,
   selected,
+  isGitIgnored,
   onToggle,
   onClick,
   onContextMenu,
@@ -183,6 +184,7 @@ function TreeRow({
   depth: number
   expanded: boolean
   selected: boolean
+  isGitIgnored?: boolean
   onToggle: () => void
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
@@ -206,6 +208,7 @@ function TreeRow({
         background: selected ? colors.surfaceHover : 'transparent',
         borderRadius: selected ? 4 : 0,
         gap: 4,
+        opacity: isGitIgnored ? 0.45 : undefined,
       }}
       onMouseEnter={(e) => {
         if (!selected) (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover
@@ -235,7 +238,7 @@ function TreeRow({
       <span
         style={{
           fontSize: 12,
-          color: colors.textPrimary,
+          color: isGitIgnored ? colors.textTertiary : colors.textPrimary,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
@@ -331,6 +334,7 @@ export function FileExplorer() {
 
   // Directory listing cache
   const [dirCache, setDirCache] = useState<Map<string, FsEntry[]>>(new Map())
+  const [ignoredPaths, setIgnoredPaths] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [inlineInput, setInlineInput] = useState<{ type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
   const refreshCounter = useRef(0)
@@ -360,16 +364,25 @@ export function FileExplorer() {
     }
   }, [workingDir, explorerState.expandedPaths, fetchDir])
 
+  // Fetch gitignored files
+  const fetchIgnored = useCallback((dir: string) => {
+    window.coda.gitIgnoredFiles(dir).then(result => {
+      setIgnoredPaths(new Set(result.paths))
+    }).catch(() => {})
+  }, [])
+
   // Initial load + auto-refresh every 5 seconds
   useEffect(() => {
     if (!workingDir) return
     fetchDir(workingDir)
+    fetchIgnored(workingDir)
     const interval = setInterval(() => {
       refreshCounter.current++
       refreshAll()
+      fetchIgnored(workingDir)
     }, 5000)
     return () => clearInterval(interval)
-  }, [workingDir, fetchDir, refreshAll])
+  }, [workingDir, fetchDir, refreshAll, fetchIgnored])
 
   // Fetch newly expanded dirs
   const handleToggleDir = useCallback((entry: FsEntry) => {
@@ -469,6 +482,18 @@ export function FileExplorer() {
     fetchDir(inlineInput.parentDir)
   }, [inlineInput, fetchDir])
 
+  const isIgnored = useCallback((filePath: string) => {
+    if (ignoredPaths.has(filePath)) return true
+    // Directory entries from git end with '/' but FsEntry paths don't
+    if (ignoredPaths.has(filePath + '/')) return true
+    // Check if any parent directory is ignored
+    for (const p of ignoredPaths) {
+      if (p.endsWith('/') && filePath.startsWith(p)) return true
+      if (!p.endsWith('/') && filePath.startsWith(p + '/')) return true
+    }
+    return false
+  }, [ignoredPaths])
+
   // Render tree recursively
   const renderTree = useCallback((dirPath: string, depth: number): React.ReactNode[] => {
     const entries = dirCache.get(dirPath) || []
@@ -499,6 +524,7 @@ export function FileExplorer() {
           depth={depth}
           expanded={isExpanded}
           selected={isSelected}
+          isGitIgnored={isIgnored(entry.path)}
           onToggle={() => handleToggleDir(entry)}
           onClick={() => handleFileClick(entry)}
           onContextMenu={(e) => handleContextMenu(e, entry)}
@@ -512,7 +538,7 @@ export function FileExplorer() {
     }
 
     return nodes
-  }, [dirCache, explorerState, inlineInput, handleInlineSubmit, handleToggleDir, handleFileClick, handleContextMenu, colors])
+  }, [dirCache, explorerState, inlineInput, handleInlineSubmit, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
 
   const expandedUI = useThemeStore((s) => s.expandedUI)
 

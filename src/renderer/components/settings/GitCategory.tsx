@@ -20,6 +20,8 @@ export function GitCategory() {
   const setCommitCommand = useThemeStore((s) => s.setCommitCommand)
   const claudeCommand = useThemeStore((s) => s.claudeCommand)
   const setClaudeCommand = useThemeStore((s) => s.setClaudeCommand)
+  const gitChangesTreeView = useThemeStore((s) => s.gitChangesTreeView)
+  const setGitChangesTreeView = useThemeStore((s) => s.setGitChangesTreeView)
 
   return (
     <>
@@ -152,6 +154,13 @@ export function GitCategory() {
           </div>
         </SettingSection>
       )}
+
+      <SettingToggle
+        label="Tree View for Changes"
+        description="Group changed files by directory in the git panel."
+        checked={gitChangesTreeView}
+        onChange={setGitChangesTreeView}
+      />
 
       <SettingHeading>Commands</SettingHeading>
 

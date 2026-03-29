@@ -74,6 +74,9 @@ export interface CodaAPI {
   gitDiscard(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDeleteBranch(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
   gitCommitDetail(directory: string, hash: string): Promise<GitCommitDetail>
+  gitCommitFiles(directory: string, hash: string): Promise<{ files: Array<{ path: string; status: string; oldPath?: string }> }>
+  gitCommitFileDiff(directory: string, hash: string, path: string): Promise<{ diff: string; fileName: string }>
+  gitIgnoredFiles(directory: string): Promise<{ paths: string[] }>
 
   // ─── Git worktree operations ───
   gitWorktreeAdd(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; worktree?: WorktreeInfo; error?: string }>
@@ -202,6 +205,9 @@ const api: CodaAPI = {
   gitDiscard: (directory, paths) => ipcRenderer.invoke(IPC.GIT_DISCARD, { directory, paths }),
   gitDeleteBranch: (directory, branch) => ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { directory, branch }),
   gitCommitDetail: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_DETAIL, { directory, hash }),
+  gitCommitFiles: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_FILES, { directory, hash }),
+  gitCommitFileDiff: (directory, hash, path) => ipcRenderer.invoke(IPC.GIT_COMMIT_FILE_DIFF, { directory, hash, path }),
+  gitIgnoredFiles: (directory) => ipcRenderer.invoke(IPC.GIT_IGNORED_FILES, directory),
 
   // ─── Git worktree operations ───
   gitWorktreeAdd: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, { repoPath, sourceBranch }),

@@ -491,6 +491,9 @@ export const IPC = {
   GIT_DISCARD: 'coda:git-discard',
   GIT_DELETE_BRANCH: 'coda:git-delete-branch',
   GIT_COMMIT_DETAIL: 'coda:git-commit-detail',
+  GIT_COMMIT_FILES: 'coda:git-commit-files',
+  GIT_COMMIT_FILE_DIFF: 'coda:git-commit-file-diff',
+  GIT_IGNORED_FILES: 'coda:git-ignored-files',
 
   // Git worktree operations
   GIT_WORKTREE_ADD: 'coda:git-worktree-add',
@@ -611,6 +614,12 @@ export interface GitCommitDetail {
   filesChanged: number
   insertions: number
   deletions: number
+}
+
+export interface GitCommitFile {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed'
+  oldPath?: string
 }
 
 export interface GitGraphData {

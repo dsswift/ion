@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   CaretDown, CaretRight, Plus, Minus, ArrowCounterClockwise,
   ArrowsClockwise, ArrowDown, ArrowUp, GitBranch, Folder, FolderOpen,
-  Trash, Robot, Check, CheckCircle, X, SpinnerGap,
+  Trash, Robot, Check, CheckCircle, X, SpinnerGap, ListBullets, TreeStructure,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -13,7 +13,7 @@ import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { DiffViewer } from './DiffViewer'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
 import { useGitPollingStore } from '../hooks/useGitPolling'
-import type { GitChangedFile, GitCommit, GitCommitDetail, GitBranchInfo } from '../../shared/types'
+import type { GitChangedFile, GitCommit, GitCommitDetail, GitCommitFile, GitBranchInfo } from '../../shared/types'
 import type { GitGraphNode } from '../utils/gitGraphLayout'
 
 // ─── Status badge colors ───
@@ -413,6 +413,91 @@ function FileRow({
   )
 }
 
+// ─── File Tree Row (tree view mode) ───
+
+function FileTreeRow({
+  node,
+  depth,
+  directory,
+  expandedDirs,
+  onToggleDirExpand,
+  onStage,
+  onUnstage,
+  onDiscard,
+  onClick,
+  selectedFile,
+}: {
+  node: FileTreeNode
+  depth: number
+  directory: string
+  expandedDirs: Set<string>
+  onToggleDirExpand: (path: string) => void
+  onStage: (path: string) => void
+  onUnstage: (path: string) => void
+  onDiscard: (path: string) => void
+  onClick: (file: GitChangedFile) => void
+  selectedFile: { path: string; staged: boolean } | null
+}) {
+  const colors = useColors()
+  const isExpanded = expandedDirs.has(node.path)
+
+  if (node.isDir) {
+    return (
+      <>
+        <div
+          className="flex items-center cursor-pointer"
+          style={{
+            height: 24,
+            paddingLeft: 8 + depth * 12,
+            paddingRight: 4,
+          }}
+          onClick={() => onToggleDirExpand(node.path)}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+        >
+          {isExpanded ? <CaretDown size={10} color={colors.textTertiary} /> : <CaretRight size={10} color={colors.textTertiary} />}
+          {isExpanded
+            ? <FolderOpen size={12} color={colors.accent} weight="fill" style={{ marginLeft: 2 }} />
+            : <Folder size={12} color={colors.accent} weight="fill" style={{ marginLeft: 2 }} />
+          }
+          <span className="text-[10px] truncate" style={{ color: colors.textSecondary, marginLeft: 4 }}>
+            {node.name}
+          </span>
+        </div>
+        {isExpanded && node.children.map((child) => (
+          <FileTreeRow
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            directory={directory}
+            expandedDirs={expandedDirs}
+            onToggleDirExpand={onToggleDirExpand}
+            onStage={onStage}
+            onUnstage={onUnstage}
+            onDiscard={onDiscard}
+            onClick={onClick}
+            selectedFile={selectedFile}
+          />
+        ))}
+      </>
+    )
+  }
+
+  // File node - delegate to FileRow
+  return (
+    <FileRow
+      file={node.file!}
+      depth={depth}
+      directory={directory}
+      onStage={onStage}
+      onUnstage={onUnstage}
+      onDiscard={onDiscard}
+      onClick={onClick}
+      isSelected={selectedFile?.path === node.file!.path && selectedFile?.staged === node.file!.staged}
+    />
+  )
+}
+
 // ─── Changes Section ───
 
 function GitChangesSection({
@@ -421,19 +506,54 @@ function GitChangesSection({
   onRefresh,
   commitMsg,
   setCommitMsg,
+  treeView,
 }: {
   directory: string
   files: GitChangedFile[]
   onRefresh: () => void
   commitMsg: string
   setCommitMsg: (msg: string) => void
+  treeView: boolean
 }) {
   const colors = useColors()
   const [diffFile, setDiffFile] = useState<{ path: string; staged: boolean } | null>(null)
   const [diffData, setDiffData] = useState<{ diff: string; fileName: string } | null>(null)
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
 
   const stagedFiles = files.filter((f) => f.staged)
   const unstagedFiles = files.filter((f) => !f.staged)
+
+  // Collect all directory paths from a file tree
+  const collectDirPaths = useCallback((nodes: FileTreeNode[]): string[] => {
+    const paths: string[] = []
+    for (const node of nodes) {
+      if (node.isDir) {
+        paths.push(node.path)
+        paths.push(...collectDirPaths(node.children))
+      }
+    }
+    return paths
+  }, [])
+
+  // Default all dirs expanded when files change
+  const fileKeys = files.map((f) => `${f.path}:${f.staged}`).join(',')
+  useEffect(() => {
+    if (!treeView) return
+    const sTree = buildFileTree(stagedFiles)
+    const uTree = buildFileTree(unstagedFiles)
+    const allDirs = new Set([...collectDirPaths(sTree), ...collectDirPaths(uTree)])
+    setExpandedDirs(allDirs)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileKeys, treeView])
+
+  const toggleDirExpand = useCallback((path: string) => {
+    setExpandedDirs((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
 
   const handleStage = async (path: string) => {
     await window.coda.gitStage(directory, [path])
@@ -504,19 +624,35 @@ function GitChangesSection({
                 <Minus size={12} />
               </button>
             </div>
-            {stagedFiles.map((file) => (
-              <FileRow
-                key={`s-${file.path}`}
-                file={file}
-                depth={0}
-                directory={directory}
-                onStage={handleStage}
-                onUnstage={handleUnstage}
-                onDiscard={handleDiscard}
-                onClick={handleFileClick}
-                isSelected={diffFile?.path === file.path && diffFile?.staged === file.staged}
-              />
-            ))}
+            {treeView
+              ? buildFileTree(stagedFiles).map((node) => (
+                <FileTreeRow
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  directory={directory}
+                  expandedDirs={expandedDirs}
+                  onToggleDirExpand={toggleDirExpand}
+                  onStage={handleStage}
+                  onUnstage={handleUnstage}
+                  onDiscard={handleDiscard}
+                  onClick={handleFileClick}
+                  selectedFile={diffFile}
+                />
+              ))
+              : stagedFiles.map((file) => (
+                <FileRow
+                  key={`s-${file.path}`}
+                  file={file}
+                  depth={0}
+                  directory={directory}
+                  onStage={handleStage}
+                  onUnstage={handleUnstage}
+                  onDiscard={handleDiscard}
+                  onClick={handleFileClick}
+                  isSelected={diffFile?.path === file.path && diffFile?.staged === file.staged}
+                />
+              ))}
           </div>
         )}
 
@@ -537,19 +673,35 @@ function GitChangesSection({
                 <Plus size={12} />
               </button>
             </div>
-            {unstagedFiles.map((file) => (
-              <FileRow
-                key={`u-${file.path}`}
-                file={file}
-                depth={0}
-                directory={directory}
-                onStage={handleStage}
-                onUnstage={handleUnstage}
-                onDiscard={handleDiscard}
-                onClick={handleFileClick}
-                isSelected={diffFile?.path === file.path && diffFile?.staged === file.staged}
-              />
-            ))}
+            {treeView
+              ? buildFileTree(unstagedFiles).map((node) => (
+                <FileTreeRow
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  directory={directory}
+                  expandedDirs={expandedDirs}
+                  onToggleDirExpand={toggleDirExpand}
+                  onStage={handleStage}
+                  onUnstage={handleUnstage}
+                  onDiscard={handleDiscard}
+                  onClick={handleFileClick}
+                  selectedFile={diffFile}
+                />
+              ))
+              : unstagedFiles.map((file) => (
+                <FileRow
+                  key={`u-${file.path}`}
+                  file={file}
+                  depth={0}
+                  directory={directory}
+                  onStage={handleStage}
+                  onUnstage={handleUnstage}
+                  onDiscard={handleDiscard}
+                  onClick={handleFileClick}
+                  isSelected={diffFile?.path === file.path && diffFile?.staged === file.staged}
+                />
+              ))}
           </div>
         )}
 
@@ -609,11 +761,13 @@ const LANE_OFFSET = 8
 const MAX_GRAPH_WIDTH = 60
 const ROW_HEIGHT = 32
 
-function GraphRow({ node, onHover, onLeave, onContextMenu }: {
+function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExpanded }: {
   node: GitGraphNode
   onHover: (commit: GitCommit, rect: DOMRect) => void
   onLeave: () => void
   onContextMenu: (e: React.MouseEvent, commit: GitCommit) => void
+  onClick: () => void
+  isExpanded: boolean
 }) {
   const colors = useColors()
   const commit = node.commit
@@ -631,7 +785,8 @@ function GraphRow({ node, onHover, onLeave, onContextMenu }: {
     <div
       ref={rowRef}
       className="flex"
-      style={{ height: ROW_HEIGHT, whiteSpace: 'nowrap', minWidth: 'fit-content' }}
+      style={{ height: ROW_HEIGHT, whiteSpace: 'nowrap', minWidth: 'fit-content', cursor: 'pointer', background: isExpanded ? colors.surfaceHover : undefined }}
+      onClick={onClick}
       onMouseEnter={() => {
         if (rowRef.current) onHover(commit, rowRef.current.getBoundingClientRect())
       }}
@@ -731,6 +886,58 @@ function relativeDate(iso: string): string {
   return `${months}mo ago`
 }
 
+function CommitFileList({ files, directory, hash, onFileClick }: {
+  files: GitCommitFile[]
+  directory: string
+  hash: string
+  onFileClick: (file: GitCommitFile) => void
+}) {
+  const colors = useColors()
+
+  const STATUS_COLORS_COMMIT: Record<string, string> = {
+    added: '#7aac8c',
+    modified: '#6b9bd2',
+    deleted: '#c47060',
+    renamed: '#b08fd8',
+  }
+
+  const STATUS_LETTERS_COMMIT: Record<string, string> = {
+    added: 'A',
+    modified: 'M',
+    deleted: 'D',
+    renamed: 'R',
+  }
+
+  return (
+    <div style={{ background: colors.surfacePrimary, borderBottom: `1px solid ${colors.containerBorder}` }}>
+      {files.map((file) => (
+        <div
+          key={file.path}
+          className="flex items-center cursor-pointer group"
+          style={{ height: 22, paddingLeft: 20, paddingRight: 8 }}
+          onClick={() => onFileClick(file)}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+        >
+          <span
+            className="text-[9px] font-mono flex-shrink-0"
+            style={{ color: STATUS_COLORS_COMMIT[file.status] || colors.textTertiary, width: 14, textAlign: 'center' }}
+          >
+            {STATUS_LETTERS_COMMIT[file.status] || '?'}
+          </span>
+          <span
+            className="text-[10px] truncate flex-1"
+            style={{ color: colors.textSecondary, marginLeft: 6 }}
+            title={file.path}
+          >
+            {file.path}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function GitGraphSection({
   directory,
   onRefresh,
@@ -813,6 +1020,9 @@ function GitGraphSection({
   const [hoveredCommit, setHoveredCommit] = useState<GitCommit | null>(null)
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null)
   const [commitDetail, setCommitDetail] = useState<GitCommitDetail | null>(null)
+  const [expandedHash, setExpandedHash] = useState<string | null>(null)
+  const [commitFiles, setCommitFiles] = useState<GitCommitFile[]>([])
+  const [commitFileDiff, setCommitFileDiff] = useState<{ diff: string; fileName: string } | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeHashRef = useRef<string | null>(null)
 
@@ -849,6 +1059,44 @@ function GitGraphSection({
     setCommitDetail(null)
     setContextMenu({ x: e.clientX, y: e.clientY, commit })
   }, [])
+
+  const handleCommitClick = useCallback(async (commit: GitCommit) => {
+    // Dismiss hover popup
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = null
+    activeHashRef.current = null
+    setHoveredCommit(null)
+    setHoverRect(null)
+    setCommitDetail(null)
+
+    if (expandedHash === commit.hash) {
+      // Collapse
+      setExpandedHash(null)
+      setCommitFiles([])
+      setCommitFileDiff(null)
+      return
+    }
+
+    // Expand
+    setExpandedHash(commit.hash)
+    setCommitFileDiff(null)
+    try {
+      const result = await window.coda.gitCommitFiles(directory, commit.hash)
+      setCommitFiles(result.files as GitCommitFile[])
+    } catch {
+      setCommitFiles([])
+    }
+  }, [expandedHash, directory])
+
+  const handleCommitFileClick = useCallback(async (file: GitCommitFile) => {
+    if (!expandedHash) return
+    try {
+      const result = await window.coda.gitCommitFileDiff(directory, expandedHash, file.path)
+      setCommitFileDiff(result)
+    } catch {
+      setCommitFileDiff(null)
+    }
+  }, [expandedHash, directory])
 
   // Clean up timer on unmount
   useEffect(() => () => {
@@ -1011,13 +1259,24 @@ function GitGraphSection({
       {/* Commit list */}
       <div ref={scrollRef} className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
         {graphNodes.map((node, idx) => (
-          <GraphRow
-            key={node.commit.hash}
-            node={node}
-            onHover={handleRowHover}
-            onLeave={handleRowLeave}
-            onContextMenu={handleContextMenu}
-          />
+          <React.Fragment key={node.commit.hash}>
+            <GraphRow
+              node={node}
+              onHover={handleRowHover}
+              onLeave={handleRowLeave}
+              onContextMenu={handleContextMenu}
+              onClick={() => handleCommitClick(node.commit)}
+              isExpanded={expandedHash === node.commit.hash}
+            />
+            {expandedHash === node.commit.hash && commitFiles.length > 0 && (
+              <CommitFileList
+                files={commitFiles}
+                directory={directory}
+                hash={expandedHash}
+                onFileClick={handleCommitFileClick}
+              />
+            )}
+          </React.Fragment>
         ))}
         {commits.length < totalCount && (
           <div ref={sentinelRef} className="py-2 text-center text-[10px]" style={{ color: colors.textTertiary }}>
@@ -1051,6 +1310,17 @@ function GitGraphSection({
           onClose={() => setFinishMenuAnchor(null)}
         />
       )}
+
+      {/* Commit file diff viewer */}
+      <AnimatePresence>
+        {commitFileDiff && (
+          <DiffViewer
+            diff={commitFileDiff.diff}
+            fileName={commitFileDiff.fileName}
+            onClose={() => setCommitFileDiff(null)}
+          />
+        )}
+      </AnimatePresence>
     </>
   )
 }
@@ -1383,6 +1653,7 @@ export function GitPanel() {
   const setSplitRatio = useThemeStore((s) => s.setGitPanelSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
   const commitCommand = useThemeStore((s) => s.commitCommand)
+  const gitChangesTreeView = useThemeStore((s) => s.gitChangesTreeView)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const [commitMsg, setCommitMsg] = useState('')
 
@@ -1549,6 +1820,14 @@ export function GitPanel() {
           {changesOpen && files.length > 0 && (
             <>
               <div style={{ flex: 1 }} />
+              <button
+                onClick={() => useThemeStore.getState().setGitChangesTreeView(!gitChangesTreeView)}
+                className="p-0.5 rounded transition-colors"
+                style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                title={gitChangesTreeView ? 'List view' : 'Tree view'}
+              >
+                {gitChangesTreeView ? <ListBullets size={11} /> : <TreeStructure size={11} />}
+              </button>
               <input
                 value={commitMsg}
                 onChange={(e) => setCommitMsg(e.target.value)}
@@ -1601,7 +1880,7 @@ export function GitPanel() {
         </div>
         {changesOpen && (
           <div style={{ height: changesContentHeight, overflow: 'auto' }}>
-            <GitChangesSection directory={directory} files={files} onRefresh={refresh} commitMsg={commitMsg} setCommitMsg={setCommitMsg} />
+            <GitChangesSection directory={directory} files={files} onRefresh={refresh} commitMsg={commitMsg} setCommitMsg={setCommitMsg} treeView={gitChangesTreeView} />
           </div>
         )}
       </div>
