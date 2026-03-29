@@ -2249,6 +2249,7 @@ function persistTabs(): void {
       ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
       ...(t.worktree ? { worktree: t.worktree } : {}),
       ...(t.groupId ? { groupId: t.groupId } : {}),
+      ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
     }))
 
   // Serialize editor states (per-directory, includes unsaved content)

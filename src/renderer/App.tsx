@@ -206,6 +206,7 @@ export default function App() {
                       worktree: restoredWorktree,
                       historicalSessionIds: st.historicalSessionIds || [],
                       groupId: st.groupId || null,
+                      queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                       // If worktree is valid, restore workingDirectory to worktree path
                       // If worktree was cleaned up, fall back to original repo path
                       ...(restoredWorktree
@@ -236,6 +237,7 @@ export default function App() {
                       worktree: st.worktree || null,
                       historicalSessionIds: st.historicalSessionIds || [],
                       groupId: st.groupId || null,
+                      queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                     }
                   : t
               ),

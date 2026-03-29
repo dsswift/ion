@@ -551,6 +551,7 @@ export interface PersistedTab {
   forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
   groupId?: string | null
+  queuedPrompts?: string[]
 }
 
 export interface PersistedEditorFile {
