@@ -16,7 +16,7 @@ export interface CodaAPI {
   closeTab(tabId: string): Promise<void>
   selectDirectory(): Promise<string | null>
   openExternal(url: string): Promise<boolean>
-  openInTerminal(sessionId: string | null, projectPath?: string): Promise<boolean>
+  openInTerminal(sessionId: string | null, projectPath?: string, claudeCommand?: string): Promise<boolean>
   openInVSCode(projectPath: string): Promise<boolean>
   attachFiles(): Promise<FileAttachment[] | null>
   attachFileByPath(path: string): Promise<FileAttachment | null>
@@ -127,7 +127,7 @@ const api: CodaAPI = {
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
-  openInTerminal: (sessionId, projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_TERMINAL, { sessionId, projectPath }),
+  openInTerminal: (sessionId, projectPath, claudeCommand) => ipcRenderer.invoke(IPC.OPEN_IN_TERMINAL, { sessionId, projectPath, claudeCommand }),
   openInVSCode: (projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, projectPath),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),

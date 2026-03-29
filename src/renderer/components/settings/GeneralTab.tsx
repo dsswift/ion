@@ -39,6 +39,8 @@ export function GeneralTab() {
   const setOpenMarkdownInPreview = useThemeStore((s) => s.setOpenMarkdownInPreview)
   const commitCommand = useThemeStore((s) => s.commitCommand)
   const setCommitCommand = useThemeStore((s) => s.setCommitCommand)
+  const claudeCommand = useThemeStore((s) => s.claudeCommand)
+  const setClaudeCommand = useThemeStore((s) => s.setClaudeCommand)
   const gitOpsMode = useThemeStore((s) => s.gitOpsMode)
   const setGitOpsMode = useThemeStore((s) => s.setGitOpsMode)
   const worktreeCompletionStrategy = useThemeStore((s) => s.worktreeCompletionStrategy)
@@ -319,6 +321,31 @@ export function GeneralTab() {
           value={commitCommand}
           onChange={(e) => setCommitCommand(e.target.value)}
           placeholder="e.g. commit --smart"
+          style={{
+            width: '100%',
+            padding: '7px 10px',
+            fontSize: 13,
+            fontFamily: 'Menlo, Monaco, monospace',
+            background: colors.surfacePrimary,
+            color: colors.textPrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            outline: 'none',
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = colors.accent }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = colors.containerBorder }}
+        />
+      </SettingSection>
+
+      <SettingSection
+        label="Claude Command"
+        description="Command to launch Claude in the terminal. Leave empty for default (claude)."
+      >
+        <input
+          type="text"
+          value={claudeCommand}
+          onChange={(e) => setClaudeCommand(e.target.value)}
+          placeholder="claude"
           style={{
             width: '100%',
             padding: '7px 10px',

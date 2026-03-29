@@ -543,9 +543,10 @@ export const useSessionStore = create<State>((set, get) => ({
 
   openCliInTerminal: (tabId, sessionId, cwd) => {
     const safeCwd = cwd.replace(/'/g, "'\\''")
+    const bin = useThemeStore.getState().claudeCommand || 'claude'
     const cmd = sessionId
-      ? `cd '${safeCwd}' && claude --resume ${sessionId}`
-      : `cd '${safeCwd}' && claude`
+      ? `cd '${safeCwd}' && ${bin} --resume ${sessionId}`
+      : `cd '${safeCwd}' && ${bin}`
     set((s) => {
       const nextOpen = new Set(s.terminalOpenTabIds)
       const nextPending = new Map(s.terminalPendingCommands)

@@ -1633,18 +1633,19 @@ ipcMain.handle(IPC.GET_DIAGNOSTICS, () => {
   }
 })
 
-ipcMain.handle(IPC.OPEN_IN_TERMINAL, (_event, arg: string | null | { sessionId?: string | null; projectPath?: string }) => {
+ipcMain.handle(IPC.OPEN_IN_TERMINAL, (_event, arg: string | null | { sessionId?: string | null; projectPath?: string; claudeCommand?: string }) => {
   const { execFile } = require('child_process')
-  const claudeBin = 'claude'
 
-  // Support both old (string) and new ({ sessionId, projectPath }) calling convention
+  // Support both old (string) and new ({ sessionId, projectPath, claudeCommand }) calling convention
   let sessionId: string | null = null
   let projectPath: string = process.cwd()
+  let claudeBin = 'claude'
   if (typeof arg === 'string') {
     sessionId = arg
   } else if (arg && typeof arg === 'object') {
     sessionId = arg.sessionId ?? null
     projectPath = arg.projectPath && arg.projectPath !== '~' ? arg.projectPath : process.cwd()
+    claudeBin = arg.claudeCommand || 'claude'
   }
 
   // Validate sessionId
