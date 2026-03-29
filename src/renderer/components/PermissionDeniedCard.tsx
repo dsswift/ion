@@ -36,16 +36,26 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
   const openCliInTerminal = useSessionStore((s) => s.openCliInTerminal)
   const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
 
-  // Extract planFilePath from the last ExitPlanMode tool message's input
+  // Extract planFilePath from ExitPlanMode input, or fall back to last Write to .claude/plans/
   const planFilePath = useMemo(() => {
     const exitMsg = [...messages].reverse().find((m) => m.toolName === 'ExitPlanMode' && m.toolInput)
-    if (!exitMsg?.toolInput) return null
-    try {
-      const input = JSON.parse(exitMsg.toolInput)
-      return (input.planFilePath as string) || null
-    } catch {
-      return null
+    if (exitMsg?.toolInput) {
+      try {
+        const input = JSON.parse(exitMsg.toolInput)
+        if (input.planFilePath) return input.planFilePath as string
+      } catch {}
     }
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.toolName === 'Write' && m.toolInput) {
+        try {
+          const input = JSON.parse(m.toolInput)
+          const fp = input.file_path as string
+          if (fp && /\/\.claude\/plans\/[^/]+\.md$/.test(fp)) return fp
+        } catch {}
+      }
+    }
+    return null
   }, [messages])
 
   const handleViewPlan = async () => {
