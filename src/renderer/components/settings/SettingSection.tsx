@@ -11,17 +11,15 @@ export function SettingSection({ label, description, children }: SettingSectionP
   const colors = useColors()
 
   return (
-    <div style={{ marginBottom: 20 }}>
+    <div style={{ marginBottom: 14 }}>
       {label && (
         <label
           style={{
             display: 'block',
             color: colors.textSecondary,
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: 500,
-            marginBottom: 8,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
+            marginBottom: 4,
           }}
         >
           {label}
@@ -31,8 +29,8 @@ export function SettingSection({ label, description, children }: SettingSectionP
         <p
           style={{
             color: colors.textTertiary,
-            fontSize: 12,
-            margin: '0 0 10px',
+            fontSize: 11,
+            margin: '0 0 6px',
             lineHeight: 1.4,
           }}
         >

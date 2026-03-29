@@ -544,6 +544,12 @@ export default function App() {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('coda:open-recent-dirs'))
       }
+      if (e.metaKey && e.key === ',') {
+        e.preventDefault()
+        const s = useSessionStore.getState()
+        if (s.settingsOpen) s.closeSettings()
+        else s.openSettings()
+      }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)

@@ -1,8 +1,9 @@
 import React from 'react'
 import { useThemeStore } from '../../theme'
 import { SettingToggle } from './SettingToggle'
+import { SettingHeading } from './SettingHeading'
 
-export function AppearanceTab() {
+export function AppearanceCategory() {
   const expandedUI = useThemeStore((s) => s.expandedUI)
   const setExpandedUI = useThemeStore((s) => s.setExpandedUI)
   const ultraWide = useThemeStore((s) => s.ultraWide)
@@ -14,6 +15,8 @@ export function AppearanceTab() {
 
   return (
     <>
+      <SettingHeading first>Layout</SettingHeading>
+
       <SettingToggle
         label="Full Width"
         description="Expand the UI to use more horizontal space."
@@ -27,6 +30,8 @@ export function AppearanceTab() {
         checked={ultraWide}
         onChange={setUltraWide}
       />
+
+      <SettingHeading>Theme</SettingHeading>
 
       <SettingToggle
         label="Dark Theme"

@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useColors, useThemeStore } from '../../theme'
+import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
+import { SettingHeading } from './SettingHeading'
 
-// Pre-fetch font list at module load so it's ready before the tab renders
+// Pre-fetch font list at module load so it's ready before the category renders
 let fontCache: string[] | null = null
 const fontPromise = window.coda?.listFonts().then((fonts) => { fontCache = fonts }).catch(() => {})
 
-export function TerminalTab() {
+export function EditorTerminalCategory() {
   const colors = useColors()
+  const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
+  const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
+  const hideOnExternalLaunch = useThemeStore((s) => s.hideOnExternalLaunch)
+  const setHideOnExternalLaunch = useThemeStore((s) => s.setHideOnExternalLaunch)
+  const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
+  const setOpenMarkdownInPreview = useThemeStore((s) => s.setOpenMarkdownInPreview)
   const terminalFontFamily = useThemeStore((s) => s.terminalFontFamily)
   const setTerminalFontFamily = useThemeStore((s) => s.setTerminalFontFamily)
   const terminalFontSize = useThemeStore((s) => s.terminalFontSize)
@@ -21,7 +29,31 @@ export function TerminalTab() {
 
   return (
     <>
-      {/* Terminal Font Family */}
+      <SettingHeading first>File Explorer</SettingHeading>
+
+      <SettingToggle
+        label="Close Explorer on File Open"
+        description="Automatically close the file explorer when a file is opened in the editor."
+        checked={closeExplorerOnFileOpen}
+        onChange={setCloseExplorerOnFileOpen}
+      />
+
+      <SettingToggle
+        label="Close Explorer on External Launch"
+        description="Close the file explorer when using Reveal in Finder or Open in Native App."
+        checked={hideOnExternalLaunch}
+        onChange={setHideOnExternalLaunch}
+      />
+
+      <SettingToggle
+        label="Open Markdown in Preview"
+        description="Open saved .md files in preview mode by default. New unsaved files always open in edit mode."
+        checked={openMarkdownInPreview}
+        onChange={setOpenMarkdownInPreview}
+      />
+
+      <SettingHeading>Terminal</SettingHeading>
+
       <SettingSection
         label="Terminal Font"
         description="Font family for the terminal panel. Use a Nerd Font for prompt symbol support."
@@ -52,7 +84,6 @@ export function TerminalTab() {
         </select>
       </SettingSection>
 
-      {/* Terminal Font Size */}
       <SettingSection description="Font size in pixels.">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button

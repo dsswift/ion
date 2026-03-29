@@ -13,44 +13,30 @@ export function SettingToggle({ label, description, checked, onChange, warning }
   const colors = useColors()
 
   return (
-    <div style={{ marginBottom: 20 }}>
-      <label
-        style={{
-          display: 'block',
-          color: colors.textSecondary,
-          fontSize: 12,
-          fontWeight: 500,
-          marginBottom: 8,
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-        }}
-      >
-        {label}
-      </label>
-      <p
-        style={{
-          color: colors.textTertiary,
-          fontSize: 12,
-          margin: '0 0 10px',
-          lineHeight: 1.4,
-        }}
-      >
-        {description}
-      </p>
-      <label
+    <div style={{ marginBottom: 12 }}>
+      <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
-          cursor: 'pointer',
+          justifyContent: 'space-between',
+          gap: 12,
         }}
       >
+        <span
+          style={{
+            color: colors.textSecondary,
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          {label}
+        </span>
         <div
           onClick={() => onChange(!checked)}
           style={{
-            width: 36,
-            height: 20,
-            borderRadius: 10,
+            width: 32,
+            height: 18,
+            borderRadius: 9,
             background: checked ? colors.accent : colors.surfaceSecondary,
             position: 'relative',
             transition: 'background 0.15s',
@@ -60,24 +46,34 @@ export function SettingToggle({ label, description, checked, onChange, warning }
         >
           <div
             style={{
-              width: 16,
-              height: 16,
-              borderRadius: 8,
+              width: 14,
+              height: 14,
+              borderRadius: 7,
               background: checked ? '#fff' : colors.textTertiary,
               position: 'absolute',
               top: 2,
-              left: checked ? 18 : 2,
+              left: checked ? 16 : 2,
               transition: 'left 0.15s, background 0.15s',
             }}
           />
         </div>
-      </label>
+      </div>
+      <p
+        style={{
+          color: colors.textTertiary,
+          fontSize: 11,
+          margin: '2px 0 0',
+          lineHeight: 1.4,
+        }}
+      >
+        {description}
+      </p>
       {checked && warning && (
         <p
           style={{
             color: '#d97706',
-            fontSize: 11,
-            margin: '8px 0 0',
+            fontSize: 10,
+            margin: '4px 0 0',
             lineHeight: 1.4,
             opacity: 0.85,
           }}

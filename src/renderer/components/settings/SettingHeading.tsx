@@ -12,9 +12,9 @@ export function SettingHeading({ children, first }: SettingHeadingProps) {
   return (
     <div
       style={{
-        paddingTop: first ? 0 : 8,
-        paddingBottom: 12,
-        marginBottom: 4,
+        paddingTop: first ? 0 : 6,
+        paddingBottom: 8,
+        marginBottom: 2,
         borderTop: first ? 'none' : `1px solid ${colors.containerBorder}`,
       }}
     >

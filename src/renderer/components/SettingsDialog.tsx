@@ -1,21 +1,30 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { X } from '@phosphor-icons/react'
+import { X, GearSix, GitBranch, Columns, PaintBrush, TerminalWindow } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
-import { GeneralTab } from './settings/GeneralTab'
-import { AppearanceTab } from './settings/AppearanceTab'
-import { TerminalTab } from './settings/TerminalTab'
+import { GeneralCategory } from './settings/GeneralCategory'
+import { GitCategory } from './settings/GitCategory'
+import { TabsPanelsCategory } from './settings/TabsPanelsCategory'
+import { AppearanceCategory } from './settings/AppearanceCategory'
+import { EditorTerminalCategory } from './settings/EditorTerminalCategory'
+import type { Icon } from '@phosphor-icons/react'
 
-const TABS = ['General', 'Appearance', 'Terminal'] as const
-type TabId = (typeof TABS)[number]
-
-const TAB_CONTENT: Record<TabId, React.FC> = {
-  General: GeneralTab,
-  Appearance: AppearanceTab,
-  Terminal: TerminalTab,
+interface Category {
+  id: string
+  label: string
+  icon: Icon
+  component: React.FC
 }
+
+const CATEGORIES: Category[] = [
+  { id: 'general', label: 'General', icon: GearSix, component: GeneralCategory },
+  { id: 'git', label: 'Git', icon: GitBranch, component: GitCategory },
+  { id: 'tabs', label: 'Tabs & Panels', icon: Columns, component: TabsPanelsCategory },
+  { id: 'appearance', label: 'Appearance', icon: PaintBrush, component: AppearanceCategory },
+  { id: 'editor', label: 'Editor & Terminal', icon: TerminalWindow, component: EditorTerminalCategory },
+]
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] }
 
@@ -26,7 +35,7 @@ interface SettingsDialogProps {
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
-  const [activeTab, setActiveTab] = useState<TabId>('General')
+  const [activeCategory, setActiveCategory] = useState('general')
 
   // Escape key dismisses
   useEffect(() => {
@@ -39,7 +48,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   if (!popoverLayer) return null
 
-  const ActiveContent = TAB_CONTENT[activeTab]
+  const active = CATEGORIES.find((c) => c.id === activeCategory) || CATEGORIES[0]
+  const ActiveContent = active.component
 
   return createPortal(
     <motion.div
@@ -68,9 +78,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         onClick={(e) => e.stopPropagation()}
         className="glass-surface"
         style={{
-          width: 440,
-          maxHeight: 520,
-          borderRadius: 24,
+          width: 700,
+          maxHeight: 600,
+          borderRadius: 20,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -82,7 +92,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '14px 16px 0',
+            padding: '14px 16px 10px',
           }}
         >
           <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 600 }}>
@@ -105,39 +115,55 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </button>
         </div>
 
-        {/* Tab bar */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 0,
-            padding: '12px 16px 0',
-            borderBottom: `1px solid ${colors.containerBorder}`,
-          }}
-        >
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                background: 'none',
-                border: 'none',
-                borderBottom: `2px solid ${activeTab === tab ? colors.accent : 'transparent'}`,
-                cursor: 'pointer',
-                padding: '6px 14px 10px',
-                fontSize: 13,
-                fontWeight: activeTab === tab ? 600 : 400,
-                color: activeTab === tab ? colors.textPrimary : colors.textTertiary,
-                transition: 'color 0.15s, border-color 0.15s',
-              }}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        {/* Two-column layout: sidebar + content */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          {/* Sidebar */}
+          <div
+            style={{
+              width: 160,
+              borderRight: `1px solid ${colors.containerBorder}`,
+              padding: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              flexShrink: 0,
+            }}
+          >
+            {CATEGORIES.map((cat) => {
+              const isActive = cat.id === activeCategory
+              const IconComp = cat.icon
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: isActive ? colors.textPrimary : colors.textSecondary,
+                    background: isActive ? colors.surfaceSecondary : 'transparent',
+                    transition: 'background 0.15s, color 0.15s',
+                    width: '100%',
+                    textAlign: 'left',
+                  }}
+                >
+                  <IconComp size={16} weight={isActive ? 'fill' : 'regular'} />
+                  {cat.label}
+                </button>
+              )
+            })}
+          </div>
 
-        {/* Tab content */}
-        <div style={{ padding: 16, overflowY: 'auto', flex: 1 }}>
-          <ActiveContent />
+          {/* Content */}
+          <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+            <ActiveContent />
+          </div>
         </div>
       </motion.div>
     </motion.div>,
