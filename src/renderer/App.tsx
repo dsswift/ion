@@ -10,6 +10,8 @@ import { StatusBar } from './components/StatusBar'
 import { MarketplacePanel } from './components/MarketplacePanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
+import { TerminalBigScreen } from './components/TerminalBigScreen'
+import { setSavedBuffer } from './components/TerminalInstance'
 import { FileExplorer } from './components/FileExplorer'
 import { FileEditor } from './components/FileEditor'
 import { PopoverLayerProvider, usePopoverLayer } from './components/PopoverLayer'
@@ -217,9 +219,46 @@ export default function App() {
               ),
             }))
             window.coda.setPermissionMode(tabId, st.permissionMode)
+          } else if (st.isTerminalOnly) {
+            // Terminal-only tab
+            const tabId = await useSessionStore.getState().createTerminalTab()
+            restoredTabIds.push({ tabId, sessionId: null, index: i })
+
+            useSessionStore.setState((s) => ({
+              tabs: s.tabs.map((t) =>
+                t.id === tabId
+                  ? {
+                      ...t,
+                      customTitle: st.customTitle || null,
+                      workingDirectory: st.workingDirectory,
+                      hasChosenDirectory: st.hasChosenDirectory,
+                      pillColor: st.pillColor || null,
+                      pillIcon: st.pillIcon || 'Terminal',
+                      groupId: st.groupId || null,
+                    }
+                  : t
+              ),
+            }))
+
+            // Restore terminal instances from persisted state
+            if (st.terminalInstances && st.terminalInstances.length > 0) {
+              const panes = new Map(useSessionStore.getState().terminalPanes)
+              panes.set(tabId, {
+                instances: st.terminalInstances,
+                activeInstanceId: st.terminalInstances[0].id,
+              })
+              useSessionStore.setState({ terminalPanes: panes })
+              // Pre-populate saved buffers for history restore
+              if (st.terminalBuffers) {
+                for (const inst of st.terminalInstances) {
+                  const buf = st.terminalBuffers[inst.id]
+                  if (buf) setSavedBuffer(`${tabId}:${inst.id}`, buf)
+                }
+              }
+            }
           } else {
             // Sessionless tab (e.g. has editor state but no messages sent yet)
-            const tabId = await useSessionStore.getState().createTabInDirectory(st.workingDirectory)
+            const tabId = await useSessionStore.getState().createTabInDirectory(st.workingDirectory, false, true)
             restoredTabIds.push({ tabId, sessionId: null, index: i })
 
             useSessionStore.setState((s) => ({
@@ -277,6 +316,30 @@ export default function App() {
                     : t
                 ),
               }))
+            }
+          }
+        }
+
+        // Restore terminal pane instances for non-terminal-only tabs
+        for (const { tabId, index } of restoredTabIds) {
+          const st = saved.tabs[index]
+          if (!st.isTerminalOnly && st.terminalInstances && st.terminalInstances.length > 0) {
+            const panes = new Map(useSessionStore.getState().terminalPanes)
+            panes.set(tabId, {
+              instances: st.terminalInstances,
+              activeInstanceId: st.terminalInstances[0].id,
+            })
+            useSessionStore.setState({ terminalPanes: panes })
+            // Also mark terminal as open so the pane is visible
+            useSessionStore.setState((s) => ({
+              terminalOpenTabIds: new Set([...s.terminalOpenTabIds, tabId]),
+            }))
+            // Pre-populate saved buffers for history restore
+            if (st.terminalBuffers) {
+              for (const inst of st.terminalInstances) {
+                const buf = st.terminalBuffers[inst.id]
+                if (buf) setSavedBuffer(`${tabId}:${inst.id}`, buf)
+              }
             }
           }
         }
@@ -465,6 +528,23 @@ export default function App() {
         const id = useSessionStore.getState().activeTabId
         useSessionStore.getState().toggleTerminal(id)
       }
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          // Ctrl+Shift+`: add a new shell instance in the current tab
+          const s = useSessionStore.getState()
+          const id = s.activeTabId
+          const tab = s.tabs.find((t) => t.id === id)
+          if (tab) {
+            if (!s.terminalOpenTabIds.has(id)) s.toggleTerminal(id)
+            s.addTerminalInstance(id, 'user', tab.workingDirectory)
+          }
+        } else {
+          // Ctrl+`: toggle terminal
+          const id = useSessionStore.getState().activeTabId
+          useSessionStore.getState().toggleTerminal(id)
+        }
+      }
       if (e.metaKey && e.key === '3') {
         e.preventDefault()
         useSessionStore.getState().toggleGitPanel()
@@ -557,10 +637,13 @@ export default function App() {
 
   const isExpanded = useSessionStore((s) => s.isExpanded)
   const isTallView = useSessionStore((s) => s.tallViewTabId === s.activeTabId)
+  const isTerminalTall = useSessionStore((s) => s.terminalTallTabId === s.activeTabId)
+  const isTerminalBigScreen = useSessionStore((s) => s.terminalBigScreenTabId === s.activeTabId)
   const marketplaceOpen = useSessionStore((s) => s.marketplaceOpen)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const isTerminalOnly = activeTab?.isTerminalOnly || false
   const terminalOpen = useSessionStore((s) => s.terminalOpenTabIds.has(s.activeTabId))
   const explorerOpen = useSessionStore((s) => s.fileExplorerOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
   const editorOpen = useSessionStore((s) => {
@@ -684,9 +767,10 @@ export default function App() {
             />
           )}
 
-          {/* ─── Terminal panel (hidden in tall view) ─── */}
+          {/* ─── Terminal panel ─── */}
+          {/* Normal mode: above conversation, hidden in tall/terminal-tall/big-screen view */}
           <AnimatePresence initial={false}>
-            {terminalOpen && !isTallView && (
+            {terminalOpen && !isTallView && !isTerminalTall && !isTerminalOnly && !isTerminalBigScreen && (
               <motion.div
                 data-coda-ui
                 initial={{ opacity: 0, height: 0 }}
@@ -724,13 +808,13 @@ export default function App() {
             data-coda-ui
             className="overflow-hidden flex flex-col"
             animate={{
-              width: isExpanded ? cardExpandedWidth : cardCollapsedWidth,
-              marginBottom: isExpanded ? 10 : -14,
-              marginLeft: isExpanded ? 0 : cardCollapsedMargin,
-              marginRight: isExpanded ? 0 : cardCollapsedMargin,
-              background: isExpanded ? colors.containerBg : colors.containerBgCollapsed,
+              width: isExpanded || isTerminalOnly || isTerminalTall ? cardExpandedWidth : cardCollapsedWidth,
+              marginBottom: isExpanded || isTerminalOnly || isTerminalTall ? 10 : -14,
+              marginLeft: isExpanded || isTerminalOnly || isTerminalTall ? 0 : cardCollapsedMargin,
+              marginRight: isExpanded || isTerminalOnly || isTerminalTall ? 0 : cardCollapsedMargin,
+              background: isExpanded || isTerminalOnly || isTerminalTall ? colors.containerBg : colors.containerBgCollapsed,
               borderColor: colors.containerBorder,
-              boxShadow: isExpanded ? colors.cardShadow : colors.cardShadowCollapsed,
+              boxShadow: isExpanded || isTerminalOnly || isTerminalTall ? colors.cardShadow : colors.cardShadowCollapsed,
             }}
             transition={TRANSITION}
             style={{
@@ -738,7 +822,7 @@ export default function App() {
               borderStyle: 'solid',
               borderRadius: 20,
               position: 'relative',
-              zIndex: isExpanded ? 20 : 10,
+              zIndex: isExpanded || isTerminalOnly || isTerminalTall ? 20 : 10,
             }}
           >
             {/* Tab strip — always mounted */}
@@ -746,26 +830,49 @@ export default function App() {
               <TabStrip />
             </div>
 
-            {/* Body — chat history only; the marketplace is a separate overlay above */}
-            <motion.div
-              initial={false}
-              animate={{
-                height: isExpanded ? 'auto' : 0,
-                opacity: isExpanded ? 1 : 0,
-              }}
-              transition={TRANSITION}
-              className="overflow-hidden"
-            >
-              <div style={{ maxHeight: bodyMaxHeight, display: 'flex', flexDirection: 'column' }}>
-                <ConversationView />
+            {/* Terminal-only tab: full terminal, no conversation */}
+            {isTerminalOnly && !isTerminalBigScreen && activeTab && (
+              <div style={{ height: isTerminalTall ? winHeight - 200 : 420 }}>
+                <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
+              </div>
+            )}
+
+            {/* Terminal tall mode: terminal replaces conversation */}
+            {!isTerminalOnly && isTerminalTall && !isTerminalBigScreen && terminalOpen && activeTab && (
+              <div style={{ height: winHeight - 200 }}>
+                <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
+              </div>
+            )}
+
+            {/* Body — chat history (hidden when terminal-only or terminal-tall) */}
+            {!isTerminalOnly && !isTerminalTall && (
+              <motion.div
+                initial={false}
+                animate={{
+                  height: isExpanded ? 'auto' : 0,
+                  opacity: isExpanded ? 1 : 0,
+                }}
+                transition={TRANSITION}
+                className="overflow-hidden"
+              >
+                <div style={{ maxHeight: bodyMaxHeight, display: 'flex', flexDirection: 'column' }}>
+                  <ConversationView />
+                  <StatusBar />
+                </div>
+              </motion.div>
+            )}
+            {/* StatusBar must always mount so useGitPolling runs for terminal-only/tall tabs */}
+            {(isTerminalOnly || isTerminalTall) && (
+              <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }}>
                 <StatusBar />
               </div>
-            </motion.div>
+            )}
           </motion.div>
 
           {/* ─── Input row — circles float outside left ─── */}
+          {/* Hidden when terminal-only tab (no conversation input needed) */}
           {/* marginBottom: shadow buffer so the glass-surface drop shadow isn't clipped at the native window edge */}
-          <div data-coda-ui className="relative" style={{ minHeight: 46, zIndex: 15, marginBottom: 60 }}>
+          <div data-coda-ui className="relative" style={{ minHeight: isTerminalOnly ? 20 : 46, zIndex: 15, marginBottom: isTerminalOnly ? 20 : 60, pointerEvents: isTerminalOnly ? 'none' : undefined, opacity: isTerminalOnly ? 0 : 1 }}>
             {/* Stacked circle buttons — expand on hover */}
             <div
               data-coda-ui
@@ -860,6 +967,11 @@ export default function App() {
         {/* File editor floating panel */}
         {editorOpen && editorDirState && editorDirState.files.length > 0 && activeTab && (
           <FileEditor dir={editorDirForTab(activeTab)} tabId={activeTabId} />
+        )}
+
+        {/* Terminal big screen overlay */}
+        {isTerminalBigScreen && (
+          <TerminalBigScreen tabId={activeTabId} />
         )}
       </div>
     </PopoverLayerProvider>

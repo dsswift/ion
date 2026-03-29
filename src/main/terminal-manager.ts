@@ -19,8 +19,8 @@ export class TerminalManager {
     this.broadcast = broadcast
   }
 
-  create(tabId: string, cwd: string): void {
-    if (this.sessions.has(tabId)) return
+  create(key: string, cwd: string): void {
+    if (this.sessions.has(key)) return
 
     if (!pty) {
       throw new Error('node-pty is not available')
@@ -38,33 +38,33 @@ export class TerminalManager {
     })
 
     term.onData((data: string) => {
-      this.broadcast(IPC.TERMINAL_INCOMING, tabId, data)
+      this.broadcast(IPC.TERMINAL_INCOMING, key, data)
     })
 
     term.onExit(({ exitCode }: { exitCode: number }) => {
-      this.sessions.delete(tabId)
-      this.broadcast(IPC.TERMINAL_EXIT, tabId, exitCode)
+      this.sessions.delete(key)
+      this.broadcast(IPC.TERMINAL_EXIT, key, exitCode)
     })
 
-    this.sessions.set(tabId, term)
+    this.sessions.set(key, term)
   }
 
-  write(tabId: string, data: string): void {
-    this.sessions.get(tabId)?.write(data)
+  write(key: string, data: string): void {
+    this.sessions.get(key)?.write(data)
   }
 
-  resize(tabId: string, cols: number, rows: number): void {
+  resize(key: string, cols: number, rows: number): void {
     try {
-      this.sessions.get(tabId)?.resize(cols, rows)
+      this.sessions.get(key)?.resize(cols, rows)
     } catch {
       // Ignore resize errors on dead PTYs
     }
   }
 
-  destroy(tabId: string): void {
-    const term = this.sessions.get(tabId)
+  destroy(key: string): void {
+    const term = this.sessions.get(key)
     if (term) {
-      this.sessions.delete(tabId)
+      this.sessions.delete(key)
       try {
         term.kill()
       } catch {
@@ -73,9 +73,18 @@ export class TerminalManager {
     }
   }
 
+  /** Destroy all PTYs matching a prefix (e.g. "tabId:" destroys all terminals for that tab) */
+  destroyByPrefix(prefix: string): void {
+    for (const key of this.sessions.keys()) {
+      if (key.startsWith(prefix)) {
+        this.destroy(key)
+      }
+    }
+  }
+
   destroyAll(): void {
-    for (const tabId of this.sessions.keys()) {
-      this.destroy(tabId)
+    for (const key of this.sessions.keys()) {
+      this.destroy(key)
     }
   }
 }

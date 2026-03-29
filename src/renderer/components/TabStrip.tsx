@@ -57,6 +57,7 @@ const PILL_ICON_MAP: Record<string, React.ComponentType<any>> = {
   heart: Heart,
   hexagon: Hexagon,
   lightning: Lightning,
+  Terminal: Terminal,
 }
 
 function StatusDot({ status, hasUnread, hasPermission, bashExecuting, waitingState, pillIcon }: { status: TabStatus; hasUnread: boolean; hasPermission: boolean; bashExecuting: boolean; waitingState: 'plan-ready' | 'question' | null; pillIcon?: string | null }) {
@@ -959,9 +960,10 @@ function getTabStatusColor(tab: TabState, colors: ReturnType<typeof useColors>):
 
 function StackedStatusDots({ tabs }: { tabs: TabState[] }) {
   const colors = useColors()
+  const conversationTabs = tabs.filter((t) => !t.isTerminalOnly)
   const maxVisible = 5
-  const visible = tabs.slice(0, maxVisible)
-  const overflow = tabs.length - maxVisible
+  const visible = conversationTabs.slice(0, maxVisible)
+  const overflow = conversationTabs.length - maxVisible
 
   return (
     <div className="flex items-center flex-shrink-0" style={{ marginRight: 2 }}>
@@ -2316,6 +2318,7 @@ export function TabStrip() {
   const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
   const createTabInDirectory = useSessionStore((s) => s.createTabInDirectory)
   const toggleTerminal = useSessionStore((s) => s.toggleTerminal)
+  const createTerminalTab = useSessionStore((s) => s.createTerminalTab)
   const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
   const colors = useColors()
   const isExpanded = useSessionStore((s) => s.isExpanded)
@@ -2618,10 +2621,16 @@ export function TabStrip() {
         </button>
 
         <button
-          onClick={() => toggleTerminal(activeTabId)}
+          onClick={(e) => {
+            if (e.shiftKey) {
+              createTerminalTab()
+            } else {
+              toggleTerminal(activeTabId)
+            }
+          }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
           style={{ color: terminalOpenTabIds.has(activeTabId) ? colors.accent : colors.textTertiary }}
-          title="Toggle terminal"
+          title="Toggle terminal (Shift+click: new terminal tab)"
         >
           <Terminal size={14} />
         </button>

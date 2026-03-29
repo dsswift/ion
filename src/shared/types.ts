@@ -224,6 +224,8 @@ export interface TabState {
   groupId: string | null
   /** Latest input_tokens from API response (total context sent to model) */
   contextTokens: number | null
+  /** Terminal-focused tab with no conversation */
+  isTerminalOnly: boolean
 }
 
 export interface Message {
@@ -537,6 +539,23 @@ export const IPC = {
   RUN_ERROR: 'coda:run-error',
 } as const
 
+// ─── Terminal Multiplexing ───
+
+export type TerminalInstanceKind = 'user' | 'commit' | 'cli'
+
+export interface TerminalInstance {
+  id: string              // nanoid
+  label: string           // "Shell", "Commit", "CLI", "Shell 2"
+  kind: TerminalInstanceKind
+  readOnly: boolean
+  cwd: string
+}
+
+export interface TerminalPaneState {
+  instances: TerminalInstance[]
+  activeInstanceId: string | null
+}
+
 // ─── Persisted Tab State ───
 
 export interface PersistedTab {
@@ -555,6 +574,9 @@ export interface PersistedTab {
   worktree?: WorktreeInfo | null
   groupId?: string | null
   queuedPrompts?: string[]
+  isTerminalOnly?: boolean
+  terminalInstances?: TerminalInstance[]
+  terminalBuffers?: Record<string, string>
 }
 
 export interface PersistedEditorFile {

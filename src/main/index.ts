@@ -462,7 +462,7 @@ ipcMain.handle(IPC.TAB_HEALTH, () => {
 ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
   log(`IPC CLOSE_TAB: ${tabId}`)
   controlPlane.closeTab(tabId)
-  terminalManager.destroy(tabId)
+  terminalManager.destroyByPrefix(`${tabId}:`)
 })
 
 ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string }) => {
@@ -555,22 +555,22 @@ return output`
 
 // ─── Terminal PTY ───
 
-ipcMain.handle(IPC.TERMINAL_CREATE, (_event, { tabId, cwd }: { tabId: string; cwd: string }) => {
-  log(`IPC TERMINAL_CREATE: tab=${tabId} cwd=${cwd}`)
-  terminalManager.create(tabId, cwd)
+ipcMain.handle(IPC.TERMINAL_CREATE, (_event, { key, cwd }: { key: string; cwd: string }) => {
+  log(`IPC TERMINAL_CREATE: key=${key} cwd=${cwd}`)
+  terminalManager.create(key, cwd)
 })
 
-ipcMain.on(IPC.TERMINAL_DATA, (_event, { tabId, data }: { tabId: string; data: string }) => {
-  terminalManager.write(tabId, data)
+ipcMain.on(IPC.TERMINAL_DATA, (_event, { key, data }: { key: string; data: string }) => {
+  terminalManager.write(key, data)
 })
 
-ipcMain.on(IPC.TERMINAL_RESIZE, (_event, { tabId, cols, rows }: { tabId: string; cols: number; rows: number }) => {
-  terminalManager.resize(tabId, cols, rows)
+ipcMain.on(IPC.TERMINAL_RESIZE, (_event, { key, cols, rows }: { key: string; cols: number; rows: number }) => {
+  terminalManager.resize(key, cols, rows)
 })
 
-ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { tabId }: { tabId: string }) => {
-  log(`IPC TERMINAL_DESTROY: tab=${tabId}`)
-  terminalManager.destroy(tabId)
+ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { key }: { key: string }) => {
+  log(`IPC TERMINAL_DESTROY: key=${key}`)
+  terminalManager.destroy(key)
 })
 
 ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }: { tabId: string; questionId: string; optionId: string }) => {
