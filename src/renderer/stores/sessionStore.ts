@@ -1134,7 +1134,8 @@ export const useSessionStore = create<State>((set, get) => ({
 
     try {
       const { tabId: newTabId } = await window.coda.createTab()
-      const messages: Message[] = source.messages.slice(0, idx + 1).map((m) => ({
+      const targetMessage = source.messages[idx]
+      const messages: Message[] = source.messages.slice(0, idx).map((m) => ({
         ...m,
         id: nextMsgId(),
       }))
@@ -1160,6 +1161,8 @@ export const useSessionStore = create<State>((set, get) => ({
         pillIcon: source.pillIcon,
         messages,
         permissionDenied: restoredDenied,
+        pendingInput: targetMessage.content,
+        draftInput: targetMessage.content,
       }
       set((s) => ({
         tabs: [...s.tabs, tab],
