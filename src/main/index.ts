@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences, session } from 'electron'
 import { join, basename } from 'path'
 import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { unlink } from 'fs/promises'
@@ -103,6 +103,48 @@ controlPlane.on('error', (tabId: string, error: EnrichedError) => {
   broadcast('coda:enriched-error', tabId, error)
 })
 
+// ─── Content Security Policy ───
+
+function getContentSecurityPolicy(): string {
+  const isDev = !!process.env.ELECTRON_RENDERER_URL
+  if (isDev) {
+    return [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "connect-src 'self' ws://localhost:*",
+      "img-src 'self' data: blob:",
+      "media-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "frame-src 'none'",
+    ].join('; ')
+  }
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-src 'none'",
+  ].join('; ')
+}
+
+function installContentSecurityPolicy(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [getContentSecurityPolicy()],
+      },
+    })
+  })
+}
+
 // ─── Window Creation ───
 
 function createWindow(): void {
@@ -131,6 +173,9 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   })
 
@@ -146,6 +191,10 @@ function createWindow(): void {
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     log(`[renderer:gone] reason=${details.reason} exitCode=${details.exitCode}`)
   })
+
+  // Block navigation and popups — external links route through shell.openExternal via IPC
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
@@ -2492,6 +2541,8 @@ app.whenReady().then(async () => {
 
   // Request permissions upfront so the user is never interrupted mid-session.
   await requestPermissions()
+
+  installContentSecurityPolicy()
 
   // Skill provisioning — non-blocking, streams status to renderer
   ensureSkills((status: SkillStatus) => {
