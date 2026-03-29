@@ -192,7 +192,7 @@ interface State {
   removeDirectory: (dir: string) => void
   setBaseDirectory: (dir: string) => void
   setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
-  convertToWorktree: (tabId: string) => void
+  convertToWorktree: (tabId: string) => Promise<void>
   cancelWorktreeSetup: (tabId: string) => void
   finishWorktreeTab: (tabId: string, strategyOverride?: 'merge' | 'pr') => Promise<void>
   addAttachments: (attachments: FileAttachment[]) => void
@@ -1554,7 +1554,31 @@ export const useSessionStore = create<State>((set, get) => ({
     }
   },
 
-  convertToWorktree: (tabId) => {
+  convertToWorktree: async (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab) return
+
+    const defaults = useThemeStore.getState().worktreeBranchDefaults
+    const defaultBranch = defaults[tab.workingDirectory]
+    if (defaultBranch) {
+      const result = await window.coda.gitWorktreeAdd(tab.workingDirectory, defaultBranch)
+      if (result.ok && result.worktree) {
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  worktree: result.worktree!,
+                  workingDirectory: result.worktree!.worktreePath,
+                  pendingWorktreeSetup: false,
+                }
+              : t
+          ),
+        }))
+        return
+      }
+    }
+
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === tabId ? { ...t, pendingWorktreeSetup: true } : t

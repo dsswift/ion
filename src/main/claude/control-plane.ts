@@ -138,7 +138,7 @@ export class ControlPlane extends EventEmitter {
       // Detect writes to ~/.claude/ (Claude Code settings files).
       // Claude Code has a "sensitive file" guard that denies these even after
       // the hook approves — so we intercept here and perform the write ourselves.
-      const isSettingsFile = this._isSettingsPath(toolRequest.tool_input?.file_path)
+      const isSettingsFile = this._isSettingsPath(toolRequest.tool_input?.file_path, toolRequest.cwd)
         && ['Write', 'Edit', 'MultiEdit'].includes(toolRequest.tool_name)
 
       // Settings file with session-wide auto-approve: perform write immediately
@@ -1003,10 +1003,12 @@ export class ControlPlane extends EventEmitter {
 
   // ─── Settings File Operations ───
 
-  /** Check if a file path is inside ~/.claude/ (Claude Code's config directory) */
-  private _isSettingsPath(filePath: unknown): boolean {
+  /** Check if a file path is inside ~/.claude/ or <project>/.claude/ */
+  private _isSettingsPath(filePath: unknown, cwd?: string): boolean {
     if (typeof filePath !== 'string') return false
-    return filePath.startsWith(CLAUDE_CONFIG_DIR + '/')
+    if (filePath.startsWith(CLAUDE_CONFIG_DIR + '/')) return true
+    if (cwd && filePath.startsWith(join(cwd, '.claude') + '/')) return true
+    return false
   }
 
   /** Read the allowSettingsEdits setting from disk */

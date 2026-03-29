@@ -264,7 +264,7 @@ export function GeneralTab() {
             />
           )}
 
-      {gitOpsMode === 'worktree' && Object.keys(worktreeBranchDefaults).length > 0 && (
+      {Object.keys(worktreeBranchDefaults).length > 0 && (
             <SettingSection
               label="Branch Defaults"
               description="Saved default source branches per directory. Remove entries to show the branch picker again."
