@@ -2370,13 +2370,13 @@ export function TabStrip() {
   }, [])
 
   if (!tabsReady) {
-    return <div data-coda-ui className="flex items-center no-drag" style={{ padding: '8px 0', height: 40 }} />
+    return <div data-coda-ui className="flex items-center" style={{ padding: '8px 0', height: 40 }} />
   }
 
   return (
     <div
       data-coda-ui
-      className="flex items-center no-drag"
+      className="flex items-center"
       style={{ padding: '8px 0' }}
     >
       {/* Minimize / maximize toggle */}

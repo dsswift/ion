@@ -653,7 +653,7 @@ export default function App() {
                 >
                   <div
                     data-coda-ui
-                    className="glass-surface overflow-hidden no-drag"
+                    className="glass-surface overflow-hidden"
                     style={{
                       borderRadius: 24,
                       maxHeight: 470,
@@ -697,7 +697,7 @@ export default function App() {
               >
                 <div
                   data-coda-ui
-                  className="glass-surface overflow-hidden no-drag"
+                  className="glass-surface overflow-hidden"
                   style={{
                     width: cardExpandedWidth,
                     borderRadius: 20,
@@ -722,7 +722,7 @@ export default function App() {
           */}
           <motion.div
             data-coda-ui
-            className="overflow-hidden flex flex-col drag-region"
+            className="overflow-hidden flex flex-col"
             animate={{
               width: isExpanded ? cardExpandedWidth : cardCollapsedWidth,
               marginBottom: isExpanded ? 10 : -14,
@@ -742,7 +742,7 @@ export default function App() {
             }}
           >
             {/* Tab strip — always mounted */}
-            <div className="no-drag">
+            <div>
               <TabStrip />
             </div>
 
@@ -754,7 +754,7 @@ export default function App() {
                 opacity: isExpanded ? 1 : 0,
               }}
               transition={TRANSITION}
-              className="overflow-hidden no-drag"
+              className="overflow-hidden"
             >
               <div style={{ maxHeight: bodyMaxHeight, display: 'flex', flexDirection: 'column' }}>
                 <ConversationView />

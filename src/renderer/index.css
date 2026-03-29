@@ -234,11 +234,3 @@ input::placeholder {
 .btn-stack:hover .stack-btn-1 { right: 0; }
 .btn-stack:hover .stack-btn-2 { right: 56px; }
 .btn-stack:hover .stack-btn-3 { right: 112px; }
-
-/* ─── Drag region for frameless window ─── */
-.drag-region {
-  -webkit-app-region: drag;
-}
-.no-drag {
-  -webkit-app-region: no-drag;
-}
