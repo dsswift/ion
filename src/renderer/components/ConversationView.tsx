@@ -597,8 +597,8 @@ function MessageActions({ message, variant }: { message: Message; variant: 'user
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
-            onClick={() => tab && isIdle && forkFromMessage(tab.id, message.id)}
-            disabled={!isIdle}
+            onClick={() => tab && forkFromMessage(tab.id, message.id)}
+            disabled={!tab}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
             style={{
               background: 'transparent',
