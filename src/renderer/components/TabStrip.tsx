@@ -30,12 +30,12 @@ const shouldUseWorktree = (altKey: boolean): boolean => {
 
 const PILL_COLOR_PRESETS = [
   { color: null, label: 'Default' },
-  { color: '#d97757', label: 'Orange' },
-  { color: '#7aac8c', label: 'Green' },
-  { color: '#c47060', label: 'Red' },
-  { color: '#7a9ecc', label: 'Blue' },
-  { color: '#b898c8', label: 'Purple' },
-  { color: '#c4a84d', label: 'Gold' },
+  { color: '#f08c4a', label: 'Orange' },
+  { color: '#4ece78', label: 'Green' },
+  { color: '#ef5350', label: 'Red' },
+  { color: '#42a5f5', label: 'Blue' },
+  { color: '#b06de8', label: 'Purple' },
+  { color: '#f5c842', label: 'Gold' },
 ] as const
 
 const PILL_ICON_PRESETS = [
