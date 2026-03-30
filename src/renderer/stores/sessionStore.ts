@@ -591,8 +591,20 @@ export const useSessionStore = create<State>((set, get) => ({
       const tool = useThemeStore.getState().quickTools.find((t) => t.id === toolId)
       labelBase = tool?.name || 'Tool'
     }
-    const existingCount = pane.instances.filter((i) => i.kind === kind || (kind === 'user' && i.kind === 'user')).length
-    const label = kind === 'user' && existingCount > 0 ? `${labelBase} ${existingCount + 1}` : labelBase
+    let label: string
+    if (kind === 'user') {
+      // Use highest existing shell number + 1. Renamed shells don't count,
+      // so if Shell 1 is renamed but Shell 3 exists, next is Shell 4.
+      const maxShellNum = pane.instances
+        .filter((i) => i.kind === 'user')
+        .reduce((max, i) => {
+          const m = i.label.match(/^Shell (\d+)$/)
+          return m ? Math.max(max, parseInt(m[1], 10)) : max
+        }, 0)
+      label = `${labelBase} ${maxShellNum + 1}`
+    } else {
+      label = labelBase
+    }
     const id = crypto.randomUUID().slice(0, 8)
     const instance: TerminalInstance = { id, label, kind, readOnly: kind !== 'user', cwd: resolvedCwd }
     panes.set(tabId, {
