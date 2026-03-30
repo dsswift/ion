@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { X, GearSix, GitBranch, Columns, PaintBrush, TerminalWindow } from '@phosphor-icons/react'
+import { X, GearSix, GitBranch, Columns, PaintBrush, TerminalWindow, SlidersHorizontal } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { GeneralCategory } from './settings/GeneralCategory'
@@ -9,6 +9,7 @@ import { GitCategory } from './settings/GitCategory'
 import { TabsPanelsCategory } from './settings/TabsPanelsCategory'
 import { AppearanceCategory } from './settings/AppearanceCategory'
 import { EditorTerminalCategory } from './settings/EditorTerminalCategory'
+import { PresetsCategory } from './settings/PresetsCategory'
 import type { Icon } from '@phosphor-icons/react'
 
 interface Category {
@@ -19,6 +20,7 @@ interface Category {
 }
 
 const CATEGORIES: Category[] = [
+  { id: 'presets', label: 'Presets', icon: SlidersHorizontal, component: PresetsCategory },
   { id: 'general', label: 'General', icon: GearSix, component: GeneralCategory },
   { id: 'git', label: 'Git', icon: GitBranch, component: GitCategory },
   { id: 'tabs', label: 'Tabs & Panels', icon: Columns, component: TabsPanelsCategory },

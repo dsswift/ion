@@ -430,6 +430,8 @@ interface ThemeState {
   updateQuickTool: (toolId: string, updates: Partial<QuickTool>) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
+  /** Apply a settings preset (batch-set multiple fields at once) */
+  applyPreset: (preset: Record<string, unknown>) => void
 }
 
 /** Convert camelCase token name to --coda-kebab-case CSS custom property */
@@ -752,6 +754,10 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       set({ isDark })
       applyTheme(isDark)
     }
+  },
+  applyPreset: (preset) => {
+    set(preset)
+    saveSettings(getAllSettings(get))
   },
 }))
 
