@@ -207,6 +207,9 @@ input::placeholder {
   height: 46px;
   overflow: visible;
 }
+.btn-stack.has-4 {
+  width: 200px;
+}
 
 .stack-btn {
   position: absolute;
@@ -230,7 +233,11 @@ input::placeholder {
 .stack-btn-2 { right: 28px; z-index: 2; }
 .stack-btn-3 { right: 56px; z-index: 1; }
 
+/* 4th button (Quick Tools — behind all others) */
+.stack-btn-4 { right: 56px; z-index: 0; }
+
 /* Expanded on hover: spread evenly */
 .btn-stack:hover .stack-btn-1 { right: 0; }
 .btn-stack:hover .stack-btn-2 { right: 56px; }
 .btn-stack:hover .stack-btn-3 { right: 112px; }
+.btn-stack:hover .stack-btn-4 { right: 168px; }

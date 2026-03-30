@@ -541,14 +541,24 @@ export const IPC = {
 
 // ─── Terminal Multiplexing ───
 
-export type TerminalInstanceKind = 'user' | 'commit' | 'cli'
+export type TerminalInstanceKind = string  // 'user' | 'commit' | 'cli' | 'tool:<toolId>'
 
 export interface TerminalInstance {
   id: string              // nanoid
-  label: string           // "Shell", "Commit", "CLI", "Shell 2"
+  label: string           // "Shell", "Commit", "CLI", "Shell 2", tool name
   kind: TerminalInstanceKind
   readOnly: boolean
   cwd: string
+}
+
+// ─── Quick Tools ───
+
+export interface QuickTool {
+  id: string              // UUID
+  name: string            // display label, e.g. "Merge Flow"
+  icon: string            // Phosphor icon name, e.g. "GitMerge"
+  command: string          // shell command with optional {cwd} and {branch} vars
+  directories?: string[]   // scoped base dirs (empty = available in all tabs)
 }
 
 export interface TerminalPaneState {

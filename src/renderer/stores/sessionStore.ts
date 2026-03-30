@@ -162,13 +162,14 @@ interface State {
   runInTerminal: (tabId: string, cmd: string) => void
   consumeTerminalPendingCommand: (key: string) => string | undefined
   createTerminalTab: () => Promise<string>
-  addTerminalInstance: (tabId: string, kind: TerminalInstanceKind, cwd?: string) => string
+  addTerminalInstance: (tabId: string, kind: string, cwd?: string) => string
   removeTerminalInstance: (tabId: string, instanceId: string) => void
   selectTerminalInstance: (tabId: string, instanceId: string) => void
   toggleTerminalReadOnly: (tabId: string, instanceId: string) => void
   toggleTerminalTall: (tabId: string) => void
   toggleTerminalBigScreen: (tabId: string) => void
-  getOrCreateDedicatedTerminal: (tabId: string, kind: 'commit' | 'cli') => string
+  getOrCreateDedicatedTerminal: (tabId: string, kind: string) => string
+  runQuickTool: (tabId: string, toolId: string) => void
   renameTerminalInstance: (tabId: string, instanceId: string, label: string) => void
   toggleFileExplorer: (tabId: string) => void
   setFileExplorerExpanded: (dir: string, path: string, expanded: boolean) => void
@@ -584,7 +585,12 @@ export const useSessionStore = create<State>((set, get) => ({
     const panes = new Map(get().terminalPanes)
     const pane = panes.get(tabId) || { instances: [], activeInstanceId: null }
     // Generate label
-    const labelBase = kind === 'commit' ? 'Commit' : kind === 'cli' ? 'CLI' : 'Shell'
+    let labelBase = kind === 'commit' ? 'Commit' : kind === 'cli' ? 'CLI' : kind === 'user' ? 'Shell' : 'Shell'
+    if (kind.startsWith('tool:')) {
+      const toolId = kind.slice(5)
+      const tool = useThemeStore.getState().quickTools.find((t) => t.id === toolId)
+      labelBase = tool?.name || 'Tool'
+    }
     const existingCount = pane.instances.filter((i) => i.kind === kind || (kind === 'user' && i.kind === 'user')).length
     const label = kind === 'user' && existingCount > 0 ? `${labelBase} ${existingCount + 1}` : labelBase
     const id = crypto.randomUUID().slice(0, 8)
@@ -772,6 +778,38 @@ export const useSessionStore = create<State>((set, get) => ({
       }
       return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
     })
+  },
+
+  runQuickTool: (tabId, toolId) => {
+    const tool = useThemeStore.getState().quickTools.find((t) => t.id === toolId)
+    if (!tool) return
+    const tab = get().tabs.find((t) => t.id === tabId)
+    const cwd = tab?.workingDirectory || '~'
+    const kind = `tool:${toolId}`
+    const instanceId = get().getOrCreateDedicatedTerminal(tabId, kind)
+    get().selectTerminalInstance(tabId, instanceId)
+    // Resolve template variables (branch resolved async)
+    const resolveAndRun = async () => {
+      let branch = 'main'
+      try {
+        const result = await window.coda.gitChanges(cwd)
+        if (result?.branch) branch = result.branch
+      } catch { /* fall back to 'main' */ }
+      const cmd = tool.command.replace(/\{cwd\}/g, cwd).replace(/\{branch\}/g, branch)
+      const key = `${tabId}:${instanceId}`
+      const s = get()
+      const nextOpen = new Set(s.terminalOpenTabIds)
+      const nextPending = new Map(s.terminalPendingCommands)
+      nextPending.set(key, cmd)
+      if (nextOpen.has(tabId)) {
+        window.coda.terminalWrite(key, cmd + '\n')
+        nextPending.delete(key)
+      } else {
+        nextOpen.add(tabId)
+      }
+      set({ terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending })
+    }
+    resolveAndRun()
   },
 
   consumeTerminalPendingCommand: (key) => {

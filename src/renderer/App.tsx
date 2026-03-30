@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState } from 'react'
 import type { Message } from '../shared/types'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Paperclip, Camera, HeadCircuit } from '@phosphor-icons/react'
+import { Paperclip, Camera, HeadCircuit, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
@@ -14,6 +14,7 @@ import { TerminalBigScreen } from './components/TerminalBigScreen'
 import { setSavedBuffer } from './components/TerminalInstance'
 import { FileExplorer } from './components/FileExplorer'
 import { FileEditor } from './components/FileEditor'
+import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider, usePopoverLayer } from './components/PopoverLayer'
 import { createPortal } from 'react-dom'
 import { useClaudeEvents } from './hooks/useClaudeEvents'
@@ -136,6 +137,9 @@ export default function App() {
   const expandedUI = useThemeStore((s) => s.expandedUI)
   const ultraWide = useThemeStore((s) => s.ultraWide)
   const bashModeActive = useBashModeStore((s) => s.active)
+  const quickTools = useThemeStore((s) => s.quickTools)
+  const [quickToolsTrayOpen, setQuickToolsTrayOpen] = useState(false)
+  const quickToolsBtnRef = React.useRef<HTMLButtonElement>(null)
 
   // ─── Theme initialization ───
   useEffect(() => {
@@ -878,7 +882,7 @@ export default function App() {
               data-coda-ui
               className="circles-out"
             >
-              <div className="btn-stack">
+              <div className={`btn-stack${quickTools.length > 0 ? ' has-4' : ''}`}>
                 {/* btn-1: Attach (front, rightmost) */}
                 <button
                   className="stack-btn stack-btn-1 glass-surface"
@@ -906,7 +910,24 @@ export default function App() {
                 >
                   <HeadCircuit size={17} />
                 </button>
+                {/* btn-4: Quick Tools (backmost) */}
+                {quickTools.length > 0 && (
+                  <button
+                    ref={quickToolsBtnRef}
+                    className="stack-btn stack-btn-4 glass-surface"
+                    title="Quick Tools"
+                    onClick={() => setQuickToolsTrayOpen((o) => !o)}
+                  >
+                    <Lightning size={17} weight="fill" />
+                  </button>
+                )}
               </div>
+              {quickToolsTrayOpen && (
+                <QuickToolsTray
+                  anchorRef={quickToolsBtnRef}
+                  onClose={() => setQuickToolsTrayOpen(false)}
+                />
+              )}
             </div>
 
             {/* Input pill */}
