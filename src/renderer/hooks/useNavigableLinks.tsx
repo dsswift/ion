@@ -28,9 +28,9 @@ export function useCmdHeld(): boolean {
 
 type TextSegment = { type: 'plain' | 'file' | 'url'; value: string }
 
-// Matches: URLs (https://...), absolute paths (/foo/bar), and relative paths (src/foo/bar.ext)
+// Matches: URLs (https://...), absolute paths (/foo/bar), home-relative paths (~/foo/bar), and relative paths (src/foo/bar.ext)
 // Relative paths require a file extension to avoid false positives on plain text with slashes
-const LINK_RE = /(https?:\/\/[^\s<>"')\]]+|\/(?:[a-zA-Z0-9._~-]+\/)+[a-zA-Z0-9._~-]+|[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)+\.[a-zA-Z0-9]+)/g
+const LINK_RE = /(https?:\/\/[^\s<>"')\]]+|~\/(?:[a-zA-Z0-9._~-]+\/)*[a-zA-Z0-9._~-]+|\/(?:[a-zA-Z0-9._~-]+\/)+[a-zA-Z0-9._~-]+|[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)+\.[a-zA-Z0-9]+)/g
 
 function segmentText(text: string): TextSegment[] {
   const segments: TextSegment[] = []
@@ -132,7 +132,9 @@ export function useNavigableText() {
   })
 
   const onOpenFile = useCallback((path: string) => {
-    const resolved = path.startsWith('/') ? path : workingDir + '/' + path
+    const homeDir = useSessionStore.getState().staticInfo?.homePath || '/Users/' + (process.env.USER || 'user')
+    const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
+    const resolved = expanded.startsWith('/') ? expanded : workingDir + '/' + expanded
     const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
       useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)
