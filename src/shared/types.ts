@@ -517,6 +517,9 @@ export const IPC = {
   FS_SAVE_DIALOG: 'coda:fs-save-dialog',
   FS_REVEAL_IN_FINDER: 'coda:fs-reveal-in-finder',
   FS_OPEN_NATIVE: 'coda:fs-open-native',
+  FS_WATCH_FILE: 'coda:fs-watch-file',
+  FS_UNWATCH_FILE: 'coda:fs-unwatch-file',
+  FS_FILE_CHANGED: 'coda:fs-file-changed',
 
   // Fonts
   LIST_FONTS: 'coda:list-fonts',

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, screen, globalShortcut, Tray, Menu, nativeImage, nativeTheme, shell, systemPreferences, session } from 'electron'
 import { join, basename } from 'path'
-import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'fs'
+import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, watch } from 'fs'
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
@@ -40,6 +40,10 @@ const controlPlane = new ControlPlane(INTERACTIVE_PTY)
 
 // Forward-declared — initialized after broadcast() is defined
 let terminalManager: TerminalManager
+
+// ─── File watcher state ───
+const fileWatchers = new Map<string, { watcher: ReturnType<typeof watch>; refCount: number; debounceTimer: ReturnType<typeof setTimeout> | null }>()
+const recentlyWrittenPaths = new Set<string>()
 
 // The native window covers the full screen work area so that floating panels
 // (plan viewer, diff viewer, git panel) can be positioned anywhere without clipping.
@@ -2459,10 +2463,14 @@ ipcMain.handle(IPC.FS_READ_FILE, async (_event, { filePath }: { filePath: string
 
 ipcMain.handle(IPC.FS_WRITE_FILE, async (_event, { filePath, content }: { filePath: string; content: string }) => {
   if (!isValidProjectPath(filePath)) return { ok: false, error: 'Invalid path' }
+  const isWatched = fileWatchers.has(filePath)
+  if (isWatched) recentlyWrittenPaths.add(filePath)
   try {
     writeFileSync(filePath, content, 'utf-8')
+    if (isWatched) setTimeout(() => recentlyWrittenPaths.delete(filePath), 500)
     return { ok: true }
   } catch (err: any) {
+    if (isWatched) recentlyWrittenPaths.delete(filePath)
     return { ok: false, error: err.message }
   }
 })
@@ -2530,6 +2538,55 @@ ipcMain.handle(IPC.FS_OPEN_NATIVE, async (_event, { targetPath }: { targetPath: 
   } catch (err: any) {
     return { ok: false, error: err.message }
   }
+})
+
+// ─── File Watch ───
+
+ipcMain.handle(IPC.FS_WATCH_FILE, async (_event, { filePath }: { filePath: string }) => {
+  if (!isValidProjectPath(filePath)) return { ok: false, error: 'Invalid path' }
+  try {
+    const existing = fileWatchers.get(filePath)
+    if (existing) {
+      existing.refCount++
+      return { ok: true }
+    }
+    const watcher = watch(filePath, (eventType) => {
+      if (eventType !== 'change') return
+      if (recentlyWrittenPaths.has(filePath)) return
+      const entry = fileWatchers.get(filePath)
+      if (!entry) return
+      if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
+      entry.debounceTimer = setTimeout(() => {
+        entry.debounceTimer = null
+        broadcast(IPC.FS_FILE_CHANGED, filePath)
+      }, 100)
+    })
+    watcher.on('error', () => {
+      // Watcher failed (file deleted, permissions, etc.) — clean up silently
+      const entry = fileWatchers.get(filePath)
+      if (entry) {
+        if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
+        entry.watcher.close()
+        fileWatchers.delete(filePath)
+      }
+    })
+    fileWatchers.set(filePath, { watcher, refCount: 1, debounceTimer: null })
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle(IPC.FS_UNWATCH_FILE, async (_event, { filePath }: { filePath: string }) => {
+  const entry = fileWatchers.get(filePath)
+  if (!entry) return { ok: true }
+  entry.refCount--
+  if (entry.refCount <= 0) {
+    if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
+    entry.watcher.close()
+    fileWatchers.delete(filePath)
+  }
+  return { ok: true }
 })
 
 // ─── Theme Detection ───
@@ -2675,6 +2732,12 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   controlPlane.shutdown()
+  // Close all file watchers
+  for (const [, entry] of fileWatchers) {
+    if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
+    entry.watcher.close()
+  }
+  fileWatchers.clear()
   if (tray) {
     tray.destroy()
     tray = null

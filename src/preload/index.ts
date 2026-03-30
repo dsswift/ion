@@ -98,6 +98,9 @@ export interface CodaAPI {
   fsSaveDialog(defaultPath?: string): Promise<{ filePath: string | null }>
   fsRevealInFinder(targetPath: string): Promise<void>
   fsOpenNative(targetPath: string): Promise<{ ok: boolean; error?: string }>
+  fsWatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>
+  fsUnwatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>
+  onFileChanged(callback: (filePath: string) => void): () => void
 
   // ─── Window management ───
   resizeHeight(height: number): void
@@ -229,6 +232,13 @@ const api: CodaAPI = {
   fsSaveDialog: (defaultPath) => ipcRenderer.invoke(IPC.FS_SAVE_DIALOG, { defaultPath }),
   fsRevealInFinder: (targetPath) => ipcRenderer.invoke(IPC.FS_REVEAL_IN_FINDER, { targetPath }),
   fsOpenNative: (targetPath) => ipcRenderer.invoke(IPC.FS_OPEN_NATIVE, { targetPath }),
+  fsWatchFile: (filePath) => ipcRenderer.invoke(IPC.FS_WATCH_FILE, { filePath }),
+  fsUnwatchFile: (filePath) => ipcRenderer.invoke(IPC.FS_UNWATCH_FILE, { filePath }),
+  onFileChanged: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
+    ipcRenderer.on(IPC.FS_FILE_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.FS_FILE_CHANGED, handler)
+  },
 
   // ─── Window management ───
   resizeHeight: (height) => ipcRenderer.send(IPC.RESIZE_HEIGHT, height),

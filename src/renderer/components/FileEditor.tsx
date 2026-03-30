@@ -189,6 +189,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   useEffect(() => {
     if (!activeFile) return
     if (activeFile.filePath && activeFile.content === '' && activeFile.savedContent === '') {
+      // Initial load for newly opened files
       window.coda.fsReadFile(activeFile.filePath).then((result) => {
         if (result.content !== null) {
           // Set both content and savedContent so isDirty starts false
@@ -208,8 +209,74 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
           })
         }
       })
+    } else if (activeFile.filePath && !activeFile.isDirty && activeFile.content !== '') {
+      // Background tab refresh: re-read from disk when switching to a non-dirty file
+      window.coda.fsReadFile(activeFile.filePath).then((result) => {
+        if (result.content !== null && result.content !== activeFile.savedContent) {
+          useSessionStore.setState((s) => {
+            const states = new Map(s.fileEditorStates)
+            const current = states.get(dir)
+            if (!current) return {}
+            states.set(dir, {
+              ...current,
+              files: current.files.map((f) =>
+                f.id === activeFile.id
+                  ? { ...f, content: result.content!, savedContent: result.content!, isDirty: false }
+                  : f
+              ),
+            })
+            return { fileEditorStates: states }
+          })
+        }
+      })
     }
   }, [activeFile?.id, activeFile?.filePath, dir])
+
+  // ---- File watcher: auto-reload on disk changes ----
+  useEffect(() => {
+    if (!activeFile?.filePath) return
+    const filePath = activeFile.filePath
+
+    window.coda.fsWatchFile(filePath)
+
+    const unsub = window.coda.onFileChanged((changedPath) => {
+      if (changedPath !== filePath) return
+      // Read fresh isDirty from store to avoid stale closure
+      const state = useSessionStore.getState()
+      const edState = state.fileEditorStates.get(dir)
+      const file = edState?.files.find((f) => f.id === activeFile.id)
+      if (!file || file.isDirty) return
+
+      window.coda.fsReadFile(filePath).then((result) => {
+        if (result.content === null) return
+        // Re-read current state to get latest savedContent
+        const freshState = useSessionStore.getState()
+        const freshEdState = freshState.fileEditorStates.get(dir)
+        const freshFile = freshEdState?.files.find((f) => f.id === activeFile.id)
+        if (!freshFile || freshFile.isDirty || result.content === freshFile.savedContent) return
+
+        useSessionStore.setState((s) => {
+          const states = new Map(s.fileEditorStates)
+          const current = states.get(dir)
+          if (!current) return {}
+          states.set(dir, {
+            ...current,
+            files: current.files.map((f) =>
+              f.id === activeFile.id
+                ? { ...f, content: result.content!, savedContent: result.content!, isDirty: false }
+                : f
+            ),
+          })
+          return { fileEditorStates: states }
+        })
+      })
+    })
+
+    return () => {
+      unsub()
+      window.coda.fsUnwatchFile(filePath)
+    }
+  }, [activeFile?.filePath, activeFile?.id, dir])
 
   // ---- Save handler ----
   const handleSave = useCallback(async () => {
