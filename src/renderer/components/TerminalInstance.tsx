@@ -74,6 +74,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
   const colors = useColors()
   const terminalFontFamily = useThemeStore((s) => s.terminalFontFamily)
   const terminalFontSize = useThemeStore((s) => s.terminalFontSize)
+  const uiZoom = useThemeStore((s) => s.uiZoom)
   const key = `${tabId}:${instanceId}`
 
   useEffect(() => {
@@ -240,6 +241,17 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
     }
   }, [key, terminalFontFamily, terminalFontSize])
 
+  // Refit terminal when UI zoom changes (container dimensions change due to counter-zoom)
+  useEffect(() => {
+    const entry = terminalInstances.get(key)
+    if (!entry) return
+    entry.fitAddon.fit()
+    const dims = entry.fitAddon.proposeDimensions()
+    if (dims) {
+      window.coda.terminalResize(key, dims.cols, dims.rows)
+    }
+  }, [key, uiZoom])
+
   return (
     <div
       ref={containerRef}
@@ -249,6 +261,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
         padding: '8px 12px 0 12px',
         boxSizing: 'border-box',
         overflow: 'hidden',
+        zoom: uiZoom !== 1 ? 1 / uiZoom : undefined,
       }}
     />
   )

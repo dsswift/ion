@@ -570,6 +570,18 @@ export default function App() {
         const s = useSessionStore.getState()
         if (s.isExpanded) s.toggleExpanded()
       }
+      if (e.metaKey && (e.key === '=' || e.key === '+')) {
+        e.preventDefault()
+        useThemeStore.getState().zoomIn()
+      }
+      if (e.metaKey && e.key === '-') {
+        e.preventDefault()
+        useThemeStore.getState().zoomOut()
+      }
+      if (e.metaKey && e.key === '0') {
+        e.preventDefault()
+        useThemeStore.getState().setUiZoom(1)
+      }
       if (e.metaKey && e.key === 'h') {
         e.preventDefault()
         const { tabs, activeTabId, selectTab } = useSessionStore.getState()
