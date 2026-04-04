@@ -139,7 +139,7 @@ interface State {
   // Actions
   initStaticInfo: () => Promise<void>
   setPreferredModel: (model: string | null) => void
-  setPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
+  setPermissionMode: (mode: 'auto' | 'plan') => void
   createTab: (useWorktree?: boolean) => Promise<string>
   createTabInDirectory: (dir: string, useWorktree?: boolean, skipDuplicateCheck?: boolean) => Promise<string>
   selectTab: (tabId: string) => void
@@ -204,6 +204,8 @@ interface State {
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
   sendMessage: (prompt: string, projectPath?: string, extraAttachments?: Attachment[], appendSystemPrompt?: string) => void
+  submitRemotePrompt: (tabId: string, prompt: string) => void
+  submitRemoteBash: (tabId: string, command: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
   addDirectory: (dir: string) => void
   removeDirectory: (dir: string) => void
@@ -215,6 +217,7 @@ interface State {
   addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
+  editQueuedMessage: (tabId: string) => void
   setDraftInput: (tabId: string, text: string) => void
   clearPendingInput: (tabId: string) => void
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
@@ -294,6 +297,12 @@ function isBlankTerminalTab(t: TabState, dir: string): boolean {
 }
 
 const initialTab = makeLocalTab()
+
+/** Sum all input token fields (non-cached + cache read + cache creation) for true context size */
+function totalInputTokens(usage: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined): number {
+  if (!usage) return 0
+  return (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0)
+}
 
 export const useSessionStore = create<State>((set, get) => ({
   tabs: [initialTab],
@@ -712,10 +721,10 @@ export const useSessionStore = create<State>((set, get) => ({
     set({ terminalPanes: panes })
   },
 
-  createTerminalTab: async () => {
+  createTerminalTab: async (dir?: string) => {
     const homeDir = get().staticInfo?.homePath || '~'
     const defaultBase = useThemeStore.getState().defaultBaseDirectory
-    const startDir = defaultBase || homeDir
+    const startDir = dir || defaultBase || homeDir
 
     // Prevent duplicate blank terminal tabs in the same directory
     const existingBlank = get().tabs.find((t) => isBlankTerminalTab(t, startDir))
@@ -734,7 +743,7 @@ export const useSessionStore = create<State>((set, get) => ({
       title: 'New Terminal',
       isTerminalOnly: true,
       workingDirectory: startDir,
-      hasChosenDirectory: !!defaultBase,
+      hasChosenDirectory: !!(dir || defaultBase),
       pillIcon: 'Terminal',
       groupId,
     }
@@ -1314,13 +1323,22 @@ export const useSessionStore = create<State>((set, get) => ({
         ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
         : null
 
+      // Compute fork title with numeric suffix
+      const sourceDisplay = source.customTitle || source.title
+      const baseMatch = sourceDisplay.match(/^(.+?)\s*\(\d+\)$/)
+      const baseName = baseMatch ? baseMatch[1] : sourceDisplay
+      const allTitles = get().tabs.map((t) => t.customTitle || t.title)
+      let n = 1
+      while (allTitles.includes(`${baseName} (${n})`)) n++
+      const forkTitle = `${baseName} (${n})`
+
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
         claudeSessionId: null,
         forkedFromSessionId: source.claudeSessionId,
         title: source.title,
-        customTitle: source.customTitle,
+        customTitle: forkTitle,
         workingDirectory: source.workingDirectory,
         hasChosenDirectory: source.hasChosenDirectory,
         additionalDirs: [...source.additionalDirs],
@@ -1404,13 +1422,22 @@ export const useSessionStore = create<State>((set, get) => ({
         ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
         : null
 
+      // Compute fork title with numeric suffix
+      const sourceDisplay = source.customTitle || source.title
+      const baseMatch = sourceDisplay.match(/^(.+?)\s*\(\d+\)$/)
+      const baseName = baseMatch ? baseMatch[1] : sourceDisplay
+      const allTitles = get().tabs.map((t) => t.customTitle || t.title)
+      let n = 1
+      while (allTitles.includes(`${baseName} (${n})`)) n++
+      const forkTitle = `${baseName} (${n})`
+
       const tab: TabState = {
         ...makeLocalTab(),
         id: newTabId,
         claudeSessionId: null,
         forkedFromSessionId: source.claudeSessionId,
         title: source.title,
-        customTitle: source.customTitle,
+        customTitle: forkTitle,
         workingDirectory: source.workingDirectory,
         hasChosenDirectory: source.hasChosenDirectory,
         additionalDirs: [...source.additionalDirs],
@@ -1938,6 +1965,17 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
   },
 
+  editQueuedMessage: (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab || tab.queuedPrompts.length === 0) return
+    const text = tab.queuedPrompts[0]
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, queuedPrompts: [], pendingInput: text, draftInput: text } : t
+      ),
+    }))
+  },
+
   setDraftInput: (tabId, text) => {
     set((s) => ({
       tabs: s.tabs.map((t) =>
@@ -2031,7 +2069,9 @@ export const useSessionStore = create<State>((set, get) => ({
             title,
             attachments: [],
             bashResults: [],
-            queuedPrompts: [...withEffectiveBase.queuedPrompts, prompt],
+            queuedPrompts: withEffectiveBase.queuedPrompts.length > 0
+              ? [withEffectiveBase.queuedPrompts[0] + '\n\n' + prompt]
+              : [prompt],
           }
         }
         return {
@@ -2092,6 +2132,163 @@ export const useSessionStore = create<State>((set, get) => ({
         elapsedMs: 0,
         toolCallCount: 0,
       })
+    })
+  },
+
+  /**
+   * Submit a prompt for a specific tab from a remote source (iOS).
+   * Routes through the normal IPC.PROMPT path so the renderer's context
+   * (working directory, session ID, model, addDirs) is used automatically.
+   */
+  submitRemotePrompt: (tabId, prompt) => {
+    const { tabs, staticInfo, preferredModel } = get()
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    if (tab.status === 'connecting') return
+
+    const resolvedPath = tab.hasChosenDirectory
+      ? tab.workingDirectory
+      : (staticInfo?.homePath || tab.workingDirectory || '~')
+
+    const requestId = crypto.randomUUID()
+    const isBusy = tab.status === 'running'
+
+    const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
+    const title = needsTitle
+      ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
+      : tab.title
+
+    set((s) => ({
+      scrollToBottomCounter: s.scrollToBottomCounter + 1,
+      tabs: s.tabs.map((t) => {
+        if (t.id !== tabId) return t
+        if (isBusy) {
+          return { ...t, title, queuedPrompts: t.queuedPrompts.length > 0 ? [t.queuedPrompts[0] + '\n\n' + prompt] : [prompt] }
+        }
+        return {
+          ...t,
+          status: 'connecting' as TabStatus,
+          activeRequestId: requestId,
+          currentActivity: 'Starting...',
+          title,
+          permissionDenied: null,
+          messages: [
+            ...t.messages,
+            { id: nextMsgId(), role: 'user' as const, content: prompt, timestamp: Date.now(), source: 'remote' as const },
+          ],
+        }
+      }),
+    }))
+
+    window.coda.prompt(tabId, requestId, {
+      prompt,
+      projectPath: resolvedPath,
+      sessionId: tab.claudeSessionId || undefined,
+      model: preferredModel || undefined,
+      addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
+      source: 'remote',
+    }).catch((err: Error) => {
+      get().handleError(tabId, {
+        message: err.message,
+        stderrTail: [],
+        exitCode: null,
+        elapsedMs: 0,
+        toolCallCount: 0,
+      })
+    })
+  },
+
+  /**
+   * Execute a bash command for a specific tab from a remote source (iOS).
+   * Uses the tab's working directory and routes through the normal
+   * IPC.EXECUTE_BASH path, then forwards the result to iOS.
+   */
+  submitRemoteBash: (tabId, command) => {
+    const { tabs } = get()
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    if (tab.bashExecuting) return
+
+    const cwd = tab.workingDirectory || '~'
+    const toolMsgId = nextMsgId()
+    const userMsgId = nextMsgId()
+    const execId = crypto.randomUUID()
+    const now = Date.now()
+
+    set((s) => ({
+      scrollToBottomCounter: s.scrollToBottomCounter + 1,
+      tabs: s.tabs.map((t) => {
+        if (t.id !== tabId) return t
+        const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
+        const title = needsTitle
+          ? (command.length > 40 ? command.substring(0, 37) + '...' : command)
+          : t.title
+        return {
+          ...t,
+          title,
+          bashExecuting: true,
+          bashExecId: execId,
+          messages: [
+            ...t.messages,
+            { id: userMsgId, role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now, source: 'remote' as const },
+            { id: toolMsgId, role: 'tool' as const, content: '', toolName: 'Bash', toolInput: JSON.stringify({ command }), toolStatus: 'running' as const, userExecuted: true, timestamp: now },
+          ],
+        }
+      }),
+    }))
+
+    window.coda.executeBash(execId, command, cwd).then((result) => {
+      // Update renderer state
+      const outputParts: string[] = []
+      if (result.stdout) outputParts.push(result.stdout.trimEnd())
+      if (result.stderr) outputParts.push(`stderr: ${result.stderr.trimEnd()}`)
+      if (result.exitCode !== null && result.exitCode !== 0) outputParts.push(`exit code: ${result.exitCode}`)
+
+      set((s) => ({
+        tabs: s.tabs.map((t) => {
+          if (t.id !== tabId) return t
+          return {
+            ...t,
+            bashExecuting: false,
+            bashExecId: null,
+            bashResults: [...t.bashResults, { command, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode }],
+            messages: t.messages.map((m) =>
+              m.id === toolMsgId
+                ? { ...m, content: outputParts.join('\n') || '(no output)', toolStatus: 'completed' as const }
+                : m
+            ),
+          }
+        }),
+      }))
+
+      // Forward result to iOS
+      window.coda.sendRemote({
+        type: 'message_added',
+        tabId,
+        message: {
+          id: `${execId}-result`,
+          role: 'assistant',
+          content: outputParts.join('\n') || '(no output)',
+          timestamp: Date.now(),
+          source: 'desktop',
+        },
+      })
+    }).catch(() => {
+      set((s) => ({
+        tabs: s.tabs.map((t) => {
+          if (t.id !== tabId) return t
+          return {
+            ...t,
+            bashExecuting: false,
+            bashExecId: null,
+            messages: t.messages.map((m) =>
+              m.id === toolMsgId
+                ? { ...m, content: 'IPC error: bash execution failed', toolStatus: 'completed' as const }
+                : m
+            ),
+          }
+        }),
+      }))
     })
   },
 
@@ -2272,9 +2469,14 @@ export const useSessionStore = create<State>((set, get) => ({
                 }
               }
             }
-            // Track context usage from assistant message
-            if (event.message?.usage?.input_tokens) {
-              updated.contextTokens = event.message.usage.input_tokens
+            // Context tokens tracked via 'usage' event (message_start) which has full cache breakdown
+            break
+          }
+
+          case 'usage': {
+            const usageTokens = totalInputTokens(event.usage)
+            if (usageTokens > 0) {
+              updated.contextTokens = usageTokens
             }
             break
           }
@@ -2290,9 +2492,6 @@ export const useSessionStore = create<State>((set, get) => ({
               numTurns: event.numTurns,
               usage: event.usage,
               sessionId: event.sessionId,
-            }
-            if (event.usage?.input_tokens) {
-              updated.contextTokens = event.usage.input_tokens
             }
             // ── Final text fallback ──
             // If neither text_chunks nor task_update text produced an assistant message,
@@ -2323,16 +2522,32 @@ export const useSessionStore = create<State>((set, get) => ({
             // Show fallback card when tools were denied by permission settings.
             if (event.permissionDenials && event.permissionDenials.length > 0) {
               const hadPlanExit = event.permissionDenials.some((d) => d.toolName === 'ExitPlanMode')
-              if (hadPlanExit && updated.permissionMode !== 'plan') {
-                // Model called ExitPlanMode outside plan mode (known Claude Code
-                // bug: #32868). Don't show the Plan Ready card — auto-recover by
-                // sending a corrective message so the model implements directly.
-                const nonPlanDenials = event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
-                updated.permissionDenied = nonPlanDenials.length > 0 ? { tools: nonPlanDenials } : null
-                // Schedule auto-recovery after state update completes
-                setTimeout(() => {
-                  get().sendMessage('Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.')
-                }, 100)
+              if (hadPlanExit) {
+                // Detect stale ExitPlanMode: if the model produced assistant text
+                // AFTER calling ExitPlanMode, it continued past the plan and the
+                // denial is a leftover (e.g. user manually told it to implement).
+                // Walk backward: if we hit assistant text before ExitPlanMode, it's stale.
+                let exitPlanIsStale = false
+                if (updated.permissionMode === 'plan') {
+                  for (let i = updated.messages.length - 1; i >= 0; i--) {
+                    const m = updated.messages[i]
+                    if (m.toolName === 'ExitPlanMode') break // hit the call before any text -- genuine
+                    if (m.role === 'assistant' && !m.toolName) { exitPlanIsStale = true; break }
+                  }
+                }
+                if (updated.permissionMode !== 'plan' || exitPlanIsStale) {
+                  // Filter out ExitPlanMode from denials shown to user
+                  const nonPlanDenials = event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
+                  updated.permissionDenied = nonPlanDenials.length > 0 ? { tools: nonPlanDenials } : null
+                  // Auto-recover only when not in plan mode (known Claude Code bug: #32868)
+                  if (updated.permissionMode !== 'plan') {
+                    setTimeout(() => {
+                      get().sendMessage('Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.')
+                    }, 100)
+                  }
+                } else {
+                  updated.permissionDenied = { tools: event.permissionDenials }
+                }
               } else {
                 updated.permissionDenied = { tools: event.permissionDenials }
               }
@@ -2507,6 +2722,10 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 }))
 
+// Expose the session store on window for main process access via executeJavaScript
+;(window as any).__CODA_SESSION_STORE__ = useSessionStore
+;(window as any).__serializeTerminalBuffer = serializeTerminalBuffer
+
 // ─── Real-time tab persistence ───
 
 function persistTabs(): void {
@@ -2539,6 +2758,7 @@ function persistTabs(): void {
         ...(t.worktree ? { worktree: t.worktree } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),
         ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
+        ...(t.contextTokens ? { contextTokens: t.contextTokens } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),
         ...(pane && pane.instances.length > 0 ? (() => {

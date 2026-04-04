@@ -202,15 +202,13 @@ function PermissionModePicker() {
     setOpen((o) => !o)
   }
 
-  const modeLabel = permissionMode === 'plan' ? 'Plan' : permissionMode === 'auto' ? 'Auto' : 'Ask'
+  const modeLabel = permissionMode === 'plan' ? 'Plan' : 'Auto'
   const modeIcon = permissionMode === 'plan'
     ? <ListChecks size={11} weight="bold" />
-    : <ShieldCheck size={11} weight={permissionMode === 'auto' ? 'fill' : 'regular'} />
+    : <ShieldCheck size={11} weight="fill" />
   const modeColor = permissionMode === 'plan'
     ? '#2eb8a6'
-    : permissionMode === 'ask'
-      ? '#e86840'
-      : colors.textTertiary
+    : colors.textTertiary
 
   return (
     <>
@@ -252,23 +250,6 @@ function PermissionModePicker() {
           }}
         >
           <div className="py-1">
-            <button
-              onClick={() => { setPermissionMode('ask'); setOpen(false) }}
-              className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-              style={{
-                color: permissionMode === 'ask' ? colors.textPrimary : colors.textSecondary,
-                fontWeight: permissionMode === 'ask' ? 600 : 400,
-              }}
-            >
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck size={12} />
-                Ask
-              </span>
-              {permissionMode === 'ask' && <Check size={12} style={{ color: colors.accent }} />}
-            </button>
-
-            <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />
-
             <button
               onClick={() => { setPermissionMode('plan'); setOpen(false) }}
               className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"

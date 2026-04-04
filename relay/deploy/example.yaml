@@ -1,0 +1,112 @@
+# CODA Relay -- Example Kubernetes Deployment
+#
+# This is a reference manifest. Update the image, hostname, TLS secret,
+# and API key to match your environment. Most engineers will rewrite this
+# for their own tooling (Helm, Kustomize, ArgoCD, etc.).
+#
+# Generate an API key:
+#   openssl rand -hex 32
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coda-relay
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: coda-relay
+  namespace: coda-relay
+type: Opaque
+stringData:
+  # Replace with your own key: openssl rand -hex 32
+  RELAY_API_KEY: "REPLACE_ME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coda-relay
+  namespace: coda-relay
+  labels:
+    app: coda-relay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coda-relay
+  template:
+    metadata:
+      labels:
+        app: coda-relay
+    spec:
+      containers:
+        - name: relay
+          # Update to your registry and tag
+          image: YOUR_REGISTRY/coda-relay:latest
+          ports:
+            - containerPort: 8443
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: coda-relay
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+            initialDelaySeconds: 2
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coda-relay
+  namespace: coda-relay
+spec:
+  selector:
+    app: coda-relay
+  ports:
+    - port: 8443
+      targetPort: 8443
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coda-relay
+  namespace: coda-relay
+  annotations:
+    # WebSocket connections need long timeouts.
+    # Without this, nginx closes idle connections after 60s.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        # Update to your hostname
+        - relay.example.com
+      secretName: relay-tls
+  rules:
+    - host: relay.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: coda-relay
+                port:
+                  number: 8443

@@ -3,7 +3,7 @@
  * Colors derived from ChatCN oklch system and design-fixed.html reference.
  */
 import { create } from 'zustand'
-import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode, TabGroup, QuickTool } from '../shared/types'
+import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode, TabGroup, QuickTool, RemotePairedDevice } from '../shared/types'
 import { DEFAULT_TAB_GROUP_LABELS } from '../shared/types'
 
 // ─── Color palettes ───
@@ -326,7 +326,7 @@ interface ThemeState {
   recentBaseDirectories: string[]
   preferredOpenWith: 'cli' | 'vscode'
   showImplementClearContext: boolean
-  defaultPermissionMode: 'ask' | 'auto' | 'plan'
+  defaultPermissionMode: 'auto' | 'plan'
   expandOnTabSwitch: boolean
   bashCommandEntry: boolean
   gitPanelSplitRatio: number
@@ -378,6 +378,16 @@ interface ThemeState {
   quickTools: QuickTool[]
   /** UI zoom level (CSS zoom on :root, 0.5–2.0) */
   uiZoom: number
+  /** Remote control: master toggle */
+  remoteEnabled: boolean
+  /** Remote control: relay server URL (empty = no relay) */
+  relayUrl: string
+  /** Remote control: relay API key */
+  relayApiKey: string
+  /** Remote control: LAN server port */
+  lanServerPort: number
+  /** Remote control: paired iOS devices */
+  pairedDevices: RemotePairedDevice[]
   /** OS-reported dark mode — used when themeMode is 'system' */
   _systemIsDark: boolean
   setIsDark: (isDark: boolean) => void
@@ -390,7 +400,7 @@ interface ThemeState {
   removeRecentBaseDirectory: (dir: string) => void
   setPreferredOpenWith: (app: 'cli' | 'vscode') => void
   setShowImplementClearContext: (show: boolean) => void
-  setDefaultPermissionMode: (mode: 'ask' | 'auto' | 'plan') => void
+  setDefaultPermissionMode: (mode: 'auto' | 'plan') => void
   setExpandOnTabSwitch: (enabled: boolean) => void
   setBashCommandEntry: (enabled: boolean) => void
   setGitPanelSplitRatio: (ratio: number) => void
@@ -433,6 +443,12 @@ interface ThemeState {
   setUiZoom: (zoom: number) => void
   zoomIn: () => void
   zoomOut: () => void
+  setRemoteEnabled: (enabled: boolean) => void
+  setRelayUrl: (url: string) => void
+  setRelayApiKey: (key: string) => void
+  setLanServerPort: (port: number) => void
+  addPairedDevice: (device: RemotePairedDevice) => void
+  removePairedDevice: (deviceId: string) => void
   /** Called by OS theme change listener — updates system value */
   setSystemTheme: (isDark: boolean) => void
   /** Apply a settings preset (batch-set multiple fields at once) */
@@ -458,7 +474,7 @@ function applyTheme(isDark: boolean): void {
   syncTokensToCss(isDark ? darkColors : lightColors)
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'ask' | 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, showTodoList: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], inProgressGroupId: null as string | null, doneGroupId: null as string | null, commitCommand: '', claudeCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1 }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, showTodoList: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], inProgressGroupId: null as string | null, doneGroupId: null as string | null, commitCommand: '', claudeCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[] }
 
 function saveSettings(s: Record<string, unknown>): void {
   window.coda?.saveSettings(s)
@@ -466,7 +482,7 @@ function saveSettings(s: Record<string, unknown>): void {
 
 function getAllSettings(get: () => ThemeState): Record<string, unknown> {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, ultraWide: s.ultraWide, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, allowSettingsEdits: s.allowSettingsEdits, showTodoList: s.showTodoList, hideOnExternalLaunch: s.hideOnExternalLaunch, keepExplorerOnCollapse: s.keepExplorerOnCollapse, keepTerminalOnCollapse: s.keepTerminalOnCollapse, keepGitPanelOnCollapse: s.keepGitPanelOnCollapse, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups, autoGroupOrder: s.autoGroupOrder, inProgressGroupId: s.inProgressGroupId, doneGroupId: s.doneGroupId, commitCommand: s.commitCommand, claudeCommand: s.claudeCommand, gitChangesTreeView: s.gitChangesTreeView, quickTools: s.quickTools, uiZoom: s.uiZoom }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, ultraWide: s.ultraWide, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, allowSettingsEdits: s.allowSettingsEdits, showTodoList: s.showTodoList, hideOnExternalLaunch: s.hideOnExternalLaunch, keepExplorerOnCollapse: s.keepExplorerOnCollapse, keepTerminalOnCollapse: s.keepTerminalOnCollapse, keepGitPanelOnCollapse: s.keepGitPanelOnCollapse, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups, autoGroupOrder: s.autoGroupOrder, inProgressGroupId: s.inProgressGroupId, doneGroupId: s.doneGroupId, commitCommand: s.commitCommand, claudeCommand: s.claudeCommand, gitChangesTreeView: s.gitChangesTreeView, quickTools: s.quickTools, uiZoom: s.uiZoom, remoteEnabled: s.remoteEnabled, relayUrl: s.relayUrl, relayApiKey: s.relayApiKey, lanServerPort: s.lanServerPort, pairedDevices: s.pairedDevices }
 }
 
 /** Returns effective tab groups: custom groups if any exist, otherwise built-in defaults */
@@ -525,6 +541,11 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   gitChangesTreeView: saved.gitChangesTreeView,
   quickTools: saved.quickTools,
   uiZoom: saved.uiZoom,
+  remoteEnabled: saved.remoteEnabled,
+  relayUrl: saved.relayUrl,
+  relayApiKey: saved.relayApiKey,
+  lanServerPort: saved.lanServerPort,
+  pairedDevices: saved.pairedDevices,
   _systemIsDark: true,
   setIsDark: (isDark) => {
     set({ isDark })
@@ -554,7 +575,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   },
   addRecentBaseDirectory: (dir) => {
     const current = get().recentBaseDirectories.filter((d) => d !== dir)
-    const updated = [dir, ...current].slice(0, 8)
+    const updated = [dir, ...current].slice(0, 12)
     set({ recentBaseDirectories: updated })
     saveSettings(getAllSettings(get))
   },
@@ -765,6 +786,31 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   zoomOut: () => {
     get().setUiZoom(get().uiZoom - 0.1)
   },
+  setRemoteEnabled: (enabled) => {
+    set({ remoteEnabled: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setRelayUrl: (url) => {
+    set({ relayUrl: url })
+    saveSettings(getAllSettings(get))
+  },
+  setRelayApiKey: (key) => {
+    set({ relayApiKey: key })
+    saveSettings(getAllSettings(get))
+  },
+  setLanServerPort: (port) => {
+    set({ lanServerPort: port })
+    saveSettings(getAllSettings(get))
+  },
+  addPairedDevice: (device) => {
+    const current = get().pairedDevices.filter((d) => d.id !== device.id && d.name !== device.name)
+    set({ pairedDevices: [...current, device] })
+    saveSettings(getAllSettings(get))
+  },
+  removePairedDevice: (deviceId) => {
+    set({ pairedDevices: get().pairedDevices.filter((d) => d.id !== deviceId) })
+    saveSettings(getAllSettings(get))
+  },
   setSystemTheme: (isDark) => {
     set({ _systemIsDark: isDark })
     // Only apply if following system
@@ -792,7 +838,7 @@ window.coda?.loadSettings().then((disk) => {
   const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
   const ultraWide = typeof disk.ultraWide === 'boolean' ? disk.ultraWide : false
   const baseDir = typeof disk.defaultBaseDirectory === 'string' ? disk.defaultBaseDirectory : ''
-  const recentDirs = Array.isArray(disk.recentBaseDirectories) ? disk.recentBaseDirectories.filter((d: unknown) => typeof d === 'string').slice(0, 8) : []
+  const recentDirs = Array.isArray(disk.recentBaseDirectories) ? disk.recentBaseDirectories.filter((d: unknown) => typeof d === 'string').slice(0, 12) : []
   const openWith = (disk.preferredOpenWith === 'cli' || disk.preferredOpenWith === 'vscode') ? disk.preferredOpenWith : 'cli'
   const implClearCtx = typeof disk.showImplementClearContext === 'boolean' ? disk.showImplementClearContext : false
   const expandTabSwitch = typeof disk.expandOnTabSwitch === 'boolean' ? disk.expandOnTabSwitch : true
@@ -824,10 +870,15 @@ window.coda?.loadSettings().then((disk) => {
   const keepExplorer = typeof disk.keepExplorerOnCollapse === 'boolean' ? disk.keepExplorerOnCollapse : false
   const keepTerminal = typeof disk.keepTerminalOnCollapse === 'boolean' ? disk.keepTerminalOnCollapse : false
   const keepGitPanel = typeof disk.keepGitPanelOnCollapse === 'boolean' ? disk.keepGitPanelOnCollapse : false
-  const permMode = (disk.defaultPermissionMode === 'ask' || disk.defaultPermissionMode === 'auto' || disk.defaultPermissionMode === 'plan') ? disk.defaultPermissionMode : 'plan'
+  const permMode = (disk.defaultPermissionMode === 'auto' || disk.defaultPermissionMode === 'plan') ? disk.defaultPermissionMode : 'plan'
   const quickTools = Array.isArray(disk.quickTools) ? (disk.quickTools as QuickTool[]).filter((t: any) => t && typeof t.id === 'string' && typeof t.name === 'string' && typeof t.command === 'string') : []
   const uiZoom = typeof disk.uiZoom === 'number' ? Math.round(Math.max(0.5, Math.min(2.0, disk.uiZoom)) * 10) / 10 : 1
-  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, showTodoList: showTodo, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, inProgressGroupId, doneGroupId, commitCommand, claudeCommand, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, defaultPermissionMode: permMode, quickTools, uiZoom })
+  const remoteEnabled = typeof disk.remoteEnabled === 'boolean' ? disk.remoteEnabled : false
+  const relayUrl = typeof disk.relayUrl === 'string' ? disk.relayUrl : ''
+  const relayApiKey = typeof disk.relayApiKey === 'string' ? disk.relayApiKey : ''
+  const lanServerPort = typeof disk.lanServerPort === 'number' ? disk.lanServerPort : 19837
+  const pairedDevices = Array.isArray(disk.pairedDevices) ? (disk.pairedDevices as RemotePairedDevice[]).filter((d: any) => d && typeof d.id === 'string' && typeof d.name === 'string') : []
+  useThemeStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, showTodoList: showTodo, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, inProgressGroupId, doneGroupId, commitCommand, claudeCommand, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices })
   applyTheme(resolved)
   if (uiZoom !== 1) document.documentElement.style.zoom = String(uiZoom)
 })

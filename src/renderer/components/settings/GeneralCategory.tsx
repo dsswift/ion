@@ -107,7 +107,7 @@ export function GeneralCategory() {
             overflow: 'hidden',
           }}
         >
-          {(['plan', 'auto', 'ask'] as const).map((mode) => (
+          {(['plan', 'auto'] as const).map((mode) => (
             <button
               key={mode}
               onClick={() => setDefaultPermissionMode(mode)}

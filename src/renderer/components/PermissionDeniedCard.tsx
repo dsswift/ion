@@ -13,7 +13,7 @@ interface Props {
   projectPath: string
   messages: Message[]
   onDismiss: () => void
-  onImplement?: (mode: 'ask' | 'auto', clearContext: boolean) => void
+  onImplement?: (clearContext: boolean) => void
   onAnswer?: (answer: string) => void
   onApprove?: (toolNames: string[]) => void
 }
@@ -152,7 +152,7 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
             {/* Actions */}
             <div className="flex gap-1.5 flex-wrap">
               {showClearContext && <button
-                onClick={() => onImplement('auto', true)}
+                onClick={() => onImplement(true)}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
                   background: colors.permissionAllowBg,
@@ -170,7 +170,7 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
                 Implement, clear context
               </button>}
               <button
-                onClick={() => onImplement('auto', false)}
+                onClick={() => onImplement(false)}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
                   background: colors.permissionAllowBg,
@@ -185,23 +185,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
                 }}
               >
                 Implement
-              </button>
-              <button
-                onClick={() => onImplement('ask', false)}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                style={{
-                  background: colors.accentLight,
-                  color: colors.accent,
-                  border: `1px solid ${colors.accentBorderMedium}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.accentSoft
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.accentLight
-                }}
-              >
-                Implement (ask)
               </button>
               {planFilePath && <button
                 onClick={handleViewPlan}

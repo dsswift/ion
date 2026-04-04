@@ -11,6 +11,7 @@ import { useColors, useThemeStore, getEffectiveTabGroups } from '../theme'
 import { useTabGroups } from '../hooks/useTabGroups'
 import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabStatus, TabState } from '../../shared/types'
+import { useManualReorder } from '../hooks/useManualReorder'
 
 /** On-demand uncommitted check for worktree tabs whose status isn't in the map yet */
 function checkWorktreeUncommitted(tab: TabState | undefined) {
@@ -48,6 +49,22 @@ const PILL_ICON_PRESETS = [
   { icon: 'hexagon', label: 'Hexagon' },
   { icon: 'lightning', label: 'Lightning' },
 ] as const
+
+/** Adjust viewport rect to zoomed coordinate space for fixed positioning.
+ * getBoundingClientRect() returns viewport pixels, but position:fixed inside
+ * a CSS-zoomed root interprets coordinates in the zoomed space. Dividing by
+ * zoom cancels the double-scaling. */
+function zoomRect(rect: DOMRect): DOMRect {
+  const z = useThemeStore.getState().uiZoom
+  if (z === 1) return rect
+  return new DOMRect(rect.x / z, rect.y / z, rect.width / z, rect.height / z)
+}
+
+/** Return viewport dimensions in zoom-adjusted coordinate space */
+function zoomViewport(): { width: number; height: number } {
+  const z = useThemeStore.getState().uiZoom
+  return { width: window.innerWidth / z, height: window.innerHeight / z }
+}
 
 const PILL_ICON_MAP: Record<string, React.ComponentType<any>> = {
   diamond: Diamond,
@@ -377,14 +394,14 @@ function DirContextMenu({
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.background = colors.tabActive
               if (moveItemRef.current) {
-                const rect = moveItemRef.current.getBoundingClientRect()
+                const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
                 setMoveSubmenu({ x: rect.right, y: rect.top })
               }
             }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             onClick={() => {
               if (moveItemRef.current) {
-                const rect = moveItemRef.current.getBoundingClientRect()
+                const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
                 setMoveSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
               }
             }}
@@ -584,14 +601,14 @@ function TabContextMenu({
               (e.currentTarget as HTMLElement).style.background = colors.tabActive
               setMoveAllSubmenu(null)
               if (moveItemRef.current) {
-                const rect = moveItemRef.current.getBoundingClientRect()
+                const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
                 setMoveSubmenu({ x: rect.right, y: rect.top })
               }
             }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             onClick={() => {
               if (moveItemRef.current) {
-                const rect = moveItemRef.current.getBoundingClientRect()
+                const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
                 setMoveSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
               }
             }}
@@ -611,14 +628,14 @@ function TabContextMenu({
             (e.currentTarget as HTMLElement).style.background = colors.tabActive
             setMoveSubmenu(null)
             if (moveAllItemRef.current) {
-              const rect = moveAllItemRef.current.getBoundingClientRect()
+              const rect = zoomRect(moveAllItemRef.current.getBoundingClientRect())
               setMoveAllSubmenu({ x: rect.right, y: rect.top })
             }
           }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           onClick={() => {
             if (moveAllItemRef.current) {
-              const rect = moveAllItemRef.current.getBoundingClientRect()
+              const rect = zoomRect(moveAllItemRef.current.getBoundingClientRect())
               setMoveAllSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
             }
           }}
@@ -657,8 +674,8 @@ function TabContextMenu({
             transition={{ duration: 0.1 }}
             style={{
               position: 'fixed',
-              left: Math.min(moveAllSubmenu.x + 8, window.innerWidth - 180),
-              top: Math.min(moveAllSubmenu.y, window.innerHeight - 200),
+              left: Math.min(moveAllSubmenu.x + 8, zoomViewport().width - 180),
+              top: Math.min(moveAllSubmenu.y, zoomViewport().height - 200),
               pointerEvents: 'auto',
               background: colors.popoverBg,
               border: `1px solid ${colors.popoverBorder}`,
@@ -1081,8 +1098,9 @@ function GroupPickerDropdown({
 
   if (!popoverLayer) return null
 
-  const top = Math.min(anchor.y + 8, window.innerHeight - 300)
-  const left = Math.min(anchor.x, window.innerWidth - 280)
+  const vp = zoomViewport()
+  const top = Math.min(anchor.y + 8, vp.height - 300)
+  const left = Math.min(anchor.x, vp.width - 280)
 
   return createPortal(
     <motion.div
@@ -1402,7 +1420,7 @@ function DropdownTabRow({
         />
       ) : (
         <span
-          className={hasCustomTitle ? 'flex-1 whitespace-nowrap' : 'truncate flex-1'}
+          className="truncate flex-1"
           style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
         >
           {displayTitle}
@@ -1523,8 +1541,9 @@ function MoveToGroupSubmenu({
       .map((g) => ({ id: g.id, label: g.label }))
   }
 
-  const top = Math.min(anchor.y, window.innerHeight - 200)
-  const left = Math.min(anchor.x + 8, window.innerWidth - 180)
+  const vp = zoomViewport()
+  const top = Math.min(anchor.y, vp.height - 200)
+  const left = Math.min(anchor.x + 8, vp.width - 180)
 
   return createPortal(
     <motion.div
@@ -1656,8 +1675,9 @@ function InactiveGroupMenu({
 
   if (!popoverLayer) return null
 
-  const top = Math.min(anchor.y + 8, window.innerHeight - 200)
-  const left = Math.min(anchor.x, window.innerWidth - 180)
+  const vp = zoomViewport()
+  const top = Math.min(anchor.y + 8, vp.height - 200)
+  const left = Math.min(anchor.x, vp.width - 180)
 
   const menuItemStyle = { fontSize: 12, color: colors.textPrimary, background: 'transparent' as string, border: 'none' as const, cursor: 'pointer' as const }
 
@@ -1702,14 +1722,14 @@ function InactiveGroupMenu({
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLElement).style.background = colors.tabActive
           if (moveItemRef.current) {
-            const rect = moveItemRef.current.getBoundingClientRect()
+            const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
             setMoveSubmenu({ x: rect.right, y: rect.top })
           }
         }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         onClick={() => {
           if (moveItemRef.current) {
-            const rect = moveItemRef.current.getBoundingClientRect()
+            const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
             setMoveSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
           }
         }}
@@ -1728,8 +1748,8 @@ function InactiveGroupMenu({
           transition={{ duration: 0.1 }}
           style={{
             position: 'fixed',
-            left: Math.min(moveSubmenu.x + 8, window.innerWidth - 180),
-            top: Math.min(moveSubmenu.y, window.innerHeight - 200),
+            left: Math.min(moveSubmenu.x + 8, zoomViewport().width - 180),
+            top: Math.min(moveSubmenu.y, zoomViewport().height - 200),
             pointerEvents: 'auto',
             background: colors.popoverBg,
             border: `1px solid ${colors.popoverBorder}`,
@@ -1868,7 +1888,7 @@ function GroupPill({
       return
     }
     if (pillRef.current) {
-      const rect = pillRef.current.getBoundingClientRect()
+      const rect = zoomRect(pillRef.current.getBoundingClientRect())
       setPickerAnchor({ x: rect.left, y: rect.bottom })
     }
     setPickerOpen((o) => !o)
@@ -1947,7 +1967,7 @@ function GroupPill({
               onCancel={() => setRenamingTitle(false)}
             />
           ) : (
-            <span className={hasCustomTitle ? 'whitespace-nowrap' : 'truncate max-w-[100px]'}>
+            <span className="truncate max-w-[100px]">
               {displayTitle}
             </span>
           )
@@ -2078,7 +2098,6 @@ function GroupPill({
   )
 }
 
-const DRAG_THRESHOLD = 8
 
 function TabPill({
   tab,
@@ -2101,6 +2120,8 @@ function TabPill({
   dirMenuTabId,
   onOpenTabMenu,
   tabRefs,
+  onDragPointerDown,
+  isDraggingRef,
 }: {
   tab: TabState
   isActive: boolean
@@ -2122,12 +2143,11 @@ function TabPill({
   dirMenuTabId: string | null
   onOpenTabMenu: (tabId: string, anchor: { x: number; y: number }) => void
   tabRefs: React.MutableRefObject<Map<string, HTMLDivElement>>
+  onDragPointerDown: (key: string, e: React.PointerEvent) => void
+  isDraggingRef: React.RefObject<boolean>
 }) {
   const colors = useColors()
   const gitOpsMode = useThemeStore((s) => s.gitOpsMode)
-  const dragControls = useDragControls()
-  const dragOrigin = useRef({ x: 0, y: 0 })
-  const isDragging = useRef(false)
 
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const displayTitle = tab.customTitle || tab.title
@@ -2152,66 +2172,43 @@ function TabPill({
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button === 1) { e.preventDefault(); if (!tab.worktree && !isRunning && !tab.bashExecuting) onClose(); return }
     if (e.button !== 0) return
-    dragOrigin.current = { x: e.clientX, y: e.clientY }
-    isDragging.current = false
-
-    const onPointerMove = (moveEvent: PointerEvent) => {
-      const dx = moveEvent.clientX - dragOrigin.current.x
-      const dy = moveEvent.clientY - dragOrigin.current.y
-      if (!isDragging.current && Math.sqrt(dx * dx + dy * dy) >= DRAG_THRESHOLD) {
-        isDragging.current = true
-        dragControls.start(e.nativeEvent)
-      }
-    }
-    const onPointerUp = () => {
-      window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerup', onPointerUp)
-      isDragging.current = false
-    }
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-  }, [dragControls, onClose])
+    onDragPointerDown(tab.id, e)
+  }, [onClose, onDragPointerDown, tab.id])
 
   return (
-    <Reorder.Item
-      key={tab.id}
-      value={tab}
-      dragListener={false}
-      dragControls={dragControls}
+    <div
       ref={(el: HTMLDivElement | null) => {
         if (el) tabRefs.current.set(tab.id, el)
         else tabRefs.current.delete(tab.id)
       }}
-      initial={false}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.15 }}
-      layout
-      onClick={() => { if (isDragging.current) return; onCancelClose(); onSelect() }}
-      onPointerDown={onPointerDown}
-      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onOpenTabMenu(tab.id, { x: e.clientX, y: e.clientY }) }}
-      className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ${
-        hasCustomTitle || isEditing || isConfirmingClose ? '' : 'max-w-[160px]'
-      } ${waitingBorder ? 'animate-border-pulse' : ''}`}
-      style={{
-        '--border-waiting': waitingBorder ?? 'transparent',
-        '--border-default': tab.pillColor
-          ? `${tab.pillColor}${isActive ? '40' : '25'}`
-          : isActive ? colors.tabActiveBorder : 'transparent',
-        background: tab.pillColor
-          ? `${tab.pillColor}${isActive ? '18' : '10'}`
-          : isActive ? colors.tabActive : 'transparent',
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: waitingBorder
-          ?? (tab.pillColor ? `${tab.pillColor}${isActive ? '40' : '25'}` : isActive ? colors.tabActiveBorder : 'transparent'),
-        borderRadius: 9999,
-        padding: '4px 10px',
-        fontSize: 12,
-        color: isActive ? colors.textPrimary : colors.textTertiary,
-        fontWeight: isActive ? 500 : 400,
-      } as React.CSSProperties}
+      style={{ flexShrink: 0 }}
     >
+      <div
+        onClick={() => { if (isDraggingRef.current) return; onCancelClose(); onSelect() }}
+        onPointerDown={onPointerDown}
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onOpenTabMenu(tab.id, { x: e.clientX, y: e.clientY }) }}
+        className={`group flex items-center gap-1.5 cursor-pointer select-none ${
+          isEditing || isConfirmingClose ? '' : 'max-w-[240px]'
+        } ${waitingBorder ? 'animate-border-pulse' : ''}`}
+        style={{
+          '--border-waiting': waitingBorder ?? 'transparent',
+          '--border-default': tab.pillColor
+            ? `${tab.pillColor}${isActive ? '40' : '25'}`
+            : isActive ? colors.tabActiveBorder : 'transparent',
+          background: tab.pillColor
+            ? `${tab.pillColor}${isActive ? '18' : '10'}`
+            : isActive ? colors.tabActive : 'transparent',
+          borderWidth: 1,
+          borderStyle: 'solid',
+          borderColor: waitingBorder
+            ?? (tab.pillColor ? `${tab.pillColor}${isActive ? '40' : '25'}` : isActive ? colors.tabActiveBorder : 'transparent'),
+          borderRadius: 9999,
+          padding: '4px 10px',
+          fontSize: 12,
+          color: isActive ? colors.textPrimary : colors.textTertiary,
+          fontWeight: isActive ? 500 : 400,
+        } as React.CSSProperties}
+      >
       <span
         className="flex-shrink-0 inline-flex"
         onContextMenu={(e) => {
@@ -2261,7 +2258,7 @@ function TabPill({
         />
       ) : (
         <span
-          className={hasCustomTitle ? 'flex-1 whitespace-nowrap' : 'truncate flex-1'}
+          className="truncate flex-1"
           onContextMenu={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -2302,7 +2299,8 @@ function TabPill({
           <X size={10} />
         </button>
       )}
-    </Reorder.Item>
+      </div>
+    </div>
   )
 }
 
@@ -2339,6 +2337,53 @@ export function TabStrip() {
   const plusButtonRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const groupHeaderRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+
+  // Manual drag-to-reorder for flat tab mode
+  const flatReorder = useManualReorder({
+    items: tabs,
+    keyFn: (t) => t.id,
+    itemRefs: tabRefs,
+    onReorder: reorderTabs,
+  })
+
+  // Manual drag-to-reorder for group headers
+  const groupIds = groups.map((g) => g.groupId)
+  const groupReorder = useManualReorder({
+    items: groupIds,
+    keyFn: (id) => id,
+    itemRefs: groupHeaderRefs,
+    onReorder: (reorderedIds) => {
+      if (groupMode === 'manual') {
+        const reorderedTabGroups = reorderedIds.map((id) => {
+          const stored = useThemeStore.getState().tabGroups.find((sg) => sg.id === id)
+          const view = groups.find((g) => g.groupId === id)
+          return stored || { id, label: view?.label || id, isDefault: view?.isDefault || false, order: 0, collapsed: view?.collapsed || false }
+        })
+        useThemeStore.getState().reorderTabGroups(reorderedTabGroups)
+      } else if (groupMode === 'auto') {
+        const dirs = reorderedIds.map((id) => id.replace('auto-', ''))
+        useThemeStore.getState().setAutoGroupOrder(dirs)
+      }
+    },
+  })
+
+  // Manual drag-to-reorder for ungrouped tabs
+  const ungroupedReorder = useManualReorder({
+    items: ungrouped,
+    keyFn: (t) => t.id,
+    itemRefs: tabRefs,
+    onReorder: (reordered) => {
+      const ungroupedOrder = new Map(reordered.map((t, i) => [t.id, i]))
+      const result = [...tabs].sort((a, b) => {
+        const aIdx = ungroupedOrder.get(a.id)
+        const bIdx = ungroupedOrder.get(b.id)
+        if (aIdx != null && bIdx != null) return aIdx - bIdx
+        return 0
+      })
+      reorderTabs(result)
+    },
+  })
 
   useEffect(() => {
     const id = dirMenuTabId || tabMenuId
@@ -2358,7 +2403,7 @@ export function TabStrip() {
   useEffect(() => {
     const handler = () => {
       if (!plusButtonRef.current) return
-      const rect = plusButtonRef.current.getBoundingClientRect()
+      const rect = zoomRect(plusButtonRef.current.getBoundingClientRect())
       setRecentDirsMenu({ x: rect.left, y: rect.bottom })
     }
     window.addEventListener('coda:open-recent-dirs', handler)
@@ -2409,7 +2454,7 @@ export function TabStrip() {
           }}
         >
           {(() => {
-            const renderTabPill = (tab: TabState) => (
+            const renderTabPill = (tab: TabState, reorder: { onItemPointerDown: (key: string, e: React.PointerEvent) => void; isDraggingRef: React.RefObject<boolean> }) => (
               <TabPill
                 key={tab.id}
                 tab={tab}
@@ -2432,83 +2477,47 @@ export function TabStrip() {
                 dirMenuTabId={dirMenuTabId}
                 onOpenTabMenu={(tabId, anchor) => { setTabMenuId(tabId); setTabMenuAnchor(anchor) }}
                 tabRefs={tabRefs}
+                onDragPointerDown={reorder.onItemPointerDown}
+                isDraggingRef={reorder.isDraggingRef}
               />
             )
 
             if (groupMode === 'off') {
               // Original flat tab rendering
               return (
-                <Reorder.Group
-                  as="div"
-                  axis="x"
-                  values={tabs}
-                  onReorder={reorderTabs}
-                  className="flex items-center gap-1"
-                  layoutScroll
-                >
-                  {tabs.map(renderTabPill)}
-                </Reorder.Group>
+                <div className="flex items-center gap-1">
+                  {tabs.map((tab) => renderTabPill(tab, flatReorder))}
+                </div>
               )
             }
 
-            // Grouped rendering: groups in one Reorder.Group, ungrouped tabs in another
-            const groupIds = groups.map((g) => g.groupId)
-
+            // Grouped rendering: group headers + ungrouped tabs
             return (
               <div className="flex items-center gap-1">
-                <Reorder.Group
-                  as="div"
-                  axis="x"
-                  values={groupIds}
-                  onReorder={(reorderedIds) => {
-                    if (groupMode === 'manual') {
-                      const reorderedTabGroups = reorderedIds.map((id) => {
-                        const stored = useThemeStore.getState().tabGroups.find((sg) => sg.id === id)
-                        const view = groups.find((g) => g.groupId === id)
-                        return stored || { id, label: view?.label || id, isDefault: view?.isDefault || false, order: 0, collapsed: view?.collapsed || false }
-                      })
-                      useThemeStore.getState().reorderTabGroups(reorderedTabGroups)
-                    } else if (groupMode === 'auto') {
-                      const dirs = reorderedIds.map((id) => id.replace('auto-', ''))
-                      useThemeStore.getState().setAutoGroupOrder(dirs)
-                    }
-                  }}
-                  className="flex items-center gap-1"
-                  layoutScroll
-                >
-                  {groups.map((group) => {
-                    const isGroupActive = group.tabs.some((t) => t.id === activeTabId)
-                    return (
-                      <Reorder.Item key={group.groupId} value={group.groupId} as="div" style={{ listStyle: 'none', flexShrink: 0 }}>
-                        <GroupPill
-                          group={group}
-                          isActive={isGroupActive}
-                          onSelect={(tabId) => selectTab(tabId)}
-                        />
-                      </Reorder.Item>
-                    )
-                  })}
-                </Reorder.Group>
+                {groups.map((group) => {
+                  const isGroupActive = group.tabs.some((t) => t.id === activeTabId)
+                  return (
+                    <div
+                      key={group.groupId}
+                      ref={(el: HTMLDivElement | null) => {
+                        if (el) groupHeaderRefs.current.set(group.groupId, el)
+                        else groupHeaderRefs.current.delete(group.groupId)
+                      }}
+                      onPointerDown={(e) => groupReorder.onItemPointerDown(group.groupId, e)}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <GroupPill
+                        group={group}
+                        isActive={isGroupActive}
+                        onSelect={(tabId) => selectTab(tabId)}
+                      />
+                    </div>
+                  )
+                })}
                 {ungrouped.length > 0 && (
-                  <Reorder.Group
-                    as="div"
-                    axis="x"
-                    values={ungrouped}
-                    onReorder={(reordered) => {
-                      const ungroupedOrder = new Map(reordered.map((t, i) => [t.id, i]))
-                      const result = [...tabs].sort((a, b) => {
-                        const aIdx = ungroupedOrder.get(a.id)
-                        const bIdx = ungroupedOrder.get(b.id)
-                        if (aIdx != null && bIdx != null) return aIdx - bIdx
-                        return 0
-                      })
-                      reorderTabs(result)
-                    }}
-                    className="flex items-center gap-1"
-                    layoutScroll
-                  >
-                    {ungrouped.map(renderTabPill)}
-                  </Reorder.Group>
+                  <div className="flex items-center gap-1">
+                    {ungrouped.map((tab) => renderTabPill(tab, ungroupedReorder))}
+                  </div>
                 )}
               </div>
             )

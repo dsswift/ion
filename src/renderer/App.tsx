@@ -212,6 +212,7 @@ export default function App() {
                       worktree: restoredWorktree,
                       historicalSessionIds: st.historicalSessionIds || [],
                       groupId: st.groupId || null,
+                      contextTokens: st.contextTokens || null,
                       queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                       // If worktree is valid, restore workingDirectory to worktree path
                       // If worktree was cleaned up, fall back to original repo path
@@ -280,6 +281,7 @@ export default function App() {
                       worktree: st.worktree || null,
                       historicalSessionIds: st.historicalSessionIds || [],
                       groupId: st.groupId || null,
+                      contextTokens: st.contextTokens || null,
                       queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                     }
                   : t
@@ -639,6 +641,23 @@ export default function App() {
       if (e.metaKey && e.key === 'r') {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('coda:open-recent-dirs'))
+      }
+      if (e.metaKey && e.key === 'y') {
+        e.preventDefault()
+        const s = useSessionStore.getState()
+        const id = s.activeTabId
+        if (s.terminalTallTabId === id) {
+          s.toggleTerminalTall(id)
+        } else if (s.tallViewTabId === id) {
+          s.toggleTallView(id)
+        } else {
+          const inTerminal = !!document.activeElement?.closest('.xterm')
+          if (inTerminal && s.terminalOpenTabIds.has(id)) {
+            s.toggleTerminalTall(id)
+          } else {
+            s.toggleTallView(id)
+          }
+        }
       }
       if (e.metaKey && e.key === ',') {
         e.preventDefault()

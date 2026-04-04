@@ -35,6 +35,43 @@ This launches the installer as a **detached background process** (via `commands/
 - `npm run dist` -- builds to `dist/` then packages into `release/mac-arm64/CODA.app`
 - `make install` -- full build + package + install to `/Applications` + relaunch (user-initiated only)
 
+### iOS companion app (`ios/`)
+
+The iOS app is built and run from Xcode, not from `make install`. When only iOS files changed (`ios/**/*.swift`), the user rebuilds via Xcode's run button -- no `make install` needed. Only mention `make install` when desktop code (`src/`) was modified.
+
+**iOS build verification (agent responsibility):** When iOS files are modified (`ios/**/*.swift`, `ios/**/*.pbxproj`), verify the build compiles before handing off:
+
+```bash
+xcodebuild -project CODARemote.xcodeproj -scheme CODARemote -destination 'generic/platform=iOS' build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)"
+```
+
+If SPM dependencies were added or changed, resolve them first:
+
+```bash
+xcodebuild -project CODARemote.xcodeproj -scheme CODARemote -destination 'generic/platform=iOS' -resolvePackageDependencies
+```
+
+Both commands run from the `ios/` directory. Pre-existing warnings are expected (Swift 6 Sendable); only errors block the build.
+
+### Relay server (`relay/`)
+
+Go WebSocket relay for iOS remote connections. Deployed to the `coda-relay` namespace on the home lab k8s cluster.
+
+**Build and deploy:**
+```bash
+make relay                    # docker build --platform linux/amd64
+docker tag coda-relay:latest spraguehouse.azurecr.io/coda/relay:latest
+az acr login --name spraguehouse
+docker push spraguehouse.azurecr.io/coda/relay:latest
+```
+
+ArgoCD manages the deployment. For immediate rollout, patch the deployment:
+```bash
+kubectl set image deployment/coda-relay -n coda-relay relay=spraguehouse.azurecr.io/coda/relay:latest
+```
+
+**Local dev:** `make relay-local` runs the relay natively with a random API key and mDNS.
+
 ## Transparent Window + Click-Through
 
 The app uses `setIgnoreMouseEvents` with `{ forward: true }` for OS-level click-through on transparent regions. The renderer toggles this on `mousemove` by checking if the cursor is over a `[data-coda-ui]` element. All interactive UI elements must be descendants of a `data-coda-ui` container.

@@ -136,8 +136,12 @@ function isSafeBashCommand(command: unknown): boolean {
   return true
 }
 
-// Regex matcher for the hook config — intercept dangerous tools + external MCP tools.
-const HOOK_MATCHER = `^(${PERMISSION_REQUIRED_TOOLS.join('|')}|mcp__.*)$`
+// Meta-tools that need hook interception so iOS gets structured toolInput
+// for card rendering (questions array, plan content, etc.).
+const META_TOOLS = ['AskUserQuestion', 'ExitPlanMode']
+
+// Regex matcher for the hook config — intercept dangerous tools, meta-tools, + external MCP tools.
+const HOOK_MATCHER = `^(${[...PERMISSION_REQUIRED_TOOLS, ...META_TOOLS].join('|')}|mcp__.*)$`
 
 // Fields in tool_input that should be redacted in logs
 const SENSITIVE_FIELD_RE = /token|password|secret|key|auth|credential|api.?key/i

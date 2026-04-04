@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
-import type { NormalizedEvent } from '../../shared/types'
+import { IPC, type NormalizedEvent } from '../../shared/types'
 
 /**
  * Subscribes to all ControlPlane events via IPC and routes them
@@ -73,11 +73,71 @@ export function useClaudeEvents() {
       }
     })
 
+    // Remote user messages (sent from iOS) — submit through the renderer's normal flow
+    // so the tab's working directory, session ID, model, and addDirs are used automatically.
+    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number }) => {
+      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt)
+    }
+    window.coda.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
+
+    // Remote bash command (from iOS ! prefix) — execute through the renderer's normal bash flow
+    const remoteBashCommandHandler = (_e: any, data: { tabId: string; command: string }) => {
+      useSessionStore.getState().submitRemoteBash(data.tabId, data.command)
+    }
+    window.coda.on(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
+
+    // Remote permission mode change (from iOS toggle) — update store without calling back to main
+    const remoteSetModeHandler = (_e: any, data: { tabId: string; mode: 'auto' | 'plan' }) => {
+      useSessionStore.setState((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === data.tabId ? { ...t, permissionMode: data.mode } : t
+        ),
+      }))
+    }
+    window.coda.on(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
+
+    // Remote close tab (from iOS swipe-to-delete)
+    const remoteCloseTabHandler = (_e: any, tabId: string) => {
+      const store = useSessionStore.getState()
+      const pane = store.terminalPanes.get(tabId)
+      if (pane) {
+        for (const inst of pane.instances) {
+          window.coda.terminalDestroy?.(`${tabId}:${inst.id}`)
+        }
+      }
+      const tabs = store.tabs.filter((t) => t.id !== tabId)
+      const panes = new Map(store.terminalPanes)
+      panes.delete(tabId)
+      const selected = store.selectedTabId === tabId
+        ? (tabs[0]?.id ?? null)
+        : store.selectedTabId
+      useSessionStore.setState({ tabs, terminalPanes: panes, selectedTabId: selected })
+    }
+    window.coda.on(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
+
+    // Remote rename tab (from iOS)
+    const remoteRenameTabHandler = (_e: any, tabId: string, customTitle: string | null) => {
+      useSessionStore.getState().renameTab(tabId, customTitle)
+    }
+    window.coda.on(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
+
+    // Remote rename terminal instance (from iOS)
+    const remoteRenameTermInstHandler = (_e: any, tabId: string, instanceId: string, label: string) => {
+      useSessionStore.getState().renameTerminalInstance(tabId, instanceId, label)
+    }
+    window.coda.on(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
+
     return () => {
       unsubEvent()
       unsubStatus()
       unsubError()
       unsubSkill()
+      window.coda.off(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
+      window.coda.off(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
+      window.coda.off(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
+      window.coda.off(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
+      window.coda.off(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
+      window.coda.off(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
       chunkBufferRef.current.clear()
     }

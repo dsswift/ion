@@ -200,8 +200,8 @@ export interface TabState {
   hasChosenDirectory: boolean
   /** Extra directories accessible via --add-dir (session-preserving) */
   additionalDirs: string[]
-  /** Per-tab permission mode: 'ask' shows cards, 'auto' auto-approves, 'plan' uses CLI plan mode */
-  permissionMode: 'ask' | 'auto' | 'plan'
+  /** Per-tab permission mode: 'auto' auto-approves, 'plan' uses CLI plan mode */
+  permissionMode: 'auto' | 'plan'
   /** Pending bash command results to send as context with next prompt */
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
   /** Whether a bash command is currently executing in this tab */
@@ -289,6 +289,8 @@ export interface RunOptions {
   permissionModeCli?: string
   /** Extra context appended to the system prompt (additive, not replacement) */
   appendSystemPrompt?: string
+  /** Origin of the prompt — 'remote' skips iOS forwarding (already echoed) */
+  source?: 'desktop' | 'remote'
 }
 
 // ─── Control Plane Types ───
@@ -311,6 +313,7 @@ export interface HealthReport {
     activeRequestId: string | null
     claudeSessionId: string | null
     alive: boolean
+    lastActivityAt: number
   }>
   queueDepth: number
 }
@@ -536,6 +539,31 @@ export const IPC = {
   EXECUTE_BASH: 'coda:execute-bash',
   CANCEL_BASH: 'coda:cancel-bash',
 
+  // Remote commands (main → renderer, for commands sent from iOS)
+  REMOTE_USER_MESSAGE: 'coda:remote-user-message',
+  REMOTE_BASH_COMMAND: 'coda:remote-bash-command',
+  REMOTE_SET_PERMISSION_MODE: 'coda:remote-set-permission-mode',
+  REMOTE_CLOSE_TAB: 'coda:remote-close-tab',
+  REMOTE_RENAME_TAB: 'coda:remote-rename-tab',
+  REMOTE_RENAME_TERMINAL_INSTANCE: 'coda:remote-rename-terminal-instance',
+  // Remote send (renderer → main → iOS, for forwarding results to remote)
+  REMOTE_SEND: 'coda:remote-send',
+  REMOTE_SET_LAN_DISABLED: 'coda:remote-set-lan-disabled',
+
+  // Remote control
+  REMOTE_GET_STATE: 'coda:remote-get-state',
+  REMOTE_START_PAIRING: 'coda:remote-start-pairing',
+  REMOTE_CANCEL_PAIRING: 'coda:remote-cancel-pairing',
+  REMOTE_REVOKE_DEVICE: 'coda:remote-revoke-device',
+  REMOTE_STATE_CHANGED: 'coda:remote-state-changed',
+  REMOTE_DISCOVER_RELAYS: 'coda:remote-discover-relays',
+  REMOTE_STOP_DISCOVERY: 'coda:remote-stop-discovery',
+  REMOTE_TEST_RELAY: 'coda:remote-test-relay',
+  REMOTE_RELAYS_CHANGED: 'coda:remote-relays-changed',
+  REMOTE_DEVICE_PAIRED: 'coda:remote-device-paired',
+  REMOTE_DEVICE_REVOKED: 'coda:remote-device-revoked',
+  REMOTE_GET_MESSAGES: 'coda:remote-get-messages',
+
   // Legacy (kept for backward compat during migration)
   STREAM_EVENT: 'coda:stream-event',
   RUN_COMPLETE: 'coda:run-complete',
@@ -579,13 +607,14 @@ export interface PersistedTab {
   workingDirectory: string
   hasChosenDirectory: boolean
   additionalDirs: string[]
-  permissionMode: 'ask' | 'auto' | 'plan'
+  permissionMode: 'auto' | 'plan'
   bashResults?: Array<{ command: string; stdout: string; stderr: string }>
   pillColor?: string | null
   pillIcon?: string | null
   forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
   groupId?: string | null
+  contextTokens?: number | null
   queuedPrompts?: string[]
   isTerminalOnly?: boolean
   terminalInstances?: TerminalInstance[]
@@ -718,3 +747,23 @@ export interface FsEntry {
   size: number
   modifiedMs: number
 }
+
+// ─── Remote Control Types ───
+
+export interface RemoteSettings {
+  remoteEnabled: boolean
+  relayUrl: string
+  relayApiKey: string
+  lanServerPort: number
+  pairedDevices: RemotePairedDevice[]
+}
+
+export interface RemotePairedDevice {
+  id: string
+  name: string
+  pairedAt: string
+  lastSeen: string | null
+  channelId: string
+}
+
+export type RemoteTransportState = 'disconnected' | 'relay_only' | 'lan_preferred'

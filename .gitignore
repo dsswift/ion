@@ -36,5 +36,15 @@ Desktop.ini
 # Temporary files
 *.tmp
 *.bak
+.temp/
 
 specs/
+
+# Relay compiled binary
+relay/relay
+
+# iOS build artifacts
+ios/DerivedData/
+ios/build/
+
+.analysis/

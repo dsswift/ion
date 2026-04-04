@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync, createReadStream, readFileSync, writ
 import { unlink } from 'fs/promises'
 import { createInterface } from 'readline'
 import { homedir } from 'os'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
 import { execFile as execFileCb, spawn, type ChildProcess } from 'child_process'
 import { promisify } from 'util'
 import { ControlPlane } from './claude/control-plane'
@@ -19,6 +19,31 @@ import { TerminalManager } from './terminal-manager'
 import { isValidProjectPath, isValidSessionId, validateExternalUrl, buildTerminalCommand } from './ipc-validation'
 
 const gitExec = promisify(execFileCb)
+
+// Find plan file path from messages -- checks ExitPlanMode toolInput first,
+// then falls back to finding last Write to ~/.claude/plans/
+function findPlanFilePath(messages: Array<{ toolName?: string; toolInput?: string }>): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.toolName === 'ExitPlanMode' && m.toolInput) {
+      try {
+        const input = JSON.parse(m.toolInput)
+        if (input.planFilePath) return input.planFilePath as string
+      } catch {}
+    }
+  }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.toolName === 'Write' && m.toolInput) {
+      try {
+        const input = JSON.parse(m.toolInput)
+        const fp = input.file_path as string
+        if (fp && /\/\.claude\/plans\/[^/]+\.md$/.test(fp)) return fp
+      } catch {}
+    }
+  }
+  return null
+}
 
 const DEBUG_MODE = process.env.CODA_DEBUG === '1'
 const SPACES_DEBUG = DEBUG_MODE || process.env.CODA_SPACES_DEBUG === '1'
@@ -41,6 +66,33 @@ const controlPlane = new ControlPlane(INTERACTIVE_PTY)
 // Forward-declared — initialized after broadcast() is defined
 let terminalManager: TerminalManager
 
+// ─── Terminal output batching for remote transport ───
+const terminalOutputAccumulator = new Map<string, string>()
+let terminalOutputFlushTimer: ReturnType<typeof setInterval> | null = null
+
+function startTerminalOutputFlushing(): void {
+  if (terminalOutputFlushTimer) return
+  terminalOutputFlushTimer = setInterval(() => {
+    if (terminalOutputAccumulator.size === 0) return
+    for (const [key, data] of terminalOutputAccumulator) {
+      const sep = key.indexOf(':')
+      if (sep < 0) continue
+      const tabId = key.substring(0, sep)
+      const instanceId = key.substring(sep + 1)
+      remoteTransport?.send({ type: 'terminal_output', tabId, instanceId, data })
+    }
+    terminalOutputAccumulator.clear()
+  }, 16)
+}
+
+function stopTerminalOutputFlushing(): void {
+  if (terminalOutputFlushTimer) {
+    clearInterval(terminalOutputFlushTimer)
+    terminalOutputFlushTimer = null
+  }
+  terminalOutputAccumulator.clear()
+}
+
 // ─── File watcher state ───
 const fileWatchers = new Map<string, { watcher: ReturnType<typeof watch>; refCount: number; debounceTimer: ReturnType<typeof setTimeout> | null }>()
 const recentlyWrittenPaths = new Set<string>()
@@ -54,6 +106,21 @@ const recentlyWrittenPaths = new Set<string>()
 function broadcast(channel: string, ...args: unknown[]): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, ...args)
+  }
+  // Forward terminal output/exit to remote transport
+  if (channel === IPC.TERMINAL_INCOMING && remoteTransport) {
+    const key = args[0] as string
+    const data = args[1] as string
+    terminalOutputAccumulator.set(key, (terminalOutputAccumulator.get(key) || '') + data)
+  } else if (channel === IPC.TERMINAL_EXIT && remoteTransport) {
+    const key = args[0] as string
+    const exitCode = args[1] as number
+    const sep = key.indexOf(':')
+    if (sep >= 0) {
+      const tabId = key.substring(0, sep)
+      const instanceId = key.substring(sep + 1)
+      remoteTransport.send({ type: 'terminal_exit', tabId, instanceId, exitCode })
+    }
   }
 }
 
@@ -397,6 +464,17 @@ ipcMain.handle(IPC.START, async () => {
 ipcMain.handle(IPC.CREATE_TAB, () => {
   const tabId = controlPlane.createTab()
   log(`IPC CREATE_TAB → ${tabId}`)
+
+  // Forward to remote transport (async, don't block the return)
+  if (remoteTransport) {
+    getRemoteTabStates().then(tabStates => {
+      const newTab = tabStates.find(t => t.id === tabId)
+      if (newTab) {
+        remoteTransport?.send({ type: 'tab_created', tab: newTab })
+      }
+    })
+  }
+
   return { tabId }
 })
 
@@ -429,6 +507,22 @@ ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId
   if (!controlPlane.hasTab(tabId)) {
     log(`PROMPT: tab ${tabId} not found — auto-registering`)
     controlPlane.ensureTab(tabId)
+  }
+
+  // Forward user prompt to iOS as a structured message.
+  // Skip if the prompt originated from iOS (already echoed in the remote handler).
+  if (remoteTransport && options.source !== 'remote') {
+    remoteTransport.send({
+      type: 'message_added',
+      tabId,
+      message: {
+        id: requestId,
+        role: 'user',
+        content: options.prompt,
+        timestamp: Date.now(),
+        source: 'desktop',
+      },
+    })
   }
 
   try {
@@ -467,11 +561,19 @@ ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
   log(`IPC CLOSE_TAB: ${tabId}`)
   controlPlane.closeTab(tabId)
   terminalManager.destroyByPrefix(`${tabId}:`)
+
+  // Forward to remote transport
+  if (remoteTransport) {
+    remoteTransport.send({ type: 'tab_closed', tabId })
+  }
+
+  // Clean up active assistant message tracker
+  activeAssistantMessages.delete(tabId)
 })
 
 ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string }) => {
   const { tabId, mode } = payload
-  if (mode !== 'ask' && mode !== 'auto' && mode !== 'plan') {
+  if (mode !== 'auto' && mode !== 'plan') {
     log(`IPC SET_PERMISSION_MODE: invalid mode "${mode}" — ignoring`)
     return
   }
@@ -520,6 +622,11 @@ ipcMain.on(IPC.CANCEL_BASH, (_event, id: string) => {
     log(`IPC CANCEL_BASH [${id}]: sending SIGINT`)
     child.kill('SIGINT')
   }
+})
+
+// Forward a remote event from the renderer to iOS
+ipcMain.on(IPC.REMOTE_SEND, (_event, remoteEvent: any) => {
+  remoteTransport?.send(remoteEvent)
 })
 
 // ─── Fonts ───
@@ -1786,21 +1893,18 @@ const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: f
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {
     if (existsSync(SETTINGS_FILE)) {
-      return { ...SETTINGS_DEFAULTS, ...JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) }
+      const settings = { ...SETTINGS_DEFAULTS, ...JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) }
+      log(`[Settings] loaded: remoteEnabled=${settings.remoteEnabled} remoteTransport=${!!remoteTransport}`)
+      // Initialize remote transport from persisted settings on first load.
+      if (settings.remoteEnabled && !remoteTransport) {
+        initRemoteTransport(settings)
+      }
+      return settings
     }
   } catch (err) {
     log(`Failed to load settings: ${err}`)
   }
   return SETTINGS_DEFAULTS
-})
-
-ipcMain.handle(IPC.SAVE_SETTINGS, (_event, data: Record<string, unknown>) => {
-  try {
-    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2))
-  } catch (err) {
-    log(`Failed to save settings: ${err}`)
-  }
 })
 
 // ─── Tab Persistence ───
@@ -1895,6 +1999,1231 @@ ipcMain.handle(IPC.LOAD_SESSION_CHAINS, () => {
 
 ipcMain.handle(IPC.SAVE_SESSION_CHAINS, (_event, data: { chains: Record<string, string[]>; reverse: Record<string, string> }) => {
   saveSessionChains(data)
+})
+
+// ─── Remote Control ───
+
+import { RemoteTransport } from './remote/transport'
+import { PairingManager } from './remote/pairing'
+import { normalizedToRemote } from './remote/protocol'
+import type { RemoteCommand, RemoteTabState, RemoteMessage, PairedDevice } from './remote/protocol'
+import { RelayDiscovery } from './remote/discovery'
+import type { DiscoveredRelay } from './remote/discovery'
+import { deriveChannelId, generateKeyPair, deriveSharedSecret } from './remote/crypto'
+
+let remoteTransport: RemoteTransport | null = null
+let tabSnapshotInterval: ReturnType<typeof setInterval> | null = null
+const pairingManager = new PairingManager()
+const relayDiscovery = new RelayDiscovery()
+
+// Track active assistant messages per tab for structured message forwarding
+const activeAssistantMessages = new Map<string, { id: string; content: string }>()
+// Track last message preview per tab for RemoteTabState
+const lastMessagePreview = new Map<string, string>()
+
+function startTabSnapshotPolling(): void {
+  stopTabSnapshotPolling()
+  tabSnapshotInterval = setInterval(async () => {
+    if (!remoteTransport || remoteTransport.state === 'disconnected') return
+    try {
+      const tabs = await getRemoteTabStates()
+      const settings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+      const recentDirectories: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
+      remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
+    } catch {}
+  }, 5_000)
+}
+
+function stopTabSnapshotPolling(): void {
+  if (tabSnapshotInterval) {
+    clearInterval(tabSnapshotInterval)
+    tabSnapshotInterval = null
+  }
+}
+
+async function getRemoteTabStates(): Promise<RemoteTabState[]> {
+  // Pull tab data directly from the renderer's session store -- this is the
+  // source of truth for tab IDs, titles, and messages.
+  let rendererTabs: any[] = []
+  try {
+    rendererTabs = await mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        try {
+          var store = window.__CODA_SESSION_STORE__;
+          if (!store) return [];
+          var state = store.getState();
+          var panes = state.terminalPanes;
+          return state.tabs.map(function(t) {
+            var msgs = t.messages || [];
+            var lastMsg = null;
+            var lastTs = 0;
+            for (var i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].role === 'assistant' || msgs[i].role === 'user') {
+                lastMsg = (msgs[i].content || '').substring(0, 100);
+                lastTs = msgs[i].timestamp || 0;
+                break;
+              }
+            }
+            // Merge permissionDenied tools into permissionQueue so iOS can
+            // show correct status colors for ExitPlanMode/AskUserQuestion
+            // (desktop auto-allows these, removing them from the real queue,
+            // but iOS needs them for status indicator logic).
+            // Skip for terminal statuses -- stale denials should not produce
+            // green/blue indicators on completed/failed/dead tabs.
+            var queue = (t.permissionQueue || []).slice();
+            if (t.status !== 'failed' && t.status !== 'dead') {
+              var denied = t.permissionDenied && t.permissionDenied.tools;
+              if (denied && denied.length > 0) {
+                for (var d = 0; d < denied.length; d++) {
+                  // For completed tabs, only include plan/question tools
+                  if (t.status === 'completed' &&
+                      denied[d].toolName !== 'ExitPlanMode' &&
+                      denied[d].toolName !== 'AskUserQuestion') continue;
+                  queue.push({
+                    questionId: 'denied-' + denied[d].toolUseId,
+                    toolTitle: denied[d].toolName,
+                    options: [],
+                  });
+                }
+              }
+            }
+            // Extract terminal pane state for terminal tabs
+            var pane = panes && panes.get ? panes.get(t.id) : null;
+            var terminalInstances = undefined;
+            var activeTerminalInstanceId = undefined;
+            if (pane && pane.instances && pane.instances.length > 0) {
+              terminalInstances = pane.instances.map(function(inst) {
+                return { id: inst.id, label: inst.label || 'Shell', kind: inst.kind || 'user', readOnly: !!inst.readOnly, cwd: inst.cwd || t.workingDirectory };
+              });
+              activeTerminalInstanceId = pane.activeInstanceId || pane.instances[0].id;
+            }
+            return {
+              id: t.id,
+              title: t.title,
+              customTitle: t.customTitle,
+              status: t.status,
+              workingDirectory: t.workingDirectory,
+              permissionMode: t.permissionMode,
+              permissionQueue: queue,
+              contextTokens: t.contextTokens,
+              messageCount: msgs.length,
+              queuedPrompts: t.queuedPrompts || [],
+              isTerminalOnly: t.isTerminalOnly || undefined,
+              terminalInstances: terminalInstances,
+              activeTerminalInstanceId: activeTerminalInstanceId,
+              lastMessageContent: lastMsg,
+              lastActivityTs: lastTs,
+            };
+          });
+        } catch(e) { return []; }
+      })()
+    `) || []
+  } catch {
+    rendererTabs = []
+  }
+
+  if (rendererTabs.length > 0) {
+    const mapped = rendererTabs
+      .map((t: any) => ({
+        id: t.id,
+        title: t.customTitle || t.title || 'Tab',
+        customTitle: t.customTitle || null,
+        status: t.status || 'idle',
+        workingDirectory: t.workingDirectory || '',
+        permissionMode: (t.permissionMode === 'plan' ? 'plan' : 'auto') as 'auto' | 'plan',
+        permissionQueue: (t.permissionQueue || []).map((p: any) => ({
+          questionId: p.questionId,
+          toolName: p.toolTitle || '',
+          toolInput: p.toolInput,
+          options: (p.options || []).map((o: any) => ({
+            id: o.optionId,
+            kind: o.kind,
+            label: o.label,
+          })),
+        })),
+        lastMessage: t.lastMessageContent || lastMessagePreview.get(t.id) || null,
+        contextTokens: t.contextTokens || null,
+        messageCount: t.messageCount || 0,
+        queuedPrompts: t.queuedPrompts || [],
+        isTerminalOnly: t.isTerminalOnly || undefined,
+        terminalInstances: t.terminalInstances || undefined,
+        activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
+        _activity: t.lastActivityTs || 0,
+      }))
+
+    // Sort: running/connecting tabs first, then by most recent activity
+    mapped.sort((a, b) => {
+      const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
+      const bRunning = b.status === 'running' || b.status === 'connecting' ? 1 : 0
+      if (aRunning !== bRunning) return bRunning - aRunning
+      return (b._activity as number) - (a._activity as number)
+    })
+
+    return mapped.map(({ _activity, ...rest }) => rest)
+  }
+
+  // Fallback: read from persisted tabs file if renderer is not available.
+  const health = controlPlane.getHealth()
+  const healthBySession: Record<string, typeof health.tabs[0]> = {}
+  for (const t of health.tabs) {
+    if (t.claudeSessionId) {
+      healthBySession[t.claudeSessionId] = t
+    }
+  }
+
+  let persistedTabs: any[] = []
+  try {
+    if (existsSync(TABS_FILE)) {
+      const parsed = JSON.parse(readFileSync(TABS_FILE, 'utf-8'))
+      persistedTabs = parsed.tabs || parsed
+      if (!Array.isArray(persistedTabs)) persistedTabs = []
+    }
+  } catch {}
+
+  const results: Array<RemoteTabState & { _activity: number }> = []
+
+  if (persistedTabs.length > 0) {
+    for (let i = 0; i < persistedTabs.length; i++) {
+      const t = persistedTabs[i]
+      const h = t.claudeSessionId ? healthBySession[t.claudeSessionId] : undefined
+      results.push({
+        id: h?.tabId || `persisted-${i}`,
+        title: t.customTitle || t.title || `Tab ${i + 1}`,
+        customTitle: t.customTitle || null,
+        status: (h?.status || 'idle') as TabStatus,
+        workingDirectory: t.workingDirectory || '',
+        permissionMode: (t.permissionMode === 'plan' ? 'plan' : 'auto') as 'auto' | 'plan',
+        permissionQueue: [],
+        lastMessage: null,
+        contextTokens: t.contextTokens || null,
+        messageCount: 0,
+        queuedPrompts: t.queuedPrompts || [],
+        _activity: h?.lastActivityAt || 0,
+      })
+    }
+  } else {
+    for (const t of health.tabs) {
+      results.push({
+        id: t.tabId,
+        title: t.tabId.substring(0, 8),
+        customTitle: null,
+        status: t.status,
+        workingDirectory: '',
+        permissionMode: 'auto' as const,
+        permissionQueue: [],
+        lastMessage: null,
+        contextTokens: null,
+        messageCount: 0,
+        queuedPrompts: [],
+        _activity: t.lastActivityAt || 0,
+      })
+    }
+  }
+
+  results.sort((a, b) => {
+    const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
+    const bRunning = b.status === 'running' || b.status === 'connecting' ? 1 : 0
+    if (aRunning !== bRunning) return bRunning - aRunning
+    return b._activity - a._activity
+  })
+
+  return results.map(({ _activity, ...rest }) => rest)
+}
+
+/** Remove a paired device from settings and notify the renderer. Does not stop the transport. */
+function revokeDeviceLocally(deviceId: string): void {
+  log(`[Remote] revoking device locally: ${deviceId}`)
+  try {
+    if (existsSync(SETTINGS_FILE)) {
+      const settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+      const devices = Array.isArray(settings.pairedDevices) ? settings.pairedDevices : []
+      settings.pairedDevices = devices.filter((d: any) => d.id !== deviceId)
+      writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2))
+    }
+  } catch (err) {
+    log(`[Remote] failed to remove device from settings: ${(err as Error).message}`)
+  }
+  broadcast(IPC.REMOTE_DEVICE_REVOKED, deviceId)
+}
+
+function initRemoteTransport(settings: Record<string, unknown>): void {
+  log(`[Remote] initRemoteTransport called: remoteEnabled=${settings.remoteEnabled} relayUrl=${settings.relayUrl}`)
+
+  if (remoteTransport) {
+    stopTabSnapshotPolling()
+    remoteTransport.stop()
+    remoteTransport = null
+  }
+
+  if (!settings.remoteEnabled) {
+    log('[Remote] remote not enabled, skipping')
+    return
+  }
+
+  const relayUrl = (settings.relayUrl as string) || ''
+  const relayApiKey = (settings.relayApiKey as string) || ''
+
+  const pairedDevices = settings.pairedDevices as any[] | undefined
+  log(`[Remote] pairedDevices=${pairedDevices?.length || 0} relay=${!!relayUrl}`)
+
+  remoteTransport = new RemoteTransport({
+    relayUrl,
+    relayApiKey,
+    lanPort: (settings.lanServerPort as number) || 19837,
+    getPairedDevice: (deviceId: string) => {
+      try {
+        const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const devices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
+        return devices.find((d: any) => d.id === deviceId) || null
+      } catch { return null }
+    },
+    getAllPairedDevices: () => {
+      try {
+        const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        return Array.isArray(s.pairedDevices) ? s.pairedDevices : []
+      } catch { return [] }
+    },
+  })
+
+  startTabSnapshotPolling()
+
+  remoteTransport.on('peer-connected', () => {
+    // Only send auto-snapshot if we have a paired device with a shared secret.
+    // Without a shared secret there's no authenticated peer, so sending
+    // tab state would leak data to any device on the LAN.
+    try {
+      const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+      const devices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
+      if (!devices.some((d: any) => d.sharedSecret)) {
+        log('[Remote] peer connected but no paired device with shared secret -- skipping snapshot')
+        return
+      }
+    } catch {}
+
+    log('[Remote] peer connected, sending auto-snapshot')
+    setTimeout(async () => {
+      const tabs = await getRemoteTabStates()
+
+      // Push current relay config so iOS always has the latest.
+      try {
+        const settings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const peerRecentDirs: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
+        remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories: peerRecentDirs })
+        const relayUrl = (settings.relayUrl as string) || ''
+        const relayApiKey = (settings.relayApiKey as string) || ''
+        if (relayUrl) {
+          remoteTransport?.send({ type: 'relay_config', relayUrl, relayApiKey })
+        }
+      } catch {}
+    }, 300)
+  })
+
+  remoteTransport.on('command', async (cmd: RemoteCommand, deviceId: string) => {
+    log(`remote command: ${cmd.type}`)
+    switch (cmd.type) {
+      case 'sync': {
+        const tabs = await getRemoteTabStates()
+        const syncSettings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
+        remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
+        // Send terminal snapshots for terminal-only tabs so iOS can restore scrollback
+        for (const tab of tabs) {
+          if (tab.isTerminalOnly && tab.terminalInstances && tab.terminalInstances.length > 0) {
+            try {
+              const escapedTabId = tab.id.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+              const buffers: Record<string, string> = await mainWindow?.webContents.executeJavaScript(`
+                (function() {
+                  try {
+                    var store = window.__CODA_SESSION_STORE__;
+                    if (!store) return {};
+                    var pane = store.getState().terminalPanes.get('${escapedTabId}');
+                    if (!pane) return {};
+                    var result = {};
+                    for (var i = 0; i < pane.instances.length; i++) {
+                      var key = '${escapedTabId}:' + pane.instances[i].id;
+                      var buf = window.__serializeTerminalBuffer ? window.__serializeTerminalBuffer(key) : null;
+                      if (buf) result[pane.instances[i].id] = buf;
+                    }
+                    return result;
+                  } catch(e) { return {}; }
+                })()
+              `) || {}
+              remoteTransport?.send({
+                type: 'terminal_snapshot',
+                tabId: tab.id,
+                instances: tab.terminalInstances,
+                activeInstanceId: tab.activeTerminalInstanceId || null,
+                buffers: Object.keys(buffers).length > 0 ? buffers : undefined,
+              })
+            } catch {}
+          }
+        }
+        break
+      }
+      case 'create_tab': {
+        let dir = cmd.workingDirectory
+        if (!dir) {
+          // Resolve desktop default from settings, fall back to home
+          const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+          dir = s.defaultBaseDirectory || homedir()
+        }
+        try {
+          const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const tabId = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return null;
+              return store.getState().createTabInDirectory('${escaped}', false, true);
+            })()
+          `)
+          if (tabId) {
+            setTimeout(async () => {
+              try {
+                const tabs = await getRemoteTabStates()
+                const newTab = tabs.find(t => t.id === tabId)
+                if (newTab) remoteTransport?.send({ type: 'tab_created', tab: newTab })
+              } catch {}
+            }, 500)
+          }
+        } catch (err) {
+          log(`create_tab error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'close_tab':
+        controlPlane.closeTab(cmd.tabId)
+        terminalManager.destroyByPrefix(`${cmd.tabId}:`)
+        broadcast(IPC.REMOTE_CLOSE_TAB, cmd.tabId)
+        remoteTransport?.send({ type: 'tab_closed', tabId: cmd.tabId })
+        break
+      case 'prompt': {
+        const reqId = `remote-${Date.now()}`
+        // Normalize iOS smart punctuation: em/en dashes back to double hyphens,
+        // smart quotes back to straight quotes (iOS autocorrects these)
+        const promptText = cmd.text.trim()
+          .replace(/\u2014/g, '--')   // em dash → --
+          .replace(/\u2013/g, '-')    // en dash → -
+          .replace(/[\u2018\u2019]/g, "'")  // smart single quotes
+          .replace(/[\u201C\u201D]/g, '"')  // smart double quotes
+
+        // Detect bash command (! prefix)
+        if (promptText.startsWith('!') && promptText.length > 1) {
+          const bashCmd = promptText.substring(1).trim()
+          if (!bashCmd) break
+
+          // Echo user message to iOS, then let the renderer handle execution.
+          // The renderer has the tab's working directory and uses the normal
+          // IPC.EXECUTE_BASH path; results are forwarded to iOS via REMOTE_SEND.
+          remoteTransport?.send({
+            type: 'message_added',
+            tabId: cmd.tabId,
+            message: { id: reqId, role: 'user', content: `! ${bashCmd}`, timestamp: Date.now(), source: 'remote' },
+          })
+          broadcast(IPC.REMOTE_BASH_COMMAND, { tabId: cmd.tabId, command: bashCmd })
+          break
+        }
+
+        // Regular prompt: echo to iOS immediately, then forward to renderer.
+        // The renderer's submitRemotePrompt() handles the actual submission
+        // through the normal IPC.PROMPT path (which has the tab's working
+        // directory, session ID, model, and addDirs already).
+        const now = Date.now()
+        remoteTransport?.send({
+          type: 'message_added',
+          tabId: cmd.tabId,
+          message: { id: reqId, role: 'user', content: promptText, timestamp: now, source: 'remote' },
+        })
+        broadcast(IPC.REMOTE_USER_MESSAGE, { tabId: cmd.tabId, requestId: reqId, prompt: promptText, timestamp: now })
+        break
+      }
+      case 'cancel':
+        controlPlane.cancelTab(cmd.tabId)
+        break
+      case 'respond_permission':
+        controlPlane.respondToPermission(cmd.tabId, cmd.questionId, cmd.optionId)
+        break
+      case 'set_permission_mode': {
+        const mode = cmd.mode
+        if (mode !== 'auto' && mode !== 'plan') {
+          log(`Remote set_permission_mode: invalid mode "${mode}"`)
+          break
+        }
+        log(`Remote set_permission_mode: tab=${cmd.tabId} mode=${mode}`)
+        controlPlane.setPermissionMode(cmd.tabId, mode)
+        broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId: cmd.tabId, mode })
+        break
+      }
+      case 'load_conversation': {
+        const PAGE_SIZE = 10
+        try {
+          if (!mainWindow) {
+            log(`load_conversation: mainWindow not available`)
+            remoteTransport?.send({ type: 'conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
+            break
+          }
+
+          const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedBefore = cmd.before ? cmd.before.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : ''
+
+          // Paginate inside executeJavaScript so only the page crosses IPC.
+          const result = await mainWindow.webContents.executeJavaScript(`
+            (function() {
+              try {
+                var store = window.__CODA_SESSION_STORE__;
+                if (!store) return { messages: [], hasMore: false };
+                var state = store.getState();
+                var tab = state.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+                if (!tab) return { messages: [], hasMore: false };
+                var all = tab.messages || [];
+                var total = all.length;
+                var pageSize = ${PAGE_SIZE};
+                var before = '${escapedBefore}';
+                var startIdx = 0;
+                var endIdx = total;
+                if (before) {
+                  var cursorIdx = all.findIndex(function(m) { return m.id === before; });
+                  if (cursorIdx > 0) {
+                    endIdx = cursorIdx;
+                    startIdx = Math.max(0, endIdx - pageSize);
+                  }
+                } else {
+                  startIdx = Math.max(0, total - pageSize);
+                }
+                var page = all.slice(startIdx, endIdx).map(function(m) {
+                  var content = m.content || '';
+                  if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
+                  else if (content.length > 10000) content = content.substring(0, 10000);
+                  return {
+                    id: m.id, role: m.role, content: content,
+                    toolName: m.toolName, toolInput: m.toolInput,
+                    toolId: m.toolId, toolStatus: m.toolStatus,
+                    timestamp: m.timestamp,
+                    attachments: (m.attachments || []).map(function(a) {
+                      return { id: a.id, type: a.type, name: a.name, path: a.path };
+                    }),
+                  };
+                });
+                var hasMore = startIdx > 0;
+                var cursor = hasMore && page.length > 0 ? page[0].id : undefined;
+                return { messages: page, hasMore: hasMore, cursor: cursor, total: total };
+              } catch(e) { return { messages: [], hasMore: false }; }
+            })()
+          `) || { messages: [], hasMore: false }
+
+          log(`load_conversation: tab=${cmd.tabId} total=${result.total || '?'} page=${result.messages?.length || 0} hasMore=${result.hasMore}`)
+
+          // Enrich ExitPlanMode messages with plan file content for iOS
+          const msgs = await Promise.all((result.messages || []).map(async (m: any) => {
+            if (m.toolName === 'ExitPlanMode') {
+              try {
+                const input = m.toolInput ? JSON.parse(m.toolInput) : {}
+                if (!input.planContent) {
+                  let planPath = input.planFilePath as string | undefined
+                  // Fallback: search ALL tab messages (not just this page) for Write to plans dir
+                  if (!planPath && mainWindow) {
+                    try {
+                      planPath = await mainWindow.webContents.executeJavaScript(`
+                        (function() {
+                          var store = window.__CODA_SESSION_STORE__;
+                          if (!store) return null;
+                          var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+                          if (!tab) return null;
+                          var msgs = tab.messages || [];
+                          for (var i = msgs.length - 1; i >= 0; i--) {
+                            var m = msgs[i];
+                            if (m.toolName === 'Write' && m.toolInput) {
+                              try {
+                                var input = JSON.parse(m.toolInput);
+                                var fp = input.file_path;
+                                if (fp && /\\/\\.claude\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
+                              } catch(e) {}
+                            }
+                          }
+                          return null;
+                        })()
+                      `) || undefined
+                    } catch {}
+                  }
+                  if (planPath && existsSync(planPath)) {
+                    const content = readFileSync(planPath, 'utf-8')
+                    return { ...m, toolInput: JSON.stringify({ ...input, planFilePath: planPath, planContent: content }) }
+                  } else {
+                    log(`load_conversation: no plan file found for ExitPlanMode (planPath=${planPath})`)
+                  }
+                }
+              } catch (err) {
+                log(`load_conversation: enrichment error: ${(err as Error).message}`)
+              }
+            }
+            return m
+          }))
+
+          remoteTransport?.send({
+            type: 'conversation_history',
+            tabId: cmd.tabId,
+            messages: msgs,
+            hasMore: result.hasMore || false,
+            cursor: result.cursor,
+          })
+        } catch (err) {
+          log(`load_conversation error: ${(err as Error).message}`)
+          // Always send a response so iOS doesn't hang
+          remoteTransport?.send({ type: 'conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
+        }
+        break
+      }
+      case 'create_terminal_tab': {
+        let dir = cmd.workingDirectory
+        if (!dir) {
+          const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+          dir = s.defaultBaseDirectory || homedir()
+        }
+        try {
+          const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const tabId = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return null;
+              return store.getState().createTerminalTab('${escaped}');
+            })()
+          `)
+          if (tabId) {
+            setTimeout(async () => {
+              try {
+                const tabs = await getRemoteTabStates()
+                const newTab = tabs.find(t => t.id === tabId)
+                if (newTab) remoteTransport?.send({ type: 'tab_created', tab: newTab })
+              } catch {}
+            }, 500)
+          }
+        } catch (err) {
+          log(`create_terminal_tab error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'terminal_input': {
+        const key = `${cmd.tabId}:${cmd.instanceId}`
+        terminalManager.write(key, cmd.data)
+        break
+      }
+      case 'terminal_resize': {
+        const key = `${cmd.tabId}:${cmd.instanceId}`
+        terminalManager.resize(key, cmd.cols, cmd.rows)
+        break
+      }
+      case 'terminal_add_instance': {
+        try {
+          const escaped = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const result = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return null;
+              return store.getState().addTerminalInstance('${escaped}', 'user');
+            })()
+          `)
+          if (result) {
+            remoteTransport?.send({
+              type: 'terminal_instance_added',
+              tabId: cmd.tabId,
+              instance: { id: result.id, label: result.label || 'Shell', kind: result.kind || 'user', readOnly: false, cwd: result.cwd || '' },
+            })
+          }
+        } catch (err) {
+          log(`terminal_add_instance error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'terminal_remove_instance': {
+        try {
+          const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return;
+              store.getState().removeTerminalInstance('${escapedTab}', '${escapedInst}');
+            })()
+          `)
+          terminalManager.destroy(`${cmd.tabId}:${cmd.instanceId}`)
+          remoteTransport?.send({ type: 'terminal_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
+        } catch (err) {
+          log(`terminal_remove_instance error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'request_terminal_snapshot': {
+        try {
+          const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const tabState = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              try {
+                var store = window.__CODA_SESSION_STORE__;
+                if (!store) return null;
+                var pane = store.getState().terminalPanes.get('${escapedTabId}');
+                if (!pane) return null;
+                var instances = pane.instances.map(function(inst) {
+                  return { id: inst.id, label: inst.label || inst.id, kind: inst.kind || 'user', readOnly: !!inst.readOnly, cwd: inst.cwd || '' };
+                });
+                var buffers = {};
+                for (var i = 0; i < pane.instances.length; i++) {
+                  var key = '${escapedTabId}:' + pane.instances[i].id;
+                  var buf = window.__serializeTerminalBuffer ? window.__serializeTerminalBuffer(key) : null;
+                  if (buf) buffers[pane.instances[i].id] = buf;
+                }
+                return { instances: instances, activeInstanceId: pane.activeInstanceId || null, buffers: buffers };
+              } catch(e) { return null; }
+            })()
+          `)
+          if (tabState) {
+            remoteTransport?.send({
+              type: 'terminal_snapshot',
+              tabId: cmd.tabId,
+              instances: tabState.instances,
+              activeInstanceId: tabState.activeInstanceId,
+              buffers: Object.keys(tabState.buffers).length > 0 ? tabState.buffers : undefined,
+            })
+          }
+        } catch (err) {
+          log(`request_terminal_snapshot error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'terminal_select_instance': {
+        try {
+          const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return;
+              store.getState().selectTerminalInstance('${escapedTab}', '${escapedInst}');
+            })()
+          `)
+        } catch (err) {
+          log(`terminal_select_instance error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'rename_tab':
+        broadcast(IPC.REMOTE_RENAME_TAB, cmd.tabId, cmd.customTitle)
+        break
+      case 'rename_terminal_instance':
+        broadcast(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, cmd.tabId, cmd.instanceId, cmd.label)
+        break
+      case 'rewind': {
+        try {
+          const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const inputText = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return null;
+              store.getState().rewindToMessage('${escapedTabId}', '${escapedMsgId}');
+              var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+              return tab ? tab.pendingInput || null : null;
+            })()
+          `)
+          if (inputText) {
+            remoteTransport?.send({ type: 'input_prefill', tabId: cmd.tabId, text: inputText })
+          }
+        } catch (err) {
+          log(`rewind error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'fork_from_message': {
+        try {
+          const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const result = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__CODA_SESSION_STORE__;
+              if (!store) return Promise.resolve(null);
+              return store.getState().forkFromMessage('${escapedTabId}', '${escapedMsgId}')
+                .then(function(newTabId) {
+                  if (!newTabId) return null;
+                  var tab = store.getState().tabs.find(function(t) { return t.id === newTabId; });
+                  return { newTabId: newTabId, inputText: tab ? tab.pendingInput || '' : '' };
+                });
+            })()
+          `)
+          if (result?.newTabId) {
+            remoteTransport?.send({
+              type: 'input_prefill',
+              tabId: result.newTabId,
+              text: result.inputText,
+              switchTo: true,
+            })
+          }
+        } catch (err) {
+          log(`fork_from_message error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'unpair': {
+        // iOS initiated unpair via command -- remove the device locally.
+        if (deviceId) {
+          log(`Remote unpair command from device ${deviceId}`)
+          remoteTransport?.removeDevice(deviceId)
+          revokeDeviceLocally(deviceId)
+        } else {
+          log('Remote unpair command but no device ID')
+        }
+        break
+      }
+    }
+  })
+
+  remoteTransport.on('state-change', (state: string) => {
+    broadcast(IPC.REMOTE_STATE_CHANGED, { transportState: state })
+  })
+
+  // iOS closed the connection with close code 4000 (unpair).
+  remoteTransport.on('device-unpaired', (deviceId: string) => {
+    log(`[Remote] device ${deviceId} unpaired via close code`)
+    revokeDeviceLocally(deviceId)
+  })
+
+  remoteTransport.on('pair-request', (request: {
+    code: string
+    publicKey: string
+    deviceName: string
+    recovery?: boolean
+    respond: (response: Record<string, unknown>) => void
+    reject: (message: string) => void
+  }) => {
+    // Read relay config and paired devices from persisted settings.
+    let relayUrl = ''
+    let relayApiKey = ''
+    let existingDevices: any[] = []
+    try {
+      if (existsSync(SETTINGS_FILE)) {
+        const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+        relayUrl = s.relayUrl || ''
+        relayApiKey = s.relayApiKey || ''
+        existingDevices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
+      }
+    } catch {}
+
+    // Recovery re-pair: iOS lost its Keychain (e.g. simulator reinstall) but
+    // the desktop still has this device. Skip code validation and do a fresh
+    // key exchange so the user doesn't have to manually re-pair.
+    const isRecovery = request.recovery &&
+      existingDevices.some((d: any) => d.name === request.deviceName)
+
+    let ourPublicKey: string
+    let pairedDevice: {
+      id: string; name: string; pairedAt: string; lastSeen: string | null
+      channelId: string; sharedSecret: string
+    }
+
+    if (isRecovery) {
+      log(`[Remote] recovery re-pair for known device: ${request.deviceName}`)
+      const keyPair = generateKeyPair()
+      const peerPubBuf = Buffer.from(request.publicKey, 'base64')
+      const sharedSecret = deriveSharedSecret(keyPair.secretKey, peerPubBuf)
+      const channelId = deriveChannelId(sharedSecret)
+
+      ourPublicKey = keyPair.publicKey.toString('base64')
+      pairedDevice = {
+        id: channelId.substring(0, 16),
+        name: request.deviceName,
+        pairedAt: new Date().toISOString(),
+        lastSeen: null,
+        channelId,
+        sharedSecret: sharedSecret.toString('base64'),
+      }
+    } else {
+      const result = pairingManager.completePairing(
+        request.code,
+        request.publicKey,
+        request.deviceName,
+        undefined,
+        { relayUrl, relayApiKey },
+      )
+
+      if (!result) {
+        log(`Pairing rejected for ${request.deviceName}`)
+        request.reject('Invalid pairing code')
+        return
+      }
+
+      ourPublicKey = result.ourPublicKey
+      pairedDevice = {
+        id: result.device.id,
+        name: result.device.name,
+        pairedAt: result.device.pairedAt,
+        lastSeen: result.device.lastSeen,
+        channelId: result.device.channelId,
+        sharedSecret: result.device.sharedSecret,
+      }
+    }
+
+    log(`Pairing succeeded with ${request.deviceName}${isRecovery ? ' (recovery)' : ''}`)
+    request.respond({
+      type: 'pair_response',
+      publicKey: ourPublicKey,
+      relayUrl: relayUrl || undefined,
+      relayApiKey: relayApiKey || undefined,
+    })
+
+    // Save paired device to settings and notify renderer.
+    try {
+      const settings = existsSync(SETTINGS_FILE)
+        ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+        : {}
+      const devices = Array.isArray(settings.pairedDevices) ? settings.pairedDevices : []
+      // Replace existing device with same id or name (name is stable across re-pairings).
+      const idx = devices.findIndex((d: any) => d.id === pairedDevice.id || d.name === pairedDevice.name)
+      if (idx >= 0) devices[idx] = pairedDevice
+      else devices.push(pairedDevice)
+      settings.pairedDevices = devices
+      writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2))
+    } catch (err) {
+      log(`Failed to save paired device: ${(err as Error).message}`)
+    }
+
+    // Notify renderer to update UI (dismiss pairing code, show device).
+    broadcast(IPC.REMOTE_DEVICE_PAIRED, pairedDevice)
+
+    // Add the new device to the running transport (creates relay connection).
+    if (remoteTransport) {
+      remoteTransport.addDevice(pairedDevice as PairedDevice)
+    }
+
+    // Send a tab snapshot to the newly connected iOS client.
+    setTimeout(async () => {
+      const tabs = await getRemoteTabStates()
+      const pairSettings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+      const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
+      remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories: pairRecentDirs })
+    }, 500)
+  })
+
+  remoteTransport.start().catch((err) => {
+    log(`Remote transport failed to start: ${(err as Error).message}`)
+  })
+
+  startTerminalOutputFlushing()
+}
+
+// Forward control plane events to remote transport.
+controlPlane.on('event', (tabId: string, event: NormalizedEvent) => {
+  if (!remoteTransport) return
+
+  // Skip permission_request for meta-tools — the dedicated remote-permission
+  // handler sends these with full toolInput (questions/plan content).
+  // The PTY path emits these without toolInput, causing empty cards on iOS.
+  if (
+    event.type === 'permission_request' &&
+    (event.toolName === 'AskUserQuestion' || event.toolName === 'ExitPlanMode')
+  ) {
+    return
+  }
+
+  // Forward the original streaming event (backward compat)
+  const remoteEvent = normalizedToRemote(tabId, event)
+  if (remoteEvent) {
+    const needsPush = event.type === 'permission_request'
+    remoteTransport.send(remoteEvent, needsPush)
+  }
+
+  // Also forward structured message events for conversation sync
+  switch (event.type) {
+    case 'text_chunk': {
+      let msg = activeAssistantMessages.get(tabId)
+      if (!msg) {
+        msg = { id: `assistant-${Date.now()}-${tabId}`, content: event.text }
+        activeAssistantMessages.set(tabId, msg)
+        remoteTransport.send({
+          type: 'message_added',
+          tabId,
+          message: {
+            id: msg.id,
+            role: 'assistant',
+            content: event.text,
+            timestamp: Date.now(),
+          },
+        })
+      } else {
+        msg.content += event.text
+        remoteTransport.send({
+          type: 'message_updated',
+          tabId,
+          messageId: msg.id,
+          content: msg.content,
+        })
+      }
+      break
+    }
+    case 'tool_call': {
+      // End current assistant message accumulation
+      activeAssistantMessages.delete(tabId)
+      remoteTransport.send({
+        type: 'message_added',
+        tabId,
+        message: {
+          id: event.toolId,
+          role: 'tool',
+          content: '',
+          toolName: event.toolName,
+          toolId: event.toolId,
+          toolStatus: 'running',
+          timestamp: Date.now(),
+        },
+      })
+      break
+    }
+    case 'tool_result': {
+      const content = event.content.length > 2048
+        ? event.content.substring(0, 2048) + '\n... [truncated]'
+        : event.content
+      remoteTransport.send({
+        type: 'message_updated',
+        tabId,
+        messageId: event.toolId,
+        content,
+        toolStatus: event.isError ? 'error' : 'completed',
+      })
+      break
+    }
+    case 'task_complete': {
+      // Capture final preview from the assistant's accumulated text
+      const assistantMsg = activeAssistantMessages.get(tabId)
+      if (assistantMsg?.content) {
+        lastMessagePreview.set(tabId, assistantMsg.content.substring(0, 100))
+      }
+      activeAssistantMessages.delete(tabId)
+      break
+    }
+  }
+})
+
+controlPlane.on('remote-permission', async (tabId: string, data: {
+  questionId: string; toolName: string;
+  toolInput?: Record<string, unknown>;
+  options: Array<{ id: string; label: string; kind?: string }>
+}) => {
+  log(`remote-permission received: tool=${data.toolName}, questionId=${data.questionId}, hasTransport=${!!remoteTransport}, hasToolInput=${!!data.toolInput}`)
+  if (!remoteTransport) return
+  let toolInput = data.toolInput
+  if (data.toolName === 'ExitPlanMode') {
+    let planPath = toolInput?.planFilePath as string | undefined
+
+    // Fallback: search tab messages for Write to ~/.claude/plans/
+    if (!planPath && mainWindow) {
+      try {
+        const escapedTabId = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        planPath = await mainWindow.webContents.executeJavaScript(`
+          (function() {
+            var store = window.__CODA_SESSION_STORE__;
+            if (!store) return null;
+            var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+            if (!tab) return null;
+            var msgs = tab.messages || [];
+            for (var i = msgs.length - 1; i >= 0; i--) {
+              var m = msgs[i];
+              if (m.toolName === 'Write' && m.toolInput) {
+                try {
+                  var input = JSON.parse(m.toolInput);
+                  var fp = input.file_path;
+                  if (fp && /\\/\\.claude\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
+                } catch(e) {}
+              }
+            }
+            return null;
+          })()
+        `) || undefined
+      } catch {}
+    }
+
+    if (planPath) {
+      try {
+        const content = readFileSync(planPath, 'utf-8')
+        toolInput = { ...(toolInput || {}), planFilePath: planPath, planContent: content }
+      } catch (err) {
+        log(`Failed to read plan file for remote: ${(err as Error).message}`)
+      }
+    }
+  }
+  remoteTransport.send({
+    type: 'permission_request', tabId,
+    questionId: data.questionId, toolName: data.toolName,
+    toolInput, options: data.options,
+  }, true)
+  // AskUserQuestion and ExitPlanMode cards should persist on iOS until the
+  // user taps an answer (matching desktop where the card stays until clicked).
+  // Other auto-allowed tools can be dismissed when the tab goes idle.
+  if (data.toolName !== 'AskUserQuestion' && data.toolName !== 'ExitPlanMode') {
+    const resolveOnIdle = (changedTabId: string, status: string) => {
+      if (changedTabId !== tabId) return
+      if (status === 'idle' || status === 'failed' || status === 'dead') {
+        controlPlane.off('tab-status-change', resolveOnIdle)
+        remoteTransport?.send({
+          type: 'permission_resolved', tabId,
+          questionId: data.questionId,
+        })
+      }
+    }
+    controlPlane.on('tab-status-change', resolveOnIdle)
+  }
+})
+
+controlPlane.on('tab-status-change', (tabId: string, newStatus: string) => {
+  if (newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead') {
+    activeAssistantMessages.delete(tabId)
+  }
+  if (!remoteTransport) return
+  remoteTransport.send({ type: 'tab_status', tabId, status: newStatus as any })
+})
+
+ipcMain.handle(IPC.REMOTE_GET_STATE, () => {
+  return { transportState: remoteTransport?.state || 'disconnected' }
+})
+
+ipcMain.handle(IPC.REMOTE_SET_LAN_DISABLED, async (_event, disabled: boolean) => {
+  if (remoteTransport) {
+    await remoteTransport.setLanDisabled(disabled)
+  }
+})
+
+ipcMain.handle(IPC.REMOTE_START_PAIRING, () => {
+  try {
+    // Restart transport if it was stopped (e.g. after revoking all devices).
+    if (!remoteTransport) {
+      const settings = existsSync(SETTINGS_FILE)
+        ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+        : {}
+      if (settings.remoteEnabled) {
+        initRemoteTransport(settings)
+      }
+    }
+
+    const code = pairingManager.startPairing()
+    log(`Pairing code generated: ${code}`)
+    return code
+  } catch (err) {
+    log(`Failed to start pairing: ${(err as Error).message}`)
+    return null
+  }
+})
+
+ipcMain.on(IPC.REMOTE_CANCEL_PAIRING, () => {
+  pairingManager.cancelPairing()
+})
+
+ipcMain.on(IPC.REMOTE_REVOKE_DEVICE, (_event, deviceId: string) => {
+  log(`Revoking paired device: ${deviceId}`)
+
+  if (remoteTransport) {
+    // Send unpair event to the specific device so iOS clears its pairing state.
+    log('[Remote] sending unpair event to iOS device ' + deviceId)
+    remoteTransport.sendToDevice(deviceId, { type: 'unpair' })
+    // Defer disconnect so the message flushes before the socket closes.
+    setTimeout(() => {
+      remoteTransport?.disconnectDevice(deviceId, 4000, 'unpair')
+      remoteTransport?.removeDevice(deviceId)
+    }, 300)
+  }
+
+  // Remove from settings and notify renderer. Transport stays alive for future pairing.
+  revokeDeviceLocally(deviceId)
+})
+
+ipcMain.handle(IPC.REMOTE_GET_MESSAGES, async (_event, tabId: string) => {
+  try {
+    const result = await mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        try {
+          var store = window.__CODA_SESSION_STORE__;
+          if (!store) return [];
+          var state = store.getState();
+          var tab = state.tabs.find(function(t) { return t.id === '${tabId.replace(/'/g, "\\'")}'; });
+          return tab ? JSON.parse(JSON.stringify(tab.messages || [])) : [];
+        } catch(e) { return []; }
+      })()
+    `)
+    return result || []
+  } catch (err) {
+    log(`REMOTE_GET_MESSAGES error: ${(err as Error).message}`)
+    return []
+  }
+})
+
+ipcMain.handle(IPC.REMOTE_DISCOVER_RELAYS, () => {
+  relayDiscovery.startBrowsing()
+  relayDiscovery.on('relays-changed', (relays: DiscoveredRelay[]) => {
+    mainWindow?.webContents.send(IPC.REMOTE_RELAYS_CHANGED, relays)
+  })
+  return relayDiscovery.relays
+})
+
+ipcMain.on(IPC.REMOTE_STOP_DISCOVERY, () => {
+  relayDiscovery.stopBrowsing()
+})
+
+ipcMain.handle(IPC.REMOTE_TEST_RELAY, async (_event, relayUrl: string, relayApiKey: string) => {
+  const WebSocket = (await import('ws')).default
+  return new Promise<{ success: boolean; error?: string }>((resolve) => {
+    try {
+      // Connect to a test channel to verify the relay is reachable and auth works.
+      const base = relayUrl.replace(/\/+$/, '')
+      const ws = new WebSocket(`${base}/v1/channel/_test?role=coda`, {
+        headers: { Authorization: `Bearer ${relayApiKey}` },
+      })
+      const timeout = setTimeout(() => {
+        ws.close()
+        resolve({ success: false, error: 'Connection timed out' })
+      }, 5000)
+      ws.on('open', () => {
+        clearTimeout(timeout)
+        ws.close()
+        resolve({ success: true })
+      })
+      ws.on('error', (err) => {
+        clearTimeout(timeout)
+        resolve({ success: false, error: (err as Error).message })
+      })
+    } catch (err) {
+      resolve({ success: false, error: (err as Error).message })
+    }
+  })
+})
+
+// Initialize remote transport when settings are loaded.
+ipcMain.handle(IPC.SAVE_SETTINGS, (_event, data: Record<string, unknown>) => {
+  try {
+    // Read previous settings to detect transport-config changes.
+    let prev: Record<string, unknown> = {}
+    try { if (existsSync(SETTINGS_FILE)) prev = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) } catch {}
+
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+    writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2))
+
+    // Only reinitialize the transport when transport-level config changed
+    // (not on every settings save, which includes pairedDevices changes).
+    const transportConfigChanged =
+      data.remoteEnabled !== prev.remoteEnabled ||
+      data.relayUrl !== prev.relayUrl ||
+      data.relayApiKey !== prev.relayApiKey ||
+      data.lanServerPort !== prev.lanServerPort
+    if (transportConfigChanged && typeof data.remoteEnabled === 'boolean') {
+      initRemoteTransport(data)
+    }
+
+    // Push relay config to connected iOS device when relay settings change.
+    // Skip if transport was just reinitialized (peer-connected handler will send it).
+    const relayConfigChanged = data.relayUrl !== prev.relayUrl || data.relayApiKey !== prev.relayApiKey
+    if (relayConfigChanged && !transportConfigChanged && remoteTransport) {
+      const relayUrl = (data.relayUrl as string) || ''
+      const relayApiKey = (data.relayApiKey as string) || ''
+      if (relayUrl) {
+        remoteTransport.send({ type: 'relay_config', relayUrl, relayApiKey })
+      }
+    }
+  } catch (err) {
+    log(`Failed to save settings: ${err}`)
+  }
 })
 
 // ─── Git Worktree Cleanup ───
@@ -2741,6 +4070,12 @@ app.on('will-quit', () => {
   if (tray) {
     tray.destroy()
     tray = null
+  }
+  // Stop remote transport (kills dns-sd child processes)
+  stopTabSnapshotPolling()
+  if (remoteTransport) {
+    remoteTransport.stop()
+    remoteTransport = null
   }
   // Remove PID file
   try { rmSync(join(app.getPath('userData'), 'coda.pid')) } catch {}

@@ -1,0 +1,663 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A1B2C3D4E5F60001000001AA /* CODARemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000002AA /* CODARemoteApp.swift */; };
+		A1B2C3D4E5F60001000003AA /* NormalizedEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */; };
+		A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */; };
+		A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */; };
+		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
+		A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000CAA /* RelayClient.swift */; };
+		A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000EAA /* LANClient.swift */; };
+		A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000010AA /* TransportManager.swift */; };
+		A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */; };
+		A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */; };
+		A1B2C3D4E5F60001000015AA /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000016AA /* KeychainStore.swift */; };
+		A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000018AA /* TabListView.swift */; };
+		A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001AAA /* ConversationView.swift */; };
+		A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */; };
+		A1B2C3D4E5F6000100001DAA /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001EAA /* PairingView.swift */; };
+		A1B2C3D4E5F6000100001FAA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000020AA /* SettingsView.swift */; };
+		A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */; };
+		A1B2C3D4E5F60001000023AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000024AA /* Assets.xcassets */; };
+		A1B2C3D4E5F60001000025AA /* NormalizedEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000026AA /* NormalizedEventTests.swift */; };
+		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
+		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
+		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
+		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
+		A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */; };
+		A1B2C3D4E5F60001000094AA /* InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000095AA /* InputBar.swift */; };
+		A1B2C3D4E5F60001000096AA /* AskUserQuestionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000097AA /* AskUserQuestionCardView.swift */; };
+		A1B2C3D4E5F60001000098AA /* PlanApprovalCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000099AA /* PlanApprovalCardView.swift */; };
+		A1B2C3D4E5F600010000A0AA /* TerminalOutputRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */; };
+		A1B2C3D4E5F600010000A2AA /* SwiftTermWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000A3AA /* SwiftTermWrapper.swift */; };
+		A1B2C3D4E5F600010000A4AA /* RemoteTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000A5AA /* RemoteTerminalView.swift */; };
+		A1B2C3D4E5F600010000A6AA /* TerminalInstanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000A7AA /* TerminalInstanceBar.swift */; };
+		A1B2C3D4E5F600010000B0AA /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600010000B1AA /* SwiftTerm */; };
+		A1B2C3D4E5F600010000C0AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000C1AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf */; };
+		A1B2C3D4E5F600010000C2AA /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000C3AA /* OFL.txt */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A1B2C3D4E5F6000100002DAA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1B2C3D4E5F60001000030AA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60001000031AA;
+			remoteInfo = CODARemote;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A1B2C3D4E5F60001000002AA /* CODARemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CODARemoteApp.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEvent.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabState.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommand.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100000CAA /* RelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClient.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100000EAA /* LANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANClient.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000010AA /* TransportManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManager.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECrypto.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000016AA /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000018AA /* TabListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100001AAA /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCardView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100001EAA /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000020AA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModel.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000024AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000026AA /* NormalizedEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100002FAA /* CODARemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CODARemote.entitlements; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000032AA /* CODARemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CODARemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60001000033AA /* CODARemoteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CODARemoteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60001000091AA /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachment.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000095AA /* InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBar.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000097AA /* AskUserQuestionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskUserQuestionCardView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000099AA /* PlanApprovalCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanApprovalCardView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalOutputRouter.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000A3AA /* SwiftTermWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftTermWrapper.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000A5AA /* RemoteTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTerminalView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000A7AA /* TerminalInstanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInstanceBar.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000C1AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNLNerdFontMono-Regular.ttf"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000C3AA /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A1B2C3D4E5F60001000040AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F600010000B0AA /* SwiftTerm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60001000041AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A1B2C3D4E5F60001000050AA = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000051AA /* CODARemote */,
+				A1B2C3D4E5F60001000059AA /* CODARemoteTests */,
+				A1B2C3D4E5F60001000060AA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000051AA /* CODARemote */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000052AA /* App */,
+				A1B2C3D4E5F60001000053AA /* Models */,
+				A1B2C3D4E5F60001000054AA /* Networking */,
+				A1B2C3D4E5F60001000055AA /* Crypto */,
+				A1B2C3D4E5F60001000056AA /* Views */,
+				A1B2C3D4E5F60001000057AA /* ViewModels */,
+			);
+			path = CODARemote;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F600010000C4AA /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F600010000C1AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf */,
+				A1B2C3D4E5F600010000C3AA /* OFL.txt */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000052AA /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000002AA /* CODARemoteApp.swift */,
+				A1B2C3D4E5F60001000024AA /* Assets.xcassets */,
+				A1B2C3D4E5F6000100002EAA /* Info.plist */,
+				A1B2C3D4E5F6000100002FAA /* CODARemote.entitlements */,
+				A1B2C3D4E5F600010000C4AA /* Fonts */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000053AA /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */,
+				A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */,
+				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
+				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
+				A1B2C3D4E5F60001000091AA /* Message.swift */,
+				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000054AA /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F6000100000CAA /* RelayClient.swift */,
+				A1B2C3D4E5F6000100000EAA /* LANClient.swift */,
+				A1B2C3D4E5F60001000010AA /* TransportManager.swift */,
+				A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */,
+				A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000055AA /* Crypto */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */,
+				A1B2C3D4E5F60001000016AA /* KeychainStore.swift */,
+			);
+			path = Crypto;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000056AA /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000018AA /* TabListView.swift */,
+				A1B2C3D4E5F6000100001AAA /* ConversationView.swift */,
+				A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */,
+				A1B2C3D4E5F60001000097AA /* AskUserQuestionCardView.swift */,
+				A1B2C3D4E5F60001000099AA /* PlanApprovalCardView.swift */,
+				A1B2C3D4E5F6000100001EAA /* PairingView.swift */,
+				A1B2C3D4E5F60001000020AA /* SettingsView.swift */,
+				A1B2C3D4E5F60001000095AA /* InputBar.swift */,
+				A1B2C3D4E5F600010000A3AA /* SwiftTermWrapper.swift */,
+				A1B2C3D4E5F600010000A5AA /* RemoteTerminalView.swift */,
+				A1B2C3D4E5F600010000A7AA /* TerminalInstanceBar.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000057AA /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000059AA /* CODARemoteTests */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000026AA /* NormalizedEventTests.swift */,
+				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
+				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
+				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
+			);
+			path = CODARemoteTests;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60001000060AA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60001000032AA /* CODARemote.app */,
+				A1B2C3D4E5F60001000033AA /* CODARemoteTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A1B2C3D4E5F60001000031AA /* CODARemote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60001000070AA /* Build configuration list for PBXNativeTarget "CODARemote" */;
+			buildPhases = (
+				A1B2C3D4E5F60001000061AA /* Sources */,
+				A1B2C3D4E5F60001000040AA /* Frameworks */,
+				A1B2C3D4E5F60001000062AA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CODARemote;
+			packageProductDependencies = (
+				A1B2C3D4E5F600010000B1AA /* SwiftTerm */,
+			);
+			productName = CODARemote;
+			productReference = A1B2C3D4E5F60001000032AA /* CODARemote.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A1B2C3D4E5F60001000034AA /* CODARemoteTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60001000071AA /* Build configuration list for PBXNativeTarget "CODARemoteTests" */;
+			buildPhases = (
+				A1B2C3D4E5F60001000063AA /* Sources */,
+				A1B2C3D4E5F60001000041AA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1B2C3D4E5F60001000035AA /* PBXTargetDependency */,
+			);
+			name = CODARemoteTests;
+			productName = CODARemoteTests;
+			productReference = A1B2C3D4E5F60001000033AA /* CODARemoteTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A1B2C3D4E5F60001000030AA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A1B2C3D4E5F60001000031AA = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					A1B2C3D4E5F60001000034AA = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A1B2C3D4E5F60001000031AA;
+					};
+				};
+			};
+			buildConfigurationList = A1B2C3D4E5F60001000072AA /* Build configuration list for PBXProject "CODARemote" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A1B2C3D4E5F60001000050AA;
+			packageReferences = (
+				A1B2C3D4E5F600010000B2AA /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
+			productRefGroup = A1B2C3D4E5F60001000060AA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A1B2C3D4E5F60001000031AA /* CODARemote */,
+				A1B2C3D4E5F60001000034AA /* CODARemoteTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A1B2C3D4E5F60001000062AA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60001000023AA /* Assets.xcassets in Resources */,
+				A1B2C3D4E5F600010000C0AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf in Resources */,
+				A1B2C3D4E5F600010000C2AA /* OFL.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A1B2C3D4E5F60001000061AA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60001000001AA /* CODARemoteApp.swift in Sources */,
+				A1B2C3D4E5F60001000003AA /* NormalizedEvent.swift in Sources */,
+				A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */,
+				A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */,
+				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,
+				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
+				A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */,
+				A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */,
+				A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */,
+				A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */,
+				A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */,
+				A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */,
+				A1B2C3D4E5F60001000015AA /* KeychainStore.swift in Sources */,
+				A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */,
+				A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */,
+				A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */,
+				A1B2C3D4E5F60001000096AA /* AskUserQuestionCardView.swift in Sources */,
+				A1B2C3D4E5F60001000098AA /* PlanApprovalCardView.swift in Sources */,
+				A1B2C3D4E5F6000100001DAA /* PairingView.swift in Sources */,
+				A1B2C3D4E5F6000100001FAA /* SettingsView.swift in Sources */,
+				A1B2C3D4E5F60001000094AA /* InputBar.swift in Sources */,
+				A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */,
+				A1B2C3D4E5F600010000A0AA /* TerminalOutputRouter.swift in Sources */,
+				A1B2C3D4E5F600010000A2AA /* SwiftTermWrapper.swift in Sources */,
+				A1B2C3D4E5F600010000A4AA /* RemoteTerminalView.swift in Sources */,
+				A1B2C3D4E5F600010000A6AA /* TerminalInstanceBar.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60001000063AA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60001000025AA /* NormalizedEventTests.swift in Sources */,
+				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
+				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
+				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1B2C3D4E5F60001000035AA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D4E5F60001000031AA /* CODARemote */;
+			targetProxy = A1B2C3D4E5F6000100002DAA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A1B2C3D4E5F60001000080AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60001000081AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A1B2C3D4E5F60001000082AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CODARemote/App/CODARemote.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = P6UU9VHF7D;
+				INFOPLIST_FILE = CODARemote/App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coda.remote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "com.coda.remote--ios-dev";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60001000083AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CODARemote/App/CODARemote.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = P6UU9VHF7D;
+				INFOPLIST_FILE = CODARemote/App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coda.remote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "com.coda.remote--ios-dev";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A1B2C3D4E5F60001000084AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coda.remote.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CODARemote.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CODARemote";
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60001000085AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coda.remote.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CODARemote.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CODARemote";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A1B2C3D4E5F60001000070AA /* Build configuration list for PBXNativeTarget "CODARemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60001000082AA /* Debug */,
+				A1B2C3D4E5F60001000083AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60001000071AA /* Build configuration list for PBXNativeTarget "CODARemoteTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60001000084AA /* Debug */,
+				A1B2C3D4E5F60001000085AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60001000072AA /* Build configuration list for PBXProject "CODARemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60001000080AA /* Debug */,
+				A1B2C3D4E5F60001000081AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D4E5F600010000B2AA /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D4E5F600010000B1AA /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F600010000B2AA /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A1B2C3D4E5F60001000030AA /* Project object */;
+}

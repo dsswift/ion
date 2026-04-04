@@ -83,13 +83,15 @@ export class ControlPlane extends EventEmitter {
   /** Per-run tokens: requestId → runToken (for cleanup on exit/error) */
   private runTokens = new Map<string, string>()
   /** Per-tab permission modes */
-  private permissionModes = new Map<string, 'ask' | 'auto' | 'plan'>()
+  private permissionModes = new Map<string, 'auto' | 'plan'>()
   /** Per-tab tools approved via the denied-tools card */
   private tabApprovedTools = new Map<string, Set<string>>()
   /** Pending settings file write requests (questionId → original tool request) */
   private settingsFileRequests = new Map<string, HookToolRequest>()
   /** Tabs where the user chose "Allow for Session" on settings file writes */
   private settingsAutoApproved = new Set<string>()
+  /** Tracks auto-allowed ExitPlanMode calls per tab (for injecting into task_complete) */
+  private planAutoAllowed = new Map<string, { toolName: string; toolUseId: string }>()
 
   /** Resolves when the permission server is ready (or failed). Dispatch awaits this. */
   private hookServerReady: Promise<void>
@@ -165,6 +167,22 @@ export class ControlPlane extends EventEmitter {
           this.settingsFileRequests.set(questionId, toolRequest)
           // Fall through to show the permission card
         } else {
+          // Emit to remote before auto-allowing (iOS needs these for card UI)
+          if (toolRequest.tool_name === 'AskUserQuestion' || toolRequest.tool_name === 'ExitPlanMode') {
+            const safeInput = toolRequest.tool_input
+              ? maskSensitiveFields(toolRequest.tool_input)
+              : undefined
+            this.emit('remote-permission', tabId, {
+              questionId,
+              toolName: toolRequest.tool_name,
+              toolInput: safeInput,
+              options,
+            })
+          }
+          // Track auto-allowed ExitPlanMode so we can inject it into task_complete
+          if (toolRequest.tool_name === 'ExitPlanMode' && tabMode === 'plan') {
+            this.planAutoAllowed.set(tabId, { toolName: 'ExitPlanMode', toolUseId: questionId })
+          }
           this.permissionServer.respondToPermission(questionId, 'allow', 'Auto mode')
           return
         }
@@ -224,6 +242,18 @@ export class ControlPlane extends EventEmitter {
       // Suppress all events from init requests (session_init already handled above)
       if (this.initRequestIds.has(requestId)) {
         return
+      }
+
+      // Inject auto-allowed ExitPlanMode into task_complete so the renderer
+      // shows the PermissionDeniedCard with the "Plan Ready" UI
+      if (event.type === 'task_complete') {
+        const planDenial = this.planAutoAllowed.get(tabId)
+        if (planDenial) {
+          const denials = event.permissionDenials ? [...event.permissionDenials] : []
+          denials.push(planDenial)
+          event = { ...event, permissionDenials: denials }
+          this.planAutoAllowed.delete(tabId)
+        }
       }
 
       this.emit('event', tabId, event)
@@ -554,12 +584,12 @@ export class ControlPlane extends EventEmitter {
   /**
    * Set permission mode for a specific tab.
    */
-  setPermissionMode(tabId: string, mode: 'ask' | 'auto' | 'plan'): void {
+  setPermissionMode(tabId: string, mode: 'auto' | 'plan'): void {
     log(`Permission mode for tab ${tabId}: ${mode}`)
     this.permissionModes.set(tabId, mode)
   }
 
-  private _getPermissionMode(tabId: string): 'ask' | 'auto' | 'plan' {
+  private _getPermissionMode(tabId: string): 'auto' | 'plan' {
     return this.permissionModes.get(tabId) ?? 'auto'
   }
 
@@ -594,6 +624,7 @@ export class ControlPlane extends EventEmitter {
     this.permissionModes.delete(tabId)
     this.tabApprovedTools.delete(tabId)
     this.settingsAutoApproved.delete(tabId)
+    this.planAutoAllowed.delete(tabId)
     this.tabs.delete(tabId)
     log(`Tab closed: ${tabId}`)
   }
@@ -694,10 +725,7 @@ export class ControlPlane extends EventEmitter {
     // Map CODA permission modes to CLI permission modes.
     // In -p (programmatic) mode, '--permission-mode default' fails because there's
     // no TTY for interactive approval — the SDK denies tools before hooks can fire.
-    // For 'ask' mode: use 'auto' so the SDK doesn't interfere; the hook server
-    // handles all permission gating via PreToolUse hooks.
-    // For 'auto' mode: use 'auto' — everything auto-approved, no hooks needed.
-    // For 'plan' mode: use 'plan' — SDK handles plan-mode logic.
+    // 'auto' → CLI 'auto', 'plan' → CLI 'plan'.
     const tabMode = this._getPermissionMode(tabId)
     log(`Dispatch [${requestId.substring(0, 8)}]: mode=${tabMode}, resume=${!!tab.claudeSessionId}, session=${tab.claudeSessionId?.substring(0, 8) || 'new'}`)
     if (tabMode === 'plan') {
@@ -875,6 +903,7 @@ export class ControlPlane extends EventEmitter {
         activeRequestId: tab.activeRequestId,
         claudeSessionId: tab.claudeSessionId,
         alive,
+        lastActivityAt: tab.lastActivityAt,
       })
     }
 

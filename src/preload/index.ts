@@ -45,6 +45,7 @@ export interface CodaAPI {
   onTerminalExit(callback: (key: string, exitCode: number) => void): () => void
   executeBash(id: string, command: string, cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>
   cancelBash(id: string): void
+  sendRemote(event: any): void
   setPermissionMode(tabId: string, mode: string): void
   getTheme(): Promise<{ isDark: boolean }>
   onThemeChange(callback: (isDark: boolean) => void): () => void
@@ -101,6 +102,19 @@ export interface CodaAPI {
   fsWatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>
   fsUnwatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>
   onFileChanged(callback: (filePath: string) => void): () => void
+
+  // ─── Remote control ───
+  remoteGetState(): Promise<{ transportState: string } | null>
+  remoteGetMessages(tabId: string): Promise<any[]>
+  remoteStartPairing(): Promise<string | null>
+  remoteCancelPairing(): void
+  remoteRevokeDevice(deviceId: string): void
+  remoteDiscoverRelays(): Promise<Array<{ id: string; name: string; host: string; port: number; addresses: string[] }>>
+  remoteStopDiscovery(): void
+  remoteTestRelay(relayUrl: string, relayApiKey: string): Promise<{ success: boolean; error?: string }>
+  remoteSetLanDisabled(disabled: boolean): Promise<void>
+  on(channel: string, callback: (...args: any[]) => void): void
+  off(channel: string, callback: (...args: any[]) => void): void
 
   // ─── Window management ───
   resizeHeight(height: number): void
@@ -175,6 +189,7 @@ const api: CodaAPI = {
   },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
+  sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
   setPermissionMode: (tabId, mode) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode }),
   getTheme: () => ipcRenderer.invoke(IPC.GET_THEME),
   onThemeChange: (callback) => {
@@ -238,6 +253,24 @@ const api: CodaAPI = {
     const handler = (_e: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
     ipcRenderer.on(IPC.FS_FILE_CHANGED, handler)
     return () => ipcRenderer.removeListener(IPC.FS_FILE_CHANGED, handler)
+  },
+
+  // ─── Remote control ───
+  remoteGetState: () => ipcRenderer.invoke(IPC.REMOTE_GET_STATE),
+  remoteGetMessages: (tabId) => ipcRenderer.invoke(IPC.REMOTE_GET_MESSAGES, tabId),
+  remoteStartPairing: () => ipcRenderer.invoke(IPC.REMOTE_START_PAIRING),
+  remoteCancelPairing: () => ipcRenderer.send(IPC.REMOTE_CANCEL_PAIRING),
+  remoteRevokeDevice: (deviceId) => ipcRenderer.send(IPC.REMOTE_REVOKE_DEVICE, deviceId),
+  remoteDiscoverRelays: () => ipcRenderer.invoke(IPC.REMOTE_DISCOVER_RELAYS),
+  remoteStopDiscovery: () => ipcRenderer.send(IPC.REMOTE_STOP_DISCOVERY),
+  remoteTestRelay: (url, key) => ipcRenderer.invoke(IPC.REMOTE_TEST_RELAY, url, key),
+  remoteSetLanDisabled: (disabled) => ipcRenderer.invoke(IPC.REMOTE_SET_LAN_DISABLED, disabled),
+  on: (channel, callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, ...args: any[]) => callback(_e, ...args)
+    ipcRenderer.on(channel, handler)
+  },
+  off: (channel, callback) => {
+    ipcRenderer.removeListener(channel, callback)
   },
 
   // ─── Window management ───

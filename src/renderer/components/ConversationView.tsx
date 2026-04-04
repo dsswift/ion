@@ -87,6 +87,7 @@ export function ConversationView() {
   const tabs = useSessionStore((s) => s.tabs)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const sendMessage = useSessionStore((s) => s.sendMessage)
+  const editQueuedMessage = useSessionStore((s) => s.editQueuedMessage)
   const staticInfo = useSessionStore((s) => s.staticInfo)
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -276,15 +277,15 @@ export function ConversationView() {
                 // Tell the agent to retry
                 sendMessage('The denied tools have been approved. Please retry the operation.')
               }}
-              onImplement={async (mode, clearContext) => {
+              onImplement={async (clearContext) => {
                 // Dismiss the card
                 useSessionStore.setState((s) => ({
                   tabs: s.tabs.map((t) =>
                     t.id === tab.id ? { ...t, permissionDenied: null } : t
                   ),
                 }))
-                // Switch permission mode
-                useSessionStore.getState().setPermissionMode(mode)
+                // Switch to auto mode for implementation
+                useSessionStore.getState().setPermissionMode('auto')
 
                 // Auto-move tab to in-progress group if designated
                 const { inProgressGroupId, tabGroupMode } = useThemeStore.getState()
@@ -400,7 +401,7 @@ export function ConversationView() {
         {/* Queued prompts */}
         <AnimatePresence>
           {tab.queuedPrompts.map((prompt, i) => (
-            <QueuedMessage key={`queued-${i}`} content={prompt} />
+            <QueuedMessage key={`queued-${i}`} content={prompt} onEdit={() => editQueuedMessage(tab.id)} />
           ))}
         </AnimatePresence>
 
@@ -817,7 +818,7 @@ function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: b
 
 // ─── Queued Message (waiting at bottom until processed) ───
 
-function QueuedMessage({ content }: { content: string }) {
+function QueuedMessage({ content, onEdit }: { content: string; onEdit?: () => void }) {
   const colors = useColors()
 
   return (
@@ -826,8 +827,18 @@ function QueuedMessage({ content }: { content: string }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.15 }}
-      className="flex justify-end py-1.5"
+      className="flex justify-end py-1.5 items-start gap-1"
     >
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="flex items-center justify-center shrink-0 mt-1"
+          style={{ opacity: 0.5, cursor: 'pointer', background: 'none', border: 'none', padding: 2 }}
+          title="Edit queued message"
+        >
+          <PencilSimple size={14} color={colors.userBubbleText} />
+        </button>
+      )}
       <div
         className="text-[13px] leading-[1.5] px-3 py-1.5 max-w-[85%]"
         style={{

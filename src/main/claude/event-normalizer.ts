@@ -131,10 +131,16 @@ function normalizeStreamEvent(event: StreamEvent): NormalizedEvent[] {
       }]
     }
 
-    case 'message_start':
+    case 'message_start': {
+      const usage = sub.message?.usage
+      if (usage && (usage.input_tokens || usage.cache_read_input_tokens)) {
+        return [{ type: 'usage', usage }]
+      }
+      return []
+    }
+
     case 'message_delta':
     case 'message_stop':
-      // These are structural events — the assembled `assistant` event handles message completion
       return []
 
     default:
