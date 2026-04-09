@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { Plus, X, LockSimple, LockSimpleOpen, ArrowsOutSimple, ArrowsInSimple, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
@@ -33,6 +33,20 @@ export function TerminalStatusBar({ tabId }: Props) {
   const systemTabs = instances.filter((i) => i.kind !== 'user')
   const hasBothSections = userTabs.length > 0 && systemTabs.length > 0
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    if (!scrollRef.current || e.deltaY === 0) return
+    e.preventDefault()
+    scrollRef.current.scrollLeft += e.deltaY
+  }, [])
+
+  useEffect(() => {
+    if (!activeId || !scrollRef.current) return
+    const el = scrollRef.current.querySelector(`[data-terminal-tab-id="${activeId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+  }, [activeId])
+
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
 
@@ -54,6 +68,7 @@ export function TerminalStatusBar({ tabId }: Props) {
       <div
         key={inst.id}
         data-coda-ui
+        data-terminal-tab-id={inst.id}
         onClick={() => selectTerminalInstance(tabId, inst.id)}
         onDoubleClick={() => startRename(inst)}
         style={{
@@ -147,26 +162,42 @@ export function TerminalStatusBar({ tabId }: Props) {
       }}
     >
       {/* Left section: user tabs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, overflow: 'hidden' }}>
-        {userTabs.map(renderTab)}
-        {/* Add terminal button */}
-        <button
-          data-coda-ui
-          onClick={() => addTerminalInstance(tabId, 'user')}
-          title="New terminal"
+      <div style={{ position: 'relative', minWidth: 0, flex: 1 }}>
+        <div
+          ref={scrollRef}
+          onWheel={onWheel}
           style={{
-            background: 'none',
-            border: 'none',
-            padding: '2px 4px',
-            cursor: 'pointer',
-            color: colors.textTertiary,
             display: 'flex',
             alignItems: 'center',
-            borderRadius: 4,
+            gap: 2,
+            overflowX: 'auto',
+            minWidth: 0,
+            scrollbarWidth: 'none',
+            maskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
           }}
         >
-          <Plus size={12} />
-        </button>
+          {userTabs.map(renderTab)}
+          {/* Add terminal button */}
+          <button
+            data-coda-ui
+            onClick={() => addTerminalInstance(tabId, 'user')}
+            title="New terminal"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '2px 4px',
+              cursor: 'pointer',
+              color: colors.textTertiary,
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 4,
+              flexShrink: 0,
+            }}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
       </div>
 
       {/* Separator */}
