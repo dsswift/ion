@@ -2523,16 +2523,16 @@ export const useSessionStore = create<State>((set, get) => ({
             if (event.permissionDenials && event.permissionDenials.length > 0) {
               const hadPlanExit = event.permissionDenials.some((d) => d.toolName === 'ExitPlanMode')
               if (hadPlanExit) {
-                // Detect stale ExitPlanMode: if the model produced assistant text
-                // AFTER calling ExitPlanMode, it continued past the plan and the
+                // Detect stale ExitPlanMode: if a user message appears AFTER
+                // ExitPlanMode, the conversation continued past the plan and the
                 // denial is a leftover (e.g. user manually told it to implement).
-                // Walk backward: if we hit assistant text before ExitPlanMode, it's stale.
+                // Assistant text alone (same turn summary) does not make it stale.
                 let exitPlanIsStale = false
                 if (updated.permissionMode === 'plan') {
                   for (let i = updated.messages.length - 1; i >= 0; i--) {
                     const m = updated.messages[i]
                     if (m.toolName === 'ExitPlanMode') break // hit the call before any text -- genuine
-                    if (m.role === 'assistant' && !m.toolName) { exitPlanIsStale = true; break }
+                    if (m.role === 'user') { exitPlanIsStale = true; break }
                   }
                 }
                 if (updated.permissionMode !== 'plan' || exitPlanIsStale) {

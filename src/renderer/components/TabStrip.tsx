@@ -2332,6 +2332,7 @@ export function TabStrip() {
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [recentDirsMenu, setRecentDirsMenu] = useState<{ x: number; y: number } | null>(null)
+  const [terminalDirsMenu, setTerminalDirsMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabMenuId, setTabMenuId] = useState<string | null>(null)
   const [tabMenuAnchor, setTabMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const plusButtonRef = useRef<HTMLButtonElement>(null)
@@ -2577,6 +2578,17 @@ export function TabStrip() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {terminalDirsMenu && (
+          <RecentDirsContextMenu
+            key="terminal-dirs-menu"
+            anchor={terminalDirsMenu}
+            onSelectDir={(dir) => createTerminalTab(dir)}
+            onClose={() => setTerminalDirsMenu(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {tabMenuId && (() => {
           const menuTab = tabs.find((t) => t.id === tabMenuId)
           if (!menuTab) return null
@@ -2637,9 +2649,10 @@ export function TabStrip() {
               toggleTerminal(activeTabId)
             }
           }}
+          onContextMenu={(e) => { e.preventDefault(); setTerminalDirsMenu({ x: e.clientX, y: e.clientY }) }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
           style={{ color: terminalOpenTabIds.has(activeTabId) ? colors.accent : colors.textTertiary }}
-          title="Toggle terminal (Shift+click: new terminal tab)"
+          title="Toggle terminal (Shift+click: new terminal tab, right-click: terminal in dir)"
         >
           <Terminal size={14} />
         </button>
