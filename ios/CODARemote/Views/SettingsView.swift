@@ -3,8 +3,6 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var showPairing = false
-
     var body: some View {
         NavigationStack {
             List {
@@ -19,22 +17,6 @@ struct SettingsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
-            }
-            .sheet(isPresented: $showPairing) {
-                PairingView()
-            }
-            .safeAreaInset(edge: .bottom) {
-                Button {
-                    showPairing = true
-                } label: {
-                    Text("Pair New Device")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(hex: 0x4ECDC4))
-                .padding()
             }
         }
     }
@@ -93,7 +75,7 @@ struct SettingsView: View {
     }
 
     private var pairedDevicesSection: some View {
-        Section("Paired Devices") {
+        Section("Paired Device") {
             if viewModel.pairedDevices.isEmpty {
                 Text("No paired devices")
                     .foregroundStyle(.secondary)
@@ -132,9 +114,10 @@ struct SettingsView: View {
             }
 
             Button(role: .destructive) {
+                dismiss()
                 viewModel.resetAll()
             } label: {
-                Text("Reset Connection & Pairing")
+                Text("Unpair Device")
             }
         }
     }
