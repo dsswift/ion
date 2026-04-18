@@ -1,0 +1,38 @@
+# Build output
+node_modules/
+dist/
+out/
+build/
+release/
+*.tsbuildinfo
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / tool local state
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code project-scoped local settings
+.claude/settings.local.json
+
+# Environment (not needed for core flow, but excluded defensively)
+.env
+.env.*
+
+# Logs
+*.log
+~/.clui-debug.log
+
+# Runtime
+.clui.pid
+
+# Temporary files
+*.tmp
+*.bak
