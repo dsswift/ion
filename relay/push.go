@@ -21,7 +21,7 @@ import (
 const (
 	apnsProductionURL = "https://api.push.apple.com"
 	apnsSandboxURL    = "https://api.sandbox.push.apple.com"
-	apnsTopic         = "com.dsswift.coda.remote"
+	apnsTopic         = "com.dsswift.ion.remote"
 	tokenTTL          = 50 * time.Minute // Apple requires refresh within 60 min
 )
 

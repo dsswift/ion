@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'engine/**'
+      - 'desktop/**'
+      - 'relay/**'
+      - 'ios/**'
+      - 'release-please-*.json'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no changes)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created || 'false' }}
+      release_report: ${{ steps.release.outputs.release_report || '{"releases":[],"components":[],"summary":{"total_releases":0,"total_commits":0,"by_bump_type":{"major":0,"minor":0,"patch":0}}}' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if should skip
+        id: check-skip
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [[ "${COMMIT_MSG}" == *"[skip ci]"* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: commit message contains [skip ci]"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run release-damnit
+        id: release
+        if: steps.check-skip.outputs.skip == 'false'
+        uses: dsswift/release-damnit@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: ${{ inputs.dry_run || 'false' }}
+          create-releases: 'true'
+
+      - name: Commit version updates
+        if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add '*/VERSION' '*/CHANGELOG.md' 'release-please-manifest.json'
+
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: release versions [skip ci]"
+            git push
+          fi
+
+  build:
+    needs: release
+    if: needs.release.outputs.releases_created == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      release_report: ${{ needs.release.outputs.release_report }}

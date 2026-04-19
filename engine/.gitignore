@@ -1,0 +1,9 @@
+bin/
+dist/
+release/
+
+# Test config with secrets
+tests/e2e/testconfig.json
+
+# OS
+.DS_Store

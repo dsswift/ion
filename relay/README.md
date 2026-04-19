@@ -1,8 +1,8 @@
-# CODA Relay
+# Ion Relay
 
-WebSocket relay server for CODA remote control. Forwards encrypted messages
-between the CODA desktop app and the iOS companion app. The relay is a
-stateless pipe -- it never decrypts or inspects message content.
+WebSocket relay server for Ion remote control. Forwards encrypted messages
+between the Ion desktop app and the iOS companion app. The relay is a
+stateless pipe. It never decrypts or inspects message content.
 
 ## Build
 
@@ -10,34 +10,34 @@ stateless pipe -- it never decrypts or inspects message content.
 make relay
 ```
 
-This builds `coda-relay:latest` for `linux/amd64`.
+This builds `ion-relay:latest` for `linux/amd64`.
 
 ## Publish to your registry
 
 Tag the image for your private registry, then push:
 
 ```bash
-docker tag coda-relay:latest <your-registry>/coda-relay:latest
-docker push <your-registry>/coda-relay:latest
+docker tag ion-relay:latest <your-registry>/ion-relay:latest
+docker push <your-registry>/ion-relay:latest
 ```
 
 Examples:
 
 ```bash
 # Azure Container Registry
-docker tag coda-relay:latest myacr.azurecr.io/coda-relay:latest
-docker push myacr.azurecr.io/coda-relay:latest
+docker tag ion-relay:latest myacr.azurecr.io/ion-relay:latest
+docker push myacr.azurecr.io/ion-relay:latest
 
 # GitHub Container Registry
-docker tag coda-relay:latest ghcr.io/myuser/coda-relay:latest
-docker push ghcr.io/myuser/coda-relay:latest
+docker tag ion-relay:latest ghcr.io/myuser/ion-relay:latest
+docker push ghcr.io/myuser/ion-relay:latest
 ```
 
 ## Run locally (for testing)
 
 ```bash
 export RELAY_API_KEY=$(openssl rand -hex 32)
-docker run -p 8443:8443 -e RELAY_API_KEY=$RELAY_API_KEY coda-relay:latest
+docker run -p 8443:8443 -e RELAY_API_KEY=$RELAY_API_KEY ion-relay:latest
 ```
 
 Verify the relay is running:
@@ -64,7 +64,7 @@ hostname, TLS secret, and API key to match your environment.
 | `APNS_PRODUCTION` | No | Set to `1` for production APNs endpoint. Default is sandbox. |
 
 APNs variables are only needed if you want push notifications on iOS when
-the app is backgrounded. The relay works without them -- you just won't get
+the app is backgrounded. The relay works without them. You just won't get
 lock-screen notifications for permission requests.
 
 ## Protocol
@@ -72,7 +72,7 @@ lock-screen notifications for permission requests.
 The relay exposes a single WebSocket endpoint:
 
 ```
-GET /v1/channel/{channelId}?role={coda|mobile}
+GET /v1/channel/{channelId}?role={ion|mobile}
 Authorization: Bearer {apiKey}
 ```
 
@@ -86,5 +86,5 @@ Authorization: Bearer {apiKey}
 
 The relay validates the API key on every WebSocket upgrade request. Without
 a valid key, connections are rejected with HTTP 401. Even with a valid key,
-all message payloads are end-to-end encrypted between CODA and iOS -- the
+all message payloads are end-to-end encrypted between Ion and iOS. The
 relay cannot read them.

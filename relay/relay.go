@@ -13,7 +13,7 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  64 * 1024,
 	WriteBufferSize: 256 * 1024,
-	// Reject connections with an Origin header. Native apps (CODA desktop,
+	// Reject connections with an Origin header. Native apps (Ion desktop,
 	// iOS) don't send Origin; browsers do. This prevents browser-based
 	// cross-site WebSocket hijacking attacks against the relay.
 	CheckOrigin: func(r *http.Request) bool {
@@ -40,7 +40,7 @@ func (sc *SafeConn) SafeWrite(msgType int, data []byte, deadline time.Duration) 
 // Channel holds the two sides of a relay channel.
 type Channel struct {
 	mu     sync.Mutex
-	coda   *SafeConn
+	ion    *SafeConn
 	mobile *SafeConn
 
 	// APNs device token for push notifications (set by mobile on connect).
@@ -78,7 +78,7 @@ func (h *Hub) removeIfEmpty(id string) {
 		return
 	}
 	ch.mu.Lock()
-	empty := ch.coda == nil && ch.mobile == nil
+	empty := ch.ion == nil && ch.mobile == nil
 	ch.mu.Unlock()
 	if empty {
 		delete(h.channels, id)
@@ -90,8 +90,8 @@ func (h *Hub) CloseAll() {
 	defer h.mu.Unlock()
 	for _, ch := range h.channels {
 		ch.mu.Lock()
-		if ch.coda != nil {
-			ch.coda.Close()
+		if ch.ion != nil {
+			ch.ion.Close()
 		}
 		if ch.mobile != nil {
 			ch.mobile.Close()
@@ -131,11 +131,11 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 	// Store connection by role, closing any previous connection for the same role.
 	switch role {
-	case "coda":
-		if ch.coda != nil {
-			ch.coda.Close()
+	case "ion":
+		if ch.ion != nil {
+			ch.ion.Close()
 		}
-		ch.coda = conn
+		ch.ion = conn
 	case "mobile":
 		if ch.mobile != nil {
 			ch.mobile.Close()
@@ -185,11 +185,11 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			if err := peer.SafeWrite(msgType, data, 10*time.Second); err != nil {
 				log.Printf("channel=%s forward error: %v", channelID, err)
 			}
-		} else if role == "coda" && pusher != nil && apnsToken != "" {
+		} else if role == "ion" && pusher != nil && apnsToken != "" {
 			// Peer not connected. Check if this message requests a push notification.
 			var msg relayMessage
 			if json.Unmarshal(data, &msg) == nil && msg.Push {
-				pusher.Send(apnsToken, "CODA needs your attention", "Permission approval required")
+				pusher.Send(apnsToken, "Ion needs your attention", "Permission approval required")
 			}
 		}
 	}
@@ -197,9 +197,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	// Cleanup on disconnect.
 	ch.mu.Lock()
 	switch role {
-	case "coda":
-		if ch.coda == conn {
-			ch.coda = nil
+	case "ion":
+		if ch.ion == conn {
+			ch.ion = nil
 		}
 	case "mobile":
 		if ch.mobile == conn {
@@ -218,10 +218,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 }
 
 func (ch *Channel) getPeerLocked(myRole string) *SafeConn {
-	if myRole == "coda" {
+	if myRole == "ion" {
 		return ch.mobile
 	}
-	return ch.coda
+	return ch.ion
 }
 
 func (h *Hub) ping(conn *SafeConn) {

@@ -1,16 +1,43 @@
-.PHONY: install relay relay-local
+.PHONY: install desktop engine relay relay-local ios test clean
 
-install:
-	@bash commands/install-bg.command
+install: engine
+
+desktop:
+	@cd desktop && bash commands/install-bg.command
+
+engine:
+	@cd engine && bash commands/install.command --standalone
 
 relay:
-	docker build --platform linux/amd64 -t coda-relay:latest relay/
+	@cd relay && docker build --platform linux/amd64 -t ion-relay:latest .
 
-# Run the relay natively for local dev. Generates a random API key,
-# prints it, and starts the relay with mDNS discovery on the host network.
 relay-local:
-	$(eval export RELAY_API_KEY ?= dev)
-	@echo ""
-	@echo "  RELAY_API_KEY=$(RELAY_API_KEY)"
-	@echo ""
-	cd relay && go run .
+	@cd relay && go run .
+
+ios:
+	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
+		-destination 'generic/platform=iOS' build 2>&1 | grep -E "error:|BUILD"
+
+test:
+	@cd engine && go test ./...
+	@cd desktop && npm test 2>/dev/null || true
+
+clean:
+	@cd engine && rm -rf bin/ dist/
+	@cd desktop && rm -rf dist/ out/
+
+# Local pipeline testing (requires: brew install act)
+test-pipeline-dry:
+	act workflow_dispatch -W .github/workflows/build.yml \
+		--input release_report="$$(cat .act/release-report.json)" \
+		--dryrun
+
+test-pipeline-engine:
+	act workflow_dispatch -W .github/workflows/build.yml \
+		-j build-engine \
+		--input release_report="$$(cat .act/release-report.json)"
+
+test-pipeline-relay:
+	act workflow_dispatch -W .github/workflows/build.yml \
+		-j build-relay \
+		--input release_report="$$(cat .act/release-report.json)"

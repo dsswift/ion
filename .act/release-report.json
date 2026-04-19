@@ -1,0 +1,22 @@
+{
+  "releases": [
+    {
+      "component": "engine",
+      "new_version": "0.1.0",
+      "tag_name": "engine-v0.1.0",
+      "bump_type": "minor"
+    },
+    {
+      "component": "relay",
+      "new_version": "0.1.0",
+      "tag_name": "relay-v0.1.0",
+      "bump_type": "minor"
+    }
+  ],
+  "components": ["engine", "relay"],
+  "summary": {
+    "total_releases": 2,
+    "total_commits": 1,
+    "by_bump_type": { "major": 0, "minor": 1, "patch": 0 }
+  }
+}

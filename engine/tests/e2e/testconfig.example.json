@@ -1,0 +1,15 @@
+{
+  "_comment": "Copy to testconfig.json (gitignored). Fill in your gateway details.",
+  "anthropic": {
+    "apiKey": "",
+    "apiKeyEnv": "ION_API_KEY",
+    "baseURL": "https://ai.dcim.com",
+    "testModel": "claude-opus-4-6"
+  },
+  "openai": {
+    "apiKey": "",
+    "apiKeyEnv": "OPENAI_API_KEY",
+    "baseURL": "",
+    "testModel": "gpt-4.1-nano"
+  }
+}

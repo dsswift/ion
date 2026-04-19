@@ -71,8 +71,8 @@ func main() {
 
 		channelID := r.PathValue("channelId")
 		role := r.URL.Query().Get("role")
-		if role != "coda" && role != "mobile" {
-			http.Error(w, "role must be 'coda' or 'mobile'", http.StatusBadRequest)
+		if role != "ion" && role != "mobile" {
+			http.Error(w, "role must be 'ion' or 'mobile'", http.StatusBadRequest)
 			return
 		}
 

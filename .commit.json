@@ -1,0 +1,15 @@
+{
+  "scopes": [
+    { "path": "engine/", "scope": "engine" },
+    { "path": "desktop/", "scope": "desktop" },
+    { "path": "relay/", "scope": "relay" },
+    { "path": "ios/", "scope": "ios" },
+    { "path": "docs/", "scope": "docs" },
+    { "path": ".github/", "scope": "repo" }
+  ],
+  "defaultScope": "repo",
+  "commitTypes": {
+    "mode": "whitelist",
+    "types": ["feat!", "feat", "fix", "chore", "docs"]
+  }
+}

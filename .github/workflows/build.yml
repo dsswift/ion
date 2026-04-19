@@ -1,0 +1,155 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      release_report:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_report:
+        description: 'Release report JSON (from release-damnit or .act/release-report.json)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-engine:
+    if: contains(fromJSON(inputs.release_report).components, 'engine')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+
+      - name: Get version
+        id: version
+        env:
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="engine") | .new_version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        working-directory: engine
+        run: go test ./...
+
+      - name: Build
+        working-directory: engine
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o ion ./cmd/ion/
+
+      - name: Package archive
+        run: |
+          ARCHIVE="ion-engine_${{ matrix.goos }}_${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "darwin" ]; then
+            zip "${ARCHIVE}.zip" -j engine/ion
+          else
+            tar czf "${ARCHIVE}.tar.gz" -C engine ion
+          fi
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="engine-v${{ steps.version.outputs.version }}"
+          ARCHIVE="ion-engine_${{ matrix.goos }}_${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "darwin" ]; then
+            gh release upload "$TAG" "${ARCHIVE}.zip" --clobber
+          else
+            gh release upload "$TAG" "${ARCHIVE}.tar.gz" --clobber
+          fi
+
+  engine-checksums:
+    needs: build-engine
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        env:
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="engine") | .new_version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="engine-v${{ steps.version.outputs.version }}"
+          gh release download "$TAG" -R "${{ github.repository }}" -D assets/
+
+      - name: Generate checksums
+        run: |
+          cd assets
+          sha256sum ./* > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="engine-v${{ steps.version.outputs.version }}"
+          gh release upload "$TAG" assets/checksums.txt --clobber -R "${{ github.repository }}"
+
+  build-relay:
+    if: contains(fromJSON(inputs.release_report).components, 'relay')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Get version
+        id: version
+        env:
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="relay") | .new_version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: relay
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ghcr.io/${{ github.repository }}/relay:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}/relay:latest

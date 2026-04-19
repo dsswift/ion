@@ -21,7 +21,7 @@ func (h *MDNSHandle) Shutdown() {
 	}
 }
 
-// StartMDNS advertises the relay on the local network as _coda-relay._tcp
+// StartMDNS advertises the relay on the local network as _ion-relay._tcp
 // using the macOS dns-sd command, which registers through the system's
 // mDNSResponder daemon. This is the only reliable way to make a service
 // visible to Apple's NWBrowser on iOS.
@@ -41,7 +41,7 @@ func StartMDNS(ctx context.Context, port int) (*MDNSHandle, error) {
 	// Registers a service with the system mDNS responder.
 	cmd := exec.CommandContext(ctx, "dns-sd", "-R",
 		hostname,
-		"_coda-relay._tcp",
+		"_ion-relay._tcp",
 		"local",
 		strconv.Itoa(port),
 	)
@@ -54,7 +54,7 @@ func StartMDNS(ctx context.Context, port int) (*MDNSHandle, error) {
 		return nil, err
 	}
 
-	log.Printf("mDNS: advertising %s._coda-relay._tcp on port %d (pid %d)", hostname, port, cmd.Process.Pid)
+	log.Printf("mDNS: advertising %s._ion-relay._tcp on port %d (pid %d)", hostname, port, cmd.Process.Pid)
 	return &MDNSHandle{cmd: cmd}, nil
 }
 

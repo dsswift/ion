@@ -1,4 +1,4 @@
-module github.com/dsswift/coda/relay
+module github.com/dsswift/ion/relay
 
 go 1.22
 
