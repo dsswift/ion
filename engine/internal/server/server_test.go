@@ -563,7 +563,7 @@ func TestStopByPrefix(t *testing.T) {
 }
 
 // TestForkSessionError verifies that forking a session that has no conversation
-// history returns an error result (since claudeSession will be empty).
+// history returns an error result (since conversationID will be empty).
 func TestForkSessionError(t *testing.T) {
 	mb := newMockBackend()
 	srv := newTestServer(t, mb)

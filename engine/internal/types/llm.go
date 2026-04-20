@@ -4,12 +4,13 @@ package types
 
 // LlmStreamOptions configures a streaming LLM call.
 type LlmStreamOptions struct {
-	Model    string          `json:"model"`
-	System   string          `json:"system"`
-	Messages []LlmMessage    `json:"messages"`
-	Tools    []LlmToolDef    `json:"tools,omitempty"`
-	MaxTokens int            `json:"maxTokens,omitempty"`
-	Thinking *ThinkingConfig `json:"thinking,omitempty"`
+	Model       string           `json:"model"`
+	System      string           `json:"system"`
+	Messages    []LlmMessage     `json:"messages"`
+	Tools       []LlmToolDef     `json:"tools,omitempty"`
+	ServerTools []map[string]any `json:"serverTools,omitempty"` // opaque server-side tools (e.g. web_search_20250305)
+	MaxTokens   int              `json:"maxTokens,omitempty"`
+	Thinking    *ThinkingConfig  `json:"thinking,omitempty"`
 }
 
 // LlmMessage is a single message in the LLM conversation.
@@ -84,10 +85,12 @@ type LlmStreamMessageInfo struct {
 
 // LlmStreamContentBlock describes a content block start.
 type LlmStreamContentBlock struct {
-	Type string `json:"type"`
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-	Text string `json:"text,omitempty"`
+	Type      string `json:"type"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Text      string `json:"text,omitempty"`
+	ToolUseID string `json:"tool_use_id,omitempty"` // for web_search_tool_result
+	Content   any    `json:"content,omitempty"`     // for web_search_tool_result (search results array)
 }
 
 // LlmStreamDelta carries an incremental content update.

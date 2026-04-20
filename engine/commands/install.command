@@ -12,8 +12,18 @@ go build -o bin/ion ./cmd/ion
 
 echo "==> Installing to $BIN_DIR..."
 mkdir -p "$BIN_DIR"
+
+# Stop running engine daemon so the new binary takes effect on next start
+if pgrep -f "ion serve" >/dev/null 2>&1; then
+  pkill -f "ion serve" 2>/dev/null || true
+  sleep 1
+fi
+
+rm -f "$BIN_DIR/ion"
 cp bin/ion "$BIN_DIR/ion"
 chmod +x "$BIN_DIR/ion"
+codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+xattr -cr "$BIN_DIR/ion" 2>/dev/null || true
 
 if [[ "${1:-}" == "--standalone" ]]; then
     # Add to PATH if not already there

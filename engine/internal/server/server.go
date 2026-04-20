@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -203,9 +204,12 @@ func (s *Server) handleClient(conn net.Conn) {
 
 		cmd := protocol.ParseClientCommand(line)
 		if cmd == nil {
+			// Extract requestId from raw JSON so the client can match the error
+			reqID := protocol.ExtractRequestID(line)
 			result := protocol.SerializeServerResult(protocol.ServerResult{
-				OK:    false,
-				Error: "invalid command",
+				RequestID: reqID,
+				OK:        false,
+				Error:     "invalid command",
 			})
 			s.writeToClient(conn, result)
 			continue
@@ -216,6 +220,7 @@ func (s *Server) handleClient(conn net.Conn) {
 }
 
 func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
+	utils.Debug("Server", fmt.Sprintf("dispatch: cmd=%s key=%s requestID=%s", cmd.Cmd, cmd.Key, cmd.RequestID))
 	switch cmd.Cmd {
 	case "start_session":
 		err := s.manager.StartSession(cmd.Key, *cmd.Config)
@@ -307,10 +312,43 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		tree := s.manager.GetSessionTree(cmd.Key)
 		s.sendResult(conn, cmd, nil, tree)
 
+	case "permission_response":
+		// Fire-and-forget: no response sent (matches dialog_response pattern).
+		s.manager.SendPermissionResponse(cmd.Key, cmd.QuestionID, cmd.OptionID)
+
+	case "list_stored_sessions":
+		limit := cmd.Limit
+		if limit <= 0 {
+			limit = 50
+		}
+		results, err := conversation.ListStored("", limit)
+		s.sendResult(conn, cmd, err, results)
+
+	case "load_session_history":
+		var messages []types.SessionMessage
+		var err error
+		if len(cmd.SessionIDs) > 0 {
+			messages, err = conversation.LoadChainMessages(cmd.SessionIDs, "")
+		} else {
+			messages, err = conversation.LoadMessages(cmd.Key, "")
+		}
+		s.sendResult(conn, cmd, err, messages)
+
+	case "save_session_label":
+		conv, err := conversation.Load(cmd.Key, "")
+		if err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			break
+		}
+		conversation.AddLabelEntry(conv, cmd.Label)
+		err = conversation.Save(conv, "")
+		s.sendResult(conn, cmd, err, nil)
+
 	case "shutdown":
 		_ = s.Stop()
 
 	default:
+		utils.Warn("Server", "unknown command: "+cmd.Cmd)
 		s.sendResult(conn, cmd, fmt.Errorf("unknown command: %s", cmd.Cmd), nil)
 	}
 }

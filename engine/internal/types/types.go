@@ -194,6 +194,7 @@ type EngineConfig struct {
 	ExtensionDir     string          `json:"extensionDir"`
 	Model            string          `json:"model,omitempty"`
 	WorkingDirectory string          `json:"workingDirectory"`
+	SessionID        string          `json:"sessionId,omitempty"`
 	Options          map[string]any  `json:"options,omitempty"`
 	MaxTokens        int             `json:"maxTokens,omitempty"`
 	Thinking         *ThinkingConfig `json:"thinking,omitempty"`
@@ -255,6 +256,7 @@ type AgentHandle struct {
 type StatusFields struct {
 	Label          string  `json:"label"`
 	State          string  `json:"state"`
+	SessionID      string  `json:"sessionId,omitempty"`
 	Team           string  `json:"team,omitempty"`
 	Model          string  `json:"model"`
 	ContextPercent int     `json:"contextPercent"`
@@ -304,6 +306,13 @@ type EngineEvent struct {
 	ExitCode   *int     `json:"exitCode,omitempty"`
 	Signal     *string  `json:"signal,omitempty"`
 	StderrTail []string `json:"stderrTail,omitempty"`
+
+	// engine_permission_request
+	QuestionID      string          `json:"questionId,omitempty"`
+	PermToolName    string          `json:"permToolName,omitempty"`
+	PermToolDesc    string          `json:"permToolDescription,omitempty"`
+	PermToolInput   map[string]any  `json:"permToolInput,omitempty"`
+	PermOptions     []PermissionOpt `json:"permOptions,omitempty"`
 }
 
 // MessageEndUsage reports token usage at the end of a message.
@@ -341,6 +350,28 @@ type RunOptions struct {
 	PlanMode           bool            `json:"planMode,omitempty"`
 	PlanModeTools      []string        `json:"planModeTools,omitempty"`
 	CompactThreshold   float64         `json:"compactThreshold,omitempty"`
+}
+
+// StoredSessionInfo is metadata for a saved conversation on disk.
+type StoredSessionInfo struct {
+	SessionID    string  `json:"sessionId"`
+	Model        string  `json:"model"`
+	CreatedAt    int64   `json:"createdAt"`
+	MessageCount int     `json:"messageCount"`
+	TotalCost    float64 `json:"totalCost"`
+	FirstMessage string  `json:"firstMessage"`
+	LastMessage  string  `json:"lastMessage"`
+	CustomTitle  string  `json:"customTitle,omitempty"`
+}
+
+// SessionMessage is a flattened message for client display.
+type SessionMessage struct {
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	ToolName  string `json:"toolName,omitempty"`
+	ToolID    string `json:"toolId,omitempty"`
+	ToolInput string `json:"toolInput,omitempty"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // PermissionDenialEntry is the wire format for permission denials in ResultEvent.

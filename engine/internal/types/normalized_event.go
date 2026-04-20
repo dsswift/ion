@@ -224,3 +224,17 @@ type PermissionRequestEvent struct {
 }
 
 func (PermissionRequestEvent) eventType() string { return EventPermissionRequest }
+
+// WebSearchResultEvent carries results from a server-side web search.
+type WebSearchResultEvent struct {
+	Query   string         `json:"query"`
+	Results []WebSearchHit `json:"results"`
+}
+
+// WebSearchHit is a single search result from a server-side web search.
+type WebSearchHit struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+func (WebSearchResultEvent) eventType() string { return "web_search_result" }

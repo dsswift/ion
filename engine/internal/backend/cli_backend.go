@@ -225,17 +225,36 @@ func findClaudeBinary() (string, error) {
 
 // runProcess is the goroutine that manages the Claude CLI process lifecycle.
 func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.RunOptions) {
-	defer b.removeRun(run.requestID)
+	// Delay cleanup by 5s so callers can read diagnostics (stderr) after exit
+	defer func() {
+		time.AfterFunc(5*time.Second, func() {
+			b.removeRun(run.requestID)
+		})
+	}()
 
 	claudePath, err := findClaudeBinary()
 	if err != nil {
+		utils.Error("CliBackend", "claude binary not found: "+err.Error())
 		b.emitError(run.requestID, err)
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
 	}
 
 	// Build command arguments -- use stream-json for bidirectional stdin
-	args := []string{"-p", "--output-format", "stream-json", "--input-format", "stream-json"}
+	args := []string{
+		"-p",
+		"--output-format", "stream-json",
+		"--input-format", "stream-json",
+		"--verbose",
+		"--include-partial-messages",
+	}
+
+	// Permission mode: respect caller override, default to "auto"
+	permMode := "auto"
+	if opts.PermissionModeCli != "" {
+		permMode = opts.PermissionModeCli
+	}
+	args = append(args, "--permission-mode", permMode)
 
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
@@ -243,9 +262,18 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	if opts.MaxTurns > 0 {
 		args = append(args, "--max-turns", strconv.Itoa(opts.MaxTurns))
 	}
-
-	args = append(args, "--permission-mode", "auto")
-
+	if opts.MaxBudgetUsd > 0 {
+		args = append(args, "--max-budget-usd", strconv.FormatFloat(opts.MaxBudgetUsd, 'f', -1, 64))
+	}
+	if opts.SessionID != "" {
+		args = append(args, "--resume", opts.SessionID)
+	}
+	for _, dir := range opts.AddDirs {
+		args = append(args, "--add-dir", dir)
+	}
+	if opts.SystemPrompt != "" {
+		args = append(args, "--system-prompt", opts.SystemPrompt)
+	}
 	if opts.AppendSystemPrompt != "" {
 		args = append(args, "--append-system-prompt", opts.AppendSystemPrompt)
 	}
@@ -284,6 +312,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stdin for bidirectional stream-json communication
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
+		utils.Error("CliBackend", "stdin pipe failed: "+err.Error())
 		b.emitError(run.requestID, fmt.Errorf("failed to create stdin pipe: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
@@ -293,6 +322,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stdout for NDJSON parsing
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		utils.Error("CliBackend", "stdout pipe failed: "+err.Error())
 		b.emitError(run.requestID, fmt.Errorf("failed to create stdout pipe: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
@@ -301,12 +331,14 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stderr for diagnostics capture
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		utils.Error("CliBackend", "stderr pipe failed: "+err.Error())
 		b.emitError(run.requestID, fmt.Errorf("failed to create stderr pipe: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
+		utils.Error("CliBackend", "process start failed: "+err.Error())
 		b.emitError(run.requestID, fmt.Errorf("failed to start claude CLI: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
@@ -454,6 +486,14 @@ func (b *CliBackend) emit(runID string, event types.NormalizedEvent) {
 }
 
 func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
+	codeStr, sigStr := "nil", "nil"
+	if code != nil {
+		codeStr = fmt.Sprintf("%d", *code)
+	}
+	if signal != nil {
+		sigStr = *signal
+	}
+	utils.Info("CliBackend", fmt.Sprintf("emitExit: runID=%s code=%s signal=%s sessionID=%s", runID, codeStr, sigStr, sessionID))
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()
@@ -463,6 +503,7 @@ func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID
 }
 
 func (b *CliBackend) emitError(runID string, err error) {
+	utils.Error("CliBackend", fmt.Sprintf("emitError: runID=%s err=%s", runID, err.Error()))
 	b.mu.Lock()
 	fn := b.onError
 	b.mu.Unlock()

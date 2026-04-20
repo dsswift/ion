@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -22,6 +25,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/filelock"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/network"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/server"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -93,6 +97,20 @@ func parseArgs() (command string, flags map[string]string, positional []string) 
 }
 
 // resolveExtensionPath expands ~ and resolves to an absolute path.
+// isEnvVarName returns true if s looks like an environment variable name
+// (all uppercase letters, digits, and underscores, at least 3 chars).
+func isEnvVarName(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 func resolveExtensionPath(path string) string {
 	if strings.HasPrefix(path, "~") {
 		home, err := os.UserHomeDir()
@@ -173,6 +191,22 @@ func cmdServe() {
 	// Load models config (tiers, provider auto-detect)
 	modelconfig.LoadModelsConfig()
 
+	// Resolve provider API keys: env var names (e.g. "ION_API_KEY") are
+	// expanded from environment before passing to providers and auth.
+	for name, pcfg := range cfg.Providers {
+		if pcfg.APIKey != "" && isEnvVarName(pcfg.APIKey) {
+			if v := os.Getenv(pcfg.APIKey); v != "" {
+				pcfg.APIKey = v
+				cfg.Providers[name] = pcfg
+			}
+		}
+	}
+
+	// Apply provider config overrides (baseURL, authHeader, resolved apiKey)
+	if len(cfg.Providers) > 0 {
+		providers.ApplyConfig(cfg.Providers)
+	}
+
 	// Wire feature flags if configured
 	if cfg.FeatureFlags != nil {
 		ffCfg := featureflags.Config{
@@ -190,6 +224,13 @@ func cmdServe() {
 
 	// Create auth resolver for API key resolution
 	resolver := auth.NewResolver(cfg.Auth)
+
+	// Wire resolved provider keys into the auth resolver
+	for name, pcfg := range cfg.Providers {
+		if pcfg.APIKey != "" {
+			resolver.SetProgrammatic(name, pcfg.APIKey)
+		}
+	}
 
 	// Create backend based on config
 	var b backend.RunBackend
@@ -296,9 +337,73 @@ func cmdPrompt(positional []string, flags map[string]string) {
 		os.Exit(1)
 	}
 
+	// Auto-start server if not running
+	sock := socketPath()
+	serverStarted := ensureServer(sock)
+
+	key := flags["key"]
+	ephemeral := key == ""
+	if ephemeral {
+		b := make([]byte, 8)
+		rand.Read(b)
+		key = "prompt-" + hex.EncodeToString(b)
+
+		// Auto-start an ephemeral session
+		cwd, _ := os.Getwd()
+		startMsg := map[string]interface{}{
+			"cmd": "start_session",
+			"key": key,
+			"config": map[string]interface{}{
+				"workingDirectory": cwd,
+			},
+		}
+		if m := flags["model"]; m != "" {
+			startMsg["config"].(map[string]interface{})["model"] = m
+		}
+		if e := flags["extension"]; e != "" {
+			startMsg["config"].(map[string]interface{})["extensionDir"] = resolveExtensionPath(e)
+		}
+		result, err := connectAndSend(sock, startMsg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting session: %s\n", err)
+			os.Exit(1)
+		}
+		if errMsg, _ := result["error"].(string); errMsg != "" {
+			fmt.Fprintf(os.Stderr, "Error starting session: %s\n", errMsg)
+			os.Exit(1)
+		}
+	} else {
+		// Non-ephemeral: ensure session exists (auto-create if needed)
+		cwd, _ := os.Getwd()
+		startMsg := map[string]interface{}{
+			"cmd": "start_session",
+			"key": key,
+			"config": map[string]interface{}{
+				"workingDirectory": cwd,
+			},
+		}
+		if m := flags["model"]; m != "" {
+			startMsg["config"].(map[string]interface{})["model"] = m
+		}
+		if e := flags["extension"]; e != "" {
+			startMsg["config"].(map[string]interface{})["extensionDir"] = resolveExtensionPath(e)
+		}
+		result, err := connectAndSend(sock, startMsg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting session: %s\n", err)
+			os.Exit(1)
+		}
+		if errMsg, _ := result["error"].(string); errMsg != "" {
+			if !strings.Contains(errMsg, "already exists") {
+				fmt.Fprintf(os.Stderr, "Error starting session: %s\n", errMsg)
+				os.Exit(1)
+			}
+		}
+	}
+
 	msg := map[string]interface{}{
 		"cmd":  "send_prompt",
-		"key":  flags["key"],
+		"key":  key,
 		"text": text,
 	}
 	if m := flags["model"]; m != "" {
@@ -324,8 +429,33 @@ func cmdPrompt(positional []string, flags map[string]string) {
 		outputMode = "text"
 	}
 
+	// Ephemeral single-shot: stream text to stdout, stop session when done
+	if ephemeral && outputMode == "text" {
+		result, err := connectAndSend(sock, msg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
+		if errMsg, _ := result["error"].(string); errMsg != "" {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
+			os.Exit(1)
+		}
+		streamUntilIdle(sock, key)
+		// Clean up ephemeral session
+		connectAndSend(sock, map[string]interface{}{
+			"cmd": "stop_session",
+			"key": key,
+		})
+		if serverStarted {
+			connectAndSend(sock, map[string]interface{}{
+				"cmd": "shutdown",
+			})
+		}
+		return
+	}
+
 	if outputMode == "stream-json" {
-		result, err := connectAndSend(socketPath(), msg)
+		result, err := connectAndSend(sock, msg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
@@ -334,11 +464,11 @@ func cmdPrompt(positional []string, flags map[string]string) {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
 			os.Exit(1)
 		}
-		attachStream(socketPath(), flags["key"])
+		attachStream(sock, key)
 		return
 	}
 
-	result, err := connectAndSend(socketPath(), msg)
+	result, err := connectAndSend(sock, msg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
@@ -359,6 +489,95 @@ func cmdPrompt(positional []string, flags map[string]string) {
 	} else {
 		data, _ := json.MarshalIndent(result, "", "  ")
 		fmt.Println(string(data))
+	}
+}
+
+// ensureServer checks if engine is reachable; if not, spawns `ion serve` in
+// background and waits for socket to accept connections. Returns true if a
+// new server was started (caller should shut it down for ephemeral use).
+func ensureServer(sock string) bool {
+	conn, err := net.DialTimeout(dialNetwork(), sock, 500*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return false
+	}
+
+	// Spawn server as background daemon
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "serve")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	detachProcess(cmd)
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot start engine: %s\n", err)
+		os.Exit(1)
+	}
+	// Detach child so it survives parent exit
+	cmd.Process.Release()
+
+	// Wait for socket to become available
+	for i := 0; i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
+		c, err := net.DialTimeout(dialNetwork(), sock, 200*time.Millisecond)
+		if err == nil {
+			c.Close()
+			return true
+		}
+	}
+	fmt.Fprintln(os.Stderr, "Error: engine failed to start within 5s")
+	os.Exit(1)
+	return false
+}
+
+// streamUntilIdle connects to the engine socket and streams text deltas to
+// stdout until the session emits engine_status with state=idle.
+func streamUntilIdle(sock, key string) {
+	conn, err := net.Dial(dialNetwork(), sock)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error connecting to stream: %s\n", err)
+		return
+	}
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var msg map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			continue
+		}
+		// Only process events for our session key
+		if msgKey, _ := msg["key"].(string); msgKey != key {
+			continue
+		}
+		event, _ := msg["event"].(map[string]interface{})
+		if event == nil {
+			continue
+		}
+		eventType, _ := event["type"].(string)
+		switch eventType {
+		case "engine_text_delta":
+			if text, ok := event["text"].(string); ok {
+				fmt.Print(text)
+			}
+		case "engine_status":
+			fields, _ := event["fields"].(map[string]interface{})
+			if fields != nil {
+				if state, _ := fields["state"].(string); state == "idle" {
+					fmt.Println()
+					return
+				}
+			}
+		case "engine_error":
+			if errMsg, ok := event["message"].(string); ok {
+				fmt.Fprintf(os.Stderr, "\nError: %s\n", errMsg)
+				return
+			}
+		}
 	}
 }
 

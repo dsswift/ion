@@ -1233,15 +1233,15 @@ func TestHandleRunExit_SetsClaudeSession(t *testing.T) {
 	code := 0
 	mb.emitExit(keys[0], &code, nil, "claude-session-abc")
 
-	// After exit, the claudeSession should be set. We verify by checking
+	// After exit, the conversationID should be set. We verify by checking
 	// the internal session state directly (same package).
 	mgr.mu.RLock()
 	s := mgr.sessions["sessid"]
-	cs := s.claudeSession
+	cs := s.conversationID
 	mgr.mu.RUnlock()
 
 	if cs != "claude-session-abc" {
-		t.Errorf("expected claudeSession='claude-session-abc', got %q", cs)
+		t.Errorf("expected conversationID='claude-session-abc', got %q", cs)
 	}
 
 	// Also verify the next prompt passes the session ID through.

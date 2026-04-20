@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -18,6 +20,12 @@ import (
 // When the CliBackend spawns Claude CLI, Claude CLI can call PreToolUse hooks
 // via HTTP. This server handles those requests and routes them through the
 // Go permission engine.
+// PermissionAskCallback is called when the permission engine returns "ask".
+// It should emit a permission_request event to the desktop and return a
+// channel that resolves with the user's chosen option ID. The callback
+// must also handle cleanup (unregistering) when the response arrives or times out.
+type PermissionAskCallback func(token string, questionID string, toolName string, toolDesc string, toolInput map[string]any, options []types.PermissionOpt) chan string
+
 type PermissionHookServer struct {
 	listener   net.Listener
 	server     *http.Server
@@ -25,6 +33,7 @@ type PermissionHookServer struct {
 	permEngine *permissions.Engine
 	mu         sync.Mutex
 	tokens     map[string]bool // active run tokens
+	onAsk      PermissionAskCallback
 }
 
 // NewPermissionHookServer creates a hook server on a random local port.
@@ -99,6 +108,13 @@ func (s *PermissionHookServer) GenerateSettingsJSON(token string) []byte {
 	return data
 }
 
+// SetOnAsk registers a callback for permission requests that need user approval.
+func (s *PermissionHookServer) SetOnAsk(fn PermissionAskCallback) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onAsk = fn
+}
+
 // Close shuts down the hook server.
 func (s *PermissionHookServer) Close() {
 	s.server.Close()
@@ -161,12 +177,57 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 			Tool:  req.ToolName,
 			Input: req.Input,
 		})
-		writePermissionResponse(w, result.Decision)
+		if result.Decision != "ask" {
+			writePermissionResponse(w, result.Decision)
+			return
+		}
+	}
+
+	// Decision is "ask" (or no permission engine) -- forward to desktop
+	s.mu.Lock()
+	askFn := s.onAsk
+	s.mu.Unlock()
+
+	if askFn == nil {
+		// No callback registered -- default allow
+		writePermissionResponse(w, "allow")
 		return
 	}
 
-	// Default: allow
-	writePermissionResponse(w, "allow")
+	// Generate question ID
+	qidBytes := make([]byte, 8)
+	rand.Read(qidBytes)
+	questionID := hex.EncodeToString(qidBytes)
+
+	// Default permission options
+	options := []types.PermissionOpt{
+		{ID: "allow", Label: "Allow"},
+		{ID: "deny", Label: "Deny"},
+		{ID: "allow_always", Label: "Allow always"},
+	}
+
+	ch := askFn(reqToken, questionID, req.ToolName, "", req.Input, options)
+	if ch == nil {
+		writePermissionResponse(w, "allow")
+		return
+	}
+
+	// Block until response or timeout (5 minutes)
+	select {
+	case optionID := <-ch:
+		// Map option IDs to hook decisions
+		decision := "allow"
+		switch optionID {
+		case "deny":
+			decision = "deny"
+		case "allow", "allow_always":
+			decision = "allow"
+		}
+		writePermissionResponse(w, decision)
+	case <-time.After(5 * time.Minute):
+		utils.Log("PermissionHookServer", "permission request timed out, denying: "+questionID)
+		writePermissionResponse(w, "deny")
+	}
 }
 
 func writePermissionResponse(w http.ResponseWriter, decision string) {

@@ -73,6 +73,7 @@ type EngineRuntimeConfig struct {
 	Security     *SecurityConfig               `json:"security,omitempty"`
 	Enterprise   *EnterpriseConfig             `json:"enterprise,omitempty"`
 	FeatureFlags *FeatureFlagsConfig           `json:"featureFlags,omitempty"`
+	LogLevel     string                        `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
 }
 
 // FeatureFlagsConfig defines feature flag source configuration.
@@ -86,8 +87,9 @@ type FeatureFlagsConfig struct {
 
 // ProviderConfig holds credentials and endpoint for a provider.
 type ProviderConfig struct {
-	APIKey  string `json:"apiKey,omitempty"`
-	BaseURL string `json:"baseURL,omitempty"`
+	APIKey     string `json:"apiKey,omitempty"`
+	BaseURL    string `json:"baseURL,omitempty"`
+	AuthHeader string `json:"authHeader,omitempty"`
 }
 
 // LimitsConfig defines resource limits for a run.

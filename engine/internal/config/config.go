@@ -60,6 +60,11 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 		merged = EnforceEnterprise(merged, enterprise)
 	}
 
+	// Apply log level from config
+	if merged.LogLevel != "" {
+		utils.SetLevelFromString(merged.LogLevel)
+	}
+
 	return merged
 }
 

@@ -40,7 +40,7 @@ type engineSession struct {
 	key           string
 	config        types.EngineConfig
 	requestID     string // empty when no active run
-	claudeSession string
+	conversationID string
 	agentRegistry map[string]types.AgentHandle
 	childPIDs     map[int]struct{}
 	planMode      bool
@@ -55,9 +55,10 @@ type engineSession struct {
 	telemetry      *telemetry.Collector
 	recorder       *recorder.Recorder
 	toolServer     *backend.ToolServer
-	pendingDialogs map[string]chan interface{}
-	idleTimer      *time.Timer
-	idleStop       chan struct{}
+	pendingDialogs     map[string]chan interface{}
+	pendingPermissions map[string]chan string
+	idleTimer          *time.Timer
+	idleStop           chan struct{}
 }
 
 // SessionInfo describes a session in the list response.
@@ -155,6 +156,7 @@ func (m *Manager) ListSessions() []SessionInfo {
 
 // StartSession creates a new session with the given config.
 func (m *Manager) StartSession(key string, config types.EngineConfig) error {
+	utils.Info("Session", fmt.Sprintf("StartSession: key=%s model=%s dir=%s", key, config.Model, config.WorkingDirectory))
 	m.mu.Lock()
 
 	if _, exists := m.sessions[key]; exists {
@@ -165,9 +167,11 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) error {
 	s := &engineSession{
 		key:            key,
 		config:         config,
+		conversationID:  config.SessionID,
 		agentRegistry:  make(map[string]types.AgentHandle),
 		childPIDs:      make(map[int]struct{}),
-		pendingDialogs: make(map[string]chan interface{}),
+		pendingDialogs:     make(map[string]chan interface{}),
+		pendingPermissions: make(map[string]chan string),
 		maxQueueDepth:  32,
 	}
 
@@ -317,7 +321,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 	opts := types.RunOptions{
 		Prompt:        text,
 		ProjectPath:   s.config.WorkingDirectory,
-		SessionID:     s.claudeSession,
+		SessionID:     s.conversationID,
 		Model:         s.config.Model,
 		MaxTokens:     s.config.MaxTokens,
 		Thinking:      s.config.Thinking,
@@ -608,6 +612,33 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 		} else {
 			token := fmt.Sprintf("run-%d", time.Now().UnixMilli())
 			hookServer.RegisterToken(token)
+
+			// Wire permission forwarding: when hook server gets an "ask" decision,
+			// emit engine_permission_request to desktop and block until response.
+			hookServer.SetOnAsk(func(reqToken string, questionID string, toolName string, toolDesc string, toolInput map[string]any, options []types.PermissionOpt) chan string {
+				ch := m.RegisterPendingPermission(key, questionID)
+				if ch == nil {
+					return nil
+				}
+				// Emit permission request as engine event
+				m.emit(key, types.EngineEvent{
+					Type:          "engine_permission_request",
+					QuestionID:    questionID,
+					PermToolName:  toolName,
+					PermToolDesc:  toolDesc,
+					PermToolInput: toolInput,
+					PermOptions:   options,
+				})
+				// Return wrapped channel that cleans up after resolution
+				result := make(chan string, 1)
+				go func() {
+					optionID := <-ch
+					m.UnregisterPendingPermission(key, questionID)
+					result <- optionID
+				}()
+				return result
+			})
+
 			settingsJSON := hookServer.GenerateSettingsJSON(token)
 
 			// Write temp settings file
@@ -652,6 +683,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 		}
 	}
 
+	utils.Info("Session", fmt.Sprintf("dispatching prompt: key=%s requestID=%s model=%s", key, requestID, opts.Model))
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_status",
 		Fields: &types.StatusFields{Label: key, State: "running", Model: opts.Model},
@@ -777,6 +809,55 @@ func (m *Manager) SendDialogResponse(key, dialogID string, value interface{}) {
 	}
 }
 
+// SendPermissionResponse resolves a pending permission request from the hook server.
+func (m *Manager) SendPermissionResponse(key, questionID, optionID string) {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	if !ok {
+		m.mu.RUnlock()
+		utils.Log("Session", fmt.Sprintf("permission response for unknown session %s", key))
+		return
+	}
+
+	ch, exists := s.pendingPermissions[questionID]
+	m.mu.RUnlock()
+
+	if !exists {
+		utils.Log("Session", fmt.Sprintf("no pending permission %s for session %s", questionID, key))
+		return
+	}
+	// Non-blocking send -- if nobody is waiting, drop silently.
+	select {
+	case ch <- optionID:
+	default:
+	}
+}
+
+// RegisterPendingPermission creates a channel for an in-flight permission request.
+// Returns the channel the hook server should block on.
+func (m *Manager) RegisterPendingPermission(key, questionID string) chan string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		return nil
+	}
+	ch := make(chan string, 1)
+	s.pendingPermissions[questionID] = ch
+	return ch
+}
+
+// UnregisterPendingPermission removes a pending permission entry.
+func (m *Manager) UnregisterPendingPermission(key, questionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		return
+	}
+	delete(s.pendingPermissions, questionID)
+}
+
 // SendCommand dispatches an internal command to a session.
 func (m *Manager) SendCommand(key, command, args string) {
 	m.mu.RLock()
@@ -804,8 +885,8 @@ func (m *Manager) SendCommand(key, command, args string) {
 
 	switch command {
 	case "compact":
-		if s.claudeSession != "" {
-			conv, err := conversation.Load(s.claudeSession, "")
+		if s.conversationID != "" {
+			conv, err := conversation.Load(s.conversationID, "")
 			if err == nil {
 				conversation.Compact(conv, 10)
 				_ = conversation.Save(conv, "")
@@ -813,8 +894,8 @@ func (m *Manager) SendCommand(key, command, args string) {
 			}
 		}
 	case "export":
-		if s.claudeSession != "" {
-			conv, err := conversation.Load(s.claudeSession, "")
+		if s.conversationID != "" {
+			conv, err := conversation.Load(s.conversationID, "")
 			if err == nil {
 				format := "markdown"
 				if args != "" {
@@ -845,7 +926,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 		return "", fmt.Errorf("session %q not found", key)
 	}
 
-	if s.claudeSession == "" {
+	if s.conversationID == "" {
 		m.mu.Unlock()
 		return "", fmt.Errorf("session %q has no conversation", key)
 	}
@@ -878,7 +959,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 		return "", fmt.Errorf("session %q not found", key)
 	}
 
-	conv, err := conversation.Load(s.claudeSession, "")
+	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
 		m.mu.Unlock()
 		return "", fmt.Errorf("failed to load conversation: %w", err)
@@ -890,7 +971,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 	newSession := &engineSession{
 		key:           newKey,
 		config:        s.config,
-		claudeSession: forked.ID,
+		conversationID: forked.ID,
 		agentRegistry: make(map[string]types.AgentHandle),
 		childPIDs:     make(map[int]struct{}),
 		planMode:      s.planMode,
@@ -924,7 +1005,7 @@ func (m *Manager) BranchSession(key, entryID string) error {
 		m.mu.RUnlock()
 		return fmt.Errorf("session %q not found", key)
 	}
-	sessionID := s.claudeSession
+	sessionID := s.conversationID
 	m.mu.RUnlock()
 
 	if sessionID == "" {
@@ -951,7 +1032,7 @@ func (m *Manager) NavigateSession(key, targetID string) error {
 		m.mu.RUnlock()
 		return fmt.Errorf("session %q not found", key)
 	}
-	sessionID := s.claudeSession
+	sessionID := s.conversationID
 	m.mu.RUnlock()
 
 	if sessionID == "" {
@@ -977,7 +1058,7 @@ func (m *Manager) GetSessionTree(key string) interface{} {
 		m.mu.RUnlock()
 		return nil
 	}
-	sessionID := s.claudeSession
+	sessionID := s.conversationID
 	m.mu.RUnlock()
 
 	if sessionID == "" {
@@ -1010,6 +1091,7 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string) {
 
 // StopSession cancels the active run and cleans up the session.
 func (m *Manager) StopSession(key string) error {
+	utils.Info("Session", fmt.Sprintf("StopSession: key=%s", key))
 	m.mu.Lock()
 	s, ok := m.sessions[key]
 	if !ok {
@@ -1116,9 +1198,10 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		return
 	}
 
+	utils.Debug("Session", fmt.Sprintf("normalized event: key=%s runID=%s type=%T", key, runID, event.Data))
 	ee := translateToEngineEvent(event)
 	if ee.Type == "" {
-		utils.Log("Session", fmt.Sprintf("dropping unhandled normalized event type: %T", event.Data))
+		utils.Debug("Session", fmt.Sprintf("dropping unhandled normalized event type: %T", event.Data))
 		return
 	}
 	m.emit(key, ee)
@@ -1167,12 +1250,21 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		return
 	}
 
+	codeStr, sigStr := "nil", "nil"
+	if code != nil {
+		codeStr = fmt.Sprintf("%d", *code)
+	}
+	if signal != nil {
+		sigStr = *signal
+	}
+	utils.Info("Session", fmt.Sprintf("handleRunExit: key=%s runID=%s code=%s signal=%s sessionID=%s", key, runID, codeStr, sigStr, sessionID))
+
 	var nextPrompt *pendingPrompt
 	m.mu.Lock()
 	if s, ok := m.sessions[key]; ok {
 		s.requestID = ""
 		if sessionID != "" {
-			s.claudeSession = sessionID
+			s.conversationID = sessionID
 		}
 		// Reset idle timer after run exit
 		if s.idleTimer != nil && m.config != nil && m.config.Limits.IdleTimeoutMs != nil && *m.config.Limits.IdleTimeoutMs > 0 {
@@ -1188,10 +1280,11 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_status",
-		Fields: &types.StatusFields{Label: key, State: "idle"},
+		Fields: &types.StatusFields{Label: key, State: "idle", SessionID: sessionID},
 	})
 
-	if code != nil || signal != nil {
+	if (code != nil && *code != 0) || signal != nil {
+		utils.Warn("Session", fmt.Sprintf("emitting engine_dead: key=%s code=%s signal=%s", key, codeStr, sigStr))
 		m.emit(key, types.EngineEvent{
 			Type:     "engine_dead",
 			ExitCode: code,
@@ -1201,6 +1294,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 
 	// Dispatch queued prompt outside the lock
 	if nextPrompt != nil {
+		utils.Debug("Session", fmt.Sprintf("dispatching queued prompt: key=%s", key))
 		go func() {
 			var ov *PromptOverrides
 			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || nextPrompt.extensionDir != "" || nextPrompt.noExtensions {
@@ -1213,7 +1307,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 				}
 			}
 			if err := m.SendPrompt(key, nextPrompt.text, ov); err != nil {
-				utils.Log("Session", "queued prompt failed: "+err.Error())
+				utils.Error("Session", "queued prompt failed: "+err.Error())
 			}
 		}()
 	}
@@ -1226,6 +1320,7 @@ func (m *Manager) handleRunError(runID string, err error) {
 		return
 	}
 
+	utils.Error("Session", fmt.Sprintf("handleRunError: key=%s runID=%s err=%s", key, runID, err.Error()))
 	m.emit(key, types.EngineEvent{
 		Type:         "engine_error",
 		EventMessage: err.Error(),
@@ -1293,6 +1388,16 @@ func translateToEngineEvent(event types.NormalizedEvent) types.EngineEvent {
 			ExitCode:   e.ExitCode,
 			Signal:     e.Signal,
 			StderrTail: e.StderrTail,
+		}
+
+	case *types.PermissionRequestEvent:
+		return types.EngineEvent{
+			Type:         "engine_permission_request",
+			QuestionID:   e.QuestionID,
+			PermToolName: e.ToolName,
+			PermToolDesc: e.ToolDescription,
+			PermToolInput: e.ToolInput,
+			PermOptions:  e.Options,
 		}
 
 	default:

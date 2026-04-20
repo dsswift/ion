@@ -17,7 +17,9 @@ type Parser struct {
 
 // NewParser creates a Parser that reads NDJSON lines from r.
 func NewParser(r io.Reader) *Parser {
-	return &Parser{scanner: bufio.NewScanner(r)}
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	return &Parser{scanner: s}
 }
 
 // Next returns the next parsed JSON line as a json.RawMessage.

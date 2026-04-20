@@ -293,6 +293,14 @@ func (b *ApiBackend) emit(runID string, event types.NormalizedEvent) {
 }
 
 func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
+	codeStr, sigStr := "nil", "nil"
+	if code != nil {
+		codeStr = fmt.Sprintf("%d", *code)
+	}
+	if signal != nil {
+		sigStr = *signal
+	}
+	utils.Info("ApiBackend", fmt.Sprintf("emitExit: runID=%s code=%s signal=%s sessionID=%s", runID, codeStr, sigStr, sessionID))
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()
@@ -302,6 +310,7 @@ func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID
 }
 
 func (b *ApiBackend) emitError(runID string, err error) {
+	utils.Error("ApiBackend", fmt.Sprintf("emitError: runID=%s err=%s", runID, err.Error()))
 	b.mu.Lock()
 	fn := b.onError
 	b.mu.Unlock()
@@ -340,6 +349,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	provider := providers.ResolveProvider(model)
 	if provider == nil {
+		utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
 		b.emitError(run.requestID, fmt.Errorf("no provider found for model %q", model))
 		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
 		return
@@ -353,6 +363,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			utils.Log("ApiBackend", "creating new conversation: "+opts.SessionID)
 			conv = conversation.CreateConversation(opts.SessionID, opts.SystemPrompt, model)
 		} else {
+			// Sanitize loaded messages (fix orphaned tool_result blocks, remove thinking)
+			loaded.Messages = conversation.SanitizeMessages(loaded.Messages)
 			conv = loaded
 		}
 	} else {
@@ -441,6 +453,24 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		toolDefs = filtered
 	}
 
+	// When provider supports server-side web search, swap client WebSearch for server tool
+	var serverTools []map[string]any
+	providerID := provider.ID()
+	if providerID == "anthropic" || providerID == "vertex" {
+		filtered := toolDefs[:0]
+		for _, td := range toolDefs {
+			if td.Name != "WebSearch" {
+				filtered = append(filtered, td)
+			}
+		}
+		toolDefs = filtered
+		serverTools = []map[string]any{{
+			"type":     "web_search_20250305",
+			"name":     "web_search",
+			"max_uses": 5,
+		}}
+	}
+
 	// Resolve context window for compaction checks
 	contextWindow := conversation.DefaultContext
 	if info := providers.GetModelInfo(model); info != nil {
@@ -452,6 +482,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// TS reference where turnCount increments at the top of the while loop.
 	for run.turnCount < maxTurns {
 		if ctx.Err() != nil {
+			utils.Warn("ApiBackend", fmt.Sprintf("run cancelled: runID=%s turns=%d cost=$%.4f", run.requestID, run.turnCount, run.totalCost))
 			b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 			return
 		}
@@ -479,6 +510,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Check budget
 		if maxBudget > 0 && run.totalCost >= maxBudget {
+			utils.Warn("ApiBackend", fmt.Sprintf("budget exceeded: runID=%s cost=$%.4f budget=$%.4f", run.requestID, run.totalCost, maxBudget))
 			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
 				ErrorMessage: fmt.Sprintf("budget exceeded: $%.4f >= $%.4f", run.totalCost, maxBudget),
 				IsError:      true,
@@ -541,12 +573,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 		}
 
-		// Build stream options
+		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
 		streamOpts := types.LlmStreamOptions{
-			Model:    model,
-			System:   conv.System,
-			Messages: conv.Messages,
-			Tools:    toolDefs,
+			Model:       model,
+			System:      conv.System,
+			Messages:    conversation.SanitizeMessages(conv.Messages),
+			Tools:       toolDefs,
+			ServerTools: serverTools,
 		}
 		if opts.MaxTokens > 0 {
 			streamOpts.MaxTokens = opts.MaxTokens
@@ -589,6 +622,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		if streamErr != nil {
 			if ctx.Err() != nil {
+				utils.Warn("ApiBackend", fmt.Sprintf("stream cancelled: runID=%s turn=%d", run.requestID, run.turnCount))
 				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
@@ -632,6 +666,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 				continue // retry the turn after compaction
 			}
+			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s", run.requestID, run.turnCount, streamErr.Error()))
 			b.emitError(run.requestID, streamErr)
 			b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 			return
@@ -678,6 +713,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 
 			elapsed := time.Since(run.startTime).Milliseconds()
+			utils.Info("ApiBackend", fmt.Sprintf("run complete: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, run.turnCount, run.totalCost, elapsed, conv.ID))
 			b.emit(run.requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 				Result:     resultText,
 				CostUsd:    run.totalCost,
@@ -706,9 +742,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			results, err := b.executeTools(ctx, run, toolUseBlocks, opts.ProjectPath)
 			if err != nil {
 				if ctx.Err() != nil {
+					utils.Warn("ApiBackend", fmt.Sprintf("tool execution cancelled: runID=%s", run.requestID))
 					b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 					return
 				}
+				utils.Error("ApiBackend", fmt.Sprintf("tool execution failed: runID=%s err=%s", run.requestID, err.Error()))
 				b.emitError(run.requestID, err)
 				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 				return
@@ -718,6 +756,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			conversation.AddToolResults(conv, results)
 
 		case "max_tokens":
+			utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, run.turnCount))
 			// Add continue message and loop
 			conversation.AddUserMessage(conv, "Continue from where you left off.")
 
@@ -742,6 +781,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		NumTurns:   run.turnCount,
 		SessionID:  conv.ID,
 	}})
+	utils.Warn("ApiBackend", fmt.Sprintf("max turns exceeded: runID=%s turns=%d/%d cost=$%.4f", run.requestID, run.turnCount, maxTurns, run.totalCost))
 	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
 }
 
@@ -790,10 +830,17 @@ func (b *ApiBackend) processStream(
 			}
 			cb := ev.ContentBlock
 			block := types.LlmContentBlock{
-				Type: cb.Type,
-				ID:   cb.ID,
-				Name: cb.Name,
-				Text: cb.Text,
+				Type:      cb.Type,
+				ID:        cb.ID,
+				Name:      cb.Name,
+				Text:      cb.Text,
+				ToolUseID: cb.ToolUseID,
+			}
+			// web_search_tool_result: serialize search results into Content string
+			if cb.Type == "web_search_tool_result" && cb.Content != nil {
+				if raw, err := json.Marshal(cb.Content); err == nil {
+					block.Content = string(raw)
+				}
 			}
 			currentBlockIndex = ev.BlockIndex
 			assistantBlocks = appendOrGrow(assistantBlocks, currentBlockIndex, block)
@@ -806,6 +853,37 @@ func (b *ApiBackend) processStream(
 				}})
 				toolCallIndex++
 				currentPartialJSON.Reset()
+			}
+
+			// Server-side tool use (e.g. web_search) -- accumulate input JSON but don't execute locally
+			if cb.Type == "server_tool_use" {
+				currentPartialJSON.Reset()
+			}
+
+			// Server-side search results -- emit event for desktop rendering
+			if cb.Type == "web_search_tool_result" && cb.Content != nil {
+				if results, ok := cb.Content.([]any); ok {
+					var hits []types.WebSearchHit
+					for _, r := range results {
+						if m, ok := r.(map[string]any); ok {
+							hit := types.WebSearchHit{}
+							if t, ok := m["title"].(string); ok {
+								hit.Title = t
+							}
+							if u, ok := m["url"].(string); ok {
+								hit.URL = u
+							}
+							if hit.URL != "" {
+								hits = append(hits, hit)
+							}
+						}
+					}
+					if len(hits) > 0 {
+						b.emit(run.requestID, types.NormalizedEvent{Data: &types.WebSearchResultEvent{
+							Results: hits,
+						}})
+					}
+				}
 			}
 
 		case "content_block_delta":
@@ -835,10 +913,10 @@ func (b *ApiBackend) processStream(
 			}
 
 		case "content_block_stop":
-			// Parse accumulated tool input JSON
+			// Parse accumulated tool input JSON (client or server tool)
 			if currentBlockIndex < len(assistantBlocks) {
 				block := &assistantBlocks[currentBlockIndex]
-				if block.Type == "tool_use" && currentPartialJSON.Len() > 0 {
+				if (block.Type == "tool_use" || block.Type == "server_tool_use") && currentPartialJSON.Len() > 0 {
 					var input map[string]any
 					if err := json.Unmarshal([]byte(currentPartialJSON.String()), &input); err == nil {
 						block.Input = input

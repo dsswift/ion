@@ -139,6 +139,26 @@ func GetProviderKey(providerID string) string {
 	return providerKeys[providerID]
 }
 
+// ApplyConfig re-registers providers that have config overrides (baseURL,
+// authHeader, etc.). Call after loading engine config.
+func ApplyConfig(configs map[string]types.ProviderConfig) {
+	for name, cfg := range configs {
+		opts := &ProviderOptions{
+			APIKey:     cfg.APIKey,
+			BaseURL:    cfg.BaseURL,
+			AuthHeader: cfg.AuthHeader,
+		}
+		switch name {
+		case "anthropic":
+			RegisterProvider(NewAnthropicProvider(opts))
+		case "openai":
+			RegisterProvider(NewOpenAIProvider(opts))
+		case "google":
+			RegisterProvider(NewGoogleProvider(opts))
+		}
+	}
+}
+
 var providerKeys map[string]string
 
 // ResetRegistries clears both registries. Used for testing only.

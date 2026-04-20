@@ -98,7 +98,11 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	setAuthHeader(req, p.authHeader, p.apiKey)
+	apiKey := p.apiKey
+	if apiKey == "" {
+		apiKey = GetProviderKey(p.id)
+	}
+	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("Accept", "text/event-stream")
 
@@ -169,17 +173,20 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 	// Format messages
 	body["messages"] = p.formatMessages(opts.Messages)
 
-	// Tools
-	if len(opts.Tools) > 0 {
-		tools := make([]map[string]any, len(opts.Tools))
-		for i, t := range opts.Tools {
-			tools[i] = map[string]any{
-				"name":         t.Name,
-				"description":  t.Description,
-				"input_schema": t.InputSchema,
-			}
-		}
-		body["tools"] = tools
+	// Tools (client-side + server-side)
+	var allTools []map[string]any
+	for _, t := range opts.Tools {
+		allTools = append(allTools, map[string]any{
+			"name":         t.Name,
+			"description":  t.Description,
+			"input_schema": t.InputSchema,
+		})
+	}
+	for _, st := range opts.ServerTools {
+		allTools = append(allTools, st)
+	}
+	if len(allTools) > 0 {
+		body["tools"] = allTools
 	}
 
 	// Extended thinking
@@ -270,6 +277,26 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 			"thinking":  b.Thinking,
 			"signature": "",
 		}
+	case "server_tool_use":
+		return map[string]any{
+			"type":  "server_tool_use",
+			"id":    b.ID,
+			"name":  b.Name,
+			"input": b.Input,
+		}
+	case "web_search_tool_result":
+		m := map[string]any{
+			"type":        "web_search_tool_result",
+			"tool_use_id": b.ToolUseID,
+		}
+		// Content was stored as JSON string but API expects the raw list
+		if b.Content != "" {
+			var parsed any
+			if err := json.Unmarshal([]byte(b.Content), &parsed); err == nil {
+				m["content"] = parsed
+			}
+		}
+		return m
 	default:
 		// Pass through unknown block types as-is
 		m := map[string]any{"type": b.Type}

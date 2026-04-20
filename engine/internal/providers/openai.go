@@ -92,7 +92,11 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	setAuthHeader(req, p.authHeader, p.apiKey)
+	apiKey := p.apiKey
+	if apiKey == "" {
+		apiKey = GetProviderKey(p.id)
+	}
+	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := p.client.Do(req)

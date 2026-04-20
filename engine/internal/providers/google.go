@@ -74,7 +74,11 @@ func (p *googleProvider) Stream(ctx context.Context, opts types.LlmStreamOptions
 }
 
 func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptions, events chan<- types.LlmStreamEvent) error {
-	if p.apiKey == "" {
+	apiKey := p.apiKey
+	if apiKey == "" {
+		apiKey = GetProviderKey(p.ID())
+	}
+	if apiKey == "" {
 		return NewProviderError(ErrAuth, "Google API key not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY", 0, false)
 	}
 
@@ -87,7 +91,7 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	} else {
 		// Native Gemini API: key in query param
 		url = fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?key=%s&alt=sse",
-			strings.TrimRight(p.baseURL, "/"), opts.Model, p.apiKey)
+			strings.TrimRight(p.baseURL, "/"), opts.Model, apiKey)
 	}
 
 	body := p.buildRequestBody(opts)
@@ -102,7 +106,11 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.authHeader != "" {
-		setAuthHeader(req, p.authHeader, p.apiKey)
+		apiKey := p.apiKey
+		if apiKey == "" {
+			apiKey = GetProviderKey(p.ID())
+		}
+		setAuthHeader(req, p.authHeader, apiKey)
 	}
 
 	resp, err := p.client.Do(req)

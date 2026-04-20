@@ -759,6 +759,7 @@ func Load(id, dir string) (*Conversation, error) {
 
 func loadFromJSONL(data []byte) (*Conversation, error) {
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var lines []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

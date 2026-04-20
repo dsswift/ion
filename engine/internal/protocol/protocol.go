@@ -34,6 +34,11 @@ type ClientCommand struct {
 	TargetID     string              `json:"targetId,omitempty"`
 	ExtensionDir string              `json:"extensionDir,omitempty"`
 	NoExtensions bool                `json:"noExtensions,omitempty"`
+	QuestionID   string              `json:"questionId,omitempty"`
+	OptionID     string              `json:"optionId,omitempty"`
+	SessionIDs   []string            `json:"sessionIds,omitempty"`
+	Label        string              `json:"label,omitempty"`
+	Limit        int                 `json:"limit,omitempty"`
 }
 
 var validCommands = map[string]bool{
@@ -52,7 +57,11 @@ var validCommands = map[string]bool{
 	"branch":          true,
 	"navigate_tree":   true,
 	"get_tree":        true,
-	"shutdown":        true,
+	"shutdown":               true,
+	"permission_response":   true,
+	"list_stored_sessions":  true,
+	"load_session_history":  true,
+	"save_session_label":    true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -87,6 +96,24 @@ func ParseClientCommand(line string) *ClientCommand {
 		return nil
 	}
 	return &result
+}
+
+// ExtractRequestID pulls the requestId from raw JSON without full parsing.
+// Used when ParseClientCommand returns nil so error responses can still be matched.
+func ExtractRequestID(line string) string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		return ""
+	}
+	v, ok := raw["requestId"]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return ""
+	}
+	return s
 }
 
 // hasString checks that raw[field] exists and is a JSON string.
@@ -133,6 +160,16 @@ func hasBool(raw map[string]json.RawMessage, field string) bool {
 	return json.Unmarshal(v, &b) == nil
 }
 
+// hasArray checks that raw[field] exists and is a JSON array.
+func hasArray(raw map[string]json.RawMessage, field string) bool {
+	v, ok := raw[field]
+	if !ok {
+		return false
+	}
+	var arr []json.RawMessage
+	return json.Unmarshal(v, &arr) == nil
+}
+
 // hasObject checks that raw[field] exists and is a JSON object.
 func hasObject(raw map[string]json.RawMessage, field string) bool {
 	v, ok := raw[field]
@@ -169,8 +206,14 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasString(raw, "entryId")
 	case "navigate_tree":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
-	case "list_sessions", "shutdown":
+	case "permission_response":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "questionId") && hasNonEmptyString(raw, "optionId")
+	case "list_sessions", "shutdown", "list_stored_sessions":
 		return true
+	case "load_session_history":
+		return hasNonEmptyString(raw, "key") || hasArray(raw, "sessionIds")
+	case "save_session_label":
+		return hasNonEmptyString(raw, "key") && hasString(raw, "label")
 	}
 	return false
 }
