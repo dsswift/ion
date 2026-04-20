@@ -115,7 +115,7 @@ export function HistoryPicker() {
 
     // If any session in the chain is already open in a tab, switch to it
     const existingTab = tabs.find((t) =>
-      allChainIds.includes(t.claudeSessionId || '')
+      allChainIds.includes(t.conversationId || '')
       || allChainIds.some((id) => t.historicalSessionIds.includes(id))
     )
     if (existingTab) {
@@ -172,7 +172,7 @@ export function HistoryPicker() {
   const renderSession = (session: SessionMeta) => {
     const allChainIds = session.chainSessionIds || [session.sessionId]
     const isOpen = tabs.some((t) =>
-      allChainIds.includes(t.claudeSessionId || '')
+      allChainIds.includes(t.conversationId || '')
       || allChainIds.some((id) => t.historicalSessionIds.includes(id))
     )
     const chainLen = session.chainLength || 1

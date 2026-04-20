@@ -207,7 +207,7 @@ export function ConversationView() {
             <PermissionDeniedCard
               tools={tab.permissionDenied.tools}
               tabId={tab.id}
-              sessionId={tab.claudeSessionId}
+              sessionId={tab.conversationId}
               projectPath={staticInfo?.projectPath || process.cwd()}
               messages={tab.messages}
               onDismiss={() => {
@@ -295,10 +295,10 @@ export function ConversationView() {
                             messages: [],
                             historicalSessionIds: [
                               ...t.historicalSessionIds,
-                              ...(t.claudeSessionId && !t.historicalSessionIds.includes(t.claudeSessionId)
-                                ? [t.claudeSessionId] : []),
+                              ...(t.conversationId && !t.historicalSessionIds.includes(t.conversationId)
+                                ? [t.conversationId] : []),
                             ],
-                            claudeSessionId: null,
+                            conversationId: null,
                             lastResult: null,
                             currentActivity: '',
                             permissionQueue: [],
@@ -322,10 +322,10 @@ export function ConversationView() {
                             ...t,
                             historicalSessionIds: [
                               ...t.historicalSessionIds,
-                              ...(t.claudeSessionId && !t.historicalSessionIds.includes(t.claudeSessionId)
-                                ? [t.claudeSessionId] : []),
+                              ...(t.conversationId && !t.historicalSessionIds.includes(t.conversationId)
+                                ? [t.conversationId] : []),
                             ],
-                            claudeSessionId: null,
+                            conversationId: null,
                           }
                         : t
                     ),

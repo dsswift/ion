@@ -25,7 +25,6 @@ export interface FlagDefinition {
 
 const FLAG_DEFINITIONS: FlagDefinition[] = [
   { name: 'remoteApi', description: 'Enable remote control transport layer', defaultValue: false },
-  { name: 'sdkMode', description: 'Use Agent SDK instead of CLI process spawning', defaultValue: false },
   { name: 'enhancedHooks', description: 'Enable extended hook event types (PostToolUse, SubagentStart, etc.)', defaultValue: false },
   { name: 'backgroundTasks', description: 'Enable background task framework', defaultValue: false },
   { name: 'multiAgent', description: 'Enable multi-agent tab communication', defaultValue: false },

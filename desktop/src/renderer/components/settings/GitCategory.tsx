@@ -18,8 +18,6 @@ export function GitCategory() {
   const removeWorktreeBranchDefault = useThemeStore((s) => s.removeWorktreeBranchDefault)
   const commitCommand = useThemeStore((s) => s.commitCommand)
   const setCommitCommand = useThemeStore((s) => s.setCommitCommand)
-  const claudeCommand = useThemeStore((s) => s.claudeCommand)
-  const setClaudeCommand = useThemeStore((s) => s.setClaudeCommand)
   const gitChangesTreeView = useThemeStore((s) => s.gitChangesTreeView)
   const setGitChangesTreeView = useThemeStore((s) => s.setGitChangesTreeView)
 
@@ -189,30 +187,6 @@ export function GitCategory() {
         />
       </SettingSection>
 
-      <SettingSection
-        label="Claude Command"
-        description="Command to launch Claude in the terminal. Leave empty for default (claude)."
-      >
-        <input
-          type="text"
-          value={claudeCommand}
-          onChange={(e) => setClaudeCommand(e.target.value)}
-          placeholder="claude"
-          style={{
-            width: '100%',
-            padding: '7px 10px',
-            fontSize: 13,
-            fontFamily: 'Menlo, Monaco, monospace',
-            background: colors.surfacePrimary,
-            color: colors.textPrimary,
-            border: `1px solid ${colors.containerBorder}`,
-            borderRadius: 8,
-            outline: 'none',
-          }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = colors.accent }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = colors.containerBorder }}
-        />
-      </SettingSection>
     </>
   )
 }

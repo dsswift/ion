@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldWarning, ShieldCheck, Terminal, ArrowSquareOut, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
+import { ShieldWarning, ShieldCheck, Terminal, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
 import { useColors, useThemeStore } from '../theme'
-import { useSessionStore } from '../stores/sessionStore'
 import { PlanViewer } from './PlanViewer'
 import type { Message } from '../../shared/types'
 
@@ -33,7 +32,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
   const colors = useColors()
   const showClearContext = useThemeStore((s) => s.showImplementClearContext)
   const allowSettingsEdits = useThemeStore((s) => s.allowSettingsEdits)
-  const openCliInTerminal = useSessionStore((s) => s.openCliInTerminal)
   const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
 
   // Extract planFilePath from ExitPlanMode input, or fall back to last Write to .claude/plans/
@@ -64,13 +62,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
     if (result.content && result.fileName) {
       setPlanData({ content: result.content, fileName: result.fileName })
     }
-  }
-
-  const handleOpenInCli = () => {
-    if (sessionId) {
-      openCliInTerminal(tabId, sessionId, projectPath)
-    }
-    onDismiss()
   }
 
   const toolNames = [...new Set(tools.map((t) => t.toolName))]
@@ -400,26 +391,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
               >
                 Block
               </button>
-              {sessionId && (
-                <button
-                  onClick={handleOpenInCli}
-                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                  style={{
-                    background: colors.surfaceHover,
-                    color: colors.textTertiary,
-                    border: `1px solid ${colors.surfaceSecondary}`,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = colors.surfaceActive
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = colors.surfaceHover
-                  }}
-                >
-                  <ArrowSquareOut size={12} />
-                  Open in CLI
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -491,26 +462,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
 
           {/* Actions */}
           <div className="flex gap-1.5">
-            {sessionId && (
-              <button
-                onClick={handleOpenInCli}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                style={{
-                  background: colors.accentLight,
-                  color: colors.accent,
-                  border: `1px solid ${colors.accentBorderMedium}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.accentSoft
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.accentLight
-                }}
-              >
-                <ArrowSquareOut size={12} />
-                Open in CLI
-              </button>
-            )}
             <button
               onClick={onDismiss}
               className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"

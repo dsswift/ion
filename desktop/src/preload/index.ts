@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, CatalogPlugin, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent } from '../shared/types'
 import type { DiscoveredCommand } from '../main/claude/command-discovery'
 
 export interface IonAPI {
@@ -16,7 +16,6 @@ export interface IonAPI {
   closeTab(tabId: string): Promise<void>
   selectDirectory(): Promise<string | null>
   openExternal(url: string): Promise<boolean>
-  openInTerminal(sessionId: string | null, projectPath?: string, claudeCommand?: string): Promise<boolean>
   openInVSCode(projectPath: string): Promise<boolean>
   attachFiles(): Promise<FileAttachment[] | null>
   attachFileByPath(path: string): Promise<FileAttachment | null>
@@ -32,10 +31,6 @@ export interface IonAPI {
   loadSession(sessionId: string, projectPath?: string, encodedDir?: string): Promise<SessionLoadMessage[]>
   readPlan(filePath: string): Promise<{ content: string | null; fileName: string | null }>
   discoverCommands(projectPath: string): Promise<DiscoveredCommand[]>
-  fetchMarketplace(forceRefresh?: boolean): Promise<{ plugins: CatalogPlugin[]; error: string | null }>
-  listInstalledPlugins(): Promise<string[]>
-  installPlugin(repo: string, pluginName: string, marketplace: string, sourcePath?: string, isSkillMd?: boolean): Promise<{ ok: boolean; error?: string }>
-  uninstallPlugin(pluginName: string): Promise<{ ok: boolean; error?: string }>
   listFonts(): Promise<string[]>
   terminalCreate(key: string, cwd: string): Promise<void>
   terminalWrite(key: string, data: string): void
@@ -156,7 +151,6 @@ const api: IonAPI = {
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
-  openInTerminal: (sessionId, projectPath, claudeCommand) => ipcRenderer.invoke(IPC.OPEN_IN_TERMINAL, { sessionId, projectPath, claudeCommand }),
   openInVSCode: (projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, projectPath),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),
@@ -175,12 +169,6 @@ const api: IonAPI = {
   loadSession: (sessionId: string, projectPath?: string, encodedDir?: string) => ipcRenderer.invoke(IPC.LOAD_SESSION, { sessionId, projectPath, encodedDir }),
   readPlan: (filePath: string) => ipcRenderer.invoke(IPC.READ_PLAN, filePath),
   discoverCommands: (projectPath: string) => ipcRenderer.invoke(IPC.DISCOVER_COMMANDS, projectPath),
-  fetchMarketplace: (forceRefresh) => ipcRenderer.invoke(IPC.MARKETPLACE_FETCH, { forceRefresh }),
-  listInstalledPlugins: () => ipcRenderer.invoke(IPC.MARKETPLACE_INSTALLED),
-  installPlugin: (repo, pluginName, marketplace, sourcePath, isSkillMd) =>
-    ipcRenderer.invoke(IPC.MARKETPLACE_INSTALL, { repo, pluginName, marketplace, sourcePath, isSkillMd }),
-  uninstallPlugin: (pluginName) =>
-    ipcRenderer.invoke(IPC.MARKETPLACE_UNINSTALL, { pluginName }),
   listFonts: () => ipcRenderer.invoke(IPC.LIST_FONTS),
   terminalCreate: (key, cwd) => ipcRenderer.invoke(IPC.TERMINAL_CREATE, { key, cwd }),
   terminalWrite: (key, data) => ipcRenderer.send(IPC.TERMINAL_DATA, { key, data }),

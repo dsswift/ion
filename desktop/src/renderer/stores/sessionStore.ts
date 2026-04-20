@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, FileAttachment, CatalogPlugin, PluginStatus, PersistedTabState, TerminalInstance, TerminalPaneState, TerminalInstanceKind, EngineInstance, EnginePaneState, EngineProfile, AgentStateUpdate, StatusFields } from '../../shared/types'
+import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, FileAttachment, PersistedTabState, TerminalInstance, TerminalPaneState, TerminalInstanceKind, EngineInstance, EnginePaneState, EngineProfile, AgentStateUpdate, StatusFields } from '../../shared/types'
 import { useThemeStore } from '../theme'
 import { destroyTerminalInstance } from '../components/TerminalPanel'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
@@ -139,16 +139,6 @@ interface State {
   // Settings dialog state
   settingsOpen: boolean
 
-  // Marketplace state
-  marketplaceOpen: boolean
-  marketplaceCatalog: CatalogPlugin[]
-  marketplaceLoading: boolean
-  marketplaceError: string | null
-  marketplaceInstalledNames: string[]
-  marketplacePluginStates: Record<string, PluginStatus>
-  marketplaceSearch: string
-  marketplaceFilter: string
-
   // Actions
   initStaticInfo: () => Promise<void>
   setPreferredModel: (model: string | null) => void
@@ -166,12 +156,9 @@ interface State {
   toggleTallView: (tabId: string) => void
   openSettings: () => void
   closeSettings: () => void
-  toggleMarketplace: () => void
-  closeMarketplace: () => void
   toggleGitPanel: () => void
   closeGitPanel: () => void
   toggleTerminal: (tabId: string) => void
-  openCliInTerminal: (tabId: string, sessionId: string | null, cwd: string) => void
   runInTerminal: (tabId: string, cmd: string) => void
   consumeTerminalPendingCommand: (key: string) => string | undefined
   createTerminalTab: () => Promise<string>
@@ -202,12 +189,6 @@ interface State {
   toggleEditorReadOnly: (dir: string, fileId: string) => void
   setEditorGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   setPlanGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
-  loadMarketplace: (forceRefresh?: boolean) => Promise<void>
-  setMarketplaceSearch: (query: string) => void
-  setMarketplaceFilter: (filter: string) => void
-  installMarketplacePlugin: (plugin: CatalogPlugin) => Promise<void>
-  uninstallMarketplacePlugin: (plugin: CatalogPlugin) => Promise<void>
-  buildYourOwn: () => void
   forkTab: (sourceTabId: string) => Promise<string | null>
   rewindToMessage: (tabId: string, messageId: string) => void
   forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>
@@ -270,7 +251,7 @@ async function playNotificationIfHidden(): Promise<void> {
 function makeLocalTab(): TabState {
   return {
     id: crypto.randomUUID(),
-    claudeSessionId: null,
+    conversationId: null,
     historicalSessionIds: [],
     status: 'idle',
     activeRequestId: null,
@@ -365,16 +346,6 @@ export const useSessionStore = create<State>((set, get) => ({
 
   // Settings dialog
   settingsOpen: false,
-
-  // Marketplace
-  marketplaceOpen: false,
-  marketplaceCatalog: [],
-  marketplaceLoading: false,
-  marketplaceError: null,
-  marketplaceInstalledNames: [],
-  marketplacePluginStates: {},
-  marketplaceSearch: '',
-  marketplaceFilter: 'All',
 
   initStaticInfo: async () => {
     try {
@@ -534,7 +505,6 @@ export const useSessionStore = create<State>((set, get) => ({
       if (!s.isExpanded) {
         set((prev) => ({
           isExpanded: true,
-          marketplaceOpen: false,
           settingsOpen: false,
           tabs: prev.tabs.map((t) => t.id === tabId ? { ...t, hasUnread: false } : t),
         }))
@@ -548,7 +518,6 @@ export const useSessionStore = create<State>((set, get) => ({
         activeTabId: tabId,
         isExpanded: expandOnSwitch ? true : prev.isExpanded,
         tallViewTabId: null,
-        marketplaceOpen: false,
         settingsOpen: false,
         tabs: prev.tabs.map((t) =>
           t.id === tabId ? { ...t, hasUnread: false } : t
@@ -562,7 +531,6 @@ export const useSessionStore = create<State>((set, get) => ({
     const willExpand = !isExpanded
     set((s) => ({
       isExpanded: willExpand,
-      marketplaceOpen: false,
       settingsOpen: false,
       // Expanding = reading: clear unread flag for the active tab
       tabs: willExpand
@@ -585,20 +553,6 @@ export const useSessionStore = create<State>((set, get) => ({
 
   closeSettings: () => {
     set({ settingsOpen: false })
-  },
-
-  toggleMarketplace: () => {
-    const s = get()
-    if (s.marketplaceOpen) {
-      set({ marketplaceOpen: false })
-    } else {
-      set({ isExpanded: false, marketplaceOpen: true })
-      get().loadMarketplace()
-    }
-  },
-
-  closeMarketplace: () => {
-    set({ marketplaceOpen: false })
   },
 
   toggleGitPanel: () => {
@@ -789,31 +743,6 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
 
     return tab.id
-  },
-
-  openCliInTerminal: (tabId, sessionId, cwd) => {
-    const safeCwd = cwd.replace(/'/g, "'\\''")
-    const bin = useThemeStore.getState().claudeCommand || 'claude'
-    const cmd = sessionId
-      ? `cd '${safeCwd}' && ${bin} --resume ${sessionId}`
-      : `cd '${safeCwd}' && ${bin}`
-    // Get or create dedicated CLI terminal
-    const instanceId = get().getOrCreateDedicatedTerminal(tabId, 'cli')
-    get().selectTerminalInstance(tabId, instanceId)
-    const key = `${tabId}:${instanceId}`
-    set((s) => {
-      const nextOpen = new Set(s.terminalOpenTabIds)
-      const nextPending = new Map(s.terminalPendingCommands)
-      nextPending.set(key, cmd)
-      if (nextOpen.has(tabId)) {
-        // Terminal pane already open -- check if PTY exists by trying to write
-        window.ion.terminalWrite(key, cmd + '\n')
-        nextPending.delete(key)
-      } else {
-        nextOpen.add(tabId)
-      }
-      return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
-    })
   },
 
   runInTerminal: (tabId, cmd) => {
@@ -1140,85 +1069,6 @@ export const useSessionStore = create<State>((set, get) => ({
   setEditorGeometry: (geo) => set({ editorGeometry: geo }),
   setPlanGeometry: (geo) => set({ planGeometry: geo }),
 
-  loadMarketplace: async (forceRefresh) => {
-    set({ marketplaceLoading: true, marketplaceError: null })
-    try {
-      const [catalog, installed] = await Promise.all([
-        window.ion.fetchMarketplace(forceRefresh),
-        window.ion.listInstalledPlugins(),
-      ])
-      if (catalog.error && catalog.plugins.length === 0) {
-        set({ marketplaceError: catalog.error, marketplaceLoading: false })
-        return
-      }
-      const installedSet = new Set(installed.map((n) => n.toLowerCase()))
-      const pluginStates: Record<string, PluginStatus> = {}
-      for (const p of catalog.plugins) {
-        // For SKILL.md skills: match individual name against ~/.claude/skills/ dirs
-        // For CLI plugins: match installName or "installName@marketplace" against installed_plugins.json
-        const candidates = p.isSkillMd
-          ? [p.installName]
-          : [p.installName, `${p.installName}@${p.marketplace}`]
-        const isInstalled = candidates.some((c) => installedSet.has(c.toLowerCase()))
-        pluginStates[p.id] = isInstalled ? 'installed' : 'not_installed'
-      }
-      set({
-        marketplaceCatalog: catalog.plugins,
-        marketplaceInstalledNames: installed,
-        marketplacePluginStates: pluginStates,
-        marketplaceLoading: false,
-      })
-    } catch (err: unknown) {
-      set({
-        marketplaceError: err instanceof Error ? err.message : String(err),
-        marketplaceLoading: false,
-      })
-    }
-  },
-
-  setMarketplaceSearch: (query) => {
-    set({ marketplaceSearch: query })
-  },
-
-  setMarketplaceFilter: (filter) => {
-    set({ marketplaceFilter: filter })
-  },
-
-  installMarketplacePlugin: async (plugin) => {
-    set((s) => ({
-      marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'installing' },
-    }))
-    const result = await window.ion.installPlugin(plugin.repo, plugin.installName, plugin.marketplace, plugin.sourcePath, plugin.isSkillMd)
-    if (result.ok) {
-      set((s) => ({
-        marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'installed' as PluginStatus },
-        marketplaceInstalledNames: [...s.marketplaceInstalledNames, plugin.installName],
-      }))
-    } else {
-      set((s) => ({
-        marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'failed' },
-      }))
-    }
-  },
-
-  uninstallMarketplacePlugin: async (plugin) => {
-    const result = await window.ion.uninstallPlugin(plugin.installName)
-    if (result.ok) {
-      set((s) => ({
-        marketplacePluginStates: { ...s.marketplacePluginStates, [plugin.id]: 'not_installed' as PluginStatus },
-        marketplaceInstalledNames: s.marketplaceInstalledNames.filter((n) => n !== plugin.installName),
-      }))
-    }
-  },
-
-  buildYourOwn: () => {
-    set({ marketplaceOpen: false, settingsOpen: false, isExpanded: true })
-    // Small delay to let the UI transition
-    setTimeout(() => {
-      get().sendMessage('Help me create a new Claude Code skill')
-    }, 100)
-  },
-
   closeTab: (tabId) => {
     // Clean up worktree if this tab has one
     const closingTab = get().tabs.find((t) => t.id === tabId)
@@ -1329,8 +1179,8 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
     // Persist custom title to session-labels.json so it survives tab close/restore
     const tab = get().tabs.find((t) => t.id === tabId)
-    if (tab?.claudeSessionId) {
-      void window.ion.saveSessionLabel(tab.claudeSessionId, customTitle)
+    if (tab?.conversationId) {
+      void window.ion.saveSessionLabel(tab.conversationId, customTitle)
     }
   },
 
@@ -1363,7 +1213,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   forkTab: async (sourceTabId) => {
     const source = get().tabs.find((t) => t.id === sourceTabId)
-    if (!source || !source.claudeSessionId) return null
+    if (!source || !source.conversationId) return null
     try {
       const { tabId } = await window.ion.createTab()
 
@@ -1391,8 +1241,8 @@ export const useSessionStore = create<State>((set, get) => ({
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
-        claudeSessionId: null,
-        forkedFromSessionId: source.claudeSessionId,
+        conversationId: null,
+        forkedFromSessionId: source.conversationId,
         title: source.title,
         customTitle: forkTitle,
         workingDirectory: source.workingDirectory,
@@ -1423,7 +1273,7 @@ export const useSessionStore = create<State>((set, get) => ({
     if (idx < 0) return
 
     const targetMessage = tab.messages[idx]
-    const oldSessionId = tab.claudeSessionId
+    const oldSessionId = tab.conversationId
     const historicalSessionIds = oldSessionId
       ? [...tab.historicalSessionIds, oldSessionId]
       : [...tab.historicalSessionIds]
@@ -1442,7 +1292,7 @@ export const useSessionStore = create<State>((set, get) => ({
           ? {
               ...t,
               messages: rewoundMessages,
-              claudeSessionId: null,
+              conversationId: null,
               historicalSessionIds,
               forkedFromSessionId: oldSessionId,
               lastResult: null,
@@ -1490,8 +1340,8 @@ export const useSessionStore = create<State>((set, get) => ({
       const tab: TabState = {
         ...makeLocalTab(),
         id: newTabId,
-        claudeSessionId: null,
-        forkedFromSessionId: source.claudeSessionId,
+        conversationId: null,
+        forkedFromSessionId: source.conversationId,
         title: source.title,
         customTitle: forkTitle,
         workingDirectory: source.workingDirectory,
@@ -1552,7 +1402,7 @@ export const useSessionStore = create<State>((set, get) => ({
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
-        claudeSessionId: sessionId,
+        conversationId: sessionId,
         title: title || 'Resumed Session',
         customTitle: customTitle || null,
         workingDirectory: defaultDir,
@@ -1575,7 +1425,7 @@ export const useSessionStore = create<State>((set, get) => ({
         : null
 
       const tab = makeLocalTab()
-      tab.claudeSessionId = sessionId
+      tab.conversationId = sessionId
       tab.title = title || 'Resumed Session'
       tab.customTitle = customTitle || null
       tab.workingDirectory = defaultDir
@@ -1646,7 +1496,7 @@ export const useSessionStore = create<State>((set, get) => ({
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
-        claudeSessionId: sessionId,
+        conversationId: sessionId,
         historicalSessionIds,
         title: title || 'Resumed Session',
         customTitle: customTitle || null,
@@ -1669,7 +1519,7 @@ export const useSessionStore = create<State>((set, get) => ({
         : null
 
       const tab = makeLocalTab()
-      tab.claudeSessionId = sessionId
+      tab.conversationId = sessionId
       tab.historicalSessionIds = historicalSessionIds
       tab.title = title || 'Resumed Session'
       tab.customTitle = customTitle || null
@@ -1831,7 +1681,7 @@ export const useSessionStore = create<State>((set, get) => ({
               workingDirectory: dir,
               hasChosenDirectory: true,
               historicalSessionIds: [],
-              claudeSessionId: null,
+              conversationId: null,
               additionalDirs: [],
               worktree: null,
               pendingWorktreeSetup: false,
@@ -2063,7 +1913,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
     // Slash commands are action-oriented -- auto-switch out of plan mode
     // so the command can execute tools without manual approval
-    if (!tab.claudeSessionId && tab.permissionMode === 'plan' && prompt.startsWith('/')) {
+    if (!tab.conversationId && tab.permissionMode === 'plan' && prompt.startsWith('/')) {
       get().setPermissionMode('auto')
 
       // Move to in-progress group (same as plan-ready implement)
@@ -2159,7 +2009,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
     // For forked tabs on first message: inject prior conversation as system context
     let effectiveSystemPrompt = appendSystemPrompt || undefined
-    if (tab.forkedFromSessionId && !tab.claudeSessionId) {
+    if (tab.forkedFromSessionId && !tab.conversationId) {
       const priorMessages = tab.messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .filter((m) => m.content.trim().length > 0)
@@ -2177,7 +2027,7 @@ export const useSessionStore = create<State>((set, get) => ({
     window.ion.prompt(activeTabId, requestId, {
       prompt: fullPrompt,
       projectPath: resolvedPath,
-      sessionId: tab.claudeSessionId || undefined,
+      sessionId: tab.conversationId || undefined,
       model: preferredModel || undefined,
       addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
       appendSystemPrompt: effectiveSystemPrompt,
@@ -2240,7 +2090,7 @@ export const useSessionStore = create<State>((set, get) => ({
     window.ion.prompt(tabId, requestId, {
       prompt,
       projectPath: resolvedPath,
-      sessionId: tab.claudeSessionId || undefined,
+      sessionId: tab.conversationId || undefined,
       model: preferredModel || undefined,
       addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
       source: 'remote',
@@ -2360,11 +2210,11 @@ export const useSessionStore = create<State>((set, get) => ({
 
         switch (event.type) {
           case 'session_init':
-            if (updated.claudeSessionId && updated.claudeSessionId !== event.sessionId
-                && !updated.historicalSessionIds.includes(updated.claudeSessionId)) {
-              updated.historicalSessionIds = [...updated.historicalSessionIds, updated.claudeSessionId]
+            if (updated.conversationId && updated.conversationId !== event.sessionId
+                && !updated.historicalSessionIds.includes(updated.conversationId)) {
+              updated.historicalSessionIds = [...updated.historicalSessionIds, updated.conversationId]
             }
-            updated.claudeSessionId = event.sessionId
+            updated.conversationId = event.sessionId
             updated.sessionModel = event.model
             updated.sessionTools = event.tools
             updated.sessionMcpServers = event.mcpServers
@@ -2451,6 +2301,10 @@ export const useSessionStore = create<State>((set, get) => ({
               targetTool.content = event.content
               if (event.isError && targetTool.toolName !== 'ExitPlanMode' && targetTool.toolName !== 'AskUserQuestion') {
                 targetTool.toolStatus = 'error'
+              } else {
+                // Mark completed on success — engine path only sends tool_result (no separate
+                // tool_call_complete), so we must set completed here to clear the "running" state.
+                targetTool.toolStatus = 'completed'
               }
               if (useThemeStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
                 targetTool.autoExpandResult = true
@@ -2543,6 +2397,10 @@ export const useSessionStore = create<State>((set, get) => ({
             updated.activeRequestId = null
             updated.currentActivity = ''
             updated.permissionQueue = []
+            // Sync conversation ID from engine so subsequent prompts resume it
+            if (event.sessionId) {
+              updated.conversationId = event.sessionId
+            }
             updated.lastResult = {
               totalCostUsd: event.costUsd,
               durationMs: event.durationMs,
@@ -2628,6 +2486,7 @@ export const useSessionStore = create<State>((set, get) => ({
             break
 
           case 'session_dead':
+            console.warn(`[Ion] session_dead: tab=${tabId} exitCode=${(event as any).exitCode}`)
             updated.status = 'dead'
             updated.activeRequestId = null
             updated.currentActivity = ''
@@ -2684,6 +2543,9 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   handleStatusChange: (tabId, newStatus) => {
+    if (newStatus === 'dead') {
+      console.warn(`[Ion] handleStatusChange: tab=${tabId} status=dead`)
+    }
     set((s) => ({
       tabs: s.tabs.map((t) =>
         t.id === tabId
@@ -3046,6 +2908,7 @@ export const useSessionStore = create<State>((set, get) => ({
         break
       }
       case 'engine_dead': {
+        console.warn(`[Ion] handleEngineEvent engine_dead: key=${key} tabId=${tabId} exitCode=${event.exitCode}`)
         set((state) => {
           // Only mark tab dead if no other instances are running
           const pane = state.enginePanes.get(tabId)
@@ -3125,7 +2988,7 @@ function persistTabs(): void {
     .map((t) => {
       const pane = terminalPanes.get(t.id)
       return {
-        claudeSessionId: t.claudeSessionId,
+        conversationId: t.conversationId,
         title: t.customTitle || t.title,
         customTitle: t.customTitle,
         workingDirectory: t.workingDirectory,
@@ -3191,7 +3054,7 @@ function persistTabs(): void {
   }
 
   const data: PersistedTabState = {
-    activeSessionId: activeTab?.claudeSessionId || null,
+    activeSessionId: activeTab?.conversationId || null,
     activeTabIndex,
     tabs: persistedTabs,
     editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
@@ -3216,10 +3079,10 @@ async function persistSessionChains(): Promise<void> {
 
     // Update chains from currently open tabs
     for (const tab of tabs) {
-      if (tab.historicalSessionIds.length > 0 && tab.claudeSessionId) {
+      if (tab.historicalSessionIds.length > 0 && tab.conversationId) {
         // The first historical session is the root; all others + current are continuations
         const rootId = tab.historicalSessionIds[0]
-        const continuations = [...tab.historicalSessionIds.slice(1), tab.claudeSessionId]
+        const continuations = [...tab.historicalSessionIds.slice(1), tab.conversationId]
         chains[rootId] = continuations
         for (const cId of continuations) {
           reverse[cId] = rootId

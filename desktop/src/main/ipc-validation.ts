@@ -19,11 +19,12 @@ export function isValidProjectPath(path: string): boolean {
 }
 
 /**
- * Validate a sessionId as a strict UUID v4 string.
- * Prevents path traversal via crafted session IDs like `../../etc/passwd`.
+ * Validate a sessionId. Accepts UUIDs and engine-generated IDs (e.g. "run-1776636257802").
+ * Rejects path traversal and special characters since IDs may be used as filenames by the engine.
  */
 export function isValidSessionId(sessionId: string): boolean {
-  return UUID_RE.test(sessionId)
+  if (!sessionId || sessionId.length > 128) return false
+  return /^[a-zA-Z0-9_-]+$/.test(sessionId)
 }
 
 /**
@@ -63,20 +64,3 @@ export function escapeAppleScript(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
-/**
- * Build the AppleScript-safe shell command for opening a terminal session.
- *
- * Combines single-quote shell escaping with AppleScript string escaping
- * to prevent injection in both layers.
- */
-export function buildTerminalCommand(
-  projectPath: string,
-  claudeBin: string,
-  sessionId: string | null,
-): string {
-  const safeDir = escapeAppleScript(shellSingleQuote(projectPath))
-  if (sessionId) {
-    return `cd ${safeDir} && ${claudeBin} --resume ${sessionId}`
-  }
-  return `cd ${safeDir} && ${claudeBin}`
-}

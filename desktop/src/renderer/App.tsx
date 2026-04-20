@@ -1,13 +1,12 @@
 import React, { useEffect, useCallback, useState } from 'react'
 import type { Message } from '../shared/types'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Paperclip, Camera, HeadCircuit, Lightning } from '@phosphor-icons/react'
+import { Paperclip, Camera, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
 import { InputBar, useBashModeStore } from './components/InputBar'
 import { StatusBar } from './components/StatusBar'
-import { MarketplacePanel } from './components/MarketplacePanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
 import { TerminalBigScreen } from './components/TerminalBigScreen'
@@ -177,15 +176,14 @@ export default function App() {
         const restoredTabIds: Array<{ tabId: string; sessionId: string | null; index: number }> = []
         for (let i = 0; i < saved.tabs.length; i++) {
           const st = saved.tabs[i]
-
-          if (st.claudeSessionId) {
-            // Tab with a Claude session -- resume it
+          if (st.conversationId) {
+            // Tab with an engine conversation -- resume it
             const tabId = await useSessionStore.getState().resumeSession(
-              st.claudeSessionId,
+              st.conversationId,
               st.title,
               st.workingDirectory,
             )
-            restoredTabIds.push({ tabId, sessionId: st.claudeSessionId, index: i })
+            restoredTabIds.push({ tabId, sessionId: st.conversationId, index: i })
 
             // Patch extra per-tab settings that resumeSession doesn't handle
             // Restore worktree info if present (verify path still exists)
@@ -704,7 +702,6 @@ export default function App() {
   const isTallView = useSessionStore((s) => s.tallViewTabId === s.activeTabId)
   const isTerminalTall = useSessionStore((s) => s.terminalTallTabId === s.activeTabId)
   const isTerminalBigScreen = useSessionStore((s) => s.terminalBigScreenTabId === s.activeTabId)
-  const marketplaceOpen = useSessionStore((s) => s.marketplaceOpen)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
@@ -782,41 +779,6 @@ export default function App() {
         <div onMouseDown={handleMainUIMouseDown} style={{ width: contentWidth, position: 'relative', margin: '0 auto', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
 
           <AnimatePresence initial={false}>
-            {marketplaceOpen && (
-              <div
-                data-ion-ui
-                style={{
-                  width: 720,
-                  maxWidth: 720,
-                  marginLeft: '50%',
-                  transform: 'translateX(-50%)',
-                  marginBottom: 14,
-                  position: 'relative',
-                  zIndex: 30,
-                }}
-              >
-                <motion.div
-                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.985 }}
-                  transition={TRANSITION}
-                >
-                  <div
-                    data-ion-ui
-                    className="glass-surface overflow-hidden"
-                    style={{
-                      borderRadius: 24,
-                      maxHeight: 470,
-                    }}
-                  >
-                    <MarketplacePanel />
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence initial={false}>
             {settingsOpen && (
               <SettingsDialog onClose={() => useSessionStore.getState().closeSettings()} />
             )}
@@ -866,11 +828,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/*
-            ─── Tabs / message shell ───
-            This always remains the chat shell. The marketplace is a separate
-            panel rendered above it, never inside it.
-          */}
+          {/* ─── Tabs / message shell ─── */}
           <motion.div
             data-ion-ui
             className="overflow-hidden flex flex-col"
@@ -952,7 +910,7 @@ export default function App() {
               data-ion-ui
               className="circles-out"
             >
-              <div className={`btn-stack${quickTools.length > 0 ? ' has-4' : ''}`}>
+              <div className={`btn-stack${quickTools.length > 0 ? ' has-3' : ''}`}>
                 {/* btn-1: Attach (front, rightmost) */}
                 <button
                   className="stack-btn stack-btn-1 glass-surface"
@@ -971,20 +929,11 @@ export default function App() {
                 >
                   <Camera size={17} />
                 </button>
-                {/* btn-3: Skills (back, leftmost) */}
-                <button
-                  className="stack-btn stack-btn-3 glass-surface"
-                  title="Skills & Plugins"
-                  onClick={() => useSessionStore.getState().toggleMarketplace()}
-                  disabled={isRunning}
-                >
-                  <HeadCircuit size={17} />
-                </button>
-                {/* btn-4: Quick Tools (backmost) */}
+                {/* btn-3: Quick Tools (back, leftmost) */}
                 {quickTools.length > 0 && (
                   <button
                     ref={quickToolsBtnRef}
-                    className="stack-btn stack-btn-4 glass-surface"
+                    className="stack-btn stack-btn-3 glass-surface"
                     title="Quick Tools"
                     onClick={() => setQuickToolsTrayOpen((o) => !o)}
                   >

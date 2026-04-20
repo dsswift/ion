@@ -17,8 +17,11 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="Ion"
 DEST="/Applications/${APP_NAME}.app"
+BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 step() { echo; echo "═══ $1 ═══"; echo; }
+
+echo "── Ion Install: $(date '+%Y-%m-%d %H:%M:%S') ── commit: ${BUILD_COMMIT} ──"
 
 # ── 1. Graceful shutdown ──
 
@@ -122,7 +125,7 @@ fi
 
 open "$DEST"
 
-echo "Done! ${APP_NAME} is running."
+echo "Done! ${APP_NAME} is running. (commit: ${BUILD_COMMIT})"
 echo
 echo "  Show/hide the overlay:  ⌥ + Space  (Option + Space)"
 echo "  Quit:                   Click the menu bar icon > Quit"

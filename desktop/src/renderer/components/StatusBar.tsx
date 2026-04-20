@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil, ArrowsOutSimple, ArrowsInSimple, Copy } from '@phosphor-icons/react'
+import { CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil, ArrowsOutSimple, ArrowsInSimple, Copy } from '@phosphor-icons/react'
 import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors, useThemeStore } from '../theme'
@@ -292,14 +292,13 @@ function PermissionModePicker() {
 /* ─── Open With Picker ─── */
 
 const OPEN_WITH_OPTIONS = [
-  { id: 'cli' as const, label: 'Open in CLI', icon: Terminal },
   { id: 'vscode' as const, label: 'Open in VS Code', icon: Code },
 ]
 
 function OpenWithPicker() {
   const tab = useSessionStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b && a.claudeSessionId === b.claudeSessionId && a.workingDirectory === b.workingDirectory),
+    (a, b) => a === b || (!!a && !!b && a.conversationId === b.conversationId && a.workingDirectory === b.workingDirectory),
   )
   const preferredOpenWith = useThemeStore((s) => s.preferredOpenWith)
   const setPreferredOpenWith = useThemeStore((s) => s.setPreferredOpenWith)
@@ -335,15 +334,9 @@ function OpenWithPicker() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const openCliInTerminal = useSessionStore((s) => s.openCliInTerminal)
-
   const handleExecute = () => {
     if (!tab) return
-    if (preferredOpenWith === 'cli') {
-      openCliInTerminal(tab.id, tab.claudeSessionId, tab.workingDirectory)
-    } else {
-      window.ion.openInVSCode(tab.workingDirectory)
-    }
+    window.ion.openInVSCode(tab.workingDirectory)
   }
 
   const handleToggle = () => {
@@ -425,12 +418,12 @@ function OpenWithPicker() {
                 </button>
               )
             })}
-            {tab?.claudeSessionId && (
+            {tab?.conversationId && (
               <>
                 <div className="mx-2 my-1" style={{ borderTop: `1px solid ${colors.popoverBorder}` }} />
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(tab.claudeSessionId)
+                    navigator.clipboard.writeText(tab.conversationId)
                     setOpen(false)
                   }}
                   className="w-full flex items-center px-3 py-1.5 text-[11px] transition-colors"
@@ -488,7 +481,7 @@ export function StatusBar() {
       && a.additionalDirs === b.additionalDirs
       && a.hasChosenDirectory === b.hasChosenDirectory
       && a.workingDirectory === b.workingDirectory
-      && a.claudeSessionId === b.claudeSessionId
+      && a.conversationId === b.conversationId
       && (a.messages.length > 0) === (b.messages.length > 0)
     ),
   )

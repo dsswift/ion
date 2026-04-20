@@ -254,7 +254,7 @@ export function InputBar() {
             return `  ${icon} ${s.name} — ${s.status}`
           })
           addSystemMessage(`MCP Servers (${tab.sessionMcpServers.length}):\n${lines.join('\n')}`)
-        } else if (tab?.claudeSessionId) {
+        } else if (tab?.conversationId) {
           addSystemMessage('No MCP servers connected in this session.')
         } else {
           addSystemMessage('No MCP data yet — send a message to start a session.')

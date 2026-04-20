@@ -14,7 +14,6 @@ import {
   validateExternalUrl,
   shellSingleQuote,
   escapeAppleScript,
-  buildTerminalCommand,
 } from '../ipc-validation'
 
 // ─── Fixtures ───
@@ -80,8 +79,9 @@ describe('TC-002: sessionId UUID validation (LOAD_SESSION)', () => {
     expect(isValidSessionId('')).toBe(false)
   })
 
-  it('rejects UUID-like string with extra characters', () => {
-    expect(isValidSessionId(VALID_UUID + '-extra')).toBe(false)
+  it('accepts engine-generated session IDs', () => {
+    expect(isValidSessionId('run-1776636257802')).toBe(true)
+    expect(isValidSessionId(VALID_UUID + '-extra')).toBe(true)
   })
 
   it('accepts uppercase UUID', () => {
@@ -155,41 +155,9 @@ describe('TC-004: URL validation (OPEN_EXTERNAL)', () => {
   })
 })
 
-// ─── TC-005: OPEN_IN_TERMINAL Validates sessionId ───
+// ─── TC-005: Shell Escaping Utilities ───
 
-describe('TC-005: sessionId validation (OPEN_IN_TERMINAL)', () => {
-  it('rejects shell expansion sessionId', () => {
-    expect(isValidSessionId('$(whoami)')).toBe(false)
-  })
-
-  it('rejects backtick sessionId', () => {
-    expect(isValidSessionId('`whoami`')).toBe(false)
-  })
-
-  it('accepts valid UUID sessionId', () => {
-    expect(isValidSessionId(VALID_UUID)).toBe(true)
-  })
-})
-
-// ─── TC-006: OPEN_IN_TERMINAL Validates projectPath ───
-
-describe('TC-006: projectPath validation (OPEN_IN_TERMINAL)', () => {
-  it('rejects path with null byte', () => {
-    expect(isValidProjectPath('/tmp/test\0inject')).toBe(false)
-  })
-
-  it('rejects relative path', () => {
-    expect(isValidProjectPath('relative/path')).toBe(false)
-  })
-
-  it('accepts valid absolute path', () => {
-    expect(isValidProjectPath('/Users/test/project')).toBe(true)
-  })
-})
-
-// ─── TC-007: OPEN_IN_TERMINAL Single-Quote Shell Escaping ───
-
-describe('TC-007: shell escaping (OPEN_IN_TERMINAL)', () => {
+describe('TC-005: shell escaping utilities', () => {
   it('wraps path in single quotes', () => {
     const result = shellSingleQuote('/Users/test/my project')
     expect(result).toBe("'/Users/test/my project'")
@@ -202,7 +170,6 @@ describe('TC-007: shell escaping (OPEN_IN_TERMINAL)', () => {
 
   it('does not expand $() inside single quotes', () => {
     const result = shellSingleQuote('/Users/$(whoami)/project')
-    // The $() is preserved literally inside single quotes
     expect(result).toBe("'/Users/$(whoami)/project'")
     expect(result).not.toContain('"')
   })
@@ -210,28 +177,6 @@ describe('TC-007: shell escaping (OPEN_IN_TERMINAL)', () => {
   it('does not expand backticks inside single quotes', () => {
     const result = shellSingleQuote('/Users/`whoami`/project')
     expect(result).toBe("'/Users/`whoami`/project'")
-  })
-
-  it('builds cd command with single-quoted path for simple path', () => {
-    const cmd = buildTerminalCommand('/Users/test/my project', 'claude', null)
-    // After shell single-quoting: '/Users/test/my project'
-    // After AppleScript escaping of that: '/Users/test/my project' (no change needed)
-    expect(cmd).toContain("cd '/Users/test/my project'")
-    expect(cmd).toContain('&& claude')
-  })
-
-  it('builds cd command with single-quoted path and --resume for session', () => {
-    const cmd = buildTerminalCommand('/Users/test/project', 'claude', VALID_UUID)
-    expect(cmd).toContain("cd '/Users/test/project'")
-    expect(cmd).toContain(`--resume ${VALID_UUID}`)
-  })
-
-  it('escapes single quote in path through both layers', () => {
-    const cmd = buildTerminalCommand("/Users/test/it's a path", 'claude', null)
-    // Shell layer: '/Users/test/it'\''s a path'
-    // AppleScript layer escapes the backslash: '/Users/test/it'\\''s a path'
-    // The key property: no unescaped double quotes or shell expansion possible
-    expect(cmd).toContain("'\\\\''")
   })
 
   describe('escapeAppleScript', () => {

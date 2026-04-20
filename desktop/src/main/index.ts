@@ -7,17 +7,16 @@ import { homedir } from 'os'
 import { randomBytes, createHash } from 'crypto'
 import { execFile as execFileCb, spawn, type ChildProcess } from 'child_process'
 import { promisify } from 'util'
-import { ControlPlane } from './claude/control-plane'
+import { EngineControlPlane } from './engine-control-plane'
 import { EngineBridge } from './engine-bridge'
 import { ensureSkills, type SkillStatus } from './skills/installer'
-import { fetchCatalog, listInstalled, installPlugin, uninstallPlugin } from './marketplace/catalog'
 import { discoverCommands } from './claude/command-discovery'
 import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
 import type { RunOptions, NormalizedEvent, EnrichedError, WorktreeInfo, WorktreeStatus } from '../shared/types'
 import { TerminalManager } from './terminal-manager'
-import { isValidProjectPath, isValidSessionId, validateExternalUrl, buildTerminalCommand } from './ipc-validation'
+import { isValidProjectPath, isValidSessionId, validateExternalUrl } from './ipc-validation'
 
 const gitExec = promisify(execFileCb)
 
@@ -59,11 +58,8 @@ let screenshotCounter = 0
 let toggleSequence = 0
 let forceQuit = false
 
-// Feature flag: enable PTY interactive permissions transport
-const INTERACTIVE_PTY = process.env.Ion_INTERACTIVE_PERMISSIONS_PTY === '1'
-
-const controlPlane = new ControlPlane(INTERACTIVE_PTY)
-const engineControlPlane = new EngineBridge()
+const sessionPlane = new EngineControlPlane()
+const engineBridge = new EngineBridge()
 
 // Forward-declared — initialized after broadcast() is defined
 let terminalManager: TerminalManager
@@ -162,23 +158,23 @@ function scheduleToggleSnapshots(toggleId: number, phase: 'show' | 'hide'): void
 }
 
 
-// ─── Wire ControlPlane events → renderer ───
+// ─── Wire SessionPlane events → renderer ───
 
-controlPlane.on('event', (tabId: string, event: NormalizedEvent) => {
+sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
   broadcast('ion:normalized-event', tabId, event)
 })
 
-controlPlane.on('tab-status-change', (tabId: string, newStatus: string, oldStatus: string) => {
+sessionPlane.on('tab-status-change', (tabId: string, newStatus: string, oldStatus: string) => {
   broadcast('ion:tab-status-change', tabId, newStatus, oldStatus)
 })
 
-controlPlane.on('error', (tabId: string, error: EnrichedError) => {
+sessionPlane.on('error', (tabId: string, error: EnrichedError) => {
   broadcast('ion:enriched-error', tabId, error)
 })
 
 // ─── Wire EngineBridge events → renderer ───
 
-engineControlPlane.on('event', (key: string, event: any) => {
+engineBridge.on('event', (key: string, event: any) => {
   // Inject backend indicator into status events (desktop always uses CLI proxy)
   if (event.type === 'engine_status' && event.fields) {
     event = { ...event, fields: { ...event.fields, backend: 'cli' } }
@@ -299,7 +295,7 @@ function createWindow(): void {
   app.on('before-quit', (e) => {
     if (forceQuit) return
     e.preventDefault()
-    const hasRunning = controlPlane.hasRunningTabs()
+    const hasRunning = sessionPlane.hasRunningTabs()
     const choice = dialog.showMessageBoxSync(mainWindow!, {
       type: 'warning',
       buttons: ['Quit', 'Cancel'],
@@ -314,7 +310,7 @@ function createWindow(): void {
     if (choice === 0) {
       forceQuit = true
       terminalManager.destroyAll()
-      controlPlane.shutdown()
+      sessionPlane.shutdown()
       globalShortcut.unregisterAll()
       if (tray) {
         tray.destroy()
@@ -456,31 +452,12 @@ ipcMain.on(IPC.SET_IGNORE_MOUSE_EVENTS, (event, ignore: boolean, options?: { for
 // ─── IPC Handlers (typed, strict) ───
 
 ipcMain.handle(IPC.START, async () => {
-  log('IPC START — fetching static CLI info')
-  const { execSync } = require('child_process')
-
-  let version = 'unknown'
-  try {
-    version = execSync('claude -v', { encoding: 'utf-8', timeout: 5000, env: getCliEnv() }).trim()
-  } catch {}
-
-  let auth: { email?: string; subscriptionType?: string; authMethod?: string } = {}
-  try {
-    const raw = execSync('claude auth status', { encoding: 'utf-8', timeout: 5000, env: getCliEnv() }).trim()
-    auth = JSON.parse(raw)
-  } catch {}
-
-  let mcpServers: string[] = []
-  try {
-    const raw = execSync('claude mcp list', { encoding: 'utf-8', timeout: 5000, env: getCliEnv() }).trim()
-    if (raw) mcpServers = raw.split('\n').filter(Boolean)
-  } catch {}
-
-  return { version, auth, mcpServers, projectPath: process.cwd(), homePath: require('os').homedir() }
+  log('IPC START')
+  return { version: app.getVersion(), auth: {}, mcpServers: [], projectPath: process.cwd(), homePath: require('os').homedir() }
 })
 
 ipcMain.handle(IPC.CREATE_TAB, () => {
-  const tabId = controlPlane.createTab()
+  const tabId = sessionPlane.createTab()
   log(`IPC CREATE_TAB → ${tabId}`)
 
   // Forward to remote transport (async, don't block the return)
@@ -498,12 +475,12 @@ ipcMain.handle(IPC.CREATE_TAB, () => {
 
 ipcMain.on(IPC.INIT_SESSION, (_event, tabId: string) => {
   log(`IPC INIT_SESSION: ${tabId}`)
-  controlPlane.initSession(tabId)
+  sessionPlane.initSession(tabId)
 })
 
 ipcMain.on(IPC.RESET_TAB_SESSION, (_event, tabId: string) => {
   log(`IPC RESET_TAB_SESSION: ${tabId}`)
-  controlPlane.resetTabSession(tabId)
+  sessionPlane.resetTabSession(tabId)
 })
 
 ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
@@ -522,9 +499,9 @@ ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId
 
   // Auto-register tab if it doesn't exist in the control plane
   // (handles race conditions on first launch, process restarts, stale state)
-  if (!controlPlane.hasTab(tabId)) {
+  if (!sessionPlane.hasTab(tabId)) {
     log(`PROMPT: tab ${tabId} not found — auto-registering`)
-    controlPlane.ensureTab(tabId)
+    sessionPlane.ensureTab(tabId)
   }
 
   // Forward user prompt to iOS as a structured message.
@@ -544,7 +521,7 @@ ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId
   }
 
   try {
-    await controlPlane.submitPrompt(tabId, requestId, options)
+    await sessionPlane.submitPrompt(tabId, requestId, options)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     log(`PROMPT error: ${msg}`)
@@ -554,32 +531,32 @@ ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId
 
 ipcMain.handle(IPC.CANCEL, (_event, requestId: string) => {
   log(`IPC CANCEL: ${requestId}`)
-  return controlPlane.cancel(requestId)
+  return sessionPlane.cancel(requestId)
 })
 
 ipcMain.handle(IPC.STOP_TAB, (_event, tabId: string) => {
   log(`IPC STOP_TAB: ${tabId}`)
-  return controlPlane.cancelTab(tabId)
+  return sessionPlane.cancelTab(tabId)
 })
 
 ipcMain.handle(IPC.RETRY, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
   log(`IPC RETRY: tab=${tabId} req=${requestId}`)
-  return controlPlane.retry(tabId, requestId, options)
+  return sessionPlane.retry(tabId, requestId, options)
 })
 
 ipcMain.handle(IPC.STATUS, () => {
-  return controlPlane.getHealth()
+  return sessionPlane.getHealth()
 })
 
 ipcMain.handle(IPC.TAB_HEALTH, () => {
-  return controlPlane.getHealth()
+  return sessionPlane.getHealth()
 })
 
 ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
   log(`IPC CLOSE_TAB: ${tabId}`)
-  controlPlane.closeTab(tabId)
+  sessionPlane.closeTab(tabId)
   terminalManager.destroyByPrefix(`${tabId}:`)
-  engineControlPlane.stopByPrefix(`${tabId}:`)
+  engineBridge.stopByPrefix(`${tabId}:`)
 
   // Forward to remote transport
   if (remoteTransport) {
@@ -594,32 +571,32 @@ ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
 
 ipcMain.handle(IPC.ENGINE_START, async (_event, { key, config }: { key: string; config: import('../shared/types').EngineConfig }) => {
   log(`IPC ENGINE_START: key=${key} ext=${config.extensionDir}`)
-  return engineControlPlane.startSession(key, config)
+  return engineBridge.startSession(key, config)
 })
 
 ipcMain.handle(IPC.ENGINE_PROMPT, async (_event, { key, text }: { key: string; text: string }) => {
   log(`IPC ENGINE_PROMPT: key=${key}`)
-  return engineControlPlane.sendPrompt(key, text)
+  return engineBridge.sendPrompt(key, text)
 })
 
 ipcMain.handle(IPC.ENGINE_ABORT, (_event, { key }: { key: string }) => {
   log(`IPC ENGINE_ABORT: key=${key}`)
-  engineControlPlane.sendAbort(key)
+  engineBridge.sendAbort(key)
 })
 
 ipcMain.handle(IPC.ENGINE_DIALOG_RESPONSE, (_event, { key, dialogId, value }: { key: string; dialogId: string; value: any }) => {
   log(`IPC ENGINE_DIALOG_RESPONSE: key=${key} dialog=${dialogId}`)
-  engineControlPlane.sendDialogResponse(key, dialogId, value)
+  engineBridge.sendDialogResponse(key, dialogId, value)
 })
 
 ipcMain.handle(IPC.ENGINE_COMMAND, (_event, { key, command, args }: { key: string; command: string; args: string }) => {
   log(`IPC ENGINE_COMMAND: key=${key} cmd=/${command}`)
-  engineControlPlane.sendCommand(key, command, args)
+  engineBridge.sendCommand(key, command, args)
 })
 
 ipcMain.handle(IPC.ENGINE_STOP, (_event, { key }: { key: string }) => {
   log(`IPC ENGINE_STOP: key=${key}`)
-  engineControlPlane.stopSession(key)
+  engineBridge.stopSession(key)
 })
 
 ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string }) => {
@@ -629,7 +606,7 @@ ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: str
     return
   }
   log(`IPC SET_PERMISSION_MODE: tab=${tabId} mode=${mode}`)
-  controlPlane.setPermissionMode(tabId, mode)
+  sessionPlane.setPermissionMode(tabId, mode)
 })
 
 // ─── Bash command execution ───
@@ -651,7 +628,7 @@ ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: stri
 
     child.on('close', (code) => {
       bashProcesses.delete(id)
-      controlPlane.notifyExternalWorkDone()
+      sessionPlane.notifyExternalWorkDone()
       resolve({
         stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
         stderr: Buffer.concat(stderrChunks).toString('utf-8'),
@@ -661,7 +638,7 @@ ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: stri
 
     child.on('error', (err) => {
       bashProcesses.delete(id)
-      controlPlane.notifyExternalWorkDone()
+      sessionPlane.notifyExternalWorkDone()
       resolve({ stdout: '', stderr: err.message, exitCode: 1 })
     })
   })
@@ -737,12 +714,12 @@ ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { key }: { key: string }) => {
 
 ipcMain.handle(IPC.RESPOND_PERMISSION, (_event, { tabId, questionId, optionId }: { tabId: string; questionId: string; optionId: string }) => {
   log(`IPC RESPOND_PERMISSION: tab=${tabId} question=${questionId} option=${optionId}`)
-  return controlPlane.respondToPermission(tabId, questionId, optionId)
+  return sessionPlane.respondToPermission(tabId, questionId, optionId)
 })
 
 ipcMain.handle(IPC.APPROVE_DENIED_TOOLS, (_event, { tabId, toolNames }: { tabId: string; toolNames: string[] }) => {
   log(`IPC APPROVE_DENIED_TOOLS: tab=${tabId} tools=${toolNames.join(',')}`)
-  controlPlane.approveToolsForTab(tabId, toolNames)
+  sessionPlane.approveToolsForTab(tabId, toolNames)
 })
 
 ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
@@ -1241,205 +1218,15 @@ function extractBashEntries(text: string): { bashEntries: Array<{ command: strin
 
 ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPath?: string; encodedDir?: string } | string) => {
   const sessionId = typeof arg === 'string' ? arg : arg.sessionId
-  const projectPath = typeof arg === 'string' ? undefined : arg.projectPath
-  const encodedDir = typeof arg === 'string' ? undefined : arg.encodedDir
-  log(`IPC LOAD_SESSION ${sessionId}${projectPath ? ` (path=${projectPath})` : ''}${encodedDir ? ` (encodedDir=${encodedDir})` : ''}`)
+  log(`IPC LOAD_SESSION ${sessionId}`)
   try {
     if (!isValidSessionId(sessionId)) {
       log(`LOAD_SESSION: rejected invalid sessionId: ${sessionId}`)
       return []
     }
-    // When encodedDir is provided (from global history), use it directly
-    let filePath: string
-    if (encodedDir) {
-      filePath = join(homedir(), '.claude', 'projects', encodedDir, `${sessionId}.jsonl`)
-    } else {
-      const cwd = projectPath || process.cwd()
-      if (!isValidProjectPath(cwd)) {
-        log(`LOAD_SESSION: rejected invalid projectPath: ${cwd}`)
-        return []
-      }
-      const encodedPath = cwd.replace(/[/.]/g, '-')
-      filePath = join(homedir(), '.claude', 'projects', encodedPath, `${sessionId}.jsonl`)
-    }
-    if (!existsSync(filePath)) return []
-
-    const messages: Array<{ role: string; content: string; toolName?: string; toolInput?: string; toolId?: string; userExecuted?: boolean; attachments?: Array<{ id: string; type: string; name: string; path: string; mimeType?: string }>; timestamp: number }> = []
-
-    // MIME type lookup for reconstructing attachments from history
-    const extToMime: Record<string, string> = {
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-      '.txt': 'text/plain', '.md': 'text/markdown',
-      '.json': 'application/json', '.yaml': 'text/yaml', '.yml': 'text/yaml',
-      '.toml': 'text/toml', '.ts': 'text/typescript', '.tsx': 'text/typescript',
-      '.js': 'text/javascript', '.py': 'text/x-python', '.rs': 'text/x-rust',
-      '.go': 'text/x-go',
-    }
-
-    // Extract [Attached type: path] lines from text, returning attachments and cleaned text
-    const parseAttachmentLines = (text: string) => {
-      const attachmentRegex = /^\[Attached (image|file|plan): (.+)\]$/gm
-      const attachments: Array<{ id: string; type: 'image' | 'file' | 'plan'; name: string; path: string; mimeType?: string }> = []
-      let match
-      while ((match = attachmentRegex.exec(text)) !== null) {
-        const aType = match[1] as 'image' | 'file' | 'plan'
-        const aPath = match[2]
-        const aName = aPath.split('/').pop() || aPath
-        const aExt = aName.includes('.') ? '.' + aName.split('.').pop()!.toLowerCase() : ''
-        attachments.push({
-          id: `hist-${Date.now()}-${attachments.length}`,
-          type: aType,
-          name: aName,
-          path: aPath,
-          mimeType: extToMime[aExt],
-        })
-      }
-      const cleaned = text.replace(/^\[Attached (?:image|file|plan): .+\]\n*/gm, '').trim()
-      return { attachments, cleaned }
-    }
-
-    // Find last ExitPlanMode tool message's planFilePath
-    const findLastPlanFilePath = () => {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i]
-        if (m.toolName === 'ExitPlanMode' && m.toolInput) {
-          try {
-            const input = JSON.parse(m.toolInput)
-            if (input.planFilePath) return input.planFilePath as string
-          } catch {}
-        }
-      }
-      return null
-    }
-    await new Promise<void>((resolve) => {
-      const rl = createInterface({ input: createReadStream(filePath) })
-      rl.on('line', (line: string) => {
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'user') {
-            const content = obj.message?.content
-            let raw = ''
-            if (typeof content === 'string') {
-              raw = content
-            } else if (Array.isArray(content)) {
-              // Extract tool_result blocks and attach content to matching tool messages
-              for (const block of content) {
-                if (block.type === 'tool_result' && block.tool_use_id) {
-                  let resultText = ''
-                  if (typeof block.content === 'string') {
-                    resultText = block.content
-                  } else if (Array.isArray(block.content)) {
-                    resultText = block.content
-                      .filter((c: any) => c.type === 'text' && c.text)
-                      .map((c: any) => c.text)
-                      .join('\n')
-                  }
-                  // Find matching tool message and set its content
-                  const toolMsg = [...messages].reverse().find(
-                    (m) => m.role === 'tool' && m.toolId === block.tool_use_id
-                  )
-                  if (toolMsg) {
-                    toolMsg.content = resultText
-                  }
-                }
-              }
-              raw = content
-                .filter((b: any) => b.type === 'text')
-                .map((b: any) => b.text)
-                .join('\n')
-            }
-            const ts = new Date(obj.timestamp).getTime()
-
-            // CLI ! command messages: route by tag type
-            if (raw.includes('<local-command-caveat')) {
-              // Internal hint — discard entirely
-            } else if (raw.includes('<bash-input')) {
-              const cmd = extractTag(raw, 'bash-input') || raw
-              messages.push({ role: 'user', content: `! ${cmd.trim()}`, userExecuted: true, timestamp: ts })
-            } else if (raw.includes('<bash-stdout') || raw.includes('<bash-stderr')) {
-              // Emit as a Bash tool card so it renders like agent tool output
-              const stdout = extractTag(raw, 'bash-stdout') || ''
-              const stderr = extractTag(raw, 'bash-stderr') || ''
-              // Look back for the preceding bash-input to use as toolInput
-              const prevMsg = messages[messages.length - 1]
-              const cmdInput = prevMsg?.role === 'user' ? prevMsg.content : undefined
-              messages.push({
-                role: 'tool',
-                content: '',
-                toolName: 'Bash',
-                toolInput: cmdInput ? JSON.stringify({ command: cmdInput }) : undefined,
-                userExecuted: true,
-                timestamp: ts,
-              })
-            } else {
-              const text = cleanCliTags(raw)
-              if (text) {
-                // Detect Ion bash command results prepended to prompts: $ cmd\n```\noutput\n```
-                const { bashEntries, remainder } = extractBashEntries(text)
-                for (const entry of bashEntries) {
-                  messages.push({ role: 'user', content: `! ${entry.command}`, userExecuted: true, timestamp: ts })
-                  messages.push({
-                    role: 'tool',
-                    content: entry.output,
-                    toolName: 'Bash',
-                    toolInput: JSON.stringify({ command: entry.command }),
-                    userExecuted: true,
-                    timestamp: ts,
-                  })
-                }
-                if (remainder.trim()) {
-                  const { attachments: fileAttachments, cleaned } = parseAttachmentLines(remainder.trim())
-                  const allAttachments: typeof fileAttachments = [...fileAttachments]
-
-                  // Detect plan implementation messages and attach plan reference (fallback for old sessions)
-                  const isImplementMsg = cleaned === 'Implement the plan' || cleaned.startsWith('Implement the following plan:')
-                  if (isImplementMsg && !allAttachments.some(a => a.type === 'plan')) {
-                    const planPath = findLastPlanFilePath()
-                    if (planPath) {
-                      const planName = planPath.split('/').pop() || planPath
-                      allAttachments.push({ id: `plan-${Date.now()}`, type: 'plan', name: planName, path: planPath })
-                    }
-                  }
-
-                  // For plan implementation messages with embedded content, show short display text
-                  const displayContent = isImplementMsg && cleaned.startsWith('Implement the following plan:')
-                    ? 'Implement the plan'
-                    : cleaned
-
-                  messages.push({
-                    role: 'user',
-                    content: displayContent,
-                    attachments: allAttachments.length > 0 ? allAttachments : undefined,
-                    timestamp: ts,
-                  })
-                }
-              }
-            }
-          } else if (obj.type === 'assistant') {
-            const content = obj.message?.content
-            if (Array.isArray(content)) {
-              for (const block of content) {
-                if (block.type === 'text' && block.text) {
-                  messages.push({ role: 'assistant', content: cleanCliTags(block.text), timestamp: new Date(obj.timestamp).getTime() })
-                } else if (block.type === 'tool_use' && block.name) {
-                  messages.push({
-                    role: 'tool',
-                    content: '',
-                    toolName: block.name,
-                    toolId: block.id,
-                    toolInput: block.input ? JSON.stringify(block.input) : undefined,
-                    timestamp: new Date(obj.timestamp).getTime(),
-                  })
-                }
-              }
-            }
-          }
-        } catch {}
-      })
-      rl.on('close', () => resolve())
-    })
-    return messages
+    // Load session history from Ion engine
+    const msgs = await engineBridge.loadSessionHistory(sessionId)
+    return msgs || []
   } catch (err) {
     log(`LOAD_SESSION error: ${err}`)
     return []
@@ -1820,7 +1607,7 @@ ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
 
 ipcMain.handle(IPC.GET_DIAGNOSTICS, () => {
   const { readFileSync, existsSync } = require('fs')
-  const health = controlPlane.getHealth()
+  const health = sessionPlane.getHealth()
 
   let recentLogs = ''
   if (existsSync(LOG_FILE)) {
@@ -1840,55 +1627,10 @@ ipcMain.handle(IPC.GET_DIAGNOSTICS, () => {
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     appVersion: app.getVersion(),
-    transport: INTERACTIVE_PTY ? 'pty' : 'stream-json',
+    transport: 'engine',
   }
 })
 
-ipcMain.handle(IPC.OPEN_IN_TERMINAL, (_event, arg: string | null | { sessionId?: string | null; projectPath?: string; claudeCommand?: string }) => {
-  const { execFile } = require('child_process')
-
-  // Support both old (string) and new ({ sessionId, projectPath, claudeCommand }) calling convention
-  let sessionId: string | null = null
-  let projectPath: string = process.cwd()
-  let claudeBin = 'claude'
-  if (typeof arg === 'string') {
-    sessionId = arg
-  } else if (arg && typeof arg === 'object') {
-    sessionId = arg.sessionId ?? null
-    projectPath = arg.projectPath && arg.projectPath !== '~' ? arg.projectPath : process.cwd()
-    claudeBin = arg.claudeCommand || 'claude'
-  }
-
-  // Validate sessionId
-  if (sessionId && !isValidSessionId(sessionId)) {
-    log(`OPEN_IN_TERMINAL: rejected invalid sessionId: ${sessionId}`)
-    return false
-  }
-
-  // Sanitize projectPath
-  if (!isValidProjectPath(projectPath)) {
-    log(`OPEN_IN_TERMINAL: rejected invalid projectPath: ${projectPath}`)
-    return false
-  }
-
-  const cmd = buildTerminalCommand(projectPath, claudeBin, sessionId)
-
-  const script = `tell application "Terminal"
-  activate
-  do script "${cmd}"
-end tell`
-
-  try {
-    execFile('/usr/bin/osascript', ['-e', script], (err: Error | null) => {
-      if (err) log(`Failed to open terminal: ${err.message}`)
-      else log(`Opened terminal with: ${cmd}`)
-    })
-    return true
-  } catch (err: unknown) {
-    log(`Failed to open terminal: ${err}`)
-    return false
-  }
-})
 
 ipcMain.handle(IPC.OPEN_IN_VSCODE, (_event, projectPath: string) => {
   const { execFile } = require('child_process')
@@ -1911,28 +1653,6 @@ ipcMain.handle(IPC.OPEN_IN_VSCODE, (_event, projectPath: string) => {
     log(`Failed to open VS Code: ${err}`)
     return false
   }
-})
-
-// ─── Marketplace IPC ───
-
-ipcMain.handle(IPC.MARKETPLACE_FETCH, async (_event, { forceRefresh } = {}) => {
-  log('IPC MARKETPLACE_FETCH')
-  return fetchCatalog(forceRefresh)
-})
-
-ipcMain.handle(IPC.MARKETPLACE_INSTALLED, async () => {
-  log('IPC MARKETPLACE_INSTALLED')
-  return listInstalled()
-})
-
-ipcMain.handle(IPC.MARKETPLACE_INSTALL, async (_event, { repo, pluginName, marketplace, sourcePath, isSkillMd }: { repo: string; pluginName: string; marketplace: string; sourcePath?: string; isSkillMd?: boolean }) => {
-  log(`IPC MARKETPLACE_INSTALL: ${pluginName} from ${repo} (isSkillMd=${isSkillMd})`)
-  return installPlugin(repo, pluginName, marketplace, sourcePath, isSkillMd)
-})
-
-ipcMain.handle(IPC.MARKETPLACE_UNINSTALL, async (_event, { pluginName }: { pluginName: string }) => {
-  log(`IPC MARKETPLACE_UNINSTALL: ${pluginName}`)
-  return uninstallPlugin(pluginName)
 })
 
 // ─── Settings Persistence ───
@@ -2214,11 +1934,11 @@ async function getRemoteTabStates(): Promise<RemoteTabState[]> {
   }
 
   // Fallback: read from persisted tabs file if renderer is not available.
-  const health = controlPlane.getHealth()
+  const health = sessionPlane.getHealth()
   const healthBySession: Record<string, typeof health.tabs[0]> = {}
   for (const t of health.tabs) {
-    if (t.claudeSessionId) {
-      healthBySession[t.claudeSessionId] = t
+    if (t.conversationId) {
+      healthBySession[t.conversationId] = t
     }
   }
 
@@ -2236,7 +1956,7 @@ async function getRemoteTabStates(): Promise<RemoteTabState[]> {
   if (persistedTabs.length > 0) {
     for (let i = 0; i < persistedTabs.length; i++) {
       const t = persistedTabs[i]
-      const h = t.claudeSessionId ? healthBySession[t.claudeSessionId] : undefined
+      const h = t.conversationId ? healthBySession[t.conversationId] : undefined
       results.push({
         id: h?.tabId || `persisted-${i}`,
         title: t.customTitle || t.title || `Tab ${i + 1}`,
@@ -2442,7 +2162,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         break
       }
       case 'close_tab':
-        controlPlane.closeTab(cmd.tabId)
+        sessionPlane.closeTab(cmd.tabId)
         terminalManager.destroyByPrefix(`${cmd.tabId}:`)
         broadcast(IPC.REMOTE_CLOSE_TAB, cmd.tabId)
         remoteTransport?.send({ type: 'tab_closed', tabId: cmd.tabId })
@@ -2488,10 +2208,10 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         break
       }
       case 'cancel':
-        controlPlane.cancelTab(cmd.tabId)
+        sessionPlane.cancelTab(cmd.tabId)
         break
       case 'respond_permission':
-        controlPlane.respondToPermission(cmd.tabId, cmd.questionId, cmd.optionId)
+        sessionPlane.respondToPermission(cmd.tabId, cmd.questionId, cmd.optionId)
         break
       case 'set_permission_mode': {
         const mode = cmd.mode
@@ -2500,7 +2220,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
           break
         }
         log(`Remote set_permission_mode: tab=${cmd.tabId} mode=${mode}`)
-        controlPlane.setPermissionMode(cmd.tabId, mode)
+        sessionPlane.setPermissionMode(cmd.tabId, mode)
         broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId: cmd.tabId, mode })
         break
       }
@@ -2683,17 +2403,17 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
       }
       case 'engine_prompt': {
         const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
-        engineControlPlane.sendPrompt(hKey, cmd.text)
+        engineBridge.sendPrompt(hKey, cmd.text)
         break
       }
       case 'engine_abort': {
         const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
-        engineControlPlane.sendAbort(hKey)
+        engineBridge.sendAbort(hKey)
         break
       }
       case 'engine_dialog_response': {
         const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
-        engineControlPlane.sendDialogResponse(hKey, cmd.dialogId, cmd.value)
+        engineBridge.sendDialogResponse(hKey, cmd.dialogId, cmd.value)
         break
       }
       case 'terminal_input': {
@@ -3003,7 +2723,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
 }
 
 // Forward control plane events to remote transport.
-controlPlane.on('event', (tabId: string, event: NormalizedEvent) => {
+sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
   if (!remoteTransport) return
 
   // Skip permission_request for meta-tools — the dedicated remote-permission
@@ -3094,7 +2814,7 @@ controlPlane.on('event', (tabId: string, event: NormalizedEvent) => {
   }
 })
 
-controlPlane.on('remote-permission', async (tabId: string, data: {
+sessionPlane.on('remote-permission', async (tabId: string, data: {
   questionId: string; toolName: string;
   toolInput?: Record<string, unknown>;
   options: Array<{ id: string; label: string; kind?: string }>
@@ -3153,18 +2873,18 @@ controlPlane.on('remote-permission', async (tabId: string, data: {
     const resolveOnIdle = (changedTabId: string, status: string) => {
       if (changedTabId !== tabId) return
       if (status === 'idle' || status === 'failed' || status === 'dead') {
-        controlPlane.off('tab-status-change', resolveOnIdle)
+        sessionPlane.off('tab-status-change', resolveOnIdle)
         remoteTransport?.send({
           type: 'permission_resolved', tabId,
           questionId: data.questionId,
         })
       }
     }
-    controlPlane.on('tab-status-change', resolveOnIdle)
+    sessionPlane.on('tab-status-change', resolveOnIdle)
   }
 })
 
-controlPlane.on('tab-status-change', (tabId: string, newStatus: string) => {
+sessionPlane.on('tab-status-change', (tabId: string, newStatus: string) => {
   if (newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead') {
     activeAssistantMessages.delete(tabId)
   }
@@ -4155,7 +3875,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-  controlPlane.shutdown()
+  sessionPlane.shutdown()
   // Close all file watchers
   for (const [, entry] of fileWatchers) {
     if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
@@ -4184,8 +3904,8 @@ process.on('SIGUSR1', () => {
     log('Drain timeout (5min) — force quitting')
     forceQuit = true
     terminalManager.destroyAll()
-    engineControlPlane.stopAll()
-    controlPlane.shutdown()
+    engineBridge.stopAll()
+    sessionPlane.shutdown()
     globalShortcut.unregisterAll()
     if (tray) { tray.destroy(); tray = null }
     try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch {}
@@ -4193,13 +3913,13 @@ process.on('SIGUSR1', () => {
     app.exit(0)
   }, 5 * 60 * 1000)
 
-  controlPlane.drain(() => bashProcesses.size > 0).then(() => {
+  sessionPlane.drain(() => bashProcesses.size > 0).then(() => {
     clearTimeout(timeout)
     log('All agents finished — quitting')
     forceQuit = true
     terminalManager.destroyAll()
-    engineControlPlane.stopAll()
-    controlPlane.shutdown()
+    engineBridge.stopAll()
+    sessionPlane.shutdown()
     globalShortcut.unregisterAll()
     if (tray) { tray.destroy(); tray = null }
     try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch {}

@@ -1223,7 +1223,7 @@ function GroupPickerDropdown({
               anchor={dirMenuAnchor}
               tab={menuTab}
               onRename={() => { setDirMenuTabId(null); setEditingTabId(menuTab.id) }}
-              onForkTab={menuTab.claudeSessionId ? () => {
+              onForkTab={menuTab.conversationId ? () => {
                 useSessionStore.getState().forkTab(menuTab.id)
                 setDirMenuTabId(null)
               } : undefined}
@@ -2094,7 +2094,7 @@ function GroupPill({
               anchor={tabMenu}
               tab={tab}
               onRename={() => { setTabMenu(null); setRenamingTitle(true) }}
-              onForkTab={tab.claudeSessionId ? () => { useSessionStore.getState().forkTab(tab.id) } : undefined}
+              onForkTab={tab.conversationId ? () => { useSessionStore.getState().forkTab(tab.id) } : undefined}
               onNewTabInDir={() => useSessionStore.getState().createTabInDirectory(tab.workingDirectory, shouldUseWorktree(false))}
               onFinishWork={() => { if (tab.worktree) useSessionStore.getState().finishWorktreeTab(tab.id) }}
               finishWorkDisabled={tab.worktree ? (worktreeUncommittedMap.has(tab.id) ? worktreeUncommittedMap.get(tab.id)! : 'checking') : undefined}
@@ -2650,7 +2650,7 @@ export function TabStrip() {
               tabId={menuTab.id}
               tabGroupId={menuTab.groupId || undefined}
               onCreateTab={() => createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))}
-              onForkTab={menuTab.claudeSessionId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
+              onForkTab={menuTab.conversationId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
               onFinishWork={menuTab.worktree ? () => { useSessionStore.getState().finishWorktreeTab(menuTab.id) } : undefined}
               finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
               onClose={() => setDirMenuTabId(null)}
@@ -2716,7 +2716,7 @@ export function TabStrip() {
               anchor={tabMenuAnchor}
               tab={menuTab}
               onRename={() => { setTabMenuId(null); setEditingTabId(menuTab.id) }}
-              onForkTab={menuTab.claudeSessionId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
+              onForkTab={menuTab.conversationId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
               onNewTabInDir={() => {
                 if (menuTab.workingDirectory) createTabInDirectory(menuTab.workingDirectory, shouldUseWorktree(false))
               }}

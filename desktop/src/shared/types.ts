@@ -166,7 +166,7 @@ export type Attachment = FileAttachment | PlanAttachment
 
 export interface TabState {
   id: string
-  claudeSessionId: string | null
+  conversationId: string | null
   historicalSessionIds: string[]
   status: TabStatus
   activeRequestId: string | null
@@ -290,6 +290,8 @@ export interface EngineConfig {
   extensionDir: string
   model?: string
   workingDirectory: string
+  /** Conversation ID to resume on first prompt */
+  sessionId?: string
   maxTokens?: number
   thinking?: { enabled: boolean; budgetTokens?: number }
   options?: Record<string, any> // extension-specific key-value options
@@ -356,49 +358,33 @@ export type EngineEvent =
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; message: string }
+  | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
 
 // ─── Run Options ───
 
 export interface RunOptions {
   prompt: string
   projectPath: string
+  /** Conversation ID to resume (loads existing conversation history) */
   sessionId?: string
-  allowedTools?: string[]
-  maxTurns?: number
-  maxBudgetUsd?: number
-  systemPrompt?: string
   model?: string
-  /** Path to Ion-scoped settings file with hook config (passed via --settings) */
-  hookSettingsPath?: string
-  /** Extra directories to add via --add-dir (session-preserving) */
+  /** Extra directories to add (session-preserving) */
   addDirs?: string[]
-  /** CLI permission mode override (e.g. 'plan') passed as --permission-mode */
-  permissionModeCli?: string
   /** Extra context appended to the system prompt (additive, not replacement) */
   appendSystemPrompt?: string
   /** Origin of the prompt — 'remote' skips iOS forwarding (already echoed) */
   source?: 'desktop' | 'remote'
-  /** Path to MCP config JSON for custom tool servers (passed via --mcp-config) */
-  mcpConfig?: string
-  /** Max output tokens per LLM turn (API backend only) */
+  /** Max output tokens per LLM turn */
   maxTokens?: number
-  /** Extended thinking config (API backend only) */
+  /** Extended thinking config */
   thinking?: { enabled: boolean; budgetTokens?: number }
-  /** Idle timeout before cancelling a stalled run (ms, API backend only) */
-  idleTimeoutMs?: number
-  /** Maximum retries for transient API errors (API backend only) */
-  maxRetries?: number
-  /** Fallback model when primary is overloaded (API backend only) */
-  fallbackModel?: string
-  /** Keep retrying indefinitely for headless/CI (API backend only) */
-  persistent?: boolean
 }
 
 // ─── Control Plane Types ───
 
 export interface TabRegistryEntry {
   tabId: string
-  claudeSessionId: string | null
+  conversationId: string | null
   status: TabStatus
   activeRequestId: string | null
   runPid: number | null
@@ -412,7 +398,7 @@ export interface HealthReport {
     tabId: string
     status: TabStatus
     activeRequestId: string | null
-    claudeSessionId: string | null
+    conversationId: string | null
     alive: boolean
     lastActivityAt: number
   }>
@@ -472,25 +458,6 @@ export interface SessionLoadMessage {
   timestamp: number
 }
 
-// ─── Marketplace / Plugin Types ───
-
-export type PluginStatus = 'not_installed' | 'checking' | 'installing' | 'installed' | 'failed'
-
-export interface CatalogPlugin {
-  id: string              // unique: `${repo}/${skillPath}` e.g. 'anthropics/skills/skills/xlsx'
-  name: string            // from SKILL.md or plugin.json
-  description: string     // from SKILL.md or plugin.json
-  version: string         // from plugin.json or '0.0.0'
-  author: string          // from plugin.json or marketplace entry
-  marketplace: string     // marketplace name from marketplace.json
-  repo: string            // 'anthropics/skills'
-  sourcePath: string      // path within repo, e.g. 'skills/xlsx'
-  installName: string     // individual skill name for SKILL.md skills, bundle name for CLI plugins
-  category: string        // 'Agent Skills' | 'Knowledge Work' | 'Financial Services'
-  tags: string[]          // Semantic use-case tags derived from name/description (e.g. 'Design', 'Finance')
-  isSkillMd: boolean      // true = individual SKILL.md (direct install), false = CLI plugin (bundle install)
-}
-
 // ─── IPC Channel Names ───
 
 export const IPC = {
@@ -506,7 +473,6 @@ export const IPC = {
   CLOSE_TAB: 'ion:close-tab',
   SELECT_DIRECTORY: 'ion:select-directory',
   OPEN_EXTERNAL: 'ion:open-external',
-  OPEN_IN_TERMINAL: 'ion:open-in-terminal',
   OPEN_IN_VSCODE: 'ion:open-in-vscode',
   ATTACH_FILES: 'ion:attach-files',
   ATTACH_FILE_BY_PATH: 'ion:attach-file-by-path',
@@ -553,12 +519,6 @@ export const IPC = {
 
   // Command discovery
   DISCOVER_COMMANDS: 'ion:discover-commands',
-
-  // Marketplace
-  MARKETPLACE_FETCH: 'ion:marketplace-fetch',
-  MARKETPLACE_INSTALLED: 'ion:marketplace-installed',
-  MARKETPLACE_INSTALL: 'ion:marketplace-install',
-  MARKETPLACE_UNINSTALL: 'ion:marketplace-uninstall',
 
   // Permission mode
   SET_PERMISSION_MODE: 'ion:set-permission-mode',
@@ -710,7 +670,7 @@ export interface TerminalPaneState {
 // ─── Persisted Tab State ───
 
 export interface PersistedTab {
-  claudeSessionId: string | null
+  conversationId: string | null
   historicalSessionIds?: string[]
   title: string
   customTitle: string | null

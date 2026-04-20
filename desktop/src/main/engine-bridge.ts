@@ -4,12 +4,14 @@ import { spawn, execSync } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { log as _log } from './logger'
+import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
 import type { EngineConfig, EngineEvent } from '../shared/types'
 
-function log(msg: string): void {
-  _log('EngineBridge', msg)
-}
+const TAG = 'EngineBridge'
+function log(msg: string): void { _log(TAG, msg) }
+function debug(msg: string): void { _debug(TAG, msg) }
+function warn(msg: string): void { _warn(TAG, msg) }
+function error(msg: string): void { _error(TAG, msg) }
 
 const SOCKET_PATH = join(homedir(), '.ion', 'engine.sock')
 
@@ -157,11 +159,13 @@ export class EngineBridge extends EventEmitter {
     try {
       msg = JSON.parse(line)
     } catch {
+      warn(`unparseable message: ${line.substring(0, 200)}`)
       return
     }
 
     // Command result with requestId -- resolve pending callback
     if (msg.cmd === 'result' && msg.requestId) {
+      debug(`result: requestId=${msg.requestId} ok=${msg.ok} err=${msg.error ?? 'none'}`)
       const cb = this.requestCallbacks.get(msg.requestId)
       if (cb) {
         this.requestCallbacks.delete(msg.requestId)
@@ -177,6 +181,7 @@ export class EngineBridge extends EventEmitter {
 
     // Session event -- forward to IPC layer
     if (msg.key && msg.event) {
+      debug(`event: key=${msg.key} type=${msg.event.type}`)
       this.emit('event', msg.key, msg.event as EngineEvent)
     }
   }
@@ -198,6 +203,7 @@ export class EngineBridge extends EventEmitter {
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
+        warn(`request timed out: requestId=${requestId} cmd=${msg.cmd}`)
         this.requestCallbacks.delete(requestId)
         resolve({ ok: false, error: 'Request timed out' })
       }, 30000)
@@ -211,32 +217,92 @@ export class EngineBridge extends EventEmitter {
     })
   }
 
+  private _sendWithData<T>(msg: any): Promise<{ ok: boolean; error?: string; data?: T }> {
+    const requestId = `bridge-${++this.requestCounter}-${Date.now()}`
+    msg.requestId = requestId
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.requestCallbacks.delete(requestId)
+        resolve({ ok: false, error: 'Request timed out' })
+      }, 30000)
+
+      this.requestCallbacks.set(requestId, (result) => {
+        clearTimeout(timer)
+        resolve({ ok: result.ok, error: result.error, data: result.data })
+      })
+
+      this._send(msg)
+    })
+  }
+
   // ─── Public API ───
 
   async startSession(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string }> {
+    log(`startSession: key=${key} model=${config.model}`)
     await this.connect()
     return this._sendWithResult({ cmd: 'start_session', key, config })
   }
 
-  async sendPrompt(key: string, text: string): Promise<{ ok: boolean; error?: string }> {
+  async sendPrompt(key: string, text: string, model?: string): Promise<{ ok: boolean; error?: string }> {
+    log(`sendPrompt: key=${key} len=${text.length} model=${model ?? 'default'}`)
     await this.connect()
-    return this._sendWithResult({ cmd: 'send_prompt', key, text })
+    const msg: Record<string, unknown> = { cmd: 'send_prompt', key, text }
+    if (model) msg.model = model
+    return this._sendWithResult(msg)
   }
 
   sendAbort(key: string): void {
+    log(`sendAbort: key=${key}`)
     this._send({ cmd: 'abort', key })
   }
 
   async sendDialogResponse(key: string, dialogId: string, value: any): Promise<void> {
+    debug(`sendDialogResponse: key=${key} dialogId=${dialogId}`)
     this._send({ cmd: 'dialog_response', key, dialogId, value })
   }
 
   async sendCommand(key: string, command: string, args: string): Promise<void> {
+    log(`sendCommand: key=${key} command=${command}`)
     this._send({ cmd: 'command', key, command, args })
   }
 
   async stopSession(key: string): Promise<void> {
+    log(`stopSession: key=${key}`)
     this._send({ cmd: 'stop_session', key })
+  }
+
+  sendPermissionResponse(key: string, questionId: string, optionId: string): void {
+    log(`sendPermissionResponse: key=${key} questionId=${questionId} optionId=${optionId}`)
+    this._send({ cmd: 'permission_response', key, questionId, optionId })
+  }
+
+  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[]): void {
+    log(`sendSetPlanMode: key=${key} enabled=${enabled}`)
+    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools })
+  }
+
+  async listStoredSessions(limit?: number): Promise<any[]> {
+    await this.connect()
+    const result = await this._sendWithData<any[]>({ cmd: 'list_stored_sessions', limit: limit || 50 })
+    return result.data || []
+  }
+
+  async loadSessionHistory(sessionId: string): Promise<any[]> {
+    await this.connect()
+    const result = await this._sendWithData<any[]>({ cmd: 'load_session_history', key: sessionId })
+    return result.data || []
+  }
+
+  async loadChainHistory(sessionIds: string[]): Promise<any[]> {
+    await this.connect()
+    const result = await this._sendWithData<any[]>({ cmd: 'load_session_history', sessionIds })
+    return result.data || []
+  }
+
+  async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
+    await this.connect()
+    return this._sendWithResult({ cmd: 'save_session_label', key: sessionId, label })
   }
 
   stopByPrefix(prefix: string): void {
