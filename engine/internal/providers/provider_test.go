@@ -163,7 +163,7 @@ func TestModelInfo(t *testing.T) {
 		wantWindow int
 		wantNil    bool
 	}{
-		{"claude-opus-4-6", 200000, false},
+		{"claude-opus-4-6", 1000000, false},
 		{"gpt-4.1", 1047576, false},
 		{"o4-mini", 200000, false},
 		{"nonexistent", 0, true},

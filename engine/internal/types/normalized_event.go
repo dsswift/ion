@@ -20,6 +20,8 @@ const (
 	EventRateLimit         = "rate_limit"
 	EventUsage             = "usage"
 	EventPermissionRequest = "permission_request"
+	EventPlanModeChanged   = "plan_mode_changed"
+	EventStreamReset       = "stream_reset"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -90,6 +92,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &UsageEvent{}
 	case EventPermissionRequest:
 		target = &PermissionRequestEvent{}
+	case EventPlanModeChanged:
+		target = &PlanModeChangedEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -103,7 +107,7 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 
 // --- Concrete event types ---
 
-// SessionInitEvent is emitted when a Claude session initializes.
+// SessionInitEvent is emitted when an engine session initializes.
 type SessionInitEvent struct {
 	SessionID  string          `json:"sessionId"`
 	Tools      []string        `json:"tools"`
@@ -163,7 +167,7 @@ type TaskUpdateEvent struct {
 
 func (TaskUpdateEvent) eventType() string { return EventTaskUpdate }
 
-// TaskCompleteEvent signals the end of a Claude run.
+// TaskCompleteEvent signals the end of an engine run.
 type TaskCompleteEvent struct {
 	Result            string             `json:"result"`
 	CostUsd           float64            `json:"costUsd"`
@@ -189,7 +193,7 @@ type ErrorEvent struct {
 
 func (ErrorEvent) eventType() string { return EventError }
 
-// SessionDeadEvent signals that the Claude CLI process exited.
+// SessionDeadEvent signals that the backend process exited.
 type SessionDeadEvent struct {
 	ExitCode   *int     `json:"exitCode"`
 	Signal     *string  `json:"signal"`
@@ -238,3 +242,18 @@ type WebSearchHit struct {
 }
 
 func (WebSearchResultEvent) eventType() string { return "web_search_result" }
+
+// PlanModeChangedEvent signals that the run has entered or exited plan mode.
+type PlanModeChangedEvent struct {
+	// Enabled is true when the run has entered plan mode, false when it has exited.
+	Enabled      bool   `json:"enabled"`
+	PlanFilePath string `json:"planFilePath,omitempty"`
+}
+
+func (PlanModeChangedEvent) eventType() string { return EventPlanModeChanged }
+
+// StreamResetEvent signals that a retry is about to occur and the client
+// should discard any partial assistant text from the previous attempt.
+type StreamResetEvent struct{}
+
+func (StreamResetEvent) eventType() string { return EventStreamReset }

@@ -1222,7 +1222,7 @@ func TestHandleRunExit_ClearsRequestID(t *testing.T) {
 	}
 }
 
-func TestHandleRunExit_SetsClaudeSession(t *testing.T) {
+func TestHandleRunExit_SetsConversationID(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
@@ -1231,7 +1231,7 @@ func TestHandleRunExit_SetsClaudeSession(t *testing.T) {
 
 	keys := mb.startedKeys()
 	code := 0
-	mb.emitExit(keys[0], &code, nil, "claude-session-abc")
+	mb.emitExit(keys[0], &code, nil, "session-abc")
 
 	// After exit, the conversationID should be set. We verify by checking
 	// the internal session state directly (same package).
@@ -1240,8 +1240,8 @@ func TestHandleRunExit_SetsClaudeSession(t *testing.T) {
 	cs := s.conversationID
 	mgr.mu.RUnlock()
 
-	if cs != "claude-session-abc" {
-		t.Errorf("expected conversationID='claude-session-abc', got %q", cs)
+	if cs != "session-abc" {
+		t.Errorf("expected conversationID='session-abc', got %q", cs)
 	}
 
 	// Also verify the next prompt passes the session ID through.
@@ -1253,8 +1253,8 @@ func TestHandleRunExit_SetsClaudeSession(t *testing.T) {
 	for _, k := range keys2 {
 		if k != keys[0] {
 			opts, _ := mb.getStarted(k)
-			if opts.SessionID != "claude-session-abc" {
-				t.Errorf("expected sessionID 'claude-session-abc', got %q", opts.SessionID)
+			if opts.SessionID != "session-abc" {
+				t.Errorf("expected sessionID 'session-abc', got %q", opts.SessionID)
 			}
 			return
 		}
@@ -1457,11 +1457,23 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := translateToEngineEvent(tt.input)
+			result := translateToEngineEvent(tt.input, 200000)
 			if result.Type != tt.wantType {
 				t.Errorf("expected type %q, got %q", tt.wantType, result.Type)
 			}
 		})
+	}
+}
+
+func TestTranslateToEngineEvent_TaskCompleteSessionID(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.TaskCompleteEvent{SessionID: "abc-123", CostUsd: 0.05},
+	}, 200000)
+	if result.Type != "engine_status" {
+		t.Fatalf("expected engine_status, got %q", result.Type)
+	}
+	if result.Fields == nil || result.Fields.SessionID != "abc-123" {
+		t.Errorf("expected SessionID 'abc-123' in Fields, got %q", result.Fields.SessionID)
 	}
 }
 
@@ -1470,24 +1482,24 @@ func TestTranslateToEngineEvent_UnknownType(t *testing.T) {
 	// by the translateToEngineEvent switch (falls through to default).
 	result := translateToEngineEvent(types.NormalizedEvent{
 		Data: &types.SessionInitEvent{SessionID: "test"},
-	})
+	}, 200000)
 	if result.Type != "" {
 		t.Errorf("expected empty type for unknown events (silent drop), got %q", result.Type)
 	}
 }
 
 func TestTranslateToEngineEvent_UsageContextPercent(t *testing.T) {
-	in := 100000
+	in := 150000
 	out := 50000
 	result := translateToEngineEvent(types.NormalizedEvent{
 		Data: &types.UsageEvent{Usage: types.UsageData{
 			InputTokens: &in, OutputTokens: &out,
 		}},
-	})
+	}, 200000)
 	if result.EndUsage == nil {
 		t.Fatal("expected EndUsage")
 	}
-	// (100000 + 50000) * 100 / 200000 = 75
+	// 150000 * 100 / 200000 = 75
 	if result.EndUsage.ContextPercent != 75 {
 		t.Errorf("expected contextPercent=75, got %d", result.EndUsage.ContextPercent)
 	}
@@ -1496,7 +1508,7 @@ func TestTranslateToEngineEvent_UsageContextPercent(t *testing.T) {
 func TestTranslateToEngineEvent_UsageNilTokens(t *testing.T) {
 	result := translateToEngineEvent(types.NormalizedEvent{
 		Data: &types.UsageEvent{Usage: types.UsageData{}},
-	})
+	}, 200000)
 	if result.EndUsage == nil {
 		t.Fatal("expected EndUsage")
 	}

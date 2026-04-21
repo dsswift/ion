@@ -1,6 +1,8 @@
 package session
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/recorder"
 	"github.com/dsswift/ion/engine/internal/skills"
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -43,8 +46,10 @@ type engineSession struct {
 	conversationID string
 	agentRegistry map[string]types.AgentHandle
 	childPIDs     map[int]struct{}
-	planMode      bool
-	planModeTools []string
+	planMode           bool
+	planModeTools      []string
+	planFilePath       string
+	planModePromptSent bool
 	promptQueue   []pendingPrompt
 	maxQueueDepth int // default 32
 
@@ -198,6 +203,19 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) error {
 		timeout := time.Duration(*m.config.Limits.IdleTimeoutMs) * time.Millisecond
 		s.idleStop = make(chan struct{})
 		s.idleTimer = time.AfterFunc(timeout, func() {
+			// Guard: don't kill sessions with active runs (defense-in-depth)
+			m.mu.RLock()
+			sess, ok := m.sessions[key]
+			isActive := ok && sess.requestID != ""
+			m.mu.RUnlock()
+			if isActive {
+				m.mu.Lock()
+				if sess, ok := m.sessions[key]; ok && sess.idleTimer != nil {
+					sess.idleTimer.Reset(timeout)
+				}
+				m.mu.Unlock()
+				return
+			}
 			utils.Log("Session", fmt.Sprintf("session %s idle timeout (%dms)", key, *m.config.Limits.IdleTimeoutMs))
 			_ = m.StopSession(key)
 		})
@@ -234,6 +252,12 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) error {
 			// Fire session_start
 			ctx := &extension.Context{Cwd: config.WorkingDirectory}
 			host.FireSessionStart(ctx)
+
+			// Discover capabilities from extensions
+			caps := host.FireCapabilityDiscover(ctx)
+			for _, cap := range caps {
+				host.SDK().RegisterCapability(cap)
+			}
 		}
 	}
 
@@ -266,9 +290,13 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) error {
 		}
 	}
 
+	ctxWindow := conversation.DefaultContext
+	if info := providers.GetModelInfo(config.Model); info != nil {
+		ctxWindow = info.ContextWindow
+	}
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_status",
-		Fields: &types.StatusFields{Label: key, State: "idle", Model: config.Model},
+		Fields: &types.StatusFields{Label: key, State: "idle", Model: config.Model, ContextWindow: ctxWindow},
 	})
 
 	return nil
@@ -313,9 +341,17 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
 	s.requestID = requestID
 
-	// Reset idle timer on activity
-	if s.idleTimer != nil && m.config != nil && m.config.Limits.IdleTimeoutMs != nil {
-		s.idleTimer.Reset(time.Duration(*m.config.Limits.IdleTimeoutMs) * time.Millisecond)
+	// Stop idle timer while run is active (restarted in handleRunExit)
+	if s.idleTimer != nil {
+		s.idleTimer.Stop()
+	}
+
+	// Generate plan file path if plan mode is active and no path exists yet
+	if s.planMode && s.planFilePath == "" {
+		home, _ := os.UserHomeDir()
+		plansDir := filepath.Join(home, ".ion", "plans")
+		os.MkdirAll(plansDir, 0755)
+		s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
 	}
 
 	opts := types.RunOptions{
@@ -327,6 +363,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 		Thinking:      s.config.Thinking,
 		PlanMode:      s.planMode,
 		PlanModeTools: s.planModeTools,
+		PlanFilePath:  s.planFilePath,
 	}
 
 	// Per-prompt overrides take precedence over session config
@@ -363,7 +400,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 		}
 	}
 
-	// Resolve model tier aliases (e.g. "fast" -> "claude-3-5-haiku-latest")
+	// Resolve model tier aliases (e.g. "fast" -> configured fast model)
 	if opts.Model != "" {
 		if resolved := modelconfig.ResolveTier(opts.Model); resolved != opts.Model {
 			opts.Model = resolved
@@ -371,6 +408,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 	}
 
 	// Discover context files (CLAUDE.md, ION.md) from working directory
+	var discoveredPaths []string
 	if s.config.WorkingDirectory != "" {
 		ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, ioncontext.IonPreset())
 		var ctxContent strings.Builder
@@ -378,9 +416,45 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 			ctxContent.WriteString("\n# Context from " + cf.Path + "\n")
 			ctxContent.WriteString(cf.Content)
 			ctxContent.WriteString("\n")
+			discoveredPaths = append(discoveredPaths, cf.Path)
 		}
 		if ctxContent.Len() > 0 {
 			opts.AppendSystemPrompt += ctxContent.String()
+		}
+	}
+
+	// Fire context_inject hook for extension-provided context
+	if s.extHost != nil {
+		ctx := &extension.Context{Cwd: s.config.WorkingDirectory}
+		injected := s.extHost.FireContextInject(ctx, extension.ContextInjectInfo{
+			WorkingDirectory: s.config.WorkingDirectory,
+			DiscoveredPaths:  discoveredPaths,
+		})
+		for _, entry := range injected {
+			opts.AppendSystemPrompt += "\n# " + entry.Label + "\n" + entry.Content + "\n"
+		}
+
+		// Inject capability tools and prompt content
+		sdk := s.extHost.SDK()
+		toolCaps := sdk.CapabilitiesByMode(extension.CapabilityModeTool)
+		for _, cap := range toolCaps {
+			capCopy := cap // capture for closure
+			opts.CapabilityTools = append(opts.CapabilityTools, types.LlmToolDef{
+				Name:        cap.ID,
+				Description: cap.Description,
+				InputSchema: cap.InputSchema,
+			})
+			_ = capCopy // used by execution routing (stored in registry)
+		}
+		promptCaps := sdk.CapabilitiesByMode(extension.CapabilityModePrompt)
+		var capPrompt strings.Builder
+		for _, cap := range promptCaps {
+			capPrompt.WriteString("\n# Capability: " + cap.Name + "\n")
+			capPrompt.WriteString(cap.Prompt)
+			capPrompt.WriteString("\n")
+		}
+		if capPrompt.Len() > 0 {
+			opts.CapabilityPrompt = capPrompt.String()
 		}
 	}
 
@@ -518,6 +592,10 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 			apiBackend.SetBeforePrompt(func(_ string, prompt string) (string, string) {
 				rewritten, sysPrompt, _ := extHost.FireBeforePrompt(ctx, prompt)
 				return rewritten, sysPrompt
+			})
+
+			apiBackend.SetPlanModePromptHook(func(planFilePath string) (string, []string) {
+				return extHost.FirePlanModePrompt(ctx, planFilePath)
 			})
 
 			apiBackend.SetCompactionHooks(
@@ -684,9 +762,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) error
 	}
 
 	utils.Info("Session", fmt.Sprintf("dispatching prompt: key=%s requestID=%s model=%s", key, requestID, opts.Model))
+	promptCtxWindow := conversation.DefaultContext
+	if info := providers.GetModelInfo(opts.Model); info != nil {
+		promptCtxWindow = info.ContextWindow
+	}
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_status",
-		Fields: &types.StatusFields{Label: key, State: "running", Model: opts.Model},
+		Fields: &types.StatusFields{Label: key, State: "running", Model: opts.Model, ContextWindow: promptCtxWindow},
 	})
 
 	m.backend.StartRun(requestID, opts)
@@ -1083,10 +1165,22 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string) {
 
 	s, ok := m.sessions[key]
 	if !ok {
+		utils.Debug("Session", fmt.Sprintf("SetPlanMode: session %q not found (not yet started?)", key))
 		return
 	}
 	s.planMode = enabled
 	s.planModeTools = allowedTools
+	if !enabled {
+		s.planFilePath = ""
+		s.planModePromptSent = false
+	}
+}
+
+// generatePlanID returns a random hex string for plan file naming.
+func generatePlanID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // StopSession cancels the active run and cleans up the session.
@@ -1199,7 +1293,18 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	}
 
 	utils.Debug("Session", fmt.Sprintf("normalized event: key=%s runID=%s type=%T", key, runID, event.Data))
-	ee := translateToEngineEvent(event)
+
+	m.mu.RLock()
+	sess := m.sessions[key]
+	m.mu.RUnlock()
+	contextWindow := conversation.DefaultContext
+	if sess != nil {
+		if info := providers.GetModelInfo(sess.config.Model); info != nil {
+			contextWindow = info.ContextWindow
+		}
+	}
+
+	ee := translateToEngineEvent(event, contextWindow)
 	if ee.Type == "" {
 		utils.Debug("Session", fmt.Sprintf("dropping unhandled normalized event type: %T", event.Data))
 		return
@@ -1227,9 +1332,11 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	// TaskComplete also emits engine_message_end with usage
 	if tc, ok := event.Data.(*types.TaskCompleteEvent); ok {
 		var pct int
-		if tc.Usage.InputTokens != nil && tc.Usage.OutputTokens != nil {
-			total := *tc.Usage.InputTokens + *tc.Usage.OutputTokens
-			pct = total * 100 / 200000
+		if tc.Usage.InputTokens != nil {
+			pct = *tc.Usage.InputTokens * 100 / contextWindow
+			if pct > 100 {
+				pct = 100
+			}
 		}
 		m.emit(key, types.EngineEvent{
 			Type: "engine_message_end",
@@ -1340,7 +1447,7 @@ func (m *Manager) keyForRun(runID string) string {
 }
 
 // translateToEngineEvent converts a NormalizedEvent to an EngineEvent.
-func translateToEngineEvent(event types.NormalizedEvent) types.EngineEvent {
+func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	if event.Data == nil {
 		return types.EngineEvent{Type: "engine_error", EventMessage: "nil event data"}
 	}
@@ -1359,8 +1466,11 @@ func translateToEngineEvent(event types.NormalizedEvent) types.EngineEvent {
 		return types.EngineEvent{
 			Type: "engine_status",
 			Fields: &types.StatusFields{
-				State:        "idle",
-				TotalCostUsd: e.CostUsd,
+				State:             "idle",
+				SessionID:         e.SessionID,
+				TotalCostUsd:      e.CostUsd,
+				ContextWindow:     contextWindow,
+				PermissionDenials: e.PermissionDenials,
 			},
 		}
 
@@ -1369,9 +1479,15 @@ func translateToEngineEvent(event types.NormalizedEvent) types.EngineEvent {
 
 	case *types.UsageEvent:
 		var pct int
-		if e.Usage.InputTokens != nil && e.Usage.OutputTokens != nil {
-			total := *e.Usage.InputTokens + *e.Usage.OutputTokens
-			pct = total * 100 / 200000 // rough estimate
+		if e.Usage.InputTokens != nil {
+			window := contextWindow
+			if window <= 0 {
+				window = conversation.DefaultContext
+			}
+			pct = *e.Usage.InputTokens * 100 / window
+			if pct > 100 {
+				pct = 100
+			}
 		}
 		return types.EngineEvent{
 			Type: "engine_message_end",
@@ -1392,13 +1508,23 @@ func translateToEngineEvent(event types.NormalizedEvent) types.EngineEvent {
 
 	case *types.PermissionRequestEvent:
 		return types.EngineEvent{
-			Type:         "engine_permission_request",
-			QuestionID:   e.QuestionID,
-			PermToolName: e.ToolName,
-			PermToolDesc: e.ToolDescription,
+			Type:          "engine_permission_request",
+			QuestionID:    e.QuestionID,
+			PermToolName:  e.ToolName,
+			PermToolDesc:  e.ToolDescription,
 			PermToolInput: e.ToolInput,
-			PermOptions:  e.Options,
+			PermOptions:   e.Options,
 		}
+
+	case *types.PlanModeChangedEvent:
+		return types.EngineEvent{
+			Type:             "engine_plan_mode_changed",
+			PlanModeEnabled:  e.Enabled,
+			PlanModeFilePath: e.PlanFilePath,
+		}
+
+	case *types.StreamResetEvent:
+		return types.EngineEvent{Type: "engine_stream_reset"}
 
 	default:
 		return types.EngineEvent{}

@@ -8,9 +8,9 @@ import "encoding/json"
 // Use this when forwarding events without parsing (e.g., socket relay).
 type RawEngineEvent = json.RawMessage
 
-// --- Claude Code Stream Event Types (verified from engine/src/types.ts) ---
+// --- Stream Event Types ---
 
-// InitEvent is emitted once at the start of a Claude Code session.
+// InitEvent is emitted once at the start of an engine session.
 type InitEvent struct {
 	Type              string          `json:"type"`
 	Subtype           string          `json:"subtype"`
@@ -254,14 +254,15 @@ type AgentHandle struct {
 
 // StatusFields are the fields emitted by engine_status events.
 type StatusFields struct {
-	Label          string  `json:"label"`
-	State          string  `json:"state"`
-	SessionID      string  `json:"sessionId,omitempty"`
-	Team           string  `json:"team,omitempty"`
-	Model          string  `json:"model"`
-	ContextPercent int     `json:"contextPercent"`
-	ContextWindow  int     `json:"contextWindow"`
-	TotalCostUsd   float64 `json:"totalCostUsd,omitempty"`
+	Label             string             `json:"label"`
+	State             string             `json:"state"`
+	SessionID         string             `json:"sessionId,omitempty"`
+	Team              string             `json:"team,omitempty"`
+	Model             string             `json:"model"`
+	ContextPercent    int                `json:"contextPercent"`
+	ContextWindow     int                `json:"contextWindow"`
+	TotalCostUsd      float64            `json:"totalCostUsd,omitempty"`
+	PermissionDenials []PermissionDenial `json:"permissionDenials,omitempty"`
 }
 
 // --- Engine Events ---
@@ -313,6 +314,10 @@ type EngineEvent struct {
 	PermToolDesc    string          `json:"permToolDescription,omitempty"`
 	PermToolInput   map[string]any  `json:"permToolInput,omitempty"`
 	PermOptions     []PermissionOpt `json:"permOptions,omitempty"`
+
+	// engine_plan_mode_changed
+	PlanModeEnabled  bool   `json:"planModeEnabled,omitempty"`
+	PlanModeFilePath string `json:"planFilePath,omitempty"`
 }
 
 // MessageEndUsage reports token usage at the end of a message.
@@ -349,7 +354,11 @@ type RunOptions struct {
 	Persistent         bool            `json:"persistent,omitempty"`
 	PlanMode           bool            `json:"planMode,omitempty"`
 	PlanModeTools      []string        `json:"planModeTools,omitempty"`
+	PlanFilePath       string          `json:"planFilePath,omitempty"`
+	PlanModePrompt     string          `json:"planModePrompt,omitempty"`
 	CompactThreshold   float64         `json:"compactThreshold,omitempty"`
+	CapabilityTools    []LlmToolDef    `json:"-"` // capability tools injected by session manager
+	CapabilityPrompt   string          `json:"-"` // capability prompt content injected by session manager
 }
 
 // StoredSessionInfo is metadata for a saved conversation on disk.
@@ -383,8 +392,9 @@ type PermissionDenialEntry struct {
 // PermissionDenial records a tool invocation that was denied.
 // Wire format uses camelCase to match the desktop NormalizedEvent task_complete consumer.
 type PermissionDenial struct {
-	ToolName  string `json:"toolName"`
-	ToolUseID string `json:"toolUseId"`
+	ToolName  string         `json:"toolName"`
+	ToolUseID string         `json:"toolUseId"`
+	ToolInput map[string]any `json:"toolInput,omitempty"`
 }
 
 // EnrichedError carries detailed context about a failed run.

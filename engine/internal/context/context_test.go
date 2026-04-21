@@ -92,8 +92,6 @@ func TestPresets(t *testing.T) {
 		name   string
 		preset WalkerConfig
 	}{
-		{"ClaudeCode", ClaudeCodePreset()},
-		{"PiMono", PiMonoPreset()},
 		{"Ion", IonPreset()},
 	}
 	for _, tt := range tests {

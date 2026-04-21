@@ -91,15 +91,17 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 
 			evCh, errCh := currentProvider.Stream(ctx, streamOpts)
 
-			// Drain the event channel, forwarding to caller
+			// Buffer events per attempt. Only forward to caller after the
+			// stream completes without error. On retry, discard the buffer
+			// so the caller never sees partial results from failed attempts.
+			var buf []types.LlmStreamEvent
 			var streamErr error
 			for ev := range evCh {
-				select {
-				case events <- ev:
-				case <-ctx.Done():
+				if ctx.Err() != nil {
 					errc <- ctx.Err()
 					return
 				}
+				buf = append(buf, ev)
 			}
 
 			// Check for stream error
@@ -107,8 +109,16 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 				streamErr = <-errCh
 			}
 
-			// Stream completed without error
+			// Stream completed without error — flush buffer to caller
 			if streamErr == nil {
+				for _, ev := range buf {
+					select {
+					case events <- ev:
+					case <-ctx.Done():
+						errc <- ctx.Err()
+						return
+					}
+				}
 				return
 			}
 

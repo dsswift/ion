@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -23,13 +24,18 @@ import (
 
 // activeRun tracks the state of a single in-flight agent loop.
 type activeRun struct {
-	requestID string
-	conv      *conversation.Conversation
-	cancel    context.CancelFunc
-	turnCount int
-	totalCost float64
-	startTime time.Time
-	steerCh   chan string
+	mu                 sync.Mutex
+	requestID          string
+	conv               *conversation.Conversation
+	cancel             context.CancelFunc
+	turnCount          int
+	totalCost          float64
+	startTime          time.Time
+	steerCh            chan string
+	exitPlanMode       bool                     // set when ExitPlanMode tool is called during plan mode
+	permissionDenials  []types.PermissionDenial // tools intercepted/denied (e.g. ExitPlanMode sentinel)
+	planMode           bool                     // true when this run is in plan mode
+	planFilePath       string                   // only writable file during plan mode
 }
 
 // ApiBackend is the direct-API backend that runs an agentic loop against
@@ -46,14 +52,15 @@ type ApiBackend struct {
 	onPerToolHook func(toolName string, info interface{}, phase string) (interface{}, error)
 
 	// Hook callbacks wired by session manager
-	onTurnStart          func(runID string, turnNumber int)
-	onTurnEnd            func(runID string, turnNumber int)
-	onBeforePrompt       func(runID string, prompt string) (string, string)
+	onTurnStart            func(runID string, turnNumber int)
+	onTurnEnd              func(runID string, turnNumber int)
+	onBeforePrompt         func(runID string, prompt string) (string, string)
+	onPlanModePrompt       func(planFilePath string) (string, []string)
 	onSessionBeforeCompact func(runID string) bool
-	onSessionCompact     func(runID string, info interface{})
-	onFileChanged        func(runID string, path string, action string)
-	onPermissionRequest  func(runID string, info interface{})
-	onPermissionDenied   func(runID string, info interface{})
+	onSessionCompact       func(runID string, info interface{})
+	onFileChanged          func(runID string, path string, action string)
+	onPermissionRequest    func(runID string, info interface{})
+	onPermissionDenied     func(runID string, info interface{})
 
 	// Security
 	permEngine   *permissions.Engine
@@ -164,6 +171,15 @@ func (b *ApiBackend) SetBeforePrompt(fn func(string, string) (string, string)) {
 	b.onBeforePrompt = fn
 }
 
+// SetPlanModePromptHook wires the plan mode prompt hook. The callback receives
+// the plan file path and returns an optional custom prompt and tool list.
+// Empty prompt = use default. Nil tools = use default.
+func (b *ApiBackend) SetPlanModePromptHook(fn func(string) (string, []string)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.onPlanModePrompt = fn
+}
+
 // SetCompactionHooks wires compaction lifecycle callbacks.
 func (b *ApiBackend) SetCompactionHooks(before func(string) bool, after func(string, interface{})) {
 	b.mu.Lock()
@@ -192,10 +208,12 @@ func (b *ApiBackend) StartRun(requestID string, options types.RunOptions) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	run := &activeRun{
-		requestID: requestID,
-		cancel:    cancel,
-		startTime: time.Now(),
-		steerCh:   make(chan string, 4),
+		requestID:    requestID,
+		cancel:       cancel,
+		startTime:    time.Now(),
+		steerCh:      make(chan string, 4),
+		planMode:     options.PlanMode,
+		planFilePath: options.PlanFilePath,
 	}
 
 	b.mu.Lock()
@@ -385,8 +403,28 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		systemPrompt += "\n\n" + opts.AppendSystemPrompt
 	}
 	if opts.PlanMode {
-		systemPrompt += "\n\n[PLAN MODE] You are in plan mode. Analyze the request and produce a plan. " +
-			"Only use tools from the allowed list to gather information needed for planning."
+		// Check extension hook for custom plan mode prompt
+		planPrompt := opts.PlanModePrompt
+		if planPrompt == "" {
+			b.mu.Lock()
+			hookFn := b.onPlanModePrompt
+			b.mu.Unlock()
+			if hookFn != nil {
+				customPrompt, customTools := hookFn(opts.PlanFilePath)
+				if customPrompt != "" {
+					planPrompt = customPrompt
+				}
+				if customTools != nil {
+					opts.PlanModeTools = customTools
+				}
+			}
+		}
+		if planPrompt == "" {
+			// Use default plan mode prompt
+			_, err := os.Stat(opts.PlanFilePath)
+			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil)
+		}
+		systemPrompt += "\n\n" + planPrompt
 	}
 	conv.System = systemPrompt
 
@@ -415,20 +453,34 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 	}
 
-	// Build tool definitions (built-in + external/MCP)
+	// Build tool definitions (built-in + external/MCP + capabilities)
 	toolDefs := tools.GetToolDefs()
 	b.mu.Lock()
 	if len(b.externalTools) > 0 {
 		toolDefs = append(toolDefs, b.externalTools...)
 	}
 	b.mu.Unlock()
+	if len(opts.CapabilityTools) > 0 {
+		toolDefs = append(toolDefs, opts.CapabilityTools...)
+	}
+	if opts.CapabilityPrompt != "" {
+		systemPrompt += "\n" + opts.CapabilityPrompt
+	}
 
-	// Filter tools if plan mode with allowed tools
-	if opts.PlanMode && len(opts.PlanModeTools) > 0 {
-		allowed := make(map[string]bool, len(opts.PlanModeTools))
-		for _, t := range opts.PlanModeTools {
+	// Filter tools if plan mode and inject ExitPlanMode
+	if opts.PlanMode {
+		planTools := opts.PlanModeTools
+		if len(planTools) == 0 {
+			planTools = defaultPlanModeTools
+		}
+		allowed := make(map[string]bool, len(planTools)+2)
+		for _, t := range planTools {
 			allowed[t] = true
 		}
+		// Always allow Write/Edit so the LLM can write to the plan file
+		// (plan-file-only gate in executeTools enforces the target restriction)
+		allowed["Write"] = true
+		allowed["Edit"] = true
 		var filtered []types.LlmToolDef
 		for _, td := range toolDefs {
 			if allowed[td.Name] {
@@ -436,6 +488,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 		}
 		toolDefs = filtered
+
+		// Always inject ExitPlanMode sentinel when in plan mode
+		exitPlanDef := tools.ExitPlanModeTool()
+		toolDefs = append(toolDefs, types.LlmToolDef{
+			Name:        exitPlanDef.Name,
+			Description: exitPlanDef.Description,
+			InputSchema: exitPlanDef.InputSchema,
+		})
+
+		// Signal to the desktop that plan mode is now active for this run.
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
 	}
 
 	// Filter by allowedTools if specified (empty list = no tools, nil = all tools)
@@ -672,11 +735,29 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			return
 		}
 
+		// Stream truncated (no stop reason) -- emit reset so desktop discards
+		// partial text, then retry the turn.
+		if stopReason == "" {
+			utils.Warn("ApiBackend", fmt.Sprintf("stream truncated (no stop reason): runID=%s turn=%d, retrying", run.requestID, run.turnCount))
+			b.emit(run.requestID, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
+			continue
+		}
+
 		// Track usage and cost
 		if turnUsage != nil {
 			costUsd := computeCost(model, *turnUsage)
 			run.totalCost += costUsd
 			conversation.UpdateCost(conv, costUsd)
+
+			// Emit usage event with input tokens so desktop shows context percentage
+			inTok := turnUsage.InputTokens
+			outTok := turnUsage.OutputTokens
+			b.emit(run.requestID, types.NormalizedEvent{Data: &types.UsageEvent{
+				Usage: types.UsageData{
+					InputTokens:  &inTok,
+					OutputTokens: &outTok,
+				},
+			}})
 		}
 
 		// Add assistant message to conversation
@@ -749,6 +830,29 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				utils.Error("ApiBackend", fmt.Sprintf("tool execution failed: runID=%s err=%s", run.requestID, err.Error()))
 				b.emitError(run.requestID, err)
 				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
+				return
+			}
+
+			// If ExitPlanMode was triggered, wrap up the run now.
+			run.mu.Lock()
+			exiting := run.exitPlanMode
+			denials := run.permissionDenials
+			run.mu.Unlock()
+			if exiting {
+				if err := conversation.Save(conv, ""); err != nil {
+					utils.Log("ApiBackend", "failed to save conversation: "+err.Error())
+				}
+				elapsed := time.Since(run.startTime).Milliseconds()
+				utils.Info("ApiBackend", fmt.Sprintf("plan mode exited: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, run.turnCount, run.totalCost, elapsed, conv.ID))
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+					Result:            "Plan mode exited.",
+					CostUsd:           run.totalCost,
+					DurationMs:        elapsed,
+					NumTurns:          run.turnCount,
+					SessionID:         conv.ID,
+					PermissionDenials: denials,
+				}})
+				b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
 				return
 			}
 
@@ -1082,6 +1186,51 @@ func (b *ApiBackend) executeTools(
 				toolSpan = telem.StartSpan("tool.execute", map[string]interface{}{
 					"tool": block.Name,
 				})
+			}
+
+			// Plan mode write gate: only the plan file is writable.
+			if run.planMode && (block.Name == "Write" || block.Name == "Edit") {
+				if targetPath, ok := block.Input["file_path"].(string); ok {
+					if targetPath != run.planFilePath {
+						msg := fmt.Sprintf("Plan mode: cannot write to %s. Only the plan file (%s) is writable.", targetPath, run.planFilePath)
+						results[i] = conversation.ToolResultEntry{
+							ToolUseID: block.ID,
+							Content:   msg,
+							IsError:   true,
+						}
+						b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+							ToolID:  block.ID,
+							Content: msg,
+							IsError: true,
+						}})
+						return nil
+					}
+				}
+			}
+
+			// Intercept ExitPlanMode sentinel — never dispatch to executor.
+			if block.Name == tools.ExitPlanModeName {
+				run.mu.Lock()
+				run.exitPlanMode = true
+				run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
+					ToolName:  block.Name,
+					ToolUseID: block.ID,
+					ToolInput: map[string]any{"planFilePath": run.planFilePath},
+				})
+				run.mu.Unlock()
+				// Signal to the desktop that plan mode is now exiting.
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: false, PlanFilePath: run.planFilePath}})
+				results[i] = conversation.ToolResultEntry{
+					ToolUseID: block.ID,
+					Content:   "Plan mode exited.",
+					IsError:   false,
+				}
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+					ToolID:  block.ID,
+					Content: "Plan mode exited.",
+					IsError: false,
+				}})
+				return nil
 			}
 
 			// Route to MCP or built-in tool (Step 5)

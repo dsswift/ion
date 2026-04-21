@@ -395,9 +395,16 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 
 		events := normalizer.Normalize(raw)
 		for _, ev := range events {
-			// Track sessionID from init events
-			if init, ok := ev.Data.(*types.SessionInitEvent); ok {
-				sessionID = init.SessionID
+			// Track sessionID from init or result events
+			switch e := ev.Data.(type) {
+			case *types.SessionInitEvent:
+				if e.SessionID != "" {
+					sessionID = e.SessionID
+				}
+			case *types.TaskCompleteEvent:
+				if e.SessionID != "" {
+					sessionID = e.SessionID
+				}
 			}
 			b.emit(run.requestID, ev)
 		}

@@ -195,7 +195,8 @@ func init() {
 
 	// Register models
 	// Anthropic
-	RegisterModel("claude-opus-4-6", types.ModelInfo{ProviderID: "anthropic", ContextWindow: 200000, CostPer1kInput: 0.015, CostPer1kOutput: 0.075, SupportsCaching: true, SupportsThinking: true, SupportsImages: true})
+	RegisterModel("claude-opus-4-6", types.ModelInfo{ProviderID: "anthropic", ContextWindow: 1000000, CostPer1kInput: 0.015, CostPer1kOutput: 0.075, SupportsCaching: true, SupportsThinking: true, SupportsImages: true})
+	RegisterModel("claude-opus-4-7", types.ModelInfo{ProviderID: "anthropic", ContextWindow: 1000000, CostPer1kInput: 0.015, CostPer1kOutput: 0.075, SupportsCaching: true, SupportsThinking: true, SupportsImages: true})
 	RegisterModel("claude-sonnet-4-6", types.ModelInfo{ProviderID: "anthropic", ContextWindow: 200000, CostPer1kInput: 0.003, CostPer1kOutput: 0.015, SupportsCaching: true, SupportsThinking: true, SupportsImages: true})
 	RegisterModel("claude-haiku-4-5-20251001", types.ModelInfo{ProviderID: "anthropic", ContextWindow: 200000, CostPer1kInput: 0.0008, CostPer1kOutput: 0.004, SupportsCaching: true, SupportsImages: true})
 	// OpenAI

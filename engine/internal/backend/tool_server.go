@@ -13,7 +13,7 @@ import (
 )
 
 // ToolServer exposes extension-registered tools as an MCP server
-// that the Claude CLI can connect to.
+// that backend processes can connect to.
 type ToolServer struct {
 	mu       sync.Mutex
 	listener net.Listener

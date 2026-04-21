@@ -83,6 +83,7 @@ type Conversation struct {
 	Messages          []types.LlmMessage `json:"messages"`
 	TotalInputTokens  int                `json:"totalInputTokens"`
 	TotalOutputTokens int                `json:"totalOutputTokens"`
+	LastInputTokens   int                `json:"lastInputTokens"`
 	TotalCost         float64            `json:"totalCost"`
 	CreatedAt         int64              `json:"createdAt"`
 	Version           int                `json:"version,omitempty"`
@@ -268,6 +269,7 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
 	conv.TotalInputTokens += usage.InputTokens
 	conv.TotalOutputTokens += usage.OutputTokens
+	conv.LastInputTokens = usage.InputTokens
 
 	if conv.Entries != nil {
 		AppendEntry(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage})
@@ -489,7 +491,7 @@ func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 		limit = DefaultContext
 	}
 
-	reported := conv.TotalInputTokens + conv.TotalOutputTokens
+	reported := conv.LastInputTokens
 	if reported > 0 {
 		pct := int(math.Min(100, math.Round(float64(reported)/float64(limit)*100)))
 		return ContextUsageInfo{Percent: pct, Tokens: reported, Limit: limit, Estimated: false}
@@ -692,6 +694,7 @@ func saveJSONL(conv *Conversation, dir string) error {
 		"system":            conv.System,
 		"totalInputTokens":  conv.TotalInputTokens,
 		"totalOutputTokens": conv.TotalOutputTokens,
+		"lastInputTokens":   conv.LastInputTokens,
 		"totalCost":         conv.TotalCost,
 		"createdAt":         conv.CreatedAt,
 		"leafId":            conv.LeafID,
@@ -795,6 +798,7 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 		Messages:          []types.LlmMessage{},
 		TotalInputTokens:  int(jsonFloat(header, "totalInputTokens", 0)),
 		TotalOutputTokens: int(jsonFloat(header, "totalOutputTokens", 0)),
+		LastInputTokens:   int(jsonFloat(header, "lastInputTokens", 0)),
 		TotalCost:         jsonFloat(header, "totalCost", 0),
 		CreatedAt:         int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
 		Version:           int(jsonFloat(header, "version", 2)),

@@ -166,27 +166,6 @@ func classifySource(level int) string {
 
 // --- Presets ---
 
-// ClaudeCodePreset returns a walker config matching Claude Code conventions.
-func ClaudeCodePreset() WalkerConfig {
-	return WalkerConfig{
-		FilePatterns:     []string{"CLAUDE.md", ".claude/CLAUDE.md"},
-		RecurseParents:   true,
-		IncludeDirective: "@",
-		Deduplication:    true,
-	}
-}
-
-// PiMonoPreset returns a walker config for Pi monorepo projects.
-func PiMonoPreset() WalkerConfig {
-	return WalkerConfig{
-		FilePatterns:     []string{"CLAUDE.md", ".claude/CLAUDE.md", "PI.md"},
-		RecurseParents:   true,
-		MaxDepth:         5,
-		IncludeDirective: "@",
-		Deduplication:    true,
-	}
-}
-
 // IonPreset returns a walker config for Ion projects.
 func IonPreset() WalkerConfig {
 	return WalkerConfig{

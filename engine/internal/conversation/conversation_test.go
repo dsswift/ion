@@ -281,8 +281,7 @@ func TestEstimateTokens(t *testing.T) {
 func TestGetContextUsage(t *testing.T) {
 	t.Run("reported tokens", func(t *testing.T) {
 		conv := CreateConversation("cu-1", "", "claude-3")
-		conv.TotalInputTokens = 50000
-		conv.TotalOutputTokens = 10000
+		conv.LastInputTokens = 60000
 
 		info := GetContextUsage(conv, 200000)
 		if info.Estimated {
@@ -1077,8 +1076,7 @@ func TestEstimateTokens_MessageArray(t *testing.T) {
 
 func TestGetContextUsage_PercentCap(t *testing.T) {
 	conv := CreateConversation("cap-test", "", "claude-3")
-	conv.TotalInputTokens = 15000
-	conv.TotalOutputTokens = 15000
+	conv.LastInputTokens = 30000
 
 	info := GetContextUsage(conv, 10000)
 	if info.Percent != 100 {
@@ -1364,6 +1362,7 @@ func TestSaveLoadJSONL_PreservesMetadata(t *testing.T) {
 	conv := CreateConversation("meta-test", "sys", "claude-3")
 	conv.TotalInputTokens = 500
 	conv.TotalOutputTokens = 200
+	conv.LastInputTokens = 300
 	conv.TotalCost = 0.05
 	AddUserMessage(conv, "test")
 
@@ -1381,6 +1380,9 @@ func TestSaveLoadJSONL_PreservesMetadata(t *testing.T) {
 	}
 	if loaded.TotalOutputTokens != 200 {
 		t.Errorf("TotalOutputTokens = %d", loaded.TotalOutputTokens)
+	}
+	if loaded.LastInputTokens != 300 {
+		t.Errorf("LastInputTokens = %d", loaded.LastInputTokens)
 	}
 	if loaded.TotalCost < 0.049 || loaded.TotalCost > 0.051 {
 		t.Errorf("TotalCost = %f", loaded.TotalCost)
@@ -1757,8 +1759,7 @@ func TestNavigateTree_SetsLeafAndRebuilds(t *testing.T) {
 
 func TestGetContextUsage_ExactThreshold(t *testing.T) {
 	conv := CreateConversation("threshold", "", "claude-3")
-	conv.TotalInputTokens = 100000
-	conv.TotalOutputTokens = 100000
+	conv.LastInputTokens = 200000
 
 	info := GetContextUsage(conv, 200000)
 	if info.Percent != 100 {

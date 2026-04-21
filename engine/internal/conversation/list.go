@@ -223,9 +223,14 @@ func LoadChainMessages(ids []string, dir string) ([]types.SessionMessage, error)
 }
 
 // flattenEntries walks the context path entries and produces SessionMessages.
+// Tool results are merged into their matching tool-call messages (same ToolID)
+// so the client receives a single message with both call and result data.
 func flattenEntries(conv *Conversation) []types.SessionMessage {
 	path := getContextPathEntries(conv)
+
+	// First pass: collect all messages and build a toolID → index map for tool calls.
 	var result []types.SessionMessage
+	toolCallIndex := map[string]int{} // toolID → index in result
 
 	for _, entry := range path {
 		if entry.Type != EntryMessage {
@@ -247,13 +252,11 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 						textParts = append(textParts, b.Text)
 					}
 				case "tool_result":
-					// Emit as a separate tool result message
-					result = append(result, types.SessionMessage{
-						Role:      "tool_result",
-						Content:   b.Content,
-						ToolID:    b.ToolUseID,
-						Timestamp: entry.Timestamp,
-					})
+					// Merge result content into the matching tool-call message.
+					if idx, ok := toolCallIndex[b.ToolUseID]; ok {
+						result[idx].Content = b.Content
+					}
+					// If no matching tool call found, drop the orphan result.
 				}
 			}
 			if len(textParts) > 0 {
@@ -283,6 +286,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 							inputJSON = string(raw)
 						}
 					}
+					toolCallIndex[b.ID] = len(result)
 					result = append(result, types.SessionMessage{
 						Role:      "tool",
 						ToolName:  b.Name,

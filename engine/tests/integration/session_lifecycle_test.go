@@ -201,7 +201,8 @@ func TestSessionEvents(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Should have received: start_session status, running status, text_delta, task_complete status, idle status, engine_dead
+	// Should have received: start_session status, running status, text_delta, task_complete status, idle status.
+	// Note: engine_dead is only emitted for non-zero exit codes.
 	if len(events) < 4 {
 		t.Fatalf("expected at least 4 events, got %d: %+v", len(events), events)
 	}
@@ -218,16 +219,16 @@ func TestSessionEvents(t *testing.T) {
 		t.Error("did not find engine_text_delta with expected text")
 	}
 
-	// Check for engine_dead
-	foundDead := false
+	// Check for idle status after clean exit
+	foundIdle := false
 	for _, e := range events {
-		if e.Type == "engine_dead" {
-			foundDead = true
+		if e.Type == "engine_status" && e.Fields != nil && e.Fields.State == "idle" {
+			foundIdle = true
 			break
 		}
 	}
-	if !foundDead {
-		t.Error("did not find engine_dead event")
+	if !foundIdle {
+		t.Error("did not find engine_status{idle} event after clean exit")
 	}
 }
 

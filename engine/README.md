@@ -247,11 +247,82 @@ func main() {
 | **Provider** | `before_provider_request`, `model_select`, `context` |
 | **Error** | `on_error` |
 | **Per-tool** | `{bash,read,write,edit,grep,glob,agent}_tool_{call,result}` (14 hooks) |
-| **Context** | `context_discover`, `context_load`, `instruction_load` |
+| **Context** | `context_discover`, `context_load`, `instruction_load`, `context_inject` |
 | **Permission** | `permission_request`, `permission_denied` |
 | **File** | `file_changed` |
 | **Task** | `task_created`, `task_completed` |
 | **Elicitation** | `elicitation_request`, `elicitation_result` |
+| **Capability** | `capability_discover`, `capability_match`, `capability_invoke` |
+
+## Capability Framework
+
+The engine provides a generic capability registry that lets extension authors build their own skill, command, or behavior systems without imposing opinions on format, directory structure, or trigger semantics.
+
+### How It Works
+
+Extensions register **capabilities** -- named behaviors with optional tool schemas, prompt content, and metadata. The engine handles:
+
+- **Presentation**: Capabilities surface as LLM tools, system prompt additions, or both
+- **Invocation**: Tool calls route to the extension's execute handler
+- **Matching**: User input fires a hook so extensions can auto-trigger capabilities
+
+The engine does NOT dictate:
+- File formats (SKILL.md, YAML, JSON -- your choice)
+- Directory conventions (scan wherever you want)
+- Trigger syntax (regex, prefix match, NLP -- your choice)
+- Auto-invoke rules (extensions decide when and how)
+
+### Example: Custom Skill System
+
+```typescript
+// An extension that implements a custom skills directory
+sdk.on("capability_discover", (ctx) => {
+  const skills = scanDirectory("~/.myproduct/skills/")
+  return skills.map(s => ({
+    id: `skill:${s.name}`,
+    name: s.name,
+    description: s.description,
+    metadata: { triggers: s.triggers },
+    mode: "tool",
+    inputSchema: s.schema,
+    execute: (input) => runSkill(s, input),
+  }))
+})
+
+sdk.on("capability_match", (ctx, { input, capabilities }) => {
+  // Match user input against registered capability triggers
+  for (const cap of capabilities) {
+    if (cap.metadata.triggers?.some(t => input.startsWith("/" + t))) {
+      return { matchedIDs: [cap.id], args: { raw: input } }
+    }
+  }
+  return null
+})
+```
+
+### Capability Modes
+
+| Mode | Behavior |
+|------|----------|
+| `tool` | Registered as an LLM tool -- the model can call it directly |
+| `prompt` | Injected into the system prompt as context |
+| `tool+prompt` | Both -- tool is available AND prompt content is injected |
+
+### Context Injection
+
+Extensions can also inject arbitrary context into the system prompt via the `context_inject` hook, independent of the capability framework:
+
+```typescript
+sdk.on("context_inject", (ctx, { workingDirectory, discoveredPaths }) => {
+  // Read additional context files from custom locations
+  return [
+    { label: "~/.myproduct/rules.md", content: readFile("~/.myproduct/rules.md") },
+    { label: "team-standards", content: fetchFromAPI("/standards") },
+  ]
+})
+```
+
+This fires after the built-in context walker (ION.md, CLAUDE.md) and before the LLM call, giving extensions full control over what context reaches the model.
 
 ## Configuration
 

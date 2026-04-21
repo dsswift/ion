@@ -308,6 +308,22 @@ func (h *Host) FireBeforePrompt(ctx *Context, prompt string) (string, string, er
 	return h.sdk.FireBeforePrompt(ctx, prompt)
 }
 
+func (h *Host) FirePlanModePrompt(ctx *Context, planFilePath string) (string, []string) {
+	return h.sdk.FirePlanModePrompt(ctx, planFilePath)
+}
+
+func (h *Host) FireContextInject(ctx *Context, info ContextInjectInfo) []ContextEntry {
+	return h.sdk.FireContextInject(ctx, info)
+}
+
+func (h *Host) FireCapabilityDiscover(ctx *Context) []Capability {
+	return h.sdk.FireCapabilityDiscover(ctx)
+}
+
+func (h *Host) FireCapabilityMatch(ctx *Context, info CapabilityMatchInfo) *CapabilityMatchResult {
+	return h.sdk.FireCapabilityMatch(ctx, info)
+}
+
 func (h *Host) FireToolCall(ctx *Context, info ToolCallInfo) (*ToolCallResult, error) {
 	return h.sdk.FireToolCall(ctx, info)
 }
@@ -543,6 +559,8 @@ func (h *Host) registerHookForwarders() {
 	// String-returning hooks: parse result.value, return if non-empty.
 	stringHooks := []string{
 		HookBeforePrompt, HookInput, HookModelSelect, HookContext,
+		HookPlanModePrompt, HookContextInject,
+		HookCapabilityDiscover, HookCapabilityMatch, HookCapabilityInvoke,
 	}
 	for _, hook := range stringHooks {
 		h.registerStringForwarder(hook)

@@ -406,6 +406,7 @@ func TestApiBackendPlanMode(t *testing.T) {
 		Model:         "mock-model",
 		PlanMode:      true,
 		PlanModeTools: []string{"Read", "Grep", "Glob"},
+		PlanFilePath:  "/tmp/test-plan.md",
 	})
 
 	be.waitForExit(t, 5*time.Second)
@@ -416,24 +417,173 @@ func TestApiBackendPlanMode(t *testing.T) {
 		t.Fatal("expected at least one provider call")
 	}
 
-	// Check that only allowed tools were passed
+	// Check that only allowed tools + Write/Edit + ExitPlanMode were passed
 	firstCall := calls[0]
+	allowedSet := map[string]bool{
+		"Read": true, "Grep": true, "Glob": true,
+		"Write": true, "Edit": true, "ExitPlanMode": true,
+	}
 	for _, tool := range firstCall.Tools {
-		found := false
-		for _, allowed := range []string{"Read", "Grep", "Glob"} {
-			if tool.Name == allowed {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !allowedSet[tool.Name] {
 			t.Errorf("unexpected tool in plan mode: %s", tool.Name)
 		}
+	}
+	// Verify ExitPlanMode is present
+	hasExit := false
+	for _, tool := range firstCall.Tools {
+		if tool.Name == "ExitPlanMode" {
+			hasExit = true
+			break
+		}
+	}
+	if !hasExit {
+		t.Error("expected ExitPlanMode tool to be injected")
 	}
 
 	// Verify system prompt has PLAN MODE marker
 	if !strings.Contains(firstCall.System, "PLAN MODE") {
 		t.Error("expected system prompt to contain 'PLAN MODE'")
+	}
+
+	// Verify plan file path is mentioned in system prompt
+	if !strings.Contains(firstCall.System, "/tmp/test-plan.md") {
+		t.Error("expected system prompt to mention the plan file path")
+	}
+}
+
+func TestApiBackendPlanModeDefaultTools(t *testing.T) {
+	mp := setupMockProvider(t)
+	mp.SetResponse(helpers.TextResponse("Planning..."))
+
+	b := backend.NewApiBackend()
+	be := newBackendCollector(b)
+
+	// No PlanModeTools specified -- engine should default to read-only set
+	b.StartRun("run-plan-default", types.RunOptions{
+		Prompt:       "Plan something",
+		Model:        "mock-model",
+		PlanMode:     true,
+		PlanFilePath: "/tmp/default-plan.md",
+	})
+
+	be.waitForExit(t, 5*time.Second)
+
+	calls := mp.Calls()
+	if len(calls) == 0 {
+		t.Fatal("expected at least one provider call")
+	}
+
+	// Default set: Read, Grep, Glob, Agent, WebFetch, WebSearch + Write, Edit + ExitPlanMode
+	expectedTools := map[string]bool{
+		"Read": true, "Grep": true, "Glob": true,
+		"Agent": true, "WebFetch": true, "WebSearch": true,
+		"Write": true, "Edit": true, "ExitPlanMode": true,
+	}
+	for _, tool := range calls[0].Tools {
+		if !expectedTools[tool.Name] {
+			t.Errorf("unexpected tool in default plan mode: %s", tool.Name)
+		}
+	}
+	// Should NOT have Bash
+	for _, tool := range calls[0].Tools {
+		if tool.Name == "Bash" {
+			t.Error("Bash should not be available in plan mode")
+		}
+	}
+}
+
+func TestApiBackendPlanModeWriteGate(t *testing.T) {
+	mp := setupMockProvider(t)
+
+	planFile := "/tmp/test-project/.ion/plans/abc123.md"
+
+	// LLM tries to Write to a non-plan file
+	toolCall, finalText := helpers.MultiTurnResponse(
+		"",
+		"Write",
+		map[string]interface{}{
+			"file_path": "/tmp/test-project/src/main.go",
+			"content":   "package main",
+		},
+		"I see I cannot write there.",
+	)
+	mp.SetResponse(toolCall)
+	mp.SetResponse(finalText)
+
+	b := backend.NewApiBackend()
+	be := newBackendCollector(b)
+
+	b.StartRun("run-plan-gate", types.RunOptions{
+		Prompt:       "Write some code",
+		Model:        "mock-model",
+		PlanMode:     true,
+		PlanFilePath: planFile,
+	})
+
+	be.waitForExit(t, 5*time.Second)
+
+	// Check that the tool result was an error mentioning plan mode
+	events := be.getNormalized()
+	foundGateError := false
+	for _, ev := range events {
+		if tr, ok := ev.Data.(*types.ToolResultEvent); ok {
+			if tr.IsError && strings.Contains(tr.Content, "Plan mode: cannot write to") {
+				foundGateError = true
+				break
+			}
+		}
+	}
+	if !foundGateError {
+		t.Error("expected plan mode write gate to reject write to non-plan file")
+	}
+}
+
+func TestApiBackendPlanModeExitPlanMode(t *testing.T) {
+	mp := setupMockProvider(t)
+
+	// LLM calls ExitPlanMode
+	exitCall := helpers.ToolCallResponse("ExitPlanMode", "exit-001", map[string]interface{}{})
+	mp.SetResponse(exitCall)
+
+	b := backend.NewApiBackend()
+	be := newBackendCollector(b)
+
+	b.StartRun("run-plan-exit", types.RunOptions{
+		Prompt:       "Make a plan",
+		Model:        "mock-model",
+		PlanMode:     true,
+		PlanFilePath: "/tmp/exit-plan.md",
+	})
+
+	be.waitForExit(t, 5*time.Second)
+
+	// Should have emitted PlanModeChangedEvent with Enabled=false
+	events := be.getNormalized()
+	foundPlanExit := false
+	for _, ev := range events {
+		if pm, ok := ev.Data.(*types.PlanModeChangedEvent); ok && !pm.Enabled {
+			foundPlanExit = true
+			break
+		}
+	}
+	if !foundPlanExit {
+		t.Error("expected PlanModeChangedEvent{Enabled: false} after ExitPlanMode")
+	}
+
+	// Should have TaskComplete with ExitPlanMode in permission denials
+	foundDenial := false
+	for _, ev := range events {
+		if tc, ok := ev.Data.(*types.TaskCompleteEvent); ok {
+			for _, d := range tc.PermissionDenials {
+				if d.ToolName == "ExitPlanMode" {
+					foundDenial = true
+					break
+				}
+			}
+		}
+	}
+	if !foundDenial {
+		t.Error("expected ExitPlanMode in permission denials of TaskCompleteEvent")
 	}
 }
 

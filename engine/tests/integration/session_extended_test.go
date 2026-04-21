@@ -57,19 +57,20 @@ func TestSessionStartPromptComplete(t *testing.T) {
 	defer mu.Unlock()
 
 	// Should have received engine_status (start), engine_status (running),
-	// task_complete, engine_status (idle), engine_dead.
+	// task_complete, engine_status (idle).
+	// Note: engine_dead is only emitted for non-zero exit codes.
 	if len(events) < 3 {
 		t.Fatalf("expected at least 3 events, got %d", len(events))
 	}
 
-	foundDead := false
+	foundIdle := false
 	for _, e := range events {
-		if e.Type == "engine_dead" {
-			foundDead = true
+		if e.Type == "engine_status" && e.Fields != nil && e.Fields.State == "idle" {
+			foundIdle = true
 		}
 	}
-	if !foundDead {
-		t.Error("expected engine_dead event to complete lifecycle")
+	if !foundIdle {
+		t.Error("expected engine_status{idle} event after clean exit")
 	}
 }
 
@@ -206,26 +207,28 @@ func TestSessionEventOrdering(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Verify we got text deltas before engine_dead.
+	// Verify text deltas appear before the final idle status.
+	// Clean exit (code 0) does not emit engine_dead.
 	textIdx := -1
-	deadIdx := -1
+	idleIdx := -1
 	for i, et := range eventTypes {
 		if et == "engine_text_delta" && textIdx < 0 {
 			textIdx = i
 		}
-		if et == "engine_dead" {
-			deadIdx = i
+		// The last engine_status in the sequence is the idle transition
+		if et == "engine_status" {
+			idleIdx = i
 		}
 	}
 
 	if textIdx < 0 {
 		t.Error("expected engine_text_delta event")
 	}
-	if deadIdx < 0 {
-		t.Error("expected engine_dead event")
+	if idleIdx < 0 {
+		t.Error("expected engine_status event")
 	}
-	if textIdx >= 0 && deadIdx >= 0 && textIdx >= deadIdx {
-		t.Errorf("text_delta (idx=%d) should come before engine_dead (idx=%d)", textIdx, deadIdx)
+	if textIdx >= 0 && idleIdx >= 0 && textIdx >= idleIdx {
+		t.Errorf("text_delta (idx=%d) should come before final status (idx=%d)", textIdx, idleIdx)
 	}
 }
 

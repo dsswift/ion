@@ -1,4 +1,4 @@
-// Package normalizer converts raw Claude Code NDJSON events into canonical
+// Package normalizer converts raw NDJSON stream events into canonical
 // NormalizedEvent values. Each raw event may produce zero or more normalized events.
 package normalizer
 

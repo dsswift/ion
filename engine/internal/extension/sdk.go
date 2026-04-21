@@ -83,6 +83,17 @@ const (
 	// Elicitation hooks
 	HookElicitationRequest = "elicitation_request"
 	HookElicitationResult  = "elicitation_result"
+
+	// Plan mode hooks
+	HookPlanModePrompt = "plan_mode_prompt"
+
+	// Context injection hooks
+	HookContextInject = "context_inject"
+
+	// Capability framework hooks
+	HookCapabilityDiscover = "capability_discover"
+	HookCapabilityMatch    = "capability_match"
+	HookCapabilityInvoke   = "capability_invoke"
 )
 
 // HookHandler is a generic handler function.
@@ -229,6 +240,50 @@ type ContextLoadInfo struct {
 	Source  string
 }
 
+// ContextInjectInfo is the payload for the context_inject hook.
+type ContextInjectInfo struct {
+	WorkingDirectory string
+	DiscoveredPaths  []string
+}
+
+// ContextEntry is a single piece of context content to inject into the system prompt.
+type ContextEntry struct {
+	Label   string // identifier shown in prompt (e.g. file path)
+	Content string // raw content to inject
+}
+
+// CapabilityMode controls how a capability is surfaced to the LLM.
+type CapabilityMode int
+
+const (
+	CapabilityModeTool   CapabilityMode = 1 << iota // surface as LLM tool
+	CapabilityModePrompt                            // inject into system prompt
+)
+
+// Capability is a registered behavior that can be discovered, presented, and invoked.
+type Capability struct {
+	ID          string                 // unique identifier
+	Name        string                 // human-readable name
+	Description string                 // one-line description
+	Metadata    map[string]interface{} // extension-defined (triggers, tags, etc.)
+	Mode        CapabilityMode         // how the engine surfaces this
+	InputSchema map[string]interface{} // JSON Schema for tool parameters (Mode includes Tool)
+	Execute     func(ctx *Context, input map[string]interface{}) (*types.ToolResult, error)
+	Prompt      string // injected into system prompt (Mode includes Prompt)
+}
+
+// CapabilityMatchInfo is the payload for the capability_match hook.
+type CapabilityMatchInfo struct {
+	Input        string   // user's raw input
+	Capabilities []string // all registered capability IDs
+}
+
+// CapabilityMatchResult describes which capabilities matched user input.
+type CapabilityMatchResult struct {
+	MatchedIDs []string               // capabilities to invoke
+	Args       map[string]interface{} // arguments extracted from input
+}
+
 // MessageUpdateInfo describes a message update event.
 type MessageUpdateInfo struct {
 	Role    string
@@ -297,20 +352,22 @@ type AgentInfo struct {
 }
 
 // SDK is the extension hook registry. It manages hook handlers, tools,
-// and commands registered by extensions.
+// commands, and capabilities registered by extensions.
 type SDK struct {
 	mu             sync.RWMutex
 	hooks          map[string][]HookHandler
 	tools          []ToolDefinition
 	commands       map[string]CommandDefinition
+	capabilities   map[string]Capability
 	appendEntryFn  func(entryType string, data interface{}) error
 }
 
 // NewSDK creates a new extension SDK with empty registries.
 func NewSDK() *SDK {
 	return &SDK{
-		hooks:    make(map[string][]HookHandler),
-		commands: make(map[string]CommandDefinition),
+		hooks:        make(map[string][]HookHandler),
+		commands:     make(map[string]CommandDefinition),
+		capabilities: make(map[string]Capability),
 	}
 }
 
@@ -465,6 +522,46 @@ func (s *SDK) FireBeforePrompt(ctx *Context, prompt string) (string, string, err
 		}
 	}
 	return outPrompt, outSystem, nil
+}
+
+// PlanModePromptResult holds the optional overrides a plan_mode_prompt handler may return.
+type PlanModePromptResult struct {
+	Prompt string   // custom plan mode prompt; empty means use default
+	Tools  []string // custom allowed tools; nil means use default
+}
+
+// FirePlanModePrompt fires the plan_mode_prompt hook. Handlers may return a
+// PlanModePromptResult with custom prompt and/or tool list. The last non-nil
+// result wins. Returns the custom prompt (empty = use default) and tool list (nil = use default).
+func (s *SDK) FirePlanModePrompt(ctx *Context, planFilePath string) (string, []string) {
+	results := s.fire(HookPlanModePrompt, ctx, planFilePath)
+	var outPrompt string
+	var outTools []string
+	for i := len(results) - 1; i >= 0; i-- {
+		switch v := results[i].(type) {
+		case PlanModePromptResult:
+			if outPrompt == "" && v.Prompt != "" {
+				outPrompt = v.Prompt
+			}
+			if outTools == nil && v.Tools != nil {
+				outTools = v.Tools
+			}
+		case *PlanModePromptResult:
+			if v != nil {
+				if outPrompt == "" && v.Prompt != "" {
+					outPrompt = v.Prompt
+				}
+				if outTools == nil && v.Tools != nil {
+					outTools = v.Tools
+				}
+			}
+		case string:
+			if outPrompt == "" && v != "" {
+				outPrompt = v
+			}
+		}
+	}
+	return outPrompt, outTools
 }
 
 // FireTurnStart fires the turn_start hook.
@@ -746,4 +843,127 @@ func (s *SDK) FireElicitationRequest(ctx *Context, info ElicitationRequestInfo) 
 // FireElicitationResult fires the elicitation_result hook.
 func (s *SDK) FireElicitationResult(ctx *Context, info ElicitationResultInfo) {
 	s.fire(HookElicitationResult, ctx, info)
+}
+
+// --- Context Inject ---
+
+// FireContextInject fires the context_inject hook. Extensions return additional
+// context entries to inject into the system prompt.
+func (s *SDK) FireContextInject(ctx *Context, info ContextInjectInfo) []ContextEntry {
+	results := s.fire(HookContextInject, ctx, info)
+	var entries []ContextEntry
+	for _, r := range results {
+		switch v := r.(type) {
+		case []ContextEntry:
+			entries = append(entries, v...)
+		case ContextEntry:
+			entries = append(entries, v)
+		case []interface{}:
+			for _, item := range v {
+				if ce, ok := item.(ContextEntry); ok {
+					entries = append(entries, ce)
+				}
+			}
+		}
+	}
+	return entries
+}
+
+// --- Capability Registry ---
+
+// RegisterCapability adds a capability to the registry.
+func (s *SDK) RegisterCapability(cap Capability) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capabilities[cap.ID] = cap
+}
+
+// UnregisterCapability removes a capability by ID.
+func (s *SDK) UnregisterCapability(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.capabilities, id)
+}
+
+// Capabilities returns all registered capabilities.
+func (s *SDK) Capabilities() []Capability {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Capability, 0, len(s.capabilities))
+	for _, cap := range s.capabilities {
+		out = append(out, cap)
+	}
+	return out
+}
+
+// CapabilitiesByMode returns capabilities matching a mode flag.
+func (s *SDK) CapabilitiesByMode(mode CapabilityMode) []Capability {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []Capability
+	for _, cap := range s.capabilities {
+		if cap.Mode&mode != 0 {
+			out = append(out, cap)
+		}
+	}
+	return out
+}
+
+// --- Capability Hooks ---
+
+// FireCapabilityDiscover fires the capability_discover hook. Extensions return
+// capabilities to register. Called at session start.
+func (s *SDK) FireCapabilityDiscover(ctx *Context) []Capability {
+	results := s.fire(HookCapabilityDiscover, ctx, nil)
+	var caps []Capability
+	for _, r := range results {
+		switch v := r.(type) {
+		case []Capability:
+			caps = append(caps, v...)
+		case Capability:
+			caps = append(caps, v)
+		case []interface{}:
+			for _, item := range v {
+				if c, ok := item.(Capability); ok {
+					caps = append(caps, c)
+				}
+			}
+		}
+	}
+	return caps
+}
+
+// FireCapabilityMatch fires the capability_match hook. Extensions check if user
+// input matches any registered capabilities and return matched IDs.
+func (s *SDK) FireCapabilityMatch(ctx *Context, info CapabilityMatchInfo) *CapabilityMatchResult {
+	results := s.fire(HookCapabilityMatch, ctx, info)
+	for i := len(results) - 1; i >= 0; i-- {
+		switch v := results[i].(type) {
+		case *CapabilityMatchResult:
+			if v != nil && len(v.MatchedIDs) > 0 {
+				return v
+			}
+		case CapabilityMatchResult:
+			if len(v.MatchedIDs) > 0 {
+				return &v
+			}
+		}
+	}
+	return nil
+}
+
+// FireCapabilityInvoke fires the capability_invoke hook before a capability
+// is executed. Extensions can block or modify the invocation.
+func (s *SDK) FireCapabilityInvoke(ctx *Context, capID string, input map[string]interface{}) (blocked bool, reason string) {
+	type invokeInfo struct {
+		CapabilityID string                 `json:"capability_id"`
+		Input        map[string]interface{} `json:"input"`
+	}
+	results := s.fire(HookCapabilityInvoke, ctx, invokeInfo{CapabilityID: capID, Input: input})
+	for _, r := range results {
+		if tr, ok := r.(*ToolCallResult); ok && tr.Block {
+			return true, tr.Reason
+		}
+	}
+	return false, ""
 }

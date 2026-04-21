@@ -8,7 +8,7 @@ import (
 )
 
 // SanitizeMessages fixes issues in loaded conversations that would cause API
-// errors. The Claude API requires strict tool_use/tool_result pairing:
+// errors. The Anthropic API requires strict tool_use/tool_result pairing:
 //   - Every tool_use in an assistant message must have a tool_result in the next user message
 //   - Every tool_result in a user message must reference a tool_use in the previous assistant message
 //   - No thinking blocks (not valid for re-submission)

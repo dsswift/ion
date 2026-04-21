@@ -19,8 +19,9 @@ const (
 	ErrInvalidModel  = "invalid_model"
 	ErrInvalidReq    = "invalid_request"
 	ErrMediaError    = "media_error"
-	ErrPDFError      = "pdf_error"
-	ErrUnknown       = "unknown"
+	ErrPDFError         = "pdf_error"
+	ErrStreamTruncated  = "stream_truncated"
+	ErrUnknown          = "unknown"
 )
 
 // ProviderError is the canonical error type for all provider failures.

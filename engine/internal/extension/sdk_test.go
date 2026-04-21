@@ -1524,3 +1524,166 @@ func TestExternalHookManager_MultipleHooksPerEvent(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// --- Context Inject Tests ---
+
+func TestSDK_FireContextInject(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.On(HookContextInject, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return []ContextEntry{
+			{Label: "custom-rules", Content: "rule 1\nrule 2"},
+			{Label: "team-config", Content: "team: alpha"},
+		}, nil
+	})
+
+	entries := sdk.FireContextInject(testCtx(), ContextInjectInfo{
+		WorkingDirectory: "/project",
+		DiscoveredPaths:  []string{"/project/ION.md"},
+	})
+
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Label != "custom-rules" {
+		t.Errorf("expected label 'custom-rules', got %q", entries[0].Label)
+	}
+	if entries[1].Content != "team: alpha" {
+		t.Errorf("expected content 'team: alpha', got %q", entries[1].Content)
+	}
+}
+
+func TestSDK_FireContextInject_MultipleHandlers(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.On(HookContextInject, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return ContextEntry{Label: "a", Content: "from handler 1"}, nil
+	})
+	sdk.On(HookContextInject, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return ContextEntry{Label: "b", Content: "from handler 2"}, nil
+	})
+
+	entries := sdk.FireContextInject(testCtx(), ContextInjectInfo{WorkingDirectory: "/p"})
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries from 2 handlers, got %d", len(entries))
+	}
+}
+
+// --- Capability Registry Tests ---
+
+func TestSDK_RegisterCapability(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.RegisterCapability(Capability{
+		ID:          "skill:deploy",
+		Name:        "Deploy",
+		Description: "Deploy the application",
+		Mode:        CapabilityModeTool,
+		InputSchema: map[string]interface{}{"type": "object"},
+	})
+
+	caps := sdk.Capabilities()
+	if len(caps) != 1 {
+		t.Fatalf("expected 1 capability, got %d", len(caps))
+	}
+	if caps[0].ID != "skill:deploy" {
+		t.Errorf("expected ID 'skill:deploy', got %q", caps[0].ID)
+	}
+}
+
+func TestSDK_UnregisterCapability(t *testing.T) {
+	sdk := NewSDK()
+	sdk.RegisterCapability(Capability{ID: "a", Name: "A", Mode: CapabilityModeTool})
+	sdk.RegisterCapability(Capability{ID: "b", Name: "B", Mode: CapabilityModePrompt})
+
+	sdk.UnregisterCapability("a")
+
+	caps := sdk.Capabilities()
+	if len(caps) != 1 {
+		t.Fatalf("expected 1 capability after unregister, got %d", len(caps))
+	}
+	if caps[0].ID != "b" {
+		t.Errorf("expected remaining cap ID 'b', got %q", caps[0].ID)
+	}
+}
+
+func TestSDK_CapabilitiesByMode(t *testing.T) {
+	sdk := NewSDK()
+	sdk.RegisterCapability(Capability{ID: "tool1", Mode: CapabilityModeTool})
+	sdk.RegisterCapability(Capability{ID: "prompt1", Mode: CapabilityModePrompt})
+	sdk.RegisterCapability(Capability{ID: "both1", Mode: CapabilityModeTool | CapabilityModePrompt})
+
+	toolCaps := sdk.CapabilitiesByMode(CapabilityModeTool)
+	if len(toolCaps) != 2 {
+		t.Errorf("expected 2 tool capabilities, got %d", len(toolCaps))
+	}
+
+	promptCaps := sdk.CapabilitiesByMode(CapabilityModePrompt)
+	if len(promptCaps) != 2 {
+		t.Errorf("expected 2 prompt capabilities, got %d", len(promptCaps))
+	}
+}
+
+// --- Capability Match Tests ---
+
+func TestSDK_FireCapabilityMatch(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.On(HookCapabilityMatch, func(ctx *Context, payload interface{}) (interface{}, error) {
+		info := payload.(CapabilityMatchInfo)
+		if strings.HasPrefix(info.Input, "/deploy") {
+			return &CapabilityMatchResult{
+				MatchedIDs: []string{"skill:deploy"},
+				Args:       map[string]interface{}{"env": "prod"},
+			}, nil
+		}
+		return nil, nil
+	})
+
+	result := sdk.FireCapabilityMatch(testCtx(), CapabilityMatchInfo{
+		Input:        "/deploy prod",
+		Capabilities: []string{"skill:deploy", "skill:test"},
+	})
+
+	if result == nil {
+		t.Fatal("expected match result, got nil")
+	}
+	if len(result.MatchedIDs) != 1 || result.MatchedIDs[0] != "skill:deploy" {
+		t.Errorf("unexpected matched IDs: %v", result.MatchedIDs)
+	}
+}
+
+func TestSDK_FireCapabilityMatch_NoMatch(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.On(HookCapabilityMatch, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return nil, nil
+	})
+
+	result := sdk.FireCapabilityMatch(testCtx(), CapabilityMatchInfo{
+		Input:        "hello",
+		Capabilities: []string{"skill:deploy"},
+	})
+
+	if result != nil {
+		t.Errorf("expected nil result for no match, got %+v", result)
+	}
+}
+
+func TestSDK_FireCapabilityDiscover(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.On(HookCapabilityDiscover, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return []Capability{
+			{ID: "ext:hello", Name: "Hello", Mode: CapabilityModePrompt, Prompt: "Say hello"},
+		}, nil
+	})
+
+	caps := sdk.FireCapabilityDiscover(testCtx())
+	if len(caps) != 1 {
+		t.Fatalf("expected 1 discovered capability, got %d", len(caps))
+	}
+	if caps[0].ID != "ext:hello" {
+		t.Errorf("expected ID 'ext:hello', got %q", caps[0].ID)
+	}
+}

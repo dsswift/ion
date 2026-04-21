@@ -102,8 +102,6 @@ func TestSkillPaths(t *testing.T) {
 		name string
 		fn   func() SkillPaths
 	}{
-		{"ClaudeCode", ClaudeCodeSkillPaths},
-		{"Pi", PiSkillPaths},
 		{"Ion", IonSkillPaths},
 	}
 	for _, tt := range tests {

@@ -122,6 +122,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	}
 
 	// Parse SSE stream. Anthropic events are already canonical format.
+	gotMessageStop := false
 	for sse := range ParseSSEStream(resp.Body) {
 		if sse.Data == "" {
 			continue
@@ -137,10 +138,22 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 			ev.Type = sse.Event
 		}
 
+		if ev.Type == "message_stop" {
+			gotMessageStop = true
+		}
+
 		select {
 		case events <- ev:
 		case <-ctx.Done():
 			return ctx.Err()
+		}
+	}
+
+	if !gotMessageStop {
+		return &ProviderError{
+			Message:   "SSE stream ended without message_stop (connection interrupted)",
+			Code:      ErrStreamTruncated,
+			Retryable: true,
 		}
 	}
 

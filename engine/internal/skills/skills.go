@@ -173,24 +173,6 @@ func LoadSkillDirectory(dir string, filter func(string) bool) ([]*Skill, error) 
 	return skills, nil
 }
 
-// ClaudeCodeSkillPaths returns the conventional skill paths for Claude Code.
-func ClaudeCodeSkillPaths() SkillPaths {
-	home, _ := os.UserHomeDir()
-	return SkillPaths{
-		User:    filepath.Join(home, ".claude", "skills"),
-		Project: filepath.Join(".", ".claude", "skills"),
-	}
-}
-
-// PiSkillPaths returns the conventional skill paths for Pi.
-func PiSkillPaths() SkillPaths {
-	home, _ := os.UserHomeDir()
-	return SkillPaths{
-		User:    filepath.Join(home, ".pi", "skills"),
-		Project: filepath.Join(".", ".pi", "skills"),
-	}
-}
-
 // IonSkillPaths returns the conventional skill paths for Ion.
 func IonSkillPaths() SkillPaths {
 	home, _ := os.UserHomeDir()
