@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Gear } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 
 interface EngineProfilePickerProps {
@@ -16,7 +17,7 @@ export function EngineProfilePicker({ anchor, onSelect, onOpenSettings, onClose 
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const profiles = useThemeStore((s) => s.engineProfiles)
+  const profiles = usePreferencesStore((s) => s.engineProfiles)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -46,7 +47,7 @@ export function EngineProfilePicker({ anchor, onSelect, onOpenSettings, onClose 
       style={{
         position: 'fixed',
         left: anchor.x,
-        bottom: (window.innerHeight / (useThemeStore.getState().uiZoom || 1)) - anchor.y + 6,
+        bottom: (window.innerHeight / (usePreferencesStore.getState().uiZoom || 1)) - anchor.y + 6,
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,

@@ -25,7 +25,8 @@ import {
   Trash,
 } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
-import { useThemeStore, useColors } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 
 const ICON_MAP: Record<string, ComponentType<IconProps>> = {
@@ -59,7 +60,7 @@ interface QuickToolsTrayProps {
 export function QuickToolsTray({ anchorRef, onClose }: QuickToolsTrayProps) {
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
-  const quickTools = useThemeStore((s) => s.quickTools)
+  const quickTools = usePreferencesStore((s) => s.quickTools)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const activeWorkDir = useSessionStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''

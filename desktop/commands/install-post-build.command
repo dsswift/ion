@@ -23,6 +23,12 @@ step() { echo; echo "═══ $1 ═══"; echo; }
 
 echo "── Ion Install: $(date '+%Y-%m-%d %H:%M:%S') ── commit: ${BUILD_COMMIT} ──"
 
+# Brief pause so the parent `make desktop` command finishes and prints
+# its final output before this script kills the running app.  Without
+# this, running `make desktop` from Ion's own terminal kills the app
+# before the command completes, losing the output on relaunch.
+sleep 3
+
 # ── 1. Graceful shutdown ──
 
 step "Step 1/3 — Stopping running instance"

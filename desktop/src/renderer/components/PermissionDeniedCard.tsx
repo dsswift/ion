@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShieldWarning, ShieldCheck, Terminal, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { PlanViewer } from './PlanViewer'
 import type { Message } from '../../shared/types'
 
 interface Props {
-  tools: Array<{ toolName: string; toolUseId: string }>
+  tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
   tabId: string
   sessionId: string | null
   projectPath: string
   messages: Message[]
+  tabPlanFilePath?: string | null
   onDismiss: () => void
   onImplement?: (clearContext: boolean) => void
   onAnswer?: (answer: string) => void
@@ -28,14 +30,22 @@ interface AskData {
   options: AskOption[]
 }
 
-export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, onDismiss, onImplement, onAnswer, onApprove }: Props) {
+export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, tabPlanFilePath, onDismiss, onImplement, onAnswer, onApprove }: Props) {
   const colors = useColors()
-  const showClearContext = useThemeStore((s) => s.showImplementClearContext)
-  const allowSettingsEdits = useThemeStore((s) => s.allowSettingsEdits)
+  const showClearContext = usePreferencesStore((s) => s.showImplementClearContext)
+  const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
   const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
 
-  // Extract planFilePath from ExitPlanMode input, or fall back to last Write to .claude/plans/
+  // Extract planFilePath: tab state (from engine event), denial toolInput, messages
   const planFilePath = useMemo(() => {
+    // Primary: tab-level planFilePath set by engine_plan_mode_changed event
+    if (tabPlanFilePath) return tabPlanFilePath
+
+    // Fallback: check denial toolInput (engine API path)
+    const exitDenial = tools.find((t) => t.toolName === 'ExitPlanMode' && t.toolInput)
+    if (exitDenial?.toolInput?.planFilePath) return exitDenial.toolInput.planFilePath as string
+
+    // Fallback: ExitPlanMode message toolInput (CLI path)
     const exitMsg = [...messages].reverse().find((m) => m.toolName === 'ExitPlanMode' && m.toolInput)
     if (exitMsg?.toolInput) {
       try {
@@ -43,18 +53,19 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
         if (input.planFilePath) return input.planFilePath as string
       } catch {}
     }
+    // Fallback: last Write to .ion/plans/*.md
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
       if (m.toolName === 'Write' && m.toolInput) {
         try {
           const input = JSON.parse(m.toolInput)
           const fp = input.file_path as string
-          if (fp && /\/\.claude\/plans\/[^/]+\.md$/.test(fp)) return fp
+          if (fp && /\/\.ion\/plans\/[^/]+\.md$/.test(fp)) return fp
         } catch {}
       }
     }
     return null
-  }, [messages])
+  }, [tabPlanFilePath, messages, tools])
 
   const handleViewPlan = async () => {
     if (!planFilePath) return

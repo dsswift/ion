@@ -9,7 +9,8 @@ import {
 } from '@phosphor-icons/react'
 import { useSessionStore, isTextFile } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
 import type { FsEntry } from '../../shared/types'
 
@@ -540,7 +541,7 @@ export function FileExplorer() {
     return nodes
   }, [dirCache, explorerState, inlineInput, handleInlineSubmit, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
 
-  const expandedUI = useThemeStore((s) => s.expandedUI)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
 
   if (!workingDir) return null
 

@@ -9,8 +9,7 @@ import { execFile as execFileCb, spawn, type ChildProcess } from 'child_process'
 import { promisify } from 'util'
 import { EngineControlPlane } from './engine-control-plane'
 import { EngineBridge } from './engine-bridge'
-import { ensureSkills, type SkillStatus } from './skills/installer'
-import { discoverCommands } from './claude/command-discovery'
+import { discoverCommands } from './cli-compat/command-discovery'
 import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
@@ -21,7 +20,7 @@ import { isValidProjectPath, isValidSessionId, validateExternalUrl } from './ipc
 const gitExec = promisify(execFileCb)
 
 // Find plan file path from messages -- checks ExitPlanMode toolInput first,
-// then falls back to finding last Write to ~/.claude/plans/
+// then falls back to finding last Write to ~/.ion/plans/
 function findPlanFilePath(messages: Array<{ toolName?: string; toolInput?: string }>): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
@@ -38,7 +37,7 @@ function findPlanFilePath(messages: Array<{ toolName?: string; toolInput?: strin
       try {
         const input = JSON.parse(m.toolInput)
         const fp = input.file_path as string
-        if (fp && /\/\.claude\/plans\/[^/]+\.md$/.test(fp)) return fp
+        if (fp && /\/\.ion\/plans\/[^/]+\.md$/.test(fp)) return fp
       } catch {}
     }
   }
@@ -175,9 +174,9 @@ sessionPlane.on('error', (tabId: string, error: EnrichedError) => {
 // ─── Wire EngineBridge events → renderer ───
 
 engineBridge.on('event', (key: string, event: any) => {
-  // Inject backend indicator into status events (desktop always uses CLI proxy)
+  // Inject backend indicator into status events
   if (event.type === 'engine_status' && event.fields) {
-    event = { ...event, fields: { ...event.fields, backend: 'cli' } }
+    event = { ...event, fields: { ...event.fields, backend: currentBackend } }
   }
   broadcast(IPC.ENGINE_EVENT, key, event)
   // Forward engine events to remote transport for iOS
@@ -342,7 +341,7 @@ function createTray(): void {
   const trayIcon = nativeImage.createFromPath(trayIconPath)
   trayIcon.setTemplateImage(true)
   tray = new Tray(trayIcon)
-  tray.setToolTip('Ion — Claude Overlay Dev Assistant')
+  tray.setToolTip('Ion')
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Toggle Interface', accelerator: 'Alt+Space', click: () => toggleWindow('tray menu') },
@@ -729,6 +728,15 @@ ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
       log(`DISCOVER_COMMANDS: rejected invalid projectPath: ${projectPath}`)
       return []
     }
+    // Only discover commands when Claude compat is enabled
+    let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
+    try {
+      if (existsSync(SETTINGS_FILE)) {
+        const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+        claudeCompat = s.enableClaudeCompat ?? claudeCompat
+      }
+    } catch {}
+    if (!claudeCompat) return []
     return await discoverCommands(projectPath)
   } catch (err) {
     log(`DISCOVER_COMMANDS error: ${err}`)
@@ -742,8 +750,8 @@ const PLAN_SLUG_RE = /^\[Attached plan: .*\/([^/]+)\.md\]/
 /**
  * Discover plan->implementation chains by matching plan file slugs.
  * When Ion accepts a plan, it creates a new session whose first message is
- * "[Attached plan: ~/.claude/plans/<slug>.md]". The slug IS the planning
- * session's Claude slug, giving us a deterministic link regardless of time gap.
+ * "[Attached plan: ~/.ion/plans/<slug>.md]". The slug IS the planning
+ * session's plan ID, giving us a deterministic link regardless of time gap.
  */
 function discoverImplicitChains(sessions: any[], chainIndex: { chains: Record<string, string[]>; reverse: Record<string, string> }): void {
   // Build slug -> session lookup
@@ -878,8 +886,8 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
       log(`LIST_SESSIONS: rejected invalid projectPath: ${cwd}`)
       return []
     }
-    // Claude stores project sessions at ~/.claude/projects/<encoded-path>/
-    // Path encoding: replace '/' and '.' with '-' (matches Claude Code's scheme)
+    // CLI backend stores project sessions at ~/.claude/projects/<encoded-path>/
+    // Path encoding: replace '/' and '.' with '-'
     const encodedPath = cwd.replace(/[/.]/g, '-')
     const sessionsDir = join(homedir(), '.claude', 'projects', encodedPath)
     if (!existsSync(sessionsDir)) {
@@ -894,7 +902,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
     for (const file of files) {
-      // The filename (without .jsonl) IS the canonical resume ID for `claude --resume`
+      // The filename (without .jsonl) IS the canonical session resume ID
       const fileSessionId = file.replace(/\.jsonl$/, '')
       if (!UUID_RE.test(fileSessionId)) continue // skip non-UUID files
 
@@ -912,7 +920,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
         rl.on('line', (line: string) => {
           try {
             const obj = JSON.parse(line)
-            // Validate: must have expected Claude transcript fields
+            // Validate: must have expected transcript fields
             if (!meta.validated && obj.type && obj.uuid && obj.timestamp) {
               meta.validated = true
             }
@@ -1000,7 +1008,7 @@ ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
 })
 
 // ─── Path Decoder ───
-// Claude encodes project paths by replacing '/' with '-'. Since paths can contain
+// Project paths are encoded by replacing '/' with '-'. Since paths can contain
 // hyphens, the encoding is ambiguous. We resolve by greedy filesystem walking.
 function decodeProjectPath(encoded: string): string | null {
   // Encoded always starts with '-' (from leading '/'), strip it
@@ -1099,7 +1107,7 @@ async function parseSessionMeta(filePath: string, fileSessionId: string, fileSiz
   }
 }
 
-// ─── LIST_ALL_SESSIONS: scan all directories under ~/.claude/projects/ ───
+// ─── LIST_ALL_SESSIONS: scan all CLI backend session directories ───
 ipcMain.handle(IPC.LIST_ALL_SESSIONS, async () => {
   log('IPC LIST_ALL_SESSIONS')
   try {
@@ -1216,16 +1224,127 @@ function extractBashEntries(text: string): { bashEntries: Array<{ command: strin
   return { bashEntries: entries, remainder: rest }
 }
 
+/**
+ * Load session messages from Claude Code's JSONL format.
+ * Parses human/assistant turns into SessionLoadMessage[].
+ */
+function loadClaudeSessionMessages(sessionId: string, projectPath?: string, encodedDir?: string): any[] {
+  // Resolve the JSONL file path
+  const projectsRoot = join(homedir(), '.claude', 'projects')
+  let dir: string | null = null
+
+  if (encodedDir) {
+    dir = join(projectsRoot, encodedDir)
+  } else if (projectPath) {
+    // Encode: replace / with - (Claude's encoding)
+    const encoded = projectPath.replace(/\//g, '-')
+    dir = join(projectsRoot, encoded)
+  }
+
+  if (!dir) return []
+
+  const filePath = join(dir, `${sessionId}.jsonl`)
+  if (!existsSync(filePath)) {
+    log(`loadClaudeSessionMessages: file not found: ${filePath}`)
+    return []
+  }
+
+  const data = readFileSync(filePath, 'utf-8')
+  const lines = data.split('\n').filter(Boolean)
+  const result: any[] = []
+  const toolCallIndex: Record<string, number> = {} // toolID → index in result
+
+  for (const line of lines) {
+    let obj: any
+    try { obj = JSON.parse(line) } catch { continue }
+
+    const type = obj.type
+    if (type !== 'user' && type !== 'assistant') continue
+
+    const content = obj.message?.content
+    const timestamp = obj.timestamp ? new Date(obj.timestamp).getTime() : 0
+
+    if (type === 'user') {
+      if (typeof content === 'string') {
+        if (content.trim()) {
+          result.push({ role: 'user', content: cleanCliTags(content), timestamp })
+        }
+      } else if (Array.isArray(content)) {
+        const textParts: string[] = []
+        for (const block of content) {
+          if (block.type === 'text' && block.text) {
+            const cleaned = cleanCliTags(block.text)
+            if (cleaned) textParts.push(cleaned)
+          } else if (block.type === 'tool_result' && block.tool_use_id) {
+            // Merge result into matching tool call
+            const idx = toolCallIndex[block.tool_use_id]
+            if (idx !== undefined) {
+              let resultContent = ''
+              if (typeof block.content === 'string') {
+                resultContent = block.content
+              } else if (Array.isArray(block.content)) {
+                resultContent = block.content
+                  .filter((p: any) => p.type === 'text')
+                  .map((p: any) => p.text)
+                  .join('\n')
+              }
+              result[idx].content = resultContent
+            }
+          }
+        }
+        if (textParts.length > 0) {
+          result.push({ role: 'user', content: textParts.join('\n'), timestamp })
+        }
+      }
+    } else if (type === 'assistant') {
+      if (!Array.isArray(content)) continue
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          const cleaned = cleanCliTags(block.text)
+          if (cleaned) {
+            result.push({ role: 'assistant', content: cleaned, timestamp })
+          }
+        } else if (block.type === 'tool_use') {
+          let inputJSON = ''
+          if (block.input) {
+            try { inputJSON = JSON.stringify(block.input) } catch {}
+          }
+          toolCallIndex[block.id] = result.length
+          result.push({
+            role: 'tool',
+            content: '',
+            toolName: block.name,
+            toolId: block.id,
+            toolInput: inputJSON,
+            timestamp,
+          })
+        }
+      }
+    }
+  }
+
+  return result
+}
+
 ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPath?: string; encodedDir?: string } | string) => {
   const sessionId = typeof arg === 'string' ? arg : arg.sessionId
+  const projectPath = typeof arg === 'object' ? arg.projectPath : undefined
+  const encodedDir = typeof arg === 'object' ? arg.encodedDir : undefined
   log(`IPC LOAD_SESSION ${sessionId}`)
   try {
     if (!isValidSessionId(sessionId)) {
       log(`LOAD_SESSION: rejected invalid sessionId: ${sessionId}`)
       return []
     }
-    // Load session history from Ion engine
-    const msgs = await engineBridge.loadSessionHistory(sessionId)
+
+    // In CLI backend mode, load directly from Claude's session storage
+    if (currentBackend === 'cli') {
+      const msgs = loadClaudeSessionMessages(sessionId, projectPath, encodedDir)
+      if (msgs.length > 0) return msgs
+    }
+
+    // Fall back to Ion engine
+    const msgs = await sessionPlane.loadSessionHistory(sessionId)
     return msgs || []
   } catch (err) {
     log(`LOAD_SESSION error: ${err}`)
@@ -1235,9 +1354,11 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
 
 ipcMain.handle(IPC.READ_PLAN, async (_e, filePath: string) => {
   try {
+    log(`READ_PLAN: path=${filePath} exists=${filePath ? existsSync(filePath) : false}`)
     if (!filePath || !existsSync(filePath)) return { content: null, fileName: null }
     const content = readFileSync(filePath, 'utf-8')
     const fileName = filePath.split('/').pop() || filePath
+    log(`READ_PLAN: success, ${content.length} chars`)
     return { content, fileName }
   } catch (err) {
     log(`READ_PLAN error: ${err}`)
@@ -1659,7 +1780,7 @@ ipcMain.handle(IPC.OPEN_IN_VSCODE, (_event, projectPath: string) => {
 
 const SETTINGS_DIR = join(homedir(), '.ion')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, allowSettingsEdits: false }
+const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, allowSettingsEdits: false, enableClaudeCompat: true, preferredModel: 'claude-opus-4-6' }
 
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {
@@ -1678,9 +1799,75 @@ ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   return SETTINGS_DEFAULTS
 })
 
+// ─── Backend Mode ───
+
+const ENGINE_CONFIG_FILE = join(SETTINGS_DIR, 'engine.json')
+
+function readEngineConfig(): Record<string, any> {
+  try {
+    if (existsSync(ENGINE_CONFIG_FILE)) {
+      return JSON.parse(readFileSync(ENGINE_CONFIG_FILE, 'utf-8'))
+    }
+  } catch {}
+  return {}
+}
+
+function writeEngineConfig(config: Record<string, any>): void {
+  if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+  writeFileSync(ENGINE_CONFIG_FILE, JSON.stringify(config, null, 2))
+}
+
+function getCurrentBackend(): 'api' | 'cli' {
+  const cfg = readEngineConfig()
+  return cfg.backend === 'api' ? 'api' : 'cli'
+}
+
+const currentBackend = getCurrentBackend()
+
+function tabsFileForBackend(backend: 'api' | 'cli'): string {
+  return join(SETTINGS_DIR, `tabs-${backend}.json`)
+}
+
+function sessionLabelsFileForBackend(backend: 'api' | 'cli'): string {
+  return join(SETTINGS_DIR, `session-labels-${backend}.json`)
+}
+
+function sessionChainsFileForBackend(backend: 'api' | 'cli'): string {
+  return join(SETTINGS_DIR, `session-chains-${backend}.json`)
+}
+
+
+ipcMain.handle(IPC.GET_BACKEND, () => currentBackend)
+
+ipcMain.handle(IPC.SWITCH_BACKEND, async (_event, newBackend: 'api' | 'cli') => {
+  if (newBackend === currentBackend) return { ok: true }
+
+  // Force-flush tabs from renderer before switching
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      await win.webContents.executeJavaScript(
+        'window.__ionForceFlushTabs && window.__ionForceFlushTabs()'
+      )
+    } catch {}
+  }
+
+  // Update engine.json
+  const cfg = readEngineConfig()
+  cfg.backend = newBackend
+  writeEngineConfig(cfg)
+
+  // Shutdown engine server so it restarts with new backend
+  await engineBridge.shutdownAndWait()
+
+  // Relaunch app (skip before-quit confirmation dialog)
+  forceQuit = true
+  app.relaunch()
+  app.quit()
+})
+
 // ─── Tab Persistence ───
 
-const TABS_FILE = join(SETTINGS_DIR, 'tabs.json')
+const TABS_FILE = tabsFileForBackend(currentBackend)
 
 ipcMain.handle(IPC.LOAD_TABS, () => {
   try {
@@ -1704,7 +1891,7 @@ ipcMain.handle(IPC.SAVE_TABS, (_event, data: Record<string, unknown>) => {
 
 // ─── Session Labels (custom tab names persisted across tab close/restore) ───
 
-const SESSION_LABELS_FILE = join(SETTINGS_DIR, 'session-labels.json')
+const SESSION_LABELS_FILE = sessionLabelsFileForBackend(currentBackend)
 
 function loadSessionLabels(): Record<string, string> {
   try {
@@ -1742,7 +1929,7 @@ ipcMain.handle(IPC.LOAD_SESSION_LABELS, () => {
 
 // ─── Session Chains (composite conversation grouping) ───
 
-const SESSION_CHAINS_FILE = join(SETTINGS_DIR, 'session-chains.json')
+const SESSION_CHAINS_FILE = sessionChainsFileForBackend(currentBackend)
 
 function loadSessionChains(): { chains: Record<string, string[]>; reverse: Record<string, string> } {
   try {
@@ -2306,7 +2493,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
                               try {
                                 var input = JSON.parse(m.toolInput);
                                 var fp = input.file_path;
-                                if (fp && /\\/\\.claude\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
+                                if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
                               } catch(e) {}
                             }
                           }
@@ -2825,7 +3012,7 @@ sessionPlane.on('remote-permission', async (tabId: string, data: {
   if (data.toolName === 'ExitPlanMode') {
     let planPath = toolInput?.planFilePath as string | undefined
 
-    // Fallback: search tab messages for Write to ~/.claude/plans/
+    // Fallback: search tab messages for Write to ~/.ion/plans/
     if (!planPath && mainWindow) {
       try {
         const escapedTabId = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -2842,7 +3029,7 @@ sessionPlane.on('remote-permission', async (tabId: string, data: {
                 try {
                   var input = JSON.parse(m.toolInput);
                   var fp = input.file_path;
-                  if (fp && /\\/\\.claude\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
+                  if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
                 } catch(e) {}
               }
             }
@@ -3784,11 +3971,6 @@ app.whenReady().then(async () => {
 
   installContentSecurityPolicy()
 
-  // Skill provisioning — non-blocking, streams status to renderer
-  ensureSkills((status: SkillStatus) => {
-    log(`Skill ${status.name}: ${status.state}${status.error ? ` — ${status.error}` : ''}`)
-    broadcast(IPC.SKILL_STATUS, status)
-  }).catch((err: Error) => log(`Skill provisioning error: ${err.message}`))
 
   // Clean up orphaned worktree directories (fire and forget)
   cleanOrphanedWorktrees().catch((err: Error) => log(`Worktree cleanup failed: ${err.message}`))

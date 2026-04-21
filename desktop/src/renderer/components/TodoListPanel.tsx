@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, Circle, CircleNotch } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import type { Message } from '../../shared/types'
 
 interface TodoItem {
@@ -72,7 +73,7 @@ interface TodoListPanelProps {
 
 export function TodoListPanel({ messages, isRunning }: TodoListPanelProps) {
   const colors = useColors()
-  const showTodoList = useThemeStore((s) => s.showTodoList)
+  const showTodoList = usePreferencesStore((s) => s.showTodoList)
 
   const todos = useMemo(() => extractTodos(messages), [messages])
 

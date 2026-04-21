@@ -7,7 +7,8 @@ import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors, useThemeStore, getEffectiveTabGroups } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import { EngineProfilePicker } from './EngineProfilePicker'
 import { useTabGroups } from '../hooks/useTabGroups'
 import type { TabGroupView } from '../hooks/useTabGroups'
@@ -26,7 +27,7 @@ function checkWorktreeUncommitted(tab: TabState | undefined) {
 
 /** Check whether this tab-creation event should use worktree mode, inverting the default when Alt is held */
 const shouldUseWorktree = (altKey: boolean): boolean => {
-  const gitOpsMode = useThemeStore.getState().gitOpsMode
+  const gitOpsMode = usePreferencesStore.getState().gitOpsMode
   return altKey ? gitOpsMode !== 'worktree' : gitOpsMode === 'worktree'
 }
 
@@ -56,14 +57,14 @@ const PILL_ICON_PRESETS = [
  * a CSS-zoomed root interprets coordinates in the zoomed space. Dividing by
  * zoom cancels the double-scaling. */
 function zoomRect(rect: DOMRect): DOMRect {
-  const z = useThemeStore.getState().uiZoom
+  const z = usePreferencesStore.getState().uiZoom
   if (z === 1) return rect
   return new DOMRect(rect.x / z, rect.y / z, rect.width / z, rect.height / z)
 }
 
 /** Return viewport dimensions in zoom-adjusted coordinate space */
 function zoomViewport(): { width: number; height: number } {
-  const z = useThemeStore.getState().uiZoom
+  const z = usePreferencesStore.getState().uiZoom
   return { width: window.innerWidth / z, height: window.innerHeight / z }
 }
 
@@ -285,7 +286,7 @@ function DirContextMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
   const moveItemRef = useRef<HTMLButtonElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
@@ -451,8 +452,8 @@ function TabContextMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
-  const tabGroups = useThemeStore((s) => s.tabGroups)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
+  const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
   const moveItemRef = useRef<HTMLButtonElement>(null)
@@ -711,7 +712,7 @@ function TabContextMenu({
                   onChange={(e) => setNewGroupName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && newGroupName.trim()) {
-                      const id = useThemeStore.getState().createTabGroup(newGroupName.trim())
+                      const id = usePreferencesStore.getState().createTabGroup(newGroupName.trim())
                       moveAllToGroup(id)
                     }
                     if (e.key === 'Escape') setShowNewGroupInput(false)
@@ -756,8 +757,8 @@ function DirectoryPicker({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const recentDirs = useThemeStore((s) => s.recentBaseDirectories)
-  const usageCounts = useThemeStore((s) => s.directoryUsageCounts)
+  const recentDirs = usePreferencesStore((s) => s.recentBaseDirectories)
+  const usageCounts = usePreferencesStore((s) => s.directoryUsageCounts)
 
   // Sort by usage frequency (descending), then alphabetically as tiebreaker
   const sortedDirs = [...recentDirs].sort((a, b) => {
@@ -802,7 +803,7 @@ function DirectoryPicker({
       style={{
         position: 'fixed',
         left: anchor.x,
-        bottom: (window.innerHeight / (useThemeStore.getState().uiZoom || 1)) - anchor.y + 6,
+        bottom: (window.innerHeight / (usePreferencesStore.getState().uiZoom || 1)) - anchor.y + 6,
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
@@ -835,7 +836,7 @@ function DirectoryPicker({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                useThemeStore.getState().removeRecentBaseDirectory(dir)
+                usePreferencesStore.getState().removeRecentBaseDirectory(dir)
               }}
               style={{
                 background: 'transparent',
@@ -1058,7 +1059,7 @@ function GroupPickerDropdown({
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
   const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
@@ -1514,8 +1515,8 @@ function MoveToGroupSubmenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
-  const tabGroups = useThemeStore((s) => s.tabGroups)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
+  const tabGroups = usePreferencesStore((s) => s.tabGroups)
 
   const setRefs = useCallback((node: HTMLDivElement | null) => {
     (ref as React.MutableRefObject<HTMLDivElement | null>).current = node
@@ -1623,7 +1624,7 @@ function MoveToGroupSubmenu({
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newGroupName.trim()) {
-                    const id = useThemeStore.getState().createTabGroup(newGroupName.trim())
+                    const id = usePreferencesStore.getState().createTabGroup(newGroupName.trim())
                     moveTabToGroup(tabId, id)
                     onClose()
                   }
@@ -1669,8 +1670,8 @@ function InactiveGroupMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
-  const tabGroups = useThemeStore((s) => s.tabGroups)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
+  const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
   const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
@@ -1813,7 +1814,7 @@ function InactiveGroupMenu({
                     onChange={(e) => setNewGroupName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newGroupName.trim()) {
-                        const id = useThemeStore.getState().createTabGroup(newGroupName.trim())
+                        const id = usePreferencesStore.getState().createTabGroup(newGroupName.trim())
                         moveAllToGroup(id)
                       }
                       if (e.key === 'Escape') setShowNewGroupInput(false)
@@ -1859,7 +1860,7 @@ function GroupPill({
   onSelect: (tabId: string) => void
 }) {
   const colors = useColors()
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
   const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
@@ -1976,11 +1977,6 @@ function GroupPill({
         <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: colors.textSecondary, opacity: 0.5 }}>
           {group.label}
         </span>
-        {isActive && selectedTab && (
-          <span className="flex-shrink-0 text-[10px]" style={{ color: colors.textTertiary }}>
-            {selectedTab.workingDirectory.split('/').pop() || selectedTab.workingDirectory}
-          </span>
-        )}
         {isActive && selectedTab && (
           renamingTitle ? (
             <InlineRenameInput
@@ -2174,7 +2170,7 @@ function TabPill({
   isDraggingRef: React.RefObject<boolean>
 }) {
   const colors = useColors()
-  const gitOpsMode = useThemeStore((s) => s.gitOpsMode)
+  const gitOpsMode = usePreferencesStore((s) => s.gitOpsMode)
 
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const displayTitle = tab.customTitle || tab.title
@@ -2384,14 +2380,14 @@ export function TabStrip() {
     onReorder: (reorderedIds) => {
       if (groupMode === 'manual') {
         const reorderedTabGroups = reorderedIds.map((id) => {
-          const stored = useThemeStore.getState().tabGroups.find((sg) => sg.id === id)
+          const stored = usePreferencesStore.getState().tabGroups.find((sg) => sg.id === id)
           const view = groups.find((g) => g.groupId === id)
           return stored || { id, label: view?.label || id, isDefault: view?.isDefault || false, order: 0, collapsed: view?.collapsed || false }
         })
-        useThemeStore.getState().reorderTabGroups(reorderedTabGroups)
+        usePreferencesStore.getState().reorderTabGroups(reorderedTabGroups)
       } else if (groupMode === 'auto') {
         const dirs = reorderedIds.map((id) => id.replace('auto-', ''))
-        useThemeStore.getState().setAutoGroupOrder(dirs)
+        usePreferencesStore.getState().setAutoGroupOrder(dirs)
       }
     },
   })
@@ -2665,13 +2661,13 @@ export function TabStrip() {
             key="dir-picker"
             anchor={dirPickerState.anchor}
             onSelectDir={(dir) => {
-              useThemeStore.getState().addRecentBaseDirectory(dir)
-              useThemeStore.getState().incrementDirectoryUsage(dir)
+              usePreferencesStore.getState().addRecentBaseDirectory(dir)
+              usePreferencesStore.getState().incrementDirectoryUsage(dir)
               switch (dirPickerState.mode) {
                 case 'conversation': createTabInDirectory(dir, shouldUseWorktree(false)); break
                 case 'terminal': createTerminalTab(dir); break
                 case 'engine': {
-                  const profiles = useThemeStore.getState().engineProfiles
+                  const profiles = usePreferencesStore.getState().engineProfiles
                   if (profiles.length === 0) {
                     window.dispatchEvent(new CustomEvent('ion:open-settings'))
                   } else if (profiles.length === 1) {

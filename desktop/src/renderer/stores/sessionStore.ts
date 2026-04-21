@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { TabStatus, NormalizedEvent, EnrichedError, Message, TabState, Attachment, FileAttachment, PersistedTabState, TerminalInstance, TerminalPaneState, TerminalInstanceKind, EngineInstance, EnginePaneState, EngineProfile, AgentStateUpdate, StatusFields } from '../../shared/types'
-import { useThemeStore } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { destroyTerminalInstance } from '../components/TerminalPanel'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import notificationSrc from '../../../resources/notification.mp3'
@@ -84,8 +84,6 @@ interface State {
   isExpanded: boolean
   /** Global info fetched on startup (not per-session) */
   staticInfo: StaticInfo | null
-  /** User's preferred model override (null = use default) */
-  preferredModel: string | null
   /** Whether the git side panel is open */
   gitPanelOpen: boolean
   /** Tab IDs with their terminal panel visible */
@@ -114,6 +112,8 @@ interface State {
   planGeometry: { x: number; y: number; w: number; h: number }
   /** Whether tab restoration has completed (prevents placeholder flash) */
   tabsReady: boolean
+  /** Current engine backend mode */
+  backend: 'api' | 'cli'
   /** Tracks whether each worktree tab has uncommitted changes (keyed by tabId) */
   worktreeUncommittedMap: Map<string, boolean>
 
@@ -141,7 +141,6 @@ interface State {
 
   // Actions
   initStaticInfo: () => Promise<void>
-  setPreferredModel: (model: string | null) => void
   setPermissionMode: (mode: 'auto' | 'plan') => void
   createTab: (useWorktree?: boolean) => Promise<string>
   createTabInDirectory: (dir: string, useWorktree?: boolean, skipDuplicateCheck?: boolean) => Promise<string>
@@ -238,7 +237,7 @@ const notificationAudio = new Audio(notificationSrc)
 notificationAudio.volume = 1.0
 
 async function playNotificationIfHidden(): Promise<void> {
-  if (!useThemeStore.getState().soundEnabled) return
+  if (!usePreferencesStore.getState().soundEnabled) return
   try {
     const visible = await window.ion.isVisible()
     if (!visible) {
@@ -274,7 +273,8 @@ function makeLocalTab(): TabState {
     workingDirectory: '~',
     hasChosenDirectory: false,
     additionalDirs: [],
-    permissionMode: useThemeStore.getState().defaultPermissionMode,
+    permissionMode: usePreferencesStore.getState().defaultPermissionMode,
+    planFilePath: null,
     bashResults: [],
     bashExecuting: false,
     bashExecId: null,
@@ -286,6 +286,7 @@ function makeLocalTab(): TabState {
     pendingWorktreeSetup: false,
     groupId: null,
     contextTokens: null,
+    contextPercent: null,
     isTerminalOnly: false,
     isEngine: false,
     engineProfileId: null,
@@ -313,7 +314,6 @@ export const useSessionStore = create<State>((set, get) => ({
   activeTabId: initialTab.id,
   isExpanded: false,
   staticInfo: null,
-  preferredModel: null,
   gitPanelOpen: false,
   terminalOpenTabIds: new Set<string>(),
   terminalPendingCommands: new Map<string, string>(),
@@ -328,6 +328,7 @@ export const useSessionStore = create<State>((set, get) => ({
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
   planGeometry: { x: 60, y: 80, w: 720, h: 420 },
   tabsReady: false,
+  backend: 'api',
   worktreeUncommittedMap: new Map(),
 
   engineAgentStates: new Map(),
@@ -350,6 +351,7 @@ export const useSessionStore = create<State>((set, get) => ({
   initStaticInfo: async () => {
     try {
       const result = await window.ion.start()
+      const backend = await window.ion.getBackend()
       set({
         staticInfo: {
           version: result.version || 'unknown',
@@ -358,15 +360,13 @@ export const useSessionStore = create<State>((set, get) => ({
           projectPath: result.projectPath || '~',
           homePath: result.homePath || '~',
         },
+        backend,
       })
     } catch {}
   },
 
-  setPreferredModel: (model) => {
-    set({ preferredModel: model })
-  },
-
   setPermissionMode: (mode) => {
+    if (mode === 'plan' && get().backend === 'cli') return
     const { activeTabId } = get()
     set((s) => ({
       tabs: s.tabs.map((t) =>
@@ -378,7 +378,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   createTab: async (useWorktree) => {
     const homeDir = get().staticInfo?.homePath || '~'
-    const defaultBase = useThemeStore.getState().defaultBaseDirectory
+    const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
     const startDir = defaultBase || homeDir
     const hasChosen = !!defaultBase
 
@@ -399,7 +399,7 @@ export const useSessionStore = create<State>((set, get) => ({
     }
 
     // In manual group mode, assign new tabs to the default group
-    const { tabGroupMode, tabGroups } = useThemeStore.getState()
+    const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
     const defaultGroupId = tabGroupMode === 'manual' ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null) : null
 
     const tab: TabState = {
@@ -414,7 +414,7 @@ export const useSessionStore = create<State>((set, get) => ({
     if (useWorktree) {
       const { isRepo } = await window.ion.gitIsRepo(startDir)
       if (isRepo) {
-        const defaults = useThemeStore.getState().worktreeBranchDefaults
+        const defaults = usePreferencesStore.getState().worktreeBranchDefaults
         const defaultBranch = defaults[startDir]
         if (defaultBranch) {
           // Auto-create worktree with saved default
@@ -449,8 +449,8 @@ export const useSessionStore = create<State>((set, get) => ({
       }
     }
 
-    useThemeStore.getState().addRecentBaseDirectory(dir)
-    useThemeStore.getState().incrementDirectoryUsage(dir)
+    usePreferencesStore.getState().addRecentBaseDirectory(dir)
+    usePreferencesStore.getState().incrementDirectoryUsage(dir)
 
     let tabId: string
     try {
@@ -461,7 +461,7 @@ export const useSessionStore = create<State>((set, get) => ({
     }
 
     // In manual group mode, assign new tabs to the default group
-    const { tabGroupMode: tgm2, tabGroups: tgs2 } = useThemeStore.getState()
+    const { tabGroupMode: tgm2, tabGroups: tgs2 } = usePreferencesStore.getState()
     const defaultGroupId2 = tgm2 === 'manual' ? (tgs2.find((g) => g.isDefault)?.id || tgs2[0]?.id || null) : null
 
     const tab: TabState = {
@@ -476,7 +476,7 @@ export const useSessionStore = create<State>((set, get) => ({
     if (useWorktree) {
       const { isRepo } = await window.ion.gitIsRepo(dir)
       if (isRepo) {
-        const defaults = useThemeStore.getState().worktreeBranchDefaults
+        const defaults = usePreferencesStore.getState().worktreeBranchDefaults
         const defaultBranch = defaults[dir]
         if (defaultBranch) {
           const result = await window.ion.gitWorktreeAdd(dir, defaultBranch)
@@ -513,7 +513,7 @@ export const useSessionStore = create<State>((set, get) => ({
       return
     } else {
       // Switching to a different tab: mark as read, auto-expand if setting enabled
-      const expandOnSwitch = useThemeStore.getState().expandOnTabSwitch
+      const expandOnSwitch = usePreferencesStore.getState().expandOnTabSwitch
       set((prev) => ({
         activeTabId: tabId,
         isExpanded: expandOnSwitch ? true : prev.isExpanded,
@@ -585,7 +585,7 @@ export const useSessionStore = create<State>((set, get) => ({
     let labelBase = kind === 'commit' ? 'Commit' : kind === 'cli' ? 'CLI' : kind === 'user' ? 'Shell' : 'Shell'
     if (kind.startsWith('tool:')) {
       const toolId = kind.slice(5)
-      const tool = useThemeStore.getState().quickTools.find((t) => t.id === toolId)
+      const tool = usePreferencesStore.getState().quickTools.find((t) => t.id === toolId)
       labelBase = tool?.name || 'Tool'
     }
     let label: string
@@ -711,7 +711,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
   createTerminalTab: async (dir?: string) => {
     const homeDir = get().staticInfo?.homePath || '~'
-    const defaultBase = useThemeStore.getState().defaultBaseDirectory
+    const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
     const startDir = dir || defaultBase || homeDir
 
     // Prevent duplicate blank terminal tabs in the same directory
@@ -721,7 +721,7 @@ export const useSessionStore = create<State>((set, get) => ({
       return existingBlank.id
     }
 
-    const { tabGroupMode, tabGroups } = useThemeStore.getState()
+    const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
     const groupId = tabGroupMode === 'manual'
       ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null)
       : null
@@ -765,7 +765,7 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   runQuickTool: (tabId, toolId) => {
-    const tool = useThemeStore.getState().quickTools.find((t) => t.id === toolId)
+    const tool = usePreferencesStore.getState().quickTools.find((t) => t.id === toolId)
     if (!tool) return
     const tab = get().tabs.find((t) => t.id === tabId)
     const cwd = tab?.workingDirectory || '~'
@@ -897,7 +897,7 @@ export const useSessionStore = create<State>((set, get) => ({
   blurFileEditor: () => set({ fileEditorFocused: false }),
 
   openFileInEditor: (dir, tabId, filePath, opts) => {
-    const { closeExplorerOnFileOpen, openMarkdownInPreview } = useThemeStore.getState()
+    const { closeExplorerOnFileOpen, openMarkdownInPreview } = usePreferencesStore.getState()
     set((s) => {
       const states = new Map(s.fileEditorStates)
       const current = states.get(dir) || { activeFileId: null, files: [] }
@@ -1151,7 +1151,7 @@ export const useSessionStore = create<State>((set, get) => ({
     if (s.activeTabId === tabId) {
       if (remaining.length === 0) {
         const homeDir = get().staticInfo?.homePath || '~'
-        const defaultBase = useThemeStore.getState().defaultBaseDirectory
+        const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
         const startDir = defaultBase || homeDir
         const newTab = makeLocalTab()
         newTab.workingDirectory = startDir
@@ -1394,7 +1394,7 @@ export const useSessionStore = create<State>((set, get) => ({
         : null
 
       // Tab group assignment: manual mode -> default group, auto mode -> null (auto-computed)
-      const { tabGroupMode, tabGroups } = useThemeStore.getState()
+      const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
       const groupId = tabGroupMode === 'manual'
         ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null)
         : null
@@ -1419,7 +1419,7 @@ export const useSessionStore = create<State>((set, get) => ({
       // Don't call initSession — the first real prompt will use --resume with the sessionId
       return tabId
     } catch {
-      const { tabGroupMode: tgm, tabGroups: tgs } = useThemeStore.getState()
+      const { tabGroupMode: tgm, tabGroups: tgs } = usePreferencesStore.getState()
       const groupId = tgm === 'manual'
         ? (tgs.find((g) => g.isDefault)?.id || tgs[0]?.id || null)
         : null
@@ -1488,7 +1488,7 @@ export const useSessionStore = create<State>((set, get) => ({
         ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
         : null
 
-      const { tabGroupMode, tabGroups } = useThemeStore.getState()
+      const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
       const groupId = tabGroupMode === 'manual'
         ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null)
         : null
@@ -1513,7 +1513,7 @@ export const useSessionStore = create<State>((set, get) => ({
       }))
       return tabId
     } catch {
-      const { tabGroupMode: tgm, tabGroups: tgs } = useThemeStore.getState()
+      const { tabGroupMode: tgm, tabGroups: tgs } = usePreferencesStore.getState()
       const groupId = tgm === 'manual'
         ? (tgs.find((g) => g.isDefault)?.id || tgs[0]?.id || null)
         : null
@@ -1657,8 +1657,8 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   setBaseDirectory: (dir) => {
-    useThemeStore.getState().addRecentBaseDirectory(dir)
-    useThemeStore.getState().incrementDirectoryUsage(dir)
+    usePreferencesStore.getState().addRecentBaseDirectory(dir)
+    usePreferencesStore.getState().incrementDirectoryUsage(dir)
     const { activeTabId } = get()
     const tab = get().tabs.find((t) => t.id === activeTabId)
 
@@ -1691,11 +1691,11 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
 
     // If in worktree mode, re-setup for new directory
-    const gitOpsMode = useThemeStore.getState().gitOpsMode
+    const gitOpsMode = usePreferencesStore.getState().gitOpsMode
     if (gitOpsMode === 'worktree') {
       window.ion.gitIsRepo(dir).then(({ isRepo }) => {
         if (!isRepo) return
-        const defaults = useThemeStore.getState().worktreeBranchDefaults
+        const defaults = usePreferencesStore.getState().worktreeBranchDefaults
         const defaultBranch = defaults[dir]
         if (defaultBranch) {
           window.ion.gitWorktreeAdd(dir, defaultBranch).then((result) => {
@@ -1726,7 +1726,7 @@ export const useSessionStore = create<State>((set, get) => ({
     const repoPath = tab.workingDirectory
 
     if (setAsDefault) {
-      useThemeStore.getState().setWorktreeBranchDefault(repoPath, sourceBranch)
+      usePreferencesStore.getState().setWorktreeBranchDefault(repoPath, sourceBranch)
     }
 
     const result = await window.ion.gitWorktreeAdd(repoPath, sourceBranch)
@@ -1750,7 +1750,7 @@ export const useSessionStore = create<State>((set, get) => ({
     const tab = get().tabs.find((t) => t.id === tabId)
     if (!tab) return
 
-    const defaults = useThemeStore.getState().worktreeBranchDefaults
+    const defaults = usePreferencesStore.getState().worktreeBranchDefaults
     const defaultBranch = defaults[tab.workingDirectory]
     if (defaultBranch) {
       const result = await window.ion.gitWorktreeAdd(tab.workingDirectory, defaultBranch)
@@ -1790,7 +1790,7 @@ export const useSessionStore = create<State>((set, get) => ({
     const tab = get().tabs.find((t) => t.id === tabId)
     if (!tab?.worktree) return
 
-    const strategy = strategyOverride || useThemeStore.getState().worktreeCompletionStrategy
+    const strategy = strategyOverride || usePreferencesStore.getState().worktreeCompletionStrategy
     const { repoPath, worktreePath, branchName, sourceBranch } = tab.worktree
 
     if (strategy === 'merge') {
@@ -1917,7 +1917,7 @@ export const useSessionStore = create<State>((set, get) => ({
       get().setPermissionMode('auto')
 
       // Move to in-progress group (same as plan-ready implement)
-      const { inProgressGroupId, tabGroupMode } = useThemeStore.getState()
+      const { inProgressGroupId, tabGroupMode } = usePreferencesStore.getState()
       if (inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
         get().moveTabToGroup(tab.id, inProgressGroupId)
       }
@@ -2005,7 +2005,7 @@ export const useSessionStore = create<State>((set, get) => ({
     }))
 
     // Send to backend — ControlPlane will queue if a run is active
-    const { preferredModel } = get()
+    const preferredModel = usePreferencesStore.getState().preferredModel
 
     // For forked tabs on first message: inject prior conversation as system context
     let effectiveSystemPrompt = appendSystemPrompt || undefined
@@ -2023,6 +2023,11 @@ export const useSessionStore = create<State>((set, get) => ({
           : forkCtx
       }
     }
+
+    // Re-assert permission mode before every prompt to guarantee engine state
+    // matches the UI. Without this, the engine could be in 'auto' while the UI
+    // shows 'plan' (e.g. after an ExitPlanMode tool call that drifted the state).
+    window.ion.setPermissionMode(activeTabId, tab.permissionMode)
 
     window.ion.prompt(activeTabId, requestId, {
       prompt: fullPrompt,
@@ -2048,7 +2053,8 @@ export const useSessionStore = create<State>((set, get) => ({
    * (working directory, session ID, model, addDirs) is used automatically.
    */
   submitRemotePrompt: (tabId, prompt) => {
-    const { tabs, staticInfo, preferredModel } = get()
+    const { tabs, staticInfo } = get()
+    const preferredModel = usePreferencesStore.getState().preferredModel
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
     if (tab.status === 'connecting') return
@@ -2240,7 +2246,18 @@ export const useSessionStore = create<State>((set, get) => ({
             }
             break
 
+          case 'stream_reset': {
+            // Engine is retrying after a truncated/failed stream. Discard
+            // partial assistant text so the retry's output replaces it cleanly.
+            const lastMsgReset = updated.messages[updated.messages.length - 1]
+            if (lastMsgReset?.role === 'assistant' && !lastMsgReset.toolName) {
+              updated.messages = updated.messages.slice(0, -1)
+            }
+            break
+          }
+
           case 'text_chunk': {
+            console.log(`[DIAG] text_chunk: tab=${tabId} len=${(event as any).text?.length} prev_msg_len=${updated.messages[updated.messages.length - 1]?.content?.length ?? 'N/A'}`)
             updated.currentActivity = 'Writing...'
             const lastMsg = updated.messages[updated.messages.length - 1]
             if (lastMsg?.role === 'assistant' && !lastMsg.toolName) {
@@ -2306,7 +2323,7 @@ export const useSessionStore = create<State>((set, get) => ({
                 // tool_call_complete), so we must set completed here to clear the "running" state.
                 targetTool.toolStatus = 'completed'
               }
-              if (useThemeStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
+              if (usePreferencesStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
                 targetTool.autoExpandResult = true
               }
               const FILE_WRITE_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'MultiEdit']
@@ -2454,7 +2471,7 @@ export const useSessionStore = create<State>((set, get) => ({
                   // Filter out ExitPlanMode from denials shown to user
                   const nonPlanDenials = event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
                   updated.permissionDenied = nonPlanDenials.length > 0 ? { tools: nonPlanDenials } : null
-                  // Auto-recover only when not in plan mode (known Claude Code bug: #32868)
+                  // Auto-recover only when not in plan mode
                   if (updated.permissionMode !== 'plan') {
                     setTimeout(() => {
                       get().sendMessage('Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.')
@@ -2501,6 +2518,12 @@ export const useSessionStore = create<State>((set, get) => ({
                 timestamp: Date.now(),
               },
             ]
+            break
+
+          case 'engine_plan_mode_changed' as any:
+            if ((event as any).planFilePath) {
+              updated.planFilePath = (event as any).planFilePath
+            }
             break
 
           case 'permission_request': {
@@ -2643,10 +2666,10 @@ export const useSessionStore = create<State>((set, get) => ({
   createEngineTab: (dir?: string, profileId?: string) => {
     const state = get()
     const homeDir = state.staticInfo?.homePath || '~'
-    const defaultBase = useThemeStore.getState().defaultBaseDirectory
+    const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
     const workingDirectory = dir || defaultBase || homeDir
 
-    const { tabGroupMode, tabGroups, engineProfiles } = useThemeStore.getState()
+    const { tabGroupMode, tabGroups, engineProfiles } = usePreferencesStore.getState()
     const groupId = tabGroupMode === 'manual'
       ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null)
       : null
@@ -2676,7 +2699,7 @@ export const useSessionStore = create<State>((set, get) => ({
   addEngineInstance: (tabId) => {
     const tab = get().tabs.find((t) => t.id === tabId)
     if (!tab) return ''
-    const { engineProfiles } = useThemeStore.getState()
+    const { engineProfiles } = usePreferencesStore.getState()
     const profile = tab.engineProfileId ? engineProfiles.find((p) => p.id === tab.engineProfileId) : null
     const panes = new Map(get().enginePanes)
     const pane = panes.get(tabId) || { instances: [], activeInstanceId: null }
@@ -2794,6 +2817,11 @@ export const useSessionStore = create<State>((set, get) => ({
   },
 
   handleEngineEvent: (key, event) => {
+    // Engine tabs use compound keys (tabId:instanceId). Plain UUID keys
+    // belong to CLI proxy tabs handled via handleNormalizedEvent. Processing
+    // them here causes cross-talk (tabs mutation during RAF-batched streaming).
+    if (!key.includes(':')) return
+
     const tabId = key.split(':')[0]
     switch (event.type) {
       case 'engine_agent_state': {
@@ -2871,7 +2899,7 @@ export const useSessionStore = create<State>((set, get) => ({
           const isActive = !pane || pane.activeInstanceId === key.split(':')[1]
           const tabs = isActive ? state.tabs.map((t) => {
             if (t.id !== tabId) return t
-            return { ...t, status: 'idle' as const, contextTokens: event.usage.inputTokens }
+            return { ...t, status: 'idle' as const, contextTokens: event.usage.inputTokens, contextPercent: event.usage.contextPercent }
           }) : state.tabs
           return { engineUsage: usage, tabs }
         })
@@ -2909,6 +2937,10 @@ export const useSessionStore = create<State>((set, get) => ({
       }
       case 'engine_dead': {
         console.warn(`[Ion] handleEngineEvent engine_dead: key=${key} tabId=${tabId} exitCode=${event.exitCode}`)
+        // exitCode 0/null/undefined = idle cleanup or normal exit, not a real death
+        if (event.exitCode === 0 || event.exitCode === null || event.exitCode === undefined) {
+          break
+        }
         set((state) => {
           // Only mark tab dead if no other instances are running
           const pane = state.enginePanes.get(tabId)
@@ -3106,11 +3138,17 @@ useSessionStore.subscribe((state, prev) => {
   }
 })
 
+// Expose force-flush for main process to call before backend switch
+;(window as any).__ionForceFlushTabs = () => {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+  persistTabs()
+}
+
 // Close terminal, explorer, and git panel when conversation collapses
 // (unless the user has toggled "keep on collapse" for that pane)
 useSessionStore.subscribe((state, prev) => {
   if (prev.isExpanded && !state.isExpanded) {
-    const { keepTerminalOnCollapse, keepExplorerOnCollapse, keepGitPanelOnCollapse } = useThemeStore.getState()
+    const { keepTerminalOnCollapse, keepExplorerOnCollapse, keepGitPanelOnCollapse } = usePreferencesStore.getState()
     const { activeTabId, terminalOpenTabIds, fileExplorerOpenDirs, tabs: currentTabs } = state
     const updates: Record<string, any> = {}
     if (!keepTerminalOnCollapse && terminalOpenTabIds.has(activeTabId)) {

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
 import { createConnection, Socket } from 'net'
 import { spawn, execSync } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
@@ -30,6 +30,8 @@ export class EngineBridge extends EventEmitter {
   private reconnectAttempts = 0
   private requestCallbacks = new Map<string, (result: any) => void>()
   private requestCounter = 0
+  private connectPromise: Promise<void> | null = null
+  private reconnectDisabled = false
 
   constructor() {
     super()
@@ -39,7 +41,18 @@ export class EngineBridge extends EventEmitter {
 
   async connect(): Promise<void> {
     if (this.connected) return
+    // Prevent concurrent connect() calls from creating multiple connections.
+    // All callers share the same in-flight connection attempt.
+    if (this.connectPromise) return this.connectPromise
+    this.connectPromise = this._doConnect()
+    try {
+      await this.connectPromise
+    } finally {
+      this.connectPromise = null
+    }
+  }
 
+  private async _doConnect(): Promise<void> {
     // Try connecting to existing server
     try {
       await this._connectSocket()
@@ -140,14 +153,17 @@ export class EngineBridge extends EventEmitter {
   }
 
   private _scheduleReconnect(): void {
+    if (this.reconnectDisabled) return
     if (this.reconnectTimer) return
+    if (this.connected) return
     this.reconnectAttempts++
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
     log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null
+      if (this.connected) return
       try {
-        await this._connectSocket()
+        await this.connect()
       } catch {
         this._scheduleReconnect()
       }
@@ -311,6 +327,54 @@ export class EngineBridge extends EventEmitter {
 
   async stopAll(): Promise<void> {
     // Don't send shutdown -- just disconnect. Engine server keeps running for other clients.
+    if (this.conn && !this.conn.destroyed) {
+      this.conn.destroy()
+    }
+    this.connected = false
+    this.conn = null
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  /** Send shutdown command to engine server, causing it to exit. */
+  shutdown(): void {
+    this._send({ cmd: 'shutdown' })
+  }
+
+  /** Kill the engine process and wait for socket to disappear. */
+  async shutdownAndWait(timeoutMs = 3000): Promise<void> {
+    // Prevent auto-reconnect from spawning a new engine
+    this.reconnectDisabled = true
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
+    // Try graceful shutdown via socket first
+    this._send({ cmd: 'shutdown' })
+
+    // Also kill via PID lock file (reliable even if socket is broken)
+    const pidLockFile = join(homedir(), '.ion', 'engine.pid.lock')
+    try {
+      if (existsSync(pidLockFile)) {
+        const pid = parseInt(readFileSync(pidLockFile, 'utf-8').trim(), 10)
+        if (pid > 0) {
+          process.kill(pid, 'SIGTERM')
+        }
+      }
+    } catch {}
+
+    // Wait for socket file to disappear (engine removes it on stop)
+    const socketPath = join(homedir(), '.ion', 'engine.sock')
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (!existsSync(socketPath)) break
+      await new Promise(r => setTimeout(r, 50))
+    }
+
+    // Disconnect our side
     if (this.conn && !this.conn.destroyed) {
       this.conn.destroy()
     }

@@ -1,17 +1,17 @@
 import React from 'react'
-import { useThemeStore } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingHeading } from './SettingHeading'
 
 export function AppearanceCategory() {
-  const expandedUI = useThemeStore((s) => s.expandedUI)
-  const setExpandedUI = useThemeStore((s) => s.setExpandedUI)
-  const ultraWide = useThemeStore((s) => s.ultraWide)
-  const setUltraWide = useThemeStore((s) => s.setUltraWide)
-  const themeMode = useThemeStore((s) => s.themeMode)
-  const setThemeMode = useThemeStore((s) => s.setThemeMode)
-  const expandToolResults = useThemeStore((s) => s.expandToolResults)
-  const setExpandToolResults = useThemeStore((s) => s.setExpandToolResults)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
+  const setExpandedUI = usePreferencesStore((s) => s.setExpandedUI)
+  const ultraWide = usePreferencesStore((s) => s.ultraWide)
+  const setUltraWide = usePreferencesStore((s) => s.setUltraWide)
+  const themeMode = usePreferencesStore((s) => s.themeMode)
+  const setThemeMode = usePreferencesStore((s) => s.setThemeMode)
+  const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
+  const setExpandToolResults = usePreferencesStore((s) => s.setExpandToolResults)
 
   return (
     <>

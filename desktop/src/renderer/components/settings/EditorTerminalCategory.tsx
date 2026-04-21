@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
@@ -10,16 +11,16 @@ const fontPromise = window.ion?.listFonts().then((fonts) => { fontCache = fonts 
 
 export function EditorTerminalCategory() {
   const colors = useColors()
-  const closeExplorerOnFileOpen = useThemeStore((s) => s.closeExplorerOnFileOpen)
-  const setCloseExplorerOnFileOpen = useThemeStore((s) => s.setCloseExplorerOnFileOpen)
-  const hideOnExternalLaunch = useThemeStore((s) => s.hideOnExternalLaunch)
-  const setHideOnExternalLaunch = useThemeStore((s) => s.setHideOnExternalLaunch)
-  const openMarkdownInPreview = useThemeStore((s) => s.openMarkdownInPreview)
-  const setOpenMarkdownInPreview = useThemeStore((s) => s.setOpenMarkdownInPreview)
-  const terminalFontFamily = useThemeStore((s) => s.terminalFontFamily)
-  const setTerminalFontFamily = useThemeStore((s) => s.setTerminalFontFamily)
-  const terminalFontSize = useThemeStore((s) => s.terminalFontSize)
-  const setTerminalFontSize = useThemeStore((s) => s.setTerminalFontSize)
+  const closeExplorerOnFileOpen = usePreferencesStore((s) => s.closeExplorerOnFileOpen)
+  const setCloseExplorerOnFileOpen = usePreferencesStore((s) => s.setCloseExplorerOnFileOpen)
+  const hideOnExternalLaunch = usePreferencesStore((s) => s.hideOnExternalLaunch)
+  const setHideOnExternalLaunch = usePreferencesStore((s) => s.setHideOnExternalLaunch)
+  const openMarkdownInPreview = usePreferencesStore((s) => s.openMarkdownInPreview)
+  const setOpenMarkdownInPreview = usePreferencesStore((s) => s.setOpenMarkdownInPreview)
+  const terminalFontFamily = usePreferencesStore((s) => s.terminalFontFamily)
+  const setTerminalFontFamily = usePreferencesStore((s) => s.setTerminalFontFamily)
+  const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize)
+  const setTerminalFontSize = usePreferencesStore((s) => s.setTerminalFontSize)
 
   const [availableFonts, setAvailableFonts] = useState<string[]>(fontCache || [])
   useEffect(() => {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { CaretRight, CaretDown, SpinnerGap } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { ToolIcon } from './ToolIcon'
 import { ToolRow } from './ToolRow'
 import { getToolDescription, toolSummary } from './tool-helpers'
@@ -15,22 +16,43 @@ interface ToolGroupProps {
 export function ToolGroup({ tools, skipMotion }: ToolGroupProps) {
   const hasRunning = tools.some((t) => t.toolStatus === 'running')
   const hasUserExecuted = tools.some((t) => t.userExecuted)
-  const expandToolResults = useThemeStore((s) => s.expandToolResults)
+  const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
   const hasExpandableTools = expandToolResults && tools.some((t) =>
     ['Edit', 'Write'].includes(t.toolName || '')
   )
   const [expanded, setExpanded] = useState(hasUserExecuted || hasExpandableTools)
+  // Track whether the user has explicitly toggled this group, so we never
+  // override their intent with auto-expand/collapse logic.
+  const userToggledRef = useRef(false)
   const prevHasRunning = useRef(hasRunning)
   const colors = useColors()
 
   useEffect(() => {
-    if (prevHasRunning.current && !hasRunning && expandToolResults) {
+    // Auto-expand when a run completes, but only when:
+    // 1. expandToolResults is on, AND
+    // 2. the user hasn't manually chosen a state for this group.
+    if (prevHasRunning.current && !hasRunning && expandToolResults && !userToggledRef.current) {
       setExpanded(true)
     }
     prevHasRunning.current = hasRunning
   }, [hasRunning, expandToolResults])
 
-  const isOpen = expanded || hasRunning
+  // When expandToolResults is OFF and the group hasn't been explicitly opened by
+  // the user, keep it collapsed even while tools are running. A spinner badge on
+  // the collapsed row signals that work is in progress without causing the
+  // expand → add → collapse flash for every tool that fires in sequence.
+  const forceOpen = expandToolResults && hasRunning && !userToggledRef.current
+  const isOpen = expanded || forceOpen
+
+  const handleExpand = () => {
+    userToggledRef.current = true
+    setExpanded(true)
+  }
+
+  const handleCollapse = () => {
+    userToggledRef.current = true
+    setExpanded(false)
+  }
 
   if (isOpen) {
     const inner = (
@@ -39,7 +61,7 @@ export function ToolGroup({ tools, skipMotion }: ToolGroupProps) {
           <div
             className="flex items-center gap-1 cursor-pointer mb-1.5"
             data-ion-ui
-            onClick={() => setExpanded(false)}
+            onClick={handleCollapse}
           >
             <CaretDown size={10} style={{ color: colors.textMuted }} />
             <span className="text-[11px]" style={{ color: colors.textMuted }}>
@@ -94,17 +116,21 @@ export function ToolGroup({ tools, skipMotion }: ToolGroupProps) {
     )
   }
 
-  // Collapsed
+  // Collapsed — show a spinner badge when any tool inside is still running so
+  // the user knows something is happening even though the group is collapsed.
   const summary = toolSummary(tools)
 
   const inner = (
     <div
       className="flex items-start gap-1 cursor-pointer py-[2px]"
       data-ion-ui
-      onClick={() => setExpanded(true)}
+      onClick={handleExpand}
     >
-      <CaretRight size={10} className="flex-shrink-0 mt-[2px]" style={{ color: colors.textTertiary }} />
-      <span className="text-[11px] leading-[1.4]" style={{ color: colors.textTertiary }}>
+      {hasRunning
+        ? <SpinnerGap size={10} className="animate-spin flex-shrink-0 mt-[2px]" style={{ color: colors.statusRunning }} />
+        : <CaretRight size={10} className="flex-shrink-0 mt-[2px]" style={{ color: colors.textTertiary }} />
+      }
+      <span className="text-[11px] leading-[1.4]" style={{ color: hasRunning ? colors.textSecondary : colors.textTertiary }}>
         {summary}
       </span>
     </div>

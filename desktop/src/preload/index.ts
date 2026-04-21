@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent } from '../shared/types'
-import type { DiscoveredCommand } from '../main/claude/command-discovery'
+import type { DiscoveredCommand } from '../main/cli-compat/command-discovery'
 
 export interface IonAPI {
   // ─── Request-response (renderer → main) ───
@@ -52,6 +52,8 @@ export interface IonAPI {
   loadSessionLabels(): Promise<Record<string, string>>
   loadSessionChains(): Promise<{ chains: Record<string, string[]>; reverse: Record<string, string> }>
   saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): Promise<void>
+  getBackend(): Promise<'api' | 'cli'>
+  switchBackend(backend: 'api' | 'cli'): Promise<void>
 
   // ─── Git operations ───
   gitIsRepo(directory: string): Promise<{ isRepo: boolean }>
@@ -202,6 +204,8 @@ const api: IonAPI = {
   loadSessionLabels: () => ipcRenderer.invoke(IPC.LOAD_SESSION_LABELS),
   loadSessionChains: () => ipcRenderer.invoke(IPC.LOAD_SESSION_CHAINS),
   saveSessionChains: (data) => ipcRenderer.invoke(IPC.SAVE_SESSION_CHAINS, data),
+  getBackend: () => ipcRenderer.invoke(IPC.GET_BACKEND),
+  switchBackend: (backend) => ipcRenderer.invoke(IPC.SWITCH_BACKEND, backend),
 
   // ─── Git operations ───
   gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),

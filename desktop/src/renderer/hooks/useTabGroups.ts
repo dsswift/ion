@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
-import { useThemeStore, getEffectiveTabGroups } from '../theme'
+import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabState, TabGroupMode, TabGroup } from '../../shared/types'
 
 export interface TabGroupView {
@@ -22,9 +22,9 @@ export interface TabGroupsResult {
 export function useTabGroups(): TabGroupsResult {
   const tabs = useSessionStore((s) => s.tabs)
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
-  const tabGroups = useThemeStore((s) => s.tabGroups)
-  const autoGroupOrder = useThemeStore((s) => s.autoGroupOrder)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
+  const tabGroups = usePreferencesStore((s) => s.tabGroups)
+  const autoGroupOrder = usePreferencesStore((s) => s.autoGroupOrder)
 
   return useMemo(() => {
     if (tabGroupMode === 'off') {

@@ -1,4 +1,4 @@
-// ─── Claude Code Stream Event Types (verified from v2.1.63) ───
+// ─── CLI Backend Stream Event Types ───
 
 export interface InitEvent {
   type: 'system'
@@ -174,7 +174,7 @@ export interface TabState {
   currentActivity: string
   permissionQueue: PermissionRequest[]
   /** Fallback card when tools were denied and no interactive permission is available */
-  permissionDenied: { tools: Array<{ toolName: string; toolUseId: string }> } | null
+  permissionDenied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
   attachments: FileAttachment[]
   /** Draft input text for this tab's input bar (scoped per-tab) */
   draftInput: string
@@ -194,7 +194,7 @@ export interface TabState {
   sessionVersion: string | null
   /** Prompts waiting behind the current run (display text only) */
   queuedPrompts: string[]
-  /** Working directory for this tab's Claude sessions */
+  /** Working directory for this tab's sessions */
   workingDirectory: string
   /** Whether the user explicitly chose a directory (vs. using default home) */
   hasChosenDirectory: boolean
@@ -202,6 +202,8 @@ export interface TabState {
   additionalDirs: string[]
   /** Per-tab permission mode: 'auto' auto-approves, 'plan' uses CLI plan mode */
   permissionMode: 'auto' | 'plan'
+  /** Path to the last plan file produced during plan mode */
+  planFilePath: string | null
   /** Pending bash command results to send as context with next prompt */
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
   /** Whether a bash command is currently executing in this tab */
@@ -224,9 +226,11 @@ export interface TabState {
   groupId: string | null
   /** Latest input_tokens from API response (total context sent to model) */
   contextTokens: number | null
+  /** Engine-computed context usage percentage (accounts for model-specific context window) */
+  contextPercent: number | null
   /** Terminal-focused tab with no conversation */
   isTerminalOnly: boolean
-  /** Whether this tab runs an engine session instead of Claude CLI */
+  /** Whether this tab runs an engine session instead of CLI backend */
   isEngine: boolean
   /** Engine profile ID used for this tab (references EngineProfile.id) */
   engineProfileId: string | null
@@ -268,12 +272,13 @@ export type NormalizedEvent =
   | { type: 'tool_call_complete'; index: number }
   | { type: 'tool_result'; toolId: string; content: string; isError: boolean }
   | { type: 'task_update'; message: AssistantMessagePayload }
-  | { type: 'task_complete'; result: string; costUsd: number; durationMs: number; numTurns: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }
+  | { type: 'task_complete'; result: string; costUsd: number; durationMs: number; numTurns: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
   | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'session_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }
   | { type: 'usage'; usage: UsageData }
   | { type: 'permission_request'; questionId: string; toolName: string; toolDescription?: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
+  | { type: 'stream_reset' }
 
 // ─── Engine Types (native Ion extension runtime) ───
 
@@ -344,6 +349,7 @@ export interface StatusFields {
   totalCostUsd?: number
   /** Backend mode: 'api' (direct) or 'cli' (CC CLI proxy) */
   backend?: 'api' | 'cli'
+  permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
 }
 
 export type EngineEvent =
@@ -359,6 +365,8 @@ export type EngineEvent =
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; message: string }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
+  | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string }
+  | { type: 'engine_stream_reset' }
 
 // ─── Run Options ───
 
@@ -431,7 +439,7 @@ export interface SessionMeta {
   projectPath: string | null
   /** Human-readable label (basename of path, or fallback from encoded name) */
   projectLabel: string | null
-  /** Raw encoded directory name under ~/.claude/projects/ (for loading sessions from deleted dirs) */
+  /** Raw encoded directory name (for loading sessions from deleted dirs) */
   encodedDir: string | null
   /** All session IDs in this composite conversation chain (including self) */
   chainSessionIds?: string[]
@@ -539,6 +547,10 @@ export const IPC = {
   // Session chains (composite conversation grouping)
   LOAD_SESSION_CHAINS: 'ion:load-session-chains',
   SAVE_SESSION_CHAINS: 'ion:save-session-chains',
+
+  // Backend mode
+  GET_BACKEND: 'ion:get-backend',
+  SWITCH_BACKEND: 'ion:switch-backend',
 
   // Git operations
   GIT_GRAPH: 'ion:git-graph',

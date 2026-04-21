@@ -5,7 +5,8 @@ import { X, Plus, Eye, PencilSimple, TextAlignLeft } from '@phosphor-icons/react
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 // Editor portals to document.body (not PopoverLayer) so z-index can go behind main UI
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { EDITABLE_EXTS } from '../hooks/useNavigableLinks'
 
@@ -335,8 +336,8 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
     },
   }), [colors])
 
-  const editorWordWrap = useThemeStore((s) => s.editorWordWrap)
-  const setEditorWordWrap = useThemeStore((s) => s.setEditorWordWrap)
+  const editorWordWrap = usePreferencesStore((s) => s.editorWordWrap)
+  const setEditorWordWrap = usePreferencesStore((s) => s.setEditorWordWrap)
 
   // ---- Build extensions for active file ----
   const buildExtensions = useCallback((file: FileEditorTab): Extension[] => {

@@ -5,8 +5,9 @@ import { create } from 'zustand'
 import { useSessionStore, AVAILABLE_MODELS } from '../stores/sessionStore'
 import { AttachmentChips } from './AttachmentChips'
 import { SlashCommandMenu, getFilteredCommandsWithExtras, SLASH_COMMANDS, type SlashCommand } from './SlashCommandMenu'
-import { useColors, useThemeStore } from '../theme'
-import type { DiscoveredCommand } from '../../main/claude/command-discovery'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
+import type { DiscoveredCommand } from '../../main/cli-compat/command-discovery'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
@@ -52,14 +53,14 @@ export function InputBar() {
   const setDraftInput = useSessionStore((s) => s.setDraftInput)
   const clearPendingInput = useSessionStore((s) => s.clearPendingInput)
 
-  const setPreferredModel = useSessionStore((s) => s.setPreferredModel)
+  const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
   const staticInfo = useSessionStore((s) => s.staticInfo)
-  const preferredModel = useSessionStore((s) => s.preferredModel)
+  const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const bashExecuting = tab?.bashExecuting ?? false
   const tabsReady = useSessionStore((s) => s.tabsReady)
-  const bashCommandEntry = useThemeStore((s) => s.bashCommandEntry)
+  const bashCommandEntry = usePreferencesStore((s) => s.bashCommandEntry)
   const colors = useColors()
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
   const isConnecting = tab?.status === 'connecting' || !tabsReady
@@ -243,7 +244,7 @@ export function InputBar() {
           const active = m.id === current || (!preferredModel && m.id === model)
           return `  ${active ? '\u25CF' : '\u25CB'} ${m.label} (${m.id})`
         })
-        const header = version ? `Claude Code ${version}` : 'Claude Code'
+        const header = version ? `Ion Engine ${version}` : 'Ion Engine'
         addSystemMessage(`${header}\n\n${lines.join('\n')}\n\nSwitch model: type /model <name>\n  e.g. /model sonnet`)
         break
       }
@@ -276,7 +277,7 @@ export function InputBar() {
           }
           addSystemMessage(`Available commands (${discoveredCommands.length}):\n${lines.join('\n')}`)
         } else {
-          addSystemMessage('No commands found in ~/.claude/commands/ or .claude/commands/')
+          addSystemMessage('No commands found in ~/.ion/commands/ or .ion/commands/')
         }
         break
       }
@@ -535,7 +536,7 @@ export function InputBar() {
                           ? 'Transcribing...'
                           : isBusy
                             ? 'Type to queue a message...'
-                            : 'Ask Claude Code anything...'
+                            : 'Ask Ion anything...'
               }
               rows={1}
               className="w-full bg-transparent resize-none"
@@ -597,7 +598,7 @@ export function InputBar() {
                           ? 'Transcribing...'
                           : isBusy
                             ? 'Type to queue a message...'
-                            : 'Ask Claude Code anything...'
+                            : 'Ask Ion anything...'
               }
               rows={1}
               className="flex-1 bg-transparent resize-none"

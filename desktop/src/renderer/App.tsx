@@ -17,11 +17,11 @@ import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider, usePopoverLayer } from './components/PopoverLayer'
 import { createPortal } from 'react-dom'
-import { useClaudeEvents } from './hooks/useClaudeEvents'
 import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
 import { useSessionStore, editorDirForTab } from './stores/sessionStore'
-import { useColors, useThemeStore, spacing } from './theme'
+import { useColors, spacing } from './theme'
+import { usePreferencesStore } from './preferences'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -125,7 +125,6 @@ function CloseTabConfirmDialog({
 }
 
 export default function App() {
-  useClaudeEvents()
   useEngineEvents()
   useHealthReconciliation()
 
@@ -135,11 +134,11 @@ export default function App() {
   const activeTabStatus = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.status)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const colors = useColors()
-  const setSystemTheme = useThemeStore((s) => s.setSystemTheme)
-  const expandedUI = useThemeStore((s) => s.expandedUI)
-  const ultraWide = useThemeStore((s) => s.ultraWide)
+  const setSystemTheme = usePreferencesStore((s) => s.setSystemTheme)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
+  const ultraWide = usePreferencesStore((s) => s.ultraWide)
   const bashModeActive = useBashModeStore((s) => s.active)
-  const quickTools = useThemeStore((s) => s.quickTools)
+  const quickTools = usePreferencesStore((s) => s.quickTools)
   const [quickToolsTrayOpen, setQuickToolsTrayOpen] = useState(false)
   const quickToolsBtnRef = React.useRef<HTMLButtonElement>(null)
 
@@ -474,7 +473,7 @@ export default function App() {
         // Restore expanded/collapsed state, or fall back to setting
         const restoredExpanded = typeof saved.isExpanded === 'boolean'
           ? saved.isExpanded
-          : useThemeStore.getState().expandOnTabSwitch
+          : usePreferencesStore.getState().expandOnTabSwitch
         useSessionStore.setState({ isExpanded: restoredExpanded, tabsReady: true })
         return
       }
@@ -482,7 +481,7 @@ export default function App() {
       // No saved tabs -- fall through to blank tab behavior
       const tab = useSessionStore.getState().tabs[0]
       if (tab) {
-        const defaultBase = useThemeStore.getState().defaultBaseDirectory
+        const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
         const startDir = defaultBase || homeDir
         const hasChosen = !!defaultBase
         useSessionStore.setState((s) => ({
@@ -602,15 +601,15 @@ export default function App() {
       }
       if (e.metaKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault()
-        useThemeStore.getState().zoomIn()
+        usePreferencesStore.getState().zoomIn()
       }
       if (e.metaKey && e.key === '-') {
         e.preventDefault()
-        useThemeStore.getState().zoomOut()
+        usePreferencesStore.getState().zoomOut()
       }
       if (e.metaKey && e.key === '0') {
         e.preventDefault()
-        useThemeStore.getState().setUiZoom(1)
+        usePreferencesStore.getState().setUiZoom(1)
       }
       if (e.metaKey && e.key === 'h') {
         e.preventDefault()

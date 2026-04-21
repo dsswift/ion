@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { InlineEditDiff } from '../InlineEditDiff'
 import type { Message } from '../../../shared/types'
 
 export function ToolRow({ tool, desc, isRunning }: { tool: Message; desc: string; isRunning: boolean }) {
   const colors = useColors()
-  const expandToolResults = useThemeStore((s) => s.expandToolResults)
+  const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
   const shouldAutoExpand = !!tool.autoExpandResult ||
     (expandToolResults && ['Edit', 'Write'].includes(tool.toolName || ''))
   const [showResult, setShowResult] = useState(!!tool.userExecuted || shouldAutoExpand)

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { PencilSimple, Trash, Plus, FolderOpen } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { SettingHeading } from './SettingHeading'
 import type { EngineProfile } from '../../../shared/types'
 
@@ -50,10 +51,10 @@ function editToProfile(id: string, e: EditState): EngineProfile {
 
 export function EngineCategory() {
   const colors = useColors()
-  const profiles = useThemeStore((s) => s.engineProfiles)
-  const addEngineProfile = useThemeStore((s) => s.addEngineProfile)
-  const updateEngineProfile = useThemeStore((s) => s.updateEngineProfile)
-  const removeEngineProfile = useThemeStore((s) => s.removeEngineProfile)
+  const profiles = usePreferencesStore((s) => s.engineProfiles)
+  const addEngineProfile = usePreferencesStore((s) => s.addEngineProfile)
+  const updateEngineProfile = usePreferencesStore((s) => s.updateEngineProfile)
+  const removeEngineProfile = usePreferencesStore((s) => s.removeEngineProfile)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [edit, setEdit] = useState<EditState>(emptyEdit)
@@ -173,11 +174,11 @@ export function EngineCategory() {
     <div style={cardStyle}>
       {renderTextInput('Name', 'name', 'e.g. cos', false)}
       {renderPathInput('Extension Directory', 'extensionDir', '~/.ion/extensions/chief-of-staff', true, false)}
-      {renderPathInput('Agents Root', 'agentsRoot', '~/.pi/agents/cloudops', true, true)}
-      {renderTextInput('Default Team', 'defaultTeam', 'cloudops-full', true)}
-      {renderTextInput('Model', 'model', 'claude-sonnet-4-20250514', true)}
-      {renderPathInput('Damage Control Rules', 'damageControlRules', '~/.pi/damage-control-rules.yaml', false, true)}
-      {renderPathInput('Universal Standards', 'universalStandards', '~/.pi/agents/cloudops/_universal-standards.md', false, true)}
+      {renderPathInput('Agents Root', 'agentsRoot', '~/.ion/agents', true, true)}
+      {renderTextInput('Default Team', 'defaultTeam', '', true)}
+      {renderTextInput('Model', 'model', '', true)}
+      {renderPathInput('Damage Control Rules', 'damageControlRules', '', false, true)}
+      {renderPathInput('Universal Standards', 'universalStandards', '', false, true)}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
         <button
           onClick={cancel}

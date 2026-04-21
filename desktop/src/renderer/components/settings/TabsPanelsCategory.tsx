@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { Trash, PencilSimple, Star, Plus, Lightning, CheckCircle } from '@phosphor-icons/react'
-import { useColors, useThemeStore, getEffectiveTabGroups } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore, getEffectiveTabGroups } from '../../preferences'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
@@ -9,19 +10,19 @@ import type { TabGroupMode, TabGroup } from '../../../shared/types'
 
 export function TabsPanelsCategory() {
   const colors = useColors()
-  const expandOnTabSwitch = useThemeStore((s) => s.expandOnTabSwitch)
-  const setExpandOnTabSwitch = useThemeStore((s) => s.setExpandOnTabSwitch)
-  const tabGroupMode = useThemeStore((s) => s.tabGroupMode)
-  const setTabGroupMode = useThemeStore((s) => s.setTabGroupMode)
-  const tabGroups = useThemeStore((s) => s.tabGroups)
-  const inProgressGroupId = useThemeStore((s) => s.inProgressGroupId)
-  const doneGroupId = useThemeStore((s) => s.doneGroupId)
-  const keepExplorerOnCollapse = useThemeStore((s) => s.keepExplorerOnCollapse)
-  const setKeepExplorerOnCollapse = useThemeStore((s) => s.setKeepExplorerOnCollapse)
-  const keepTerminalOnCollapse = useThemeStore((s) => s.keepTerminalOnCollapse)
-  const setKeepTerminalOnCollapse = useThemeStore((s) => s.setKeepTerminalOnCollapse)
-  const keepGitPanelOnCollapse = useThemeStore((s) => s.keepGitPanelOnCollapse)
-  const setKeepGitPanelOnCollapse = useThemeStore((s) => s.setKeepGitPanelOnCollapse)
+  const expandOnTabSwitch = usePreferencesStore((s) => s.expandOnTabSwitch)
+  const setExpandOnTabSwitch = usePreferencesStore((s) => s.setExpandOnTabSwitch)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
+  const setTabGroupMode = usePreferencesStore((s) => s.setTabGroupMode)
+  const tabGroups = usePreferencesStore((s) => s.tabGroups)
+  const inProgressGroupId = usePreferencesStore((s) => s.inProgressGroupId)
+  const doneGroupId = usePreferencesStore((s) => s.doneGroupId)
+  const keepExplorerOnCollapse = usePreferencesStore((s) => s.keepExplorerOnCollapse)
+  const setKeepExplorerOnCollapse = usePreferencesStore((s) => s.setKeepExplorerOnCollapse)
+  const keepTerminalOnCollapse = usePreferencesStore((s) => s.keepTerminalOnCollapse)
+  const setKeepTerminalOnCollapse = usePreferencesStore((s) => s.setKeepTerminalOnCollapse)
+  const keepGitPanelOnCollapse = usePreferencesStore((s) => s.keepGitPanelOnCollapse)
+  const setKeepGitPanelOnCollapse = usePreferencesStore((s) => s.setKeepGitPanelOnCollapse)
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -31,15 +32,15 @@ export function TabsPanelsCategory() {
     if (newMode === oldMode) return
 
     if (newMode === 'manual' && (oldMode === 'off' || oldMode === 'auto')) {
-      useThemeStore.getState().setTabGroups([])
+      usePreferencesStore.getState().setTabGroups([])
       const effectiveGroups = getEffectiveTabGroups([])
       useSessionStore.setState((s) => ({
         tabs: s.tabs.map((t) => ({ ...t, groupId: effectiveGroups[0].id })),
       }))
       const ipGroup = effectiveGroups.find(g => g.label === 'In Progress')
       const doneGroup = effectiveGroups.find(g => g.label === 'Testing')
-      if (ipGroup && !useThemeStore.getState().inProgressGroupId) useThemeStore.getState().setInProgressGroupId(ipGroup.id)
-      if (doneGroup && !useThemeStore.getState().doneGroupId) useThemeStore.getState().setDoneGroupId(doneGroup.id)
+      if (ipGroup && !usePreferencesStore.getState().inProgressGroupId) usePreferencesStore.getState().setInProgressGroupId(ipGroup.id)
+      if (doneGroup && !usePreferencesStore.getState().doneGroupId) usePreferencesStore.getState().setDoneGroupId(doneGroup.id)
     } else if (newMode === 'auto' && oldMode === 'manual') {
       useSessionStore.setState((s) => ({
         tabs: s.tabs.map((t) => ({ ...t, groupId: null })),
@@ -50,14 +51,14 @@ export function TabsPanelsCategory() {
   }, [setTabGroupMode])
 
   const materializeDefaults = useCallback((): TabGroup[] => {
-    const currentGroups = useThemeStore.getState().tabGroups
+    const currentGroups = usePreferencesStore.getState().tabGroups
     if (currentGroups.length > 0) return currentGroups
     const defaults = getEffectiveTabGroups([])
     const groups = defaults.map(g => ({
       ...g,
       id: crypto.randomUUID(),
     }))
-    useThemeStore.getState().setTabGroups(groups)
+    usePreferencesStore.getState().setTabGroups(groups)
     const defaultIds = defaults.map(d => d.id)
     useSessionStore.setState((s) => ({
       tabs: s.tabs.map((t) => {
@@ -67,8 +68,8 @@ export function TabsPanelsCategory() {
     }))
     const ipGroup = groups.find(g => g.label === 'In Progress')
     const doneGroup = groups.find(g => g.label === 'Testing')
-    if (ipGroup && !useThemeStore.getState().inProgressGroupId) useThemeStore.getState().setInProgressGroupId(ipGroup.id)
-    if (doneGroup && !useThemeStore.getState().doneGroupId) useThemeStore.getState().setDoneGroupId(doneGroup.id)
+    if (ipGroup && !usePreferencesStore.getState().inProgressGroupId) usePreferencesStore.getState().setInProgressGroupId(ipGroup.id)
+    if (doneGroup && !usePreferencesStore.getState().doneGroupId) usePreferencesStore.getState().setDoneGroupId(doneGroup.id)
     return groups
   }, [])
 
@@ -144,7 +145,7 @@ export function TabsPanelsCategory() {
                   onClick={() => {
                     const groups = materializeDefaults()
                     const target = groups.find(g => g.label === group.label) || groups[0]
-                    useThemeStore.getState().setDefaultTabGroup(target.id)
+                    usePreferencesStore.getState().setDefaultTabGroup(target.id)
                   }}
                   title={group.isDefault ? 'Default group' : 'Set as default'}
                   style={{
@@ -164,8 +165,8 @@ export function TabsPanelsCategory() {
                   onClick={() => {
                     const groups = materializeDefaults()
                     const target = groups.find(g => g.label === group.label) || groups[0]
-                    const current = useThemeStore.getState().inProgressGroupId
-                    useThemeStore.getState().setInProgressGroupId(current === target.id ? null : target.id)
+                    const current = usePreferencesStore.getState().inProgressGroupId
+                    usePreferencesStore.getState().setInProgressGroupId(current === target.id ? null : target.id)
                   }}
                   title={inProgressGroupId === group.id ? 'In-progress group (click to unset)' : 'Set as in-progress group'}
                   style={{
@@ -185,8 +186,8 @@ export function TabsPanelsCategory() {
                   onClick={() => {
                     const groups = materializeDefaults()
                     const target = groups.find(g => g.label === group.label) || groups[0]
-                    const current = useThemeStore.getState().doneGroupId
-                    useThemeStore.getState().setDoneGroupId(current === target.id ? null : target.id)
+                    const current = usePreferencesStore.getState().doneGroupId
+                    usePreferencesStore.getState().setDoneGroupId(current === target.id ? null : target.id)
                   }}
                   title={doneGroupId === group.id ? 'Done group (click to unset)' : 'Set as done group'}
                   style={{
@@ -211,7 +212,7 @@ export function TabsPanelsCategory() {
                       if (e.key === 'Enter' && editValue.trim()) {
                         const groups = materializeDefaults()
                         const target = groups.find(g => g.label === group.label) || groups.find(g => g.id === group.id)
-                        if (target) useThemeStore.getState().renameTabGroup(target.id, editValue.trim())
+                        if (target) usePreferencesStore.getState().renameTabGroup(target.id, editValue.trim())
                         setEditingGroupId(null)
                       }
                       if (e.key === 'Escape') setEditingGroupId(null)
@@ -220,7 +221,7 @@ export function TabsPanelsCategory() {
                       if (editValue.trim()) {
                         const groups = materializeDefaults()
                         const target = groups.find(g => g.label === group.label) || groups.find(g => g.id === group.id)
-                        if (target) useThemeStore.getState().renameTabGroup(target.id, editValue.trim())
+                        if (target) usePreferencesStore.getState().renameTabGroup(target.id, editValue.trim())
                       }
                       setEditingGroupId(null)
                     }}
@@ -291,7 +292,7 @@ export function TabsPanelsCategory() {
                         tabs: s.tabs.map((t) => t.groupId === target.id ? { ...t, groupId: defaults[0].id } : t),
                       }))
                     }
-                    useThemeStore.getState().deleteTabGroup(target.id)
+                    usePreferencesStore.getState().deleteTabGroup(target.id)
                   }}
                   title="Delete group"
                   style={{
@@ -327,7 +328,7 @@ export function TabsPanelsCategory() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newGroupName.trim()) {
                     materializeDefaults()
-                    useThemeStore.getState().createTabGroup(newGroupName.trim())
+                    usePreferencesStore.getState().createTabGroup(newGroupName.trim())
                     setNewGroupName('')
                   }
                   if (e.key === 'Escape') setNewGroupName('')

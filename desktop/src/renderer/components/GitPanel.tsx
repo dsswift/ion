@@ -8,7 +8,8 @@ import {
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { DiffViewer } from './DiffViewer'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
@@ -960,7 +961,7 @@ function GitGraphSection({
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
   const [finishMenuAnchor, setFinishMenuAnchor] = useState<{ x: number; y: number } | null>(null)
-  const strategy = useThemeStore((s) => s.worktreeCompletionStrategy)
+  const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -1432,7 +1433,7 @@ function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  const strategy = useThemeStore((s) => s.worktreeCompletionStrategy)
+  const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
 
   useEffect(() => {
@@ -1635,7 +1636,7 @@ function useDragSplit(
 
 export function GitPanel() {
   const colors = useColors()
-  const expandedUI = useThemeStore((s) => s.expandedUI)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
   const tab = useSessionStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId),
     (a, b) => a === b || (!!a && !!b && a.workingDirectory === b.workingDirectory && a.worktree === b.worktree),
@@ -1643,17 +1644,17 @@ export function GitPanel() {
   const directory = tab?.workingDirectory || '~'
   const worktree = tab?.worktree ?? null
 
-  const changesOpen = useThemeStore((s) => s.gitPanelChangesOpen)
-  const setChangesOpen = useThemeStore((s) => s.setGitPanelChangesOpen)
-  const graphOpen = useThemeStore((s) => s.gitPanelGraphOpen)
-  const setGraphOpen = useThemeStore((s) => s.setGitPanelGraphOpen)
+  const changesOpen = usePreferencesStore((s) => s.gitPanelChangesOpen)
+  const setChangesOpen = usePreferencesStore((s) => s.setGitPanelChangesOpen)
+  const graphOpen = usePreferencesStore((s) => s.gitPanelGraphOpen)
+  const setGraphOpen = usePreferencesStore((s) => s.setGitPanelGraphOpen)
   const files = useGitPollingStore((s) => s.files)
   const refreshKey = useGitPollingStore((s) => s.refreshKey)
-  const splitRatio = useThemeStore((s) => s.gitPanelSplitRatio)
-  const setSplitRatio = useThemeStore((s) => s.setGitPanelSplitRatio)
+  const splitRatio = usePreferencesStore((s) => s.gitPanelSplitRatio)
+  const setSplitRatio = usePreferencesStore((s) => s.setGitPanelSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
-  const commitCommand = useThemeStore((s) => s.commitCommand)
-  const gitChangesTreeView = useThemeStore((s) => s.gitChangesTreeView)
+  const commitCommand = usePreferencesStore((s) => s.commitCommand)
+  const gitChangesTreeView = usePreferencesStore((s) => s.gitChangesTreeView)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const [commitMsg, setCommitMsg] = useState('')
 
@@ -1666,7 +1667,7 @@ export function GitPanel() {
       setCommitMsg('')
       setRefreshKey((k) => k + 1)
       // Move tab to done group after successful commit
-      const { doneGroupId, tabGroupMode } = useThemeStore.getState()
+      const { doneGroupId, tabGroupMode } = usePreferencesStore.getState()
       const { activeTabId: tabId, tabs: allTabs, moveTabToGroup } = useSessionStore.getState()
       const tab = allTabs.find(t => t.id === tabId)
       if (doneGroupId && tabGroupMode === 'manual' && tab && tab.groupId !== doneGroupId) {
@@ -1683,7 +1684,7 @@ export function GitPanel() {
       useSessionStore.getState().sendMessage('commit the current changes')
     }
     // Move tab to done group -- user explicitly chose to commit
-    const { doneGroupId, tabGroupMode } = useThemeStore.getState()
+    const { doneGroupId, tabGroupMode } = usePreferencesStore.getState()
     const { activeTabId: tabId, tabs: allTabs, moveTabToGroup } = useSessionStore.getState()
     const tab = allTabs.find(t => t.id === tabId)
     if (doneGroupId && tabGroupMode === 'manual' && tab && tab.groupId !== doneGroupId) {
@@ -1821,7 +1822,7 @@ export function GitPanel() {
             <>
               <div style={{ flex: 1 }} />
               <button
-                onClick={() => useThemeStore.getState().setGitChangesTreeView(!gitChangesTreeView)}
+                onClick={() => usePreferencesStore.getState().setGitChangesTreeView(!gitChangesTreeView)}
                 className="p-0.5 rounded transition-colors"
                 style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                 title={gitChangesTreeView ? 'List view' : 'Tree view'}
@@ -1871,7 +1872,7 @@ export function GitPanel() {
                   display: 'flex',
                   alignItems: 'center',
                 }}
-                title={commitCommand ? `Run: ${commitCommand}` : 'Let Claude commit'}
+                title={commitCommand ? `Run: ${commitCommand}` : 'Let Ion commit'}
               >
                 <Robot size={13} />
               </button>

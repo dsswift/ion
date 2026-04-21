@@ -1,6 +1,6 @@
 .PHONY: install desktop engine relay relay-local ios test clean
 
-install: engine
+install: engine desktop
 
 desktop:
 	@cd desktop && bash commands/install-bg.command

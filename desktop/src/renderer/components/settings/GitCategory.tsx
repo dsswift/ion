@@ -1,6 +1,7 @@
 import React from 'react'
 import { Trash } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
@@ -8,18 +9,18 @@ import type { GitOpsMode, WorktreeCompletionStrategy } from '../../../shared/typ
 
 export function GitCategory() {
   const colors = useColors()
-  const gitOpsMode = useThemeStore((s) => s.gitOpsMode)
-  const setGitOpsMode = useThemeStore((s) => s.setGitOpsMode)
-  const worktreeCompletionStrategy = useThemeStore((s) => s.worktreeCompletionStrategy)
-  const setWorktreeCompletionStrategy = useThemeStore((s) => s.setWorktreeCompletionStrategy)
-  const worktreeSkipPrTitle = useThemeStore((s) => s.worktreeSkipPrTitle)
-  const setWorktreeSkipPrTitle = useThemeStore((s) => s.setWorktreeSkipPrTitle)
-  const worktreeBranchDefaults = useThemeStore((s) => s.worktreeBranchDefaults)
-  const removeWorktreeBranchDefault = useThemeStore((s) => s.removeWorktreeBranchDefault)
-  const commitCommand = useThemeStore((s) => s.commitCommand)
-  const setCommitCommand = useThemeStore((s) => s.setCommitCommand)
-  const gitChangesTreeView = useThemeStore((s) => s.gitChangesTreeView)
-  const setGitChangesTreeView = useThemeStore((s) => s.setGitChangesTreeView)
+  const gitOpsMode = usePreferencesStore((s) => s.gitOpsMode)
+  const setGitOpsMode = usePreferencesStore((s) => s.setGitOpsMode)
+  const worktreeCompletionStrategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
+  const setWorktreeCompletionStrategy = usePreferencesStore((s) => s.setWorktreeCompletionStrategy)
+  const worktreeSkipPrTitle = usePreferencesStore((s) => s.worktreeSkipPrTitle)
+  const setWorktreeSkipPrTitle = usePreferencesStore((s) => s.setWorktreeSkipPrTitle)
+  const worktreeBranchDefaults = usePreferencesStore((s) => s.worktreeBranchDefaults)
+  const removeWorktreeBranchDefault = usePreferencesStore((s) => s.removeWorktreeBranchDefault)
+  const commitCommand = usePreferencesStore((s) => s.commitCommand)
+  const setCommitCommand = usePreferencesStore((s) => s.setCommitCommand)
+  const gitChangesTreeView = usePreferencesStore((s) => s.gitChangesTreeView)
+  const setGitChangesTreeView = usePreferencesStore((s) => s.setGitChangesTreeView)
 
   return (
     <>

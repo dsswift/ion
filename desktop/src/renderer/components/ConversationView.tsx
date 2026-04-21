@@ -10,7 +10,8 @@ import { useSessionStore } from '../stores/sessionStore'
 import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { PlanViewer } from './PlanViewer'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { useNavigableText, NavigableText, NavigableCode } from '../hooks/useNavigableLinks'
 import { TodoListPanel } from './TodoListPanel'
 import {
@@ -58,7 +59,7 @@ export function ConversationView() {
   const isNearBottomRef = useRef(true)
   const prevTabIdRef = useRef(activeTabId)
   const colors = useColors()
-  const expandedUI = useThemeStore((s) => s.expandedUI)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
   const isTallView = useSessionStore((s) => s.tallViewTabId === s.activeTabId)
   const scrollToBottomCounter = useSessionStore((s) => s.scrollToBottomCounter)
 
@@ -210,6 +211,7 @@ export function ConversationView() {
               sessionId={tab.conversationId}
               projectPath={staticInfo?.projectPath || process.cwd()}
               messages={tab.messages}
+              tabPlanFilePath={tab.planFilePath}
               onDismiss={() => {
                 useSessionStore.setState((s) => ({
                   tabs: s.tabs.map((t) =>
@@ -250,7 +252,7 @@ export function ConversationView() {
                 useSessionStore.getState().setPermissionMode('auto')
 
                 // Auto-move tab to in-progress group if designated
-                const { inProgressGroupId, tabGroupMode } = useThemeStore.getState()
+                const { inProgressGroupId, tabGroupMode } = usePreferencesStore.getState()
                 if (inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
                   useSessionStore.getState().moveTabToGroup(tab.id, inProgressGroupId)
                 }
@@ -281,8 +283,7 @@ export function ConversationView() {
                   }
                 }
 
-                // Both paths start a fresh Claude session to break out of
-                // plan mode (known Claude Code bug: #32868, #32934).
+                // Both paths start a fresh session to break out of plan mode.
                 window.ion.resetTabSession(tab.id)
 
                 if (clearContext) {

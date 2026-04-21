@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear, ListChecks } from '@phosphor-icons/react'
-import { useThemeStore } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
@@ -44,15 +44,15 @@ function RowToggle({
 /* ─── Settings popover ─── */
 
 export function SettingsPopover() {
-  const soundEnabled = useThemeStore((s) => s.soundEnabled)
-  const setSoundEnabled = useThemeStore((s) => s.setSoundEnabled)
-  const themeMode = useThemeStore((s) => s.themeMode)
-  const setThemeMode = useThemeStore((s) => s.setThemeMode)
-  const expandedUI = useThemeStore((s) => s.expandedUI)
-  const setExpandedUI = useThemeStore((s) => s.setExpandedUI)
+  const soundEnabled = usePreferencesStore((s) => s.soundEnabled)
+  const setSoundEnabled = usePreferencesStore((s) => s.setSoundEnabled)
+  const themeMode = usePreferencesStore((s) => s.themeMode)
+  const setThemeMode = usePreferencesStore((s) => s.setThemeMode)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
+  const setExpandedUI = usePreferencesStore((s) => s.setExpandedUI)
   const isExpanded = useSessionStore((s) => s.isExpanded)
-  const showTodoList = useThemeStore((s) => s.showTodoList)
-  const setShowTodoList = useThemeStore((s) => s.setShowTodoList)
+  const showTodoList = usePreferencesStore((s) => s.showTodoList)
+  const setShowTodoList = usePreferencesStore((s) => s.setShowTodoList)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 

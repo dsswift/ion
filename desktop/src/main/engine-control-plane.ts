@@ -18,12 +18,11 @@ function debug(msg: string): void { _debug(TAG, msg) }
 function warn(msg: string): void { _warn(TAG, msg) }
 function error(msg: string): void { _error(TAG, msg) }
 
-// Appended to Claude's default system prompt so it knows it's running inside Ion.
+// Appended to the system prompt so the LLM knows it's running inside Ion.
 const ION_SYSTEM_HINT = [
   'IMPORTANT: You are NOT running in a terminal. You are running inside Ion,',
   'a desktop chat application with a rich UI that renders full markdown.',
-  'Ion is a GUI wrapper around Claude Code — the user sees your output in a',
-  'styled conversation view, not a raw terminal.',
+  'The user sees your output in a styled conversation view, not a raw terminal.',
   '',
   'Because Ion renders markdown natively, you MUST use rich formatting when it helps:',
   '- Always use clickable markdown links: [label](https://url) — they render as real buttons.',
@@ -58,9 +57,9 @@ interface TabEntry {
 
 /**
  * EngineControlPlane wraps EngineBridge to present the same public API
- * as the legacy ControlPlane (which spawned Claude CLI directly).
+ * as the ControlPlane interface.
  *
- * All prompts now route through the Ion engine daemon via Unix socket.
+ * All prompts route through the Ion engine daemon via Unix socket.
  *
  * Events emitted:
  *  - 'event' (tabId, NormalizedEvent)
@@ -161,10 +160,10 @@ export class EngineControlPlane extends EventEmitter {
   // ─── Permission mode ───
 
   setPermissionMode(tabId: string, mode: 'auto' | 'plan'): void {
-    const tab = this.tabs.get(tabId)
-    if (!tab) return
+    this.ensureTab(tabId)
+    const tab = this.tabs.get(tabId)!
     tab.permissionMode = mode
-    // Forward to engine for CLI backend
+    // Forward to engine (no-op if session doesn't exist yet; re-applied after startSession)
     this.bridge.sendSetPlanMode(tabId, mode === 'plan')
   }
 
@@ -203,7 +202,7 @@ export class EngineControlPlane extends EventEmitter {
       extensionDir: '',
       model: options.model,
       workingDirectory: options.projectPath,
-      sessionId: options.sessionId,
+      sessionId: options.sessionId || tab.conversationId || undefined,
       maxTokens: options.maxTokens,
       thinking: options.thinking,
     }
@@ -225,6 +224,11 @@ export class EngineControlPlane extends EventEmitter {
         return
       }
       tab.engineSessionStarted = true
+
+      // Re-apply plan mode: set_plan_mode sent before session start was dropped
+      if (tab.permissionMode === 'plan') {
+        this.bridge.sendSetPlanMode(tabId, true)
+      }
     }
 
     this._setStatus(tabId, 'running')
@@ -298,6 +302,24 @@ export class EngineControlPlane extends EventEmitter {
       }
     }
     return false
+  }
+
+  // ─── Session history (delegates to internal bridge) ───
+
+  async listStoredSessions(limit?: number): Promise<any[]> {
+    return this.bridge.listStoredSessions(limit)
+  }
+
+  async loadSessionHistory(sessionId: string): Promise<any[]> {
+    return this.bridge.loadSessionHistory(sessionId)
+  }
+
+  async loadChainHistory(sessionIds: string[]): Promise<any[]> {
+    return this.bridge.loadChainHistory(sessionIds)
+  }
+
+  async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
+    return this.bridge.saveSessionLabel(sessionId, label)
   }
 
   // ─── Shutdown / drain ───
@@ -382,6 +404,14 @@ export class EngineControlPlane extends EventEmitter {
             if (event.fields.sessionId) {
               tab.conversationId = event.fields.sessionId
             }
+
+            // Skip duplicate idle events after plan exit (handleRunExit sends a second
+            // engine_status{idle} without permissionDenials that would clobber the card)
+            if (tab.status === 'completed') {
+              log(`engine_status: skipping duplicate idle for completed tab ${tabId}`)
+              break
+            }
+
             // Run completed
             const durationMs = tab.startedAt ? Date.now() - tab.startedAt : 0
             this.emit('event', tabId, {
@@ -392,10 +422,13 @@ export class EngineControlPlane extends EventEmitter {
               numTurns: 1,
               usage: { input_tokens: 0, output_tokens: 0 },
               sessionId: tab.conversationId || '',
+              permissionDenials: event.fields.permissionDenials,
             } as NormalizedEvent)
 
             tab.activeRequestId = null
-            this._setStatus(tabId, 'idle')
+            // Use 'completed' when plan card should persist (renderer preserves permissionDenied for completed)
+            const hasExitPlan = event.fields.permissionDenials?.some((d: any) => d.toolName === 'ExitPlanMode')
+            this._setStatus(tabId, hasExitPlan ? 'completed' : 'idle')
             this._checkDrain()
           } else if (event.fields.state === 'running') {
             this._setStatus(tabId, 'running')
@@ -418,7 +451,12 @@ export class EngineControlPlane extends EventEmitter {
         // run exit). Only treat non-zero as a real error.
         if (event.exitCode === 0 || event.exitCode === null || event.exitCode === undefined) {
           tab.activeRequestId = null
-          this._setStatus(tabId, 'idle')
+          tab.engineSessionStarted = false // allow transparent re-creation after idle cleanup
+          // Preserve 'completed' status (plan card visible) — idle timeout cleanup
+          // should not wipe the card. Next prompt will transition to 'running'.
+          if (tab.status !== 'completed') {
+            this._setStatus(tabId, 'idle')
+          }
           this._checkDrain()
           break
         }
@@ -482,6 +520,16 @@ export class EngineControlPlane extends EventEmitter {
             isError: true,
           } as NormalizedEvent)
         }
+        break
+
+      case 'engine_plan_mode_changed':
+        log(`plan_mode_changed: tabId=${tabId} enabled=${event.planModeEnabled}`)
+        this.emit('event', tabId, event as any)
+        break
+
+      case 'engine_stream_reset':
+        log(`stream_reset: tabId=${tabId} (retry in progress, discarding partial text)`)
+        this.emit('event', tabId, { type: 'stream_reset' } as NormalizedEvent)
         break
 
       case 'engine_agent_state':

@@ -11,7 +11,7 @@ import type {
 } from '../../shared/types'
 
 /**
- * Maps raw Claude stream-json events to canonical Ion events.
+ * Maps raw CLI backend stream-json events to canonical Ion events.
  *
  * The normalizer is stateless — it takes one raw event and returns
  * zero or more normalized events. The caller (RunManager) is responsible

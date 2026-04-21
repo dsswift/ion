@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Trash, Plus, MagnifyingGlass, ArrowClockwise, PencilSimple, FloppyDisk, X, CircleNotch, Bug } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingHeading } from './SettingHeading'
 import type { RemotePairedDevice, RemoteTransportState } from '../../../shared/types'
@@ -15,16 +16,16 @@ interface DiscoveredRelay {
 
 export function RemoteCategory() {
   const colors = useColors()
-  const remoteEnabled = useThemeStore((s) => s.remoteEnabled)
-  const setRemoteEnabled = useThemeStore((s) => s.setRemoteEnabled)
-  const relayUrl = useThemeStore((s) => s.relayUrl)
-  const setRelayUrl = useThemeStore((s) => s.setRelayUrl)
-  const relayApiKey = useThemeStore((s) => s.relayApiKey)
-  const setRelayApiKey = useThemeStore((s) => s.setRelayApiKey)
-  const pairedDevices = useThemeStore((s) => s.pairedDevices)
-  const removePairedDevice = useThemeStore((s) => s.removePairedDevice)
+  const remoteEnabled = usePreferencesStore((s) => s.remoteEnabled)
+  const setRemoteEnabled = usePreferencesStore((s) => s.setRemoteEnabled)
+  const relayUrl = usePreferencesStore((s) => s.relayUrl)
+  const setRelayUrl = usePreferencesStore((s) => s.setRelayUrl)
+  const relayApiKey = usePreferencesStore((s) => s.relayApiKey)
+  const setRelayApiKey = usePreferencesStore((s) => s.setRelayApiKey)
+  const pairedDevices = usePreferencesStore((s) => s.pairedDevices)
+  const removePairedDevice = usePreferencesStore((s) => s.removePairedDevice)
 
-  const addPairedDevice = useThemeStore((s) => s.addPairedDevice)
+  const addPairedDevice = usePreferencesStore((s) => s.addPairedDevice)
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [transportState, setTransportState] = useState<RemoteTransportState>('disconnected')
   const [discoveredRelays, setDiscoveredRelays] = useState<DiscoveredRelay[]>([])

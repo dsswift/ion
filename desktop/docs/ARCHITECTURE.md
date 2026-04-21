@@ -132,9 +132,11 @@ Single Zustand store (`stores/sessionStore.ts`) holds all application state:
 
 ### Theme System (`theme.ts`)
 
-Dual color palette (dark + light) defined as JS objects. `useColors()` hook returns the active palette reactively. All tokens are synced to CSS custom properties via `syncTokensToCss()` so CSS files can reference `var(--ion-*)`.
+Dual color palette (dark + light) defined as JS objects. `useColors()` hook returns the active palette reactively. All tokens are synced to CSS custom properties via `syncTokensToCss()` so CSS files can reference `var(--ion-*)`. Also exports `spacing` and `motion` constants.
 
-Theme mode state machine: `system | light | dark` with separate `_systemIsDark` tracking for OS value.
+### Preferences Store (`preferences.ts`)
+
+All persistent user settings (40+ fields) managed via Zustand. Accessed with `usePreferencesStore()`. Handles theme mode (`system | light | dark`), UI layout, git operations, remote control, engine profiles, and more. Settings auto-persist to disk via `window.ion.saveSettings()`.
 
 ### Key Components
 

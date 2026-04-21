@@ -1,10 +1,16 @@
 // ─── Known models ───
 
 export const AVAILABLE_MODELS = [
-  { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
+  { id: 'claude-opus-4-6', label: 'Opus 4.6', contextWindow: 1_000_000 },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', contextWindow: 200_000 },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', contextWindow: 200_000 },
 ] as const
+
+export function getModelContextWindow(modelId: string): number {
+  const normalizedId = normalizeModelId(modelId)
+  const known = AVAILABLE_MODELS.find((m) => normalizedId === m.id || normalizedId.startsWith(m.id + '-'))
+  return known?.contextWindow ?? 200_000
+}
 
 function normalizeModelId(modelId: string): string {
   return modelId.replace(/\[[^\]]+\]/g, '').trim()

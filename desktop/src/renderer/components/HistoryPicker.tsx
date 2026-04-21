@@ -4,7 +4,8 @@ import { motion } from 'framer-motion'
 import { Clock, ChatCircle, Stack } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import type { SessionMeta } from '../../shared/types'
 
 function formatTimeAgo(isoDate: string): string {
@@ -141,8 +142,8 @@ export function HistoryPicker() {
 
     // Add the directory to recent base directories so it appears in the new-tab picker
     if (session.projectPath) {
-      useThemeStore.getState().addRecentBaseDirectory(session.projectPath)
-      useThemeStore.getState().incrementDirectoryUsage(session.projectPath)
+      usePreferencesStore.getState().addRecentBaseDirectory(session.projectPath)
+      usePreferencesStore.getState().incrementDirectoryUsage(session.projectPath)
     }
   }
 

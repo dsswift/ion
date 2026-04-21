@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import '@xterm/xterm/css/xterm.css'
 
@@ -72,9 +73,9 @@ interface Props {
 export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const colors = useColors()
-  const terminalFontFamily = useThemeStore((s) => s.terminalFontFamily)
-  const terminalFontSize = useThemeStore((s) => s.terminalFontSize)
-  const uiZoom = useThemeStore((s) => s.uiZoom)
+  const terminalFontFamily = usePreferencesStore((s) => s.terminalFontFamily)
+  const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize)
+  const uiZoom = usePreferencesStore((s) => s.uiZoom)
   const key = `${tabId}:${instanceId}`
 
   useEffect(() => {

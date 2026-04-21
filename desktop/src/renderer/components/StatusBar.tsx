@@ -3,15 +3,29 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil, ArrowsOutSimple, ArrowsInSimple, Copy } from '@phosphor-icons/react'
 import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
+import { getModelContextWindow } from '../stores/model-labels'
 import { usePopoverLayer } from './PopoverLayer'
-import { useColors, useThemeStore } from '../theme'
+import { useColors } from '../theme'
+import { usePreferencesStore } from '../preferences'
 import { useGitPolling, useGitPollingStore } from '../hooks/useGitPolling'
+
+/* ─── Backend Indicator (shows "CLI" when in CLI bridge proxy mode) ─── */
+
+function BackendIndicator() {
+  const backend = useSessionStore((s) => s.backend)
+
+  if (backend !== 'cli') return null
+
+  return (
+    <span style={{ color: '#e5a100', fontSize: 10, fontWeight: 500 }}>CLI</span>
+  )
+}
 
 /* ─── Model Picker (inline — tightly coupled to StatusBar) ─── */
 
 function ModelPicker() {
-  const preferredModel = useSessionStore((s) => s.preferredModel)
-  const setPreferredModel = useSessionStore((s) => s.setPreferredModel)
+  const preferredModel = usePreferencesStore((s) => s.preferredModel)
+  const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
   const tab = useSessionStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId),
     (a, b) => a === b || (!!a && !!b && a.status === b.status && a.sessionModel === b.sessionModel),
@@ -134,27 +148,83 @@ function ModelPicker() {
 
 function ContextIndicator() {
   const colors = useColors()
-  const { contextTokens, sessionModel } = useSessionStore(
+  const popoverLayer = usePopoverLayer()
+  const preferredModel = usePreferencesStore((s) => s.preferredModel)
+  const { contextTokens, contextPercent } = useSessionStore(
     (s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      return { contextTokens: tab?.contextTokens ?? null, sessionModel: tab?.sessionModel ?? null }
+      return { contextTokens: tab?.contextTokens ?? null, contextPercent: tab?.contextPercent ?? null }
     },
-    (a, b) => a.contextTokens === b.contextTokens && a.sessionModel === b.sessionModel,
+    (a, b) => a.contextTokens === b.contextTokens && a.contextPercent === b.contextPercent,
   )
 
-  if (contextTokens === null) return null
+  const [hover, setHover] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
-  const windowSize = sessionModel?.includes('[1m]') ? 1_000_000 : 200_000
-  const pct = Math.round((contextTokens / windowSize) * 100)
+  const windowSize = getModelContextWindow(preferredModel)
+
+  // Use engine-computed percent when available, otherwise calculate locally
+  const pct = contextPercent != null
+    ? contextPercent
+    : contextTokens != null
+      ? Math.round((contextTokens / windowSize) * 100)
+      : null
+
+  if (pct === null) return null
+
+  const tokens = contextTokens ?? (pct * windowSize / 100)
+  const formatTokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`
+  const tooltip = `${formatTokens(tokens)} / ${formatTokens(windowSize)} tokens`
 
   let color = colors.textTertiary
   if (pct >= 70) color = '#e06040'
   else if (pct >= 50) color = '#d4a017'
 
+  const handleEnter = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect()
+      setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left + rect.width / 2 })
+    }
+    setHover(true)
+  }
+
   return (
-    <span className="text-[10px] px-0.5" style={{ color }}>
-      {pct}%
-    </span>
+    <>
+      <span
+        ref={ref}
+        className="text-[10px] px-0.5"
+        style={{ color, cursor: 'default' }}
+        onMouseEnter={handleEnter}
+        onMouseLeave={() => setHover(false)}
+      >
+        {pct}%
+      </span>
+      {popoverLayer && hover && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            bottom: pos.bottom,
+            left: pos.left,
+            transform: 'translateX(-50%)',
+            pointerEvents: 'none',
+            background: colors.popoverBg,
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: `1px solid ${colors.popoverBorder}`,
+            borderRadius: 6,
+            padding: '3px 8px',
+            fontSize: 10,
+            color: colors.textSecondary,
+            whiteSpace: 'nowrap',
+            boxShadow: colors.popoverShadow,
+          }}
+        >
+          {tooltip}
+        </div>,
+        popoverLayer,
+      )}
+    </>
   )
 }
 
@@ -166,6 +236,7 @@ function PermissionModePicker() {
   )
   const setPermissionMode = useSessionStore((s) => s.setPermissionMode)
   const activeTabId = useSessionStore((s) => s.activeTabId)
+  const backend = useSessionStore((s) => s.backend)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -196,6 +267,19 @@ function PermissionModePicker() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
+
+  // CLI mode doesn't support plan mode
+  if (backend === 'cli') {
+    return (
+      <span
+        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5"
+        style={{ color: colors.textTertiary }}
+      >
+        <ShieldCheck size={11} weight="fill" />
+        Auto
+      </span>
+    )
+  }
 
   const handleToggle = () => {
     if (!open) updatePos()
@@ -300,8 +384,8 @@ function OpenWithPicker() {
     (s) => s.tabs.find((t) => t.id === s.activeTabId),
     (a, b) => a === b || (!!a && !!b && a.conversationId === b.conversationId && a.workingDirectory === b.workingDirectory),
   )
-  const preferredOpenWith = useThemeStore((s) => s.preferredOpenWith)
-  const setPreferredOpenWith = useThemeStore((s) => s.setPreferredOpenWith)
+  const preferredOpenWith = usePreferencesStore((s) => s.preferredOpenWith)
+  const setPreferredOpenWith = usePreferencesStore((s) => s.setPreferredOpenWith)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
@@ -726,6 +810,7 @@ export function StatusBar() {
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 
+        <BackendIndicator />
         <ModelPicker />
         <ContextIndicator />
 

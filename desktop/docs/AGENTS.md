@@ -48,6 +48,7 @@ Claude Code CLI (claude -p --output-format stream-json)
 | All TypeScript types & IPC channels | `src/shared/types.ts` |
 | Zustand state store | `src/renderer/stores/sessionStore.ts` |
 | Theme / color system | `src/renderer/theme.ts` |
+| Preferences store | `src/renderer/preferences.ts` |
 | Main window & IPC handler setup | `src/main/index.ts` |
 | Marketplace catalog | `src/main/marketplace/catalog.ts` |
 | Skill installer | `src/main/skills/installer.ts` |

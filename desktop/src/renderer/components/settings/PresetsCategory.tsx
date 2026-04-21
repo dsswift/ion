@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { UserCircle, Code } from '@phosphor-icons/react'
-import { useColors, useThemeStore } from '../../theme'
+import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import type { Icon } from '@phosphor-icons/react'
 
 interface Preset {
@@ -69,7 +70,7 @@ const PRESETS: Preset[] = [
 
 export function PresetsCategory() {
   const colors = useColors()
-  const applyPreset = useThemeStore((s) => s.applyPreset)
+  const applyPreset = usePreferencesStore((s) => s.applyPreset)
   const [confirming, setConfirming] = useState<string | null>(null)
 
   const handleApply = (preset: Preset) => {
