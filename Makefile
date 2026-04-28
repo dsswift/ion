@@ -1,4 +1,4 @@
-.PHONY: install desktop engine relay relay-local ios test clean
+.PHONY: install desktop engine relay relay-local ios ios-check test clean
 
 install: engine desktop
 
@@ -15,6 +15,9 @@ relay-local:
 	@cd relay && go run .
 
 ios:
+	@cd ios && bash commands/install.command
+
+ios-check:
 	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
 		-destination 'generic/platform=iOS' build 2>&1 | grep -E "error:|BUILD"
 
