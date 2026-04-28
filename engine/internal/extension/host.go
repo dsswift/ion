@@ -1536,7 +1536,18 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 		}
 	}
 	if ctx.Config != nil {
-		wrapped["_ctx"].(map[string]interface{})["config"] = ctx.Config
+		// Populate ExtensionDir from this host's loaded config when the
+		// session-wide ctx.Config does not have one. The session manager
+		// builds a single ctx for all extensions on the session and cannot
+		// know which host is being called, so the per-host fill-in happens
+		// here. Without it, extension code reading ctx.config.extensionDir
+		// gets an empty string and falls back to ESM-incompatible globals
+		// like __filename.
+		cfg := *ctx.Config
+		if cfg.ExtensionDir == "" && h.loadedConfig != nil && h.loadedConfig.ExtensionDir != "" {
+			cfg.ExtensionDir = h.loadedConfig.ExtensionDir
+		}
+		wrapped["_ctx"].(map[string]interface{})["config"] = cfg
 	}
 
 	// Merge hook-specific payload into the wrapped map.
