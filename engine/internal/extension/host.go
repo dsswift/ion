@@ -1770,7 +1770,7 @@ func logHookErr(hook string, err error) {
 	if errors.Is(err, errExtensionDeadSilent) {
 		return
 	}
-	logHookErr(hook, err)
+	utils.Warn("extension", fmt.Sprintf("hook %s error: %v", hook, err))
 }
 
 // emitHookEvents checks a hook response for an "events" array and emits
