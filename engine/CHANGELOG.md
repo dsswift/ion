@@ -12,3 +12,6 @@ primitives (sandboxing, secret redaction, dangerous command blocking,
 permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
+
+## [1.0.1](https://github.com/dsswift/ion/compare/engine-v1.0.0...engine-v1.0.1) (2026-04-28)
+

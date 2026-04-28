@@ -9,3 +9,6 @@ Initial 1.0.0 baseline. Reference iOS client for Ion Engine, connecting
 through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
+
+## [1.0.1](https://github.com/dsswift/ion/compare/ios-v1.0.0...ios-v1.0.1) (2026-04-28)
+
