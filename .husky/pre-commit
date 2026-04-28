@@ -1,0 +1,7 @@
+STAGED=$(git diff --cached --name-only)
+if echo "$STAGED" | grep -q '\.github/workflows/'; then
+  if command -v actionlint >/dev/null 2>&1; then
+    echo "pre-commit: validating workflow files..."
+    actionlint .github/workflows/*.yml
+  fi
+fi

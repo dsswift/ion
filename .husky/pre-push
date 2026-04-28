@@ -1,0 +1,18 @@
+# Validate GitHub Actions workflows
+if command -v actionlint >/dev/null 2>&1; then
+  echo "pre-push: validating workflow files..."
+  actionlint .github/workflows/*.yml
+fi
+
+# Verify builds for changed components
+CHANGED=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1)
+
+if echo "$CHANGED" | grep -q '^engine/'; then
+  echo "pre-push: verifying engine build..."
+  (cd engine && go build ./...)
+fi
+
+if echo "$CHANGED" | grep -q '^desktop/'; then
+  echo "pre-push: verifying desktop build..."
+  (cd desktop && npm run build)
+fi
