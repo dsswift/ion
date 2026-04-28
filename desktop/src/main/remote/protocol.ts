@@ -132,6 +132,7 @@ export type RemoteEvent =
   | { type: 'engine_instance_added'; tabId: string; instance: { id: string; label: string } }
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
+  | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   | { type: 'heartbeat'; seq: number; ts: number; buffered: number }
   | { type: 'unpair' }
   | { type: 'relay_config'; relayUrl: string; relayApiKey: string }

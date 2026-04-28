@@ -57,8 +57,8 @@ let screenshotCounter = 0
 let toggleSequence = 0
 let forceQuit = false
 
-const sessionPlane = new EngineControlPlane()
 const engineBridge = new EngineBridge()
+const sessionPlane = new EngineControlPlane(engineBridge)
 
 // Forward-declared — initialized after broadcast() is defined
 let terminalManager: TerminalManager
@@ -569,7 +569,7 @@ ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
 // ─── Engine IPC handlers ───
 
 ipcMain.handle(IPC.ENGINE_START, async (_event, { key, config }: { key: string; config: import('../shared/types').EngineConfig }) => {
-  log(`IPC ENGINE_START: key=${key} ext=${config.extensionDir}`)
+  log(`IPC ENGINE_START: key=${key} ext=${config.extensions?.join(',')}`)
   return engineBridge.startSession(key, config)
 })
 
@@ -582,6 +582,14 @@ ipcMain.handle(IPC.ENGINE_ABORT, (_event, { key }: { key: string }) => {
   log(`IPC ENGINE_ABORT: key=${key}`)
   engineBridge.sendAbort(key)
 })
+
+ipcMain.handle(
+  IPC.ENGINE_ABORT_AGENT,
+  (_event, { key, agentName, subtree }: { key: string; agentName: string; subtree?: boolean }) => {
+    log(`IPC ENGINE_ABORT_AGENT: key=${key} agent=${agentName} subtree=${subtree ?? false}`)
+    engineBridge.sendAbortAgent(key, agentName, subtree ?? false)
+  },
+)
 
 ipcMain.handle(IPC.ENGINE_DIALOG_RESPONSE, (_event, { key, dialogId, value }: { key: string; dialogId: string; value: any }) => {
   log(`IPC ENGINE_DIALOG_RESPONSE: key=${key} dialog=${dialogId}`)
@@ -598,14 +606,14 @@ ipcMain.handle(IPC.ENGINE_STOP, (_event, { key }: { key: string }) => {
   engineBridge.stopSession(key)
 })
 
-ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string }) => {
-  const { tabId, mode } = payload
+ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string; source?: string }) => {
+  const { tabId, mode, source } = payload
   if (mode !== 'auto' && mode !== 'plan') {
     log(`IPC SET_PERMISSION_MODE: invalid mode "${mode}" — ignoring`)
     return
   }
-  log(`IPC SET_PERMISSION_MODE: tab=${tabId} mode=${mode}`)
-  sessionPlane.setPermissionMode(tabId, mode)
+  log(`IPC SET_PERMISSION_MODE: tab=${tabId} mode=${mode} source=${source ?? 'unknown'}`)
+  sessionPlane.setPermissionMode(tabId, mode, source)
 })
 
 // ─── Bash command execution ───
@@ -1225,6 +1233,96 @@ function extractBashEntries(text: string): { bashEntries: Array<{ command: strin
 }
 
 /**
+ * Load session messages directly from Ion engine's conversation JSONL files.
+ * Bypasses the engine socket — reads ~/.ion/conversations/{id}.jsonl from disk.
+ * Used as a fallback when the engine isn't available during cold start.
+ */
+function loadEngineConversationMessages(sessionId: string): any[] {
+  const convDir = join(homedir(), '.ion', 'conversations')
+  const filePath = join(convDir, `${sessionId}.jsonl`)
+  if (!existsSync(filePath)) {
+    log(`loadEngineConversation: file not found: ${filePath}`)
+    return []
+  }
+
+  const data = readFileSync(filePath, 'utf-8')
+  const lines = data.split('\n').filter(Boolean)
+  const result: any[] = []
+  const toolCallIndex: Record<string, number> = {} // toolID → index in result
+
+  for (const line of lines) {
+    let obj: any
+    try { obj = JSON.parse(line) } catch { continue }
+
+    // Skip metadata header and non-message entries
+    if (obj.meta || obj.type !== 'message') continue
+
+    const msg = obj.data
+    if (!msg || !msg.role) continue
+    const timestamp = obj.timestamp || 0
+
+    if (msg.role === 'user') {
+      const content = msg.content
+      if (typeof content === 'string') {
+        if (content.trim()) result.push({ role: 'user', content: cleanCliTags(content), timestamp })
+      } else if (Array.isArray(content)) {
+        const textParts: string[] = []
+        for (const block of content) {
+          if (block.type === 'text' && block.text) {
+            const cleaned = cleanCliTags(block.text)
+            if (cleaned) textParts.push(cleaned)
+          } else if (block.type === 'tool_result' && block.tool_use_id) {
+            // Merge result into matching tool call
+            const idx = toolCallIndex[block.tool_use_id]
+            if (idx !== undefined) {
+              let resultContent = ''
+              if (typeof block.content === 'string') {
+                resultContent = block.content
+              } else if (Array.isArray(block.content)) {
+                resultContent = block.content
+                  .filter((p: any) => p.type === 'text')
+                  .map((p: any) => p.text)
+                  .join('\n')
+              }
+              result[idx].content = resultContent
+            }
+          }
+        }
+        if (textParts.length > 0) {
+          result.push({ role: 'user', content: textParts.join('\n'), timestamp })
+        }
+      }
+    } else if (msg.role === 'assistant') {
+      const content = msg.content
+      if (!Array.isArray(content)) continue
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          const cleaned = cleanCliTags(block.text)
+          if (cleaned) result.push({ role: 'assistant', content: cleaned, timestamp })
+        } else if (block.type === 'tool_use') {
+          let inputJSON = ''
+          if (block.input) {
+            try { inputJSON = JSON.stringify(block.input) } catch {}
+          }
+          toolCallIndex[block.id] = result.length
+          result.push({
+            role: 'tool',
+            content: '',
+            toolName: block.name,
+            toolId: block.id,
+            toolInput: inputJSON,
+            timestamp,
+          })
+        }
+      }
+    }
+  }
+
+  log(`loadEngineConversation: loaded ${result.length} messages from ${filePath}`)
+  return result
+}
+
+/**
  * Load session messages from Claude Code's JSONL format.
  * Parses human/assistant turns into SessionLoadMessage[].
  */
@@ -1345,10 +1443,20 @@ ipcMain.handle(IPC.LOAD_SESSION, async (_e, arg: { sessionId: string; projectPat
 
     // Fall back to Ion engine
     const msgs = await sessionPlane.loadSessionHistory(sessionId)
-    return msgs || []
+    if (msgs && msgs.length > 0) return msgs
+
+    // Last resort: read engine conversation JSONL directly from disk
+    // (handles cold-start timing where engine isn't ready yet)
+    const directMsgs = loadEngineConversationMessages(sessionId)
+    return directMsgs
   } catch (err) {
     log(`LOAD_SESSION error: ${err}`)
-    return []
+    // Try direct file read even on engine error
+    try {
+      return loadEngineConversationMessages(sessionId)
+    } catch {
+      return []
+    }
   }
 })
 
@@ -1375,6 +1483,22 @@ ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
     : await dialog.showOpenDialog(mainWindow, options)
   showWindow('dialog-return')
   return result.canceled ? null : result.filePaths[0]
+})
+
+ipcMain.handle(IPC.SELECT_EXTENSION_FILES, async () => {
+  if (!mainWindow) return null
+  mainWindow.hide()
+  const ionHome = join(homedir(), '.ion')
+  const options = {
+    defaultPath: ionHome,
+    properties: ['openFile' as const, 'multiSelections' as const],
+    filters: [{ name: 'Extensions', extensions: ['ts', 'js'] }],
+  }
+  const result = process.platform === 'darwin'
+    ? await dialog.showOpenDialog(options)
+    : await dialog.showOpenDialog(mainWindow!, options)
+  mainWindow?.show()
+  return result.canceled ? null : result.filePaths
 })
 
 ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
@@ -1923,6 +2047,15 @@ ipcMain.handle(IPC.SAVE_SESSION_LABEL, (_event, { sessionId, customTitle }: { se
   saveSessionLabels(labels)
 })
 
+ipcMain.handle(IPC.GENERATE_TITLE, async (_event, text: string) => {
+  try {
+    return await engineBridge.generateTitle(text)
+  } catch (err: any) {
+    log(`Failed to generate title: ${err.message}`)
+    return ''
+  }
+})
+
 ipcMain.handle(IPC.LOAD_SESSION_LABELS, () => {
   return loadSessionLabels()
 })
@@ -1957,6 +2090,15 @@ ipcMain.handle(IPC.LOAD_SESSION_CHAINS, () => {
 
 ipcMain.handle(IPC.SAVE_SESSION_CHAINS, (_event, data: { chains: Record<string, string[]>; reverse: Record<string, string> }) => {
   saveSessionChains(data)
+})
+
+ipcMain.handle(IPC.GET_CONVERSATION, async (_e, { conversationId, offset, limit }: { conversationId: string; offset: number; limit: number }) => {
+  try {
+    return await sessionPlane.getConversation(conversationId, offset, limit)
+  } catch (err) {
+    log(`GET_CONVERSATION error: ${err}`)
+    return { messages: [], total: 0, hasMore: false }
+  }
 })
 
 // ─── Remote Control ───
@@ -2040,6 +2182,7 @@ async function getRemoteTabStates(): Promise<RemoteTabState[]> {
                   queue.push({
                     questionId: 'denied-' + denied[d].toolUseId,
                     toolTitle: denied[d].toolName,
+                    toolInput: denied[d].toolInput,
                     options: [],
                   });
                 }
@@ -2272,6 +2415,9 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         if (relayUrl) {
           remoteTransport?.send({ type: 'relay_config', relayUrl, relayApiKey })
         }
+        // Send engine profiles so iOS can show a profile picker
+        const profiles = Array.isArray(settings.engineProfiles) ? settings.engineProfiles : []
+        remoteTransport?.send({ type: 'engine_profiles', profiles })
       } catch {}
     }, 300)
   })
@@ -2284,6 +2430,9 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         const syncSettings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
         const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
         remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
+        // Send engine profiles so iOS can show a profile picker
+        const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
+        remoteTransport?.send({ type: 'engine_profiles', profiles: engineProfiles })
         // Send terminal snapshots for terminal-only tabs so iOS can restore scrollback
         for (const tab of tabs) {
           if (tab.isTerminalOnly && tab.terminalInstances && tab.terminalInstances.length > 0) {
@@ -2394,9 +2543,13 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         broadcast(IPC.REMOTE_USER_MESSAGE, { tabId: cmd.tabId, requestId: reqId, prompt: promptText, timestamp: now })
         break
       }
-      case 'cancel':
-        sessionPlane.cancelTab(cmd.tabId)
+      case 'cancel': {
+        if (!sessionPlane.cancelTab(cmd.tabId)) {
+          log(`remote cancel: tab ${cmd.tabId} not in sessionPlane, sending abort directly`)
+          engineBridge.sendAbort(cmd.tabId)
+        }
         break
+      }
       case 'respond_permission':
         sessionPlane.respondToPermission(cmd.tabId, cmd.questionId, cmd.optionId)
         break
@@ -2571,7 +2724,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
             (function() {
               var store = window.__Ion_SESSION_STORE__;
               if (!store) return null;
-              return store.getState().createEngineTab('${escaped}');
+              return store.getState().createEngineTab('${escaped}', ${cmd.profileId ? `'${cmd.profileId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'` : 'undefined'});
             })()
           `)
           if (tabId) {
@@ -2910,7 +3063,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
 }
 
 // Forward control plane events to remote transport.
-sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
+sessionPlane.on('event', async (tabId: string, event: NormalizedEvent) => {
   if (!remoteTransport) return
 
   // Skip permission_request for meta-tools — the dedicated remote-permission
@@ -2996,6 +3149,63 @@ sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
         lastMessagePreview.set(tabId, assistantMsg.content.substring(0, 100))
       }
       activeAssistantMessages.delete(tabId)
+
+      // ExitPlanMode is a sentinel tool — the engine intercepts it and never
+      // emits engine_permission_request, so the remote-permission handler
+      // (which enriches with planContent) never fires.  Detect it here in
+      // permissionDenials and send a synthetic permission_request to iOS.
+      const exitPlanDenial = event.permissionDenials?.find(
+        (d) => d.toolName === 'ExitPlanMode',
+      )
+      if (exitPlanDenial && remoteTransport) {
+        let planPath = exitPlanDenial.toolInput?.planFilePath as string | undefined
+
+        // Fallback: search tab messages for Write to ~/.ion/plans/
+        if (!planPath && mainWindow) {
+          try {
+            const escapedTabId = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+            planPath = await mainWindow.webContents.executeJavaScript(`
+              (function() {
+                var store = window.__Ion_SESSION_STORE__;
+                if (!store) return null;
+                var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+                if (!tab) return null;
+                var msgs = tab.messages || [];
+                for (var i = msgs.length - 1; i >= 0; i--) {
+                  var m = msgs[i];
+                  if (m.toolName === 'Write' && m.toolInput) {
+                    try {
+                      var input = JSON.parse(m.toolInput);
+                      var fp = input.file_path;
+                      if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
+                    } catch(e) {}
+                  }
+                }
+                return null;
+              })()
+            `) || undefined
+          } catch {}
+        }
+
+        let toolInput: Record<string, unknown> = { ...(exitPlanDenial.toolInput || {}) }
+        if (planPath) {
+          try {
+            const content = readFileSync(planPath, 'utf-8')
+            toolInput = { ...toolInput, planFilePath: planPath, planContent: content }
+          } catch (err) {
+            log(`Failed to read plan file for remote (task_complete): ${(err as Error).message}`)
+          }
+        }
+
+        remoteTransport.send({
+          type: 'permission_request',
+          tabId,
+          questionId: `denied-${exitPlanDenial.toolUseId}`,
+          toolName: 'ExitPlanMode',
+          toolInput,
+          options: [],
+        }, true)
+      }
       break
     }
   }
@@ -3947,6 +4157,29 @@ async function requestPermissions(): Promise<void> {
     }
   } catch (err: any) {
     log(`Permission preflight: microphone check failed — ${err.message}`)
+  }
+
+  // ── Files and Folders (Desktop, Documents, Downloads) ──
+  // macOS TCC gates access to these directories per-app. When an agent runs
+  // remotely (via the iOS companion) and reaches into one of these folders,
+  // the TCC prompt appears on the Mac — which the user may not be sitting at.
+  // By probing each directory now we force the prompts to appear at launch,
+  // so the user can grant access once and agents never get blocked later.
+  // The engine process inherits Ion.app's TCC grants as a child process.
+  const home = homedir()
+  const tccProtectedDirs = [
+    join(home, 'Desktop'),
+    join(home, 'Documents'),
+    join(home, 'Downloads'),
+  ]
+  for (const dir of tccProtectedDirs) {
+    try {
+      readdirSync(dir, { withFileTypes: false })
+      log(`Permission preflight: ${basename(dir)} access OK`)
+    } catch (err: any) {
+      // User denied or directory doesn't exist — not fatal
+      log(`Permission preflight: ${basename(dir)} access failed — ${err.message}`)
+    }
   }
 
   // ── Accessibility (for global ⌥+Space shortcut) ──

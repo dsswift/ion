@@ -4,13 +4,21 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { EngineDialog } from './EngineDialog'
 import { EngineStatusBar } from './EngineStatusBar'
-import { OvalOffice } from './OvalOffice'
+import { AgentPanel } from './AgentPanel'
 import { EngineFooter } from './EngineFooter'
 import {
   groupMessages,
-  ToolGroup, AssistantMessage, SystemMessage, MessageBubble,
+  ToolGroup, AssistantMessage, SystemMessage, HarnessMessage, MessageBubble,
   CopyButton, InterruptButton,
 } from './conversation'
+
+// Stable empty refs to avoid creating new array/object references on every render.
+// Without these, `|| []` in selectors creates a new array each time, which Zustand
+// treats as a change (Object.is), triggering cascading re-renders.
+const EMPTY_ARRAY: any[] = []
+const EMPTY_NOTIFICATIONS: any[] = []
+const EMPTY_MESSAGES: any[] = []
+const EMPTY_AGENTS: any[] = []
 
 // ─── Main Component ───
 
@@ -32,17 +40,17 @@ export function EngineView({ tabId }: EngineViewProps) {
   const notifications = useSessionStore(s => {
     const p = s.enginePanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
-    return k ? (s.engineNotifications.get(k) || []) : []
+    return k ? (s.engineNotifications.get(k) || EMPTY_NOTIFICATIONS) : EMPTY_NOTIFICATIONS
   })
   const messages = useSessionStore(s => {
     const p = s.enginePanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
-    return k ? (s.engineMessages.get(k) || []) : []
+    return k ? (s.engineMessages.get(k) || EMPTY_MESSAGES) : EMPTY_MESSAGES
   })
   const agentStates = useSessionStore(s => {
     const p = s.enginePanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
-    return k ? (s.engineAgentStates.get(k) || []) : []
+    return k ? (s.engineAgentStates.get(k) || EMPTY_AGENTS) : EMPTY_AGENTS
   })
   const statusFields = useSessionStore(s => {
     const p = s.enginePanes.get(tabId)
@@ -58,6 +66,7 @@ export function EngineView({ tabId }: EngineViewProps) {
   const isTall = useSessionStore(s => s.tallViewTabId === tabId)
   const toggleTallView = useSessionStore(s => s.toggleTallView)
   const isRunning = tabStatus === 'running' || tabStatus === 'connecting'
+  const hasRunningChildren = agentStates.some(a => a.status === 'running')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Include all messages (user messages shown inline, plus pinned prompt header)
@@ -74,13 +83,16 @@ export function EngineView({ tabId }: EngineViewProps) {
     }
   }, [messages.length, visibleMessages.length, agentStates.length, workingMessage, isRunning])
 
-  // Auto-create first instance
+  // Auto-create first instance (skip during tab restoration to avoid
+  // racing with the restore code that populates panes separately)
+  const tabsReady = useSessionStore(s => s.tabsReady)
   useEffect(() => {
+    if (!tabsReady) return
     const pane = useSessionStore.getState().enginePanes.get(tabId)
     if (!pane || pane.instances.length === 0) {
       useSessionStore.getState().addEngineInstance(tabId)
     }
-  }, [tabId])
+  }, [tabId, tabsReady])
 
   // Auto-dismiss notifications after 5s
   useEffect(() => {
@@ -115,7 +127,19 @@ export function EngineView({ tabId }: EngineViewProps) {
   }
 
   const handleAbort = () => {
-    if (key) window.ion.engineAbort(key)
+    console.log(`[EngineView] handleAbort: key=${key} isRunning=${isRunning} hasRunningChildren=${hasRunningChildren} tabStatus=${tabStatus}`)
+    if (!key) return
+    // Always send abort — the engine's SendAbort is safe when no run is active
+    // (it just warns and returns). This ensures we cover the case where the
+    // desktop's tabStatus is stale while the engine still has an active run.
+    console.log(`[EngineView] calling engineAbort: key=${key}`)
+    window.ion.engineAbort(key)
+    if (hasRunningChildren) {
+      // Also reap any PID-registered descendant agents (external processes)
+      // that might outlive the parent run's cancellation cascade.
+      console.log(`[EngineView] calling engineAbortAgent (subtree): key=${key}`)
+      window.ion.engineAbortAgent(key, '', true)
+    }
   }
 
   return (
@@ -183,6 +207,8 @@ export function EngineView({ tabId }: EngineViewProps) {
                     return <AssistantMessage key={item.message.id} message={item.message} skipMotion />
                   case 'tool-group':
                     return <ToolGroup key={`tg-${idx}`} tools={item.messages} skipMotion />
+                  case 'harness':
+                    return <HarnessMessage key={item.message.id} message={item.message} skipMotion />
                   case 'system':
                     return <SystemMessage key={item.message.id} message={item.message} skipMotion />
                   default:
@@ -216,9 +242,11 @@ export function EngineView({ tabId }: EngineViewProps) {
           )}
         </div>
 
-        {/* Interrupt button */}
+        {/* Interrupt button — visible while the parent run is active OR
+            while dispatched children are still running so the user can
+            always reap a runaway dispatch even if the parent has died. */}
         <AnimatePresence>
-          {isRunning && messages.length > 0 && (
+          {(isRunning || hasRunningChildren) && messages.length > 0 && (
             <div style={{
               position: 'absolute',
               bottom: 4, right: 12,
@@ -231,11 +259,14 @@ export function EngineView({ tabId }: EngineViewProps) {
       </div>
 
       {/* Agent bars */}
-      <OvalOffice agents={agentStates} />
+      <AgentPanel agents={agentStates} />
 
       {/* Status footer */}
       <EngineFooter
-        status={statusFields}
+        status={statusFields ? {
+          ...statusFields,
+          label: pane?.instances.find(i => i.id === activeInstanceId)?.label || statusFields.label,
+        } : null}
         isTall={isTall}
         onToggleTall={() => toggleTallView(tabId)}
       />

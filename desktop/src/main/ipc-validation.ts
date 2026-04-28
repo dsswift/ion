@@ -19,7 +19,7 @@ export function isValidProjectPath(path: string): boolean {
 }
 
 /**
- * Validate a sessionId. Accepts UUIDs and engine-generated IDs (e.g. "run-1776636257802").
+ * Validate a sessionId. Accepts UUIDs and engine-generated IDs (e.g. "1776636257802").
  * Rejects path traversal and special characters since IDs may be used as filenames by the engine.
  */
 export function isValidSessionId(sessionId: string): boolean {

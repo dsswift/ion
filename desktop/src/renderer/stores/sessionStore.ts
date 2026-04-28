@@ -125,6 +125,11 @@ interface State {
   engineDialogs: Map<string, { dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string } | null>
   enginePinnedPrompt: Map<string, string>
   engineUsage: Map<string, { percent: number; tokens: number; cost: number }>
+  /** Every conversation file the engine has written for this instance, in
+   *  arrival order. The engine starts a new conversation on each restart,
+   *  so a tab that has restarted N times has N entries here. The Settings
+   *  popover uses this list to copy every relevant log path. */
+  engineConversationIds: Map<string, string[]>
 
   // Engine multiplex state
   enginePanes: Map<string, EnginePaneState>
@@ -141,7 +146,7 @@ interface State {
 
   // Actions
   initStaticInfo: () => Promise<void>
-  setPermissionMode: (mode: 'auto' | 'plan') => void
+  setPermissionMode: (mode: 'auto' | 'plan', source?: string) => void
   createTab: (useWorktree?: boolean) => Promise<string>
   createTabInDirectory: (dir: string, useWorktree?: boolean, skipDuplicateCheck?: boolean) => Promise<string>
   selectTab: (tabId: string) => void
@@ -252,6 +257,7 @@ function makeLocalTab(): TabState {
     id: crypto.randomUUID(),
     conversationId: null,
     historicalSessionIds: [],
+    lastKnownSessionId: null,
     status: 'idle',
     activeRequestId: null,
     hasUnread: false,
@@ -338,6 +344,7 @@ export const useSessionStore = create<State>((set, get) => ({
   engineDialogs: new Map(),
   enginePinnedPrompt: new Map(),
   engineUsage: new Map(),
+  engineConversationIds: new Map<string, string[]>(),
   enginePanes: new Map<string, EnginePaneState>(),
   engineMessages: new Map<string, Message[]>(),
 
@@ -365,7 +372,7 @@ export const useSessionStore = create<State>((set, get) => ({
     } catch {}
   },
 
-  setPermissionMode: (mode) => {
+  setPermissionMode: (mode, source) => {
     if (mode === 'plan' && get().backend === 'cli') return
     const { activeTabId } = get()
     set((s) => ({
@@ -373,7 +380,7 @@ export const useSessionStore = create<State>((set, get) => ({
         t.id === activeTabId ? { ...t, permissionMode: mode } : t
       ),
     }))
-    window.ion.setPermissionMode(activeTabId, mode)
+    window.ion.setPermissionMode(activeTabId, mode, source)
   },
 
   createTab: async (useWorktree) => {
@@ -386,7 +393,12 @@ export const useSessionStore = create<State>((set, get) => ({
       (t) => isBlankConversationTab(t, startDir)
     )
     if (existingBlank) {
-      set({ activeTabId: existingBlank.id })
+      const tallConv = usePreferencesStore.getState().defaultTallConversation
+      set({
+        activeTabId: existingBlank.id,
+        tallViewTabId: tallConv ? existingBlank.id : null,
+        terminalTallTabId: null,
+      })
       return existingBlank.id
     }
 
@@ -433,8 +445,10 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
+      tallViewTabId: usePreferencesStore.getState().defaultTallConversation ? tab.id : null,
+      terminalTallTabId: null,
     }))
-    window.ion.setPermissionMode(tabId, tab.permissionMode)
+    window.ion.setPermissionMode(tabId, tab.permissionMode, 'tab_create')
     return tabId
   },
 
@@ -444,7 +458,12 @@ export const useSessionStore = create<State>((set, get) => ({
         (t) => isBlankConversationTab(t, dir)
       )
       if (existingBlank) {
-        set({ activeTabId: existingBlank.id })
+        const tallConv = usePreferencesStore.getState().defaultTallConversation
+        set({
+          activeTabId: existingBlank.id,
+          tallViewTabId: tallConv ? existingBlank.id : null,
+          terminalTallTabId: null,
+        })
         return existingBlank.id
       }
     }
@@ -493,8 +512,10 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
+      tallViewTabId: usePreferencesStore.getState().defaultTallConversation ? tab.id : null,
+      terminalTallTabId: null,
     }))
-    window.ion.setPermissionMode(tabId, tab.permissionMode)
+    window.ion.setPermissionMode(tabId, tab.permissionMode, 'tab_create')
     return tabId
   },
 
@@ -513,16 +534,26 @@ export const useSessionStore = create<State>((set, get) => ({
       return
     } else {
       // Switching to a different tab: mark as read, auto-expand if setting enabled
-      const expandOnSwitch = usePreferencesStore.getState().expandOnTabSwitch
-      set((prev) => ({
-        activeTabId: tabId,
-        isExpanded: expandOnSwitch ? true : prev.isExpanded,
-        tallViewTabId: null,
-        settingsOpen: false,
-        tabs: prev.tabs.map((t) =>
-          t.id === tabId ? { ...t, hasUnread: false } : t
-        ),
-      }))
+      const prefs = usePreferencesStore.getState()
+      const expandOnSwitch = prefs.expandOnTabSwitch
+      set((prev) => {
+        const targetTab = prev.tabs.find(t => t.id === tabId)
+        const isTerminalOnlyTall = targetTab?.isTerminalOnly && prefs.defaultTallTerminal
+        const shouldTall = targetTab && !targetTab.isTerminalOnly && (
+          (targetTab.isEngine && prefs.defaultTallEngine) ||
+          (!targetTab.isEngine && prefs.defaultTallConversation)
+        )
+        return {
+          activeTabId: tabId,
+          isExpanded: expandOnSwitch ? true : prev.isExpanded,
+          tallViewTabId: shouldTall ? tabId : null,
+          terminalTallTabId: isTerminalOnlyTall ? tabId : null,
+          settingsOpen: false,
+          tabs: prev.tabs.map((t) =>
+            t.id === tabId ? { ...t, hasUnread: false } : t
+          ),
+        }
+      })
     }
   },
 
@@ -717,7 +748,12 @@ export const useSessionStore = create<State>((set, get) => ({
     // Prevent duplicate blank terminal tabs in the same directory
     const existingBlank = get().tabs.find((t) => isBlankTerminalTab(t, startDir))
     if (existingBlank) {
-      set({ activeTabId: existingBlank.id })
+      const tallTerm = usePreferencesStore.getState().defaultTallTerminal
+      set({
+        activeTabId: existingBlank.id,
+        terminalTallTabId: tallTerm ? existingBlank.id : null,
+        tallViewTabId: null,
+      })
       return existingBlank.id
     }
 
@@ -740,6 +776,8 @@ export const useSessionStore = create<State>((set, get) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
       terminalOpenTabIds: new Set([...s.terminalOpenTabIds, tab.id]),
+      terminalTallTabId: usePreferencesStore.getState().defaultTallTerminal ? tab.id : null,
+      tallViewTabId: null,
     }))
 
     return tab.id
@@ -1110,6 +1148,7 @@ export const useSessionStore = create<State>((set, get) => ({
       const engineDialogs = new Map(get().engineDialogs)
       const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
       const engineUsage = new Map(get().engineUsage)
+      const engineConversationIds = new Map(get().engineConversationIds)
       const engineMessages = new Map(get().engineMessages)
       const enginePanes = new Map(get().enginePanes)
       for (const k of engineAgentStates.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineAgentStates.delete(k)
@@ -1119,9 +1158,10 @@ export const useSessionStore = create<State>((set, get) => ({
       for (const k of engineDialogs.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineDialogs.delete(k)
       for (const k of enginePinnedPrompt.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) enginePinnedPrompt.delete(k)
       for (const k of engineUsage.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineUsage.delete(k)
+      for (const k of engineConversationIds.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineConversationIds.delete(k)
       for (const k of engineMessages.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineMessages.delete(k)
       enginePanes.delete(tabId)
-      set({ engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineMessages, enginePanes })
+      set({ engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineConversationIds, engineMessages, enginePanes })
     }
     // Clean up dir-based explorer/editor visibility if no other tabs share this directory
     if (closingTab) {
@@ -1259,7 +1299,7 @@ export const useSessionStore = create<State>((set, get) => ({
         activeTabId: tab.id,
         isExpanded: true,
       }))
-      window.ion.setPermissionMode(tabId, tab.permissionMode)
+      window.ion.setPermissionMode(tabId, tab.permissionMode, 'tab_create')
       return tabId
     } catch {
       return null
@@ -1360,7 +1400,7 @@ export const useSessionStore = create<State>((set, get) => ({
         activeTabId: tab.id,
         isExpanded: true,
       }))
-      window.ion.setPermissionMode(newTabId, tab.permissionMode)
+      window.ion.setPermissionMode(newTabId, tab.permissionMode, 'tab_create')
       return newTabId
     } catch {
       return null
@@ -1373,7 +1413,19 @@ export const useSessionStore = create<State>((set, get) => ({
       const { tabId } = await window.ion.createTab()
 
       // Load previous conversation messages from the JSONL file
-      const history = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined).catch(() => [])
+      // Retry on failure/empty — engine may still be starting after install
+      let history: any[] = []
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          history = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined)
+          if (history.length > 0) break
+        } catch (err) {
+          console.warn(`[resumeSession] loadSession attempt ${attempt + 1} failed:`, err)
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
+        }
+      }
       const messages: Message[] = history.map((m) => ({
         id: nextMsgId(),
         role: m.role as Message['role'],
@@ -1403,6 +1455,7 @@ export const useSessionStore = create<State>((set, get) => ({
         ...makeLocalTab(),
         id: tabId,
         conversationId: sessionId,
+        lastKnownSessionId: sessionId,
         title: title || 'Resumed Session',
         customTitle: customTitle || null,
         workingDirectory: defaultDir,
@@ -1426,6 +1479,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
       const tab = makeLocalTab()
       tab.conversationId = sessionId
+      tab.lastKnownSessionId = sessionId
       tab.title = title || 'Resumed Session'
       tab.customTitle = customTitle || null
       tab.workingDirectory = defaultDir
@@ -1497,6 +1551,7 @@ export const useSessionStore = create<State>((set, get) => ({
         ...makeLocalTab(),
         id: tabId,
         conversationId: sessionId,
+        lastKnownSessionId: sessionId,
         historicalSessionIds,
         title: title || 'Resumed Session',
         customTitle: customTitle || null,
@@ -1520,6 +1575,7 @@ export const useSessionStore = create<State>((set, get) => ({
 
       const tab = makeLocalTab()
       tab.conversationId = sessionId
+      tab.lastKnownSessionId = sessionId
       tab.historicalSessionIds = historicalSessionIds
       tab.title = title || 'Resumed Session'
       tab.customTitle = customTitle || null
@@ -1914,7 +1970,7 @@ export const useSessionStore = create<State>((set, get) => ({
     // Slash commands are action-oriented -- auto-switch out of plan mode
     // so the command can execute tools without manual approval
     if (!tab.conversationId && tab.permissionMode === 'plan' && prompt.startsWith('/')) {
-      get().setPermissionMode('auto')
+      get().setPermissionMode('auto', 'slash_command')
 
       // Move to in-progress group (same as plan-ready implement)
       const { inProgressGroupId, tabGroupMode } = usePreferencesStore.getState()
@@ -2027,7 +2083,16 @@ export const useSessionStore = create<State>((set, get) => ({
     // Re-assert permission mode before every prompt to guarantee engine state
     // matches the UI. Without this, the engine could be in 'auto' while the UI
     // shows 'plan' (e.g. after an ExitPlanMode tool call that drifted the state).
-    window.ion.setPermissionMode(activeTabId, tab.permissionMode)
+    window.ion.setPermissionMode(activeTabId, tab.permissionMode, 'prompt_sync')
+
+    // Resolve engine profile extensions for engine tabs
+    let extensions: string[] | undefined
+    if (tab.isEngine && tab.engineProfileId) {
+      const profile = usePreferencesStore.getState().engineProfiles.find((p) => p.id === tab.engineProfileId)
+      if (profile?.extensions?.length) {
+        extensions = profile.extensions
+      }
+    }
 
     window.ion.prompt(activeTabId, requestId, {
       prompt: fullPrompt,
@@ -2036,6 +2101,7 @@ export const useSessionStore = create<State>((set, get) => ({
       model: preferredModel || undefined,
       addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
       appendSystemPrompt: effectiveSystemPrompt,
+      extensions,
     }).catch((err: Error) => {
       get().handleError(activeTabId, {
         message: err.message,
@@ -2093,6 +2159,15 @@ export const useSessionStore = create<State>((set, get) => ({
       }),
     }))
 
+    // Resolve engine profile extensions for remote prompts on engine tabs
+    let remoteExtensions: string[] | undefined
+    if (tab.isEngine && tab.engineProfileId) {
+      const profile = usePreferencesStore.getState().engineProfiles.find((p) => p.id === tab.engineProfileId)
+      if (profile?.extensions?.length) {
+        remoteExtensions = profile.extensions
+      }
+    }
+
     window.ion.prompt(tabId, requestId, {
       prompt,
       projectPath: resolvedPath,
@@ -2100,6 +2175,7 @@ export const useSessionStore = create<State>((set, get) => ({
       model: preferredModel || undefined,
       addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
       source: 'remote',
+      extensions: remoteExtensions,
     }).catch((err: Error) => {
       get().handleError(tabId, {
         message: err.message,
@@ -2221,6 +2297,7 @@ export const useSessionStore = create<State>((set, get) => ({
               updated.historicalSessionIds = [...updated.historicalSessionIds, updated.conversationId]
             }
             updated.conversationId = event.sessionId
+            updated.lastKnownSessionId = event.sessionId
             updated.sessionModel = event.model
             updated.sessionTools = event.tools
             updated.sessionMcpServers = event.mcpServers
@@ -2255,6 +2332,10 @@ export const useSessionStore = create<State>((set, get) => ({
             }
             break
           }
+
+          case 'compacting':
+            updated.currentActivity = event.active ? 'Compacting...' : 'Thinking...'
+            break
 
           case 'text_chunk': {
             console.log(`[DIAG] text_chunk: tab=${tabId} len=${(event as any).text?.length} prev_msg_len=${updated.messages[updated.messages.length - 1]?.content?.length ?? 'N/A'}`)
@@ -2417,6 +2498,7 @@ export const useSessionStore = create<State>((set, get) => ({
             // Sync conversation ID from engine so subsequent prompts resume it
             if (event.sessionId) {
               updated.conversationId = event.sessionId
+              updated.lastKnownSessionId = event.sessionId
             }
             updated.lastResult = {
               totalCostUsd: event.costUsd,
@@ -2488,6 +2570,24 @@ export const useSessionStore = create<State>((set, get) => ({
             }
             // Play notification sound if window is hidden
             playNotificationIfHidden()
+            // ── AI title generation ──
+            // On the first task_complete, if AI titles are enabled and the user
+            // hasn't manually renamed the tab, fire an async call to the fast
+            // tier model to generate a descriptive title from the first user message.
+            if (
+              !updated.customTitle &&
+              usePreferencesStore.getState().aiGeneratedTitles
+            ) {
+              const firstUserMsg = updated.messages.find((m) => m.role === 'user')
+              if (firstUserMsg) {
+                const capturedTabId = tabId
+                window.ion.generateTitle(firstUserMsg.content).then((title) => {
+                  if (title) {
+                    get().renameTab(capturedTabId, title)
+                  }
+                }).catch(() => { /* keep truncated fallback */ })
+              }
+            }
             break
 
           case 'error':
@@ -2691,6 +2791,8 @@ export const useSessionStore = create<State>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, newTab],
       activeTabId: newTab.id,
+      tallViewTabId: usePreferencesStore.getState().defaultTallEngine ? newTab.id : null,
+      terminalTallTabId: null,
     }))
 
     return newTab.id
@@ -2715,16 +2817,19 @@ export const useSessionStore = create<State>((set, get) => ({
       instances: [...pane.instances, instance],
       activeInstanceId: id,
     })
-    set({ enginePanes: panes })
+    set((state) => ({
+      enginePanes: panes,
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, status: 'connecting' as TabStatus } : t
+      ),
+    }))
     // Start the engine process
     const key = `${tabId}:${id}`
     if (profile) {
       window.ion.engineStart(key, {
         profileId: profile.id,
-        extensionDir: profile.extensionDir,
-        model: profile.model,
+        extensions: profile.extensions,
         workingDirectory: tab.workingDirectory,
-        options: profile.options,
       }).then((result) => {
         if (result && !result.ok) {
           console.error(`[engine] Failed to start session: ${result.error}`)
@@ -2754,6 +2859,14 @@ export const useSessionStore = create<State>((set, get) => ({
           const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
           return { engineMessages: messages, tabs }
         })
+      })
+    } else {
+      // No profile -- start bare session with defaults
+      window.ion.engineStart(key, {
+        extensions: [],
+        workingDirectory: tab.workingDirectory,
+      }).catch((err: any) => {
+        console.error(`[engine] Start error (no profile): ${err.message}`)
       })
     }
     return id
@@ -2825,11 +2938,27 @@ export const useSessionStore = create<State>((set, get) => ({
     const tabId = key.split(':')[0]
     switch (event.type) {
       case 'engine_agent_state': {
-        const nonIdle = event.agents.filter((a: any) => a.status !== 'idle')
+        const agents = event.agents || []
+        const nonIdle = agents.filter((a: any) => a.status !== 'idle')
         console.log('[store] agent_state:', key, nonIdle.map((a: any) => `${a.name}:${a.status}:${a.lastWork?.substring(0,30)||'(empty)'}`))
         set((state) => {
           const agentStates = new Map(state.engineAgentStates)
-          agentStates.set(key, event.agents)
+          if (agents.length === 0) {
+            // Run ended -- preserve historical agents with conversation data
+            const existing = agentStates.get(key)
+            if (existing) {
+              const historical = existing.filter((a) =>
+                a.status !== 'running' && a.metadata?.conversationId
+              )
+              if (historical.length > 0) {
+                agentStates.set(key, historical)
+              } else {
+                agentStates.delete(key)
+              }
+            }
+          } else {
+            agentStates.set(key, agents)
+          }
           return { engineAgentStates: agentStates }
         })
         break
@@ -2838,7 +2967,44 @@ export const useSessionStore = create<State>((set, get) => ({
         set((state) => {
           const statusFields = new Map(state.engineStatusFields)
           statusFields.set(key, event.fields)
-          return { engineStatusFields: statusFields }
+          // Sync conversationId and idle status from engine onto the tab
+          const sessionId = event.fields?.sessionId
+          const pane = state.enginePanes.get(tabId)
+          const isActive = !pane || pane.activeInstanceId === key.split(':')[1]
+          const isIdle = event.fields?.state === 'idle'
+          const isRunning = event.fields?.state === 'running'
+          // Track every distinct conversation the engine has written for
+          // this instance. The engine starts a new conversation on each
+          // restart, so we accumulate IDs in arrival order. Settings'
+          // Copy Log Path uses this to copy every relevant file path.
+          let engineConversationIds = state.engineConversationIds
+          if (sessionId) {
+            const existing = state.engineConversationIds.get(key) ?? []
+            if (existing[existing.length - 1] !== sessionId) {
+              engineConversationIds = new Map(state.engineConversationIds)
+              engineConversationIds.set(key, [...existing, sessionId])
+            }
+          }
+          const needsTabUpdate = isActive && (sessionId || isIdle || isRunning)
+          if (needsTabUpdate) {
+            const tabs = state.tabs.map((t) => {
+              if (t.id !== tabId) return t
+              const updates: Partial<TabState> = {}
+              if (sessionId && t.conversationId !== sessionId) {
+                updates.conversationId = sessionId
+                updates.lastKnownSessionId = sessionId
+              }
+              if (isRunning && t.status !== 'running') {
+                updates.status = 'running' as const
+              }
+              if (isIdle && t.status !== 'idle') {
+                updates.status = 'idle' as const
+              }
+              return Object.keys(updates).length > 0 ? { ...t, ...updates } : t
+            })
+            return { engineStatusFields: statusFields, engineConversationIds, tabs }
+          }
+          return { engineStatusFields: statusFields, engineConversationIds }
         })
         break
       }
@@ -2857,6 +3023,21 @@ export const useSessionStore = create<State>((set, get) => ({
           keyNotifications.push({ id: nextMsgId(), message: event.message, level: event.level, timestamp: Date.now() })
           notifications.set(key, keyNotifications)
           return { engineNotifications: notifications }
+        })
+        break
+      }
+      case 'engine_harness_message': {
+        set((state) => {
+          const messages = new Map(state.engineMessages)
+          const msgs = [...(messages.get(key) || [])]
+          msgs.push({
+            id: nextMsgId(),
+            role: 'harness' as const,
+            content: event.message,
+            timestamp: Date.now(),
+          })
+          messages.set(key, msgs)
+          return { engineMessages: messages }
         })
         break
       }
@@ -2890,16 +3071,22 @@ export const useSessionStore = create<State>((set, get) => ({
       case 'engine_message_end': {
         set((state) => {
           const usage = new Map(state.engineUsage)
-          usage.set(key, {
-            percent: event.usage.contextPercent,
-            tokens: event.usage.inputTokens,
-            cost: event.usage.cost,
-          })
+          if (event.usage) {
+            usage.set(key, {
+              percent: event.usage.contextPercent,
+              tokens: event.usage.inputTokens,
+              cost: event.usage.cost,
+            })
+          }
           const pane = state.enginePanes.get(tabId)
           const isActive = !pane || pane.activeInstanceId === key.split(':')[1]
           const tabs = isActive ? state.tabs.map((t) => {
             if (t.id !== tabId) return t
-            return { ...t, status: 'idle' as const, contextTokens: event.usage.inputTokens, contextPercent: event.usage.contextPercent }
+            return {
+              ...t,
+              status: 'idle' as const,
+              ...(event.usage ? { contextTokens: event.usage.inputTokens, contextPercent: event.usage.contextPercent } : {}),
+            }
           }) : state.tabs
           return { engineUsage: usage, tabs }
         })
@@ -2960,6 +3147,62 @@ export const useSessionStore = create<State>((set, get) => ({
           const msgs = [...(messages.get(key) || [])]
           msgs.push({ id: nextMsgId(), role: 'system' as const, content: `Error: ${event.message}`, timestamp: Date.now() })
           messages.set(key, msgs)
+          // Reset tab so user can retry (matches regular tab error behavior)
+          const pane = state.enginePanes.get(tabId)
+          const isActive = !pane || pane.activeInstanceId === key.split(':')[1]
+          const tabs = isActive
+            ? state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+            : state.tabs
+          return { engineMessages: messages, tabs }
+        })
+        break
+      }
+      // Auto-respawn lifecycle events. When the engine respawns transparently
+      // we surface a transient toast rather than a permanent system message —
+      // the conversation log shouldn't be polluted by a recovery the user
+      // doesn't have to act on. Only the permanent failure case writes a
+      // system message.
+      case 'engine_extension_died': {
+        set((state) => {
+          const notifications = new Map(state.engineNotifications)
+          const keyNotifications = [...(notifications.get(key) || [])]
+          keyNotifications.push({
+            id: nextMsgId(),
+            message: `Extension ${event.extensionName} died — restarting…`,
+            level: 'warning',
+            timestamp: Date.now(),
+          })
+          notifications.set(key, keyNotifications)
+          return { engineNotifications: notifications }
+        })
+        break
+      }
+      case 'engine_extension_respawned': {
+        set((state) => {
+          const notifications = new Map(state.engineNotifications)
+          const keyNotifications = [...(notifications.get(key) || [])]
+          keyNotifications.push({
+            id: nextMsgId(),
+            message: `Extension ${event.extensionName} restarted (attempt ${event.attemptNumber})`,
+            level: 'info',
+            timestamp: Date.now(),
+          })
+          notifications.set(key, keyNotifications)
+          return { engineNotifications: notifications }
+        })
+        break
+      }
+      case 'engine_extension_dead_permanent': {
+        set((state) => {
+          const messages = new Map(state.engineMessages)
+          const msgs = [...(messages.get(key) || [])]
+          msgs.push({
+            id: nextMsgId(),
+            role: 'system' as const,
+            content: `Extension ${event.extensionName} crashed ${event.attemptNumber} times in 60s and will not be restarted automatically. Close and reopen this tab to recover.`,
+            timestamp: Date.now(),
+          })
+          messages.set(key, msgs)
           return { engineMessages: messages }
         })
         break
@@ -2982,7 +3225,27 @@ export const useSessionStore = create<State>((set, get) => ({
       const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'running' as const } : t)
       return { enginePinnedPrompt: pinnedPrompt, engineMessages: messages, tabs }
     })
-    window.ion.enginePrompt(key, text)
+    window.ion.enginePrompt(key, text).then((result) => {
+      if (result && !result.ok) {
+        set((state) => {
+          const messages = new Map(state.engineMessages)
+          const msgs = [...(messages.get(key) || [])]
+          msgs.push({ id: nextMsgId(), role: 'system' as const, content: `Error: ${result.error}`, timestamp: Date.now() })
+          messages.set(key, msgs)
+          const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+          return { engineMessages: messages, tabs }
+        })
+      }
+    }).catch((err: any) => {
+      set((state) => {
+        const messages = new Map(state.engineMessages)
+        const msgs = [...(messages.get(key) || [])]
+        msgs.push({ id: nextMsgId(), role: 'system' as const, content: `Error: ${err.message}`, timestamp: Date.now() })
+        messages.set(key, msgs)
+        const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+        return { engineMessages: messages, tabs }
+      })
+    })
   },
 
   respondEngineDialog: (tabId, dialogId, value) => {
@@ -3028,6 +3291,7 @@ function persistTabs(): void {
         additionalDirs: t.additionalDirs,
         permissionMode: t.permissionMode,
         ...(t.historicalSessionIds.length > 0 ? { historicalSessionIds: t.historicalSessionIds } : {}),
+        ...(t.lastKnownSessionId ? { lastKnownSessionId: t.lastKnownSessionId } : {}),
         ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
         ...(t.pillColor ? { pillColor: t.pillColor } : {}),
         ...(t.pillIcon ? { pillIcon: t.pillIcon } : {}),
@@ -3036,11 +3300,41 @@ function persistTabs(): void {
         ...(t.groupId ? { groupId: t.groupId } : {}),
         ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
         ...(t.contextTokens ? { contextTokens: t.contextTokens } : {}),
+        ...(t.permissionDenied ? { permissionDenied: t.permissionDenied } : {}),
+        ...(t.planFilePath ? { planFilePath: t.planFilePath } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.isEngine ? { isEngine: true, engineProfileId: t.engineProfileId } : {}),
         ...(t.isEngine ? (() => {
           const hPane = enginePanes.get(t.id)
-          return hPane && hPane.instances.length > 0 ? { engineInstances: hPane.instances } : {}
+          if (!hPane || hPane.instances.length === 0) return {}
+          const result: Record<string, any> = { engineInstances: hPane.instances }
+          // Persist engine messages per instance
+          const { engineMessages: eMsgs } = useSessionStore.getState()
+          const msgs: Record<string, any[]> = {}
+          for (const inst of hPane.instances) {
+            const k = `${t.id}:${inst.id}`
+            const arr = eMsgs.get(k)
+            if (arr && arr.length > 0) {
+              msgs[inst.id] = arr.map((m) => ({ role: m.role, content: m.content, toolName: m.toolName, toolId: m.toolId, toolStatus: m.toolStatus, timestamp: m.timestamp }))
+            }
+          }
+          if (Object.keys(msgs).length > 0) result.engineMessages = msgs
+          // Persist engine agent states per instance
+          const { engineAgentStates: eAgents } = useSessionStore.getState()
+          const agentStates: Record<string, Array<{ name: string; status: string; metadata?: Record<string, any> }>> = {}
+          for (const inst of hPane.instances) {
+            const k = `${t.id}:${inst.id}`
+            const arr = eAgents.get(k)
+            if (arr && arr.length > 0) {
+              agentStates[inst.id] = arr.map((a) => ({
+                name: a.name,
+                status: a.status === 'running' ? 'done' : a.status,
+                ...(a.metadata ? { metadata: a.metadata } : {}),
+              }))
+            }
+          }
+          if (Object.keys(agentStates).length > 0) result.engineAgentStates = agentStates
+          return result
         })() : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),
         ...(pane && pane.instances.length > 0 ? (() => {

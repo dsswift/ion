@@ -335,7 +335,7 @@ function PermissionModePicker() {
         >
           <div className="py-1">
             <button
-              onClick={() => { setPermissionMode('plan'); setOpen(false) }}
+              onClick={() => { setPermissionMode('plan', 'ui_dropdown'); setOpen(false) }}
               className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
               style={{
                 color: permissionMode === 'plan' ? colors.textPrimary : colors.textSecondary,
@@ -352,7 +352,7 @@ function PermissionModePicker() {
             <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />
 
             <button
-              onClick={() => { setPermissionMode('auto'); setOpen(false) }}
+              onClick={() => { setPermissionMode('auto', 'ui_dropdown'); setOpen(false) }}
               className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
               style={{
                 color: permissionMode === 'auto' ? colors.textPrimary : colors.textSecondary,

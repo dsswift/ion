@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Gear } from '@phosphor-icons/react'
@@ -7,7 +7,7 @@ import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 
 interface EngineProfilePickerProps {
-  anchor: { x: number; y: number }
+  anchor: { x: number; y: number; bottom: number }
   onSelect: (profileId: string) => void
   onOpenSettings: () => void
   onClose: () => void
@@ -18,6 +18,14 @@ export function EngineProfilePicker({ anchor, onSelect, onOpenSettings, onClose 
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
   const profiles = usePreferencesStore((s) => s.engineProfiles)
+  const [flipDown, setFlipDown] = useState(false)
+
+  // Flip to open downward if the popover overflows the top of the viewport
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    if (rect.top < 0) setFlipDown(true)
+  }, [])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -47,7 +55,9 @@ export function EngineProfilePicker({ anchor, onSelect, onOpenSettings, onClose 
       style={{
         position: 'fixed',
         left: anchor.x,
-        bottom: (window.innerHeight / (usePreferencesStore.getState().uiZoom || 1)) - anchor.y + 6,
+        ...(flipDown
+          ? { top: anchor.bottom + 6 }
+          : { bottom: (window.innerHeight / (usePreferencesStore.getState().uiZoom || 1)) - anchor.y + 6 }),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
@@ -79,7 +89,7 @@ export function EngineProfilePicker({ anchor, onSelect, onOpenSettings, onClose 
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}>
-            {[profile.extensionDir.split('/').pop() || profile.extensionDir, profile.options?.defaultTeam].filter(Boolean).join(' | ')}
+            {profile.extensions.map(e => e.split('/').pop()).join(', ')}
           </span>
         </div>
       ))}

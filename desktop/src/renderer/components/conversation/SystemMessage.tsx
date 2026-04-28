@@ -1,6 +1,7 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { useColors } from '../../theme'
+import { CopyButton } from './CopyButton'
 import type { Message } from '../../../shared/types'
 
 interface SystemMessageProps {
@@ -13,14 +14,18 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
   const colors = useColors()
 
   const inner = (
-    <div
-      className="text-[11px] leading-[1.5] px-2.5 py-1 rounded-lg inline-block whitespace-pre-wrap"
-      style={{
-        background: isError ? colors.statusErrorBg : colors.surfaceHover,
-        color: isError ? colors.statusError : colors.textTertiary,
-      }}
-    >
-      {message.content}
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+      <div
+        className="text-[11px] leading-[1.5] px-2.5 py-1 rounded-lg inline-block whitespace-pre-wrap"
+        style={{
+          background: isError ? colors.statusErrorBg : colors.surfaceHover,
+          color: isError ? colors.statusError : colors.textTertiary,
+          userSelect: 'text',
+        }}
+      >
+        {message.content}
+      </div>
+      {isError && <CopyButton text={message.content} />}
     </div>
   )
 

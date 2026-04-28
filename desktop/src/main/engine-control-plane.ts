@@ -73,9 +73,9 @@ export class EngineControlPlane extends EventEmitter {
   private drainResolve: (() => void) | null = null
   private drainExternalCheck: (() => boolean) | null = null
 
-  constructor() {
+  constructor(bridge: EngineBridge) {
     super()
-    this.bridge = new EngineBridge()
+    this.bridge = bridge
 
     this.bridge.on('event', (key: string, event: EngineEvent) => {
       // Engine keys are tabId (we use tabId as the session key)
@@ -84,6 +84,17 @@ export class EngineControlPlane extends EventEmitter {
       if (!tab) return
 
       this._handleEngineEvent(tabId, tab, event)
+    })
+
+    this.bridge.on('reconnected', () => {
+      // Engine restarted -- sessions no longer exist on the server.
+      // Reset flags so they get re-created on next prompt.
+      for (const tab of this.tabs.values()) {
+        if (tab.engineSessionStarted) {
+          log(`resetSessionFlag after reconnect: tabId=${tab.tabId}`)
+          tab.engineSessionStarted = false
+        }
+      }
     })
   }
 
@@ -159,12 +170,12 @@ export class EngineControlPlane extends EventEmitter {
 
   // ─── Permission mode ───
 
-  setPermissionMode(tabId: string, mode: 'auto' | 'plan'): void {
+  setPermissionMode(tabId: string, mode: 'auto' | 'plan', source?: string): void {
     this.ensureTab(tabId)
     const tab = this.tabs.get(tabId)!
     tab.permissionMode = mode
     // Forward to engine (no-op if session doesn't exist yet; re-applied after startSession)
-    this.bridge.sendSetPlanMode(tabId, mode === 'plan')
+    this.bridge.sendSetPlanMode(tabId, mode === 'plan', undefined, source)
   }
 
   approveToolsForTab(tabId: string, toolNames: string[]): void {
@@ -199,8 +210,7 @@ export class EngineControlPlane extends EventEmitter {
     // Build engine config for session start (first prompt) or send prompt
     const config: EngineConfig = {
       profileId: 'default',
-      extensionDir: '',
-      model: options.model,
+      extensions: options.extensions || [],
       workingDirectory: options.projectPath,
       sessionId: options.sessionId || tab.conversationId || undefined,
       maxTokens: options.maxTokens,
@@ -227,14 +237,33 @@ export class EngineControlPlane extends EventEmitter {
 
       // Re-apply plan mode: set_plan_mode sent before session start was dropped
       if (tab.permissionMode === 'plan') {
-        this.bridge.sendSetPlanMode(tabId, true)
+        this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
       }
     }
 
     this._setStatus(tabId, 'running')
 
     // Send the prompt (include model for per-prompt override if changed mid-session)
-    const result = await this.bridge.sendPrompt(tabId, options.prompt, options.model)
+    let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt)
+
+    // Auto-recover from stale sessions (engine restart, unexpected death)
+    if (!result.ok && result.error?.includes('not found')) {
+      warn(`sendPrompt session lost, re-creating: tabId=${tabId}`)
+      tab.engineSessionStarted = false
+
+      const startResult = await this.bridge.startSession(tabId, config)
+      if (startResult.ok) {
+        tab.engineSessionStarted = true
+        if (tab.permissionMode === 'plan') {
+          this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
+        }
+        result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt)
+      } else {
+        error(`session re-create failed: tabId=${tabId} err=${startResult.error}`)
+        result = startResult
+      }
+    }
+
     if (!result.ok) {
       error(`sendPrompt failed: tabId=${tabId} err=${result.error}`)
       this._setStatus(tabId, 'failed')
@@ -251,15 +280,21 @@ export class EngineControlPlane extends EventEmitter {
   cancel(requestId: string): boolean {
     for (const [tabId, tab] of this.tabs) {
       if (tab.activeRequestId === requestId) {
+        log(`cancel: found tab=${tabId} for requestId=${requestId}, sending abort`)
         this.bridge.sendAbort(tabId)
         return true
       }
     }
+    warn(`cancel: no tab found for requestId=${requestId}`)
     return false
   }
 
   cancelTab(tabId: string): boolean {
-    if (!this.tabs.has(tabId)) return false
+    if (!this.tabs.has(tabId)) {
+      warn(`cancelTab: tab=${tabId} not found in control plane`)
+      return false
+    }
+    log(`cancelTab: tab=${tabId}, sending abort`)
     this.bridge.sendAbort(tabId)
     return true
   }
@@ -316,6 +351,10 @@ export class EngineControlPlane extends EventEmitter {
 
   async loadChainHistory(sessionIds: string[]): Promise<any[]> {
     return this.bridge.loadChainHistory(sessionIds)
+  }
+
+  async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> {
+    return this.bridge.getConversation(conversationId, offset, limit)
   }
 
   async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
@@ -403,6 +442,7 @@ export class EngineControlPlane extends EventEmitter {
             // Sync conversation ID from engine
             if (event.fields.sessionId) {
               tab.conversationId = event.fields.sessionId
+              this.bridge.updateSessionConversationId(tabId, event.fields.sessionId)
             }
 
             // Skip duplicate idle events after plan exit (handleRunExit sends a second
@@ -446,13 +486,19 @@ export class EngineControlPlane extends EventEmitter {
         break
 
       case 'engine_dead': {
-        log(`engine_dead: tabId=${tabId} exitCode=${event.exitCode} type=${typeof event.exitCode}`)
+        log(`engine_dead: tabId=${tabId} exitCode=${event.exitCode} signal=${event.signal} type=${typeof event.exitCode}`)
         // Code 0 = normal run completion (engine emits engine_dead after every
         // run exit). Only treat non-zero as a real error.
         if (event.exitCode === 0 || event.exitCode === null || event.exitCode === undefined) {
           tab.activeRequestId = null
-          tab.engineSessionStarted = false // allow transparent re-creation after idle cleanup
-          // Preserve 'completed' status (plan card visible) — idle timeout cleanup
+          // Only reset engineSessionStarted when the session was actually destroyed
+          // (StopSession emits engine_dead with no signal). When signal is
+          // 'cancelled', the run was aborted but the engine session is still
+          // alive — re-creating it would fail with "session already exists".
+          if (!event.signal) {
+            tab.engineSessionStarted = false // allow transparent re-creation after session stop
+          }
+          // Preserve 'completed' status (plan card visible) — session cleanup
           // should not wipe the card. Next prompt will transition to 'running'.
           if (tab.status !== 'completed') {
             this._setStatus(tabId, 'idle')
@@ -530,6 +576,11 @@ export class EngineControlPlane extends EventEmitter {
       case 'engine_stream_reset':
         log(`stream_reset: tabId=${tabId} (retry in progress, discarding partial text)`)
         this.emit('event', tabId, { type: 'stream_reset' } as NormalizedEvent)
+        break
+
+      case 'engine_compacting':
+        log(`compacting: tabId=${tabId} active=${event.active}`)
+        this.emit('event', tabId, { type: 'compacting', active: event.active } as NormalizedEvent)
         break
 
       case 'engine_agent_state':

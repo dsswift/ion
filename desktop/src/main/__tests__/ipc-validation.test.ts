@@ -80,7 +80,7 @@ describe('TC-002: sessionId UUID validation (LOAD_SESSION)', () => {
   })
 
   it('accepts engine-generated session IDs', () => {
-    expect(isValidSessionId('run-1776636257802')).toBe(true)
+    expect(isValidSessionId('1776636257802')).toBe(true)
     expect(isValidSessionId(VALID_UUID + '-extra')).toBe(true)
   })
 

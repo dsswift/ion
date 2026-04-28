@@ -6,6 +6,7 @@ export type GroupedItem =
   | { kind: 'user'; message: Message }
   | { kind: 'assistant'; message: Message }
   | { kind: 'system'; message: Message }
+  | { kind: 'harness'; message: Message }
   | { kind: 'tool-group'; messages: Message[] }
 
 // ─── Hidden system messages ───
@@ -45,6 +46,8 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
         if (includeUser) result.push({ kind: 'user', message: msg })
       } else if (msg.role === 'assistant') {
         result.push({ kind: 'assistant', message: msg })
+      } else if (msg.role === 'harness') {
+        result.push({ kind: 'harness', message: msg })
       } else {
         result.push({ kind: 'system', message: msg })
       }

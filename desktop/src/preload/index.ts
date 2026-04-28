@@ -15,6 +15,7 @@ export interface IonAPI {
   tabHealth(): Promise<HealthReport>
   closeTab(tabId: string): Promise<void>
   selectDirectory(): Promise<string | null>
+  selectExtensionFiles(): Promise<string[] | null>
   openExternal(url: string): Promise<boolean>
   openInVSCode(projectPath: string): Promise<boolean>
   attachFiles(): Promise<FileAttachment[] | null>
@@ -41,7 +42,7 @@ export interface IonAPI {
   executeBash(id: string, command: string, cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>
   cancelBash(id: string): void
   sendRemote(event: any): void
-  setPermissionMode(tabId: string, mode: string): void
+  setPermissionMode(tabId: string, mode: string, source?: string): void
   getTheme(): Promise<{ isDark: boolean }>
   onThemeChange(callback: (isDark: boolean) => void): () => void
   loadSettings(): Promise<Record<string, any>>
@@ -50,8 +51,10 @@ export interface IonAPI {
   saveTabs(data: PersistedTabState): Promise<void>
   saveSessionLabel(sessionId: string, customTitle: string | null): Promise<void>
   loadSessionLabels(): Promise<Record<string, string>>
+  generateTitle(text: string): Promise<string>
   loadSessionChains(): Promise<{ chains: Record<string, string[]>; reverse: Record<string, string> }>
   saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): Promise<void>
+  getConversation(conversationId: string, offset?: number, limit?: number): Promise<{ messages: any[]; total: number; hasMore: boolean }>
   getBackend(): Promise<'api' | 'cli'>
   switchBackend(backend: 'api' | 'cli'): Promise<void>
 
@@ -104,6 +107,7 @@ export interface IonAPI {
   engineStart(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string }>
   enginePrompt(key: string, text: string): Promise<{ ok: boolean; error?: string }>
   engineAbort(key: string): Promise<void>
+  engineAbortAgent(key: string, agentName: string, subtree: boolean): Promise<void>
   engineDialogResponse(key: string, dialogId: string, value: any): Promise<void>
   engineCommand(key: string, command: string, args: string): Promise<void>
   engineStop(key: string): Promise<void>
@@ -152,6 +156,7 @@ const api: IonAPI = {
   tabHealth: () => ipcRenderer.invoke(IPC.TAB_HEALTH),
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
+  selectExtensionFiles: () => ipcRenderer.invoke(IPC.SELECT_EXTENSION_FILES),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   openInVSCode: (projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, projectPath),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
@@ -189,7 +194,7 @@ const api: IonAPI = {
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
-  setPermissionMode: (tabId, mode) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode }),
+  setPermissionMode: (tabId, mode, source) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode, source }),
   getTheme: () => ipcRenderer.invoke(IPC.GET_THEME),
   onThemeChange: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, isDark: boolean) => callback(isDark)
@@ -202,8 +207,11 @@ const api: IonAPI = {
   saveTabs: (data) => ipcRenderer.invoke(IPC.SAVE_TABS, data),
   saveSessionLabel: (sessionId, customTitle) => ipcRenderer.invoke(IPC.SAVE_SESSION_LABEL, { sessionId, customTitle }),
   loadSessionLabels: () => ipcRenderer.invoke(IPC.LOAD_SESSION_LABELS),
+  generateTitle: (text) => ipcRenderer.invoke(IPC.GENERATE_TITLE, text),
   loadSessionChains: () => ipcRenderer.invoke(IPC.LOAD_SESSION_CHAINS),
   saveSessionChains: (data) => ipcRenderer.invoke(IPC.SAVE_SESSION_CHAINS, data),
+  getConversation: (conversationId: string, offset = 0, limit = 50) =>
+    ipcRenderer.invoke(IPC.GET_CONVERSATION, { conversationId, offset, limit }),
   getBackend: () => ipcRenderer.invoke(IPC.GET_BACKEND),
   switchBackend: (backend) => ipcRenderer.invoke(IPC.SWITCH_BACKEND, backend),
 
@@ -260,6 +268,8 @@ const api: IonAPI = {
   engineStart: (key, config) => ipcRenderer.invoke(IPC.ENGINE_START, { key, config }),
   enginePrompt: (key, text) => ipcRenderer.invoke(IPC.ENGINE_PROMPT, { key, text }),
   engineAbort: (key) => ipcRenderer.invoke(IPC.ENGINE_ABORT, { key }),
+  engineAbortAgent: (key, agentName, subtree) =>
+    ipcRenderer.invoke(IPC.ENGINE_ABORT_AGENT, { key, agentName, subtree }),
   engineDialogResponse: (key, dialogId, value) => ipcRenderer.invoke(IPC.ENGINE_DIALOG_RESPONSE, { key, dialogId, value }),
   engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
   engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),

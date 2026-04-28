@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
 import { Plus, X, Prohibit, Terminal, FolderPlus, FolderOpen, GitBranch, GitFork, FolderSimple, CheckCircle, CaretDown, CaretLeft, CaretRight, Rows, PencilSimple, Trash, ArrowRight, ArrowsInSimple, ArrowsOutSimple, Diamond, Square, StarFour, Triangle, Heart, Hexagon, Lightning, ChatCircle } from '@phosphor-icons/react'
@@ -750,7 +750,7 @@ function DirectoryPicker({
   onSelectDir,
   onClose,
 }: {
-  anchor: { x: number; y: number }
+  anchor: { x: number; y: number; bottom: number }
   onSelectDir: (dir: string) => void
   onClose: () => void
 }) {
@@ -759,6 +759,7 @@ function DirectoryPicker({
   const ref = useRef<HTMLDivElement>(null)
   const recentDirs = usePreferencesStore((s) => s.recentBaseDirectories)
   const usageCounts = usePreferencesStore((s) => s.directoryUsageCounts)
+  const [flipDown, setFlipDown] = useState(false)
 
   // Sort by usage frequency (descending), then alphabetically as tiebreaker
   const sortedDirs = [...recentDirs].sort((a, b) => {
@@ -766,6 +767,13 @@ function DirectoryPicker({
     if (countDiff !== 0) return countDiff
     return a.localeCompare(b)
   })
+
+  // Flip to open downward if the popover overflows the top of the viewport
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    if (rect.top < 0) setFlipDown(true)
+  }, [])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -803,7 +811,9 @@ function DirectoryPicker({
       style={{
         position: 'fixed',
         left: anchor.x,
-        bottom: (window.innerHeight / (usePreferencesStore.getState().uiZoom || 1)) - anchor.y + 6,
+        ...(flipDown
+          ? { top: anchor.bottom + 6 }
+          : { bottom: (window.innerHeight / (usePreferencesStore.getState().uiZoom || 1)) - anchor.y + 6 }),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
@@ -2354,8 +2364,8 @@ export function TabStrip() {
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
-  const [dirPickerState, setDirPickerState] = useState<{ anchor: { x: number; y: number }; mode: 'conversation' | 'terminal' | 'engine' } | null>(null)
-  const [enginePickerState, setEnginePickerState] = useState<{ anchor: { x: number; y: number }; dir: string } | null>(null)
+  const [dirPickerState, setDirPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; mode: 'conversation' | 'terminal' | 'engine' } | null>(null)
+  const [enginePickerState, setEnginePickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; dir: string } | null>(null)
   const [tabMenuId, setTabMenuId] = useState<string | null>(null)
   const [tabMenuAnchor, setTabMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const plusButtonRef = useRef<HTMLButtonElement>(null)
@@ -2379,12 +2389,16 @@ export function TabStrip() {
     itemRefs: groupHeaderRefs,
     onReorder: (reorderedIds) => {
       if (groupMode === 'manual') {
+        const allGroups = usePreferencesStore.getState().tabGroups
         const reorderedTabGroups = reorderedIds.map((id) => {
-          const stored = usePreferencesStore.getState().tabGroups.find((sg) => sg.id === id)
+          const stored = allGroups.find((sg) => sg.id === id)
           const view = groups.find((g) => g.groupId === id)
           return stored || { id, label: view?.label || id, isDefault: view?.isDefault || false, order: 0, collapsed: view?.collapsed || false }
         })
-        usePreferencesStore.getState().reorderTabGroups(reorderedTabGroups)
+        // Preserve empty groups that weren't visible in the strip
+        const reorderedIdSet = new Set(reorderedIds)
+        const missingGroups = allGroups.filter((g) => !reorderedIdSet.has(g.id))
+        usePreferencesStore.getState().reorderTabGroups([...reorderedTabGroups, ...missingGroups])
       } else if (groupMode === 'auto') {
         const dirs = reorderedIds.map((id) => id.replace('auto-', ''))
         usePreferencesStore.getState().setAutoGroupOrder(dirs)
@@ -2749,7 +2763,7 @@ export function TabStrip() {
           onClick={(e) => {
             window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
             const rect = zoomRect((e.currentTarget as HTMLElement).getBoundingClientRect())
-            setDirPickerState({ anchor: { x: rect.left, y: rect.top }, mode: 'conversation' })
+            setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'conversation' })
           }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
           style={{ color: colors.textTertiary }}
@@ -2764,7 +2778,7 @@ export function TabStrip() {
               toggleTerminal(activeTabId)
             } else {
               const rect = zoomRect((e.currentTarget as HTMLElement).getBoundingClientRect())
-              setDirPickerState({ anchor: { x: rect.left, y: rect.top }, mode: 'terminal' })
+              setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'terminal' })
             }
           }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
@@ -2777,7 +2791,7 @@ export function TabStrip() {
         <button
           onClick={(e) => {
             const rect = zoomRect((e.currentTarget as HTMLElement).getBoundingClientRect())
-            setDirPickerState({ anchor: { x: rect.left, y: rect.top }, mode: 'engine' })
+            setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'engine' })
           }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
           style={{ color: colors.textTertiary }}

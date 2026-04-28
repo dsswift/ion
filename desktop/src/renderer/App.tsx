@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback, useState } from 'react'
-import type { Message } from '../shared/types'
+import React, { useEffect, useCallback, useState, useRef } from 'react'
+import type { Message, AgentStateUpdate } from '../shared/types'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
@@ -165,7 +165,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    let aborted = false
     useSessionStore.getState().initStaticInfo().then(async () => {
+      if (aborted) return
       const homeDir = useSessionStore.getState().staticInfo?.homePath || '~'
 
       // Try restoring saved tabs
@@ -175,8 +177,8 @@ export default function App() {
         const restoredTabIds: Array<{ tabId: string; sessionId: string | null; index: number }> = []
         for (let i = 0; i < saved.tabs.length; i++) {
           const st = saved.tabs[i]
-          if (st.conversationId) {
-            // Tab with an engine conversation -- resume it
+          if (st.conversationId && !st.isEngine) {
+            // Conversation tab with a session -- resume it
             const tabId = await useSessionStore.getState().resumeSession(
               st.conversationId,
               st.title,
@@ -211,9 +213,13 @@ export default function App() {
                       pillIcon: st.pillIcon || null,
                       worktree: restoredWorktree,
                       historicalSessionIds: st.historicalSessionIds || [],
+                      lastKnownSessionId: st.lastKnownSessionId || null,
                       groupId: st.groupId || null,
                       contextTokens: st.contextTokens || null,
                       queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
+                      // Persisted permissionDenied is authoritative over resumeSession reconstruction
+                      ...(st.permissionDenied ? { permissionDenied: st.permissionDenied } : {}),
+                      ...(st.planFilePath ? { planFilePath: st.planFilePath } : {}),
                       // If worktree is valid, restore workingDirectory to worktree path
                       // If worktree was cleaned up, fall back to original repo path
                       ...(restoredWorktree
@@ -223,12 +229,60 @@ export default function App() {
                   : t
               ),
             }))
-            window.ion.setPermissionMode(tabId, st.permissionMode)
+            window.ion.setPermissionMode(tabId, st.permissionMode, 'tab_restore')
           } else if (st.isEngine) {
             // Engine tab
             const tabId = useSessionStore.getState().createEngineTab(st.workingDirectory, st.engineProfileId || undefined)
             restoredTabIds.push({ tabId, sessionId: null, index: i })
 
+            // Build all engine state before any setState call to avoid
+            // intermediate renders where EngineView sees no instances
+            // (its auto-create effect would fire, causing duplicate sessions
+            // and cascading re-renders → React error #310).
+            const restoredPanes = new Map(useSessionStore.getState().enginePanes)
+            const restoredEngineMessages = new Map(useSessionStore.getState().engineMessages)
+            const restoredEngineAgentStates = new Map(useSessionStore.getState().engineAgentStates)
+
+            if (st.engineInstances && st.engineInstances.length > 0) {
+              restoredPanes.set(tabId, {
+                instances: st.engineInstances,
+                activeInstanceId: st.engineInstances[0].id,
+              })
+
+              if (st.engineMessages) {
+                for (const inst of st.engineInstances) {
+                  const saved = st.engineMessages[inst.id]
+                  if (saved && saved.length > 0) {
+                    const key = `${tabId}:${inst.id}`
+                    restoredEngineMessages.set(key, saved.map((m) => ({
+                      id: crypto.randomUUID(),
+                      role: m.role as Message['role'],
+                      content: m.content,
+                      toolName: m.toolName,
+                      toolId: m.toolId,
+                      toolStatus: m.toolStatus as Message['toolStatus'],
+                      timestamp: m.timestamp,
+                    })))
+                  }
+                }
+              }
+
+              if (st.engineAgentStates) {
+                for (const inst of st.engineInstances) {
+                  const saved = st.engineAgentStates[inst.id]
+                  if (saved && saved.length > 0) {
+                    const key = `${tabId}:${inst.id}`
+                    restoredEngineAgentStates.set(key, saved.map((a) => ({
+                      name: a.name,
+                      status: (a.status === 'running' ? 'done' : a.status) as AgentStateUpdate['status'],
+                      metadata: a.metadata,
+                    })))
+                  }
+                }
+              }
+            }
+
+            // Single atomic setState: tab metadata + panes + messages + agent states
             useSessionStore.setState((s) => ({
               tabs: s.tabs.map((t) =>
                 t.id === tabId
@@ -237,19 +291,32 @@ export default function App() {
                       customTitle: st.customTitle || null,
                       pillColor: st.pillColor || null,
                       groupId: st.groupId || null,
+                      conversationId: st.conversationId || null,
                     }
                   : t
               ),
+              enginePanes: restoredPanes,
+              engineMessages: restoredEngineMessages,
+              engineAgentStates: restoredEngineAgentStates,
             }))
 
-            // Restore engine instances from persisted state
+            // Start engine processes (state is fully set up)
             if (st.engineInstances && st.engineInstances.length > 0) {
-              const enginePanes = new Map(useSessionStore.getState().enginePanes)
-              enginePanes.set(tabId, {
-                instances: st.engineInstances,
-                activeInstanceId: st.engineInstances[0].id,
-              })
-              useSessionStore.setState({ enginePanes })
+              const { engineProfiles } = usePreferencesStore.getState()
+              const profile = st.engineProfileId ? engineProfiles.find((p) => p.id === st.engineProfileId) : null
+              if (profile) {
+                for (const inst of st.engineInstances) {
+                  const key = `${tabId}:${inst.id}`
+                  window.ion.engineStart(key, {
+                    profileId: profile.id,
+                    extensions: profile.extensions,
+                    workingDirectory: st.workingDirectory,
+                    ...(st.conversationId ? { sessionId: st.conversationId } : {}),
+                  }).catch((err: any) => {
+                    console.error(`[restore] engine start failed for ${key}: ${err.message}`)
+                  })
+                }
+              }
             }
           } else if (st.isTerminalOnly) {
             // Terminal-only tab
@@ -307,6 +374,7 @@ export default function App() {
                       forkedFromSessionId: st.forkedFromSessionId || null,
                       worktree: st.worktree || null,
                       historicalSessionIds: st.historicalSessionIds || [],
+                      lastKnownSessionId: st.lastKnownSessionId || null,
                       groupId: st.groupId || null,
                       contextTokens: st.contextTokens || null,
                       queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
@@ -314,7 +382,7 @@ export default function App() {
                   : t
               ),
             }))
-            window.ion.setPermissionMode(tabId, st.permissionMode)
+            window.ion.setPermissionMode(tabId, st.permissionMode, 'tab_restore')
           }
         }
 
@@ -342,10 +410,58 @@ export default function App() {
             }
 
             if (allHistoricalMessages.length > 0) {
+              // If tab has no active session and combined messages end with
+              // ExitPlanMode/AskUserQuestion, restore the plan card so the
+              // user can re-implement without hunting through history.
+              const combinedMessages = [...allHistoricalMessages, ...(useSessionStore.getState().tabs.find((t) => t.id === tabId)?.messages || [])]
+              const tab = useSessionStore.getState().tabs.find((t) => t.id === tabId)
+              let restoredDenied = tab?.permissionDenied ?? null
+              if (!restoredDenied && !tab?.conversationId) {
+                const lastTool = [...combinedMessages].reverse().find((m) => m.toolName)
+                if (lastTool?.toolName === 'ExitPlanMode' || lastTool?.toolName === 'AskUserQuestion') {
+                  restoredDenied = { tools: [{ toolName: lastTool.toolName, toolUseId: 'restored' }] }
+                }
+              }
+
               useSessionStore.setState((s) => ({
                 tabs: s.tabs.map((t) =>
                   t.id === tabId
-                    ? { ...t, messages: [...allHistoricalMessages, ...t.messages] }
+                    ? {
+                        ...t,
+                        messages: [...allHistoricalMessages, ...t.messages],
+                        ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
+                      }
+                    : t
+                ),
+              }))
+            }
+          }
+        }
+
+        // Fallback: recover messages from lastKnownSessionId when both
+        // conversationId and historicalSessionIds are empty
+        for (const { tabId, index } of restoredTabIds) {
+          const st = saved.tabs[index]
+          const historicalIds = st.historicalSessionIds || []
+          if (!st.conversationId && historicalIds.length === 0 && st.lastKnownSessionId) {
+            const history = await window.ion.loadSession(st.lastKnownSessionId, st.workingDirectory).catch(() => [])
+            if (history.length > 0) {
+              const msgs = history.map((m) => ({
+                id: crypto.randomUUID(),
+                role: m.role as Message['role'],
+                content: m.content,
+                toolName: m.toolName,
+                toolId: m.toolId,
+                toolInput: m.toolInput,
+                toolStatus: m.toolName ? 'completed' as const : undefined,
+                userExecuted: m.userExecuted,
+                attachments: m.attachments,
+                timestamp: m.timestamp,
+              }))
+              useSessionStore.setState((s) => ({
+                tabs: s.tabs.map((t) =>
+                  t.id === tabId
+                    ? { ...t, messages: [...msgs, ...t.messages] }
                     : t
                 ),
               }))
@@ -507,6 +623,7 @@ export default function App() {
         registerInitialTab()
       }
     })
+    return () => { aborted = true }
   }, [])
 
   // OS-level click-through (RAF-throttled to avoid per-pixel IPC)
@@ -587,7 +704,7 @@ export default function App() {
         const s = useSessionStore.getState()
         const tab = s.tabs.find((t) => t.id === s.activeTabId)
         const current = tab?.permissionMode ?? 'plan'
-        s.setPermissionMode(current === 'plan' ? 'auto' : 'plan')
+        s.setPermissionMode(current === 'plan' ? 'auto' : 'plan', 'keyboard')
       }
       if (e.metaKey && e.key === 'k') {
         e.preventDefault()
@@ -749,8 +866,26 @@ export default function App() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // In tall view: fill available vertical space (minus tab strip, status bar, input bar, margins)
-  const bodyMaxHeight = isTallView ? winHeight - 200 : bodyMaxHeightNormal
+  // Track actual input row height for dynamic tall-mode sizing
+  const inputRowRef = useRef<HTMLDivElement>(null)
+  const [inputRowHeight, setInputRowHeight] = useState(110) // default: ~50px pill + 60px marginBottom
+  useEffect(() => {
+    const el = inputRowRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      // offsetHeight excludes margin; add marginBottom (60px normal, 20px terminal-only)
+      const margin = el.style.marginBottom ? parseInt(el.style.marginBottom, 10) : 60
+      setInputRowHeight(el.offsetHeight + margin)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // In tall view: fill available vertical space dynamically
+  // NON_INPUT_OVERHEAD covers tab strip (~40px) + card border/margins (~12px) + safety buffer (~38px)
+  const NON_INPUT_OVERHEAD = 90
+  const tallBodyMax = winHeight - NON_INPUT_OVERHEAD - inputRowHeight
+  const bodyMaxHeight = isTallView ? tallBodyMax : bodyMaxHeightNormal
 
   const handleMainUIMouseDown = useCallback(() => {
     if (useSessionStore.getState().fileEditorFocused) {
@@ -856,21 +991,21 @@ export default function App() {
 
             {/* Engine tab: custom engine view */}
             {isEngine && activeTab && (
-              <div style={{ height: isEngineTall ? winHeight - 200 : 420 }}>
+              <div style={{ height: isEngineTall ? tallBodyMax : 420 }}>
                 <EngineView tabId={activeTabId} />
               </div>
             )}
 
             {/* Terminal-only tab: full terminal, no conversation */}
             {isTerminalOnly && !isTerminalBigScreen && activeTab && (
-              <div style={{ height: isTerminalTall ? winHeight - 200 : 420 }}>
+              <div style={{ height: isTerminalTall ? tallBodyMax : 420 }}>
                 <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
               </div>
             )}
 
             {/* Terminal tall mode: terminal replaces conversation */}
             {!isTerminalOnly && isTerminalTall && !isTerminalBigScreen && terminalOpen && activeTab && (
-              <div style={{ height: winHeight - 200 }}>
+              <div style={{ height: tallBodyMax }}>
                 <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
               </div>
             )}
@@ -892,8 +1027,8 @@ export default function App() {
                 </div>
               </motion.div>
             )}
-            {/* StatusBar must always mount so useGitPolling runs for terminal-only/tall tabs */}
-            {(isTerminalOnly || isTerminalTall) && (
+            {/* StatusBar must always mount so useGitPolling runs for terminal-only/tall/engine tabs */}
+            {(isTerminalOnly || isTerminalTall || isEngine) && (
               <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }}>
                 <StatusBar />
               </div>
@@ -903,7 +1038,7 @@ export default function App() {
           {/* ─── Input row — circles float outside left ─── */}
           {/* Hidden when terminal-only tab (no conversation input needed) */}
           {/* marginBottom: shadow buffer so the glass-surface drop shadow isn't clipped at the native window edge */}
-          <div data-ion-ui className="relative" style={{ minHeight: isTerminalOnly ? 20 : 46, zIndex: 15, marginBottom: isTerminalOnly ? 20 : 60, pointerEvents: isTerminalOnly ? 'none' : undefined, opacity: isTerminalOnly ? 0 : 1 }}>
+          <div ref={inputRowRef} data-ion-ui className="relative" style={{ minHeight: isTerminalOnly ? 20 : 46, zIndex: 15, marginBottom: isTerminalOnly ? 20 : 60, pointerEvents: isTerminalOnly ? 'none' : undefined, opacity: isTerminalOnly ? 0 : 1 }}>
             {/* Stacked circle buttons — expand on hover */}
             <div
               data-ion-ui

@@ -13,6 +13,9 @@ else
     echo "  ✓ Ion Engine installed"
 fi
 
+# Code signing certificate (stable identity prevents macOS TCC re-prompts)
+bash scripts/ensure-dev-cert.sh
+
 # ── Helpers ──
 
 fail=0

@@ -13,6 +13,7 @@ export function useEngineEvents() {
   const handleNormalizedEvent = useSessionStore((s) => s.handleNormalizedEvent)
   const handleStatusChange = useSessionStore((s) => s.handleStatusChange)
   const handleError = useSessionStore((s) => s.handleError)
+  const handleEngineEvent = useSessionStore((s) => s.handleEngineEvent)
 
   // RAF batching for text_chunk events
   const chunkBufferRef = useRef<Map<string, string>>(new Map())
@@ -85,6 +86,11 @@ export function useEngineEvents() {
       }
     })
 
+    // Engine tab events (status, agent state, text deltas, etc.)
+    const unsubEngineEvent = window.ion.onEngineEvent((key, event) => {
+      handleEngineEvent(key, event)
+    })
+
     // Remote user messages (sent from iOS) — submit through the renderer's normal flow
     // so the tab's working directory, session ID, model, and addDirs are used automatically.
     const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number }) => {
@@ -145,6 +151,7 @@ export function useEngineEvents() {
       unsubStatus()
       unsubError()
       unsubSkill()
+      unsubEngineEvent()
       window.ion.off(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
       window.ion.off(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
       window.ion.off(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
@@ -154,7 +161,7 @@ export function useEngineEvents() {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
       chunkBufferRef.current.clear()
     }
-  }, [handleNormalizedEvent, handleStatusChange, handleError])
+  }, [handleNormalizedEvent, handleStatusChange, handleError, handleEngineEvent])
 
   // Note: window.ion.start() is called via sessionStore.initStaticInfo() in App.tsx.
   // No duplicate call needed here.

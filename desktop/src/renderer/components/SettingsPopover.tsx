@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { DotsThree, Bell, ArrowsOutSimple, Moon, Gear, ListChecks } from '@phosphor-icons/react'
+import { DotsThree, Gear, ListChecks, ClipboardText, Bug, FolderOpen } from '@phosphor-icons/react'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -41,18 +41,22 @@ function RowToggle({
   )
 }
 
+/* ─── Transcript formatting ─── */
+
+function formatTranscript(messages: Array<{ role: string; content: string }>): string {
+  return messages
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
+    .map((m) => `[${m.role}]: ${m.content}`)
+    .join('\n\n')
+}
+
 /* ─── Settings popover ─── */
 
 export function SettingsPopover() {
-  const soundEnabled = usePreferencesStore((s) => s.soundEnabled)
-  const setSoundEnabled = usePreferencesStore((s) => s.setSoundEnabled)
-  const themeMode = usePreferencesStore((s) => s.themeMode)
-  const setThemeMode = usePreferencesStore((s) => s.setThemeMode)
-  const expandedUI = usePreferencesStore((s) => s.expandedUI)
-  const setExpandedUI = usePreferencesStore((s) => s.setExpandedUI)
-  const isExpanded = useSessionStore((s) => s.isExpanded)
   const showTodoList = usePreferencesStore((s) => s.showTodoList)
   const setShowTodoList = usePreferencesStore((s) => s.setShowTodoList)
+  const expandedUI = usePreferencesStore((s) => s.expandedUI)
+  const isExpanded = useSessionStore((s) => s.isExpanded)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -127,6 +131,96 @@ export function SettingsPopover() {
     setOpen((o) => !o)
   }
 
+  const handleCopyTranscript = () => {
+    const { activeTabId, tabs, engineMessages, enginePanes } = useSessionStore.getState()
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+
+    let messages: Array<{ role: string; content: string }>
+    if (tab.isEngine) {
+      // Engine tabs: messages keyed by tabId:instanceId
+      const pane = enginePanes.get(tab.id)
+      const key = pane?.activeInstanceId ? `${tab.id}:${pane.activeInstanceId}` : ''
+      messages = key ? (engineMessages.get(key) || []) : []
+    } else {
+      messages = tab.messages
+    }
+
+    const transcript = formatTranscript(messages)
+    if (!transcript) return
+
+    navigator.clipboard.writeText(transcript)
+    setOpen(false)
+  }
+
+  const handleCopyDebugInfo = () => {
+    const {
+      activeTabId,
+      tabs,
+      staticInfo,
+      backend,
+      enginePanes,
+      engineStatusFields,
+      engineConversationIds,
+    } = useSessionStore.getState()
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+
+    const homeDir = staticInfo?.homePath || '~'
+    let payload: string
+
+    if (tab.isEngine) {
+      // Each engine restart writes a new conversation file. Copy every
+      // file the engine has produced for this instance, newest last, so
+      // the user can see the full history (including the runaway that
+      // pushed the engine to restart in the first place).
+      const pane = enginePanes.get(tab.id)
+      const key = pane?.activeInstanceId ? `${tab.id}:${pane.activeInstanceId}` : ''
+      if (!key) return
+      const ids = engineConversationIds.get(key) ?? []
+      const current = engineStatusFields.get(key)?.sessionId
+      const allIds = current && !ids.includes(current) ? [...ids, current] : ids
+      if (allIds.length === 0) return
+      const paths = allIds.map((id) => `${homeDir}/.ion/conversations/${id}.jsonl`)
+      payload = paths.join('\n')
+    } else {
+      if (!tab.conversationId) return
+      if (backend === 'api') {
+        payload = `${homeDir}/.ion/conversations/${tab.conversationId}.jsonl`
+      } else {
+        const encodedPath = tab.workingDirectory.replace(/[/.]/g, '-')
+        payload = `${homeDir}/.claude/projects/${encodedPath}/${tab.conversationId}.jsonl`
+      }
+    }
+
+    navigator.clipboard.writeText(payload)
+    setOpen(false)
+  }
+
+  const handleRevealConversationsFolder = () => {
+    const { staticInfo } = useSessionStore.getState()
+    const homeDir = staticInfo?.homePath
+    if (!homeDir) return
+    window.ion.fsOpenNative(`${homeDir}/.ion/conversations`).catch(() => {})
+    setOpen(false)
+  }
+
+  // Check if debug info can be copied
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const tabs = useSessionStore((s) => s.tabs)
+  const enginePanes = useSessionStore((s) => s.enginePanes)
+  const engineStatusFields = useSessionStore((s) => s.engineStatusFields)
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const hasDebugInfo = (() => {
+    if (!activeTab) return false
+    if (activeTab.isEngine) {
+      const pane = enginePanes.get(activeTab.id)
+      const key = pane?.activeInstanceId ? `${activeTab.id}:${pane.activeInstanceId}` : ''
+      return !!(key && engineStatusFields.get(key)?.sessionId)
+    }
+    return !!activeTab.conversationId
+  })()
+
   return (
     <>
       <button
@@ -164,68 +258,6 @@ export function SettingsPopover() {
           }}
         >
           <div className="p-3 flex flex-col gap-2.5">
-            {/* Full width */}
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <ArrowsOutSimple size={14} style={{ color: colors.textTertiary }} />
-                  <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                    Full width
-                  </div>
-                </div>
-                <RowToggle
-                  checked={expandedUI}
-                  onChange={(next) => {
-                    setExpandedUI(next)
-                  }}
-                  colors={colors}
-                  label="Toggle full width panel"
-                />
-              </div>
-            </div>
-
-            <div style={{ height: 1, background: colors.popoverBorder }} />
-
-            {/* Notification sound */}
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Bell size={14} style={{ color: colors.textTertiary }} />
-                  <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                    Notification sound
-                  </div>
-                </div>
-                <RowToggle
-                  checked={soundEnabled}
-                  onChange={setSoundEnabled}
-                  colors={colors}
-                  label="Toggle notification sound"
-                />
-              </div>
-            </div>
-
-            <div style={{ height: 1, background: colors.popoverBorder }} />
-
-            {/* Theme */}
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Moon size={14} style={{ color: colors.textTertiary }} />
-                  <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                    Dark theme
-                  </div>
-                </div>
-                <RowToggle
-                  checked={themeMode === 'dark'}
-                  onChange={(next) => setThemeMode(next ? 'dark' : 'light')}
-                  colors={colors}
-                  label="Toggle dark theme"
-                />
-              </div>
-            </div>
-
-            <div style={{ height: 1, background: colors.popoverBorder }} />
-
             {/* Task list */}
             <div>
               <div className="flex items-center justify-between gap-3">
@@ -243,6 +275,65 @@ export function SettingsPopover() {
                 />
               </div>
             </div>
+
+            <div style={{ height: 1, background: colors.popoverBorder }} />
+
+            {/* Copy transcript */}
+            <button
+              onClick={handleCopyTranscript}
+              className="flex items-center gap-2 w-full"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 0',
+              }}
+            >
+              <ClipboardText size={14} style={{ color: colors.textTertiary }} />
+              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                Copy transcript
+              </span>
+            </button>
+
+            <div style={{ height: 1, background: colors.popoverBorder }} />
+
+            {/* Copy log path */}
+            <button
+              onClick={handleCopyDebugInfo}
+              disabled={!hasDebugInfo}
+              className="flex items-center gap-2 w-full"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: hasDebugInfo ? 'pointer' : 'default',
+                padding: '2px 0',
+                opacity: hasDebugInfo ? 1 : 0.4,
+              }}
+              title="Copies every conversation file the engine has written for this tab. Multiple paths are newline-separated."
+            >
+              <Bug size={14} style={{ color: colors.textTertiary }} />
+              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                Copy log path
+              </span>
+            </button>
+
+            {/* Reveal conversations folder in Finder */}
+            <button
+              onClick={handleRevealConversationsFolder}
+              className="flex items-center gap-2 w-full"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 0',
+              }}
+              title="Open ~/.ion/conversations in Finder."
+            >
+              <FolderOpen size={14} style={{ color: colors.textTertiary }} />
+              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                Reveal conversations folder
+              </span>
+            </button>
 
             <div style={{ height: 1, background: colors.popoverBorder }} />
 

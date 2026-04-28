@@ -42,6 +42,8 @@ interface PreferencesState {
   enableClaudeCompat: boolean
   /** Show the todo/task list panel at the bottom of the conversation */
   showTodoList: boolean
+  /** Use AI to generate descriptive tab titles from the first message */
+  aiGeneratedTitles: boolean
   /** Hide Ion overlay when launching external apps (Finder, Terminal, VS Code, etc.) */
   hideOnExternalLaunch: boolean
   /** Keep explorer open when conversation is minimized */
@@ -88,8 +90,15 @@ interface PreferencesState {
   preferredModel: string
   /** Named engine profiles for tab creation */
   engineProfiles: EngineProfile[]
+  /** Default tall mode per tab type */
+  defaultTallConversation: boolean
+  defaultTallTerminal: boolean
+  defaultTallEngine: boolean
   /** OS-reported dark mode -- used when themeMode is 'system' */
   _systemIsDark: boolean
+  setDefaultTallConversation: (enabled: boolean) => void
+  setDefaultTallTerminal: (enabled: boolean) => void
+  setDefaultTallEngine: (enabled: boolean) => void
   setIsDark: (isDark: boolean) => void
   setThemeMode: (mode: ThemeMode) => void
   setSoundEnabled: (enabled: boolean) => void
@@ -121,6 +130,7 @@ interface PreferencesState {
   setAllowSettingsEdits: (enabled: boolean) => void
   setEnableClaudeCompat: (enabled: boolean) => void
   setShowTodoList: (enabled: boolean) => void
+  setAiGeneratedTitles: (enabled: boolean) => void
   setHideOnExternalLaunch: (enabled: boolean) => void
   setKeepExplorerOnCollapse: (enabled: boolean) => void
   setKeepTerminalOnCollapse: (enabled: boolean) => void
@@ -163,7 +173,7 @@ interface PreferencesState {
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, showTodoList: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], inProgressGroupId: null as string | null, doneGroupId: null as string | null, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], enginePiBinaryPath: '', engineExtensionPath: '~/.pi/extensions/chief-of-staff.ts', engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6' }
+const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', showImplementClearContext: false, defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, showTodoList: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], inProgressGroupId: null as string | null, doneGroupId: null as string | null, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], enginePiBinaryPath: '', engineExtensionPath: '~/.pi/extensions/chief-of-staff.ts', engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false }
 
 function saveSettings(s: Record<string, unknown>): void {
   window.ion?.saveSettings(s)
@@ -171,7 +181,7 @@ function saveSettings(s: Record<string, unknown>): void {
 
 function getAllSettings(get: () => PreferencesState): Record<string, unknown> {
   const s = get()
-  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, ultraWide: s.ultraWide, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, directoryUsageCounts: s.directoryUsageCounts, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, allowSettingsEdits: s.allowSettingsEdits, showTodoList: s.showTodoList, hideOnExternalLaunch: s.hideOnExternalLaunch, keepExplorerOnCollapse: s.keepExplorerOnCollapse, keepTerminalOnCollapse: s.keepTerminalOnCollapse, keepGitPanelOnCollapse: s.keepGitPanelOnCollapse, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups, autoGroupOrder: s.autoGroupOrder, inProgressGroupId: s.inProgressGroupId, doneGroupId: s.doneGroupId, commitCommand: s.commitCommand, gitChangesTreeView: s.gitChangesTreeView, quickTools: s.quickTools, uiZoom: s.uiZoom, remoteEnabled: s.remoteEnabled, relayUrl: s.relayUrl, relayApiKey: s.relayApiKey, lanServerPort: s.lanServerPort, pairedDevices: s.pairedDevices, enginePiBinaryPath: s.enginePiBinaryPath, engineExtensionPath: s.engineExtensionPath, engineDefaultModel: s.engineDefaultModel, engineProfiles: s.engineProfiles, preferredModel: s.preferredModel }
+  return { themeMode: s.themeMode, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, ultraWide: s.ultraWide, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, directoryUsageCounts: s.directoryUsageCounts, preferredOpenWith: s.preferredOpenWith, showImplementClearContext: s.showImplementClearContext, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelSplitRatio: s.gitPanelSplitRatio, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, allowSettingsEdits: s.allowSettingsEdits, showTodoList: s.showTodoList, aiGeneratedTitles: s.aiGeneratedTitles, hideOnExternalLaunch: s.hideOnExternalLaunch, keepExplorerOnCollapse: s.keepExplorerOnCollapse, keepTerminalOnCollapse: s.keepTerminalOnCollapse, keepGitPanelOnCollapse: s.keepGitPanelOnCollapse, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups, autoGroupOrder: s.autoGroupOrder, inProgressGroupId: s.inProgressGroupId, doneGroupId: s.doneGroupId, commitCommand: s.commitCommand, gitChangesTreeView: s.gitChangesTreeView, quickTools: s.quickTools, uiZoom: s.uiZoom, remoteEnabled: s.remoteEnabled, relayUrl: s.relayUrl, relayApiKey: s.relayApiKey, lanServerPort: s.lanServerPort, pairedDevices: s.pairedDevices, enginePiBinaryPath: s.enginePiBinaryPath, engineExtensionPath: s.engineExtensionPath, engineDefaultModel: s.engineDefaultModel, engineProfiles: s.engineProfiles, preferredModel: s.preferredModel, defaultTallConversation: s.defaultTallConversation, defaultTallTerminal: s.defaultTallTerminal, defaultTallEngine: s.defaultTallEngine }
 }
 
 /** Returns effective tab groups: custom groups if any exist, otherwise built-in defaults */
@@ -218,6 +228,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   allowSettingsEdits: saved.allowSettingsEdits,
   enableClaudeCompat: saved.enableClaudeCompat ?? true,
   showTodoList: saved.showTodoList,
+  aiGeneratedTitles: saved.aiGeneratedTitles,
   hideOnExternalLaunch: saved.hideOnExternalLaunch,
   keepExplorerOnCollapse: saved.keepExplorerOnCollapse,
   keepTerminalOnCollapse: saved.keepTerminalOnCollapse,
@@ -241,7 +252,22 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   engineDefaultModel: saved.engineDefaultModel,
   engineProfiles: saved.engineProfiles,
   preferredModel: saved.preferredModel,
+  defaultTallConversation: saved.defaultTallConversation,
+  defaultTallTerminal: saved.defaultTallTerminal,
+  defaultTallEngine: saved.defaultTallEngine,
   _systemIsDark: true,
+  setDefaultTallConversation: (enabled) => {
+    set({ defaultTallConversation: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setDefaultTallTerminal: (enabled) => {
+    set({ defaultTallTerminal: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setDefaultTallEngine: (enabled) => {
+    set({ defaultTallEngine: enabled })
+    saveSettings(getAllSettings(get))
+  },
   setIsDark: (isDark) => {
     set({ isDark })
     applyTheme(isDark)
@@ -376,6 +402,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setShowTodoList: (enabled) => {
     set({ showTodoList: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setAiGeneratedTitles: (enabled) => {
+    set({ aiGeneratedTitles: enabled })
     saveSettings(getAllSettings(get))
   },
   setHideOnExternalLaunch: (enabled) => {
@@ -590,6 +620,7 @@ window.ion?.loadSettings().then((disk) => {
   const wtSkipPr = typeof disk.worktreeSkipPrTitle === 'boolean' ? disk.worktreeSkipPrTitle : false
   const allowSettings = typeof disk.allowSettingsEdits === 'boolean' ? disk.allowSettingsEdits : false
   const showTodo = typeof disk.showTodoList === 'boolean' ? disk.showTodoList : true
+  const aiTitles = typeof disk.aiGeneratedTitles === 'boolean' ? disk.aiGeneratedTitles : true
   const hideExternal = typeof disk.hideOnExternalLaunch === 'boolean' ? disk.hideOnExternalLaunch : true
   const tabGroupMode = (disk.tabGroupMode === 'off' || disk.tabGroupMode === 'auto' || disk.tabGroupMode === 'manual') ? disk.tabGroupMode : 'off'
   const tabGroups = Array.isArray(disk.tabGroups) ? (disk.tabGroups as TabGroup[]).filter((g: any) => g && typeof g.id === 'string' && typeof g.label === 'string') : []
@@ -613,45 +644,13 @@ window.ion?.loadSettings().then((disk) => {
   const engineExtensionPath = typeof disk.engineExtensionPath === 'string' ? disk.engineExtensionPath : ''
   const engineDefaultModel = typeof disk.engineDefaultModel === 'string' ? disk.engineDefaultModel : ''
   const preferredModel = typeof disk.preferredModel === 'string' && disk.preferredModel ? disk.preferredModel : 'claude-opus-4-6'
-  const engineProfilesRaw = Array.isArray(disk.engineProfiles) ? (disk.engineProfiles as any[]).filter((p: any) => p && typeof p.id === 'string' && typeof p.name === 'string') : []
-  // Migrate old { args } profiles to new structured format
-  const engineProfiles: EngineProfile[] = engineProfilesRaw.map((p: any) => {
-    if ('args' in p && !('extensionDir' in p)) {
-      const extensionMatch = p.args?.match(/-e\s+([^\s]+)/)
-      return {
-        id: p.id,
-        name: p.name,
-        extensionDir: extensionMatch ? extensionMatch[1].replace(/\/[^/]+$/, '') : '',
-      }
-    }
-    // Migrate old named fields to options bag
-    const migrated = { ...p }
-    const opts: Record<string, any> = { ...(migrated.options || {}) }
-    for (const key of ['agentsRoot', 'defaultTeam', 'damageControlRules', 'universalStandards']) {
-      if (key in migrated && !(key in opts)) {
-        opts[key] = (migrated as any)[key]
-        delete (migrated as any)[key]
-      }
-    }
-    if (Object.keys(opts).length > 0) migrated.options = opts
-    return migrated as EngineProfile
-  })
-  usePreferencesStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, directoryUsageCounts: dirUsageCounts, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, showTodoList: showTodo, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, inProgressGroupId, doneGroupId, commitCommand, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices, enginePiBinaryPath, engineExtensionPath, engineDefaultModel, engineProfiles, preferredModel })
+  const engineProfiles: EngineProfile[] = Array.isArray(disk.engineProfiles) ? (disk.engineProfiles as any[]).filter((p: any) => p && typeof p.id === 'string' && typeof p.name === 'string') : []
+  const defaultTallConversation = typeof disk.defaultTallConversation === 'boolean' ? disk.defaultTallConversation : false
+  const defaultTallTerminal = typeof disk.defaultTallTerminal === 'boolean' ? disk.defaultTallTerminal : false
+  const defaultTallEngine = typeof disk.defaultTallEngine === 'boolean' ? disk.defaultTallEngine : false
+  usePreferencesStore.setState({ themeMode: mode, isDark: resolved, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, directoryUsageCounts: dirUsageCounts, preferredOpenWith: openWith, showImplementClearContext: implClearCtx, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, showTodoList: showTodo, aiGeneratedTitles: aiTitles, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, inProgressGroupId, doneGroupId, commitCommand, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices, enginePiBinaryPath, engineExtensionPath, engineDefaultModel, engineProfiles, preferredModel, defaultTallConversation, defaultTallTerminal, defaultTallEngine })
   applyTheme(resolved)
   if (uiZoom !== 1) document.documentElement.style.zoom = String(uiZoom)
-
-  // Migrate legacy engine fields to profile
-  if (engineProfiles.length === 0 && engineExtensionPath) {
-    const extensionDir = engineExtensionPath.replace(/\/[^/]+$/, '')
-    const fileName = engineExtensionPath.split('/').pop()?.replace('.ts', '') || 'engine'
-    const migrated: EngineProfile = {
-      id: crypto.randomUUID().slice(0, 8),
-      name: fileName,
-      extensionDir,
-      ...(engineDefaultModel ? { model: engineDefaultModel } : {}),
-    }
-    usePreferencesStore.getState().addEngineProfile(migrated)
-  }
 })
 
 /** Reactive hook — returns the active color palette */

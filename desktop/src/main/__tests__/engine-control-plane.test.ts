@@ -40,7 +40,12 @@ vi.mock('../engine-bridge', () => {
   }
 })
 
-vi.mock('../logger', () => ({ log: vi.fn() }))
+vi.mock('../logger', () => ({
+  log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}))
 
 let uuidCounter = 0
 vi.mock('crypto', async () => {
@@ -52,6 +57,7 @@ vi.mock('crypto', async () => {
 })
 
 import { EngineControlPlane } from '../engine-control-plane'
+import { EngineBridge } from '../engine-bridge'
 
 // ─── Helpers ───
 
@@ -79,7 +85,9 @@ describe('EngineControlPlane', () => {
     mockBridge.startSession.mockResolvedValue({ ok: true })
     mockBridge.sendPrompt.mockResolvedValue({ ok: true })
 
-    cp = new EngineControlPlane()
+    // EngineControlPlane needs an EngineBridge; the EngineBridge module is
+    // mocked above so `new EngineBridge()` returns the shared mockBridge.
+    cp = new EngineControlPlane(new (EngineBridge as any)())
   })
 
   describe('tab management', () => {
@@ -104,7 +112,9 @@ describe('EngineControlPlane', () => {
         expect.objectContaining({ workingDirectory: '/Users/test/project' }),
       )
       expect(mockBridge.sendPrompt).toHaveBeenCalledOnce()
-      expect(mockBridge.sendPrompt).toHaveBeenCalledWith(tabId, 'hi')
+      // sendPrompt accepts optional model and appendSystemPrompt; the test
+      // only cares about the first two positional args.
+      expect(mockBridge.sendPrompt).toHaveBeenCalledWith(tabId, 'hi', undefined, undefined)
     })
 
     it('passes sessionId through EngineConfig', async () => {
@@ -131,7 +141,7 @@ describe('EngineControlPlane', () => {
       // startSession should still have been called only once
       expect(mockBridge.startSession).toHaveBeenCalledOnce()
       expect(mockBridge.sendPrompt).toHaveBeenCalledTimes(2)
-      expect(mockBridge.sendPrompt).toHaveBeenLastCalledWith(tabId, 'second')
+      expect(mockBridge.sendPrompt).toHaveBeenLastCalledWith(tabId, 'second', undefined, undefined)
     })
 
     it('emits error when startSession fails', async () => {

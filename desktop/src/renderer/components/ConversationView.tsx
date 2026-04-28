@@ -249,7 +249,7 @@ export function ConversationView() {
                   ),
                 }))
                 // Switch to auto mode for implementation
-                useSessionStore.getState().setPermissionMode('auto')
+                useSessionStore.getState().setPermissionMode('auto', 'plan_approved')
 
                 // Auto-move tab to in-progress group if designated
                 const { inProgressGroupId, tabGroupMode } = usePreferencesStore.getState()
@@ -259,17 +259,16 @@ export function ConversationView() {
 
                 let implementPrompt = 'Implement the plan'
 
-                // Extract plan file path from messages for the plan attachment
-                const msgs = [...tab.messages]
-                const exitMsg = msgs.reverse().find(
-                  (m) => m.toolName === 'ExitPlanMode' && m.toolInput
-                )
-                let planFilePath: string | null = null
-                if (exitMsg?.toolInput) {
-                  try {
-                    const input = JSON.parse(exitMsg.toolInput)
-                    planFilePath = (input.planFilePath as string) || null
-                  } catch {}
+                // Extract plan file path: tab state (engine event) > denial toolInput
+                let planFilePath: string | null = tab.planFilePath || null
+
+                if (!planFilePath && tab.permissionDenied?.tools) {
+                  const exitDenial = tab.permissionDenied.tools.find(
+                    (t) => t.toolName === 'ExitPlanMode' && t.toolInput
+                  )
+                  if (exitDenial?.toolInput?.planFilePath) {
+                    planFilePath = exitDenial.toolInput.planFilePath as string
+                  }
                 }
 
                 // Read plan content for both paths
@@ -421,9 +420,12 @@ export function ConversationView() {
           <AnimatePresence>
             {showInterrupt && (
               <InterruptButton onInterrupt={() => {
+                console.log(`[ConversationView] interrupt: tabId=${tab.id} bashExecId=${tab.bashExecId ?? 'none'} status=${tab.status}`)
                 if (tab.bashExecId) {
+                  console.log(`[ConversationView] cancelling bash: execId=${tab.bashExecId}`)
                   window.ion.cancelBash(tab.bashExecId)
                 } else {
+                  console.log(`[ConversationView] stopping tab: tabId=${tab.id}`)
                   window.ion.stopTab(tab.id)
                 }
               }} />

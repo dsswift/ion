@@ -168,6 +168,8 @@ export interface TabState {
   id: string
   conversationId: string | null
   historicalSessionIds: string[]
+  /** Most recent non-null conversationId; never cleared. Recovery fallback when conversationId is null. */
+  lastKnownSessionId: string | null
   status: TabStatus
   activeRequestId: string | null
   hasUnread: boolean
@@ -238,7 +240,7 @@ export interface TabState {
 
 export interface Message {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system'
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'harness'
   content: string
   toolName?: string
   toolInput?: string
@@ -279,27 +281,23 @@ export type NormalizedEvent =
   | { type: 'usage'; usage: UsageData }
   | { type: 'permission_request'; questionId: string; toolName: string; toolDescription?: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'stream_reset' }
+  | { type: 'compacting'; active: boolean }
 
 // ─── Engine Types (native Ion extension runtime) ───
 
 export interface EngineProfile {
-  id: string                    // crypto.randomUUID().slice(0,8)
-  name: string                  // "cos", "code-reviewer"
-  extensionDir: string          // path to extension dir containing extension.ts
-  model?: string                // model override
-  options?: Record<string, any> // extension-specific key-value options
+  id: string
+  name: string
+  extensions: string[]
 }
 
 export interface EngineConfig {
   profileId: string
-  extensionDir: string
-  model?: string
+  extensions: string[]
   workingDirectory: string
-  /** Conversation ID to resume on first prompt */
   sessionId?: string
   maxTokens?: number
   thinking?: { enabled: boolean; budgetTokens?: number }
-  options?: Record<string, any> // extension-specific key-value options
 }
 
 export interface EngineInstance {
@@ -314,22 +312,8 @@ export interface EnginePaneState {
 
 export interface AgentStateUpdate {
   name: string
-  displayName: string
-  type: string
-  visibility: 'always' | 'sticky' | 'ephemeral'
   status: 'idle' | 'running' | 'done' | 'error'
-  invited: boolean
-  task?: string
-  lastWork?: string
-  fullOutput?: string
-  elapsed?: number
-  cost?: number
-  color?: string
-  messages?: Array<{ role: 'assistant' | 'tool'; content: string; toolName?: string }>
-  /** Extension-provided parent reference; engine uses only for subtree abort traversal */
-  parentAgent?: string
-  /** Convenience for clients; engine never reads this */
-  depth?: number
+  metadata?: Record<string, any>
 }
 
 /** Process registration handle for per-agent abort/steer */
@@ -342,6 +326,7 @@ export interface AgentHandle {
 export interface StatusFields {
   label: string
   state: string
+  sessionId?: string
   team?: string
   model: string
   contextPercent: number
@@ -358,15 +343,20 @@ export type EngineEvent =
   | { type: 'engine_working_message'; message: string }
   | { type: 'engine_notify'; message: string; level: 'info' | 'warning' | 'error' }
   | { type: 'engine_dialog'; dialogId: string; method: 'select' | 'confirm' | 'input'; title: string; message?: string; options?: string[]; defaultValue?: string }
+  | { type: 'engine_harness_message'; message: string; source?: string }
   | { type: 'engine_text_delta'; text: string }
   | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
-  | { type: 'engine_error'; message: string }
+  | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string }
   | { type: 'engine_stream_reset' }
+  | { type: 'engine_compacting'; active: boolean }
+  | { type: 'engine_extension_died'; extensionName: string; exitCode: number | null; signal: string | null }
+  | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }
+  | { type: 'engine_extension_dead_permanent'; extensionName: string; attemptNumber: number }
 
 // ─── Run Options ───
 
@@ -386,6 +376,8 @@ export interface RunOptions {
   maxTokens?: number
   /** Extended thinking config */
   thinking?: { enabled: boolean; budgetTokens?: number }
+  /** Extension entry points for engine tabs (resolved from engine profile) */
+  extensions?: string[]
 }
 
 // ─── Control Plane Types ───
@@ -480,6 +472,7 @@ export const IPC = {
   TAB_HEALTH: 'ion:tab-health',
   CLOSE_TAB: 'ion:close-tab',
   SELECT_DIRECTORY: 'ion:select-directory',
+  SELECT_EXTENSION_FILES: 'ion:select-extension-files',
   OPEN_EXTERNAL: 'ion:open-external',
   OPEN_IN_VSCODE: 'ion:open-in-vscode',
   ATTACH_FILES: 'ion:attach-files',
@@ -543,10 +536,14 @@ export const IPC = {
   // Session labels
   SAVE_SESSION_LABEL: 'ion:save-session-label',
   LOAD_SESSION_LABELS: 'ion:load-session-labels',
+  GENERATE_TITLE: 'ion:generate-title',
 
   // Session chains (composite conversation grouping)
   LOAD_SESSION_CHAINS: 'ion:load-session-chains',
   SAVE_SESSION_CHAINS: 'ion:save-session-chains',
+
+  // Conversation retrieval (agent child sessions)
+  GET_CONVERSATION: 'ion:get-conversation',
 
   // Backend mode
   GET_BACKEND: 'ion:get-backend',
@@ -641,6 +638,7 @@ export const IPC = {
   ENGINE_START: 'ion:engine-start',
   ENGINE_PROMPT: 'ion:engine-prompt',
   ENGINE_ABORT: 'ion:engine-abort',
+  ENGINE_ABORT_AGENT: 'ion:engine-abort-agent',
   ENGINE_DIALOG_RESPONSE: 'ion:engine-dialog-response',
   ENGINE_COMMAND: 'ion:engine-command',
   ENGINE_STOP: 'ion:engine-stop',
@@ -684,6 +682,7 @@ export interface TerminalPaneState {
 export interface PersistedTab {
   conversationId: string | null
   historicalSessionIds?: string[]
+  lastKnownSessionId?: string
   title: string
   customTitle: string | null
   workingDirectory: string
@@ -702,6 +701,8 @@ export interface PersistedTab {
   isEngine?: boolean
   engineProfileId?: string | null
   engineInstances?: EngineInstance[]
+  engineMessages?: Record<string, Array<{ role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }>>
+  engineAgentStates?: Record<string, Array<{ name: string; status: string; metadata?: Record<string, any> }>>
   terminalInstances?: TerminalInstance[]
   terminalBuffers?: Record<string, string>
 }

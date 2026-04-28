@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { PencilSimple, Trash, Plus, FolderOpen } from '@phosphor-icons/react'
+import { PencilSimple, Trash, Plus, X, FilePlus } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { SettingHeading } from './SettingHeading'
@@ -7,46 +7,23 @@ import type { EngineProfile } from '../../../shared/types'
 
 interface EditState {
   name: string
-  extensionDir: string
-  agentsRoot: string
-  defaultTeam: string
-  model: string
-  damageControlRules: string
-  universalStandards: string
+  extensions: string[]
 }
 
 const emptyEdit: EditState = {
   name: '',
-  extensionDir: '',
-  agentsRoot: '',
-  defaultTeam: '',
-  model: '',
-  damageControlRules: '',
-  universalStandards: '',
+  extensions: [],
 }
 
 function profileToEdit(p: EngineProfile): EditState {
   return {
     name: p.name,
-    extensionDir: p.extensionDir,
-    model: p.model || '',
-    agentsRoot: p.options?.agentsRoot || '',
-    defaultTeam: p.options?.defaultTeam || '',
-    damageControlRules: p.options?.damageControlRules || '',
-    universalStandards: p.options?.universalStandards || '',
+    extensions: [...(p.extensions || [])],
   }
 }
 
 function editToProfile(id: string, e: EditState): EngineProfile {
-  const p: EngineProfile = { id, name: e.name.trim(), extensionDir: e.extensionDir.trim() }
-  if (e.model.trim()) p.model = e.model.trim()
-  const opts: Record<string, any> = {}
-  if (e.agentsRoot.trim()) opts.agentsRoot = e.agentsRoot.trim()
-  if (e.defaultTeam.trim()) opts.defaultTeam = e.defaultTeam.trim()
-  if (e.damageControlRules.trim()) opts.damageControlRules = e.damageControlRules.trim()
-  if (e.universalStandards.trim()) opts.universalStandards = e.universalStandards.trim()
-  if (Object.keys(opts).length > 0) p.options = opts
-  return p
+  return { id, name: e.name.trim(), extensions: e.extensions.filter(x => x.trim()) }
 }
 
 export function EngineCategory() {
@@ -72,8 +49,10 @@ export function EngineCategory() {
     setEdit(emptyEdit)
   }
 
+  const canSave = edit.name.trim() && edit.extensions.filter(x => x.trim()).length > 0
+
   const saveEdit = () => {
-    if (!edit.name.trim() || !edit.extensionDir.trim()) return
+    if (!canSave) return
     if (editingId) {
       const updated = editToProfile(editingId, edit)
       updateEngineProfile(editingId, updated)
@@ -90,9 +69,18 @@ export function EngineCategory() {
     setIsAdding(false)
   }
 
-  const browseDirectory = async (field: keyof EditState) => {
-    const dir = await window.ion?.selectDirectory()
-    if (dir) setEdit((prev) => ({ ...prev, [field]: dir }))
+  const addExtensionFiles = async () => {
+    const files = await window.ion?.selectExtensionFiles()
+    if (files && files.length > 0) {
+      setEdit((prev) => ({ ...prev, extensions: [...prev.extensions, ...files] }))
+    }
+  }
+
+  const removeExtension = (index: number) => {
+    setEdit((prev) => ({
+      ...prev,
+      extensions: prev.extensions.filter((_, i) => i !== index),
+    }))
   }
 
   const cardStyle: React.CSSProperties = {
@@ -126,59 +114,72 @@ export function EngineCategory() {
     marginBottom: 6,
   }
 
-  const browseBtn: React.CSSProperties = {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: 4,
-    color: colors.textSecondary,
-    display: 'flex',
-    alignItems: 'center',
-    flexShrink: 0,
-  }
-
-  const renderPathInput = (label: string, field: keyof EditState, placeholder: string, browseable: boolean, optional: boolean) => (
-    <div style={fieldRow}>
-      <label style={labelStyle}>{label}{optional ? '' : ' *'}</label>
-      <div style={{ display: 'flex', gap: 4 }}>
-        <input
-          type="text"
-          value={edit[field]}
-          onChange={(e) => setEdit((prev) => ({ ...prev, [field]: e.target.value }))}
-          placeholder={placeholder}
-          style={inputStyle}
-        />
-        {browseable && (
-          <button onClick={() => browseDirectory(field)} style={browseBtn} title="Browse...">
-            <FolderOpen size={16} />
-          </button>
-        )}
-      </div>
-    </div>
-  )
-
-  const renderTextInput = (label: string, field: keyof EditState, placeholder: string, optional: boolean) => (
-    <div style={fieldRow}>
-      <label style={labelStyle}>{label}{optional ? '' : ' *'}</label>
-      <input
-        type="text"
-        value={edit[field]}
-        onChange={(e) => setEdit((prev) => ({ ...prev, [field]: e.target.value }))}
-        placeholder={placeholder}
-        style={inputStyle}
-      />
-    </div>
-  )
-
   const renderForm = () => (
     <div style={cardStyle}>
-      {renderTextInput('Name', 'name', 'e.g. cos', false)}
-      {renderPathInput('Extension Directory', 'extensionDir', '~/.ion/extensions/chief-of-staff', true, false)}
-      {renderPathInput('Agents Root', 'agentsRoot', '~/.ion/agents', true, true)}
-      {renderTextInput('Default Team', 'defaultTeam', '', true)}
-      {renderTextInput('Model', 'model', '', true)}
-      {renderPathInput('Damage Control Rules', 'damageControlRules', '', false, true)}
-      {renderPathInput('Universal Standards', 'universalStandards', '', false, true)}
+      <div style={fieldRow}>
+        <label style={labelStyle}>Name *</label>
+        <input
+          type="text"
+          value={edit.name}
+          onChange={(e) => setEdit((prev) => ({ ...prev, name: e.target.value }))}
+          placeholder="e.g. cos"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={fieldRow}>
+        <label style={labelStyle}>Extensions *</label>
+        {edit.extensions.map((ext, i) => (
+          <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+            <input
+              type="text"
+              value={ext}
+              onChange={(e) => {
+                const updated = [...edit.extensions]
+                updated[i] = e.target.value
+                setEdit((prev) => ({ ...prev, extensions: updated }))
+              }}
+              style={inputStyle}
+              readOnly
+            />
+            <button
+              onClick={() => removeExtension(i)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 4,
+                color: colors.textTertiary,
+                display: 'flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+              title="Remove extension"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={addExtensionFiles}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 10px',
+            background: 'transparent',
+            border: `1px dashed ${colors.containerBorder}`,
+            borderRadius: 6,
+            color: colors.textSecondary,
+            cursor: 'pointer',
+            fontSize: 12,
+          }}
+        >
+          <FilePlus size={14} />
+          Add Extension
+        </button>
+      </div>
+
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
         <button
           onClick={cancel}
@@ -196,7 +197,7 @@ export function EngineCategory() {
         </button>
         <button
           onClick={saveEdit}
-          disabled={!edit.name.trim() || !edit.extensionDir.trim()}
+          disabled={!canSave}
           style={{
             padding: '4px 12px',
             background: colors.accent,
@@ -205,7 +206,7 @@ export function EngineCategory() {
             color: '#fff',
             cursor: 'pointer',
             fontSize: 12,
-            opacity: (!edit.name.trim() || !edit.extensionDir.trim()) ? 0.5 : 1,
+            opacity: canSave ? 1 : 0.5,
           }}
         >
           Save
@@ -214,13 +215,8 @@ export function EngineCategory() {
     </div>
   )
 
-  const profileSubtitle = (p: EngineProfile) => {
-    const parts: string[] = []
-    const dirBase = p.extensionDir.split('/').pop() || p.extensionDir
-    parts.push(dirBase)
-    if (p.options?.defaultTeam) parts.push(p.options.defaultTeam)
-    return parts.join(' | ')
-  }
+  const profileSubtitle = (p: EngineProfile) =>
+    (p.extensions || []).map(e => e.split('/').pop()).join(', ')
 
   return (
     <>

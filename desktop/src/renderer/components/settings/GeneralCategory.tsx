@@ -22,6 +22,8 @@ export function GeneralCategory() {
   const setSoundEnabled = usePreferencesStore((s) => s.setSoundEnabled)
   const showTodoList = usePreferencesStore((s) => s.showTodoList)
   const setShowTodoList = usePreferencesStore((s) => s.setShowTodoList)
+  const aiGeneratedTitles = usePreferencesStore((s) => s.aiGeneratedTitles)
+  const setAiGeneratedTitles = usePreferencesStore((s) => s.setAiGeneratedTitles)
   const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
 
@@ -176,6 +178,13 @@ export function GeneralCategory() {
         description="Display the agent's todo/task checklist at the bottom of the conversation while working."
         checked={showTodoList}
         onChange={setShowTodoList}
+      />
+
+      <SettingToggle
+        label="AI Tab Titles"
+        description="Use AI to generate descriptive tab titles from your first message. Uses the fast model tier."
+        checked={aiGeneratedTitles}
+        onChange={setAiGeneratedTitles}
       />
 
       <SettingToggle

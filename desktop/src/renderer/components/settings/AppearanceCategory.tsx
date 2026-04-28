@@ -12,6 +12,12 @@ export function AppearanceCategory() {
   const setThemeMode = usePreferencesStore((s) => s.setThemeMode)
   const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
   const setExpandToolResults = usePreferencesStore((s) => s.setExpandToolResults)
+  const defaultTallConversation = usePreferencesStore((s) => s.defaultTallConversation)
+  const setDefaultTallConversation = usePreferencesStore((s) => s.setDefaultTallConversation)
+  const defaultTallTerminal = usePreferencesStore((s) => s.defaultTallTerminal)
+  const setDefaultTallTerminal = usePreferencesStore((s) => s.setDefaultTallTerminal)
+  const defaultTallEngine = usePreferencesStore((s) => s.defaultTallEngine)
+  const setDefaultTallEngine = usePreferencesStore((s) => s.setDefaultTallEngine)
 
   return (
     <>
@@ -29,6 +35,29 @@ export function AppearanceCategory() {
         description="Shift to wider sizes for large external monitors."
         checked={ultraWide}
         onChange={setUltraWide}
+      />
+
+      <SettingHeading>Default Tall Mode</SettingHeading>
+
+      <SettingToggle
+        label="Conversations"
+        description="Open conversation tabs in tall mode."
+        checked={defaultTallConversation}
+        onChange={setDefaultTallConversation}
+      />
+
+      <SettingToggle
+        label="Terminal Tabs"
+        description="Open terminal tabs in tall mode."
+        checked={defaultTallTerminal}
+        onChange={setDefaultTallTerminal}
+      />
+
+      <SettingToggle
+        label="Engine Tabs"
+        description="Open engine tabs in tall mode."
+        checked={defaultTallEngine}
+        onChange={setDefaultTallEngine}
       />
 
       <SettingHeading>Theme</SettingHeading>

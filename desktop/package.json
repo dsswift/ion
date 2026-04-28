@@ -68,10 +68,16 @@
     ],
     "mac": {
       "icon": "resources/icon.icns",
+      "identity": "Ion Local Dev",
+      "hardenedRuntime": true,
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Ion uses your microphone to transcribe voice input locally with Whisper."
+        "NSMicrophoneUsageDescription": "Ion uses your microphone to transcribe voice input locally with Whisper.",
+        "NSAppleEventsUsageDescription": "Ion uses AppleScript to detect available monospace fonts on your system.",
+        "NSDesktopFolderUsageDescription": "Ion needs access to your Desktop to read and edit project files.",
+        "NSDocumentsFolderUsageDescription": "Ion needs access to your Documents to read and edit project files.",
+        "NSDownloadsFolderUsageDescription": "Ion needs access to your Downloads to read and edit project files."
       }
     }
   },

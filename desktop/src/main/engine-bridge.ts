@@ -32,6 +32,7 @@ export class EngineBridge extends EventEmitter {
   private requestCounter = 0
   private connectPromise: Promise<void> | null = null
   private reconnectDisabled = false
+  private activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
 
   constructor() {
     super()
@@ -62,9 +63,21 @@ export class EngineBridge extends EventEmitter {
     }
 
     await this._startServer()
-    // Retry connection after server starts
-    await new Promise<void>((resolve) => setTimeout(resolve, 500))
-    await this._connectSocket()
+
+    // Retry connection with backoff — engine may need a moment after install
+    const delays = [500, 1000, 2000, 4000]
+    for (let i = 0; i < delays.length; i++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delays[i]))
+      try {
+        await this._connectSocket()
+        return
+      } catch {
+        if (i < delays.length - 1) {
+          log(`Engine not ready after ${delays[i]}ms, retrying...`)
+        }
+      }
+    }
+    throw new Error('Failed to connect to engine after startup')
   }
 
   private _connectSocket(): Promise<void> {
@@ -72,12 +85,16 @@ export class EngineBridge extends EventEmitter {
       const conn = createConnection(SOCKET_PATH)
 
       conn.on('connect', () => {
+        const wasReconnect = this.reconnectAttempts > 0
         this.conn = conn
         this.connected = true
         this.reconnectAttempts = 0
         this.buffer = ''
         log('Connected to engine server')
         resolve()
+        if (wasReconnect) {
+          this.emit('reconnected')
+        }
       })
 
       conn.on('data', (chunk: Buffer) => {
@@ -205,11 +222,14 @@ export class EngineBridge extends EventEmitter {
   // ─── Command helpers ───
 
   private _send(msg: any): void {
-    if (!this.conn || this.conn.destroyed) return
+    if (!this.conn || this.conn.destroyed) {
+      warn(`_send: dropped message (no connection): cmd=${msg?.cmd} key=${msg?.key}`)
+      return
+    }
     try {
       this.conn.write(JSON.stringify(msg) + '\n')
     } catch (err: any) {
-      log(`Send error: ${err.message}`)
+      error(`_send: write failed: cmd=${msg?.cmd} key=${msg?.key} err=${err.message}`)
     }
   }
 
@@ -255,22 +275,43 @@ export class EngineBridge extends EventEmitter {
   // ─── Public API ───
 
   async startSession(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string }> {
-    log(`startSession: key=${key} model=${config.model}`)
+    const entry = this.activeSessions.get(key)
+    // If we have a tracked conversationId from a previous session lifecycle,
+    // inject it into the config so the engine can resume the conversation.
+    if (entry?.conversationId && !config.sessionId) {
+      config = { ...config, sessionId: entry.conversationId }
+    }
+    log(`startSession: key=${key} model=${config.model} sessionId=${config.sessionId ?? 'none'}`)
+    this.activeSessions.set(key, { config, conversationId: entry?.conversationId })
     await this.connect()
     return this._sendWithResult({ cmd: 'start_session', key, config })
   }
 
-  async sendPrompt(key: string, text: string, model?: string): Promise<{ ok: boolean; error?: string }> {
-    log(`sendPrompt: key=${key} len=${text.length} model=${model ?? 'default'}`)
+  /** Track the conversation ID for a session so it can be restored on reconnect. */
+  updateSessionConversationId(key: string, conversationId: string): void {
+    const entry = this.activeSessions.get(key)
+    if (entry) {
+      entry.conversationId = conversationId
+    }
+  }
+
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string): Promise<{ ok: boolean; error?: string }> {
+    log(`sendPrompt: key=${key} len=${text.length} model=${model ?? 'default'} hasSysPrompt=${!!appendSystemPrompt}`)
     await this.connect()
     const msg: Record<string, unknown> = { cmd: 'send_prompt', key, text }
     if (model) msg.model = model
+    if (appendSystemPrompt) msg.appendSystemPrompt = appendSystemPrompt
     return this._sendWithResult(msg)
   }
 
   sendAbort(key: string): void {
-    log(`sendAbort: key=${key}`)
+    log(`sendAbort: key=${key} connected=${this.connected} connAlive=${!!(this.conn && !this.conn.destroyed)}`)
     this._send({ cmd: 'abort', key })
+  }
+
+  sendAbortAgent(key: string, agentName: string, subtree: boolean): void {
+    log(`sendAbortAgent: key=${key} agent=${agentName} subtree=${subtree} connected=${this.connected}`)
+    this._send({ cmd: 'abort_agent', key, agentName, subtree })
   }
 
   async sendDialogResponse(key: string, dialogId: string, value: any): Promise<void> {
@@ -285,6 +326,7 @@ export class EngineBridge extends EventEmitter {
 
   async stopSession(key: string): Promise<void> {
     log(`stopSession: key=${key}`)
+    this.activeSessions.delete(key)
     this._send({ cmd: 'stop_session', key })
   }
 
@@ -293,9 +335,9 @@ export class EngineBridge extends EventEmitter {
     this._send({ cmd: 'permission_response', key, questionId, optionId })
   }
 
-  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[]): void {
-    log(`sendSetPlanMode: key=${key} enabled=${enabled}`)
-    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools })
+  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string): void {
+    log(`sendSetPlanMode: key=${key} enabled=${enabled} source=${source ?? 'unknown'}`)
+    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools, source })
   }
 
   async listStoredSessions(limit?: number): Promise<any[]> {
@@ -316,12 +358,27 @@ export class EngineBridge extends EventEmitter {
     return result.data || []
   }
 
+  async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> {
+    await this.connect()
+    const result = await this._sendWithData<any>({ cmd: 'get_conversation', key: conversationId, offset, limit })
+    return result.data || { messages: [], total: 0, hasMore: false }
+  }
+
   async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
     await this.connect()
     return this._sendWithResult({ cmd: 'save_session_label', key: sessionId, label })
   }
 
+  async generateTitle(text: string): Promise<string> {
+    await this.connect()
+    const result = await this._sendWithData<{ title: string }>({ cmd: 'generate_title', text })
+    return result.data?.title || ''
+  }
+
   stopByPrefix(prefix: string): void {
+    for (const key of this.activeSessions.keys()) {
+      if (key.startsWith(prefix)) this.activeSessions.delete(key)
+    }
     this._send({ cmd: 'stop_by_prefix', prefix })
   }
 

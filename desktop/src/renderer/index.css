@@ -190,6 +190,11 @@ input::placeholder {
   animation: bounce-dot 1.2s ease-in-out infinite;
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Stacking circle buttons ─── */
 .circles-out {
   position: absolute;
