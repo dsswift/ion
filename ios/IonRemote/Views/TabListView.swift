@@ -5,6 +5,7 @@ struct TabListView: View {
     @State private var showSettings = false
     @State private var showNewTab = false
     @State private var navigationPath = NavigationPath()
+    @State private var enginePickerDirectory: String? = nil
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -47,7 +48,7 @@ struct TabListView: View {
                                     Label("New Terminal", systemImage: "terminal")
                                 }
                                 Button {
-                                    viewModel.createEngineTab(workingDirectory: group.fullPath)
+                                    requestEngineTab(directory: group.fullPath)
                                 } label: {
                                     Label("New Engine", systemImage: "bolt.fill")
                                 }
@@ -129,7 +130,7 @@ struct TabListView: View {
                                 .buttonBorderShape(.circle)
                                 Button {
                                     showNewTab = false
-                                    viewModel.createEngineTab(workingDirectory: dir.fullPath)
+                                    requestEngineTab(directory: dir.fullPath)
                                 } label: {
                                     Image(systemName: "bolt")
                                 }
@@ -149,6 +150,25 @@ struct TabListView: View {
                 }
                 .presentationDetents([.medium])
             }
+            .confirmationDialog(
+                "Select Engine Profile",
+                isPresented: Binding(
+                    get: { enginePickerDirectory != nil },
+                    set: { if !$0 { enginePickerDirectory = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                ForEach(viewModel.engineProfiles) { profile in
+                    Button(profile.name) {
+                        let dir = enginePickerDirectory
+                        enginePickerDirectory = nil
+                        viewModel.createEngineTab(workingDirectory: dir, profileId: profile.id)
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    enginePickerDirectory = nil
+                }
+            }
             .overlay {
                 if viewModel.tabs.isEmpty {
                     ContentUnavailableView(
@@ -158,6 +178,22 @@ struct TabListView: View {
                     )
                 }
             }
+        }
+    }
+
+    /// Handle engine tab creation with profile selection.
+    /// - 0 profiles: auto-create without a profileId (engine uses default)
+    /// - 1 profile: auto-select the only profile
+    /// - 2+ profiles: show a confirmation dialog picker
+    private func requestEngineTab(directory: String) {
+        let profiles = viewModel.engineProfiles
+        switch profiles.count {
+        case 0:
+            viewModel.createEngineTab(workingDirectory: directory)
+        case 1:
+            viewModel.createEngineTab(workingDirectory: directory, profileId: profiles[0].id)
+        default:
+            enginePickerDirectory = directory
         }
     }
 

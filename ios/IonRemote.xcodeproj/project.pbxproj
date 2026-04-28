@@ -45,6 +45,8 @@
 		A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */; };
 		A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */; };
 		A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */; };
+		A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */; };
+		A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +101,8 @@
 		A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnsiParser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarRow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineFooterView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProfile.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUtilityBar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -164,6 +168,7 @@
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
+				A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -200,6 +205,7 @@
 				A1B2C3D4E5F6000100001EAA /* PairingView.swift */,
 				A1B2C3D4E5F60001000020AA /* SettingsView.swift */,
 				A1B2C3D4E5F60001000095AA /* InputBar.swift */,
+				A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */,
 				A1B2C3D4E5F600010000A3AA /* SwiftTermWrapper.swift */,
 				A1B2C3D4E5F600010000A5AA /* RemoteTerminalView.swift */,
 				A1B2C3D4E5F600010000A7AA /* TerminalInstanceBar.swift */,
@@ -384,6 +390,8 @@
 				A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */,
 				A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */,
 				A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */,
+				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
+				A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

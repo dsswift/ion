@@ -23,7 +23,7 @@ enum RemoteCommand: Codable, Sendable {
     case rewind(tabId: String, messageId: String)
     case forkFromMessage(tabId: String, messageId: String)
     case unpair
-    case createEngineTab(workingDirectory: String?)
+    case createEngineTab(workingDirectory: String?, profileId: String?)
     case enginePrompt(tabId: String, text: String)
     case engineAbort(tabId: String)
     case engineDialogResponse(tabId: String, dialogId: String, value: String)
@@ -61,7 +61,7 @@ enum RemoteCommand: Codable, Sendable {
         case type
         case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
         case instanceId, data, cols, rows, customTitle, label, messageId
-        case dialogId, value
+        case dialogId, value, profileId
     }
 
     init(from decoder: Decoder) throws {
@@ -167,7 +167,8 @@ enum RemoteCommand: Codable, Sendable {
 
         case .createEngineTab:
             let workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
-            self = .createEngineTab(workingDirectory: workingDirectory)
+            let profileId = try container.decodeIfPresent(String.self, forKey: .profileId)
+            self = .createEngineTab(workingDirectory: workingDirectory, profileId: profileId)
 
         case .enginePrompt:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -286,9 +287,10 @@ enum RemoteCommand: Codable, Sendable {
         case .unpair:
             try container.encode(TypeKey.unpair, forKey: .type)
 
-        case .createEngineTab(let workingDirectory):
+        case .createEngineTab(let workingDirectory, let profileId):
             try container.encode(TypeKey.createEngineTab, forKey: .type)
             try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
+            try container.encodeIfPresent(profileId, forKey: .profileId)
 
         case .enginePrompt(let tabId, let text):
             try container.encode(TypeKey.enginePrompt, forKey: .type)

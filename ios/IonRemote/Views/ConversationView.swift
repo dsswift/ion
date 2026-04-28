@@ -59,10 +59,21 @@ struct ConversationView: View {
 
     /// Detect ExitPlanMode or AskUserQuestion as the last tool in history
     /// and synthesize a PermissionRequest so the card renders on reopen.
+    /// Returns nil if a user message appears after the tool (the conversation
+    /// has moved past the plan/question and the card is stale).
     private func computeRestoredSpecialCard() -> PermissionRequest? {
         guard let lastTool = conversationMessages.last(where: { $0.isTool }),
               lastTool.toolName == "ExitPlanMode" || lastTool.toolName == "AskUserQuestion"
         else { return nil }
+
+        // Stale detection: walk backwards from the end of the conversation.
+        // If a user message appears before we hit the tool, the conversation
+        // continued past this plan/question — don't resurface the card.
+        for message in conversationMessages.reversed() {
+            if message.id == lastTool.id { break } // hit the tool first — genuine
+            if message.role == .user { return nil } // user spoke after — stale
+        }
+
         var toolInput: [String: AnyCodable]?
         if let inputStr = lastTool.toolInput, let data = inputStr.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

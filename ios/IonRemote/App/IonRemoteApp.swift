@@ -12,7 +12,7 @@ struct IonRemoteApp: App {
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active
-                        && viewModel.connectionState == .disconnected
+                        && viewModel.connectionState != .connected
                         && !viewModel.pairedDevices.isEmpty {
                         viewModel.reconnect()
                     }

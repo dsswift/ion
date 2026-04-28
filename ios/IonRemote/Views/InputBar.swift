@@ -1,10 +1,13 @@
 import SwiftUI
+import Combine
 
 struct InputBar: View {
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
 
     @State private var promptText = ""
+    @FocusState private var isFocused: Bool
+    @State private var keyboardVisible = false
 
     private var tab: RemoteTabState? {
         viewModel.tab(for: tabId)
@@ -24,6 +27,14 @@ struct InputBar: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if keyboardVisible {
+                KeyboardUtilityBar(
+                    onDismiss: { isFocused = false },
+                    promptText: $promptText
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             Divider()
 
             HStack(spacing: 8) {
@@ -32,6 +43,7 @@ struct InputBar: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .lineLimit(1...5)
+                    .focused($isFocused)
                     .disabled(!isConnected)
 
                 if isRunning {
@@ -47,6 +59,7 @@ struct InputBar: View {
                 Button {
                     guard !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     viewModel.sendPrompt(tabId: tabId, text: promptText)
+                    isFocused = false
                     promptText = ""
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
@@ -67,6 +80,13 @@ struct InputBar: View {
             }
         }
         .background(.ultraThinMaterial)
+        .animation(.easeInOut(duration: 0.15), value: keyboardVisible)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardVisible = false
+        }
         .onChange(of: viewModel.pendingInputByTab[tabId]) { _, newValue in
             if let text = newValue {
                 promptText = text

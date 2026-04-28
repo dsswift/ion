@@ -85,6 +85,8 @@ final class RelayClient {
     // MARK: - Connection
 
     private func doConnect() async {
+        guard !intentionallyClosed else { return }
+
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
 
@@ -182,6 +184,7 @@ final class RelayClient {
             guard let self, !self.intentionallyClosed else { return }
             print("[Ion] RelayClient: reconnect timer fired")
             Task { @MainActor in
+                guard !self.intentionallyClosed else { return }
                 await self.doConnect()
             }
         }

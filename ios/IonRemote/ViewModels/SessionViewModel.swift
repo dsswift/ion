@@ -129,6 +129,8 @@ final class SessionViewModel {
     var engineWorkingMessages: [String: String] = [:]           // tabId -> working message
     var engineDialogs: [String: EngineDialogInfo?] = [:]
     var enginePinnedPrompt: [String: String] = [:]
+    /// Engine profiles synced from the desktop settings.
+    var engineProfiles: [EngineProfile] = []
     /// Tab IDs that iOS has requested to close but hasn't received tab_closed confirmation for.
     private var pendingCloseTabIds: Set<String> = []
 
@@ -215,6 +217,17 @@ final class SessionViewModel {
 
     /// Connect to the first paired device using its relay configuration.
     func connect() {
+        // Tear down any existing transport before creating a new one.
+        // This prevents stale reconnect timers from fighting the new connection.
+        if transport != nil {
+            eventTask?.cancel()
+            eventTask = nil
+            flushTask?.cancel()
+            flushTask = nil
+            transport?.stop()
+            transport = nil
+        }
+
         guard let device = pairedDevices.first else {
             print("[Ion] connect: no paired devices")
             return
@@ -286,7 +299,10 @@ final class SessionViewModel {
     }
 
     /// Reconnect using relay with automatic LAN upgrade via Bonjour.
+    /// Tears down the old transport first to prevent stale reconnect
+    /// timers from fighting the new connection on the same relay channel.
     func reconnect() {
+        disconnect()
         connect()
     }
 
@@ -325,6 +341,7 @@ final class SessionViewModel {
         engineWorkingMessages = [:]
         engineDialogs = [:]
         enginePinnedPrompt = [:]
+        engineProfiles = []
         pendingCloseTabIds = []
         pendingInputByTab = [:]
     }
@@ -467,9 +484,9 @@ final class SessionViewModel {
 
     // MARK: - Engine Commands
 
-    func createEngineTab(workingDirectory: String? = nil) {
+    func createEngineTab(workingDirectory: String? = nil, profileId: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
-        send(.createEngineTab(workingDirectory: dir))
+        send(.createEngineTab(workingDirectory: dir, profileId: profileId))
     }
 
     func submitEnginePrompt(tabId: String, text: String) {
@@ -892,12 +909,35 @@ final class SessionViewModel {
             // to show the card until the user taps an answer.
             var merged = filteredTabs
             for i in merged.indices {
-                if let existing = tabs.first(where: { $0.id == merged[i].id }),
+                let tabId = merged[i].id
+
+                // Strip ExitPlanMode/AskUserQuestion entries from the snapshot
+                // queue if the user already dismissed the card on this tab.
+                // The 5-second snapshot polling can re-inject stale entries
+                // from the desktop's permissionDenied before it's cleared.
+                if dismissedLiveSpecialTabs.contains(tabId) {
+                    merged[i].permissionQueue.removeAll {
+                        $0.toolName == "ExitPlanMode" || $0.toolName == "AskUserQuestion"
+                    }
+                }
+
+                if let existing = tabs.first(where: { $0.id == tabId }),
                    !existing.permissionQueue.isEmpty {
                     // Keep existing local queue entries that aren't in the snapshot
                     let snapshotIds = Set(merged[i].permissionQueue.map(\.questionId))
                     let localOnly = existing.permissionQueue.filter { !snapshotIds.contains($0.questionId) }
                     merged[i].permissionQueue.append(contentsOf: localOnly)
+                }
+            }
+            // Always prefer locally-tracked lastMessage over snapshot values.
+            // Real-time textChunk/messageAdded events update lastMessage on iOS
+            // faster than the 5-second snapshot poll, so the local value is
+            // always equal or fresher. The snapshot value is only used for
+            // initial population (when no local value exists yet).
+            for i in merged.indices {
+                if let existing = tabs.first(where: { $0.id == merged[i].id }),
+                   existing.lastMessage != nil {
+                    merged[i].lastMessage = existing.lastMessage
                 }
             }
             tabs = merged
@@ -927,6 +967,12 @@ final class SessionViewModel {
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
                 tabs[idx].status = status
                 if status == .idle || status == .completed || status == .failed || status == .dead {
+                    // Capture preview from liveText before clearing — if tabStatus
+                    // arrives before taskComplete, this preserves the lastMessage.
+                    if let text = liveText[tabId], !text.isEmpty {
+                        tabs[idx].lastMessage = String(text.suffix(64))
+                            .replacingOccurrences(of: "\n", with: " ")
+                    }
                     liveText.removeValue(forKey: tabId)
                     // Preserve ExitPlanMode/AskUserQuestion entries -- desktop auto-allows
                     // these but iOS needs them for plan card UI and status indicators
@@ -1142,6 +1188,9 @@ final class SessionViewModel {
 
         case .engineInstanceRemoved(_, _):
             break
+
+        case .engineProfiles(let profiles):
+            engineProfiles = profiles
         }
     }
 

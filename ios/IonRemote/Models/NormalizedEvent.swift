@@ -50,6 +50,7 @@ enum RemoteEvent: Codable, Sendable {
     case engineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String])
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
+    case engineProfiles(profiles: [EngineProfile])
 
     // MARK: - Codable
 
@@ -94,6 +95,7 @@ enum RemoteEvent: Codable, Sendable {
         case engineDead = "engine_dead"
         case engineInstanceAdded = "engine_instance_added"
         case engineInstanceRemoved = "engine_instance_removed"
+        case engineProfiles = "engine_profiles"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -107,7 +109,7 @@ enum RemoteEvent: Codable, Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
-        case signal, stderrTail, label
+        case signal, stderrTail, label, profiles
     }
 
     init(from decoder: Decoder) throws {
@@ -347,6 +349,10 @@ enum RemoteEvent: Codable, Sendable {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             self = .engineInstanceRemoved(tabId: tabId, instanceId: instanceId)
+
+        case .engineProfiles:
+            let profiles = try container.decode([EngineProfile].self, forKey: .profiles)
+            self = .engineProfiles(profiles: profiles)
         }
     }
 
@@ -584,6 +590,10 @@ enum RemoteEvent: Codable, Sendable {
             try container.encode(TypeKey.engineInstanceRemoved, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
+
+        case .engineProfiles(let profiles):
+            try container.encode(TypeKey.engineProfiles, forKey: .type)
+            try container.encode(profiles, forKey: .profiles)
         }
     }
 
