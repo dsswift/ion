@@ -8,12 +8,16 @@ sidebar_position: 2
 
 This document covers every field in `engine.json`, used at both the user level (`~/.ion/engine.json`) and the project level (`.ion/engine.json`).
 
+## Required configuration
+
+Ion ships with no default model. Before the engine can run a prompt, you must either set `defaultModel` in `engine.json` or pass `--model` on the command line. You also need credentials for the provider that model maps to (a `*_API_KEY` env var, an entry under `providers.<id>.apiKey`, or no key at all if the provider is local). See [models.json Reference](models.md) for registering custom models and tier aliases.
+
 ## Top-level fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `backend` | string | `"api"` | Backend mode. `"api"` for direct API calls, `"cli"` for CLI proxy. |
-| `defaultModel` | string | `"claude-sonnet-4-6"` | Model identifier used when no override is specified. |
+| `defaultModel` | string | `""` | Model identifier used when no `--model` override is passed. Required. The engine errors out if neither this field nor `--model` is set. |
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
 
 ## providers
@@ -308,14 +312,17 @@ Feature flag source configuration.
 
 ## Full example
 
+A multi-provider configuration mixing a local Ollama model with a hosted OpenAI fallback. Pick whichever model fits the task and let the engine route to the right provider.
+
 ```json
 {
   "backend": "api",
-  "defaultModel": "claude-sonnet-4-6",
+  "defaultModel": "qwen2.5:14b",
   "logLevel": "info",
   "providers": {
-    "anthropic": {
-      "apiKey": "ANTHROPIC_API_KEY"
+    "ollama": {},
+    "openai": {
+      "apiKey": "OPENAI_API_KEY"
     }
   },
   "limits": {
@@ -347,15 +354,8 @@ Feature flag source configuration.
   }
 }
 ```
-it "]
-      }
-    ]
-  },
-  "security": {
-    "redactSecrets": true
-  },
-  "telemetry": {
-    "enabled": false
-  }
-}
-```
+
+## See also
+
+* [models.json Reference](models.md) for registering custom models and tier aliases.
+* [Provider Setup](../providers/index.md) for the catalog of supported providers and their environment variables.
