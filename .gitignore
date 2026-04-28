@@ -20,7 +20,9 @@ Desktop.ini
 *~
 
 # Claude Code project-scoped local settings
+.claude/data/
 .claude/settings.local.json
+CLAUDE.md
 
 # Environment (not needed for core flow, but excluded defensively)
 .env
