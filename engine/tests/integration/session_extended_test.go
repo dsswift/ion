@@ -27,7 +27,7 @@ func TestSessionStartPromptComplete(t *testing.T) {
 		mu.Unlock()
 	})
 
-	if err := mgr.StartSession("full-lifecycle", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("full-lifecycle", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("full-lifecycle") })
@@ -80,7 +80,7 @@ func TestSessionFork(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
 
-	if err := mgr.StartSession("fork-test", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("fork-test", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("fork-test") })
@@ -115,14 +115,17 @@ func TestSessionDuplicateKey(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
 
-	if err := mgr.StartSession("dup-key", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("dup-key", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("dup-key") })
 
-	err := mgr.StartSession("dup-key", defaultConfig())
-	if err == nil {
-		t.Error("expected error for duplicate session key")
+	result, err := mgr.StartSession("dup-key", defaultConfig())
+	if err != nil {
+		t.Fatalf("duplicate StartSession should not error, got: %v", err)
+	}
+	if !result.Existed {
+		t.Error("expected Existed=true for duplicate session key")
 	}
 }
 
@@ -134,7 +137,7 @@ func TestSessionMultipleConcurrent(t *testing.T) {
 
 	keys := []string{"mc-1", "mc-2", "mc-3", "mc-4", "mc-5"}
 	for _, key := range keys {
-		if err := mgr.StartSession(key, defaultConfig()); err != nil {
+		if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
 			t.Fatalf("StartSession(%s): %v", key, err)
 		}
 	}
@@ -174,7 +177,7 @@ func TestSessionEventOrdering(t *testing.T) {
 		mu.Unlock()
 	})
 
-	if err := mgr.StartSession("order-test", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("order-test", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("order-test") })
@@ -238,7 +241,7 @@ func TestSessionBranch(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
 
-	if err := mgr.StartSession("branch-nav", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("branch-nav", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("branch-nav") })

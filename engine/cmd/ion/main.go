@@ -25,8 +25,11 @@ import (
 	"github.com/dsswift/ion/engine/internal/filelock"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/network"
+	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/server"
+	"github.com/dsswift/ion/engine/internal/titling"
+	"github.com/dsswift/ion/engine/internal/transport"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -64,12 +67,17 @@ func nextRequestID() string {
 // boolFlags lists flags that never consume the next argument as a value.
 var boolFlags = map[string]bool{
 	"no-extensions": true,
+	"attach":        true,
 }
 
-// parseArgs extracts command, flags, and positional args from os.Args.
-func parseArgs() (command string, flags map[string]string, positional []string) {
+// multiFlags lists flags that can be specified multiple times.
+var multiFlags = map[string]bool{"extension": true}
+
+// parseArgs extracts command, flags, list flags, and positional args from os.Args.
+func parseArgs() (command string, flags map[string]string, listFlags map[string][]string, positional []string) {
 	args := os.Args[1:]
 	flags = make(map[string]string)
+	listFlags = make(map[string][]string)
 
 	if len(args) == 0 || strings.HasPrefix(args[0], "--") {
 		command = "serve"
@@ -84,7 +92,11 @@ func parseArgs() (command string, flags map[string]string, positional []string) 
 			if boolFlags[key] {
 				flags[key] = "true"
 			} else if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				flags[key] = args[i+1]
+				val := args[i+1]
+				if multiFlags[key] {
+					listFlags[key] = append(listFlags[key], val)
+				}
+				flags[key] = val
 				i++
 			} else {
 				flags[key] = "true"
@@ -188,8 +200,12 @@ func cmdServe() {
 	// Initialize network (proxy, custom CA, TLS)
 	network.InitNetwork(cfg.Network)
 
-	// Load models config (tiers, provider auto-detect)
-	modelconfig.LoadModelsConfig()
+	// Load models config (tiers, provider auto-detect) and register
+	// user-defined model names so they resolve to the correct provider.
+	modelsConfig := modelconfig.LoadModelsConfig()
+	for model, info := range modelconfig.UserModels(modelsConfig) {
+		providers.RegisterModel(model, info)
+	}
 
 	// Resolve provider API keys: env var names (e.g. "ION_API_KEY") are
 	// expanded from environment before passing to providers and auth.
@@ -246,6 +262,14 @@ func cmdServe() {
 		apiBackend.SetAuthResolver(resolver)
 	}
 
+	// Wire auth resolver into titling so it can resolve keychain-stored keys
+	// without depending on a prior regular prompt having called SetProviderKey.
+	titling.SetAuthResolver(func(providerName string) {
+		if key, err := resolver.ResolveKey(providerName); err == nil && key != "" {
+			providers.SetProviderKey(providerName, key)
+		}
+	})
+
 	sock := socketPath()
 	srv := server.NewServer(sock, b)
 
@@ -272,6 +296,38 @@ func cmdServe() {
 	}
 	fmt.Printf("Backend: %s\n", cfg.Backend)
 
+	// Start relay transport if configured.
+	var relay *transport.RelayTransport
+	if cfg.Relay != nil && cfg.Relay.URL != "" && cfg.Relay.ChannelID != "" {
+		relay = transport.NewRelayTransport(cfg.Relay.URL, cfg.Relay.APIKey, cfg.Relay.ChannelID)
+
+		// Incoming messages from mobile: parse as commands, dispatch to session manager.
+		relay.OnMessage = func(data []byte) {
+			line := strings.TrimSpace(string(data))
+			if line == "" {
+				return
+			}
+			cmd := protocol.ParseClientCommand(line)
+			if cmd == nil {
+				utils.Log("Relay", "invalid command from mobile: "+line[:min(len(line), 200)])
+				return
+			}
+			utils.Log("Relay", fmt.Sprintf("dispatch: cmd=%s key=%s", cmd.Cmd, cmd.Key))
+			srv.DispatchCommand(cmd)
+		}
+
+		// Outbound events: forward engine broadcasts to mobile via relay.
+		srv.OnBroadcast(func(line string) {
+			relay.Broadcast([]byte(line))
+		})
+
+		if err := relay.Listen(nil); err != nil {
+			utils.Log("Relay", fmt.Sprintf("failed to start: %v", err))
+		} else {
+			fmt.Printf("Relay: %s (channel %s)\n", cfg.Relay.URL, cfg.Relay.ChannelID)
+		}
+	}
+
 	// Wait for OS signal or shutdown IPC command (TS parity: server.ts calls
 	// process.exit(0) on shutdown; we unblock main instead).
 	sigCh := make(chan os.Signal, 1)
@@ -285,13 +341,17 @@ func cmdServe() {
 		// srv.Stop() already called by the shutdown command handler.
 	}
 
+	if relay != nil {
+		relay.Close()
+	}
+
 	if pidLock != nil {
 		pidLock.Release()
 	}
 	fmt.Println("Engine stopped.")
 }
 
-func cmdStart(flags map[string]string) {
+func cmdStart(flags map[string]string, listFlags map[string][]string) {
 	profile := flags["profile"]
 	dir := flags["dir"]
 	if profile == "" {
@@ -308,19 +368,22 @@ func cmdStart(flags map[string]string) {
 		key = profile
 	}
 
-	extDir := ""
-	if e := flags["extension"]; e != "" {
-		extDir = resolveExtensionPath(e)
+	cfg := map[string]interface{}{
+		"profileId":        profile,
+		"workingDirectory": dir,
+	}
+	if exts := listFlags["extension"]; len(exts) > 0 {
+		resolved := make([]string, len(exts))
+		for i, e := range exts {
+			resolved[i] = resolveExtensionPath(e)
+		}
+		cfg["extensions"] = resolved
 	}
 
 	result, err := connectAndSend(socketPath(), map[string]interface{}{
-		"cmd": "start_session",
-		"key": key,
-		"config": map[string]interface{}{
-			"profileId":        profile,
-			"workingDirectory": dir,
-			"extensionDir":     extDir,
-		},
+		"cmd":    "start_session",
+		"key":    key,
+		"config": cfg,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
@@ -330,7 +393,7 @@ func cmdStart(flags map[string]string) {
 	fmt.Println(string(data))
 }
 
-func cmdPrompt(positional []string, flags map[string]string) {
+func cmdPrompt(positional []string, flags map[string]string, listFlags map[string][]string) {
 	text := strings.Join(positional, " ")
 	if text == "" {
 		fmt.Fprintln(os.Stderr, "Error: prompt text required")
@@ -360,8 +423,12 @@ func cmdPrompt(positional []string, flags map[string]string) {
 		if m := flags["model"]; m != "" {
 			startMsg["config"].(map[string]interface{})["model"] = m
 		}
-		if e := flags["extension"]; e != "" {
-			startMsg["config"].(map[string]interface{})["extensionDir"] = resolveExtensionPath(e)
+		if exts := listFlags["extension"]; len(exts) > 0 {
+			resolved := make([]string, len(exts))
+			for i, e := range exts {
+				resolved[i] = resolveExtensionPath(e)
+			}
+			startMsg["config"].(map[string]interface{})["extensions"] = resolved
 		}
 		result, err := connectAndSend(sock, startMsg)
 		if err != nil {
@@ -385,8 +452,12 @@ func cmdPrompt(positional []string, flags map[string]string) {
 		if m := flags["model"]; m != "" {
 			startMsg["config"].(map[string]interface{})["model"] = m
 		}
-		if e := flags["extension"]; e != "" {
-			startMsg["config"].(map[string]interface{})["extensionDir"] = resolveExtensionPath(e)
+		if exts := listFlags["extension"]; len(exts) > 0 {
+			resolved := make([]string, len(exts))
+			for i, e := range exts {
+				resolved[i] = resolveExtensionPath(e)
+			}
+			startMsg["config"].(map[string]interface{})["extensions"] = resolved
 		}
 		result, err := connectAndSend(sock, startMsg)
 		if err != nil {
@@ -417,8 +488,12 @@ func cmdPrompt(positional []string, flags map[string]string) {
 		f, _ := strconv.ParseFloat(mb, 64)
 		msg["maxBudgetUsd"] = f
 	}
-	if e := flags["extension"]; e != "" {
-		msg["extensionDir"] = resolveExtensionPath(e)
+	if exts := listFlags["extension"]; len(exts) > 0 {
+		resolved := make([]string, len(exts))
+		for i, e := range exts {
+			resolved[i] = resolveExtensionPath(e)
+		}
+		msg["extensions"] = resolved
 	}
 	if flags["no-extensions"] == "true" {
 		msg["noExtensions"] = true
@@ -485,7 +560,11 @@ func cmdPrompt(positional []string, flags map[string]string) {
 		os.Exit(1)
 	}
 	if ok, _ := result["ok"].(bool); ok {
-		fmt.Println("Prompt sent. Use `ion attach` to stream output.")
+		if flags["attach"] == "true" {
+			streamUntilIdle(sock, key)
+		} else {
+			fmt.Println("Prompt sent. Use `ion attach` to stream output.")
+		}
 	} else {
 		data, _ := json.MarshalIndent(result, "", "  ")
 		fmt.Println(string(data))
@@ -727,10 +806,11 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  serve                    Start daemon (default)")
 	fmt.Fprintln(os.Stderr, "  start --profile --dir    Start session")
 	fmt.Fprintln(os.Stderr, "    --key KEY              Session key (default: profile name)")
-	fmt.Fprintln(os.Stderr, "    --extension PATH       Load extension")
+	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
 	fmt.Fprintln(os.Stderr, "  prompt \"text\"             Send prompt")
 	fmt.Fprintln(os.Stderr, "    --no-extensions        Skip extensions for this prompt")
-	fmt.Fprintln(os.Stderr, "    --extension PATH       Load extension for this prompt")
+	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
+	fmt.Fprintln(os.Stderr, "    --attach               Stream output until idle (keyed sessions)")
 	fmt.Fprintln(os.Stderr, "  attach                   Stream events (NDJSON)")
 	fmt.Fprintln(os.Stderr, "  status                   List sessions")
 	fmt.Fprintln(os.Stderr, "  stop --key               Stop session")
@@ -749,15 +829,15 @@ func printUsage() {
 }
 
 func main() {
-	command, flags, positional := parseArgs()
+	command, flags, listFlags, positional := parseArgs()
 
 	switch command {
 	case "serve":
 		cmdServe()
 	case "start":
-		cmdStart(flags)
+		cmdStart(flags, listFlags)
 	case "prompt":
-		cmdPrompt(positional, flags)
+		cmdPrompt(positional, flags, listFlags)
 	case "attach":
 		cmdAttach(flags)
 	case "status":

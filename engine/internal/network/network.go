@@ -4,10 +4,12 @@ package network
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -95,9 +97,21 @@ func InitNetwork(cfg *types.NetworkConfig) {
 		}
 	}
 
-	// Build transport.
+	// Build transport with the same baseline settings as http.DefaultTransport.
+	// The bare &http.Transport{} zero-values disable TCP keepalive, dial timeouts,
+	// idle connection management, and HTTP/2 — meaning a silently-dropped connection
+	// (e.g. by a NAT middlebox during a long LLM stream) hangs the read forever.
 	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSClientConfig:       tlsConfig,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ForceAttemptHTTP2:      true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 	if proxyURL != nil {
 		transport.Proxy = func(req *http.Request) (*url.URL, error) {

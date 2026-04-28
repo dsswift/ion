@@ -18,9 +18,8 @@ func TestProtocolStartSession(t *testing.T) {
 		RequestID: "req-1",
 		Config: &types.EngineConfig{
 			ProfileID:        "default",
-			ExtensionDir:     "/tmp/ext",
+			Extensions:       []string{"/tmp/ext"},
 			WorkingDirectory: "/home/user",
-			Model:            "claude-sonnet-4-6",
 		},
 	}
 
@@ -57,8 +56,11 @@ func TestProtocolStartSession(t *testing.T) {
 	if parsed.Config == nil {
 		t.Fatal("parsed Config is nil")
 	}
-	if parsed.Config.Model != "claude-sonnet-4-6" {
-		t.Errorf("parsed Config.Model: got %q", parsed.Config.Model)
+	if parsed.Config.ProfileID != "default" {
+		t.Errorf("parsed Config.ProfileID: got %q", parsed.Config.ProfileID)
+	}
+	if len(parsed.Config.Extensions) != 1 || parsed.Config.Extensions[0] != "/tmp/ext" {
+		t.Errorf("parsed Config.Extensions: got %v", parsed.Config.Extensions)
 	}
 }
 

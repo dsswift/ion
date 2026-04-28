@@ -33,12 +33,21 @@ type ClientCommand struct {
 	EntryID      string              `json:"entryId,omitempty"`
 	TargetID     string              `json:"targetId,omitempty"`
 	ExtensionDir string              `json:"extensionDir,omitempty"`
+	Extensions   []string            `json:"extensions,omitempty"`
 	NoExtensions bool                `json:"noExtensions,omitempty"`
 	QuestionID   string              `json:"questionId,omitempty"`
 	OptionID     string              `json:"optionId,omitempty"`
 	SessionIDs   []string            `json:"sessionIds,omitempty"`
-	Label        string              `json:"label,omitempty"`
-	Limit        int                 `json:"limit,omitempty"`
+	Label              string              `json:"label,omitempty"`
+	Limit              int                 `json:"limit,omitempty"`
+	Offset             int                 `json:"offset,omitempty"`
+	AppendSystemPrompt string              `json:"appendSystemPrompt,omitempty"`
+	Source             string              `json:"source,omitempty"`
+
+	// elicitation_response: client reply to an engine_elicitation_request event.
+	ElicitRequestID string                 `json:"elicitRequestId,omitempty"`
+	ElicitResponse  map[string]interface{} `json:"elicitResponse,omitempty"`
+	ElicitCancelled bool                   `json:"elicitCancelled,omitempty"`
 }
 
 var validCommands = map[string]bool{
@@ -62,6 +71,9 @@ var validCommands = map[string]bool{
 	"list_stored_sessions":  true,
 	"load_session_history":  true,
 	"save_session_label":    true,
+	"get_conversation":      true,
+	"generate_title":        true,
+	"elicitation_response":  true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -210,10 +222,16 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "questionId") && hasNonEmptyString(raw, "optionId")
 	case "list_sessions", "shutdown", "list_stored_sessions":
 		return true
+	case "get_conversation":
+		return hasNonEmptyString(raw, "key")
 	case "load_session_history":
 		return hasNonEmptyString(raw, "key") || hasArray(raw, "sessionIds")
 	case "save_session_label":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "label")
+	case "generate_title":
+		return hasString(raw, "text")
+	case "elicitation_response":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "elicitRequestId")
 	}
 	return false
 }
@@ -239,15 +257,29 @@ type ServerResult struct {
 
 // SessionInfo is one entry in the session list response.
 type SessionInfo struct {
-	Key          string `json:"key"`
-	HasActiveRun bool   `json:"hasActiveRun"`
-	ToolCount    int    `json:"toolCount"`
+	Key            string `json:"key"`
+	HasActiveRun   bool   `json:"hasActiveRun"`
+	ToolCount      int    `json:"toolCount"`
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 // ServerSessionList carries the list_sessions response.
 type ServerSessionList struct {
 	Cmd      string        `json:"cmd"`
 	Sessions []SessionInfo `json:"sessions"`
+}
+
+// ResolveExtensions merges the legacy ExtensionDir field with the new Extensions
+// list. If Extensions is set, it takes precedence. If only ExtensionDir is set,
+// it is wrapped into a single-element slice. Returns nil if neither is set.
+func (c *ClientCommand) ResolveExtensions() []string {
+	if len(c.Extensions) > 0 {
+		return c.Extensions
+	}
+	if c.ExtensionDir != "" {
+		return []string{c.ExtensionDir}
+	}
+	return nil
 }
 
 // SerializeServerEvent serializes a session event as NDJSON.

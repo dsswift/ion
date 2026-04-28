@@ -181,24 +181,20 @@ type Message struct {
 
 // EngineProfile defines an extension profile for the engine.
 type EngineProfile struct {
-	ID           string         `json:"id"`
-	Name         string         `json:"name"`
-	ExtensionDir string         `json:"extensionDir"`
-	Model        string         `json:"model,omitempty"`
-	Options      map[string]any `json:"options,omitempty"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Extensions []string `json:"extensions"`
 }
 
 // EngineConfig configures a single engine session.
 type EngineConfig struct {
-	ProfileID        string          `json:"profileId"`
-	ExtensionDir     string          `json:"extensionDir"`
-	Model            string          `json:"model,omitempty"`
-	WorkingDirectory string          `json:"workingDirectory"`
-	SessionID        string          `json:"sessionId,omitempty"`
-	Options          map[string]any  `json:"options,omitempty"`
-	MaxTokens        int             `json:"maxTokens,omitempty"`
-	Thinking         *ThinkingConfig `json:"thinking,omitempty"`
-	SystemHint       string          `json:"systemHint,omitempty"`
+	ProfileID        string            `json:"profileId"`
+	Extensions       []string          `json:"extensions"`
+	WorkingDirectory string            `json:"workingDirectory"`
+	SessionID        string            `json:"sessionId,omitempty"`
+	MaxTokens        int               `json:"maxTokens,omitempty"`
+	Thinking         *ThinkingConfig   `json:"thinking,omitempty"`
+	SystemHint       string            `json:"systemHint,omitempty"`
 }
 
 // ThinkingConfig controls extended thinking for API-backend runs.
@@ -221,21 +217,9 @@ type EnginePaneState struct {
 
 // AgentStateUpdate describes the current state of an agent.
 type AgentStateUpdate struct {
-	Name        string         `json:"name"`
-	DisplayName string         `json:"displayName"`
-	Type        string         `json:"type"`
-	Visibility  string         `json:"visibility"`
-	Status      string         `json:"status"`
-	Invited     bool           `json:"invited"`
-	Task        string         `json:"task,omitempty"`
-	LastWork    string         `json:"lastWork,omitempty"`
-	FullOutput  string         `json:"fullOutput,omitempty"`
-	Elapsed     *float64       `json:"elapsed,omitempty"`
-	Cost        *float64       `json:"cost,omitempty"`
-	Color       string         `json:"color,omitempty"`
-	Messages    []AgentMessage `json:"messages,omitempty"`
-	ParentAgent string         `json:"parentAgent,omitempty"`
-	Depth       *int           `json:"depth,omitempty"`
+	Name     string                 `json:"name"`
+	Status   string                 `json:"status"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // AgentMessage is a single message within an agent's conversation.
@@ -250,6 +234,20 @@ type AgentHandle struct {
 	PID         int
 	StdinWrite  func(message string) bool
 	ParentAgent string
+}
+
+// AgentSpec is an LLM-visible agent definition. Mirrors the markdown
+// frontmatter shape (name, description, model, tools, parent, systemPrompt).
+// Specs are registered at runtime via Context.RegisterAgentSpec so an
+// extension's `capability_match` handler can promote a draft into a live,
+// named specialist that the Agent tool can immediately dispatch.
+type AgentSpec struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	Tools        []string `json:"tools,omitempty"`
+	Parent       string   `json:"parent,omitempty"`
+	SystemPrompt string   `json:"systemPrompt,omitempty"`
 }
 
 // StatusFields are the fields emitted by engine_status events.
@@ -273,14 +271,22 @@ type EngineEvent struct {
 	Type string `json:"type"`
 
 	// engine_agent_state
-	Agents []AgentStateUpdate `json:"agents,omitempty"`
+	Agents []AgentStateUpdate `json:"agents"`
 
 	// engine_status
 	Fields *StatusFields `json:"fields,omitempty"`
 
-	// engine_working_message, engine_notify, engine_error
-	EventMessage string `json:"message,omitempty"`
-	Level        string `json:"level,omitempty"`
+	// engine_working_message, engine_notify, engine_error, engine_harness_message
+	EventMessage  string `json:"message,omitempty"`
+	Level         string `json:"level,omitempty"`
+	ErrorCode     string `json:"errorCode,omitempty"`
+	ErrorCategory string `json:"errorCategory,omitempty"`
+	Retryable     bool   `json:"retryable,omitempty"`
+	RetryAfterMs  int64  `json:"retryAfterMs,omitempty"`
+	HttpStatus    int    `json:"httpStatus,omitempty"`
+
+	// engine_harness_message
+	HarnessSource string `json:"source,omitempty"`
 
 	// engine_dialog
 	DialogID      string   `json:"dialogId,omitempty"`
@@ -318,6 +324,24 @@ type EngineEvent struct {
 	// engine_plan_mode_changed
 	PlanModeEnabled  bool   `json:"planModeEnabled,omitempty"`
 	PlanModeFilePath string `json:"planFilePath,omitempty"`
+
+	// engine_compacting
+	CompactingActive bool `json:"active,omitempty"`
+
+	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent
+	ExtensionName string `json:"extensionName,omitempty"`
+	AttemptNumber int    `json:"attemptNumber,omitempty"`
+
+	// engine_elicitation_request, engine_elicitation_response
+	// RequestID identifies the elicitation; clients echo it back via the
+	// elicitation_response command. Schema, Url, and Mode describe what to
+	// render. Response/Cancelled describe the user's reply (engine_elicitation_response).
+	ElicitRequestID string                 `json:"requestId,omitempty"`
+	ElicitSchema    map[string]interface{} `json:"schema,omitempty"`
+	ElicitURL       string                 `json:"url,omitempty"`
+	ElicitMode      string                 `json:"elicitMode,omitempty"`
+	ElicitResponse  map[string]interface{} `json:"response,omitempty"`
+	ElicitCancelled bool                   `json:"cancelled,omitempty"`
 }
 
 // MessageEndUsage reports token usage at the end of a message.
@@ -336,6 +360,7 @@ type RunOptions struct {
 	ProjectPath        string          `json:"projectPath"`
 	SessionID          string          `json:"sessionId,omitempty"`
 	AllowedTools       []string        `json:"allowedTools,omitempty"`
+	SuppressTools      []string        `json:"suppressTools,omitempty"`
 	MaxTurns           int             `json:"maxTurns,omitempty"`
 	MaxBudgetUsd       float64         `json:"maxBudgetUsd,omitempty"`
 	SystemPrompt       string          `json:"systemPrompt,omitempty"`
@@ -348,7 +373,6 @@ type RunOptions struct {
 	McpConfig          string          `json:"mcpConfig,omitempty"`
 	MaxTokens          int             `json:"maxTokens,omitempty"`
 	Thinking           *ThinkingConfig `json:"thinking,omitempty"`
-	IdleTimeoutMs      int64           `json:"idleTimeoutMs,omitempty"`
 	MaxRetries         int             `json:"maxRetries,omitempty"`
 	FallbackModel      string          `json:"fallbackModel,omitempty"`
 	Persistent         bool            `json:"persistent,omitempty"`

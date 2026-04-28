@@ -267,6 +267,38 @@ func TestGetHTTPTransportAfterInit(t *testing.T) {
 	}
 }
 
+// TestInitNetworkTransportSettings verifies that the configured transport has
+// TCP keepalive, timeouts, and HTTP/2 enabled — matching http.DefaultTransport
+// settings so that silently-dropped connections are detected during long streams.
+func TestInitNetworkTransportSettings(t *testing.T) {
+	resetGlobals()
+
+	InitNetwork(nil)
+
+	transport := GetHTTPTransport()
+	if transport == nil {
+		t.Fatal("expected non-nil transport")
+	}
+	if transport.TLSHandshakeTimeout != 10*time.Second {
+		t.Errorf("TLSHandshakeTimeout = %v, want 10s", transport.TLSHandshakeTimeout)
+	}
+	if !transport.ForceAttemptHTTP2 {
+		t.Error("ForceAttemptHTTP2 should be true")
+	}
+	if transport.MaxIdleConns != 100 {
+		t.Errorf("MaxIdleConns = %d, want 100", transport.MaxIdleConns)
+	}
+	if transport.IdleConnTimeout != 90*time.Second {
+		t.Errorf("IdleConnTimeout = %v, want 90s", transport.IdleConnTimeout)
+	}
+	if transport.ExpectContinueTimeout != 1*time.Second {
+		t.Errorf("ExpectContinueTimeout = %v, want 1s", transport.ExpectContinueTimeout)
+	}
+	if transport.DialContext == nil {
+		t.Error("DialContext should be set (for dial timeout and TCP keepalive)")
+	}
+}
+
 // TestInitNetworkOverwritesPreviousConfig verifies that calling InitNetwork a
 // second time replaces the previously configured transport and proxy.
 func TestInitNetworkOverwritesPreviousConfig(t *testing.T) {

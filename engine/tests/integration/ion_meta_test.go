@@ -44,6 +44,12 @@ func ionMetaDir(t *testing.T) string {
 	return ""
 }
 
+// ionMetaEntry returns the extension entry-point file path (host.Load requires
+// a file, not a directory).
+func ionMetaEntry(t *testing.T) string {
+	return filepath.Join(ionMetaDir(t), "index.ts")
+}
+
 // findResultLine scans lines for a {"cmd":"result"} response and returns it.
 func findResultLine(t *testing.T, lines []string) *protocol.ServerResult {
 	t.Helper()
@@ -169,10 +175,9 @@ func TestIonPromptLifecycle(t *testing.T) {
 	cfg := types.EngineConfig{
 		ProfileID:        "test",
 		WorkingDirectory: "/tmp",
-		Model:            "mock-model",
 	}
 
-	if err := mgr.StartSession("prompt-lc-1", cfg); err != nil {
+	if _, err := mgr.StartSession("prompt-lc-1", cfg); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("prompt-lc-1") })
@@ -211,9 +216,18 @@ func TestIonPromptLifecycle(t *testing.T) {
 	if len(keys) != 2 {
 		t.Fatalf("expected 2 runs, got %d", len(keys))
 	}
-	opts2, _ := mb.GetStarted(keys[1])
-	if opts2.Prompt != "Second prompt" {
-		t.Errorf("expected 'Second prompt', got %q", opts2.Prompt)
+	// MockBackend.StartedKeys() iterates an unordered map, so we have to
+	// scan both entries for the expected prompts rather than indexing.
+	prompts := map[string]bool{}
+	for _, k := range keys {
+		opts, _ := mb.GetStarted(k)
+		prompts[opts.Prompt] = true
+	}
+	if !prompts["First prompt"] {
+		t.Errorf("expected a run with 'First prompt'; got %v", prompts)
+	}
+	if !prompts["Second prompt"] {
+		t.Errorf("expected a run with 'Second prompt'; got %v", prompts)
 	}
 }
 
@@ -226,10 +240,9 @@ func TestIonPromptAbort(t *testing.T) {
 	cfg := types.EngineConfig{
 		ProfileID:        "test",
 		WorkingDirectory: "/tmp",
-		Model:            "mock-model",
 	}
 
-	if err := mgr.StartSession("abort-lc-1", cfg); err != nil {
+	if _, err := mgr.StartSession("abort-lc-1", cfg); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("abort-lc-1") })
@@ -280,12 +293,13 @@ rl.on("line", (line: string) => {
   }
 });
 `
-	os.WriteFile(filepath.Join(extDir, "index.ts"), []byte(tsCode), 0644)
+	entry := filepath.Join(extDir, "index.ts")
+	os.WriteFile(entry, []byte(tsCode), 0644)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
-	err := host.Load(extDir, &extension.ExtensionConfig{
+	err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
 		WorkingDirectory: "/tmp",
 	})
@@ -332,12 +346,13 @@ rl.on("line", (line: string) => {
   }
 });
 `
-	os.WriteFile(filepath.Join(extDir, "index.ts"), []byte(tsCode), 0644)
+	entry := filepath.Join(extDir, "index.ts")
+	os.WriteFile(entry, []byte(tsCode), 0644)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
-	if err := host.Load(extDir, &extension.ExtensionConfig{
+	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
 		WorkingDirectory: "/tmp",
 	}); err != nil {
@@ -358,11 +373,12 @@ rl.on("line", (line: string) => {
 func TestIonMetaExtensionLoad(t *testing.T) {
 	requireEsbuild(t)
 	metaDir := ionMetaDir(t)
+	entry := ionMetaEntry(t)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
-	if err := host.Load(metaDir, &extension.ExtensionConfig{
+	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     metaDir,
 		WorkingDirectory: "/tmp",
 	}); err != nil {
@@ -383,10 +399,11 @@ func TestIonMetaExtensionLoad(t *testing.T) {
 		}
 	}
 
-	// Verify /ion-meta command
+	// ion-meta does not register slash commands; the orchestrator is the
+	// session's primary behavior and is reached by sending prompts.
 	cmds := host.Commands()
-	if _, ok := cmds["/ion-meta"]; !ok {
-		t.Errorf("missing command '/ion-meta', got: %v", cmdNames(cmds))
+	if len(cmds) != 0 {
+		t.Errorf("expected no slash commands, got: %v", cmdNames(cmds))
 	}
 }
 
@@ -395,11 +412,12 @@ func TestIonMetaExtensionLoad(t *testing.T) {
 func TestIonMetaHooksFireClean(t *testing.T) {
 	requireEsbuild(t)
 	metaDir := ionMetaDir(t)
+	entry := ionMetaEntry(t)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
-	if err := host.Load(metaDir, &extension.ExtensionConfig{
+	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     metaDir,
 		WorkingDirectory: "/tmp",
 	}); err != nil {
@@ -418,7 +436,8 @@ func TestIonMetaHooksFireClean(t *testing.T) {
 		t.Errorf("FireMessageEnd: %v", err)
 	}
 
-	// before_prompt should pass through unchanged (ion-meta returns {value: ""})
+	// before_prompt injects the orchestrator persona as a system-prompt
+	// addition; the user prompt itself is unchanged.
 	prompt, system, err := host.FireBeforePrompt(ctx, "test prompt")
 	if err != nil {
 		t.Errorf("FireBeforePrompt: %v", err)
@@ -426,8 +445,11 @@ func TestIonMetaHooksFireClean(t *testing.T) {
 	if prompt != "test prompt" {
 		t.Errorf("expected prompt unchanged, got %q", prompt)
 	}
-	if system != "" {
-		t.Errorf("expected empty system addition, got %q", system)
+	if !strings.Contains(system, "Ion Meta orchestrator") {
+		t.Errorf("expected orchestrator persona in system addition, got %q", system)
+	}
+	if !strings.Contains(system, "ion_scaffold") {
+		t.Errorf("expected tool overview in system addition, got %q", system)
 	}
 
 	if err := host.FireSessionEnd(ctx); err != nil {
@@ -446,12 +468,11 @@ func TestIonMetaSessionIntegration(t *testing.T) {
 
 	cfg := types.EngineConfig{
 		ProfileID:        "test",
-		ExtensionDir:     metaDir,
+		Extensions:       []string{filepath.Join(metaDir, "index.ts")},
 		WorkingDirectory: "/tmp",
-		Model:            "mock-model",
 	}
 
-	if err := mgr.StartSession("meta-test-1", cfg); err != nil {
+	if _, err := mgr.StartSession("meta-test-1", cfg); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("meta-test-1") })
@@ -534,9 +555,9 @@ func TestIonServeWithMetaExtension(t *testing.T) {
 	}
 }
 
-// ─── JS fallback: loads index.js when no main or index.ts ───
+// ─── JS extension loads from explicit file path ───
 
-func TestExtensionFallbackToJS(t *testing.T) {
+func TestExtensionLoadJS(t *testing.T) {
 	extDir := t.TempDir()
 	jsCode := `const readline = require("readline");
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
@@ -549,12 +570,13 @@ rl.on("line", (line) => {
   }
 });
 `
-	os.WriteFile(filepath.Join(extDir, "index.js"), []byte(jsCode), 0644)
+	entry := filepath.Join(extDir, "index.js")
+	os.WriteFile(entry, []byte(jsCode), 0644)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
-	if err := host.Load(extDir, &extension.ExtensionConfig{
+	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
 		WorkingDirectory: "/tmp",
 	}); err != nil {
@@ -564,54 +586,5 @@ rl.on("line", (line) => {
 	tools := host.Tools()
 	if len(tools) != 0 {
 		t.Errorf("expected 0 tools, got %d", len(tools))
-	}
-}
-
-// ─── TS priority: index.ts chosen over index.js ───
-
-func TestTSPriorityOverJS(t *testing.T) {
-	requireEsbuild(t)
-
-	extDir := t.TempDir()
-
-	tsCode := `import * as readline from "readline";
-const rl = readline.createInterface({ input: process.stdin, terminal: false });
-rl.on("line", (line: string) => {
-  const req = JSON.parse(line.trim());
-  const result = req.method === "init"
-    ? { tools: [{ name: "from_ts", description: "TS tool", parameters: {} }], commands: {} }
-    : null;
-  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result }) + "\n");
-});
-`
-	jsCode := `const readline = require("readline");
-const rl = readline.createInterface({ input: process.stdin, terminal: false });
-rl.on("line", (line) => {
-  const req = JSON.parse(line.trim());
-  const result = req.method === "init"
-    ? { tools: [{ name: "from_js", description: "JS tool", parameters: {} }], commands: {} }
-    : null;
-  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result }) + "\n");
-});
-`
-	os.WriteFile(filepath.Join(extDir, "index.ts"), []byte(tsCode), 0644)
-	os.WriteFile(filepath.Join(extDir, "index.js"), []byte(jsCode), 0644)
-
-	host := extension.NewHost()
-	t.Cleanup(func() { host.Dispose() })
-
-	if err := host.Load(extDir, &extension.ExtensionConfig{
-		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
-	}); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	tools := host.Tools()
-	if len(tools) != 1 {
-		t.Fatalf("expected 1 tool, got %d", len(tools))
-	}
-	if tools[0].Name != "from_ts" {
-		t.Errorf("expected TS to win, got tool %q", tools[0].Name)
 	}
 }

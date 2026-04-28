@@ -732,7 +732,7 @@ func TestStopNonExistentSession(t *testing.T) {
 }
 
 // TestDuplicateStartSession verifies that starting a session with a key that
-// already exists returns an error result.
+// already exists returns success (idempotent) with existed=true.
 func TestDuplicateStartSession(t *testing.T) {
 	mb := newMockBackend()
 	srv := newTestServer(t, mb)
@@ -742,7 +742,7 @@ func TestDuplicateStartSession(t *testing.T) {
 
 	startSession(t, conn, "dup-key", "req-first")
 
-	// Second start with the same key must fail.
+	// Second start with the same key should succeed (idempotent).
 	sendJSON(t, conn, map[string]interface{}{
 		"cmd": "start_session",
 		"key": "dup-key",
@@ -760,8 +760,8 @@ func TestDuplicateStartSession(t *testing.T) {
 	if r == nil {
 		t.Fatalf("no result for duplicate start_session; lines=%v", lines)
 	}
-	if r.OK {
-		t.Error("expected ok=false for duplicate session key")
+	if !r.OK {
+		t.Errorf("expected ok=true for idempotent duplicate session, got error: %s", r.Error)
 	}
 	if r.RequestID != "req-second" {
 		t.Errorf("expected requestId=req-second, got %q", r.RequestID)

@@ -14,10 +14,34 @@ echo "==> Installing to $BIN_DIR..."
 mkdir -p "$BIN_DIR"
 
 # Stop running engine daemon so the new binary takes effect on next start
-if pgrep -f "ion serve" >/dev/null 2>&1; then
-  pkill -f "ion serve" 2>/dev/null || true
-  sleep 1
+ENGINE_PID=""
+if [[ -S "$ION_HOME/engine.sock" ]]; then
+  ENGINE_PID=$(lsof -t "$ION_HOME/engine.sock" 2>/dev/null | head -1)
 fi
+if [[ -z "$ENGINE_PID" ]]; then
+  ENGINE_PID=$(pgrep -f "ion serve" 2>/dev/null | head -1)
+fi
+if [[ -n "$ENGINE_PID" ]]; then
+  echo "==> Stopping engine daemon (PID $ENGINE_PID)..."
+  # 1. Try graceful shutdown via socket command
+  ./bin/ion shutdown 2>/dev/null &
+  SHUTDOWN_PID=$!
+  sleep 1
+  kill $SHUTDOWN_PID 2>/dev/null || true
+  # 2. SIGTERM
+  if kill -0 "$ENGINE_PID" 2>/dev/null; then
+    kill -TERM "$ENGINE_PID" 2>/dev/null || true
+    sleep 1
+  fi
+  # 3. SIGKILL if still alive
+  if kill -0 "$ENGINE_PID" 2>/dev/null; then
+    echo "  Engine did not stop gracefully, forcing kill..."
+    kill -9 "$ENGINE_PID" 2>/dev/null || true
+    sleep 1
+  fi
+fi
+# Clean up stale socket
+rm -f "$ION_HOME/engine.sock"
 
 rm -f "$BIN_DIR/ion"
 cp bin/ion "$BIN_DIR/ion"
@@ -45,6 +69,15 @@ if [[ "${1:-}" == "--standalone" ]]; then
             fi
         fi
     fi
+fi
+
+# Install SDK for TypeScript extensions
+SDK_SRC="$SCRIPT_DIR/extensions/sdk"
+SDK_DST="$ION_HOME/extensions/sdk"
+if [[ -d "$SDK_SRC" ]]; then
+    echo "==> Installing extension SDK to $SDK_DST..."
+    mkdir -p "$SDK_DST"
+    cp -r "$SDK_SRC"/* "$SDK_DST/"
 fi
 
 # Install ion-meta extension

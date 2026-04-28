@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -122,9 +123,7 @@ func (m *mockBackend) getStarted(requestID string) (types.RunOptions, bool) {
 func defaultConfig() types.EngineConfig {
 	return types.EngineConfig{
 		ProfileID:        "test",
-		ExtensionDir:     "/tmp",
 		WorkingDirectory: "/tmp",
-		Model:            "mock-model",
 	}
 }
 
@@ -186,7 +185,7 @@ func TestStartSession_CreatesSession(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	err := mgr.StartSession("s1", defaultConfig())
+	_, err := mgr.StartSession("s1", defaultConfig())
 	if err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
@@ -203,20 +202,20 @@ func TestStartSession_CreatesSession(t *testing.T) {
 	}
 }
 
-func TestStartSession_DuplicateKeyError(t *testing.T) {
+func TestStartSession_DuplicateKeyIsIdempotent(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	if err := mgr.StartSession("dup", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("dup", defaultConfig()); err != nil {
 		t.Fatalf("first StartSession: %v", err)
 	}
 
-	err := mgr.StartSession("dup", defaultConfig())
-	if err == nil {
-		t.Fatal("expected error for duplicate key")
+	result, err := mgr.StartSession("dup", defaultConfig())
+	if err != nil {
+		t.Fatalf("duplicate StartSession should not error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("expected 'already exists' in error, got %q", err.Error())
+	if !result.Existed {
+		t.Error("expected Existed=true for duplicate key")
 	}
 }
 
@@ -225,24 +224,26 @@ func TestStartSession_EmitsStatusEvent(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("s1", defaultConfig())
+	_, _ = mgr.StartSession("s1", defaultConfig())
 
 	statuses := ec.byType("engine_status")
-	if len(statuses) != 1 {
-		t.Fatalf("expected 1 status event, got %d", len(statuses))
+	// StartSession emits: engine_status(starting) then engine_status(idle)
+	if len(statuses) != 2 {
+		t.Fatalf("expected 2 status events, got %d", len(statuses))
 	}
-	if statuses[0].event.Fields == nil {
-		t.Fatal("expected status fields")
+	if statuses[0].event.Fields.State != "starting" {
+		t.Errorf("expected first state=starting, got %q", statuses[0].event.Fields.State)
 	}
-	if statuses[0].event.Fields.State != "idle" {
-		t.Errorf("expected state=idle, got %q", statuses[0].event.Fields.State)
+	if statuses[1].event.Fields == nil {
+		t.Fatal("expected status fields on final event")
 	}
-	if statuses[0].event.Fields.Label != "s1" {
-		t.Errorf("expected label=s1, got %q", statuses[0].event.Fields.Label)
+	if statuses[1].event.Fields.State != "idle" {
+		t.Errorf("expected final state=idle, got %q", statuses[1].event.Fields.State)
 	}
-	if statuses[0].event.Fields.Model != "mock-model" {
-		t.Errorf("expected model=mock-model, got %q", statuses[0].event.Fields.Model)
+	if statuses[1].event.Fields.Label != "s1" {
+		t.Errorf("expected label=s1, got %q", statuses[1].event.Fields.Label)
 	}
+	// Model is no longer set at profile/config level -- resolved at runtime
 }
 
 func TestStartSession_MultipleSessions(t *testing.T) {
@@ -251,7 +252,7 @@ func TestStartSession_MultipleSessions(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("session-%d", i)
-		if err := mgr.StartSession(key, defaultConfig()); err != nil {
+		if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
 			t.Fatalf("StartSession(%s): %v", key, err)
 		}
 	}
@@ -269,7 +270,7 @@ func TestStartSession_MultipleSessions(t *testing.T) {
 func TestSendPrompt_ValidSession(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("p1", defaultConfig())
+	_, _ = mgr.StartSession("p1", defaultConfig())
 
 	err := mgr.SendPrompt("p1", "Hello world", nil)
 	if err != nil {
@@ -288,9 +289,7 @@ func TestSendPrompt_ValidSession(t *testing.T) {
 	if opts.ProjectPath != "/tmp" {
 		t.Errorf("expected projectPath '/tmp', got %q", opts.ProjectPath)
 	}
-	if opts.Model != "mock-model" {
-		t.Errorf("expected model 'mock-model', got %q", opts.Model)
-	}
+	// Model resolved at runtime, not from config
 }
 
 func TestSendPrompt_UnknownSession(t *testing.T) {
@@ -309,7 +308,7 @@ func TestSendPrompt_UnknownSession(t *testing.T) {
 func TestSendPrompt_QueuesWhenBusy(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("busy", defaultConfig())
+	_, _ = mgr.StartSession("busy", defaultConfig())
 
 	if err := mgr.SendPrompt("busy", "first", nil); err != nil {
 		t.Fatalf("first SendPrompt: %v", err)
@@ -324,7 +323,7 @@ func TestSendPrompt_QueuesWhenBusy(t *testing.T) {
 func TestSendPrompt_QueueFullError(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("busy", defaultConfig())
+	_, _ = mgr.StartSession("busy", defaultConfig())
 
 	if err := mgr.SendPrompt("busy", "first", nil); err != nil {
 		t.Fatalf("first SendPrompt: %v", err)
@@ -352,7 +351,7 @@ func TestSendPrompt_EmitsRunningStatus(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("p1", defaultConfig())
+	_, _ = mgr.StartSession("p1", defaultConfig())
 	_ = mgr.SendPrompt("p1", "go", nil)
 
 	statuses := ec.byType("engine_status")
@@ -369,7 +368,7 @@ func TestSendPrompt_EmitsRunningStatus(t *testing.T) {
 func TestSendPrompt_SetsRequestID(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("rid", defaultConfig())
+	_, _ = mgr.StartSession("rid", defaultConfig())
 
 	_ = mgr.SendPrompt("rid", "test", nil)
 
@@ -391,7 +390,7 @@ func TestSendPrompt_PassesMaxTokens(t *testing.T) {
 	mgr := NewManager(mb)
 	cfg := defaultConfig()
 	cfg.MaxTokens = 4096
-	_ = mgr.StartSession("mt", cfg)
+	_, _ = mgr.StartSession("mt", cfg)
 
 	_ = mgr.SendPrompt("mt", "test", nil)
 
@@ -407,7 +406,7 @@ func TestSendPrompt_PassesThinkingConfig(t *testing.T) {
 	mgr := NewManager(mb)
 	cfg := defaultConfig()
 	cfg.Thinking = &types.ThinkingConfig{Enabled: true, BudgetTokens: 8000}
-	_ = mgr.StartSession("think", cfg)
+	_, _ = mgr.StartSession("think", cfg)
 
 	_ = mgr.SendPrompt("think", "ponder this", nil)
 
@@ -431,7 +430,7 @@ func TestSendPrompt_PassesThinkingConfig(t *testing.T) {
 func TestStopSession_CleansUp(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("stop-me", defaultConfig())
+	_, _ = mgr.StartSession("stop-me", defaultConfig())
 
 	err := mgr.StopSession("stop-me")
 	if err != nil {
@@ -460,7 +459,7 @@ func TestStopSession_UnknownSessionError(t *testing.T) {
 func TestStopSession_CancelsActiveRun(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("active", defaultConfig())
+	_, _ = mgr.StartSession("active", defaultConfig())
 	_ = mgr.SendPrompt("active", "working", nil)
 
 	if !mgr.IsRunning("active") {
@@ -483,7 +482,7 @@ func TestStopSession_EmitsDeadEvent(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("die", defaultConfig())
+	_, _ = mgr.StartSession("die", defaultConfig())
 	_ = mgr.StopSession("die")
 
 	deadEvents := ec.byType("engine_dead")
@@ -495,7 +494,7 @@ func TestStopSession_EmitsDeadEvent(t *testing.T) {
 func TestStopSession_Idempotent(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("once", defaultConfig())
+	_, _ = mgr.StartSession("once", defaultConfig())
 
 	if err := mgr.StopSession("once"); err != nil {
 		t.Fatalf("first stop: %v", err)
@@ -515,7 +514,7 @@ func TestStopAll_MultipleSessions(t *testing.T) {
 	mgr := NewManager(mb)
 
 	for _, key := range []string{"a", "b", "c", "d"} {
-		_ = mgr.StartSession(key, defaultConfig())
+		_, _ = mgr.StartSession(key, defaultConfig())
 	}
 
 	if len(mgr.ListSessions()) != 4 {
@@ -546,8 +545,8 @@ func TestStopAll_CancelsActiveRuns(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("r1", defaultConfig())
-	_ = mgr.StartSession("r2", defaultConfig())
+	_, _ = mgr.StartSession("r1", defaultConfig())
+	_, _ = mgr.StartSession("r2", defaultConfig())
 	_ = mgr.SendPrompt("r1", "work1", nil)
 	_ = mgr.SendPrompt("r2", "work2", nil)
 
@@ -570,7 +569,7 @@ func TestStopByPrefix_PrefixMatching(t *testing.T) {
 	mgr := NewManager(mb)
 
 	for _, key := range []string{"app-1", "app-2", "app-3", "other-1", "other-2"} {
-		_ = mgr.StartSession(key, defaultConfig())
+		_, _ = mgr.StartSession(key, defaultConfig())
 	}
 
 	mgr.StopByPrefix("app-")
@@ -590,8 +589,8 @@ func TestStopByPrefix_NoMatch(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("foo", defaultConfig())
-	_ = mgr.StartSession("bar", defaultConfig())
+	_, _ = mgr.StartSession("foo", defaultConfig())
+	_, _ = mgr.StartSession("bar", defaultConfig())
 
 	mgr.StopByPrefix("xyz-")
 
@@ -604,9 +603,9 @@ func TestStopByPrefix_ExactPrefixMatch(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("abc", defaultConfig())
-	_ = mgr.StartSession("abcdef", defaultConfig())
-	_ = mgr.StartSession("ab", defaultConfig())
+	_, _ = mgr.StartSession("abc", defaultConfig())
+	_, _ = mgr.StartSession("abcdef", defaultConfig())
+	_, _ = mgr.StartSession("ab", defaultConfig())
 
 	mgr.StopByPrefix("abc")
 
@@ -640,9 +639,9 @@ func TestListSessions_Populated(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("x", defaultConfig())
-	_ = mgr.StartSession("y", defaultConfig())
-	_ = mgr.StartSession("z", defaultConfig())
+	_, _ = mgr.StartSession("x", defaultConfig())
+	_, _ = mgr.StartSession("y", defaultConfig())
+	_, _ = mgr.StartSession("z", defaultConfig())
 
 	sessions := mgr.ListSessions()
 	if len(sessions) != 3 {
@@ -664,8 +663,8 @@ func TestListSessions_HasActiveRunFlag(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("idle-sess", defaultConfig())
-	_ = mgr.StartSession("busy-sess", defaultConfig())
+	_, _ = mgr.StartSession("idle-sess", defaultConfig())
+	_, _ = mgr.StartSession("busy-sess", defaultConfig())
 	_ = mgr.SendPrompt("busy-sess", "working", nil)
 
 	sessions := mgr.ListSessions()
@@ -687,8 +686,8 @@ func TestListSessions_AfterStopShowsReduced(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("keep", defaultConfig())
-	_ = mgr.StartSession("remove", defaultConfig())
+	_, _ = mgr.StartSession("keep", defaultConfig())
+	_, _ = mgr.StartSession("remove", defaultConfig())
 	_ = mgr.StopSession("remove")
 
 	sessions := mgr.ListSessions()
@@ -707,9 +706,9 @@ func TestListSessions_AfterStopShowsReduced(t *testing.T) {
 func TestSetPlanMode_Enable(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("plan", defaultConfig())
+	_, _ = mgr.StartSession("plan", defaultConfig())
 
-	mgr.SetPlanMode("plan", true, []string{"Read", "Grep"})
+	mgr.SetPlanMode("plan", true, []string{"Read", "Grep"}, "")
 
 	_ = mgr.SendPrompt("plan", "plan it", nil)
 
@@ -726,10 +725,10 @@ func TestSetPlanMode_Enable(t *testing.T) {
 func TestSetPlanMode_Disable(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("plan2", defaultConfig())
+	_, _ = mgr.StartSession("plan2", defaultConfig())
 
-	mgr.SetPlanMode("plan2", true, []string{"Read"})
-	mgr.SetPlanMode("plan2", false, nil)
+	mgr.SetPlanMode("plan2", true, []string{"Read"}, "")
+	mgr.SetPlanMode("plan2", false, nil, "")
 
 	_ = mgr.SendPrompt("plan2", "execute", nil)
 
@@ -748,7 +747,7 @@ func TestSetPlanMode_UnknownSessionNoPanic(t *testing.T) {
 	mgr := NewManager(mb)
 
 	// Should not panic
-	mgr.SetPlanMode("ghost", true, []string{"Read"})
+	mgr.SetPlanMode("ghost", true, []string{"Read"}, "")
 }
 
 // ---------------------------------------------------------------------------
@@ -758,7 +757,7 @@ func TestSetPlanMode_UnknownSessionNoPanic(t *testing.T) {
 func TestSendAbort_CancelsActiveRun(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("abort-me", defaultConfig())
+	_, _ = mgr.StartSession("abort-me", defaultConfig())
 	_ = mgr.SendPrompt("abort-me", "start", nil)
 
 	mgr.SendAbort("abort-me")
@@ -774,7 +773,7 @@ func TestSendAbort_CancelsActiveRun(t *testing.T) {
 func TestSendAbort_NoActiveRunNoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("idle-abort", defaultConfig())
+	_, _ = mgr.StartSession("idle-abort", defaultConfig())
 
 	// Should not panic
 	mgr.SendAbort("idle-abort")
@@ -795,7 +794,7 @@ func TestSendAbort_UnknownSessionNoPanic(t *testing.T) {
 func TestAbortAgent_KillsByName(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("agent-abort", defaultConfig())
+	_, _ = mgr.StartSession("agent-abort", defaultConfig())
 
 	// Manually inject an agent into the session's registry.
 	// Since engineSession is internal, we access via the manager's lock.
@@ -813,7 +812,7 @@ func TestAbortAgent_KillsByName(t *testing.T) {
 func TestAbortAgent_SubtreeTraversal(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("tree", defaultConfig())
+	_, _ = mgr.StartSession("tree", defaultConfig())
 
 	mgr.mu.Lock()
 	s := mgr.sessions["tree"]
@@ -839,9 +838,194 @@ func TestAbortAgent_UnknownSessionNoPanic(t *testing.T) {
 func TestAbortAgent_UnknownAgentNoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("s", defaultConfig())
+	_, _ = mgr.StartSession("s", defaultConfig())
 
 	mgr.AbortAgent("s", "no-such-agent", false)
+}
+
+// TestResolveAgentSpec_DirectMatch verifies that an already-registered spec
+// resolves without firing the capability_match hook.
+func TestResolveAgentSpec_DirectMatch(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("self-hire-direct", defaultConfig())
+	defer mgr.StopSession("self-hire-direct")
+
+	mgr.mu.Lock()
+	s := mgr.sessions["self-hire-direct"]
+	s.agentSpecs["travel-planner"] = types.AgentSpec{
+		Name:         "travel-planner",
+		Description:  "Plan trips",
+		Model:        "claude-sonnet-4-6",
+		SystemPrompt: "You plan trips.",
+	}
+	mgr.mu.Unlock()
+
+	spec, ok := mgr.resolveAgentSpec(s, "self-hire-direct", "travel-planner")
+	if !ok {
+		t.Fatalf("expected direct match")
+	}
+	if spec.Description != "Plan trips" {
+		t.Errorf("expected description, got %q", spec.Description)
+	}
+}
+
+// TestResolveAgentSpec_CapabilityMatchPromotion verifies that an unknown
+// agent name fires capability_match, the hook handler can call
+// RegisterAgentSpec via ctx, and the same call resolves.
+func TestResolveAgentSpec_CapabilityMatchPromotion(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("self-hire-promote", defaultConfig())
+	defer mgr.StopSession("self-hire-promote")
+
+	mgr.mu.Lock()
+	s := mgr.sessions["self-hire-promote"]
+	mgr.mu.Unlock()
+
+	if s.extGroup == nil {
+		s.extGroup = extension.NewExtensionGroup()
+	}
+
+	// Inject an in-process host whose SDK handles capability_match by
+	// registering the spec via the runtime callback.
+	host := extension.NewHost()
+	s.extGroup.Add(host)
+	host.SDK().On(extension.HookCapabilityMatch, func(ctx *extension.Context, payload interface{}) (interface{}, error) {
+		info, _ := payload.(extension.CapabilityMatchInfo)
+		if info.Input == "travel-planner" && ctx.RegisterAgentSpec != nil {
+			ctx.RegisterAgentSpec(types.AgentSpec{
+				Name:         "travel-planner",
+				Description:  "Plan trips (auto-hired)",
+				Model:        "claude-sonnet-4-6",
+				SystemPrompt: "You plan trips.",
+			})
+		}
+		return nil, nil
+	})
+
+	spec, ok := mgr.resolveAgentSpec(s, "self-hire-promote", "travel-planner")
+	if !ok {
+		t.Fatalf("expected resolution after capability_match promoted spec")
+	}
+	if spec.Description != "Plan trips (auto-hired)" {
+		t.Errorf("unexpected spec description: %q", spec.Description)
+	}
+}
+
+// TestResolveAgentSpec_StillUnknownAfterHook verifies that resolution fails
+// when no handler registers a matching spec.
+func TestResolveAgentSpec_StillUnknownAfterHook(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("self-hire-miss", defaultConfig())
+	defer mgr.StopSession("self-hire-miss")
+
+	mgr.mu.Lock()
+	s := mgr.sessions["self-hire-miss"]
+	mgr.mu.Unlock()
+
+	if s.extGroup == nil {
+		s.extGroup = extension.NewExtensionGroup()
+	}
+
+	_, ok := mgr.resolveAgentSpec(s, "self-hire-miss", "ghost")
+	if ok {
+		t.Errorf("expected miss for unknown agent")
+	}
+}
+
+// TestAbortAllDescendants_ClearsRegistryAndEmits ensures abortAllDescendants
+// kills every agent, clears the registry, and emits a cleared agent_state
+// event so the UI panel updates. Triggered when the parent run dies via
+// handleRunError or handleRunExit (non-zero) so dispatched children do
+// not continue running standalone.
+func TestAbortAllDescendants_ClearsRegistryAndEmits(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("reap", defaultConfig())
+
+	var emittedAgentState bool
+	var lastEventAgents int = -1
+	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
+		if ev.Type == "engine_agent_state" {
+			emittedAgentState = true
+			lastEventAgents = len(ev.Agents)
+		}
+	})
+
+	mgr.mu.Lock()
+	s := mgr.sessions["reap"]
+	s.agentRegistry["a"] = types.AgentHandle{PID: 99991, ParentAgent: ""}
+	s.agentRegistry["b"] = types.AgentHandle{PID: 99992, ParentAgent: "a"}
+	mgr.mu.Unlock()
+
+	mgr.abortAllDescendants("reap", "test")
+
+	mgr.mu.RLock()
+	defer mgr.mu.RUnlock()
+	if got := len(mgr.sessions["reap"].agentRegistry); got != 0 {
+		t.Fatalf("expected empty registry after abort, got %d", got)
+	}
+	if !emittedAgentState {
+		t.Fatal("expected engine_agent_state event")
+	}
+	if lastEventAgents != 0 {
+		t.Fatalf("expected zero agents in cleared event, got %d", lastEventAgents)
+	}
+}
+
+// TestAbortAllDescendants_NoOpWhenEmpty ensures that calling reap on a
+// session with no agents is a silent no-op (no event, no panic).
+func TestAbortAllDescendants_NoOpWhenEmpty(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("empty", defaultConfig())
+
+	var emitted bool
+	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
+		if ev.Type == "engine_agent_state" {
+			emitted = true
+		}
+	})
+
+	mgr.abortAllDescendants("empty", "test")
+
+	if emitted {
+		t.Fatal("did not expect engine_agent_state event when no agents")
+	}
+}
+
+// TestRespawnDeadExtensions_NoExtensionsNoOp ensures the new respawn flow
+// added in Phase F is a silent no-op for sessions with no extensions
+// configured. Avoids accidentally emitting status churn on every run exit
+// for plain sessions.
+func TestRespawnDeadExtensions_NoExtensionsNoOp(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("plain", defaultConfig())
+
+	var anyEvent bool
+	mgr.OnEvent(func(_ string, _ types.EngineEvent) {
+		anyEvent = true
+	})
+
+	mgr.respawnDeadExtensions("plain")
+
+	if anyEvent {
+		t.Fatal("expected no events for session without extension group")
+	}
+}
+
+// TestRespawnDeadExtensions_UnknownSessionNoPanic ensures the helper does
+// not panic when invoked for a session that has been torn down already
+// (handleRunExit invokes it after the read lock has been released, so
+// races are possible).
+func TestRespawnDeadExtensions_UnknownSessionNoPanic(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	mgr.respawnDeadExtensions("never-existed")
 }
 
 // ---------------------------------------------------------------------------
@@ -851,7 +1035,7 @@ func TestAbortAgent_UnknownAgentNoPanic(t *testing.T) {
 func TestSteerAgent_WritesToStdin(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("steer", defaultConfig())
+	_, _ = mgr.StartSession("steer", defaultConfig())
 
 	var written string
 	mgr.mu.Lock()
@@ -876,7 +1060,7 @@ func TestSteerAgent_WritesToStdin(t *testing.T) {
 func TestSteerAgent_UnknownAgentNoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("steer2", defaultConfig())
+	_, _ = mgr.StartSession("steer2", defaultConfig())
 
 	mgr.SteerAgent("steer2", "ghost-agent", "msg")
 }
@@ -891,7 +1075,7 @@ func TestSteerAgent_UnknownSessionNoPanic(t *testing.T) {
 func TestSteerAgent_NilStdinWriteNoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("steer3", defaultConfig())
+	_, _ = mgr.StartSession("steer3", defaultConfig())
 
 	mgr.mu.Lock()
 	s := mgr.sessions["steer3"]
@@ -908,7 +1092,7 @@ func TestSteerAgent_NilStdinWriteNoPanic(t *testing.T) {
 func TestIsRunning_TrueDuringRun(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("running", defaultConfig())
+	_, _ = mgr.StartSession("running", defaultConfig())
 	_ = mgr.SendPrompt("running", "go", nil)
 
 	if !mgr.IsRunning("running") {
@@ -919,7 +1103,7 @@ func TestIsRunning_TrueDuringRun(t *testing.T) {
 func TestIsRunning_FalseAfterExit(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("exited", defaultConfig())
+	_, _ = mgr.StartSession("exited", defaultConfig())
 	_ = mgr.SendPrompt("exited", "go", nil)
 
 	// Get request ID
@@ -940,7 +1124,7 @@ func TestIsRunning_FalseAfterExit(t *testing.T) {
 func TestIsRunning_FalseWhenIdle(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("idle", defaultConfig())
+	_, _ = mgr.StartSession("idle", defaultConfig())
 
 	if mgr.IsRunning("idle") {
 		t.Error("expected IsRunning=false for idle session")
@@ -965,7 +1149,7 @@ func TestHandleNormalizedEvent_TextChunk(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("ev", defaultConfig())
+	_, _ = mgr.StartSession("ev", defaultConfig())
 	_ = mgr.SendPrompt("ev", "go", nil)
 
 	keys := mb.startedKeys()
@@ -990,7 +1174,7 @@ func TestHandleNormalizedEvent_ToolCall(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("tc", defaultConfig())
+	_, _ = mgr.StartSession("tc", defaultConfig())
 	_ = mgr.SendPrompt("tc", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1015,7 +1199,7 @@ func TestHandleNormalizedEvent_ToolResult(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("tr", defaultConfig())
+	_, _ = mgr.StartSession("tr", defaultConfig())
 	_ = mgr.SendPrompt("tr", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1037,7 +1221,7 @@ func TestHandleNormalizedEvent_ToolResultError(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("tre", defaultConfig())
+	_, _ = mgr.StartSession("tre", defaultConfig())
 	_ = mgr.SendPrompt("tre", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1059,7 +1243,7 @@ func TestHandleNormalizedEvent_TaskComplete(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("done", defaultConfig())
+	_, _ = mgr.StartSession("done", defaultConfig())
 	_ = mgr.SendPrompt("done", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1085,7 +1269,7 @@ func TestHandleNormalizedEvent_ErrorEvent(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("err", defaultConfig())
+	_, _ = mgr.StartSession("err", defaultConfig())
 	_ = mgr.SendPrompt("err", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1107,7 +1291,7 @@ func TestHandleNormalizedEvent_UsageEvent(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("usage", defaultConfig())
+	_, _ = mgr.StartSession("usage", defaultConfig())
 	_ = mgr.SendPrompt("usage", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1136,7 +1320,7 @@ func TestHandleNormalizedEvent_SessionDead(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("dead", defaultConfig())
+	_, _ = mgr.StartSession("dead", defaultConfig())
 	_ = mgr.SendPrompt("dead", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1162,7 +1346,7 @@ func TestHandleNormalizedEvent_NilDataReturnsError(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("nildata", defaultConfig())
+	_, _ = mgr.StartSession("nildata", defaultConfig())
 	_ = mgr.SendPrompt("nildata", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1182,7 +1366,7 @@ func TestHandleNormalizedEvent_UnknownRunIDIgnored(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("s1", defaultConfig())
+	_, _ = mgr.StartSession("s1", defaultConfig())
 
 	// Emit event with a run ID that doesn't belong to any session
 	initialCount := ec.count()
@@ -1206,7 +1390,7 @@ func TestHandleRunExit_ClearsRequestID(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("exit", defaultConfig())
+	_, _ = mgr.StartSession("exit", defaultConfig())
 	_ = mgr.SendPrompt("exit", "go", nil)
 
 	if !mgr.IsRunning("exit") {
@@ -1226,7 +1410,7 @@ func TestHandleRunExit_SetsConversationID(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("sessid", defaultConfig())
+	_, _ = mgr.StartSession("sessid", defaultConfig())
 	_ = mgr.SendPrompt("sessid", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1267,7 +1451,7 @@ func TestHandleRunExit_EmitsIdleStatus(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("exit-idle", defaultConfig())
+	_, _ = mgr.StartSession("exit-idle", defaultConfig())
 	_ = mgr.SendPrompt("exit-idle", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1291,7 +1475,7 @@ func TestHandleRunExit_EmitsDeadWithCodeAndSignal(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("exit-dead", defaultConfig())
+	_, _ = mgr.StartSession("exit-dead", defaultConfig())
 	_ = mgr.SendPrompt("exit-dead", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1316,7 +1500,7 @@ func TestHandleRunExit_NilCodeAndSignal_NoDeadEvent(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("exit-nil", defaultConfig())
+	_, _ = mgr.StartSession("exit-nil", defaultConfig())
 	_ = mgr.SendPrompt("exit-nil", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1339,11 +1523,18 @@ func TestHandleRunError_EmitsErrorEvent(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("runerr", defaultConfig())
+	_, _ = mgr.StartSession("runerr", defaultConfig())
 	_ = mgr.SendPrompt("runerr", "go", nil)
 
+	// In production, ApiBackend.emitError emits a structured ErrorEvent
+	// through the NormalizedEvent pipeline. Simulate that here.
 	keys := mb.startedKeys()
-	mb.emitError(keys[0], errors.New("provider timeout"))
+	mb.emitNormalized(keys[0], types.NormalizedEvent{Data: &types.ErrorEvent{
+		ErrorMessage: "provider timeout",
+		IsError:      true,
+		ErrorCode:    "timeout",
+		Retryable:    true,
+	}})
 
 	errEvents := ec.byType("engine_error")
 	if len(errEvents) == 0 {
@@ -1352,6 +1543,12 @@ func TestHandleRunError_EmitsErrorEvent(t *testing.T) {
 	if errEvents[0].event.EventMessage != "provider timeout" {
 		t.Errorf("expected 'provider timeout', got %q", errEvents[0].event.EventMessage)
 	}
+	if errEvents[0].event.ErrorCode != "timeout" {
+		t.Errorf("expected errorCode 'timeout', got %q", errEvents[0].event.ErrorCode)
+	}
+	if !errEvents[0].event.Retryable {
+		t.Error("expected retryable to be true")
+	}
 }
 
 func TestHandleRunError_UnknownRunIDIgnored(t *testing.T) {
@@ -1359,7 +1556,7 @@ func TestHandleRunError_UnknownRunIDIgnored(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("s", defaultConfig())
+	_, _ = mgr.StartSession("s", defaultConfig())
 	initialCount := ec.count()
 
 	mb.emitError("unknown-run", errors.New("stray error"))
@@ -1377,7 +1574,7 @@ func TestOnEvent_NilCallbackNoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 	// No OnEvent registered
-	_ = mgr.StartSession("s1", defaultConfig()) // emits an event -- should not panic
+	_, _ = mgr.StartSession("s1", defaultConfig()) // emits an event -- should not panic
 }
 
 func TestOnEvent_ReplaceCallback(t *testing.T) {
@@ -1386,16 +1583,17 @@ func TestOnEvent_ReplaceCallback(t *testing.T) {
 
 	var firstCount, secondCount int
 	mgr.OnEvent(func(key string, event types.EngineEvent) { firstCount++ })
-	_ = mgr.StartSession("s1", defaultConfig())
+	_, _ = mgr.StartSession("s1", defaultConfig())
 
 	mgr.OnEvent(func(key string, event types.EngineEvent) { secondCount++ })
-	_ = mgr.StartSession("s2", defaultConfig())
+	_, _ = mgr.StartSession("s2", defaultConfig())
 
-	if firstCount != 1 {
-		t.Errorf("first callback expected 1 call, got %d", firstCount)
+	// StartSession emits: engine_status(starting) + engine_working_message("") + engine_status(idle)
+	if firstCount != 3 {
+		t.Errorf("first callback expected 3 calls, got %d", firstCount)
 	}
-	if secondCount != 1 {
-		t.Errorf("second callback expected 1 call, got %d", secondCount)
+	if secondCount != 3 {
+		t.Errorf("second callback expected 3 calls, got %d", secondCount)
 	}
 }
 
@@ -1608,7 +1806,7 @@ func TestConcurrent_StartStop(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			key := fmt.Sprintf("concurrent-%d", idx)
-			_ = mgr.StartSession(key, defaultConfig())
+			_, _ = mgr.StartSession(key, defaultConfig())
 		}(i)
 	}
 	wg.Wait()
@@ -1641,7 +1839,7 @@ func TestConcurrent_SimultaneousPrompts(t *testing.T) {
 	// Start multiple sessions and send prompts concurrently
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("par-%d", i)
-		_ = mgr.StartSession(key, defaultConfig())
+		_, _ = mgr.StartSession(key, defaultConfig())
 	}
 
 	var wg sync.WaitGroup
@@ -1672,7 +1870,7 @@ func TestConcurrent_ListDuringMutation(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			key := fmt.Sprintf("mut-%d", idx)
-			_ = mgr.StartSession(key, defaultConfig())
+			_, _ = mgr.StartSession(key, defaultConfig())
 			time.Sleep(time.Millisecond)
 			_ = mgr.StopSession(key)
 		}(i)
@@ -1689,7 +1887,7 @@ func TestConcurrent_EventEmissionDuringStop(t *testing.T) {
 	mgr := NewManager(mb)
 	ec := newEventCollector(mgr)
 
-	_ = mgr.StartSession("race", defaultConfig())
+	_, _ = mgr.StartSession("race", defaultConfig())
 	_ = mgr.SendPrompt("race", "go", nil)
 
 	keys := mb.startedKeys()
@@ -1739,7 +1937,7 @@ func TestForkSession_UnknownSession(t *testing.T) {
 func TestForkSession_NoConversation(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("no-conv", defaultConfig())
+	_, _ = mgr.StartSession("no-conv", defaultConfig())
 
 	_, err := mgr.ForkSession("no-conv", 0)
 	if err == nil {
@@ -1770,7 +1968,7 @@ func TestBranchSession_UnknownSession(t *testing.T) {
 func TestBranchSession_NoConversation(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("no-conv-branch", defaultConfig())
+	_, _ = mgr.StartSession("no-conv-branch", defaultConfig())
 
 	err := mgr.BranchSession("no-conv-branch", "entry-1")
 	if err == nil {
@@ -1798,7 +1996,7 @@ func TestNavigateSession_UnknownSession(t *testing.T) {
 func TestNavigateSession_NoConversation(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("no-conv-nav", defaultConfig())
+	_, _ = mgr.StartSession("no-conv-nav", defaultConfig())
 
 	err := mgr.NavigateSession("no-conv-nav", "target-1")
 	if err == nil {
@@ -1826,7 +2024,7 @@ func TestGetSessionTree_UnknownSession(t *testing.T) {
 func TestGetSessionTree_NoConversation(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("no-conv-tree", defaultConfig())
+	_, _ = mgr.StartSession("no-conv-tree", defaultConfig())
 
 	tree := mgr.GetSessionTree("no-conv-tree")
 	if tree != nil {
@@ -1841,7 +2039,7 @@ func TestGetSessionTree_NoConversation(t *testing.T) {
 func TestSendDialogResponse_NoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("dlg", defaultConfig())
+	_, _ = mgr.StartSession("dlg", defaultConfig())
 
 	// Should not panic even though not yet wired
 	mgr.SendDialogResponse("dlg", "dialog-1", "yes")
@@ -1851,7 +2049,7 @@ func TestSendDialogResponse_NoPanic(t *testing.T) {
 func TestSendCommand_NoPanic(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("cmd", defaultConfig())
+	_, _ = mgr.StartSession("cmd", defaultConfig())
 
 	mgr.SendCommand("cmd", "reload", "")
 	mgr.SendCommand("nonexistent", "reload", "")
@@ -1902,7 +2100,7 @@ func TestDerefInt(t *testing.T) {
 func TestKeyForRun_NotFound(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("s", defaultConfig())
+	_, _ = mgr.StartSession("s", defaultConfig())
 
 	key := mgr.keyForRun("nonexistent-run")
 	if key != "" {
@@ -1914,8 +2112,8 @@ func TestKeyForRun_MatchesCorrectSession(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("s1", defaultConfig())
-	_ = mgr.StartSession("s2", defaultConfig())
+	_, _ = mgr.StartSession("s1", defaultConfig())
+	_, _ = mgr.StartSession("s2", defaultConfig())
 	_ = mgr.SendPrompt("s1", "go1", nil)
 	_ = mgr.SendPrompt("s2", "go2", nil)
 
@@ -1936,11 +2134,11 @@ func TestStopSession_AllowsRestart(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("restart", defaultConfig())
+	_, _ = mgr.StartSession("restart", defaultConfig())
 	_ = mgr.StopSession("restart")
 
 	// Should be able to start again with the same key
-	err := mgr.StartSession("restart", defaultConfig())
+	_, err := mgr.StartSession("restart", defaultConfig())
 	if err != nil {
 		t.Fatalf("expected restart to succeed, got %v", err)
 	}
@@ -1955,7 +2153,7 @@ func TestSendPrompt_AfterRunExit_CanSendAgain(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("reuse", defaultConfig())
+	_, _ = mgr.StartSession("reuse", defaultConfig())
 	_ = mgr.SendPrompt("reuse", "first", nil)
 
 	keys := mb.startedKeys()
@@ -1989,8 +2187,8 @@ func TestStopByPrefix_EmptyPrefix(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
-	_ = mgr.StartSession("a", defaultConfig())
-	_ = mgr.StartSession("b", defaultConfig())
+	_, _ = mgr.StartSession("a", defaultConfig())
+	_, _ = mgr.StartSession("b", defaultConfig())
 
 	// Empty prefix matches everything
 	mgr.StopByPrefix("")
@@ -2003,14 +2201,14 @@ func TestStopByPrefix_EmptyPrefix(t *testing.T) {
 func TestSetPlanMode_Toggle(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	_ = mgr.StartSession("toggle", defaultConfig())
+	_, _ = mgr.StartSession("toggle", defaultConfig())
 
 	// Enable
-	mgr.SetPlanMode("toggle", true, []string{"Read"})
+	mgr.SetPlanMode("toggle", true, []string{"Read"}, "")
 	// Disable
-	mgr.SetPlanMode("toggle", false, nil)
+	mgr.SetPlanMode("toggle", false, nil, "")
 	// Re-enable with different tools
-	mgr.SetPlanMode("toggle", true, []string{"Grep", "Glob", "Read"})
+	mgr.SetPlanMode("toggle", true, []string{"Grep", "Glob", "Read"}, "")
 
 	_ = mgr.SendPrompt("toggle", "go", nil)
 

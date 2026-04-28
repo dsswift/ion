@@ -83,7 +83,8 @@ type Conversation struct {
 	Messages          []types.LlmMessage `json:"messages"`
 	TotalInputTokens  int                `json:"totalInputTokens"`
 	TotalOutputTokens int                `json:"totalOutputTokens"`
-	LastInputTokens   int                `json:"lastInputTokens"`
+	LastInputTokens         int                `json:"lastInputTokens"`
+	LastInputTokensMsgCount int                `json:"lastInputTokensMsgCount,omitempty"`
 	TotalCost         float64            `json:"totalCost"`
 	CreatedAt         int64              `json:"createdAt"`
 	Version           int                `json:"version,omitempty"`
@@ -267,9 +268,14 @@ func AddUserMessage(conv *Conversation, content any) {
 // AddAssistantMessage appends an assistant message with usage tracking.
 func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage) {
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
-	conv.TotalInputTokens += usage.InputTokens
+	// Track total context size including cached tokens. The API's input_tokens
+	// field only counts non-cached tokens; cache_read and cache_creation must
+	// be added to get the actual context window consumption.
+	totalInput := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+	conv.TotalInputTokens += totalInput
 	conv.TotalOutputTokens += usage.OutputTokens
-	conv.LastInputTokens = usage.InputTokens
+	conv.LastInputTokens = totalInput
+	conv.LastInputTokensMsgCount = len(conv.Messages)
 
 	if conv.Entries != nil {
 		AppendEntry(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage})
@@ -484,7 +490,9 @@ func EstimateTokens(content any) int {
 	}
 }
 
-// GetContextUsage computes context window consumption.
+// GetContextUsage computes context window consumption. When LastInputTokens
+// is available (from the previous API response), it adds an estimate for any
+// messages added since (e.g. tool results) so the count isn't stale.
 func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 	limit := contextWindow
 	if limit <= 0 {
@@ -493,8 +501,15 @@ func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 
 	reported := conv.LastInputTokens
 	if reported > 0 {
-		pct := int(math.Min(100, math.Round(float64(reported)/float64(limit)*100)))
-		return ContextUsageInfo{Percent: pct, Tokens: reported, Limit: limit, Estimated: false}
+		total := reported
+		// Estimate tokens for messages added after the last API response
+		if conv.LastInputTokensMsgCount > 0 && len(conv.Messages) > conv.LastInputTokensMsgCount {
+			for _, msg := range conv.Messages[conv.LastInputTokensMsgCount:] {
+				total += EstimateTokens(msg.Content)
+			}
+		}
+		pct := int(math.Min(100, math.Round(float64(total)/float64(limit)*100)))
+		return ContextUsageInfo{Percent: pct, Tokens: total, Limit: limit, Estimated: false}
 	}
 
 	estimated := EstimateTokens(conv.Messages)
@@ -575,8 +590,10 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 	return nil
 }
 
-// MicroCompact replaces tool_result content >100 chars with "[cleared]" in older messages.
-// Returns the number of results cleared.
+// MicroCompact progressively shrinks older messages to reduce context size.
+// Pass 1: replaces tool_result content >100 chars with "[cleared]".
+// Pass 2 (when pass 1 returns 0): also truncates long assistant text blocks.
+// Returns the number of blocks modified.
 func MicroCompact(conv *Conversation, keepTurns int) int {
 	if keepTurns <= 0 {
 		keepTurns = 10
@@ -594,6 +611,7 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 		}
 	}
 
+	// Pass 1: clear long tool results
 	cleared := 0
 	for i := 0; i < cutIdx; i++ {
 		msg := &conv.Messages[i]
@@ -604,6 +622,27 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 		for j := range blocks {
 			if blocks[j].Type == "tool_result" && len(blocks[j].Content) > 100 {
 				blocks[j].Content = "[cleared]"
+				cleared++
+			}
+		}
+	}
+	if cleared > 0 {
+		return cleared
+	}
+
+	// Pass 2: truncate long assistant text blocks in old messages
+	for i := 0; i < cutIdx; i++ {
+		msg := &conv.Messages[i]
+		if msg.Role != "assistant" {
+			continue
+		}
+		blocks, ok := msg.Content.([]types.LlmContentBlock)
+		if !ok {
+			continue
+		}
+		for j := range blocks {
+			if blocks[j].Type == "text" && len(blocks[j].Text) > 200 {
+				blocks[j].Text = blocks[j].Text[:200] + "... [truncated]"
 				cleared++
 			}
 		}

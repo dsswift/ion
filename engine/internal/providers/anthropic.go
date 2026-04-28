@@ -256,11 +256,18 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 	case "text":
 		return map[string]any{"type": "text", "text": b.Text}
 	case "tool_use":
+		// The Anthropic API rejects tool_use whose input is not a JSON
+		// object. Defensive guard so a nil Input never poisons a
+		// retried conversation.
+		input := b.Input
+		if input == nil {
+			input = map[string]any{}
+		}
 		return map[string]any{
 			"type":  "tool_use",
 			"id":    b.ID,
 			"name":  b.Name,
-			"input": b.Input,
+			"input": input,
 		}
 	case "tool_result":
 		result := map[string]any{

@@ -24,7 +24,8 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 
 	removed := 0
 
-	// Pass 1: normalize content and remove thinking blocks
+	// Pass 1: normalize content, remove thinking blocks, coerce malformed
+	// tool_use.Input to an empty map (Anthropic rejects non-object input).
 	normalized := make([]types.LlmMessage, 0, len(messages))
 	for _, msg := range messages {
 		blocks := contentToBlockSlice(msg.Content)
@@ -38,6 +39,9 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 			if b.Type == "thinking" {
 				removed++
 				continue
+			}
+			if b.Type == "tool_use" && b.Input == nil {
+				b.Input = map[string]any{}
 			}
 			filtered = append(filtered, b)
 		}

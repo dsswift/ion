@@ -57,6 +57,10 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 		cmd.Env = env
 	}
 
+	// Put the command in its own process group so cancellation kills the
+	// entire subprocess tree, not just the direct shell child.
+	configureProcGroup(cmd)
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

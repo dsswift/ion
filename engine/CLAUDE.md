@@ -5,7 +5,7 @@ Standalone Go agent runtime. Single static binary, zero runtime deps. Communicat
 ## Build and Test
 
 ```bash
-make build        # -> bin/ion (2.6MB)
+make build        # -> bin/ion (~7.8MB stripped)
 make test         # go test ./... (unit tests only)
 make build-linux  # cross-compile linux/amd64
 make docker       # Docker image from scratch
@@ -80,8 +80,8 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/session` | SessionManager: session lifecycle, event routing | ~200 |
 | `internal/backend` | RunBackend interface, ApiBackend (agent loop) | ~400 |
 | `internal/providers` | LlmProvider interface, 6 implementations, retry | ~1200 |
-| `internal/tools` | Registry, 15 tools, BashOperations | ~1500 |
-| `internal/extension` | SDK (43 hooks), Host (subprocess JSON-RPC) | ~400 |
+| `internal/tools` | Registry, 14 core tools, BashOperations | ~1500 |
+| `internal/extension` | SDK (55 hooks), Host (subprocess JSON-RPC), agent discovery | ~400 |
 | `internal/conversation` | Tree sessions, JSONL persistence, migration | ~600 |
 | `internal/config` | 4-layer config, enterprise MDM, merge | ~350 |
 | `internal/compaction` | Fact extraction, partial, restore | ~200 |
@@ -109,6 +109,8 @@ Client --[Unix socket, NDJSON]--> Server
 Engine never blocks for user input. Engine never persists memory. Engine never decides policy.
 Engine provides hooks, events, and pluggable interfaces. Harness engineer decides behavior.
 
+**Engine is UI-agnostic.** The engine emits typed data events over the socket. It has no concept of panels, dialogs, buttons, or layouts. Clients (desktop, CLI, web) interpret events however they choose. Extensions communicate state through hook responses and the event stream, never through UI primitives.
+
 ## Socket Protocol
 
 Path: `~/.ion/engine.sock`
@@ -118,20 +120,24 @@ Server -> Client: NDJSON `ServerMessage` (broadcast to all clients)
 
 16 command types. Wire-compatible with TypeScript engine.
 
-## Providers (14+)
+## Providers (16)
 
 Native: Anthropic (raw HTTP SSE), OpenAI (raw HTTP SSE), Google Gemini, AWS Bedrock, Azure OpenAI.
 OpenAI-compatible factory: Groq, Cerebras, Mistral, OpenRouter, Together, Fireworks, XAI, DeepSeek, Ollama.
 
 No SDK dependencies for providers -- all raw HTTP with SSE parsing.
 
-## Tools (15 built-in)
+## Tools (14 core + 4 optional)
 
-Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, TaskCreate, TaskList, TaskGet, TaskStop, NotebookEdit, LSP.
+**Core (always registered):** Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource.
 
-## Extension Hooks (43 total)
+**Optional (harness opt-in):** TaskCreate, TaskList, TaskGet, TaskStop.
 
-13 original + 13 new + 14 per-tool + 3 context = 43 hooks.
+## Extension Hooks (59 total)
+
+13 lifecycle + 5 session + 2 pre-action + 7 content + 14 per-tool + 3 context + 2 permission + 1 file + 2 task + 2 elicitation + 1 context-inject + 3 capability + 4 extension-lifecycle = 59 hooks.
+
+The 4 extension-lifecycle hooks (`extension_respawned`, `turn_aborted`, `peer_extension_died`, `peer_extension_respawned`) fire when the engine auto-respawns a crashed subprocess. See `docs/hooks/reference.md` for payloads. Auto-respawn is post-run only; mid-turn deaths defer to `handleRunExit`. Strike budget: 3 in 60s, reset after 2min healthy.
 
 ## Conventions
 
@@ -140,3 +146,4 @@ Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, TaskCreate, Tas
 - Cancellation: `context.Context` (replaces AbortController)
 - Parallel tools: `errgroup.Group` (replaces Promise.allSettled)
 - Streaming: `<-chan types.LlmStreamEvent` (replaces AsyncIterable)
+- Source maps: esbuild generates inline source maps for TypeScript extensions (readable stack traces in engine_error events)

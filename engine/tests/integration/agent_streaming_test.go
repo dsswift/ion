@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -45,7 +46,7 @@ func TestAgentSpawnerChildRunCompletes(t *testing.T) {
 		ContextWindow: 200000,
 	})
 
-	tools.SetAgentSpawner(func(prompt, cwd string) (string, error) {
+	tools.SetAgentSpawner(func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
 		// Create a child backend, run synchronously, collect result
 		child := backend.NewApiBackend()
 		var result string
@@ -149,7 +150,7 @@ func TestAgentSpawnerConcurrentChildRuns(t *testing.T) {
 	var mu sync.Mutex
 	var prompts []string
 
-	tools.SetAgentSpawner(func(prompt, cwd string) (string, error) {
+	tools.SetAgentSpawner(func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
 		mu.Lock()
 		prompts = append(prompts, prompt)
 		mu.Unlock()
@@ -197,7 +198,7 @@ func TestAgentSpawnerChildError(t *testing.T) {
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	tools.SetAgentSpawner(func(prompt, cwd string) (string, error) {
+	tools.SetAgentSpawner(func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
 		return "", fmt.Errorf("child crashed")
 	})
 	defer tools.SetAgentSpawner(nil)
@@ -235,15 +236,16 @@ func TestAgentSpawnerChildError(t *testing.T) {
 // ─── AgentStateUpdate Round-trip ───
 
 func TestAgentStateHierarchyRoundTrip(t *testing.T) {
-	depth := 2
 	state := types.AgentStateUpdate{
-		Name:        "worker-1",
-		DisplayName: "Code Worker",
-		Type:        "agent",
-		Visibility:  "visible",
-		Status:      "running",
-		ParentAgent: "coordinator",
-		Depth:       &depth,
+		Name:   "worker-1",
+		Status: "running",
+		Metadata: map[string]interface{}{
+			"displayName": "Code Worker",
+			"type":        "agent",
+			"visibility":  "visible",
+			"parentAgent": "coordinator",
+			"depth":       float64(2),
+		},
 	}
 
 	data, err := json.Marshal(state)
@@ -259,14 +261,20 @@ func TestAgentStateHierarchyRoundTrip(t *testing.T) {
 	if decoded.Name != "worker-1" {
 		t.Errorf("Name: want worker-1, got %s", decoded.Name)
 	}
-	if decoded.ParentAgent != "coordinator" {
-		t.Errorf("ParentAgent: want coordinator, got %s", decoded.ParentAgent)
+	if decoded.Status != "running" {
+		t.Errorf("Status: want running, got %s", decoded.Status)
 	}
-	if decoded.Depth == nil || *decoded.Depth != 2 {
-		t.Errorf("Depth: want 2, got %v", decoded.Depth)
+	pa, _ := decoded.Metadata["parentAgent"].(string)
+	if pa != "coordinator" {
+		t.Errorf("Metadata[parentAgent]: want coordinator, got %s", pa)
 	}
-	if decoded.DisplayName != "Code Worker" {
-		t.Errorf("DisplayName: want Code Worker, got %s", decoded.DisplayName)
+	depth, _ := decoded.Metadata["depth"].(float64)
+	if depth != 2 {
+		t.Errorf("Metadata[depth]: want 2, got %v", depth)
+	}
+	dn, _ := decoded.Metadata["displayName"].(string)
+	if dn != "Code Worker" {
+		t.Errorf("Metadata[displayName]: want Code Worker, got %s", dn)
 	}
 }
 

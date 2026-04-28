@@ -1180,12 +1180,33 @@ func TestSDK_FireBeforeAgentStart(t *testing.T) {
 	var received AgentInfo
 	sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {
 		received = payload.(AgentInfo)
-		return nil, nil
+		return BeforeAgentStartResult{SystemPrompt: "You are the Chief of Staff."}, nil
 	})
 
-	sdk.FireBeforeAgentStart(testCtx(), AgentInfo{Name: "pre-agent"})
+	sysPrompt, err := sdk.FireBeforeAgentStart(testCtx(), AgentInfo{Name: "pre-agent"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if received.Name != "pre-agent" {
 		t.Fatalf("expected pre-agent, got %q", received.Name)
+	}
+	if sysPrompt != "You are the Chief of Staff." {
+		t.Fatalf("expected system prompt, got %q", sysPrompt)
+	}
+}
+
+func TestSDK_FireBeforeAgentStart_MapResult(t *testing.T) {
+	sdk := NewSDK()
+	sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return map[string]interface{}{"systemPrompt": "From subprocess"}, nil
+	})
+
+	sysPrompt, err := sdk.FireBeforeAgentStart(testCtx(), AgentInfo{Name: "test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sysPrompt != "From subprocess" {
+		t.Fatalf("expected 'From subprocess', got %q", sysPrompt)
 	}
 }
 

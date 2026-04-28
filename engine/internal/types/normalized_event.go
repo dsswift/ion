@@ -22,6 +22,7 @@ const (
 	EventPermissionRequest = "permission_request"
 	EventPlanModeChanged   = "plan_mode_changed"
 	EventStreamReset       = "stream_reset"
+	EventCompacting        = "compacting"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -94,6 +95,10 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &PermissionRequestEvent{}
 	case EventPlanModeChanged:
 		target = &PlanModeChangedEvent{}
+	case EventStreamReset:
+		target = &StreamResetEvent{}
+	case EventCompacting:
+		target = &CompactingEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -257,3 +262,11 @@ func (PlanModeChangedEvent) eventType() string { return EventPlanModeChanged }
 type StreamResetEvent struct{}
 
 func (StreamResetEvent) eventType() string { return EventStreamReset }
+
+// CompactingEvent signals that context compaction is starting or finishing.
+// The desktop uses this to update the activity indicator ("Compacting...").
+type CompactingEvent struct {
+	Active bool `json:"active"`
+}
+
+func (CompactingEvent) eventType() string { return EventCompacting }

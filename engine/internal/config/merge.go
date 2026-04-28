@@ -195,9 +195,6 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Limits.MaxBudgetUsd != nil {
 		dst.Limits.MaxBudgetUsd = src.Limits.MaxBudgetUsd
 	}
-	if src.Limits.IdleTimeoutMs != nil {
-		dst.Limits.IdleTimeoutMs = src.Limits.IdleTimeoutMs
-	}
 
 	// MCP servers: merge maps
 	if len(src.McpServers) > 0 {
@@ -229,6 +226,11 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	}
 	if src.Compaction != nil {
 		dst.Compaction = src.Compaction
+	}
+
+	// LogLevel: project-level overrides global
+	if src.LogLevel != "" {
+		dst.LogLevel = src.LogLevel
 	}
 }
 

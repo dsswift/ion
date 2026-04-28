@@ -208,6 +208,39 @@ func LoadMessages(id, dir string) ([]types.SessionMessage, error) {
 	return flattenEntries(conv), nil
 }
 
+// PaginatedMessages holds a page of messages with total count metadata.
+type PaginatedMessages struct {
+	Messages []types.SessionMessage `json:"messages"`
+	Total    int                    `json:"total"`
+	HasMore  bool                   `json:"hasMore"`
+}
+
+// LoadMessagesPaginated loads a conversation by ID and returns a paginated
+// slice of SessionMessage structs. Offset is zero-based, limit caps the page
+// size. If limit is 0, all messages from offset onward are returned.
+func LoadMessagesPaginated(id, dir string, offset, limit int) (*PaginatedMessages, error) {
+	all, err := LoadMessages(id, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	total := len(all)
+	if offset >= total {
+		return &PaginatedMessages{Messages: []types.SessionMessage{}, Total: total, HasMore: false}, nil
+	}
+
+	end := total
+	if limit > 0 && offset+limit < total {
+		end = offset + limit
+	}
+
+	return &PaginatedMessages{
+		Messages: all[offset:end],
+		Total:    total,
+		HasMore:  end < total,
+	}, nil
+}
+
 // LoadChainMessages loads multiple conversations by ID and concatenates
 // their messages in order.
 func LoadChainMessages(ids []string, dir string) ([]types.SessionMessage, error) {

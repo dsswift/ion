@@ -57,7 +57,7 @@ func TestStartSessionWithSessionID(t *testing.T) {
 	config := defaultConfig()
 	config.SessionID = "existing-conv"
 
-	if err := mgr.StartSession("resume-1", config); err != nil {
+	if _, err := mgr.StartSession("resume-1", config); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("resume-1") })
@@ -89,7 +89,7 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 
 	ec := newResumeEventCollector(mgr)
 
-	if err := mgr.StartSession("resume-2", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("resume-2", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("resume-2") })
@@ -169,7 +169,7 @@ func TestEngineDeadCodeZeroNoDeadEvent(t *testing.T) {
 
 	ec := newResumeEventCollector(mgr)
 
-	if err := mgr.StartSession("resume-3", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("resume-3", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("resume-3") })
@@ -216,7 +216,7 @@ func TestEngineDeadNonZeroEmitsDeadEvent(t *testing.T) {
 
 	ec := newResumeEventCollector(mgr)
 
-	if err := mgr.StartSession("resume-4", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("resume-4", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("resume-4") })

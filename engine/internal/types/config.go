@@ -73,7 +73,15 @@ type EngineRuntimeConfig struct {
 	Security     *SecurityConfig               `json:"security,omitempty"`
 	Enterprise   *EnterpriseConfig             `json:"enterprise,omitempty"`
 	FeatureFlags *FeatureFlagsConfig           `json:"featureFlags,omitempty"`
+	Relay        *RelayConfig                  `json:"relay,omitempty"`
 	LogLevel     string                        `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
+}
+
+// RelayConfig configures the WebSocket relay connection for mobile remote access.
+type RelayConfig struct {
+	URL       string `json:"url"`       // WebSocket relay URL (e.g. wss://relay.example.com)
+	APIKey    string `json:"apiKey"`    // Bearer token for relay auth
+	ChannelID string `json:"channelId"` // 32-char hex channel identifier
 }
 
 // FeatureFlagsConfig defines feature flag source configuration.
@@ -95,9 +103,8 @@ type ProviderConfig struct {
 // LimitsConfig defines resource limits for a run.
 // Pointer fields distinguish "not set" (nil) from "explicitly zero".
 type LimitsConfig struct {
-	MaxTurns      *int     `json:"maxTurns,omitempty"`
-	MaxBudgetUsd  *float64 `json:"maxBudgetUsd,omitempty"`
-	IdleTimeoutMs *int64   `json:"idleTimeoutMs,omitempty"`
+	MaxTurns     *int     `json:"maxTurns,omitempty"`
+	MaxBudgetUsd *float64 `json:"maxBudgetUsd,omitempty"`
 }
 
 // McpServerConfig defines an MCP server connection.
@@ -145,6 +152,14 @@ type PermissionPolicy struct {
 	Rules             []PermissionRule `json:"rules,omitempty"`
 	DangerousPatterns []string         `json:"dangerousPatterns,omitempty"`
 	ReadOnlyPaths     []string         `json:"readOnlyPaths,omitempty"`
+
+	// TierRules maps a classifier tier label (e.g., "SAFE", "LOW", "MEDIUM",
+	// "HIGH", "CRITICAL", or any label your harness defines) to a decision
+	// ("allow" / "deny" / "ask"). Consulted before per-rule matching when the
+	// permission_classify hook returns a non-empty tier for the tool call.
+	// If a tier has no rule here, evaluation falls through to the existing
+	// rules + mode logic.
+	TierRules map[string]string `json:"tierRules,omitempty"`
 }
 
 // PermissionRule is a single rule in the permission policy.

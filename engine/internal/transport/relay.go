@@ -1,51 +1,67 @@
 // Package transport provides Transport implementations.
-// This file implements RelayTransport using WebSocket connections.
+// This file implements RelayTransport using WebSocket connections to the
+// Ion relay server for mobile remote access.
 package transport
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"math"
-	"net"
+	"net/http"
 	"sync"
 	"time"
+
+	"nhooyr.io/websocket"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// RelayTransport connects to a WebSocket relay server with automatic
-// exponential backoff reconnection. Commands from the relay are dispatched
-// to the registered handler.
-type RelayTransport struct {
-	url        string
-	apiKey     string
-	deviceID   string
-	cmdHandler func(conn net.Conn, line string)
-	mu         sync.Mutex
-	done       chan struct{}
-	closed     bool
+// controlMessage is a relay-originated control frame.
+type controlMessage struct {
+	Type string `json:"type"`
+}
 
-	// reconnection state
+// RelayTransport connects to a WebSocket relay server with automatic
+// exponential backoff reconnection. Each incoming non-control message
+// is dispatched to OnMessage.
+type RelayTransport struct {
+	url       string
+	apiKey    string
+	channelID string
+
+	// OnMessage is called for each non-control WebSocket message received
+	// from the relay (i.e. commands forwarded from the mobile peer).
+	// Must be set before calling Listen.
+	OnMessage func(data []byte)
+
+	mu      sync.Mutex
+	conn    *websocket.Conn
+	done    chan struct{}
+	closed  bool
 	attempt int
 }
 
 // NewRelayTransport creates a relay transport targeting the given WebSocket URL.
-func NewRelayTransport(url, apiKey, deviceID string) *RelayTransport {
+func NewRelayTransport(url, apiKey, channelID string) *RelayTransport {
 	return &RelayTransport{
-		url:      url,
-		apiKey:   apiKey,
-		deviceID: deviceID,
-		done:     make(chan struct{}),
+		url:       url,
+		apiKey:    apiKey,
+		channelID: channelID,
+		done:      make(chan struct{}),
 	}
 }
 
 // Listen starts the WebSocket connection loop with reconnection.
-// This is a stub that establishes the reconnection framework without pulling
-// in gorilla/websocket as a dependency. The actual WebSocket I/O will be
-// wired in once the dependency is added to go.mod.
-func (r *RelayTransport) Listen() error {
-	go r.connectLoop()
+// The handler is called each time a connection is established (providing
+// a Conn for sending responses). For relay, this is a single logical
+// connection to the relay server.
+func (r *RelayTransport) Listen(handler func(conn Conn)) error {
+	go r.connectLoop(handler)
 	return nil
 }
 
-func (r *RelayTransport) connectLoop() {
+func (r *RelayTransport) connectLoop(handler func(conn Conn)) {
 	for {
 		select {
 		case <-r.done:
@@ -53,26 +69,122 @@ func (r *RelayTransport) connectLoop() {
 		default:
 		}
 
-		// Placeholder: actual WebSocket dial goes here.
-		// On connection failure, backoff and retry.
-		delay := r.backoffDelay()
+		err := r.dial()
+		if err != nil {
+			utils.Log("Relay", fmt.Sprintf("dial failed (attempt %d): %v", r.attempt, err))
+
+			delay := r.backoffDelay()
+			select {
+			case <-time.After(delay):
+			case <-r.done:
+				return
+			}
+
+			r.mu.Lock()
+			r.attempt++
+			if r.attempt > 100 {
+				r.mu.Unlock()
+				utils.Log("Relay", "max reconnection attempts reached")
+				return
+			}
+			r.mu.Unlock()
+			continue
+		}
+
+		// Connected. Reset attempt counter.
+		r.mu.Lock()
+		r.attempt = 0
+		r.mu.Unlock()
+
+		utils.Log("Relay", "connected to relay")
+
+		// Notify handler of new connection (provides Send capability).
+		if handler != nil {
+			handler(&relayConn{transport: r})
+		}
+
+		// Run read loop (blocks until disconnect).
+		r.readLoop()
+
+		utils.Log("Relay", "disconnected from relay")
+
+		// Check if intentionally closed.
 		select {
-		case <-time.After(delay):
 		case <-r.done:
 			return
+		default:
+			// Brief pause before reconnect.
+			select {
+			case <-time.After(1 * time.Second):
+			case <-r.done:
+				return
+			}
+		}
+	}
+}
+
+func (r *RelayTransport) dial() error {
+	dialURL := fmt.Sprintf("%s/v1/channel/%s?role=ion", r.url, r.channelID)
+
+	opts := &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Authorization": []string{"Bearer " + r.apiKey},
+		},
+	}
+
+	conn, _, err := websocket.Dial(context.Background(), dialURL, opts)
+	if err != nil {
+		return fmt.Errorf("websocket dial: %w", err)
+	}
+
+	r.mu.Lock()
+	r.conn = conn
+	r.mu.Unlock()
+
+	return nil
+}
+
+func (r *RelayTransport) readLoop() {
+	for {
+		select {
+		case <-r.done:
+			return
+		default:
 		}
 
 		r.mu.Lock()
-		r.attempt++
+		conn := r.conn
 		r.mu.Unlock()
-
-		// Cap reconnection attempts to prevent infinite spinning.
-		r.mu.Lock()
-		if r.attempt > 100 {
-			r.mu.Unlock()
+		if conn == nil {
 			return
 		}
-		r.mu.Unlock()
+
+		_, data, err := conn.Read(context.Background())
+		if err != nil {
+			select {
+			case <-r.done:
+			default:
+				utils.Log("Relay", fmt.Sprintf("read error: %v", err))
+			}
+			return
+		}
+
+		// Check for relay control messages.
+		var ctrl controlMessage
+		if json.Unmarshal(data, &ctrl) == nil && ctrl.Type != "" {
+			switch ctrl.Type {
+			case "relay:peer-reconnected":
+				utils.Log("Relay", "mobile peer connected")
+			case "relay:peer-disconnected":
+				utils.Log("Relay", "mobile peer disconnected")
+			}
+			continue
+		}
+
+		// Dispatch command data to handler.
+		if r.OnMessage != nil {
+			r.OnMessage(data)
+		}
 	}
 }
 
@@ -81,28 +193,24 @@ func (r *RelayTransport) backoffDelay() time.Duration {
 	attempt := r.attempt
 	r.mu.Unlock()
 
-	// Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s.
 	secs := math.Min(30, math.Pow(2, float64(attempt)))
 	return time.Duration(secs) * time.Second
 }
 
-// Broadcast sends data to the relay server.
-func (r *RelayTransport) Broadcast(data []byte) error {
-	// Stub: write to WebSocket connection.
-	_ = data
-	return fmt.Errorf("relay transport: not connected")
-}
-
-// OnCommand registers a handler for messages received from the relay.
-func (r *RelayTransport) OnCommand(fn func(conn net.Conn, line string)) {
+// Broadcast sends data to the relay server (forwarded to mobile peer).
+func (r *RelayTransport) Broadcast(data []byte) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.cmdHandler = fn
-}
+	conn := r.conn
+	r.mu.Unlock()
 
-// SendTo is not meaningful for relay transport (single connection).
-func (r *RelayTransport) SendTo(conn net.Conn, data []byte) error {
-	return r.Broadcast(data)
+	if conn == nil {
+		return
+	}
+
+	err := conn.Write(context.Background(), websocket.MessageText, data)
+	if err != nil {
+		utils.Log("Relay", fmt.Sprintf("broadcast write error: %v", err))
+	}
 }
 
 // Close terminates the relay connection and stops reconnection.
@@ -112,6 +220,26 @@ func (r *RelayTransport) Close() error {
 	if !r.closed {
 		r.closed = true
 		close(r.done)
+		if r.conn != nil {
+			r.conn.Close(websocket.StatusNormalClosure, "engine shutdown")
+		}
 	}
+	return nil
+}
+
+// Verify interface compliance.
+var _ Transport = (*RelayTransport)(nil)
+
+// relayConn wraps the relay transport as a transport.Conn.
+type relayConn struct {
+	transport *RelayTransport
+}
+
+func (c *relayConn) Send(data []byte) error {
+	c.transport.Broadcast(data)
+	return nil
+}
+
+func (c *relayConn) Close() error {
 	return nil
 }

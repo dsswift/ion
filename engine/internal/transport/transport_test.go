@@ -153,20 +153,20 @@ func TestUnixTransport_CleanupSocket(t *testing.T) {
 }
 
 func TestRelayTransport_New(t *testing.T) {
-	rt := NewRelayTransport("wss://relay.example.com", "api-key-123", "device-1")
+	rt := NewRelayTransport("wss://relay.example.com", "api-key-123", "chan-1")
 	if rt == nil {
 		t.Fatal("expected non-nil relay transport")
 	}
 	if rt.url != "wss://relay.example.com" {
 		t.Errorf("expected URL, got %q", rt.url)
 	}
-	if rt.deviceID != "device-1" {
-		t.Errorf("expected device-1, got %q", rt.deviceID)
+	if rt.channelID != "chan-1" {
+		t.Errorf("expected chan-1, got %q", rt.channelID)
 	}
 }
 
 func TestRelayTransport_Close(t *testing.T) {
-	rt := NewRelayTransport("wss://relay.example.com", "key", "dev")
+	rt := NewRelayTransport("wss://relay.example.com", "key", "chan")
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -177,8 +177,9 @@ func TestRelayTransport_Close(t *testing.T) {
 }
 
 func TestRelayTransport_Listen(t *testing.T) {
-	rt := NewRelayTransport("wss://relay.example.com", "key", "dev")
-	err := rt.Listen()
+	rt := NewRelayTransport("wss://relay.example.com", "key", "chan")
+	// Listen with nil handler should not error (starts connect loop in background).
+	err := rt.Listen(nil)
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
@@ -186,27 +187,27 @@ func TestRelayTransport_Listen(t *testing.T) {
 }
 
 func TestRelayTransport_Broadcast(t *testing.T) {
-	rt := NewRelayTransport("wss://relay.example.com", "key", "dev")
+	rt := NewRelayTransport("wss://relay.example.com", "key", "chan")
 	defer rt.Close()
 
-	// Broadcast returns error when not connected (stub).
-	err := rt.Broadcast([]byte("test"))
-	if err == nil {
-		t.Error("expected error from disconnected relay broadcast")
-	}
+	// Broadcast is a no-op when not connected (no panic, no error).
+	rt.Broadcast([]byte("test"))
 }
 
-func TestRelayTransport_OnCommand(t *testing.T) {
-	rt := NewRelayTransport("wss://relay.example.com", "key", "dev")
+func TestRelayTransport_OnMessage(t *testing.T) {
+	rt := NewRelayTransport("wss://relay.example.com", "key", "chan")
 	defer rt.Close()
 
 	called := false
-	rt.OnCommand(func(conn net.Conn, line string) {
+	rt.OnMessage = func(data []byte) {
 		called = true
-	})
-	// Handler is set but not called (no connection).
-	if rt.cmdHandler == nil {
-		t.Error("expected command handler to be set")
+	}
+	if rt.OnMessage == nil {
+		t.Error("expected OnMessage to be set")
 	}
 	_ = called
+}
+
+func TestRelayTransport_InterfaceCompliance(t *testing.T) {
+	var _ Transport = (*RelayTransport)(nil)
 }

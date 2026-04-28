@@ -13,15 +13,13 @@ import (
 func DefaultConfig() *types.EngineRuntimeConfig {
 	maxTurns := 50
 	maxBudget := 10.0
-	idleTimeout := int64(300000)
 	return &types.EngineRuntimeConfig{
 		Backend:      "api",
 		DefaultModel: "claude-sonnet-4-6",
 		Providers:    make(map[string]types.ProviderConfig),
 		Limits: types.LimitsConfig{
-			MaxTurns:      &maxTurns,
-			MaxBudgetUsd:  &maxBudget,
-			IdleTimeoutMs: &idleTimeout,
+			MaxTurns:     &maxTurns,
+			MaxBudgetUsd: &maxBudget,
 		},
 		McpServers: make(map[string]types.McpServerConfig),
 		Profiles:   nil,

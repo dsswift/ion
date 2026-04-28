@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
+	"github.com/dsswift/ion/engine/internal/titling"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -33,14 +35,15 @@ func DefaultSocketPath() string {
 // Server listens on a Unix domain socket (or TCP on Windows), accepts NDJSON
 // commands from clients, and broadcasts session events back to all connected clients.
 type Server struct {
-	socketPath string
-	listener   net.Listener
-	clients    map[net.Conn]struct{}
-	mu         sync.RWMutex
-	manager    *session.Manager
-	config     *types.EngineRuntimeConfig
-	done       chan struct{}
-	stopOnce   sync.Once
+	socketPath         string
+	listener           net.Listener
+	clients            map[net.Conn]struct{}
+	mu                 sync.RWMutex
+	manager            *session.Manager
+	config             *types.EngineRuntimeConfig
+	broadcastListeners []func(line string)
+	done               chan struct{}
+	stopOnce           sync.Once
 }
 
 // SetConfig stores the engine runtime config for use by sessions.
@@ -163,6 +166,13 @@ func (s *Server) SessionManager() *session.Manager {
 	return s.manager
 }
 
+// DispatchCommand processes a parsed ClientCommand without a socket connection.
+// Used by relay transport to inject commands from mobile peers. Results and
+// errors are broadcast to all listeners (including the relay itself).
+func (s *Server) DispatchCommand(cmd *protocol.ClientCommand) {
+	s.dispatch(nil, cmd)
+}
+
 func (s *Server) acceptLoop() {
 	for {
 		conn, err := s.listener.Accept()
@@ -223,18 +233,20 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	utils.Debug("Server", fmt.Sprintf("dispatch: cmd=%s key=%s requestID=%s", cmd.Cmd, cmd.Key, cmd.RequestID))
 	switch cmd.Cmd {
 	case "start_session":
-		err := s.manager.StartSession(cmd.Key, *cmd.Config)
-		s.sendResult(conn, cmd, err, nil)
+		result, err := s.manager.StartSession(cmd.Key, *cmd.Config)
+		s.sendResult(conn, cmd, err, result)
 
 	case "send_prompt":
 		var overrides *session.PromptOverrides
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || cmd.ExtensionDir != "" || cmd.NoExtensions {
+		resolvedExts := cmd.ResolveExtensions()
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" {
 			overrides = &session.PromptOverrides{
-				Model:        cmd.Model,
-				MaxTurns:     cmd.MaxTurns,
-				MaxBudgetUsd: cmd.MaxBudgetUsd,
-				ExtensionDir: cmd.ExtensionDir,
-				NoExtensions: cmd.NoExtensions,
+				Model:              cmd.Model,
+				MaxTurns:           cmd.MaxTurns,
+				MaxBudgetUsd:       cmd.MaxBudgetUsd,
+				Extensions:         resolvedExts,
+				NoExtensions:       cmd.NoExtensions,
+				AppendSystemPrompt: cmd.AppendSystemPrompt,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
@@ -242,11 +254,13 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "abort":
 		// Fire-and-forget: no response sent (matches TS behavior).
+		utils.Info("Server", fmt.Sprintf("abort: key=%s", cmd.Key))
 		s.manager.SendAbort(cmd.Key)
 
 	case "abort_agent":
 		// Fire-and-forget: no response sent (matches TS behavior).
 		subtree := cmd.Subtree != nil && *cmd.Subtree
+		utils.Info("Server", fmt.Sprintf("abort_agent: key=%s agent=%s subtree=%v", cmd.Key, cmd.AgentName, subtree))
 		s.manager.AbortAgent(cmd.Key, cmd.AgentName, subtree)
 
 	case "steer_agent":
@@ -274,9 +288,10 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		infos := make([]protocol.SessionInfo, len(sessions))
 		for i, si := range sessions {
 			infos[i] = protocol.SessionInfo{
-				Key:          si.Key,
-				HasActiveRun: si.HasActiveRun,
-				ToolCount:    si.ToolCount,
+				Key:            si.Key,
+				HasActiveRun:   si.HasActiveRun,
+				ToolCount:      si.ToolCount,
+				ConversationID: si.ConversationID,
 			}
 		}
 		if cmd.RequestID != "" {
@@ -297,7 +312,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "set_plan_mode":
 		enabled := cmd.Enabled != nil && *cmd.Enabled
-		s.manager.SetPlanMode(cmd.Key, enabled, cmd.AllowedTools)
+		s.manager.SetPlanMode(cmd.Key, enabled, cmd.AllowedTools, cmd.Source)
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "branch":
@@ -315,6 +330,11 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "permission_response":
 		// Fire-and-forget: no response sent (matches dialog_response pattern).
 		s.manager.SendPermissionResponse(cmd.Key, cmd.QuestionID, cmd.OptionID)
+
+	case "elicitation_response":
+		// Fire-and-forget: no response sent. Resolves a pending elicitation
+		// raised by ion.elicit() / ctx.Elicit() so the extension Promise resolves.
+		s.manager.HandleElicitationResponse(cmd.Key, cmd.ElicitRequestID, cmd.ElicitResponse, cmd.ElicitCancelled)
 
 	case "list_stored_sessions":
 		limit := cmd.Limit
@@ -343,6 +363,30 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		conversation.AddLabelEntry(conv, cmd.Label)
 		err = conversation.Save(conv, "")
 		s.sendResult(conn, cmd, err, nil)
+
+	case "get_conversation":
+		limit := cmd.Limit
+		if limit <= 0 {
+			limit = 50
+		}
+		offset := cmd.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		result, err := conversation.LoadMessagesPaginated(cmd.Key, "", offset, limit)
+		s.sendResult(conn, cmd, err, result)
+
+	case "generate_title":
+		// Run in a goroutine to avoid blocking the client's read loop
+		// while the LLM call is in flight.
+		go func(c net.Conn, command *protocol.ClientCommand) {
+			title, err := titling.GenerateTitle(context.Background(), command.Text)
+			if err != nil {
+				s.sendResult(c, command, err, nil)
+				return
+			}
+			s.sendResult(c, command, nil, map[string]string{"title": title})
+		}(conn, cmd)
 
 	case "shutdown":
 		_ = s.Stop()
@@ -390,6 +434,14 @@ func (s *Server) sendForkResult(conn net.Conn, cmd *protocol.ClientCommand, err 
 	s.writeToClient(conn, line)
 }
 
+// OnBroadcast registers a listener that receives every broadcast line.
+// Used by relay transport to forward engine events to mobile peers.
+func (s *Server) OnBroadcast(fn func(line string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.broadcastListeners = append(s.broadcastListeners, fn)
+}
+
 func (s *Server) broadcast(line string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -400,9 +452,16 @@ func (s *Server) broadcast(line string) {
 			utils.Log("Server", "broadcast write error: "+err.Error())
 		}
 	}
+
+	for _, fn := range s.broadcastListeners {
+		fn(line)
+	}
 }
 
 func (s *Server) writeToClient(conn net.Conn, line string) {
+	if conn == nil {
+		return // relay dispatch: results go via broadcast listeners
+	}
 	_, err := conn.Write([]byte(line))
 	if err != nil {
 		utils.Log("Server", "write error: "+err.Error())

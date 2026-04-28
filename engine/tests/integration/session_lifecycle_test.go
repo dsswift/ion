@@ -15,9 +15,7 @@ import (
 func defaultConfig() types.EngineConfig {
 	return types.EngineConfig{
 		ProfileID:        "test",
-		ExtensionDir:     "/tmp",
 		WorkingDirectory: "/tmp",
-		Model:            "mock-model",
 	}
 }
 
@@ -26,7 +24,7 @@ func TestSessionStartStop(t *testing.T) {
 	mgr := session.NewManager(mb)
 
 	// Start session
-	if err := mgr.StartSession("test-1", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("test-1", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 
@@ -55,7 +53,7 @@ func TestSessionSendPrompt(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
 
-	if err := mgr.StartSession("prompt-test", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("prompt-test", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("prompt-test") })
@@ -90,7 +88,7 @@ func TestSessionAbort(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
 
-	if err := mgr.StartSession("abort-test", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("abort-test", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("abort-test") })
@@ -124,13 +122,13 @@ func TestSessionPlanMode(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
 
-	if err := mgr.StartSession("plan-test", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("plan-test", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("plan-test") })
 
 	// Enable plan mode with allowed tools
-	mgr.SetPlanMode("plan-test", true, []string{"Read", "Grep", "Glob"})
+	mgr.SetPlanMode("plan-test", true, []string{"Read", "Grep", "Glob"}, "test")
 
 	// Send prompt
 	if err := mgr.SendPrompt("plan-test", "Plan the changes", nil); err != nil {
@@ -165,7 +163,7 @@ func TestSessionEvents(t *testing.T) {
 		mu.Unlock()
 	})
 
-	if err := mgr.StartSession("events-test", defaultConfig()); err != nil {
+	if _, err := mgr.StartSession("events-test", defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("events-test") })
@@ -237,7 +235,7 @@ func TestSessionStopAll(t *testing.T) {
 	mgr := session.NewManager(mb)
 
 	for _, key := range []string{"a", "b", "c"} {
-		if err := mgr.StartSession(key, defaultConfig()); err != nil {
+		if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
 			t.Fatalf("StartSession(%s): %v", key, err)
 		}
 	}
@@ -260,7 +258,7 @@ func TestSessionStopByPrefix(t *testing.T) {
 	mgr := session.NewManager(mb)
 
 	for _, key := range []string{"app-1", "app-2", "other-1"} {
-		if err := mgr.StartSession(key, defaultConfig()); err != nil {
+		if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
 			t.Fatalf("StartSession(%s): %v", key, err)
 		}
 	}

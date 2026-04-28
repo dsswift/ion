@@ -10,17 +10,16 @@ import (
 )
 
 func TestResolveTier_Defaults(t *testing.T) {
-	ResetModelsConfig()
 	t.Setenv("HOME", t.TempDir())
 
 	tests := []struct {
 		tier string
 		want string
 	}{
-		{"fast", "claude-3-5-haiku-latest"},
+		{"fast", "claude-haiku-4-5-20251001"},
 		{"smart", "claude-sonnet-4-20250514"},
 		{"balanced", "claude-sonnet-4-20250514"},
-		{"Fast", "claude-3-5-haiku-latest"},
+		{"Fast", "claude-haiku-4-5-20251001"},
 	}
 
 	for _, tt := range tests {
@@ -34,7 +33,6 @@ func TestResolveTier_Defaults(t *testing.T) {
 }
 
 func TestResolveTier_PassThrough(t *testing.T) {
-	ResetModelsConfig()
 	t.Setenv("HOME", t.TempDir())
 
 	model := "claude-3-opus-20240229"
@@ -57,12 +55,48 @@ func TestResolveTier_CustomConfig(t *testing.T) {
 	data, _ := json.Marshal(config)
 	os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o644)
 
-	ResetModelsConfig()
 	t.Setenv("HOME", dir)
 
 	got := ResolveTier("fast")
 	if got != "gpt-4o-mini" {
 		t.Errorf("expected gpt-4o-mini, got %q", got)
+	}
+}
+
+func TestResolveTier_ConfigChangesWithoutRestart(t *testing.T) {
+	dir := t.TempDir()
+	ionDir := filepath.Join(dir, ".ion")
+	os.MkdirAll(ionDir, 0o700)
+	t.Setenv("HOME", dir)
+
+	// Initially no config file — should use defaults
+	got := ResolveTier("fast")
+	if got != "claude-haiku-4-5-20251001" {
+		t.Errorf("expected default, got %q", got)
+	}
+
+	// Write a config file — next call should pick it up
+	config := map[string]any{
+		"tiers": map[string]any{
+			"fast": "claude-haiku-4-5",
+		},
+	}
+	data, _ := json.Marshal(config)
+	os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o644)
+
+	got = ResolveTier("fast")
+	if got != "claude-haiku-4-5" {
+		t.Errorf("expected claude-haiku-4-5 after config change, got %q", got)
+	}
+
+	// Change it again
+	config["tiers"] = map[string]any{"fast": "gpt-4o-mini"}
+	data, _ = json.Marshal(config)
+	os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o644)
+
+	got = ResolveTier("fast")
+	if got != "gpt-4o-mini" {
+		t.Errorf("expected gpt-4o-mini after second config change, got %q", got)
 	}
 }
 
@@ -126,7 +160,6 @@ func TestInitializeProviders(t *testing.T) {
 }
 
 func TestLoadModelsConfig_Missing(t *testing.T) {
-	ResetModelsConfig()
 	t.Setenv("HOME", t.TempDir())
 
 	config := LoadModelsConfig()
@@ -135,5 +168,79 @@ func TestLoadModelsConfig_Missing(t *testing.T) {
 	}
 	if len(config) != 0 {
 		t.Errorf("expected empty map, got %d entries", len(config))
+	}
+}
+
+func TestUserModels(t *testing.T) {
+	config := map[string]interface{}{
+		"providers": map[string]interface{}{
+			"anthropic": map[string]interface{}{
+				"baseURL": "https://ai.example.com",
+				"models": map[string]interface{}{
+					"claude-haiku-4-5": map[string]interface{}{
+						"contextWindow":  float64(200000),
+						"costPer1kInput": 0.0008,
+						"supportsCaching": true,
+					},
+					"claude-sonnet-4-6": map[string]interface{}{
+						"contextWindow":    float64(200000),
+						"supportsThinking": true,
+					},
+				},
+			},
+			"openai": map[string]interface{}{
+				"models": map[string]interface{}{
+					"gpt-4.1": map[string]interface{}{
+						"contextWindow": float64(1047576),
+					},
+				},
+			},
+		},
+	}
+
+	models := UserModels(config)
+
+	if len(models) != 3 {
+		t.Fatalf("expected 3 models, got %d", len(models))
+	}
+
+	haiku, ok := models["claude-haiku-4-5"]
+	if !ok {
+		t.Fatal("expected claude-haiku-4-5")
+	}
+	if haiku.ProviderID != "anthropic" {
+		t.Errorf("expected anthropic provider, got %q", haiku.ProviderID)
+	}
+	if haiku.ContextWindow != 200000 {
+		t.Errorf("expected context window 200000, got %d", haiku.ContextWindow)
+	}
+	if !haiku.SupportsCaching {
+		t.Error("expected supportsCaching=true")
+	}
+
+	gpt, ok := models["gpt-4.1"]
+	if !ok {
+		t.Fatal("expected gpt-4.1")
+	}
+	if gpt.ProviderID != "openai" {
+		t.Errorf("expected openai provider, got %q", gpt.ProviderID)
+	}
+}
+
+func TestUserModels_Empty(t *testing.T) {
+	models := UserModels(map[string]interface{}{})
+	if len(models) != 0 {
+		t.Errorf("expected 0 models, got %d", len(models))
+	}
+
+	models = UserModels(map[string]interface{}{
+		"providers": map[string]interface{}{
+			"anthropic": map[string]interface{}{
+				"baseURL": "https://example.com",
+			},
+		},
+	})
+	if len(models) != 0 {
+		t.Errorf("expected 0 models when no models section, got %d", len(models))
 	}
 }

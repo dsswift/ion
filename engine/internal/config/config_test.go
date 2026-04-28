@@ -27,9 +27,6 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Limits.MaxBudgetUsd == nil || *cfg.Limits.MaxBudgetUsd != 10.0 {
 		t.Fatalf("expected maxBudgetUsd=10.0, got %v", cfg.Limits.MaxBudgetUsd)
 	}
-	if cfg.Limits.IdleTimeoutMs == nil || *cfg.Limits.IdleTimeoutMs != 300000 {
-		t.Fatalf("expected idleTimeoutMs=300000, got %v", cfg.Limits.IdleTimeoutMs)
-	}
 }
 
 func TestDefaultConfig_McpServersInitialized(t *testing.T) {
@@ -308,9 +305,6 @@ func TestMergeConfigs_DeepMergeLimits(t *testing.T) {
 	if result.Limits.MaxBudgetUsd == nil || *result.Limits.MaxBudgetUsd != 5 {
 		t.Fatalf("expected maxBudgetUsd=5, got %v", result.Limits.MaxBudgetUsd)
 	}
-	if result.Limits.IdleTimeoutMs == nil || *result.Limits.IdleTimeoutMs != 300000 {
-		t.Fatalf("expected idleTimeoutMs=300000, got %v", result.Limits.IdleTimeoutMs)
-	}
 }
 
 func TestMergeConfigs_ProfilesReplace(t *testing.T) {
@@ -499,10 +493,6 @@ func TestMergeConfigs_AllLayersPresent(t *testing.T) {
 	// project overrides base maxBudgetUsd
 	if result.Limits.MaxBudgetUsd == nil || *result.Limits.MaxBudgetUsd != 25 {
 		t.Fatalf("expected maxBudgetUsd=25, got %v", result.Limits.MaxBudgetUsd)
-	}
-	// default idleTimeoutMs preserved
-	if result.Limits.IdleTimeoutMs == nil || *result.Limits.IdleTimeoutMs != 300000 {
-		t.Fatalf("expected idleTimeoutMs=300000, got %v", result.Limits.IdleTimeoutMs)
 	}
 }
 
@@ -1118,9 +1108,6 @@ func TestLoadConfig_PartialOverride(t *testing.T) {
 	}
 	if cfg.Limits.MaxBudgetUsd == nil || *cfg.Limits.MaxBudgetUsd != 10 {
 		t.Fatalf("expected maxBudgetUsd=10, got %v", cfg.Limits.MaxBudgetUsd)
-	}
-	if cfg.Limits.IdleTimeoutMs == nil || *cfg.Limits.IdleTimeoutMs != 300000 {
-		t.Fatalf("expected idleTimeoutMs=300000, got %v", cfg.Limits.IdleTimeoutMs)
 	}
 	if cfg.Backend != "api" {
 		t.Fatalf("expected backend=api, got %q", cfg.Backend)

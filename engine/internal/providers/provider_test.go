@@ -1272,6 +1272,34 @@ func TestAnthropicProviderCustomID(t *testing.T) {
 	}
 }
 
+// TestFormatAnthropicBlock_NilToolUseInput ensures that a tool_use block
+// with nil Input is serialized as `"input": {}` (empty JSON object) rather
+// than `"input": null`. Anthropic rejects null and the rejection poisons
+// the conversation history forever.
+func TestFormatAnthropicBlock_NilToolUseInput(t *testing.T) {
+	b := types.LlmContentBlock{
+		Type:  "tool_use",
+		ID:    "tool_x",
+		Name:  "ops",
+		Input: nil,
+	}
+	out := formatAnthropicBlock(b)
+	if out == nil {
+		t.Fatal("expected non-nil output")
+	}
+	input, ok := out["input"]
+	if !ok {
+		t.Fatal("expected 'input' key in output")
+	}
+	m, ok := input.(map[string]any)
+	if !ok {
+		t.Fatalf("expected input to be map[string]any, got %T", input)
+	}
+	if len(m) != 0 {
+		t.Fatalf("expected empty map, got %v", m)
+	}
+}
+
 func TestOpenAIProviderID(t *testing.T) {
 	p := NewOpenAIProvider(nil)
 	if p.ID() != "openai" {

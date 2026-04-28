@@ -1,6 +1,6 @@
 # Ion Engine Hooks Reference
 
-50 hooks across 10 categories. Extensions receive hooks as JSON-RPC calls: `hook/<event_name>`.
+55 hooks across 15 categories. Extensions receive hooks as JSON-RPC calls: `hook/<event_name>`.
 
 ## Lifecycle (13)
 

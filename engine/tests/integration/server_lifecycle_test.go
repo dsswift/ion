@@ -65,6 +65,28 @@ func readLines(t *testing.T, conn net.Conn, n int, timeout time.Duration) []stri
 	return lines
 }
 
+// readSessionList drains incoming lines until it finds a {"cmd":"session_list"}
+// response. Skips events that interleave with the response.
+func readSessionList(t *testing.T, conn net.Conn, timeout time.Duration) *protocol.ServerSessionList {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	conn.SetReadDeadline(deadline)
+	scanner := bufio.NewScanner(conn)
+	for time.Now().Before(deadline) && scanner.Scan() {
+		line := scanner.Text()
+		if !strings.Contains(line, `"cmd":"session_list"`) {
+			continue
+		}
+		var resp protocol.ServerSessionList
+		if err := json.Unmarshal([]byte(line), &resp); err != nil {
+			t.Fatalf("unmarshal session_list: %v", err)
+		}
+		return &resp
+	}
+	t.Fatal("timed out waiting for session_list response")
+	return nil
+}
+
 func TestServerLifecycle(t *testing.T) {
 	sockPath := filepath.Join(t.TempDir(), "test.sock")
 	mb := helpers.NewMockBackend()
@@ -250,11 +272,7 @@ func TestConcurrentSessions(t *testing.T) {
 
 	// List sessions -- should show 3
 	sendCmd(t, conn, map[string]interface{}{"cmd": "list_sessions"})
-	line := readLine(t, conn, 2*time.Second)
-	var resp protocol.ServerSessionList
-	if err := json.Unmarshal([]byte(line), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	resp := readSessionList(t, conn, 2*time.Second)
 	if len(resp.Sessions) != 3 {
 		t.Errorf("expected 3 sessions, got %d", len(resp.Sessions))
 	}
@@ -270,10 +288,7 @@ func TestConcurrentSessions(t *testing.T) {
 
 	// List again -- should show 2
 	sendCmd(t, conn, map[string]interface{}{"cmd": "list_sessions"})
-	line = readLine(t, conn, 2*time.Second)
-	if err := json.Unmarshal([]byte(line), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	resp = readSessionList(t, conn, 2*time.Second)
 	if len(resp.Sessions) != 2 {
 		t.Errorf("expected 2 sessions after stop, got %d", len(resp.Sessions))
 	}
@@ -349,25 +364,26 @@ func TestServerDuplicateSession(t *testing.T) {
 		"requestId": "req-2",
 	})
 
-	line := readLine(t, conn, 2*time.Second)
+	// Drain up to 3 lines and find the {"cmd":"result"} response. The engine
+	// may emit one or more state events alongside the result.
+	lines := readLines(t, conn, 3, 2*time.Second)
 	var result protocol.ServerResult
-	if err := json.Unmarshal([]byte(line), &result); err != nil {
-		// May have gotten event first, try next line
-		lines := readLines(t, conn, 2, 2*time.Second)
-		for _, l := range lines {
-			if strings.Contains(l, "result") {
-				json.Unmarshal([]byte(l), &result)
+	found := false
+	for _, l := range lines {
+		if strings.Contains(l, `"cmd":"result"`) {
+			if err := json.Unmarshal([]byte(l), &result); err == nil {
+				found = true
 				break
 			}
 		}
 	}
-
-	// The result for the duplicate should indicate error
-	if result.OK {
-		t.Error("expected duplicate session to fail")
+	if !found {
+		t.Fatalf("no result line for duplicate start_session; lines=%v", lines)
 	}
-	if !strings.Contains(result.Error, "already exists") {
-		t.Errorf("expected 'already exists' error, got: %s", result.Error)
+
+	// The duplicate session should succeed (idempotent).
+	if !result.OK {
+		t.Errorf("expected duplicate session to succeed (idempotent), got error: %s", result.Error)
 	}
 }
 

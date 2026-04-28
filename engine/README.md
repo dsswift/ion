@@ -351,7 +351,7 @@ Enterprise config paths:
 
 ## Providers
 
-14+ providers, all implemented as raw HTTP with SSE parsing. No SDK dependencies.
+16 providers, all implemented as raw HTTP with SSE parsing. No SDK dependencies.
 
 **Native providers:** Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, Vertex AI, Azure AI Foundry.
 

@@ -409,6 +409,88 @@ func TestEngine_DenyMode(t *testing.T) {
 }
 
 // =============================================================================
+// Engine: tier rules (pluggable permission_classify integration)
+// =============================================================================
+
+func TestEngine_TierRules(t *testing.T) {
+	t.Run("CRITICAL tier denies in deny mode", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{
+			Mode: "deny",
+			TierRules: map[string]string{
+				"SAFE":     "allow",
+				"CRITICAL": "deny",
+			},
+		})
+		result := e.Check(CheckInfo{
+			Tool:  "bash",
+			Input: map[string]interface{}{"command": "echo hi"},
+			Cwd:   "/tmp",
+			Tier:  "CRITICAL",
+		})
+		if result.Decision != "deny" {
+			t.Fatalf("expected deny, got %q", result.Decision)
+		}
+		if result.Tier != "CRITICAL" {
+			t.Fatalf("expected tier echo CRITICAL, got %q", result.Tier)
+		}
+	})
+
+	t.Run("SAFE tier allows in deny mode", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{
+			Mode: "deny",
+			TierRules: map[string]string{
+				"SAFE": "allow",
+			},
+		})
+		result := e.Check(CheckInfo{
+			Tool:  "read",
+			Input: map[string]interface{}{"path": "/tmp/file.txt"},
+			Cwd:   "/tmp",
+			Tier:  "SAFE",
+		})
+		if result.Decision != "allow" {
+			t.Fatalf("expected allow, got %q", result.Decision)
+		}
+	})
+
+	t.Run("unknown tier falls through to mode default", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{
+			Mode: "deny",
+			TierRules: map[string]string{
+				"SAFE": "allow",
+			},
+		})
+		result := e.Check(CheckInfo{
+			Tool:  "read",
+			Input: map[string]interface{}{"path": "/tmp/file.txt"},
+			Cwd:   "/tmp",
+			Tier:  "UNKNOWN_TIER",
+		})
+		if result.Decision != "deny" {
+			t.Fatalf("expected fall-through to deny, got %q", result.Decision)
+		}
+	})
+
+	t.Run("empty tier skips tier rules entirely", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{
+			Mode: "deny",
+			TierRules: map[string]string{
+				"SAFE": "allow", // would match if tier were set
+			},
+		})
+		result := e.Check(CheckInfo{
+			Tool:  "read",
+			Input: map[string]interface{}{"path": "/tmp/file.txt"},
+			Cwd:   "/tmp",
+			// Tier omitted
+		})
+		if result.Decision != "deny" {
+			t.Fatalf("expected deny when no classifier ran, got %q", result.Decision)
+		}
+	})
+}
+
+// =============================================================================
 // Engine: ask mode tests
 // =============================================================================
 

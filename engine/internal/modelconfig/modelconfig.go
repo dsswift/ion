@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -26,23 +25,16 @@ var providerEnvVars = map[string]string{
 
 // Default tier mappings.
 var defaultTiers = map[string]string{
-	"fast":     "claude-3-5-haiku-latest",
+	"fast":     "claude-haiku-4-5-20251001",
 	"smart":    "claude-sonnet-4-20250514",
 	"balanced": "claude-sonnet-4-20250514",
 }
 
-var (
-	modelsConfig     map[string]interface{}
-	modelsConfigOnce sync.Once
-)
-
 // LoadModelsConfig reads the models configuration from ~/.ion/models.json.
-// Returns an empty map if the file does not exist or cannot be parsed.
+// The file is read on every call so that changes take effect without
+// restarting the engine (the file is tiny — typically <1KB).
 func LoadModelsConfig() map[string]interface{} {
-	modelsConfigOnce.Do(func() {
-		modelsConfig = loadModelsFile()
-	})
-	return modelsConfig
+	return loadModelsFile()
 }
 
 func loadModelsFile() map[string]interface{} {
@@ -136,9 +128,53 @@ func ResolveTier(tierName string) string {
 	return tierName
 }
 
-// ResetModelsConfig clears the cached models config, forcing a reload on
-// the next call to LoadModelsConfig. Used in tests.
-func ResetModelsConfig() {
-	modelsConfigOnce = sync.Once{}
-	modelsConfig = nil
+// UserModels extracts user-defined model entries from the models.json config.
+// Returns a map of model name → ModelInfo for every model listed under the
+// providers section. This lets callers register user model aliases (e.g.
+// "claude-haiku-4-5") into the engine's model registry so they resolve to
+// the correct provider without relying on prefix matching.
+func UserModels(config map[string]interface{}) map[string]types.ModelInfo {
+	result := make(map[string]types.ModelInfo)
+
+	providersRaw, ok := config["providers"].(map[string]interface{})
+	if !ok {
+		return result
+	}
+
+	for providerName, providerRaw := range providersRaw {
+		providerMap, ok := providerRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		modelsRaw, ok := providerMap["models"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for modelName, modelRaw := range modelsRaw {
+			info := types.ModelInfo{ProviderID: providerName}
+			if m, ok := modelRaw.(map[string]interface{}); ok {
+				if v, ok := m["contextWindow"].(float64); ok {
+					info.ContextWindow = int(v)
+				}
+				if v, ok := m["costPer1kInput"].(float64); ok {
+					info.CostPer1kInput = v
+				}
+				if v, ok := m["costPer1kOutput"].(float64); ok {
+					info.CostPer1kOutput = v
+				}
+				if v, ok := m["supportsCaching"].(bool); ok {
+					info.SupportsCaching = v
+				}
+				if v, ok := m["supportsThinking"].(bool); ok {
+					info.SupportsThinking = v
+				}
+				if v, ok := m["supportsImages"].(bool); ok {
+					info.SupportsImages = v
+				}
+			}
+			result[modelName] = info
+		}
+	}
+
+	return result
 }

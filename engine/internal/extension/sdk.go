@@ -10,7 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// Hook event names. These correspond 1:1 with the TypeScript SDK's 43 hooks.
+// Hook event names. 59 hooks across 15 categories.
 const (
 	// Lifecycle hooks
 	HookSessionStart = "session_start"
@@ -70,8 +70,9 @@ const (
 	HookInstructionLoad = "instruction_load"
 
 	// Permission hooks
-	HookPermissionRequest = "permission_request"
-	HookPermissionDenied  = "permission_denied"
+	HookPermissionRequest  = "permission_request"
+	HookPermissionDenied   = "permission_denied"
+	HookPermissionClassify = "permission_classify"
 
 	// File change hooks
 	HookFileChanged = "file_changed"
@@ -94,6 +95,14 @@ const (
 	HookCapabilityDiscover = "capability_discover"
 	HookCapabilityMatch    = "capability_match"
 	HookCapabilityInvoke   = "capability_invoke"
+
+	// Extension lifecycle hooks. Fire after the engine auto-respawns a
+	// crashed extension subprocess (see Manager.respawnDeadExtensions).
+	// Observational only — no return value affects engine behaviour.
+	HookExtensionRespawned     = "extension_respawned"      // payload: {attemptNumber, prevExitCode, prevSignal}
+	HookTurnAborted            = "turn_aborted"             // payload: {reason: "extension_died"}
+	HookPeerExtensionDied      = "peer_extension_died"      // payload: {name, exitCode, signal}
+	HookPeerExtensionRespawned = "peer_extension_respawned" // payload: {name, attemptNumber}
 )
 
 // HookHandler is a generic handler function.
@@ -104,10 +113,19 @@ type HookHandler func(ctx *Context, payload interface{}) (interface{}, error)
 
 // Context is the extension execution context passed to hook handlers.
 type Context struct {
+	// SessionKey identifies the engine session that fired the hook (the same
+	// key clients pass on `start_session`/`send_prompt`). Empty when the
+	// context does not originate from a live session (e.g. during extension
+	// load before any session is bound). Extensions can use this as the key
+	// of a module-level `Map` to keep per-session state across hook calls.
+	SessionKey string
+
 	Cwd    string
 	Model  *ModelRef
 	Config *ExtensionConfig
-	UI     UI
+
+	// Event emission -- extensions emit typed data events, engine forwards to socket clients.
+	Emit func(event types.EngineEvent)
 
 	// Functional getters
 	GetContextUsage func() *ContextUsage
@@ -115,6 +133,148 @@ type Context struct {
 	RegisterAgent   func(name string, handle types.AgentHandle)
 	DeregisterAgent func(name string)
 	ResolveTier     func(name string) string
+
+	// RegisterAgentSpec registers an LLM-visible agent definition at runtime.
+	// Used by capability_match hook handlers to promote a draft specialist
+	// into a live agent the Agent tool can dispatch on the very next call.
+	// Specs persist for the session's lifetime in memory; file persistence
+	// is the harness's job.
+	RegisterAgentSpec   func(spec types.AgentSpec)
+	DeregisterAgentSpec func(name string)
+	LookupAgentSpec     func(name string) (types.AgentSpec, bool)
+
+	// Process lifecycle management for extension-spawned subprocesses.
+	RegisterProcess     func(name string, pid int, task string) error
+	DeregisterProcess   func(name string)
+	ListProcesses       func() []ProcessInfo
+	TerminateProcess    func(name string) error
+	CleanStaleProcesses func() int
+
+	// Agent discovery. Walks conventional directories for .md agent definitions
+	// with configurable layer precedence. Harness engineers control which sources
+	// are included and which layer overrides which.
+	DiscoverAgents func(opts DiscoverAgentsOpts) (*DiscoverAgentsResult, error)
+
+	// Tool suppression. Extensions call this during session_start to remove
+	// built-in tools from the LLM's tool set for subsequent runs.
+	SuppressTool func(name string)
+
+	// CallTool dispatches an extension-initiated tool call through the
+	// session's tool registry: built-in tools, MCP-registered tools, and
+	// extension-registered tools (any host in the loaded group). Returns
+	// (content, isError, error).
+	//
+	// Permissions: subject to the session's permission policy. "deny"
+	// decisions resolve with `(content, true, nil)` carrying a human-readable
+	// reason. "ask" decisions auto-deny with a clear message because
+	// extension calls cannot block on user elicitation -- the harness must
+	// configure an explicit allow rule for the specific tool/extension combo.
+	//
+	// Returns a non-nil Go error only for unknown-tool lookups (so the SDK
+	// promise rejects on programming errors). Tool-internal failures resolve
+	// as `(errorString, true, nil)`.
+	//
+	// Side effects: does NOT fire per-tool hooks (`bash_tool_call`, etc.) or
+	// `permission_request`. Both would re-enter the calling extension and
+	// create surprising recursion. Audit log entries from the permission
+	// engine still fire.
+	CallTool func(toolName string, input map[string]interface{}) (string, bool, error)
+
+	// SendPrompt queues a fresh prompt on this session's agent loop. The
+	// call returns once the engine has accepted (or rejected) the prompt;
+	// it does NOT wait for the LLM to finish. `model` is an optional
+	// per-prompt model override -- pass "" to use the session default.
+	//
+	// Slash commands and hook handlers can both call this. Common patterns:
+	// `/cloud <message>` forces a remote model + sends the prompt;
+	// `session_start` primes the agent with a kickoff prompt.
+	//
+	// Recursion hazard: a `before_prompt` handler that calls SendPrompt
+	// triggers a new run, which fires `before_prompt` again. Unbounded
+	// recursion is checked only by the engine's prompt queue depth -- the
+	// extension is responsible for guarding its own loops (e.g. with a
+	// per-session "in-flight" flag stored on a sessionKey-keyed Map).
+	SendPrompt func(text string, model string) error
+
+	// Engine-native agent dispatch. Creates a child session within the engine
+	// with optional extension loading, system prompt injection, and event streaming.
+	DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)
+
+	// Elicit raises an elicitation request that fans out to: (a) every
+	// connected client as an engine_elicitation_request event for UI render,
+	// and (b) the elicitation_request extension hook so other extensions can
+	// observe or respond. The first non-nil reply wins. Returns the response
+	// map and a cancelled flag. The harness owns the schema/url shape.
+	Elicit func(info ElicitationRequestInfo) (map[string]interface{}, bool, error)
+}
+
+// DispatchAgentOpts configures an engine-native agent dispatch.
+type DispatchAgentOpts struct {
+	Name         string `json:"name"`
+	Task         string `json:"task"`
+	Model        string `json:"model,omitempty"`
+	ExtensionDir string `json:"extensionDir,omitempty"`
+	SystemPrompt string `json:"systemPrompt,omitempty"`
+	ProjectPath  string `json:"projectPath,omitempty"`
+	SessionID    string `json:"sessionId,omitempty"`
+
+	// OnEvent is called for each engine event emitted by the child session.
+	// Not serialized -- set via the host when dispatching from an extension.
+	OnEvent func(ev types.EngineEvent) `json:"-"`
+}
+
+// DispatchAgentResult holds the outcome of a dispatched agent.
+type DispatchAgentResult struct {
+	Output       string  `json:"output"`
+	ExitCode     int     `json:"exitCode"`
+	Elapsed      float64 `json:"elapsed"`
+	Cost         float64 `json:"cost"`
+	InputTokens  int     `json:"inputTokens"`
+	OutputTokens int     `json:"outputTokens"`
+	SessionID    string  `json:"sessionId,omitempty"`
+}
+
+// DiscoverAgentsOpts configures which directories to scan for agent definitions
+// and the override precedence. Directories are listed in precedence order:
+// later entries override earlier entries with the same agent name (stem).
+//
+// Named sources:
+//   "extension" -- {extensionDir}/agents/ (agents packaged with the extension)
+//   "user"      -- ~/.ion/agents/ (user-level agents)
+//   "project"   -- {workingDir}/.ion/agents/ (project-scoped agents)
+//
+// Example: ["extension", "user", "project"] means extension agents are defaults,
+// user agents override them, project agents override both.
+type DiscoverAgentsOpts struct {
+	// Sources lists named agent sources in precedence order (later overrides earlier).
+	// Valid values: "extension", "user", "project".
+	// If empty, defaults to ["extension", "user", "project"].
+	Sources []string `json:"sources,omitempty"`
+	// ExtraDirs adds arbitrary directories to scan (appended after named sources).
+	ExtraDirs []string `json:"extraDirs,omitempty"`
+	// BundleName filters to a specific bundle subdirectory (e.g., "cloudops").
+	// If empty, all bundles in each source directory are included.
+	BundleName string `json:"bundleName,omitempty"`
+	// Recursive walks subdirectories within each agent directory. Default true.
+	Recursive *bool `json:"recursive,omitempty"`
+}
+
+// DiscoveredAgent represents a parsed agent definition returned to extensions.
+type DiscoveredAgent struct {
+	Name         string            `json:"name"`
+	Path         string            `json:"path"`
+	Source       string            `json:"source"` // "extension", "user", "project", or "extra"
+	Parent       string            `json:"parent,omitempty"`
+	Description  string            `json:"description,omitempty"`
+	Model        string            `json:"model,omitempty"`
+	Tools        []string          `json:"tools,omitempty"`
+	SystemPrompt string            `json:"systemPrompt,omitempty"`
+	Meta         map[string]string `json:"meta,omitempty"`
+}
+
+// DiscoverAgentsResult holds the discovered agents.
+type DiscoverAgentsResult struct {
+	Agents []DiscoveredAgent `json:"agents"`
 }
 
 // ModelRef identifies the active model and its context window.
@@ -132,22 +292,10 @@ type ContextUsage struct {
 
 // ExtensionConfig carries configuration for an extension instance.
 type ExtensionConfig struct {
-	ExtensionDir     string
-	Model            string
-	WorkingDirectory string
-	McpConfigPath    string
-	Options          map[string]interface{}
-}
-
-// UI provides dialog primitives for extensions to interact with the user.
-type UI interface {
-	SetAgentStates(agents []types.AgentStateUpdate)
-	SetStatus(fields types.StatusFields)
-	SetWorkingMessage(message string)
-	Notify(message string, level string)
-	Select(title string, options []string) (string, error)
-	Confirm(title string, message string, timeout int) (bool, error)
-	Input(title string, placeholder string) (string, error)
+	ExtensionDir     string                 `json:"extensionDir"`
+	Model            string                 `json:"model,omitempty"`
+	WorkingDirectory string                 `json:"workingDirectory"`
+	McpConfigPath    string                 `json:"mcpConfigPath,omitempty"`
 }
 
 // ToolDefinition describes a tool registered by an extension.
@@ -168,21 +316,21 @@ type CommandDefinition struct {
 
 // ToolCallInfo describes a tool invocation for the tool_call hook.
 type ToolCallInfo struct {
-	ToolName string
-	ToolID   string
-	Input    map[string]interface{}
+	ToolName string                 `json:"toolName"`
+	ToolID   string                 `json:"toolId"`
+	Input    map[string]interface{} `json:"input"`
 }
 
 // ToolCallResult is the combined result of tool_call handlers.
 type ToolCallResult struct {
-	Block  bool
-	Reason string
+	Block  bool   `json:"block"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // ToolStartInfo describes a tool starting for the tool_start hook.
 type ToolStartInfo struct {
-	ToolName string
-	ToolID   string
+	ToolName string `json:"toolName"`
+	ToolID   string `json:"toolId"`
 }
 
 // ErrorCategory classifies engine errors.
@@ -198,58 +346,58 @@ const (
 
 // ErrorInfo describes an error for the on_error hook.
 type ErrorInfo struct {
-	Message      string
-	ErrorCode    string
-	Category     ErrorCategory
-	Retryable    bool
-	RetryAfterMs int64
-	HttpStatus   int
+	Message      string        `json:"message"`
+	ErrorCode    string        `json:"errorCode,omitempty"`
+	Category     ErrorCategory `json:"category,omitempty"`
+	Retryable    bool          `json:"retryable,omitempty"`
+	RetryAfterMs int64         `json:"retryAfterMs,omitempty"`
+	HttpStatus   int           `json:"httpStatus,omitempty"`
 }
 
 // CompactionInfo describes a compaction event.
 type CompactionInfo struct {
-	Strategy      string
-	MessagesBefore int
-	MessagesAfter  int
+	Strategy       string `json:"strategy"`
+	MessagesBefore int    `json:"messagesBefore"`
+	MessagesAfter  int    `json:"messagesAfter"`
 }
 
 // ForkInfo describes a session fork event.
 type ForkInfo struct {
-	SourceSessionKey string
-	NewSessionKey    string
-	ForkMessageIndex int
+	SourceSessionKey string `json:"sourceSessionKey"`
+	NewSessionKey    string `json:"newSessionKey"`
+	ForkMessageIndex int    `json:"forkMessageIndex"`
 }
 
 // PerToolCallResult is the combined result of per-tool call handlers.
 type PerToolCallResult struct {
-	Block  bool
-	Reason string
-	Mutate map[string]interface{}
+	Block  bool                   `json:"block"`
+	Reason string                 `json:"reason,omitempty"`
+	Mutate map[string]interface{} `json:"mutate,omitempty"`
 }
 
 // ContextDiscoverInfo describes a context file discovery event.
 type ContextDiscoverInfo struct {
-	Path   string
-	Source string
+	Path   string `json:"path"`
+	Source string `json:"source"`
 }
 
 // ContextLoadInfo describes a context file load event.
 type ContextLoadInfo struct {
-	Path    string
-	Content string
-	Source  string
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Source  string `json:"source"`
 }
 
 // ContextInjectInfo is the payload for the context_inject hook.
 type ContextInjectInfo struct {
-	WorkingDirectory string
-	DiscoveredPaths  []string
+	WorkingDirectory string   `json:"workingDirectory"`
+	DiscoveredPaths  []string `json:"discoveredPaths"`
 }
 
 // ContextEntry is a single piece of context content to inject into the system prompt.
 type ContextEntry struct {
-	Label   string // identifier shown in prompt (e.g. file path)
-	Content string // raw content to inject
+	Label   string `json:"label"`   // identifier shown in prompt (e.g. file path)
+	Content string `json:"content"` // raw content to inject
 }
 
 // CapabilityMode controls how a capability is surfaced to the LLM.
@@ -274,20 +422,20 @@ type Capability struct {
 
 // CapabilityMatchInfo is the payload for the capability_match hook.
 type CapabilityMatchInfo struct {
-	Input        string   // user's raw input
-	Capabilities []string // all registered capability IDs
+	Input        string   `json:"input"`        // user's raw input
+	Capabilities []string `json:"capabilities"` // all registered capability IDs
 }
 
 // CapabilityMatchResult describes which capabilities matched user input.
 type CapabilityMatchResult struct {
-	MatchedIDs []string               // capabilities to invoke
-	Args       map[string]interface{} // arguments extracted from input
+	MatchedIDs []string               `json:"matchedIds"`     // capabilities to invoke
+	Args       map[string]interface{} `json:"args,omitempty"` // arguments extracted from input
 }
 
 // MessageUpdateInfo describes a message update event.
 type MessageUpdateInfo struct {
-	Role    string
-	Content string
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // PermissionRequestInfo carries details about a permission request.
@@ -296,6 +444,18 @@ type PermissionRequestInfo struct {
 	Input    map[string]interface{} `json:"input"`
 	Decision string                 `json:"decision"`
 	RuleName string                 `json:"rule_name,omitempty"`
+	// Tier is the classifier label assigned by the permission_classify hook
+	// (or empty when no classifier ran). Lets audit/observation handlers
+	// surface the harness's risk taxonomy alongside the engine's decision.
+	Tier string `json:"tier,omitempty"`
+}
+
+// PermissionClassifyInfo carries the input to a permission_classify hook
+// handler. Handlers return a tier label string ("SAFE", "HIGH", "CRITICAL"
+// — any taxonomy your harness defines). The first non-empty label wins.
+type PermissionClassifyInfo struct {
+	ToolName string                 `json:"tool_name"`
+	Input    map[string]interface{} `json:"input"`
 }
 
 // PermissionDeniedInfo carries details about a denied permission.
@@ -336,19 +496,24 @@ type ElicitationResultInfo struct {
 
 // ModelSelectInfo describes a model selection event.
 type ModelSelectInfo struct {
-	RequestedModel string
-	AvailableModels []string
+	RequestedModel  string   `json:"requestedModel"`
+	AvailableModels []string `json:"availableModels,omitempty"`
 }
 
 // TurnInfo describes a turn lifecycle event.
 type TurnInfo struct {
-	TurnNumber int
+	TurnNumber int `json:"turnNumber"`
 }
 
 // AgentInfo describes an agent lifecycle event.
 type AgentInfo struct {
-	Name string
-	Task string
+	Name string `json:"name"`
+	Task string `json:"task,omitempty"`
+}
+
+// BeforeAgentStartResult holds the optional overrides a before_agent_start handler may return.
+type BeforeAgentStartResult struct {
+	SystemPrompt string `json:"systemPrompt,omitempty"`
 }
 
 // SDK is the extension hook registry. It manages hook handlers, tools,
@@ -484,8 +649,8 @@ func (s *SDK) FireSessionEnd(ctx *Context) error {
 
 // BeforePromptResult holds the optional overrides a before_prompt handler may return.
 type BeforePromptResult struct {
-	Prompt       string // rewritten user prompt; empty means no change
-	SystemPrompt string // appended to system prompt; empty means no change
+	Prompt       string `json:"prompt,omitempty"`       // rewritten user prompt; empty means no change
+	SystemPrompt string `json:"systemPrompt,omitempty"` // appended to system prompt; empty means no change
 }
 
 // FireBeforePrompt fires the before_prompt hook. Handlers may return a
@@ -526,8 +691,8 @@ func (s *SDK) FireBeforePrompt(ctx *Context, prompt string) (string, string, err
 
 // PlanModePromptResult holds the optional overrides a plan_mode_prompt handler may return.
 type PlanModePromptResult struct {
-	Prompt string   // custom plan mode prompt; empty means use default
-	Tools  []string // custom allowed tools; nil means use default
+	Prompt string   `json:"prompt,omitempty"` // custom plan mode prompt; empty means use default
+	Tools  []string `json:"tools,omitempty"`  // custom allowed tools; nil means use default
 }
 
 // FirePlanModePrompt fires the plan_mode_prompt hook. Handlers may return a
@@ -642,10 +807,29 @@ func (s *SDK) FireAgentEnd(ctx *Context, info AgentInfo) error {
 	return nil
 }
 
-// FireBeforeAgentStart fires the before_agent_start hook.
-func (s *SDK) FireBeforeAgentStart(ctx *Context, info AgentInfo) error {
-	s.fire(HookBeforeAgentStart, ctx, info)
-	return nil
+// FireBeforeAgentStart fires the before_agent_start hook. Handlers may return
+// a BeforeAgentStartResult with a SystemPrompt field, or a map with a
+// "systemPrompt" key (for JSON-RPC subprocess extensions). The last non-empty
+// system prompt wins.
+func (s *SDK) FireBeforeAgentStart(ctx *Context, info AgentInfo) (string, error) {
+	results := s.fire(HookBeforeAgentStart, ctx, info)
+	for i := len(results) - 1; i >= 0; i-- {
+		switch v := results[i].(type) {
+		case BeforeAgentStartResult:
+			if v.SystemPrompt != "" {
+				return v.SystemPrompt, nil
+			}
+		case *BeforeAgentStartResult:
+			if v != nil && v.SystemPrompt != "" {
+				return v.SystemPrompt, nil
+			}
+		case map[string]interface{}:
+			if sp, ok := v["systemPrompt"].(string); ok && sp != "" {
+				return sp, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 // FireSessionBeforeCompact fires the session_before_compact hook.
@@ -808,6 +992,30 @@ func (s *SDK) FirePermissionRequest(ctx *Context, info PermissionRequestInfo) {
 	s.fire(HookPermissionRequest, ctx, info)
 }
 
+// FirePermissionClassify fires the permission_classify hook. Handlers return
+// a tier label (string). The first non-empty label wins; if no handler
+// returns one, an empty string is returned and the engine falls back to its
+// built-in SAFE/UNSAFE classifier.
+func (s *SDK) FirePermissionClassify(ctx *Context, info PermissionClassifyInfo) string {
+	results := s.fire(HookPermissionClassify, ctx, info)
+	for _, r := range results {
+		switch v := r.(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case map[string]interface{}:
+			if t, ok := v["tier"].(string); ok && t != "" {
+				return t
+			}
+			if t, ok := v["value"].(string); ok && t != "" {
+				return t
+			}
+		}
+	}
+	return ""
+}
+
 // FirePermissionDenied fires the permission_denied hook.
 func (s *SDK) FirePermissionDenied(ctx *Context, info PermissionDeniedInfo) {
 	s.fire(HookPermissionDenied, ctx, info)
@@ -966,4 +1174,58 @@ func (s *SDK) FireCapabilityInvoke(ctx *Context, capID string, input map[string]
 		}
 	}
 	return false, ""
+}
+
+// ExtensionRespawnedInfo carries the payload for the extension_respawned hook.
+type ExtensionRespawnedInfo struct {
+	AttemptNumber int    `json:"attemptNumber"`
+	PrevExitCode  *int   `json:"prevExitCode,omitempty"`
+	PrevSignal    string `json:"prevSignal,omitempty"`
+}
+
+// TurnAbortedInfo carries the payload for the turn_aborted hook.
+type TurnAbortedInfo struct {
+	Reason string `json:"reason"`
+}
+
+// PeerExtensionInfo carries the payload for peer_extension_died /
+// peer_extension_respawned hooks. Reports the sibling that changed state.
+type PeerExtensionInfo struct {
+	Name          string `json:"name"`
+	ExitCode      *int   `json:"exitCode,omitempty"`
+	Signal        string `json:"signal,omitempty"`
+	AttemptNumber int    `json:"attemptNumber,omitempty"`
+}
+
+// FireExtensionRespawned fires extension_respawned on the freshly-respawned
+// instance after init handshake. Lets the harness rebuild caches or
+// re-acquire resources lost when the prior subprocess died.
+func (s *SDK) FireExtensionRespawned(ctx *Context, info ExtensionRespawnedInfo) error {
+	s.fire(HookExtensionRespawned, ctx, info)
+	return nil
+}
+
+// FireTurnAborted fires turn_aborted on the freshly-respawned instance when
+// the prior subprocess died with a turn in flight. The new instance never
+// saw the turn's hook lifecycle, so this signals that some hook fires were
+// missed and any per-turn state should be reset.
+func (s *SDK) FireTurnAborted(ctx *Context, info TurnAbortedInfo) error {
+	s.fire(HookTurnAborted, ctx, info)
+	return nil
+}
+
+// FirePeerExtensionDied fires peer_extension_died on every Host in the
+// group except the one that actually died. Lets surviving extensions
+// degrade gracefully when a sibling becomes unavailable.
+func (s *SDK) FirePeerExtensionDied(ctx *Context, info PeerExtensionInfo) error {
+	s.fire(HookPeerExtensionDied, ctx, info)
+	return nil
+}
+
+// FirePeerExtensionRespawned fires peer_extension_respawned on every Host
+// in the group except the one that just respawned. Lets surviving
+// extensions re-establish coordination with the recovered sibling.
+func (s *SDK) FirePeerExtensionRespawned(ctx *Context, info PeerExtensionInfo) error {
+	s.fire(HookPeerExtensionRespawned, ctx, info)
+	return nil
 }

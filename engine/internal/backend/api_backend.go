@@ -61,12 +61,16 @@ type ApiBackend struct {
 	onFileChanged          func(runID string, path string, action string)
 	onPermissionRequest    func(runID string, info interface{})
 	onPermissionDenied     func(runID string, info interface{})
+	onPermissionClassify   func(toolName string, input map[string]interface{}) string
 
 	// Security
 	permEngine   *permissions.Engine
 	sandboxCfg   *sandbox.Config
 	authResolver *auth.Resolver
 	securityCfg  *types.SecurityConfig
+
+	// Agent spawner (session-scoped, wired by session manager)
+	agentSpawner tools.AgentSpawner
 
 	// External tools (MCP)
 	externalTools []types.LlmToolDef
@@ -196,11 +200,28 @@ func (b *ApiBackend) SetPermissionHooks(onReq func(string, interface{}), onDeny 
 	b.onPermissionDenied = onDeny
 }
 
+// SetPermissionClassifier wires the permission_classify hook callback.
+// Called before each permission check; the returned tier label flows into
+// the permission engine (for tier_rules matching) and onto the
+// permission_request payload (for audit/observation).
+func (b *ApiBackend) SetPermissionClassifier(fn func(toolName string, input map[string]interface{}) string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.onPermissionClassify = fn
+}
+
 // SetFileChangedHook wires file change callback.
 func (b *ApiBackend) SetFileChangedHook(fn func(string, string, string)) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.onFileChanged = fn
+}
+
+// SetAgentSpawner wires a session-scoped spawner for the Agent tool.
+func (b *ApiBackend) SetAgentSpawner(fn tools.AgentSpawner) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.agentSpawner = fn
 }
 
 // StartRun begins an agent loop in a background goroutine.
@@ -227,11 +248,14 @@ func (b *ApiBackend) StartRun(requestID string, options types.RunOptions) {
 func (b *ApiBackend) Cancel(requestID string) bool {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
+	numRuns := len(b.activeRuns)
 	b.mu.Unlock()
 
 	if !ok {
+		utils.Warn("ApiBackend", fmt.Sprintf("Cancel: requestID=%s not found in activeRuns (have %d runs)", requestID, numRuns))
 		return false
 	}
+	utils.Info("ApiBackend", fmt.Sprintf("Cancel: cancelling requestID=%s (turn=%d)", requestID, run.turnCount))
 	run.cancel()
 	return true
 }
@@ -329,6 +353,22 @@ func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID
 
 func (b *ApiBackend) emitError(runID string, err error) {
 	utils.Error("ApiBackend", fmt.Sprintf("emitError: runID=%s err=%s", runID, err.Error()))
+
+	// Emit structured error through the normalized event pipeline so it
+	// reaches all clients and extension hooks with full classification.
+	errEvent := &types.ErrorEvent{
+		ErrorMessage: err.Error(),
+		IsError:      true,
+	}
+	if pe, ok := err.(*providers.ProviderError); ok {
+		errEvent.ErrorCode = pe.Code
+		errEvent.HttpStatus = pe.HTTPStatus
+		errEvent.Retryable = pe.Retryable
+		errEvent.RetryAfterMs = pe.RetryAfterMs
+	}
+	b.emit(runID, types.NormalizedEvent{Data: errEvent})
+
+	// Still call onError callback for logging coordination
 	b.mu.Lock()
 	fn := b.onError
 	b.mu.Unlock()
@@ -367,10 +407,22 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	provider := providers.ResolveProvider(model)
 	if provider == nil {
-		utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
-		b.emitError(run.requestID, fmt.Errorf("no provider found for model %q", model))
-		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
-		return
+		// If a model was explicitly requested but not found, warn and fall back
+		if opts.Model != "" {
+			utils.Warn("ApiBackend", fmt.Sprintf("model %q not found, falling back to default", model))
+			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+				ErrorMessage: fmt.Sprintf("model %q not found, falling back to default", model),
+				ErrorCode:    "invalid_model",
+			}})
+			model = "claude-sonnet-4-6"
+			provider = providers.ResolveProvider(model)
+		}
+		if provider == nil {
+			utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
+			b.emitError(run.requestID, fmt.Errorf("no provider found for model %q", model))
+			b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
+			return
+		}
 	}
 
 	// Load or create conversation
@@ -387,7 +439,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 	} else {
 		conv = conversation.CreateConversation(
-			fmt.Sprintf("run-%d", time.Now().UnixMilli()),
+			fmt.Sprintf("%d", time.Now().UnixMilli()),
 			opts.SystemPrompt,
 			model,
 		)
@@ -426,9 +478,29 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 		systemPrompt += "\n\n" + planPrompt
 	}
+	// Fire before_prompt hook (before finalizing system prompt)
+	b.mu.Lock()
+	beforePromptFn := b.onBeforePrompt
+	b.mu.Unlock()
+	if beforePromptFn != nil {
+		rewrittenPrompt, extraSystem := beforePromptFn(run.requestID, opts.Prompt)
+		if rewrittenPrompt != "" {
+			opts.Prompt = rewrittenPrompt
+		}
+		if extraSystem != "" {
+			systemPrompt += "\n\n" + extraSystem
+		}
+	}
+
+	// Add capability prompt
+	if opts.CapabilityPrompt != "" {
+		systemPrompt += "\n" + opts.CapabilityPrompt
+	}
+
+	// Finalize system prompt (after all hook contributions)
 	conv.System = systemPrompt
 
-	// Add user message
+	// Add user message (using potentially-rewritten prompt)
 	conversation.AddUserMessage(conv, opts.Prompt)
 
 	// Resolve max turns
@@ -439,32 +511,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	maxBudget := opts.MaxBudgetUsd
 
-	// Fire before_prompt hook
-	b.mu.Lock()
-	beforePromptFn := b.onBeforePrompt
-	b.mu.Unlock()
-	if beforePromptFn != nil {
-		rewrittenPrompt, extraSystem := beforePromptFn(run.requestID, opts.Prompt)
-		if rewrittenPrompt != "" {
-			opts.Prompt = rewrittenPrompt
-		}
-		if extraSystem != "" {
-			opts.AppendSystemPrompt += "\n\n" + extraSystem
-		}
-	}
-
 	// Build tool definitions (built-in + external/MCP + capabilities)
 	toolDefs := tools.GetToolDefs()
 	b.mu.Lock()
-	if len(b.externalTools) > 0 {
+	extToolCount := len(b.externalTools)
+	if extToolCount > 0 {
 		toolDefs = append(toolDefs, b.externalTools...)
 	}
 	b.mu.Unlock()
+	utils.Log("ApiBackend", fmt.Sprintf("tool count: builtin=%d external=%d total=%d", len(toolDefs)-extToolCount, extToolCount, len(toolDefs)))
 	if len(opts.CapabilityTools) > 0 {
 		toolDefs = append(toolDefs, opts.CapabilityTools...)
-	}
-	if opts.CapabilityPrompt != "" {
-		systemPrompt += "\n" + opts.CapabilityPrompt
 	}
 
 	// Filter tools if plan mode and inject ExitPlanMode
@@ -499,6 +556,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Signal to the desktop that plan mode is now active for this run.
 		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
+		utils.Info("PlanMode", fmt.Sprintf("run=%s tools_filtered=%d allowed=%v", run.requestID, len(toolDefs), planTools))
 	}
 
 	// Filter by allowedTools if specified (empty list = no tools, nil = all tools)
@@ -510,6 +568,21 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		var filtered []types.LlmToolDef
 		for _, td := range toolDefs {
 			if allowed[td.Name] {
+				filtered = append(filtered, td)
+			}
+		}
+		toolDefs = filtered
+	}
+
+	// Filter out suppressed tools
+	if len(opts.SuppressTools) > 0 {
+		suppressed := make(map[string]bool, len(opts.SuppressTools))
+		for _, t := range opts.SuppressTools {
+			suppressed[t] = true
+		}
+		var filtered []types.LlmToolDef
+		for _, td := range toolDefs {
+			if !suppressed[td.Name] {
 				filtered = append(filtered, td)
 			}
 		}
@@ -540,6 +613,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		contextWindow = info.ContextWindow
 	}
 
+	// Track consecutive prompt_too_long compaction failures to prevent infinite loops
+	promptTooLongRetries := 0
+	const maxPromptTooLongRetries = 3
+
 	// Agent loop: turnCount increments at the top of each iteration (before
 	// turn_start fires), so the first turn has turnCount=1. This matches the
 	// TS reference where turnCount increments at the top of the while loop.
@@ -563,6 +640,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// reports turnCount=1 (matching TS behavior).
 		run.turnCount++
 
+		// Wind-down: warn the LLM 2 turns before max so it can wrap up
+		if maxTurns > 4 && run.turnCount == maxTurns-2 {
+			conversation.AddUserMessage(run.conv, "[SYSTEM] You are approaching your turn limit. You have 2 turns remaining. Wrap up your current work, summarize what you've accomplished and what remains, then return your response.")
+			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, run.turnCount, maxTurns))
+		}
+
 		// Fire turn_start hook
 		b.mu.Lock()
 		turnStartFn := b.onTurnStart
@@ -577,6 +660,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
 				ErrorMessage: fmt.Sprintf("budget exceeded: $%.4f >= $%.4f", run.totalCost, maxBudget),
 				IsError:      true,
+				ErrorCode:    "budget_exceeded",
 			}})
 			break
 		}
@@ -600,15 +684,18 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 
 			if !cancelCompact {
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
 				msgBefore := len(conv.Messages)
+
+				// Step 1: MicroCompact (tool results, then assistant text)
 				cleared := conversation.MicroCompact(conv, 10)
-				if cleared == 0 {
-					// Try fact extraction; only hard-truncate if still above threshold
+				utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 1: was %d%%, micro-compact cleared %d", usage.Percent, cleared))
+
+				// Step 2: if still above threshold, extract facts and hard-truncate
+				usageAfterMicro := conversation.GetContextUsage(conv, contextWindow)
+				if usageAfterMicro.Percent > threshold {
 					facts := compaction.ExtractFacts(conv.Messages)
-					usageAfterFacts := conversation.GetContextUsage(conv, contextWindow)
-					if usageAfterFacts.Percent > threshold {
-						conversation.Compact(conv, 10)
-					}
+					conversation.Compact(conv, 10)
 					if len(facts) > 0 {
 						summary := compaction.FormatFactsSummary(facts)
 						restoreMsg := compaction.PostCompactRestore(conv, compaction.ExtractRecentFiles(conv.Messages), nil)
@@ -623,8 +710,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 							conv.Messages = append([]types.LlmMessage{factMsg, restoreMsg}, conv.Messages...)
 						}
 					}
+					utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 2: hard-truncated to %d messages", len(conv.Messages)))
 				}
-				utils.Log("ApiBackend", fmt.Sprintf("compacted context: was %d%%, cleared %d results", usage.Percent, cleared))
+
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false}})
 
 				if afterCompactFn != nil {
 					afterCompactFn(run.requestID, map[string]interface{}{
@@ -689,17 +778,42 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
-			// G33: prompt_too_long / overloaded -- 3-step cascade then retry
+			// G33: prompt_too_long / overloaded -- 3-step cascade then retry (capped)
 			errMsg := streamErr.Error()
 			if (strings.Contains(errMsg, "prompt_too_long") || strings.Contains(errMsg, "prompt is too long") ||
 				strings.Contains(errMsg, "overloaded_error")) && run.turnCount > 0 {
-				utils.Log("ApiBackend", "prompt too long, running compaction cascade and retrying")
+				promptTooLongRetries++
+				if promptTooLongRetries > maxPromptTooLongRetries {
+					utils.Error("ApiBackend", fmt.Sprintf("prompt_too_long: %d retries exhausted, giving up: runID=%s", maxPromptTooLongRetries, run.requestID))
+					b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+						ErrorMessage: fmt.Sprintf("Context too large after %d compaction attempts. Start a new conversation or manually reduce context.", maxPromptTooLongRetries),
+						IsError:      true,
+						ErrorCode:    "compaction_failed",
+					}})
+					b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
+					return
+				}
 
-				// Step 1: micro-compact (drop metadata, trim tool results)
+				// Fire session_before_compact hook (can cancel)
+				b.mu.Lock()
+				reactiveBeforeFn := b.onSessionBeforeCompact
+				reactiveAfterFn := b.onSessionCompact
+				b.mu.Unlock()
+
+				if reactiveBeforeFn != nil && reactiveBeforeFn(run.requestID) {
+					utils.Log("ApiBackend", "reactive compaction cancelled by hook")
+					continue // skip compaction, retry the turn as-is
+				}
+
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
+				utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long, compaction attempt %d/%d", promptTooLongRetries, maxPromptTooLongRetries))
+				msgBefore := len(conv.Messages)
+
+				// Step 1: micro-compact (tool results, then assistant text)
 				cleared := conversation.MicroCompact(conv, 10)
-				utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long micro-compact cleared %d results", cleared))
+				utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long micro-compact cleared %d blocks", cleared))
 
-				// Step 2: LLM summary compaction via fact extraction
+				// Step 2: fact extraction
 				facts := compaction.ExtractFacts(conv.Messages)
 				if len(facts) > 0 {
 					summary := compaction.FormatFactsSummary(facts)
@@ -716,17 +830,21 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					}
 				}
 
-				// Step 3: hard truncate if still needed
-				usageAfterExtract := conversation.GetContextUsage(conv, contextWindow)
-				threshold := compactThreshold
-				if opts.CompactThreshold > 0 {
-					threshold = int(opts.CompactThreshold)
-				}
-				if usageAfterExtract.Percent > threshold {
-					utils.Log("ApiBackend", "still above threshold after fact extraction, hard truncating")
-					conversation.Compact(conv, 10)
-				}
+				// Step 3: hard truncate -- use progressively smaller keepTurns on each retry
+				keepTurns := 10 / promptTooLongRetries // 10, 5, 3
+				conversation.Compact(conv, keepTurns)
+				utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long hard-truncated to keepTurns=%d, %d messages remain", keepTurns, len(conv.Messages)))
 
+				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false}})
+
+				// Fire session_compact hook (observe)
+				if reactiveAfterFn != nil {
+					reactiveAfterFn(run.requestID, map[string]interface{}{
+						"strategy":       "reactive",
+						"messagesBefore": msgBefore,
+						"messagesAfter":  len(conv.Messages),
+					})
+				}
 				continue // retry the turn after compaction
 			}
 			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s", run.requestID, run.turnCount, streamErr.Error()))
@@ -734,6 +852,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 			return
 		}
+
+		// Stream succeeded -- reset compaction retry counter
+		promptTooLongRetries = 0
 
 		// Stream truncated (no stop reason) -- emit reset so desktop discards
 		// partial text, then retry the turn.
@@ -749,13 +870,18 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			run.totalCost += costUsd
 			conversation.UpdateCost(conv, costUsd)
 
-			// Emit usage event with input tokens so desktop shows context percentage
-			inTok := turnUsage.InputTokens
+			// Emit usage event with TOTAL input tokens (including cached) so
+			// desktop shows accurate context percentage
+			totalIn := turnUsage.InputTokens + turnUsage.CacheReadInputTokens + turnUsage.CacheCreationInputTokens
 			outTok := turnUsage.OutputTokens
+			cacheRead := turnUsage.CacheReadInputTokens
+			cacheCreate := turnUsage.CacheCreationInputTokens
 			b.emit(run.requestID, types.NormalizedEvent{Data: &types.UsageEvent{
 				Usage: types.UsageData{
-					InputTokens:  &inTok,
-					OutputTokens: &outTok,
+					InputTokens:             &totalIn,
+					OutputTokens:            &outTok,
+					CacheReadInputTokens:    &cacheRead,
+					CacheCreationInputTokens: &cacheCreate,
 				},
 			}})
 		}
@@ -830,6 +956,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				utils.Error("ApiBackend", fmt.Sprintf("tool execution failed: runID=%s err=%s", run.requestID, err.Error()))
 				b.emitError(run.requestID, err)
 				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
+				return
+			}
+
+			// Check for cancellation even when tools completed successfully.
+			// Tool goroutines return nil unconditionally, so executeTools may
+			// return (results, nil) even after the context was cancelled.
+			// Without this check the loop would add results and start a new
+			// LLM turn before noticing the abort at the top of the loop.
+			if ctx.Err() != nil {
+				utils.Warn("ApiBackend", fmt.Sprintf("run cancelled after tool execution: runID=%s", run.requestID))
+				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
 
@@ -1017,13 +1154,28 @@ func (b *ApiBackend) processStream(
 			}
 
 		case "content_block_stop":
-			// Parse accumulated tool input JSON (client or server tool)
+			// Parse accumulated tool input JSON (client or server tool).
+			// On parse failure we coerce to an empty map and warn — the API
+			// rejects messages whose tool_use.input is not a JSON object,
+			// which would otherwise poison the conversation history forever.
 			if currentBlockIndex < len(assistantBlocks) {
 				block := &assistantBlocks[currentBlockIndex]
-				if (block.Type == "tool_use" || block.Type == "server_tool_use") && currentPartialJSON.Len() > 0 {
-					var input map[string]any
-					if err := json.Unmarshal([]byte(currentPartialJSON.String()), &input); err == nil {
-						block.Input = input
+				if block.Type == "tool_use" || block.Type == "server_tool_use" {
+					raw := currentPartialJSON.String()
+					if raw == "" {
+						block.Input = map[string]any{}
+					} else {
+						var input map[string]any
+						if err := json.Unmarshal([]byte(raw), &input); err == nil {
+							block.Input = input
+						} else {
+							preview := raw
+							if len(preview) > 500 {
+								preview = preview[:500] + "...(truncated)"
+							}
+							utils.Warn("ApiBackend", fmt.Sprintf("tool_use input parse failed (toolID=%s name=%s err=%v) coercing to {}: %s", block.ID, block.Name, err, preview))
+							block.Input = map[string]any{}
+						}
 					}
 					currentPartialJSON.Reset()
 				}
@@ -1074,25 +1226,44 @@ func (b *ApiBackend) executeTools(
 	fileChangedFn := b.onFileChanged
 	permReqFn := b.onPermissionRequest
 	permDenyFn := b.onPermissionDenied
+	permClassifyFn := b.onPermissionClassify
 	telem := b.telemetry
+	spawnerFn := b.agentSpawner
 	b.mu.Unlock()
+
+	// Inject session-scoped agent spawner into context for Agent tool
+	if spawnerFn != nil {
+		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
+	}
 
 	for i, block := range toolUseBlocks {
 		i, block := i, block
 		g.Go(func() error {
 			// Permission check (Step 3)
 			if permEng != nil {
+				// Classify first so the tier flows into the permission engine
+				// (for tier_rules matching) and onto the permission_request
+				// hook payload (for audit/observation).
+				var tier string
+				if permClassifyFn != nil {
+					tier = permClassifyFn(block.Name, block.Input)
+				}
 				checkResult := permEng.Check(permissions.CheckInfo{
 					Tool:  block.Name,
 					Input: block.Input,
 					Cwd:   cwd,
+					Tier:  tier,
 				})
 				if permReqFn != nil {
-					permReqFn(run.requestID, map[string]interface{}{
+					payload := map[string]interface{}{
 						"tool_name": block.Name,
 						"input":     block.Input,
 						"decision":  checkResult.Decision,
-					})
+					}
+					if tier != "" {
+						payload["tier"] = tier
+					}
+					permReqFn(run.requestID, payload)
 				}
 				if checkResult.Decision == "deny" {
 					if permDenyFn != nil {
@@ -1192,6 +1363,7 @@ func (b *ApiBackend) executeTools(
 			if run.planMode && (block.Name == "Write" || block.Name == "Edit") {
 				if targetPath, ok := block.Input["file_path"].(string); ok {
 					if targetPath != run.planFilePath {
+						utils.Info("PlanMode", fmt.Sprintf("run=%s blocked=%s target=%s plan_file=%s", run.requestID, block.Name, targetPath, run.planFilePath))
 						msg := fmt.Sprintf("Plan mode: cannot write to %s. Only the plan file (%s) is writable.", targetPath, run.planFilePath)
 						results[i] = conversation.ToolResultEntry{
 							ToolUseID: block.ID,
@@ -1208,8 +1380,11 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Intercept ExitPlanMode sentinel — never dispatch to executor.
-			if block.Name == tools.ExitPlanModeName {
+			// Intercept ExitPlanMode sentinel — only during plan-mode runs.
+			// In auto mode the LLM may hallucinate this call from conversation
+			// history; let it fall through to "Unknown tool" so it self-corrects.
+			if run.planMode && block.Name == tools.ExitPlanModeName {
+				utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool plan_file=%s", run.requestID, run.planFilePath))
 				run.mu.Lock()
 				run.exitPlanMode = true
 				run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
@@ -1233,11 +1408,13 @@ func (b *ApiBackend) executeTools(
 				return nil
 			}
 
-			// Route to MCP or built-in tool (Step 5)
+			// Route to built-in, extension, or MCP tool (Step 5)
 			var toolResult *types.ToolResult
 			var err error
 
-			if strings.HasPrefix(block.Name, "mcp__") && mcpRouter != nil {
+			if tools.GetTool(block.Name) != nil {
+				toolResult, err = tools.ExecuteTool(gCtx, block.Name, block.Input, cwd)
+			} else if mcpRouter != nil {
 				content, isErr, routeErr := mcpRouter(block.Name, block.Input)
 				if routeErr != nil {
 					err = routeErr
@@ -1245,7 +1422,10 @@ func (b *ApiBackend) executeTools(
 					toolResult = &types.ToolResult{Content: content, IsError: isErr}
 				}
 			} else {
-				toolResult, err = tools.ExecuteTool(gCtx, block.Name, block.Input, cwd)
+				toolResult = &types.ToolResult{
+					Content: fmt.Sprintf("Unknown tool: %s", block.Name),
+					IsError: true,
+				}
 			}
 
 			// End tool span

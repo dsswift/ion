@@ -1356,7 +1356,7 @@ func TestAgentToolMissingPrompt(t *testing.T) {
 
 func TestAgentToolWithSpawner(t *testing.T) {
 	old := agentSpawner
-	agentSpawner = func(prompt string, cwd string) (string, error) {
+	agentSpawner = func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
 		return "agent completed: " + prompt, nil
 	}
 	defer func() { agentSpawner = old }()
@@ -1374,7 +1374,7 @@ func TestAgentToolWithSpawner(t *testing.T) {
 
 func TestAgentToolSpawnerError(t *testing.T) {
 	old := agentSpawner
-	agentSpawner = func(prompt string, cwd string) (string, error) {
+	agentSpawner = func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
 		return "", fmt.Errorf("spawn failed")
 	}
 	defer func() { agentSpawner = old }()

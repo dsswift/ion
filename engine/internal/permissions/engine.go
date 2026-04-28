@@ -44,13 +44,21 @@ type CheckInfo struct {
 	Input     map[string]interface{}
 	Cwd       string
 	SessionID string
+	// Tier is the classifier label assigned by the permission_classify hook,
+	// e.g., "SAFE", "LOW", "MEDIUM", "HIGH", "CRITICAL", or anything the
+	// harness chooses. Empty when no classifier ran. Consulted by Check
+	// against PermissionPolicy.TierRules before per-rule matching.
+	Tier string
 }
 
 // CheckResult is the output of a permission evaluation.
 type CheckResult struct {
-	Decision string // "allow", "deny"
+	Decision string // "allow", "deny", "ask"
 	Reason   string
 	Rule     *types.PermissionRule
+	// Tier echoes the classifier label that influenced the decision (empty
+	// when no tier was supplied or no TierRule matched).
+	Tier string
 }
 
 // Check evaluates a tool invocation against the policy.
@@ -108,6 +116,21 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 					return result
 				}
 			}
+		}
+	}
+
+	// Tier-keyed rule (from permission_classify hook). Consulted before
+	// per-rule matching so a harness's taxonomy (SAFE/LOW/MEDIUM/HIGH/CRITICAL
+	// or any custom label) can short-circuit before the rules list runs.
+	if info.Tier != "" && e.policy.TierRules != nil {
+		if decision, ok := e.policy.TierRules[info.Tier]; ok && decision != "" {
+			result := &CheckResult{
+				Decision: decision,
+				Reason:   "tier rule: " + info.Tier,
+				Tier:     info.Tier,
+			}
+			e.audit(info, result)
+			return result
 		}
 	}
 
