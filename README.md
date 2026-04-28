@@ -1,8 +1,10 @@
 # Ion Engine
 
-A headless agent runtime that fits in your pocket. One binary. Zero opinions. Fifty hooks to make it yours.
+A headless agent runtime. One binary. Zero opinions. Fifty-five hooks to make it yours.
 
-`~2.6 MB static binary` · `14+ LLM providers` · `43 extension hooks` · `15 built-in tools` · `MIT license`
+`~7.8 MB static binary` · `16 LLM providers` · `59 extension hooks` · `14 built-in tools` · `MIT license`
+
+Ion Engine is a headless, multi-provider LLM runtime for building agent systems in any domain. It runs as a single static Go binary with no runtime dependencies. Extensions speak JSON-RPC over stdin/stdout in any language. Your job is the interface, the workflow, and the domain. The engine handles the rest.
 
 ---
 
@@ -12,7 +14,30 @@ The AI agent ecosystem is splitting in two. On one side, opinionated apps that d
 
 Ion Engine sits in between. It handles the hard parts: the agent loop, parallel tool execution, conversation persistence with branching, and multi-provider abstraction. It ships opt-in security primitives (dangerous command patterns, sensitive path protection, secret redaction, OS-level sandboxing) that you enable when you need them. But it has zero opinions about your interface, your workflow, your permission model, or your deployment target.
 
-You get a raw agent. You shape what it becomes.
+You get a raw agent and shape what it becomes.
+
+## Where Ion Fits
+
+Tools like Claude Code and Pi are excellent at what they do. If you want a polished coding assistant or a batteries-included agent toolkit, use them. They're built for that, they're well-supported, and they have strong communities.
+
+Ion is different in kind, not in quality. It's a **foundation**: a headless runtime you build on top of, not a product you use as-is. Think of it as the engine block, not the car.
+
+**What Ion gives you:**
+
+- **A domain-agnostic runtime.** No coding-tool assumptions. Build agent systems for warehouse ops, research pipelines, farm management, incident response, or your own coding assistant.
+- **Any-language extensions.** Extensions communicate via JSON-RPC over stdin/stdout. Write them in Go, Python, Rust, TypeScript, or a shell script. If your language can read stdin and write stdout, it's an extension language.
+- **Daemon architecture with multi-client broadcast.** Multiple clients connect to the same engine simultaneously. Build a CLI, a desktop app, and a web interface that all share one running daemon.
+- **Native parallel sub-agents.** Spawn child agents with different models that run their own tool loops concurrently. A parent on Opus coordinates researchers on Sonnet and formatters on Haiku.
+- **Built-in security primitives.** OS-level sandboxing (Seatbelt on macOS, bwrap on Linux), secret redaction, dangerous command blocking, and a permission engine with LLM-based classification.
+- **Enterprise policy enforcement.** 4-layer config merge (defaults, user, project, enterprise) where the enterprise layer is sealed. Security sets the floor; developers customize above it.
+- **Zero vendor SDK dependencies.** 16 LLM providers via raw HTTP with manual SSE parsing. No transitive dependency chain you don't control. Fork the binary, keep your agents.
+- **MCP support.** Dual-transport MCP client (stdio for local servers, SSE for remote) with resource reading exposed as first-class tools.
+- **Credential management.** Five-level resolver: programmatic override, environment variables, OS keychain, encrypted file store, and CLI proxy for TOS-compliant subscription access via Claude Code.
+- **55 extension hooks** across 15 categories. Intercept and modify behavior at every stage of the agent loop.
+
+You want to build your own Claude Code? Use this engine and wrap your own opinions around it. You want non-coding agent orchestrations? Build harnesses that coordinate domain-specific agents. You want to embed an agent runtime in a container sidecar, a CI pipeline, or a web API? It's a single static Go binary with no runtime dependencies.
+
+Ion is a starting point. The runtime handles the hard parts and stays out of the way on everything else.
 
 ## Quick Start
 
@@ -25,13 +50,13 @@ curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-darwin-ar
 ion prompt "What files are in the current directory?"
 ```
 
-That's it. One command. The engine starts in-process, calls the LLM, executes tools, streams the result to stdout, and exits. No daemon to manage, no socket to connect to, no background process to remember. Set an API key before your first prompt:
+One command. The engine starts in-process, calls the LLM, executes tools, streams the result to stdout, and exits. No daemon, no socket, no background process. Set an API key before your first prompt:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-This is the default for scripted workflows: shell scripts, cron jobs, git hooks, CI pipelines, orchestration scripts. Each invocation is self-contained. The engine loads your config, runs the prompt, and gets out of the way.
+One-shot mode works well for scripted workflows: shell scripts, cron jobs, git hooks, CI pipelines, orchestration scripts. Each invocation is self-contained.
 
 ```bash
 # One-shot with JSON output
@@ -44,7 +69,7 @@ ion prompt --output stream-json "Review this diff for security issues"
 ion prompt --no-extensions "What time is it in UTC?"
 
 # Clear configured extensions, load only this one
-ion prompt --no-extensions --extension ./my-reviewer "Review the staged changes"
+ion prompt --no-extensions --extension ./my-reviewer/index.js "Review the staged changes"
 ```
 
 ### Daemon mode
@@ -59,7 +84,7 @@ ion serve
 
 # Start a session with a working directory and extensions
 ion start --key myproject --dir /path/to/project \
-  --extension ~/.ion/extensions/ops-harness
+  --extension ~/.ion/extensions/my-harness.js
 
 # Send a prompt (routed to the session by key)
 ion prompt --key myproject "What files are in the current directory?"
@@ -73,15 +98,15 @@ ion attach
 # {"type":"text_chunk","text":"The directory contains a README..."}
 # {"type":"task_complete","result":"...","costUsd":0.003,"numTurns":1}
 
-# Send a follow-up -- the session remembers context
+# Send a follow-up (the session remembers context)
 ion prompt --key myproject "Which of those files changed in the last week?"
 
-# Send another -- still the same conversation
+# Send another (still the same conversation)
 ion prompt --key myproject "Show me the diff for the most recent change"
 
 # Start a second session with different extensions
 ion start --key infra --dir /path/to/infra-repo \
-  --extension ~/.ion/extensions/terraform-tools
+  --extension ~/.ion/extensions/terraform-tools.js
 
 # Both sessions run in parallel, each with their own extensions
 ion prompt --key infra "Plan the changes in modules/networking"
@@ -106,7 +131,7 @@ ion shutdown
 Why daemon mode:
 
 - **Persistent sessions.** Conversation history survives across prompts. Ask a follow-up without re-sending context. Branch a conversation to explore alternatives. The engine manages session state, compaction, and JSONL persistence automatically.
-- **Multiple clients.** A desktop app, a CLI, and a mobile companion connect to the same daemon simultaneously. Every client receives broadcast events. One engine serves all your interfaces.
+- **Multiple clients.** Any number of clients connect to the same daemon simultaneously. Every client receives broadcast events. One engine serves all your interfaces.
 - **Warm extensions.** Extension subprocesses stay alive between prompts. No spawn/init overhead on each invocation. Custom tools, hooks, and agents are ready instantly.
 - **Real-time streaming.** Connect with `ion attach` and watch events flow as the agent works. Pipe NDJSON into `jq`, a monitoring dashboard, or an approval workflow. Build integrations that react to tool calls, text output, and errors in real time.
 - **Session management.** Run multiple sessions in parallel, each with its own model, extensions, and working directory. Route prompts to the right session by key. One daemon, many workstreams.
@@ -115,11 +140,23 @@ One-shot mode runs a fresh engine per invocation. Daemon mode runs one engine th
 
 See the [engine docs](engine/README.md) for Linux, Windows, and Docker install instructions.
 
+## Documentation
+
+Full technical documentation lives in [`docs/`](docs/index.md). Start here based on what you're building:
+
+| Audience | Start with |
+|----------|-----------|
+| **Harness engineer** building extensions | [Quick Start](docs/getting-started/quickstart.md), [Extension Guide](docs/extensions/getting-started.md), [Hooks Reference](docs/hooks/reference.md) |
+| **IT admin** deploying Ion | [Configuration](docs/configuration/index.md), [Security](docs/security/index.md), [Enterprise](docs/enterprise/index.md) |
+| **Contributor** working on the engine | [Architecture](docs/architecture/engine.md), [Contributing](docs/contributing/index.md) |
+
+Key references: [Socket Protocol](docs/protocol/index.md) | [CLI Reference](docs/cli/reference.md) | [Tools Reference](docs/tools/reference.md) | [Provider Setup](docs/providers/index.md) | [MCP Integration](docs/mcp/index.md)
+
 ## One Engine, Many Shapes
 
 Ion Engine is a raw agent. On its own, it takes a prompt, talks to an LLM, executes tools, and streams results back. That's it. No opinions. No workflow. No interface.
 
-The power is in what you build around it.
+What matters is what you build around it.
 
 ### A shell script
 
@@ -134,16 +171,16 @@ ion prompt --output json "Review the diff and flag any security concerns" \
 
 ### A full application
 
-As an example, the Ion Desktop is a transparent Electron overlay built on top of the engine. It connects to the daemon over a Unix socket, sends NDJSON commands, and renders streamed events in React. The engine runs every session. The desktop is purely an interface.
+Any socket client can be a full application. Your UI connects to the engine's Unix socket, sends JSON commands, and renders streamed events. The engine runs every session. Your app is purely an interface.
 
 ```
-Desktop (React) ──[IPC]──> EngineBridge ──[Unix socket]──> Ion Engine
+Your App ──[Unix socket]──> Ion Engine
 ```
 
 The wiring is a thin socket client. Connect, write JSON lines, parse events:
 
 ```typescript
-// desktop/src/main/engine-bridge.ts (simplified)
+// Example socket client (simplified)
 import { createConnection } from 'net'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -168,9 +205,9 @@ conn.on('data', (chunk) => {
 })
 ```
 
-The desktop never calls an LLM. It never executes a tool. It asks the engine, and the engine handles everything. You could replace the desktop with a web app, a terminal UI, a VS Code extension, or a mobile app, and the engine wouldn't know the difference.
+The client never calls an LLM or executes a tool. It sends commands to the engine, and the engine handles the rest.
 
-Notice the `key` field in every command. That's session routing. Ion Desktop uses this to manage tabs: each tab starts a session with a unique key, sends prompts to that key, and filters incoming events by key to render in the correct tab. One socket connection, one daemon, many independent sessions running in parallel. The same mechanism that powers `ion prompt --key` and `ion attach --key` from the CLI is what powers a full multiplexed and tabbed application.
+Notice the `key` field in every command. That's session routing. Every session gets a unique key, and any client can send prompts or filter events by key. A tabbed desktop app uses keys for tabs. A container singleton launched by a KEDA scaler uses keys to multiplex queue events. A CI pipeline uses keys to run parallel review sessions. One daemon, many independent sessions, any number of clients.
 
 ### A workflow orchestration
 
@@ -183,7 +220,7 @@ An extension can register multiple agents, each with its own model, tools, and s
 # Step 1: QA harness -- one extension with review, test, and report agents
 # The LLM orchestrates internally: reviews the diff, generates tests,
 # runs them, and produces a structured report. One prompt, multiple agents.
-report=$(ion prompt --output json --extension ./extensions/qa-harness \
+report=$(ion prompt --output json --extension ./extensions/qa-harness.js \
   "Review the staged diff for security and style issues. Generate tests \
    for anything flagged. Run the tests. Produce a structured QA report \
    with pass/fail status, issue severity, and coverage metrics.")
@@ -192,16 +229,16 @@ report=$(ion prompt --output json --extension ./extensions/qa-harness \
 # This harness has agents for formatting, email drafting, and Slack posting.
 # It picks up where the QA harness left off.
 echo "$report" | jq -r '.result' | \
-  ion prompt --extension ./extensions/publish-harness \
+  ion prompt --extension ./extensions/publish-harness.js \
   "Format this QA report for stakeholders. Post a summary to #engineering \
    in Slack. Email the full report to the team leads."
 ```
 
 The QA harness extension registers a code-reviewer agent, a test-writer agent, and a report-generator agent. It also registers tools: `lint`, `run_tests`, `coverage`. When the LLM receives the prompt, it delegates to each agent as needed. The agents run their own tool loops, call the extension's custom tools, and report back. The harness handles the entire review-test-report workflow internally.
 
-The publication harness is a completely different extension with its own agents (formatter, email-drafter, slack-poster) and tools (`send_email`, `post_slack`, `render_pdf`). It doesn't know or care about code review. It takes structured input and distributes it to the right channels.
+The publication harness is a completely different extension with its own agents (formatter, email-drafter, slack-poster) and tools (`send_email`, `post_slack`, `render_pdf`). It knows nothing about code review. It takes structured input and distributes it.
 
-Two invocations. Two harnesses. Each harness is a self-contained multi-agent system with its own tools, hooks, and orchestration logic. The shell script sequences them; the engine runs each one.
+Two invocations, two harnesses. Each one is a self-contained multi-agent system with its own tools, hooks, and orchestration logic. The shell script sequences them and the engine runs each one.
 
 You could also run a single agent per invocation for simple tasks. But the engine supports sub-agents, parallel tool execution, and extension-registered tools specifically so you can build harnesses that do real work in a single prompt, not just wrap one LLM call.
 
@@ -264,10 +301,10 @@ Register agents in your extension's `init` response. They live in code, ship wit
 ```javascript
 // Inside your extension's init handler
 reply(msg.id, {
-  name: 'ops-harness',
+  name: 'db-explorer',
   agents: [
-    { name: 'triage-agent', description: 'Assess issue priority', model: 'claude-haiku-4-5-20251001' },
-    { name: 'comms-agent', description: 'Draft status updates', model: 'claude-sonnet-4-6' }
+    { name: 'analyst', description: 'Write and run SQL queries to answer data questions', model: 'claude-sonnet-4-6' },
+    { name: 'summarizer', description: 'Summarize query results into plain language', model: 'claude-haiku-4-5-20251001' }
   ]
 })
 ```
@@ -298,7 +335,7 @@ Read the diff, read the surrounding code for context, then deliver
 a structured review. Be direct. Skip praise for things that are simply correct.
 ```
 
-That's a complete agent definition. The frontmatter declares capabilities. The body becomes the system prompt. Once a harness loads and registers this agent, the LLM can delegate to it by name, and it runs its own tool loop with only the tools you listed.
+The frontmatter declares capabilities and the body becomes the system prompt. Once a harness loads and registers this agent, the LLM can delegate to it by name. It runs its own tool loop with only the tools listed.
 
 **Supported fields:**
 
@@ -342,7 +379,7 @@ Discover(opts) -> AgentGraph -> harness filters -> RegisterAgent() for accepted 
 
 **What this means in practice:**
 
-Your platform team ships a development harness. It installs standard agents to `~/.ion/agents/`:
+A game studio ships a development harness. It installs standard agents to `~/.ion/agents/`:
 
 ```
 ~/.ion/agents/
@@ -363,21 +400,29 @@ game-engine/.ion/agents/
 └── code-reviewer.md          # Override: game-specific review criteria
 ```
 
-When a developer runs the harness from inside `game-engine/`, they get six agents: the three project-local ones plus `test-writer`, `security-scanner`, and `doc-writer` from the harness. The project's `code-reviewer.md` overrides the harness version because project wins by filename.
+When a developer runs the harness from inside `game-engine/`, they get six agents: the three project-local ones plus `test-writer`, `security-scanner`, and `doc-writer` from the global layer. The project's `code-reviewer.md` overrides the global version because project wins by filename.
 
 Different repo, different agents. Same harness. Same binary.
 
-An infrastructure repository layers differently:
+A research lab uses the same layering for a completely different domain. The lab manager installs shared agents:
 
 ```
-infra/.ion/agents/
-├── terraform-planner.md      # Plan and validate Terraform changes
-├── cost-analyzer.md          # Estimate cloud spend from config changes
-├── drift-detector.md         # Compare live state against declared state
-└── security-scanner.md       # Override: infra-specific security checks
+~/.ion/agents/
+├── literature-search.md      # Search and summarize published papers
+├── data-analyst.md           # Statistical analysis on lab results
+└── report-writer.md          # Format findings into publication drafts
 ```
 
-Same harness, same four base agents, completely different specialization. The developer doesn't configure anything. They `cd` into the repo, the harness calls `Discover()` with `IncludeProjectDir: true`, and the right agents are there.
+Each project adds specialists:
+
+```
+materials-lab/.ion/agents/
+├── experiment-planner.md     # Design experiments from hypotheses
+├── spectroscopy-reader.md    # Parse and interpret XRD/SEM output
+└── report-writer.md          # Override: materials science formatting
+```
+
+Same mechanism, nothing to do with code. The researcher runs the harness from inside `materials-lab/`, gets the project specialists plus `literature-search` and `data-analyst` from the global layer, and the project's `report-writer.md` overrides the global one.
 
 ### Agent hierarchies
 
@@ -396,7 +441,7 @@ model: claude-sonnet-4-6
 name: researcher
 parent: lead
 description: Deep research and analysis
-model: claude-haiku-4-5-20251001
+model: claude-sonnet-4-6
 tools: [Read, Grep, Glob, WebSearch, WebFetch]
 ---
 
@@ -414,7 +459,7 @@ Once the harness registers these agents, the lead can delegate to the researcher
 
 ### Everything composes
 
-This is where it clicks. Sub-agents aren't a standalone feature. They combine with everything else.
+Sub-agents combine with everything else in the engine.
 
 **Agents + Extensions + Hooks:**
 
@@ -422,11 +467,11 @@ Your extension registers custom tools (deploy, query database, send notification
 
 **Agents + Model routing:**
 
-The lead agent runs on Opus for complex reasoning. Researchers run on Haiku for speed. The security scanner runs on Sonnet for the right balance. Each agent file declares its model. A `model_select` hook can override any of them based on cost budgets or time-of-day routing. Your harness controls the spend without touching the agent definitions.
+The lead agent runs on Opus for complex reasoning. Researchers run on Sonnet for depth. Formatters and classifiers run on Haiku for speed. Each agent file declares its model. A `model_select` hook can override any of them based on cost budgets or time-of-day routing. Your harness controls the spend without touching the agent definitions.
 
 **Agents + Sealed enterprise config:**
 
-Your security team seals the permission policy at the enterprise layer. Every agent, whether loaded from the harness, from the project, or registered inline by an extension, runs inside those guardrails. Teams customize agents freely. The security floor never moves.
+Your security team seals the permission policy at the enterprise layer. All agents run inside those guardrails regardless of where they were loaded from. Teams customize agents freely, but the security floor holds.
 
 ### Build any harness
 
@@ -440,9 +485,7 @@ A **farm management** harness with agents that analyze soil sensor data, plan cr
 
 A **department operations** harness with agents that triage inbound requests, draft internal communications, track project timelines, and prepare budget summaries. Different departments layer their own agents on top.
 
-The engine handles the agent loop, tool execution, streaming, and multi-provider abstraction. Your harness handles the domain. Your agents handle the expertise. Your extensions handle the integrations. Your hooks handle the policy.
-
-One binary. Any domain. Layer what you need.
+The engine handles the agent loop, tool execution, streaming, and multi-provider abstraction. Your harness owns the domain, your agents own the expertise, your extensions own the integrations, and your hooks own the policy.
 
 ### Fork it
 
@@ -452,17 +495,19 @@ The engine is a single static binary with zero runtime dependencies. Every LLM p
 
 If you build a harness on Ion Engine and decide tomorrow that you need to go a different direction, fork it. The entire runtime is yours. Your agents are markdown files you already own. Your extensions are standalone processes you already wrote. Nothing is locked inside a platform you can't reach.
 
-This is a starting point and a core. Build on it, customize it, ship it to your team, ship it to your customers. It's yours.
+Build on it, customize it, ship it to your team or your customers.
 
 ## Talk to Any Model
 
-Fourteen providers. Zero SDKs. Every provider is implemented as raw HTTP with SSE parsing, so there are no transitive dependencies to audit, no version conflicts to untangle, and no vendor lock-in to negotiate your way out of.
+Sixteen providers, zero SDKs. Every provider is raw HTTP with SSE parsing. No transitive dependencies, no version conflicts, no vendor lock-in.
 
 **Native:** Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, Vertex AI, Azure AI Foundry
 
 **OpenAI-compatible:** Groq, Cerebras, Mistral, OpenRouter, Together, Fireworks, xAI, DeepSeek, Ollama
 
-Point it at your own endpoint. Swap models mid-session. Route traffic through your AI gateway. The engine doesn't care where the tokens come from.
+Point it at your own endpoint, swap models mid-session, or route traffic through your AI gateway.
+
+The provider interface is pluggable. Implement two methods (`ID()` and `Stream()`) and register your own provider for any LLM endpoint the built-in ones don't cover.
 
 ## Extend Everything
 
@@ -473,236 +518,256 @@ Extensions are where you make the engine yours. An extension is a subprocess tha
 **1. Create the extension:**
 
 ```bash
-mkdir -p ~/.ion/extensions/ops-harness
+mkdir -p ~/.ion/extensions
 ```
 
-**2. Register tools and hooks:**
+**2. Write the extension:**
 
-This extension gives the engine access to your calendar, issue tracker, and team chat. It also hooks into tool calls to enforce a policy: no sending messages outside business hours.
+This extension connects the agent to your database. It can explore schemas, run queries, and answer questions about your data. A `tool_call` hook blocks any query that would modify data.
 
-```javascript
-// ~/.ion/extensions/ops-harness/index.js
-const readline = require('readline')
-const rl = readline.createInterface({ input: process.stdin })
+```typescript
+// db-explorer.ts
+import { createIon } from 'ion-sdk'
+import pg from 'pg'
 
-function reply(id, result) {
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
-}
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+const ion = createIon()
 
-rl.on('line', (line) => {
-  const msg = JSON.parse(line)
-
-  if (msg.method === 'init') {
-    reply(msg.id, {
-      name: 'ops-harness',
-      hooks: ['tool_call'],
-      tools: [
-        { name: 'calendar', description: 'List calendar events for a date range',
-          parameters: { type: 'object', properties: {
-            start: { type: 'string' }, end: { type: 'string' }
-          }}},
-        { name: 'issues', description: 'Search issue tracker (open, assigned, priority)',
-          parameters: { type: 'object', properties: {
-            assignee: { type: 'string' }, status: { type: 'string' }
-          }}},
-        { name: 'notify', description: 'Send a message to a Teams channel or person',
-          parameters: { type: 'object', properties: {
-            to: { type: 'string' }, message: { type: 'string' }
-          }}}
-      ],
-      // Register specialized agents the LLM can delegate to
-      agents: [
-        { name: 'triage-agent', description: 'Analyze open issues, assess priority, recommend actions',
-          model: 'claude-haiku-4-5-20251001' },
-        { name: 'comms-agent', description: 'Draft status updates, meeting prep notes, and team notifications',
-          model: 'claude-sonnet-4-6' }
-      ]
-    })
-    return
+// Block any query that could modify data
+ion.on('tool_call', (ctx, payload) => {
+  if (payload.tool === 'query') {
+    const sql = (payload.input?.sql || '').toUpperCase()
+    if (/\b(DROP|DELETE|TRUNCATE|ALTER|INSERT|UPDATE)\b/.test(sql))
+      return { block: true, reason: 'Read-only access. Destructive queries are blocked.' }
   }
-
-  // Tool execution -- the engine calls these when the LLM invokes them
-  if (msg.method === 'tool' && msg.params) {
-    const { name, input } = msg.params
-    if (name === 'calendar')  reply(msg.id, { output: fetchCalendar(input) })
-    if (name === 'issues')    reply(msg.id, { output: searchIssues(input) })
-    if (name === 'notify')    reply(msg.id, { output: sendNotification(input) })
-    return
-  }
-
-  // Hook: block outbound messages outside business hours
-  if (msg.method === 'hook' && msg.params.hook === 'tool_call') {
-    const { tool } = msg.params.data
-    if (tool === 'notify') {
-      const hour = new Date().getHours()
-      if (hour < 8 || hour > 18) {
-        reply(msg.id, { blocked: true, reason: 'Outbound messages blocked outside 8am-6pm.' })
-        return
-      }
-    }
-    reply(msg.id, {}) // no opinion on other tools
-    return
-  }
-
-  reply(msg.id, {})
 })
 
-// -- Your integrations (replace with real API calls) --
-function fetchCalendar(input)    { /* Microsoft Graph, Google Calendar, etc. */ }
-function searchIssues(input)     { /* YouTrack, Linear, Jira, GitHub Issues */ }
-function sendNotification(input) { /* Teams, Slack, email */ }
+ion.registerTool({
+  name: 'query',
+  description: 'Run a read-only SQL query and return the results',
+  parameters: { type: 'object', properties: {
+    sql: { type: 'string', description: 'SQL query to execute' }
+  }, required: ['sql'] },
+  execute: async (params) => {
+    const result = await pool.query(params.sql)
+    return { content: JSON.stringify(result.rows, null, 2) }
+  },
+})
+
+ion.registerTool({
+  name: 'schema',
+  description: 'List tables or describe a specific table schema',
+  parameters: { type: 'object', properties: {
+    table: { type: 'string', description: 'Table name (omit to list all tables)' }
+  }},
+  execute: async (params) => {
+    const sql = params.table
+      ? `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '${params.table}' ORDER BY ordinal_position`
+      : `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`
+    const result = await pool.query(sql)
+    return { content: JSON.stringify(result.rows, null, 2) }
+  },
+})
 ```
 
-The extension registers three tools and two sub-agents. The triage agent runs on a smaller model (fast, cheap) to sort through issues. The comms agent runs on a stronger model to draft polished updates. Both agents inherit the extension's tools, so they can pull from your calendar, query your issue tracker, and send notifications. The engine runs each agent in its own tool loop and feeds the results back to the parent session.
+Two tools and one hook. The agent can explore your schema, write queries to answer questions, and dig into the results. The hook ensures it stays read-only. The SDK handles the rest.
 
-**3. Use it from a single prompt:**
+**3. Use it:**
 
 ```bash
-ion prompt --extension ~/.ion/extensions/ops-harness \
-  "What's on my calendar today? Triage my open issues and draft status updates \
-   for anything that's moved since yesterday."
+ion prompt --extension ~/.ion/extensions/db-explorer.ts \
+  "What are the top 10 customers by revenue this quarter? Break it down by region."
 ```
 
-The LLM sees the calendar, issues, and notify tools alongside the built-in Agent tool. It can call your custom tools directly, or delegate to the triage and comms agents for focused work. The agents run their own tool loops in parallel, then report back.
+The agent calls `schema` to understand your tables, writes SQL to answer the question, runs it via `query`, interprets the results, and explains what it found. You get analysis from someone who can read your actual data, not a generic chatbot working from a description of it.
 
-**4. Chain it into a multi-step pipeline:**
+**4. Chain it into a pipeline:**
 
 ```bash
 #!/bin/bash
-# morning-briefing.sh -- daily ops pipeline
+# daily-report.sh -- automated data analysis pipeline
 
-# Step 1: Gather and triage (agents work in parallel)
-briefing=$(ion prompt --output json --extension ~/.ion/extensions/ops-harness \
-  "Pull my calendar for today. Dispatch the triage-agent to assess my open \
-   P0/P1 issues. Summarize what I need to focus on and flag any conflicts.")
+# Step 1: Analyze the data
+analysis=$(ion prompt --output json --extension ~/.ion/extensions/db-explorer.ts \
+  "Query revenue by region for the current quarter. Identify any regions \
+   that dropped more than 10% compared to last quarter. Output a JSON \
+   summary with region, current, previous, and percent_change fields.")
 
-# Step 2: Draft comms based on triage results
-actions=$(echo "$briefing" | jq -r '.result' | \
-  ion prompt --output json --extension ~/.ion/extensions/ops-harness \
-  "Dispatch the comms-agent to draft status updates for each triaged issue. \
-   If any meetings need prep, have it list what I should review beforehand.")
-
-# Step 3: Send everything out
-echo "$actions" | jq -r '.result' | \
-  ion prompt --extension ~/.ion/extensions/ops-harness \
-  "Send the status updates to the #engineering channel. \
-   Send the meeting prep notes to me directly."
+# Step 2: Decide whether to escalate
+echo "$analysis" | jq -r '.result' | \
+  ion prompt --extension ~/.ion/extensions/notify.ts \
+  "If any region dropped more than 20%, send an alert to the webhook \
+   with the details. Otherwise, send a routine summary."
 ```
 
-Three sequential prompts. Same extension, same tools, same policy hooks. Each invocation loads the ops-harness extension, runs the prompt, and exits. The engine handles the LLM interaction and tool execution at each step. The script handles the flow.
+The script sequences two extensions. The db-explorer queries and analyzes; the notifier decides whether to escalate or summarize. Each invocation is self-contained.
 
 ### Where extensions live
 
-The engine looks for extensions in three places, in order:
+Extensions are loaded explicitly by file path. Pass `--extension` on the CLI or list them in your `engine.json` config. The engine does not auto-discover extensions. You decide what loads and when.
 
-| Location | Scope | Use case |
-|----------|-------|----------|
-| `.ion/extensions/` | Project | Project-specific behavior (CI guards, team conventions) |
-| `~/.ion/extensions/` | User global | Personal workflow (cost limits, model preferences) |
-| Profile config path | Explicit | Referenced by absolute path in `~/.ion/settings.json` |
+```bash
+# Single extension
+ion prompt --extension ~/.ion/extensions/db-explorer.ts "Show me the schema"
 
-Each extension directory needs an entry point: `index.js` (Node.js), `main` (native binary), or any executable the engine can spawn.
+# Multiple extensions (repeat the flag)
+ion prompt \
+  --extension ~/.ion/extensions/guardrails.ts \
+  --extension ~/.ion/extensions/db-explorer.ts \
+  "What are our top customers?"
+```
+
+Or in config:
+
+```json
+{
+  "extensions": [
+    "~/.ion/extensions/guardrails.ts",
+    "~/.ion/extensions/db-explorer.ts"
+  ]
+}
+```
+
+All your extensions can live in a single directory as named files:
+
+```
+~/.ion/extensions/
+├── guardrails.ts       # org-wide safety policy
+├── db-explorer.ts      # database query tools
+├── notify.ts           # webhook notifications
+└── audit-trail         # compiled Go binary
+```
+
+Supported file types: `.js` (Node.js), `.ts` (auto-transpiled via esbuild), or a compiled binary (no extension).
+
+### Stacking extensions
+
+Extensions compose. Load a shared guardrails extension alongside a domain-specific one, and hooks from both fire in order. A guardrails extension that blocks destructive commands works across every domain extension without duplicating hook logic.
+
+```bash
+# Org-wide guardrails + database tools
+ion prompt \
+  --extension ~/.ion/extensions/guardrails.ts \
+  --extension ~/.ion/extensions/db-explorer.ts \
+  "Show me all users created in the last 24 hours"
+```
+
+The guardrails extension blocks destructive commands and enforces approval workflows. The db-explorer registers query and schema tools. Both load into the same session. Hooks fire in the order extensions were loaded: guardrails first, then db-explorer. If guardrails blocks a tool call, db-explorer never sees it.
+
+Ship your guardrails extension into containers alongside domain extensions. Configure it in your base `engine.json` so it always loads. Teams add their own extensions on top without worrying about safety policy.
 
 ### The protocol
 
-Extensions don't use an SDK. They speak a simple protocol:
+The only requirement is JSON-RPC 2.0 over stdin/stdout:
 
 ```
 Engine                              Extension
   │                                    │
   │──── init ─────────────────────────>│  "what hooks and tools do you have?"
-  │<─── result ────────────────────────│  hooks: [tool_call], tools: [calendar, issues, notify]
+  │<─── result ────────────────────────│  hooks: [tool_call], tools: [query, schema]
   │                                    │
-  │──── tool: calendar ───────────────>│  LLM called your custom tool
-  │<─── result ────────────────────────│  { output: "9am: standup, 2pm: design review..." }
+  │──── tool: query ──────────────────>│  LLM called your custom tool
+  │<─── result ────────────────────────│  { output: "[{\"region\": \"west\", \"revenue\": 142000}, ...]" }
   │                                    │
-  │──── hook: tool_call ──────────────>│  LLM wants to call "notify" at 11pm
-  │<─── result ────────────────────────│  { blocked: true, reason: "outside business hours" }
+  │──── hook: tool_call ──────────────>│  LLM wants to run "DROP TABLE users"
+  │<─── result ────────────────────────│  { blocked: true, reason: "Read-only access." }
   │                                    │
 ```
 
 Every message is a JSON-RPC 2.0 line on stdin/stdout. Return `{}` or `null` from any hook to express no opinion. The engine proceeds with the original data.
 
-This means you can write extensions in anything: Python, Go, Rust, a shell script. No SDK required. If your language can read stdin and write stdout, you can build an extension.
+You can also write extensions against this protocol directly in any language, without the SDK. If your language reads stdin and writes stdout, it can be an extension. The SDK examples above and below use TypeScript and Go, but raw JSON-RPC works in Python, Rust, a shell script, or anything else.
 
-### Extension SDKs
+Here's a second extension in both TypeScript and Go: a webhook notifier that pings Slack, Discord, or any webhook URL when agents finish work or hit errors.
 
-Helper libraries that wrap the JSON-RPC protocol so you can focus on logic instead of parsing.
+**TypeScript SDK:**
 
-**Go SDK:**
+```typescript
+// notify.ts
+import { createIon } from 'ion-sdk'
+import https from 'https'
 
-```go
-// ~/.ion/extensions/audit-log/main.go
-package main
+const WEBHOOK = process.env.ION_WEBHOOK_URL || ''
+const ion = createIon()
+let totalCost = 0
 
-import "github.com/dsswift/ion/extension"
-
-func main() {
-    ext := extension.New("audit-log")
-    ext.OnHook("tool_call", func(ctx *extension.Context, data any) (any, error) {
-        // Log every tool call to an audit trail
-        logToAuditService(data)
-        return nil, nil // nil = no opinion, don't modify
-    })
-    ext.Run() // blocks, reads JSON-RPC from stdin
-}
-```
-
-**TypeScript / JavaScript:**
-
-```javascript
-// ~/.ion/extensions/cost-router/index.js
-const readline = require('readline')
-const rl = readline.createInterface({ input: process.stdin })
-
-function reply(id, result) {
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
+function ping(text: string) {
+  if (!WEBHOOK) return
+  const body = JSON.stringify({ text })
+  const url = new URL(WEBHOOK)
+  const req = https.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+  req.end(body)
 }
 
-rl.on('line', (line) => {
-  const msg = JSON.parse(line)
+ion.on('turn_end', (ctx, payload) => {
+  totalCost += payload?.costUsd || 0
+  if (totalCost > 5.0) ping(`Cost alert: session has spent $${totalCost.toFixed(2)}`)
+})
 
-  if (msg.method === 'init') {
-    reply(msg.id, {
-      name: 'cost-router',
-      hooks: ['model_select', 'tool_call'],
-      tools: [
-        { name: 'deploy', description: 'Deploy the current branch to staging',
-          parameters: { type: 'object', properties: { branch: { type: 'string' } } } }
-      ]
-    })
-    return
-  }
+ion.on('on_error', (ctx, payload) => {
+  ping(`Agent error: ${payload?.message || 'unknown'}`)
+})
 
-  if (msg.method === 'hook' && msg.params.hook === 'model_select') {
-    if (msg.params.data.costUsd > 0.50) {
-      reply(msg.id, { model: 'claude-haiku-4-5-20251001' })
-      return
-    }
-    reply(msg.id, {})
-    return
-  }
-
-  if (msg.method === 'hook' && msg.params.hook === 'tool_call') {
-    const { tool, input } = msg.params.data
-    if (tool === 'Bash' && input.command.includes('rm -rf')) {
-      reply(msg.id, { blocked: true, reason: 'Destructive command blocked by policy.' })
-      return
-    }
-    reply(msg.id, {})
-    return
-  }
-
-  if (msg.method === 'tool' && msg.params.name === 'deploy') {
-    reply(msg.id, { output: runDeploy(msg.params.input.branch) })
-    return
-  }
-
-  reply(msg.id, {})
+ion.on('agent_end', (ctx, payload) => {
+  ping(`Agent finished: ${payload?.name || 'main'} ($${totalCost.toFixed(2)} total)`)
 })
 ```
 
-Name the entry point `index.js` for Node.js or `extension.ts` for TypeScript (auto-bundled via esbuild). Both speak the same JSON-RPC protocol.
+**Same extension in Go:**
+
+```go
+// go build -o ~/.ion/extensions/notify
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "os"
+
+    "github.com/dsswift/ion/extension"
+)
+
+var webhook = os.Getenv("ION_WEBHOOK_URL")
+var totalCost float64
+
+func ping(text string) {
+    if webhook == "" { return }
+    body, _ := json.Marshal(map[string]string{"text": text})
+    http.Post(webhook, "application/json", bytes.NewReader(body))
+}
+
+func main() {
+    ext := extension.New("notify")
+
+    ext.OnHook("turn_end", func(ctx *extension.Context, data any) (any, error) {
+        if m, ok := data.(map[string]any); ok {
+            if cost, ok := m["costUsd"].(float64); ok { totalCost += cost }
+            if totalCost > 5.0 { ping(fmt.Sprintf("Cost alert: session has spent $%.2f", totalCost)) }
+        }
+        return nil, nil
+    })
+
+    ext.OnHook("on_error", func(ctx *extension.Context, data any) (any, error) {
+        if m, ok := data.(map[string]any); ok {
+            ping(fmt.Sprintf("Agent error: %v", m["message"]))
+        }
+        return nil, nil
+    })
+
+    ext.OnHook("agent_end", func(ctx *extension.Context, data any) (any, error) {
+        if m, ok := data.(map[string]any); ok {
+            ping(fmt.Sprintf("Agent finished: %v ($%.2f total)", m["name"], totalCost))
+        }
+        return nil, nil
+    })
+
+    ext.Run()
+}
+```
+
+Both do the same thing. Set `ION_WEBHOOK_URL` and every session sends live updates to your channel. The TypeScript version auto-transpiles when loaded; the Go version compiles to a static binary.
 
 ### What extensions can do
 
@@ -725,25 +790,39 @@ Name the entry point `index.js` for Node.js or `extension.ts` for TypeScript (au
 - Manage persistent state. Extensions handle their own storage.
 - Override enterprise policy. Sealed config always wins.
 
-### 43 hooks
+### 55 hooks
 
 | Category | Hooks |
 |----------|-------|
-| **Session** | `session_start`, `session_end`, `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch` |
-| **Prompt** | `before_prompt`, `input`, `before_agent_start` |
-| **Turn** | `turn_start`, `turn_end`, `message_start`, `message_end`, `message_update` |
-| **Tool** | `tool_start`, `tool_end`, `tool_call`, `tool_result`, `user_bash` |
-| **Agent** | `agent_start`, `agent_end` |
-| **Provider** | `before_provider_request`, `model_select`, `context` |
-| **Error** | `on_error` |
-| **Per-tool** | `{bash,read,write,edit,grep,glob,agent}_tool_{call,result}` (14 hooks) |
-| **Context** | `context_discover`, `context_load`, `instruction_load` |
-| **Permission** | `permission_request`, `permission_denied` |
-| **File** | `file_changed` |
-| **Task** | `task_created`, `task_completed` |
-| **Elicitation** | `elicitation_request`, `elicitation_result` |
+| **Lifecycle** (13) | `session_start`, `session_end`, `before_prompt`, `turn_start`, `turn_end`, `message_start`, `message_end`, `tool_start`, `tool_end`, `tool_call`, `on_error`, `agent_start`, `agent_end` |
+| **Session** (5) | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch` |
+| **Pre-action** (2) | `before_agent_start`, `before_provider_request` |
+| **Content** (7) | `context`, `message_update`, `tool_result`, `input`, `model_select`, `user_bash`, `plan_mode_prompt` |
+| **Per-tool call** (7) | `bash_tool_call`, `read_tool_call`, `write_tool_call`, `edit_tool_call`, `grep_tool_call`, `glob_tool_call`, `agent_tool_call` |
+| **Per-tool result** (7) | `bash_tool_result`, `read_tool_result`, `write_tool_result`, `edit_tool_result`, `grep_tool_result`, `glob_tool_result`, `agent_tool_result` |
+| **Context** (3) | `context_discover`, `context_load`, `instruction_load` |
+| **Permission** (2) | `permission_request`, `permission_denied` |
+| **File** (1) | `file_changed` |
+| **Task** (2) | `task_created`, `task_completed` |
+| **Elicitation** (2) | `elicitation_request`, `elicitation_result` |
+| **Context injection** (1) | `context_inject` |
+| **Capability** (3) | `capability_discover`, `capability_match`, `capability_invoke` |
 
-See the full [extension reference](engine/README.md#extensions) for init handshake format, hook data shapes, and protocol details.
+See the full [extension reference](docs/extensions/index.md) for init handshake format, hook data shapes, and protocol details.
+
+### Ion Meta: build harnesses with a harness
+
+Ion ships with a meta-extension for building new extensions. Ion Meta is both a working example of a multi-agent extension and a practical tool for scaffolding your own.
+
+```bash
+# Start a session with ion-meta loaded
+ion prompt --extension ~/.ion/extensions/ion-meta.ts \
+  "/ion-meta scaffold a new extension for monitoring Kubernetes pods"
+```
+
+Ion Meta includes specialist agents (extension architect, agent designer, hook specialist, testing guide) and tools for scaffolding, validation, and hook discovery.
+
+See the [ion-meta README](engine/extensions/ion-meta/README.md) for the full walkthrough.
 
 ## Security You Control
 
@@ -754,7 +833,7 @@ The engine ships security primitives. It does not enforce them by default. Your 
 - **OS-level sandboxing.** Seatbelt profiles on macOS, bubblewrap containers on Linux. Opt-in via engine config.
 - **Secret redaction.** Credential scanning that catches keys and tokens before they leak into conversation history. Enable it in your security config.
 
-The hook system gives you the seams to build your own permission logic from scratch. Block tool calls, rewrite commands, gate execution behind approval workflows. The engine provides the tools. You enforce the policy.
+The hook system lets you build your own permission logic on top. Block tool calls, rewrite commands, or gate execution behind approval workflows.
 
 ## Enterprise Without the Overhead
 
@@ -815,7 +894,7 @@ Flags override config for a single invocation:
 ion prompt --model claude-haiku-4-5-20251001 --max-turns 5 --max-budget 0.50 "Quick question"
 ```
 
-See the [engine docs](engine/README.md) for the full config reference.
+See the [configuration reference](docs/configuration/engine-json.md) for the full config schema.
 
 ## Architecture
 
@@ -832,19 +911,17 @@ Clients connect over a Unix socket and send NDJSON commands. The engine runs the
 
 For non-socket integrations, `ion rpc` reads commands from stdin and writes events to stdout.
 
-## 15 Built-in Tools
+## 14 Built-in Tools
 
-Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, Task management, NotebookEdit, and LSP. Extensions can register additional tools or replace the built-ins entirely.
+Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, and ReadMcpResource. Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are opt-in via harness configuration. Extensions can register additional tools or replace the built-ins entirely.
 
-## Companion Products
+## Reference Clients
 
-This monorepo includes three products built on top of the engine.
+This repo includes example applications built on the engine. They show what you can build on the engine, but the engine itself is the product.
 
-| Product | Description |
-|---------|-------------|
-| [Desktop](desktop/) | Electron overlay for macOS. Transparent, always-on-top, click-through. Connects to the engine over Unix socket. |
-| [iOS Remote](ios/) | iPhone companion. View sessions, approve permissions, send prompts. End-to-end encrypted. |
-| [Relay](relay/) | WebSocket relay for remote access between Desktop and iOS. Stateless, never decrypts content. |
+- **[Desktop](desktop/)**: Electron overlay that connects to the engine over Unix socket.
+- **[iOS Remote](ios/)**: iPhone companion for remote session monitoring.
+- **[Relay](relay/)**: WebSocket relay for bridging clients across networks.
 
 ## Build from Source
 
