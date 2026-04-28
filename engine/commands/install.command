@@ -19,7 +19,7 @@ if [[ -S "$ION_HOME/engine.sock" ]]; then
   ENGINE_PID=$(lsof -t "$ION_HOME/engine.sock" 2>/dev/null | head -1)
 fi
 if [[ -z "$ENGINE_PID" ]]; then
-  ENGINE_PID=$(pgrep -f "ion serve" 2>/dev/null | head -1)
+  ENGINE_PID=$(pgrep -f "ion serve" 2>/dev/null | head -1 || true)
 fi
 if [[ -n "$ENGINE_PID" ]]; then
   echo "==> Stopping engine daemon (PID $ENGINE_PID)..."
