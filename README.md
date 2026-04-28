@@ -35,7 +35,7 @@ Ion is different in kind, not in quality. It's a **foundation**: a headless runt
 - **Credential management.** Five-level resolver: programmatic override, environment variables, OS keychain, encrypted file store, and CLI proxy for TOS-compliant subscription access via Claude Code.
 - **55 extension hooks** across 15 categories. Intercept and modify behavior at every stage of the agent loop.
 
-You want to build your own Claude Code? Use this engine and wrap your own opinions around it. You want non-coding agent orchestrations? Build harnesses that coordinate domain-specific agents. You want to embed an agent runtime in a container sidecar, a CI pipeline, or a web API? It's a single static Go binary with no runtime dependencies.
+You want to build your own coding agent? Use this engine and wrap your own opinions around it. You want non-coding agent orchestrations? Build harnesses that coordinate domain-specific agents. You want to embed an agent runtime in a container sidecar, a CI pipeline, or a web API? It's a single static Go binary with no runtime dependencies.
 
 Ion is a starting point. The runtime handles the hard parts and stays out of the way on everything else.
 
@@ -45,16 +45,35 @@ Ion is a starting point. The runtime handles the hard parts and stays out of the
 # Install (macOS)
 curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-darwin-arm64 \
   -o /usr/local/bin/ion && chmod +x /usr/local/bin/ion
+```
 
-# Run your first prompt (no daemon, no setup)
+Ion ships with no default model. That is a deliberate choice. You bring the opinions, including which model runs your agents. Drop a config at `~/.ion/engine.json` before your first prompt:
+
+```json
+{
+  "defaultModel": "qwen2.5:14b",
+  "providers": {
+    "ollama": {}
+  }
+}
+```
+
+The example above runs `qwen2.5:14b` locally on Ollama with no API key required. Other supported models work the same way: `gpt-4o` for OpenAI, `claude-sonnet-4-6` for Anthropic, `mistral-large-latest` for Mistral. Set `defaultModel` to whichever model you want and configure its provider block. See the [Model and Provider Configuration](#model-and-provider-configuration) section below or the [Provider Setup](docs/providers/index.md) docs for the full catalog.
+
+For hosted providers, export the matching credential before running:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+# or ANTHROPIC_API_KEY, GOOGLE_API_KEY, MISTRAL_API_KEY, etc.
+```
+
+Now run your first prompt:
+
+```bash
 ion prompt "What files are in the current directory?"
 ```
 
-One command. The engine starts in-process, calls the LLM, executes tools, streams the result to stdout, and exits. No daemon, no socket, no background process. Set an API key before your first prompt:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
+One command. The engine starts in-process, calls the LLM, executes tools, streams the result to stdout, and exits. No daemon, no socket, no background process.
 
 One-shot mode works well for scripted workflows: shell scripts, cron jobs, git hooks, CI pipelines, orchestration scripts. Each invocation is self-contained.
 
@@ -136,7 +155,7 @@ Why daemon mode:
 - **Real-time streaming.** Connect with `ion attach` and watch events flow as the agent works. Pipe NDJSON into `jq`, a monitoring dashboard, or an approval workflow. Build integrations that react to tool calls, text output, and errors in real time.
 - **Session management.** Run multiple sessions in parallel, each with its own model, extensions, and working directory. Route prompts to the right session by key. One daemon, many workstreams.
 
-One-shot mode runs a fresh engine per invocation. Daemon mode runs one engine that serves everything. Use one-shot for scripts and automation. Use daemon mode for applications and interactive workflows. Both load the same config, discover the same extensions, and run the same agent loop.
+One-shot mode runs a fresh engine per invocation. Daemon mode runs one engine that serves everything. Use one-shot for scripts and automation. Use daemon mode for applications and interactive workflows. Both load the same config, run the extensions you specify (passed with `--extension` or listed in `~/.ion/settings.json` profiles), and run the same agent loop.
 
 See the [engine docs](engine/README.md) for Linux, Windows, and Docker install instructions.
 
@@ -152,9 +171,48 @@ Full technical documentation lives in [`docs/`](docs/index.md). Start here based
 
 Key references: [Socket Protocol](docs/protocol/index.md) | [CLI Reference](docs/cli/reference.md) | [Tools Reference](docs/tools/reference.md) | [Provider Setup](docs/providers/index.md) | [MCP Integration](docs/mcp/index.md)
 
+## Model and Provider Configuration
+
+Ion supports 16 providers and lets you plug in your own through a common interface. The engine picks a provider in this order: a registered model in `~/.ion/models.json`, then a built-in name-prefix match (`claude-*`, `gpt-*`, `qwen*`, `llama*`, `gemini-*`, `mistral*`, `grok*`, `deepseek-*`, and so on), then a hard error if neither matches.
+
+Set the model you want in `~/.ion/engine.json` and configure its provider block:
+
+```json
+{
+  "defaultModel": "qwen2.5:14b",
+  "providers": {
+    "ollama": {},
+    "openai": { "apiKey": "OPENAI_API_KEY" },
+    "anthropic": { "apiKey": "ANTHROPIC_API_KEY" }
+  }
+}
+```
+
+Need a custom name (a finetune, an OpenRouter route, a tier alias)? Register it under `~/.ion/models.json`:
+
+```json
+{
+  "tiers": {
+    "fast": "qwen2.5:7b",
+    "smart": "claude-sonnet-4-6"
+  },
+  "providers": {
+    "ollama": {
+      "models": {
+        "myteam/qwen-finetune:latest": { "contextWindow": 32768 }
+      }
+    }
+  }
+}
+```
+
+Need to mix cloud and local models in one workflow? See the [Workflows: Model Routing](#workflows-model-routing) example below.
+
+For the full picture, see the [models.json reference](docs/configuration/models.md), the [engine.json reference](docs/configuration/engine-json.md), and the [provider catalog](docs/providers/index.md).
+
 ## One Engine, Many Shapes
 
-Ion Engine is a raw agent. On its own, it takes a prompt, talks to an LLM, executes tools, and streams results back. That's it. No opinions. No workflow. No interface.
+Ion Engine is a raw agent. On its own, it takes a prompt, talks to an LLM, executes tools, and streams results back. That's it. No opinions. No workflow. No interface. No system prompt. The engine ships with no guiding instructions. Every behavior is something you bring.
 
 What matters is what you build around it.
 
@@ -189,7 +247,7 @@ const SOCKET = join(homedir(), '.ion', 'engine.sock')
 const conn = createConnection(SOCKET)
 
 // Send commands as NDJSON
-conn.write(JSON.stringify({ cmd: 'start_session', key: 's1', config: { model: 'claude-sonnet-4-6' } }) + '\n')
+conn.write(JSON.stringify({ cmd: 'start_session', key: 's1', config: { model: 'qwen2.5:14b' } }) + '\n')
 conn.write(JSON.stringify({ cmd: 'prompt', key: 's1', text: 'What files are here?' }) + '\n')
 
 // Receive events as NDJSON
@@ -244,6 +302,29 @@ You could also run a single agent per invocation for simple tasks. But the engin
 
 Because the engine communicates over NDJSON on sockets or stdin/stdout, orchestration is language-agnostic. Write the coordinator in Python, Go, bash, or whatever your infrastructure already speaks.
 
+### Workflows: model routing
+
+Pick the right model for each step instead of paying flagship rates for tasks a small local model can finish in a second. The `--model` flag overrides config per invocation, so a single shell pipeline can mix local and hosted models freely.
+
+```bash
+#!/bin/bash
+# Three-step pipeline that mixes local and hosted models per step.
+
+# Step 1: classify intent on a small local model. Fast, cheap, no API calls.
+intent=$(ion prompt --output json --model qwen2.5:14b \
+  "Classify the topic of this message in one word: '$1'" | jq -r '.result')
+
+# Step 2: deep reasoning on a hosted model that handles structured tasks well.
+analysis=$(ion prompt --output json --model gpt-4o \
+  "The intent is '$intent'. Plan a response that addresses it." | jq -r '.result')
+
+# Step 3: long-form writeup on a long-context model.
+ion prompt --model claude-sonnet-4-6 \
+  "Using this plan, write the final response. Plan: $analysis"
+```
+
+Three models, three providers, one shell script. The engine resolves each model via prefix match (`qwen*` to Ollama, `gpt-*` to OpenAI, `claude-*` to Anthropic), pulls the matching credential from the environment or config, and runs each step in turn. See the [models.json reference](docs/configuration/models.md) for tier aliases that let you write `--model fast` instead of pinning a specific model name.
+
 ### A web API with an engine sidecar
 
 Run the engine as a sidecar process behind a web server. The API handles auth and routing. The engine handles the agent loop.
@@ -280,11 +361,11 @@ ENTRYPOINT ["/app/orchestrate.sh"]
 ```
 
 ```bash
-# Single agent container
-docker run -e ANTHROPIC_API_KEY ion-engine prompt "Analyze this codebase"
+# Single agent container, pointed at a local Ollama daemon on the host
+docker run --network host ion-engine prompt "Analyze this codebase"
 
-# Orchestration script inside a container
-docker run -e ANTHROPIC_API_KEY ion-orchestrator
+# Orchestration script inside a container, using whichever provider you set up
+docker run -e $YOUR_PROVIDER_API_KEY ion-orchestrator
 
 # Multiple specialized containers
 docker compose up reviewer test-writer deployer
@@ -303,8 +384,8 @@ Register agents in your extension's `init` response. They live in code, ship wit
 reply(msg.id, {
   name: 'db-explorer',
   agents: [
-    { name: 'analyst', description: 'Write and run SQL queries to answer data questions', model: 'claude-sonnet-4-6' },
-    { name: 'summarizer', description: 'Summarize query results into plain language', model: 'claude-haiku-4-5-20251001' }
+    { name: 'analyst', description: 'Write and run SQL queries to answer data questions', model: 'gpt-4o' },
+    { name: 'summarizer', description: 'Summarize query results into plain language', model: 'qwen2.5:14b' }
   ]
 })
 ```
@@ -321,7 +402,7 @@ Agent definitions are markdown files with YAML frontmatter. The engine provides 
 ---
 name: code-reviewer
 description: Review code changes for correctness, style, and security
-model: claude-sonnet-4-6
+model: qwen2.5:14b
 tools: [Read, Grep, Glob, Bash]
 ---
 
@@ -433,7 +514,7 @@ Agents can declare a parent. The engine builds a directed graph and catches cycl
 ---
 name: lead
 description: Coordinate sub-agents for complex tasks
-model: claude-sonnet-4-6
+model: gpt-4o
 ---
 
 # .ion/agents/researcher.md
@@ -450,7 +531,7 @@ tools: [Read, Grep, Glob, WebSearch, WebFetch]
 name: implementer
 parent: lead
 description: Write code based on research findings
-model: claude-sonnet-4-6
+model: qwen2.5:14b
 tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
 ```
@@ -467,7 +548,7 @@ Your extension registers custom tools (deploy, query database, send notification
 
 **Agents + Model routing:**
 
-The lead agent runs on Opus for complex reasoning. Researchers run on Sonnet for depth. Formatters and classifiers run on Haiku for speed. Each agent file declares its model. A `model_select` hook can override any of them based on cost budgets or time-of-day routing. Your harness controls the spend without touching the agent definitions.
+The lead agent runs on a strong reasoner. Researchers run on a long-context model. Formatters and classifiers run on a small fast model. Local or hosted, your choice. Each agent file declares its model. A `model_select` hook can override any of them based on cost budgets or time-of-day routing. Your harness controls the spend without touching the agent definitions.
 
 **Agents + Sealed enterprise config:**
 
@@ -486,6 +567,8 @@ A **farm management** harness with agents that analyze soil sensor data, plan cr
 A **department operations** harness with agents that triage inbound requests, draft internal communications, track project timelines, and prepare budget summaries. Different departments layer their own agents on top.
 
 The engine handles the agent loop, tool execution, streaming, and multi-provider abstraction. Your harness owns the domain, your agents own the expertise, your extensions own the integrations, and your hooks own the policy.
+
+For tier aliases like `fast` or `smart` that resolve per-agent, see the [models.json reference](docs/configuration/models.md).
 
 ### Fork it
 
@@ -846,18 +929,28 @@ Deploy managed preferences on macOS, registry policies on Windows, or drop confi
 The engine resolves credentials in order: environment variable, encrypted credential store (`~/.ion/credentials.enc`), then config file.
 
 ```bash
-# Environment variables (one per provider)
-export ANTHROPIC_API_KEY="sk-ant-..."
+# Environment variables (one per provider you actually use)
 export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
 export GOOGLE_API_KEY="..."
 
-# Or configure in ~/.ion/engine.json
+# Or configure in ~/.ion/engine.json. Lead with a local model that needs no key:
 cat > ~/.ion/engine.json << 'EOF'
 {
-  "defaultModel": "claude-sonnet-4-6",
+  "defaultModel": "qwen2.5:14b",
   "providers": {
-    "anthropic": { "apiKey": "sk-ant-..." },
-    "openai": { "apiKey": "sk-..." }
+    "ollama": {}
+  }
+}
+EOF
+
+# A hosted variant, mixing two providers:
+cat > ~/.ion/engine.json << 'EOF'
+{
+  "defaultModel": "gpt-4o",
+  "providers": {
+    "openai": { "apiKey": "OPENAI_API_KEY" },
+    "ollama": {}
   }
 }
 EOF
@@ -891,10 +984,10 @@ Override in `engine.json` under `"limits"`:
 Flags override config for a single invocation:
 
 ```bash
-ion prompt --model claude-haiku-4-5-20251001 --max-turns 5 --max-budget 0.50 "Quick question"
+ion prompt --model gpt-4.1-mini --max-turns 5 --max-budget 0.50 "Quick question"
 ```
 
-See the [configuration reference](docs/configuration/engine-json.md) for the full config schema.
+See the [configuration reference](docs/configuration/engine-json.md) for the full config schema. To register custom models or tier aliases, see the [models.json reference](docs/configuration/models.md).
 
 ## Architecture
 
