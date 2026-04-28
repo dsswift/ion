@@ -1,13 +1,16 @@
 package gitcontext
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
 
 func TestGetGitContext_EngineRepo(t *testing.T) {
-	// The engine directory itself is inside a git repo.
-	cwd := "/Users/Shared/source/personal/clui-cc/engine"
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
 	ctx := GetGitContext(cwd)
 	if ctx == nil {
 		t.Fatal("GetGitContext returned nil for engine repo")
@@ -68,7 +71,10 @@ func TestFormatForPrompt_Populated(t *testing.T) {
 }
 
 func TestDetectMainBranch_EngineRepo(t *testing.T) {
-	cwd := "/Users/Shared/source/personal/clui-cc/engine"
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
 	branch := detectMainBranch(cwd)
 	if branch != "main" && branch != "master" {
 		t.Errorf("detectMainBranch should return 'main' or 'master', got: %q", branch)

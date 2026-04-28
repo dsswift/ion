@@ -78,6 +78,30 @@ jobs:
             git push
           fi
 
+      - name: Pin engine release as latest
+        if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_REPORT: ${{ steps.release.outputs.release_report }}
+        run: |
+          # README install commands point at /releases/latest/download/ion-...
+          # so engine must be the release marked "latest". Mark every non-engine
+          # release in this run as non-latest, then mark engine as latest.
+          ENGINE_VERSION=""
+          while IFS=$'\t' read -r component version; do
+            [ -z "$component" ] && continue
+            TAG="${component}-v${version}"
+            if [ "$component" = "engine" ]; then
+              ENGINE_VERSION="$version"
+            else
+              gh release edit "$TAG" --latest=false
+            fi
+          done < <(echo "$RELEASE_REPORT" | jq -r '.releases[] | "\(.component)\t\(.new_version)"')
+
+          if [ -n "$ENGINE_VERSION" ]; then
+            gh release edit "engine-v${ENGINE_VERSION}" --latest
+          fi
+
   build:
     needs: release
     if: needs.release.outputs.releases_created == 'true'

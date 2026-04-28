@@ -26,10 +26,16 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
+            ext: ""
           - goos: darwin
             goarch: amd64
+            ext: ""
           - goos: darwin
             goarch: arm64
+            ext: ""
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,36 +59,25 @@ jobs:
         working-directory: engine
         run: go test ./...
 
-      - name: Build
+      - name: Build binary
         working-directory: engine
         env:
           CGO_ENABLED: '0'
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
+          ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
           go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
-            -o ion ./cmd/ion/
-
-      - name: Package archive
-        run: |
-          ARCHIVE="ion-engine_${{ matrix.goos }}_${{ matrix.goarch }}"
-          if [ "${{ matrix.goos }}" = "darwin" ]; then
-            zip "${ARCHIVE}.zip" -j engine/ion
-          else
-            tar czf "${ARCHIVE}.tar.gz" -C engine ion
-          fi
+            -o "${ASSET}" ./cmd/ion/
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: engine
         run: |
           TAG="engine-v${{ steps.version.outputs.version }}"
-          ARCHIVE="ion-engine_${{ matrix.goos }}_${{ matrix.goarch }}"
-          if [ "${{ matrix.goos }}" = "darwin" ]; then
-            gh release upload "$TAG" "${ARCHIVE}.zip" --clobber
-          else
-            gh release upload "$TAG" "${ARCHIVE}.tar.gz" --clobber
-          fi
+          ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          gh release upload "$TAG" "${ASSET}" --clobber
 
   engine-checksums:
     needs: build-engine

@@ -44,7 +44,7 @@ func executeGrep(_ context.Context, input map[string]any, cwd string) (*types.To
 	if rgErr == nil {
 		return execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd)
 	}
-	return execGrepFallback(pattern, searchPath, outputMode, cwd)
+	return execGrepFallback(pattern, searchPath, glob, outputMode, cwd)
 }
 
 func execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {
@@ -89,14 +89,20 @@ func execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd string) (*ty
 	return &types.ToolResult{Content: result}, nil
 }
 
-func execGrepFallback(pattern, searchPath, outputMode, cwd string) (*types.ToolResult, error) {
-	args := []string{"-rn"}
+func execGrepFallback(pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {
+	// -E enables extended regex so patterns like foo[0-9]+bar work the same
+	// way they do under ripgrep.
+	args := []string{"-rEn"}
 
 	switch outputMode {
 	case "files_with_matches":
-		args = []string{"-rl"}
+		args = []string{"-rEl"}
 	case "count":
-		args = []string{"-rc"}
+		args = []string{"-rEc"}
+	}
+
+	if glob != "" {
+		args = append(args, "--include="+glob)
 	}
 
 	args = append(args, "--", pattern)
