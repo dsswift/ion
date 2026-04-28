@@ -9,6 +9,3 @@ Initial 1.0.0 baseline. Reference Electron desktop client for Ion Engine.
 Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
-
-## [1.0.1](https://github.com/dsswift/ion/compare/desktop-v1.0.0...desktop-v1.0.1) (2026-04-28)
-
