@@ -389,7 +389,15 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Resolve provider
 	model := opts.Model
 	if model == "" {
-		model = "claude-sonnet-4-6"
+		msg := "no model configured: set defaultModel in ~/.ion/engine.json or pass --model. See docs/configuration/engine-json.md."
+		utils.Error("ApiBackend", msg)
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+			ErrorMessage: msg,
+			ErrorCode:    "no_model_configured",
+		}})
+		b.emitError(run.requestID, fmt.Errorf("%s", msg))
+		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
+		return
 	}
 
 	// Resolve API key via auth resolver and inject into environment
@@ -407,22 +415,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	provider := providers.ResolveProvider(model)
 	if provider == nil {
-		// If a model was explicitly requested but not found, warn and fall back
-		if opts.Model != "" {
-			utils.Warn("ApiBackend", fmt.Sprintf("model %q not found, falling back to default", model))
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
-				ErrorMessage: fmt.Sprintf("model %q not found, falling back to default", model),
-				ErrorCode:    "invalid_model",
-			}})
-			model = "claude-sonnet-4-6"
-			provider = providers.ResolveProvider(model)
-		}
-		if provider == nil {
-			utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
-			b.emitError(run.requestID, fmt.Errorf("no provider found for model %q", model))
-			b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
-			return
-		}
+		utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+			ErrorMessage: fmt.Sprintf("no provider found for model %q", model),
+			ErrorCode:    "invalid_model",
+		}})
+		b.emitError(run.requestID, fmt.Errorf("no provider found for model %q", model))
+		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
+		return
 	}
 
 	// Load or create conversation

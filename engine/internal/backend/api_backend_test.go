@@ -1098,6 +1098,43 @@ func TestErrorOnUnknownModel(t *testing.T) {
 	}
 }
 
+func TestErrorOnEmptyModel(t *testing.T) {
+	b := NewApiBackend()
+	c := collectEvents(b, "req-empty-model")
+	b.StartRun("req-empty-model", types.RunOptions{
+		Prompt:      "test",
+		ProjectPath: "/tmp",
+		// Model intentionally omitted.
+	})
+
+	if !waitForExit(c, 5*time.Second) {
+		t.Fatal("timed out")
+	}
+
+	if c.exitCode == nil || *c.exitCode != 1 {
+		code := -1
+		if c.exitCode != nil {
+			code = *c.exitCode
+		}
+		t.Errorf("expected exit code 1, got %d", code)
+	}
+
+	if len(c.errors) == 0 {
+		t.Fatal("expected error for empty model")
+	}
+
+	found := false
+	for _, e := range c.errors {
+		if strings.Contains(e.Error(), "no model configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'no model configured' in error messages, got %v", c.errors)
+	}
+}
+
 func TestTextChunksAccumulated(t *testing.T) {
 	// Create response with multiple text deltas
 	stopReason := "end_turn"

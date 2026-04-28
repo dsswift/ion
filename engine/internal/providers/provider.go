@@ -64,6 +64,8 @@ func ResolveProvider(model string) LlmProvider {
 		return providerRegistry["deepseek"]
 	case strings.HasPrefix(model, "grok"):
 		return providerRegistry["xai"]
+	case strings.HasPrefix(model, "qwen") || strings.HasPrefix(model, "qwen2"):
+		return providerRegistry["ollama"]
 	case strings.Contains(model, "amazon.") || strings.Contains(model, "anthropic.") || strings.Contains(model, "meta."):
 		return providerRegistry["bedrock"]
 	}
@@ -112,6 +114,8 @@ func ProviderNameForModel(model string) string {
 		return "deepseek"
 	case strings.HasPrefix(model, "grok"):
 		return "xai"
+	case strings.HasPrefix(model, "qwen") || strings.HasPrefix(model, "qwen2"):
+		return "ollama"
 	case strings.Contains(model, "amazon.") || strings.Contains(model, "anthropic.") || strings.Contains(model, "meta."):
 		return "bedrock"
 	}

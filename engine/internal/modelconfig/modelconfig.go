@@ -23,12 +23,9 @@ var providerEnvVars = map[string]string{
 	"aws":       "AWS_ACCESS_KEY_ID",
 }
 
-// Default tier mappings.
-var defaultTiers = map[string]string{
-	"fast":     "claude-haiku-4-5-20251001",
-	"smart":    "claude-sonnet-4-20250514",
-	"balanced": "claude-sonnet-4-20250514",
-}
+// Default tier mappings. Empty by design: the engine ships no model opinions.
+// Users define their own tiers in ~/.ion/models.json under the "tiers" key.
+var defaultTiers = map[string]string{}
 
 // LoadModelsConfig reads the models configuration from ~/.ion/models.json.
 // The file is read on every call so that changes take effect without

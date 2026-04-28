@@ -671,7 +671,7 @@ func TestOpenAICompatibleProviderID(t *testing.T) {
 
 func TestResolveProviderAllPrefixes(t *testing.T) {
 	// Register all needed providers
-	providerIDs := []string{"anthropic", "openai", "google", "mistral", "groq", "together", "deepseek", "xai", "bedrock"}
+	providerIDs := []string{"anthropic", "openai", "google", "mistral", "groq", "together", "deepseek", "xai", "ollama", "bedrock"}
 	for _, id := range providerIDs {
 		RegisterProvider(&mockProvider{id: id})
 	}
@@ -716,6 +716,10 @@ func TestResolveProviderAllPrefixes(t *testing.T) {
 		// grok -> xai
 		{"grok-2", "xai"},
 		{"grok-3", "xai"},
+		// qwen -> ollama
+		{"qwen2.5:14b", "ollama"},
+		{"qwen2.5:32b", "ollama"},
+		{"qwen3-coder:30b", "ollama"},
 		// bedrock model IDs (contain dots like amazon.*, anthropic.*, meta.*)
 		{"amazon.titan-text-v1", "bedrock"},
 		{"anthropic.claude-v2", "bedrock"},

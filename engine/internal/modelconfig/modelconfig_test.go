@@ -9,24 +9,19 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-func TestResolveTier_Defaults(t *testing.T) {
+func TestResolveTier_NoDefaults(t *testing.T) {
+	// The engine ships no default tiers. Unrecognized tier names pass through
+	// unchanged so the caller fails provider resolution and surfaces a clear
+	// "no model configured" error rather than silently rerouting to a baked-in
+	// vendor model.
 	t.Setenv("HOME", t.TempDir())
 
-	tests := []struct {
-		tier string
-		want string
-	}{
-		{"fast", "claude-haiku-4-5-20251001"},
-		{"smart", "claude-sonnet-4-20250514"},
-		{"balanced", "claude-sonnet-4-20250514"},
-		{"Fast", "claude-haiku-4-5-20251001"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.tier, func(t *testing.T) {
-			got := ResolveTier(tt.tier)
-			if got != tt.want {
-				t.Errorf("ResolveTier(%q) = %q, want %q", tt.tier, got, tt.want)
+	tiers := []string{"fast", "smart", "balanced", "Fast"}
+	for _, tier := range tiers {
+		t.Run(tier, func(t *testing.T) {
+			got := ResolveTier(tier)
+			if got != tier {
+				t.Errorf("ResolveTier(%q) = %q, want passthrough %q", tier, got, tier)
 			}
 		})
 	}
@@ -69,10 +64,10 @@ func TestResolveTier_ConfigChangesWithoutRestart(t *testing.T) {
 	os.MkdirAll(ionDir, 0o700)
 	t.Setenv("HOME", dir)
 
-	// Initially no config file — should use defaults
+	// Initially no config file. With no defaults, "fast" passes through unchanged.
 	got := ResolveTier("fast")
-	if got != "claude-haiku-4-5-20251001" {
-		t.Errorf("expected default, got %q", got)
+	if got != "fast" {
+		t.Errorf("expected passthrough %q, got %q", "fast", got)
 	}
 
 	// Write a config file — next call should pick it up

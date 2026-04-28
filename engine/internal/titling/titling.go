@@ -28,10 +28,15 @@ func SetAuthResolver(fn func(providerName string)) {
 }
 
 // GenerateTitle uses the "fast" tier model to produce a short conversation title
-// from the user's first message. Returns "" if the provider is unavailable or
-// the model returns an empty response — callers should keep their fallback title.
+// from the user's first message. Returns "" if no model is configured, the
+// provider is unavailable, or the model returns an empty response. Callers
+// should keep their fallback title.
 func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 	model := resolveModel()
+	if model == "" {
+		utils.Log("Titling", "no model configured for titling, skipping")
+		return "", nil
+	}
 	utils.Log("Titling", fmt.Sprintf("generating title: model=%s inputLen=%d", model, len(firstMessage)))
 
 	// Ensure the provider has a valid API key before we attempt to stream.
@@ -95,7 +100,9 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 // resolveModel picks the best model for title generation:
 //  1. User-configured "fast" tier in models.json tiers section
 //  2. defaultModel from models.json (the model the user actually uses)
-//  3. Built-in fast tier default
+//
+// Returns an empty string when neither is set. Callers should skip titling
+// rather than substitute a built-in default. The engine ships no model opinions.
 func resolveModel() string {
 	config := modelconfig.LoadModelsConfig()
 
@@ -111,6 +118,5 @@ func resolveModel() string {
 		return dm
 	}
 
-	// Last resort: built-in fast tier default
-	return modelconfig.ResolveTier("fast")
+	return ""
 }
