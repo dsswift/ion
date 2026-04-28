@@ -34,6 +34,11 @@ CMD ["serve"]
 ```
 
 ```bash
+# Run with a local Ollama daemon on the host (no API key needed):
+docker run --network host ion-engine serve
+
+# Or point it at any hosted provider you have configured:
+docker run -e OPENAI_API_KEY=sk-... ion-engine serve
 docker run -e ANTHROPIC_API_KEY=sk-... ion-engine serve
 ```
 
@@ -74,7 +79,7 @@ ion version
 
 | Option | Description |
 |--------|-------------|
-| `--model <model>` | Model override (e.g. `claude-sonnet-4-6`, `gpt-4.1`) |
+| `--model <model>` | Model override (e.g. `qwen2.5:14b`, `gpt-4o`, `claude-sonnet-4-6`) |
 | `--max-turns N` | Max LLM turns per session (default: 50) |
 | `--max-budget USD` | Cost ceiling in USD |
 | `--output text\|json\|stream-json` | Output format for `prompt` command |
@@ -116,9 +121,9 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/server` | Unix socket server, multi-client broadcast |
 | `internal/session` | SessionManager: session lifecycle, event routing |
 | `internal/backend` | RunBackend interface, ApiBackend (agent loop) |
-| `internal/providers` | LlmProvider interface, 14+ provider implementations |
+| `internal/providers` | LlmProvider interface, 16 provider implementations |
 | `internal/tools` | Tool registry, 15 built-in tools |
-| `internal/extension` | SDK (43 hooks), Host (subprocess JSON-RPC) |
+| `internal/extension` | SDK (59 hooks), Host (subprocess JSON-RPC) |
 | `internal/conversation` | Tree sessions, JSONL persistence, branching |
 | `internal/config` | 4-layer config, enterprise MDM, merge |
 | `internal/compaction` | Fact extraction, summary, cascade |
@@ -164,7 +169,7 @@ Extensions can also live in project-local `.ion/extensions/` or be referenced by
 When the engine loads an extension, it sends an `init` request. The extension responds with its name, the hooks it wants to receive, any tools it registers, and any commands it provides.
 
 ```json
---> {"jsonrpc":"2.0","id":1,"method":"init","params":{"cwd":"/home/user/project","model":"claude-sonnet-4-6"}}
+--> {"jsonrpc":"2.0","id":1,"method":"init","params":{"cwd":"/home/user/project","model":"qwen2.5:14b"}}
 <-- {"jsonrpc":"2.0","id":1,"result":{"name":"my-ext","hooks":["before_prompt","tool_call"],"tools":[{"name":"deploy","description":"Deploy to staging"}],"commands":["stats"]}}
 ```
 
@@ -235,7 +240,7 @@ func main() {
 }
 ```
 
-### Extension hooks (43 total)
+### Extension hooks (59 total)
 
 | Category | Hooks |
 |----------|-------|
@@ -260,17 +265,17 @@ The engine provides a generic capability registry that lets extension authors bu
 
 ### How It Works
 
-Extensions register **capabilities** -- named behaviors with optional tool schemas, prompt content, and metadata. The engine handles:
+Extensions register named behaviors called **capabilities**, with optional tool schemas, prompt content, and metadata. The engine handles:
 
 - **Presentation**: Capabilities surface as LLM tools, system prompt additions, or both
 - **Invocation**: Tool calls route to the extension's execute handler
 - **Matching**: User input fires a hook so extensions can auto-trigger capabilities
 
 The engine does NOT dictate:
-- File formats (SKILL.md, YAML, JSON -- your choice)
-- Directory conventions (scan wherever you want)
-- Trigger syntax (regex, prefix match, NLP -- your choice)
-- Auto-invoke rules (extensions decide when and how)
+- File formats. SKILL.md, YAML, or JSON. Your choice.
+- Directory conventions. Scan wherever you want.
+- Trigger syntax. Regex, prefix match, or NLP. Your choice.
+- Auto-invoke rules. Extensions decide when and how.
 
 ### Example: Custom Skill System
 
@@ -304,9 +309,9 @@ sdk.on("capability_match", (ctx, { input, capabilities }) => {
 
 | Mode | Behavior |
 |------|----------|
-| `tool` | Registered as an LLM tool -- the model can call it directly |
-| `prompt` | Injected into the system prompt as context |
-| `tool+prompt` | Both -- tool is available AND prompt content is injected |
+| `tool` | Registered as an LLM tool. The model can call it directly. |
+| `prompt` | Injected into the system prompt as context. |
+| `tool+prompt` | Both. The tool is available and the prompt content is injected. |
 
 ### Context Injection
 
