@@ -41,6 +41,15 @@ type Host struct {
 	dead     atomic.Bool
 	readerWg sync.WaitGroup
 
+	// deadCh closes when the subprocess dies (readLoop EOF) or the host is
+	// disposed. callers that lose the race between the dead.Load() check and
+	// the pending-map insert would otherwise wait the full rpcCallTimeout —
+	// callWithTimeout selects on deadCh as a third arm to fail fast.
+	// deadOnce guards the close so respawn re-init and dispose-on-init-error
+	// don't double-close. Both fields are replaced per spawn in spawnAndInit.
+	deadCh   chan struct{}
+	deadOnce *sync.Once
+
 	// Temp files created by TS transpilation, cleaned up on Dispose.
 	tempFiles []string
 
@@ -166,15 +175,22 @@ func (h *Host) SetOnSendMessage(fn func(text string)) {
 // communicates via JSON-RPC 2.0 over stdin/stdout.
 func (h *Host) Load(extensionPath string, config *ExtensionConfig) error {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	if err := h.spawnAndInit(extensionPath, config, false); err != nil {
+	err := h.spawnAndInit(extensionPath, config, false)
+	if err == nil {
+		// Cache spawn parameters so Respawn can replay without the session
+		// manager round-tripping the original extension path.
+		h.loadedPath = extensionPath
+		h.loadedConfig = config
+		h.lastHealthyAt.Store(time.Now().UnixNano())
+	}
+	h.mu.Unlock()
+	if err != nil {
+		// disposeInternal acquires h.mu and waits for the reader goroutine,
+		// so it must run after we've released the lock. Calling it from
+		// inside spawnAndInit would deadlock against this Lock().
+		h.disposeInternal()
 		return err
 	}
-	// Cache spawn parameters so Respawn can replay without the session
-	// manager round-tripping the original extension path.
-	h.loadedPath = extensionPath
-	h.loadedConfig = config
-	h.lastHealthyAt.Store(time.Now().UnixNano())
 	return nil
 }
 
@@ -296,6 +312,9 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	h.deathReported.Store(false)
 	h.lastParseErrAt.Store(0)
 	h.turnInFlightAtDeath.Store(false)
+	// Fresh deadCh per spawn — old channel (if any) is already closed.
+	h.deadCh = make(chan struct{})
+	h.deadOnce = &sync.Once{}
 
 	// Start the background response reader before sending init so we can
 	// receive the init response through the normal call path.
@@ -308,10 +327,11 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		config.ExtensionDir = extensionDir
 	}
 
-	// Send init and wait for response
+	// Send init and wait for response. On error, return without disposing —
+	// the caller (Load/Respawn) holds h.mu and will run disposeInternal after
+	// releasing the lock. Disposing here would deadlock on h.mu.
 	initResult, err := h.call("init", config)
 	if err != nil {
-		h.disposeInternal()
 		return fmt.Errorf("init handshake: %w", err)
 	}
 
@@ -342,15 +362,17 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 // — the internal mutex serializes spawn attempts.
 func (h *Host) Respawn() (attemptNumber int, err error) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	if !h.dead.Load() {
+		h.mu.Unlock()
 		return 0, nil
 	}
 	if h.respawnPermanent.Load() {
+		h.mu.Unlock()
 		return 0, ErrBudgetExceeded
 	}
 	if h.loadedPath == "" {
+		h.mu.Unlock()
 		return 0, fmt.Errorf("respawn: no cached spawn parameters (host was never loaded)")
 	}
 
@@ -368,15 +390,23 @@ func (h *Host) Respawn() (attemptNumber int, err error) {
 	attempt := h.respawnAttempts.Add(1)
 	if attempt > respawnBudgetMax {
 		h.respawnPermanent.Store(true)
+		h.mu.Unlock()
 		return int(attempt), ErrBudgetExceeded
 	}
 
 	// disposeInternal cleared cmd/stdin/stdout when the subprocess died.
 	// Nothing else to tear down — go straight to spawn.
-	if err := h.spawnAndInit(h.loadedPath, h.loadedConfig, true); err != nil {
-		return int(attempt), fmt.Errorf("respawn spawn: %w", err)
+	spawnErr := h.spawnAndInit(h.loadedPath, h.loadedConfig, true)
+	if spawnErr == nil {
+		h.lastHealthyAt.Store(time.Now().UnixNano())
 	}
-	h.lastHealthyAt.Store(time.Now().UnixNano())
+	h.mu.Unlock()
+	if spawnErr != nil {
+		// Release the partially-initialized subprocess outside h.mu so
+		// disposeInternal can re-acquire and the reader goroutine can exit.
+		h.disposeInternal()
+		return int(attempt), fmt.Errorf("respawn spawn: %w", spawnErr)
+	}
 	return int(attempt), nil
 }
 
@@ -461,6 +491,18 @@ func (h *Host) Dispose() {
 	h.disposeInternal()
 }
 
+// signalDead closes deadCh once. Idempotent. callers that added to h.pending
+// after readLoop's drain already ran rely on this to unblock their select.
+func (h *Host) signalDead() {
+	if h.deadOnce != nil {
+		h.deadOnce.Do(func() {
+			if h.deadCh != nil {
+				close(h.deadCh)
+			}
+		})
+	}
+}
+
 // disposeInternal performs the shutdown. It briefly takes h.mu to mutate
 // process/stdin/stdout/tempFiles fields, then releases the lock before
 // waiting for the reader goroutine — the reader's defer needs h.mu to read
@@ -468,6 +510,7 @@ func (h *Host) Dispose() {
 func (h *Host) disposeInternal() {
 	// Mark dead so the reader goroutine stops and pending calls fail fast.
 	h.dead.Store(true)
+	h.signalDead()
 
 	// Drain all pending calls with an error.
 	h.pendMu.Lock()
@@ -1390,6 +1433,11 @@ func (h *Host) callWithTimeout(method string, params interface{}, timeout time.D
 		return nil, fmt.Errorf("extension subprocess is dead")
 	}
 
+	// Capture deadCh under a stable reference. Respawn replaces h.deadCh
+	// with a fresh channel; the in-flight call must observe death of the
+	// subprocess it actually targeted.
+	deadCh := h.deadCh
+
 	id := h.nextID.Add(1) - 1
 	ch := make(chan *jsonrpcResponse, 1)
 
@@ -1428,6 +1476,15 @@ func (h *Host) callWithTimeout(method string, params interface{}, timeout time.D
 			return nil, he
 		}
 		return resp.Result, nil
+	case <-deadCh:
+		// readLoop's drain may have run before we inserted into h.pending —
+		// in that case the channel-close path can't fire. deadCh always
+		// closes after death is signaled, so this arm fails fast (~ms)
+		// instead of waiting the full timeout.
+		h.pendMu.Lock()
+		delete(h.pending, id)
+		h.pendMu.Unlock()
+		return nil, fmt.Errorf("extension subprocess died during %s call", method)
 	case <-time.After(timeout):
 		h.pendMu.Lock()
 		delete(h.pending, id)
@@ -1515,6 +1572,10 @@ func (h *Host) readLoop() {
 			h.dead.Store(true)
 			utils.Log("extension", fmt.Sprintf("subprocess stdout closed unexpectedly (ext=%s)", h.name))
 		}
+		// Signal dead BEFORE draining so callers racing the add-to-pending
+		// step (between dead.Load() and pending[id]=ch) can observe death
+		// via deadCh and bail out instead of waiting the full rpcCallTimeout.
+		h.signalDead()
 		// Drain all pending calls.
 		h.pendMu.Lock()
 		for id, ch := range h.pending {
