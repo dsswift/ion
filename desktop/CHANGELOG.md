@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.1.0](https://github.com/dsswift/ion/compare/desktop-v1.0.2...desktop-v1.1.0) (2026-04-29)
+
+### Features
+
+* **desktop:** bundle engine binary into desktop app ([dd1b467](https://github.com/dsswift/ion/commit/dd1b4676b7c835ca4f4ba667a3208c53c4285335))
+
 ## [1.0.2](https://github.com/dsswift/ion/compare/desktop-v1.0.1...desktop-v1.0.2) (2026-04-29)
 
 ### Bug Fixes
