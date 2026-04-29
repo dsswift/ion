@@ -14,6 +14,39 @@ Ion Desktop is an Electron overlay for macOS. It connects to the Ion Engine daem
 - Node.js 20+
 - Ion Engine daemon running (`ion serve`)
 
+## API Key Setup
+
+Ion Desktop launches the engine daemon in the background, which needs API credentials to connect to LLM providers. macOS GUI applications don't inherit shell environment variables, so you must set them via `launchctl`.
+
+### Set environment variable for GUI apps
+
+```bash
+# For Anthropic (default provider)
+launchctl setenv ANTHROPIC_API_KEY "your-key-here"
+
+# For OpenAI
+launchctl setenv OPENAI_API_KEY "your-key-here"
+```
+
+Verify it's set:
+```bash
+launchctl getenv ANTHROPIC_API_KEY
+```
+
+This persists across reboots. To remove:
+```bash
+launchctl unsetenv ANTHROPIC_API_KEY
+```
+
+### Why this is needed
+
+- Terminal-launched apps inherit environment from shell (.zshrc, .bash_profile, etc.)
+- GUI-launched apps (Spotlight, Dock, Login Items) only inherit from LaunchServices
+- `launchctl setenv` modifies the LaunchServices environment globally
+- Without this, the engine spawned by Ion Desktop can't authenticate with API providers
+
+**Note:** If you launch Ion Desktop from a terminal (e.g., `open /Applications/Ion.app`), it will inherit your shell environment and this step is not required. However, normal GUI launches (Spotlight, Dock, auto-start) require `launchctl setenv`.
+
 ## Build
 
 ```bash
