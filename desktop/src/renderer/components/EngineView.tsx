@@ -140,6 +140,17 @@ export function EngineView({ tabId }: EngineViewProps) {
       console.log(`[EngineView] calling engineAbortAgent (subtree): key=${key}`)
       window.ion.engineAbortAgent(key, '', true)
     }
+    // 5s fallback: if engine never confirms idle, force-recover the tab so
+    // the interrupt button always produces a usable UI within 5 seconds.
+    setTimeout(() => {
+      const cur = useSessionStore.getState().tabs.find((t) => t.id === tabId)
+      if (cur && (cur.status === 'running' || cur.status === 'connecting')) {
+        useSessionStore.getState().forceRecoverTab(
+          tabId,
+          'Engine did not respond to interrupt within 5s. Tab reset locally.'
+        )
+      }
+    }, 5_000)
   }
 
   return (
