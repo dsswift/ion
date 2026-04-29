@@ -64,8 +64,16 @@
       "dist/preload/**/*",
       "dist/renderer/**/*",
       "resources/**/*",
+      "!resources/engine/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/engine/ion",
+        "to": "engine/ion"
+      }
+    ],
+    "afterPack": "build/afterPack.js",
     "mac": {
       "icon": "resources/icon.icns",
       "identity": "Ion Local Dev",

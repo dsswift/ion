@@ -13,7 +13,9 @@ function debug(msg: string): void { _debug(TAG, msg) }
 function warn(msg: string): void { _warn(TAG, msg) }
 function error(msg: string): void { _error(TAG, msg) }
 
-const SOCKET_PATH = join(homedir(), '.ion', 'engine.sock')
+const ION_HOME = join(homedir(), '.ion')
+const SOCKET_PATH = join(ION_HOME, 'desktop.sock')
+const PID_PATH = join(ION_HOME, 'desktop.pid')
 
 /**
  * EngineBridge: thin socket client connecting Ion to the standalone
@@ -132,9 +134,13 @@ export class EngineBridge extends EventEmitter {
     log('Starting engine server...')
 
     // Find ion engine binary
+    const bundled = process.resourcesPath
+      ? join(process.resourcesPath, 'engine', 'ion')
+      : null
     const candidates = [
+      ...(bundled ? [bundled] : []),                              // packaged .app
       join(__dirname, '..', '..', '..', 'engine', 'bin', 'ion'), // dev monorepo
-      join(homedir(), '.ion', 'bin', 'ion'),                      // installed
+      join(homedir(), '.ion', 'bin', 'ion'),                      // installed CLI
     ]
 
     let binary: string | null = null
@@ -156,16 +162,21 @@ export class EngineBridge extends EventEmitter {
       throw new Error('Cannot find ion executable')
     }
 
-    // Spawn detached so it survives Ion exit
+    // Spawn as child of Ion.app — keep parent process group/session intact so
+    // macOS TCC attributes file-system access to Ion.app rather than recording
+    // a separate identity for the engine binary.
     const isJs = binary.endsWith('.js')
     const cmd = isJs ? 'node' : binary
     const args = isJs ? [binary, 'serve'] : ['serve']
 
     const child = spawn(cmd, args, {
       stdio: 'ignore',
-      detached: true,
+      env: {
+        ...process.env,
+        ION_SOCKET_PATH: SOCKET_PATH,
+        ION_PID_PATH: PID_PATH,
+      },
     })
-    child.unref()
     log(`Spawned engine server: PID ${child.pid}`)
   }
 
@@ -413,7 +424,7 @@ export class EngineBridge extends EventEmitter {
     this._send({ cmd: 'shutdown' })
 
     // Also kill via PID lock file (reliable even if socket is broken)
-    const pidLockFile = join(homedir(), '.ion', 'engine.pid.lock')
+    const pidLockFile = `${PID_PATH}.lock`
     try {
       if (existsSync(pidLockFile)) {
         const pid = parseInt(readFileSync(pidLockFile, 'utf-8').trim(), 10)
@@ -424,10 +435,9 @@ export class EngineBridge extends EventEmitter {
     } catch {}
 
     // Wait for socket file to disappear (engine removes it on stop)
-    const socketPath = join(homedir(), '.ion', 'engine.sock')
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      if (!existsSync(socketPath)) break
+      if (!existsSync(SOCKET_PATH)) break
       await new Promise(r => setTimeout(r, 50))
     }
 
