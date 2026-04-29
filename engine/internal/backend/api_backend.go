@@ -503,12 +503,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Add user message (using potentially-rewritten prompt)
 	conversation.AddUserMessage(conv, opts.Prompt)
 
-	// Resolve max turns
+	// Resolve limits. Engine ships unopinionated: maxTurns/maxBudget <= 0 means
+	// "no cap" -- the agent loop runs until the LLM emits a terminal stop or
+	// the caller cancels. Harness engineers cap via RunOptions, engine.json
+	// limits, or per-dispatch options.
 	maxTurns := opts.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = 50
-	}
-
 	maxBudget := opts.MaxBudgetUsd
 
 	// Build tool definitions (built-in + external/MCP + capabilities)
@@ -620,7 +619,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Agent loop: turnCount increments at the top of each iteration (before
 	// turn_start fires), so the first turn has turnCount=1. This matches the
 	// TS reference where turnCount increments at the top of the while loop.
-	for run.turnCount < maxTurns {
+	for maxTurns <= 0 || run.turnCount < maxTurns {
 		if ctx.Err() != nil {
 			utils.Warn("ApiBackend", fmt.Sprintf("run cancelled: runID=%s turns=%d cost=$%.4f", run.requestID, run.turnCount, run.totalCost))
 			b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)

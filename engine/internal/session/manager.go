@@ -328,6 +328,9 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 		if opts.SessionID != "" {
 			runOpts.SessionID = opts.SessionID
 		}
+		if opts.MaxTurns > 0 {
+			runOpts.MaxTurns = opts.MaxTurns
+		}
 
 		child.StartRun(fmt.Sprintf("%s-dispatch-%s", key, opts.Name), runOpts)
 		childDone.Wait()

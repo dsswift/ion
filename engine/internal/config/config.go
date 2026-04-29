@@ -10,19 +10,18 @@ import (
 )
 
 // DefaultConfig returns the baseline engine configuration.
+//
+// Limits are intentionally unset (nil pointers): the engine ships without
+// opinions on turn caps, budgets, or idle timeouts. Harness engineers and
+// operators set them via project/global/enterprise config or per-call options.
 func DefaultConfig() *types.EngineRuntimeConfig {
-	maxTurns := 50
-	maxBudget := 10.0
 	return &types.EngineRuntimeConfig{
 		Backend:      "api",
 		DefaultModel: "claude-sonnet-4-6",
 		Providers:    make(map[string]types.ProviderConfig),
-		Limits: types.LimitsConfig{
-			MaxTurns:     &maxTurns,
-			MaxBudgetUsd: &maxBudget,
-		},
-		McpServers: make(map[string]types.McpServerConfig),
-		Profiles:   nil,
+		Limits:       types.LimitsConfig{},
+		McpServers:   make(map[string]types.McpServerConfig),
+		Profiles:     nil,
 	}
 }
 

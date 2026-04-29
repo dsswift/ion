@@ -218,6 +218,12 @@ type DispatchAgentOpts struct {
 	ProjectPath  string `json:"projectPath,omitempty"`
 	SessionID    string `json:"sessionId,omitempty"`
 
+	// MaxTurns caps the child session's agent loop iteration count. <=0 (the
+	// default when omitted) means unlimited -- the engine ships unopinionated.
+	// Lets harness engineers fine-tune dispatched-agent budgets without
+	// touching global engine config.
+	MaxTurns int `json:"maxTurns,omitempty"`
+
 	// OnEvent is called for each engine event emitted by the child session.
 	// Not serialized -- set via the host when dispatching from an extension.
 	OnEvent func(ev types.EngineEvent) `json:"-"`

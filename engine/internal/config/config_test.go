@@ -21,11 +21,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.DefaultModel != "claude-sonnet-4-6" {
 		t.Fatalf("expected defaultModel=claude-sonnet-4-6, got %q", cfg.DefaultModel)
 	}
-	if cfg.Limits.MaxTurns == nil || *cfg.Limits.MaxTurns != 50 {
-		t.Fatalf("expected maxTurns=50, got %v", cfg.Limits.MaxTurns)
+	// Engine ships without opinionated limits; harness/operator sets them.
+	if cfg.Limits.MaxTurns != nil {
+		t.Fatalf("expected MaxTurns=nil (unlimited), got %v", *cfg.Limits.MaxTurns)
 	}
-	if cfg.Limits.MaxBudgetUsd == nil || *cfg.Limits.MaxBudgetUsd != 10.0 {
-		t.Fatalf("expected maxBudgetUsd=10.0, got %v", cfg.Limits.MaxBudgetUsd)
+	if cfg.Limits.MaxBudgetUsd != nil {
+		t.Fatalf("expected MaxBudgetUsd=nil (unlimited), got %v", *cfg.Limits.MaxBudgetUsd)
 	}
 }
 
@@ -205,9 +206,9 @@ func TestMergeConfigs_BasicOverride(t *testing.T) {
 	if result.Limits.MaxTurns == nil || *result.Limits.MaxTurns != 100 {
 		t.Fatalf("expected maxTurns=100, got %v", result.Limits.MaxTurns)
 	}
-	// Non-overridden values should keep defaults
-	if result.Limits.MaxBudgetUsd == nil || *result.Limits.MaxBudgetUsd != 10.0 {
-		t.Fatalf("expected maxBudgetUsd=10.0, got %v", result.Limits.MaxBudgetUsd)
+	// Non-overridden values stay at the unopinionated default (nil).
+	if result.Limits.MaxBudgetUsd != nil {
+		t.Fatalf("expected MaxBudgetUsd=nil, got %v", *result.Limits.MaxBudgetUsd)
 	}
 }
 
@@ -507,8 +508,9 @@ func TestMergeConfigs_EmptyConfig(t *testing.T) {
 	if result.DefaultModel != "claude-sonnet-4-6" {
 		t.Fatalf("expected default model, got %q", result.DefaultModel)
 	}
-	if result.Limits.MaxTurns == nil || *result.Limits.MaxTurns != 50 {
-		t.Fatalf("expected maxTurns=50, got %v", result.Limits.MaxTurns)
+	// Defaults ship unopinionated -- limits remain unset.
+	if result.Limits.MaxTurns != nil {
+		t.Fatalf("expected MaxTurns=nil, got %v", *result.Limits.MaxTurns)
 	}
 }
 
@@ -1066,6 +1068,9 @@ func TestLoadConfig_MissingProjectDir(t *testing.T) {
 }
 
 func TestLoadConfig_MalformedJSON(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and override the defaults this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {
@@ -1083,8 +1088,9 @@ func TestLoadConfig_MalformedJSON(t *testing.T) {
 	if cfg.DefaultModel != "claude-sonnet-4-6" {
 		t.Fatalf("expected default model, got %q", cfg.DefaultModel)
 	}
-	if cfg.Limits.MaxTurns == nil || *cfg.Limits.MaxTurns != 50 {
-		t.Fatalf("expected default maxTurns=50, got %v", cfg.Limits.MaxTurns)
+	// Defaults ship unopinionated -- limits remain unset.
+	if cfg.Limits.MaxTurns != nil {
+		t.Fatalf("expected default MaxTurns=nil, got %v", *cfg.Limits.MaxTurns)
 	}
 }
 
