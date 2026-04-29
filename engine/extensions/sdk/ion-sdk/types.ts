@@ -24,6 +24,12 @@ export interface DispatchAgentOpts {
   systemPrompt?: string
   projectPath?: string
   sessionId?: string
+  /**
+   * Cap the child session's agent loop turn count. Omit or pass <= 0 for
+   * unlimited (the engine ships unopinionated). Lets harness engineers bound
+   * dispatched agent budgets per-call without touching global engine config.
+   */
+  maxTurns?: number
   onEvent?: (event: EngineEvent) => void
 }
 

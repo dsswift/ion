@@ -12,8 +12,10 @@ Resource limits control how long an agent session can run and how much it can sp
 
 | Field | Type | Default | CLI flag | Description |
 |-------|------|---------|----------|-------------|
-| `maxTurns` | int | `50` | `--max-turns N` | Maximum number of LLM turns before the agent stops. Each turn is one request-response cycle with the model. |
-| `maxBudgetUsd` | float | `10.0` | `--max-budget USD` | Cost ceiling in US dollars. The agent stops when estimated spend reaches this value. Cost is calculated from token counts and the model's pricing. |
+| `maxTurns` | int | unset (unlimited) | `--max-turns N` | Maximum number of LLM turns before the agent stops. Each turn is one request-response cycle with the model. Unset or `<= 0` means no cap. |
+| `maxBudgetUsd` | float | unset (unlimited) | `--max-budget USD` | Cost ceiling in US dollars. The agent stops when estimated spend reaches this value. Unset or `<= 0` means no cap. |
+
+The engine ships unopinionated. There is no built-in default cap on turns, budget, or idle timeout. Harness engineers and operators set them via `engine.json`, CLI flags, or per-call options.
 
 ## Configuration
 
@@ -49,10 +51,11 @@ For example, if the user config sets `maxTurns: 100` and the project config omit
 
 ## How limits interact
 
-Limits are evaluated independently. The agent stops when any limit is reached:
+Limits are evaluated independently. The agent stops when any limit is reached. Limits set to `<= 0` (or omitted) are skipped:
 
-- If turn 50 is reached before the budget ceiling, the session stops on the turn limit.
-- If the budget ceiling is reached before turn 50, the session stops on the budget limit.
+- If `maxTurns` is set and reached before the budget ceiling, the session stops on the turn limit.
+- If `maxBudgetUsd` is set and reached before the turn limit, the session stops on the budget limit.
+- If neither is set, the session runs until the LLM emits a terminal stop or the caller cancels.
 
 The agent reports which limit caused termination in the session end event.
 
@@ -65,6 +68,7 @@ Enterprise policy can enforce limit values that lower layers cannot weaken. If t
 | Use case | Recommended limits |
 |----------|-------------------|
 | Quick questions | `maxTurns: 10`, `maxBudgetUsd: 1.0` |
-| Standard coding | `maxTurns: 50`, `maxBudgetUsd: 10.0` (defaults) |
+| Standard coding | `maxTurns: 50`, `maxBudgetUsd: 10.0` |
 | Large refactors | `maxTurns: 200`, `maxBudgetUsd: 50.0` |
 | Background agents | `maxTurns: 500`, `maxBudgetUsd: 100.0` |
+| Unbounded (engine default) | omit both fields |

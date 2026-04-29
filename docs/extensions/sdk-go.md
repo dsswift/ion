@@ -285,6 +285,8 @@ type DispatchAgentOpts struct {
     ExtensionDir string `json:"extensionDir,omitempty"`
     SystemPrompt string `json:"systemPrompt,omitempty"`
     ProjectPath  string `json:"projectPath,omitempty"`
+    SessionID    string `json:"sessionId,omitempty"`
+    MaxTurns     int    `json:"maxTurns,omitempty"` // cap child loop turns; <=0 means unlimited
 }
 
 type DispatchAgentResult struct {
