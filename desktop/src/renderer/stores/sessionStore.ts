@@ -234,6 +234,7 @@ interface State {
   removeEngineInstance: (tabId: string, instanceId: string) => void
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
+  reorderEngineInstances: (tabId: string, reordered: EngineInstance[]) => void
 }
 
 let msgCounter = 0
@@ -2964,6 +2965,14 @@ export const useSessionStore = create<State>((set, get) => ({
       ...pane,
       instances: pane.instances.map((i) => i.id === instanceId ? { ...i, label } : i),
     })
+    set({ enginePanes: panes })
+  },
+
+  reorderEngineInstances: (tabId, reordered) => {
+    const panes = new Map(get().enginePanes)
+    const pane = panes.get(tabId)
+    if (!pane) return
+    panes.set(tabId, { ...pane, instances: reordered })
     set({ enginePanes: panes })
   },
 
