@@ -8,6 +8,7 @@ release/
 
 # Go binaries
 engine/bin/
+desktop/resources/engine/
 
 # Gap analysis working files
 engine/.gap-analysis/

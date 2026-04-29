@@ -1,12 +1,12 @@
-.PHONY: install desktop engine relay relay-local ios ios-check test clean
+.PHONY: default desktop engine relay relay-local ios ios-check test clean
 
-install: engine desktop
-
-desktop:
-	@cd desktop && bash commands/install-bg.command
+default: engine
 
 engine:
 	@cd engine && bash commands/install.command --standalone || { echo "❌ Engine build failed"; exit 1; }
+
+desktop:
+	@cd desktop && bash commands/install-bg.command
 
 relay:
 	@cd relay && docker build --platform linux/amd64 -t ion-relay:latest .

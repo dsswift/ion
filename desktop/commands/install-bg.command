@@ -32,6 +32,22 @@ else
 fi
 
 echo
+echo "═══ Building Ion Engine into desktop resources ═══"
+echo
+
+ENGINE_OUT="resources/engine/ion"
+mkdir -p "resources/engine"
+if ! (cd ../engine && go build -o "../desktop/${ENGINE_OUT}" ./cmd/ion); then
+  echo
+  echo "Engine build failed."
+  exit 1
+fi
+chmod +x "${ENGINE_OUT}"
+codesign --force --sign - "${ENGINE_OUT}" 2>/dev/null || true
+xattr -cr "${ENGINE_OUT}" 2>/dev/null || true
+echo "Engine built: ${ENGINE_OUT}"
+
+echo
 echo "═══ Building Ion.app ═══"
 echo
 
