@@ -38,6 +38,9 @@ var version = "dev"
 var requestCounter int64
 
 func socketPath() string {
+	if v := os.Getenv("ION_SOCKET_PATH"); v != "" {
+		return v
+	}
 	if runtime.GOOS == "windows" {
 		return "127.0.0.1:21017"
 	}
@@ -55,6 +58,9 @@ func dialNetwork() string {
 }
 
 func pidPath() string {
+	if v := os.Getenv("ION_PID_PATH"); v != "" {
+		return v
+	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".ion", "engine.pid")
 }
