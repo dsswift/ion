@@ -354,7 +354,7 @@ export function ConversationView() {
                   ? `The following is the conversation history from the planning session. Use it as context for implementation.\n\n<previous_conversation>\n${contextPrompt}\n</previous_conversation>`
                   : undefined
 
-                sendMessage(implementPrompt, undefined, planAttachment, appendSys)
+                sendMessage(implementPrompt, tab.workingDirectory, planAttachment, appendSys)
               }}
             />
           )}
@@ -419,15 +419,27 @@ export function ConversationView() {
         <div className="flex items-center flex-shrink-0">
           <AnimatePresence>
             {showInterrupt && (
-              <InterruptButton onInterrupt={() => {
+              <InterruptButton onInterrupt={async () => {
                 console.log(`[ConversationView] interrupt: tabId=${tab.id} bashExecId=${tab.bashExecId ?? 'none'} status=${tab.status}`)
                 if (tab.bashExecId) {
                   console.log(`[ConversationView] cancelling bash: execId=${tab.bashExecId}`)
                   window.ion.cancelBash(tab.bashExecId)
-                } else {
-                  console.log(`[ConversationView] stopping tab: tabId=${tab.id}`)
-                  window.ion.stopTab(tab.id)
+                  return
                 }
+                console.log(`[ConversationView] stopping tab: tabId=${tab.id}`)
+                const tabId = tab.id
+                try { await window.ion.stopTab(tabId) } catch {}
+                // 5s fallback: if engine never confirms idle, force-recover locally
+                // so the UI is always usable after pressing the interrupt button.
+                setTimeout(() => {
+                  const cur = useSessionStore.getState().tabs.find((t) => t.id === tabId)
+                  if (cur && (cur.status === 'running' || cur.status === 'connecting')) {
+                    useSessionStore.getState().forceRecoverTab(
+                      tabId,
+                      'Engine did not respond to interrupt within 5s. Tab reset locally.'
+                    )
+                  }
+                }, 5_000)
               }} />
             )}
           </AnimatePresence>
