@@ -324,6 +324,8 @@ interface DispatchAgentOpts {
   extensionDir?: string     // extension directory for the child session
   systemPrompt?: string     // injected system prompt
   projectPath?: string      // working directory for the agent
+  sessionId?: string        // resume an existing child session
+  maxTurns?: number         // cap child agent loop turns (omit or <=0 = unlimited)
 }
 ```
 

@@ -971,13 +971,13 @@ Config merges across four layers: compiled defaults, user global (`~/.ion/engine
 
 ### Default limits
 
-Override in `engine.json` under `"limits"`:
+The engine ships unopinionated. No turn cap, no budget ceiling, no idle timeout. Set them in `engine.json` under `"limits"` (or via per-call options) when you need them:
 
-| Setting | Default |
-|---------|---------|
-| `maxTurns` | 50 |
-| `maxBudgetUsd` | 10.00 |
-| `idleTimeoutMs` | 300000 (5 min) |
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `maxTurns` | unset (unlimited) | Set to a positive int to cap turns. |
+| `maxBudgetUsd` | unset (unlimited) | Set to a positive float to cap spend in USD. |
+| `idleTimeoutMs` | unset (unlimited) | Set to a positive int (ms) if your harness wants idle session culling. |
 
 ### CLI overrides
 

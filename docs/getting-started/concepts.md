@@ -147,7 +147,7 @@ Key configuration areas:
 | `backend` | Agent loop implementation (`api` or `cli`) |
 | `defaultModel` | Default LLM model |
 | `providers` | Provider API keys, base URLs, auth headers |
-| `limits` | Max turns (default: 50), max budget (default: $10.00) |
+| `limits` | Max turns and max budget (both default unset/unlimited; engine ships unopinionated) |
 | `mcpServers` | MCP server connections |
 | `profiles` | Named session presets |
 | `network` | Proxy, custom CA, TLS settings |

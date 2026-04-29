@@ -50,8 +50,8 @@ Resource limits for agent runs. All fields are optional pointers -- omitting a f
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `maxTurns` | int (nullable) | `50` | Maximum number of LLM turns before the agent stops. |
-| `maxBudgetUsd` | float (nullable) | `10.0` | Cost ceiling in USD. The agent stops when estimated spend reaches this value. |
+| `maxTurns` | int (nullable) | unset (unlimited) | Maximum number of LLM turns before the agent stops. Unset or `<= 0` means no cap. |
+| `maxBudgetUsd` | float (nullable) | unset (unlimited) | Cost ceiling in USD. The agent stops when estimated spend reaches this value. Unset or `<= 0` means no cap. |
 
 These can also be overridden per-session via CLI flags. See [Limits](limits.md) for details.
 
