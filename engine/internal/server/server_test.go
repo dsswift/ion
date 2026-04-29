@@ -57,6 +57,7 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 }
 
 func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error            { return nil }
+func (m *mockBackend) FlushConversations()                                    {}
 func (m *mockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) { m.onNorm = fn }
 func (m *mockBackend) OnExit(fn func(string, *int, *string, string))      { m.onExit = fn }
 func (m *mockBackend) OnError(fn func(string, error))                     { m.onErr = fn }

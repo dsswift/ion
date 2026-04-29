@@ -244,6 +244,26 @@ func (b *ApiBackend) StartRun(requestID string, options types.RunOptions) {
 	go b.runLoop(ctx, run, options)
 }
 
+// FlushConversations persists every active run's conversation to disk.
+// Called from shutdown paths (signal handler) so partially streamed turns
+// are not lost when the engine is killed mid-run.
+func (b *ApiBackend) FlushConversations() {
+	b.mu.Lock()
+	runs := make([]*activeRun, 0, len(b.activeRuns))
+	for _, r := range b.activeRuns {
+		runs = append(runs, r)
+	}
+	b.mu.Unlock()
+	for _, run := range runs {
+		if run.conv == nil {
+			continue
+		}
+		if err := conversation.Save(run.conv, ""); err != nil {
+			utils.Log("ApiBackend", fmt.Sprintf("FlushConversations: save failed runID=%s err=%s", run.requestID, err.Error()))
+		}
+	}
+}
+
 // Cancel stops a running agent loop. Returns true if a run was found and cancelled.
 func (b *ApiBackend) Cancel(requestID string) bool {
 	b.mu.Lock()
@@ -502,6 +522,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	// Add user message (using potentially-rewritten prompt)
 	conversation.AddUserMessage(conv, opts.Prompt)
+	// Persist immediately: if the engine dies mid-stream, the user prompt
+	// must survive so the user does not lose what they just typed.
+	if err := conversation.Save(conv, ""); err != nil {
+		utils.Log("ApiBackend", "failed to save conversation after AddUserMessage: "+err.Error())
+	}
 
 	// Resolve limits. Engine ships unopinionated: maxTurns/maxBudget <= 0 means
 	// "no cap" -- the agent loop runs until the LLM emits a terminal stop or
@@ -630,6 +655,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		select {
 		case steerMsg := <-run.steerCh:
 			conversation.AddUserMessage(run.conv, steerMsg)
+			if err := conversation.Save(run.conv, ""); err != nil {
+				utils.Log("ApiBackend", "failed to save conversation after steer: "+err.Error())
+			}
 			utils.Log("ApiBackend", "steer message injected into conversation")
 		default:
 			// no steer message, continue normally
@@ -642,6 +670,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Wind-down: warn the LLM 2 turns before max so it can wrap up
 		if maxTurns > 4 && run.turnCount == maxTurns-2 {
 			conversation.AddUserMessage(run.conv, "[SYSTEM] You are approaching your turn limit. You have 2 turns remaining. Wrap up your current work, summarize what you've accomplished and what remains, then return your response.")
+			if err := conversation.Save(run.conv, ""); err != nil {
+				utils.Log("ApiBackend", "failed to save conversation after wind-down: "+err.Error())
+			}
 			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, run.turnCount, maxTurns))
 		}
 
@@ -892,6 +923,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				llmUsage = *turnUsage
 			}
 			conversation.AddAssistantMessage(conv, assistantBlocks, llmUsage)
+			// Persist immediately so the assistant turn survives mid-loop crashes.
+			// The end-of-turn Save() below remains as the canonical write that
+			// also captures stop-reason transitions.
+			if err := conversation.Save(conv, ""); err != nil {
+				utils.Log("ApiBackend", "failed to save conversation after AddAssistantMessage: "+err.Error())
+			}
 		}
 
 		// Fire turn_end hook
@@ -994,11 +1031,18 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 			// Add tool results to conversation
 			conversation.AddToolResults(conv, results)
+			// Persist immediately so tool history survives mid-multi-turn crashes.
+			if err := conversation.Save(conv, ""); err != nil {
+				utils.Log("ApiBackend", "failed to save conversation after AddToolResults: "+err.Error())
+			}
 
 		case "max_tokens":
 			utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, run.turnCount))
 			// Add continue message and loop
 			conversation.AddUserMessage(conv, "Continue from where you left off.")
+			if err := conversation.Save(conv, ""); err != nil {
+				utils.Log("ApiBackend", "failed to save conversation after max_tokens continue: "+err.Error())
+			}
 
 		default:
 			// Unknown stop reason; break the loop

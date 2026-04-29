@@ -54,6 +54,8 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 
 func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error { return nil }
 
+func (m *mockBackend) FlushConversations() {}
+
 func (m *mockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

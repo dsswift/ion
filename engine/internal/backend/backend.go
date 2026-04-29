@@ -14,6 +14,11 @@ type RunBackend interface {
 	// ApiBackend returns nil (no stdin pipe -- uses conversation injection).
 	WriteToStdin(requestID string, msg interface{}) error
 
+	// FlushConversations persists every in-flight run's conversation to disk.
+	// Best-effort; intended for shutdown paths so partially streamed turns
+	// survive the engine being killed mid-run.
+	FlushConversations()
+
 	// Event channels
 	OnNormalized(func(runID string, event types.NormalizedEvent))
 	OnExit(func(runID string, code *int, signal *string, sessionID string))

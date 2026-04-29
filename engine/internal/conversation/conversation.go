@@ -757,7 +757,7 @@ func saveJSONL(conv *Conversation, dir string) error {
 		lines = append(lines, string(entryBytes))
 	}
 
-	return os.WriteFile(savePath, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	return writeFileSynced(savePath, []byte(strings.Join(lines, "\n")+"\n"))
 }
 
 func saveJSON(conv *Conversation, dir string) error {
@@ -766,7 +766,41 @@ func saveJSON(conv *Conversation, dir string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(savePath, b, 0o644)
+	return writeFileSynced(savePath, b)
+}
+
+// writeFileSynced writes data to path with fsync, so a crash immediately
+// after the write does not lose the contents. Uses a temp file + rename
+// for atomicity, then fsyncs the parent directory so the rename is durable.
+func writeFileSynced(path string, data []byte) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if dir, err := os.Open(filepath.Dir(path)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
+	return nil
 }
 
 // Load reads a conversation from disk. Tries JSONL first, then JSON.
