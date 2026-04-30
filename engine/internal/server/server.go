@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -32,24 +34,60 @@ func DefaultSocketPath() string {
 	return filepath.Join(home, ".ion", "engine.sock")
 }
 
+// broadcastQueueSize bounds per-client and per-listener event queues. A slow
+// consumer may lag this many events before the server starts dropping for it.
+const broadcastQueueSize = 256
+
+// broadcastWriteDeadline is how long a single per-client write may take before
+// the drainer treats the connection as dead and evicts it.
+const broadcastWriteDeadline = 5 * time.Second
+
+// clientWriter owns a connected client's outbound queue. A drain goroutine
+// reads from queue and writes to conn under a per-write deadline. Slow or
+// stalled consumers drop events at the enqueue site (non-blocking send) and,
+// once the write deadline trips, are evicted entirely.
+type clientWriter struct {
+	conn    net.Conn
+	queue   chan []byte
+	done    chan struct{}
+	dropped int64
+}
+
+// listenerHandle wraps a registered broadcast listener with its own queue and
+// drain goroutine so a slow listener (e.g. a backed-up relay) cannot stall
+// delivery to socket clients or to other listeners.
+type listenerHandle struct {
+	fn      func(line string)
+	queue   chan string
+	done    chan struct{}
+	dropped int64
+}
+
 // Server listens on a Unix domain socket (or TCP on Windows), accepts NDJSON
 // commands from clients, and broadcasts session events back to all connected clients.
 type Server struct {
 	socketPath         string
 	listener           net.Listener
-	clients            map[net.Conn]struct{}
+	clients            map[net.Conn]*clientWriter
 	mu                 sync.RWMutex
 	manager            *session.Manager
 	config             *types.EngineRuntimeConfig
-	broadcastListeners []func(line string)
+	broadcastListeners []*listenerHandle
 	done               chan struct{}
 	stopOnce           sync.Once
+	version            string
+	startedAt          time.Time
 }
 
 // SetConfig stores the engine runtime config for use by sessions.
 func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	s.config = cfg
 	s.manager.SetConfig(cfg)
+}
+
+// SetVersion stores the engine binary version for the health command.
+func (s *Server) SetVersion(v string) {
+	s.version = v
 }
 
 // NewServer creates a Server backed by the given RunBackend.
@@ -59,9 +97,10 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 
 	s := &Server{
 		socketPath: socketPath,
-		clients:    make(map[net.Conn]struct{}),
+		clients:    make(map[net.Conn]*clientWriter),
 		manager:    mgr,
 		done:       make(chan struct{}),
+		startedAt:  time.Now(),
 	}
 
 	// Wire manager events to broadcast
@@ -130,10 +169,15 @@ func (s *Server) Stop() error {
 		_ = s.manager.StopAll()
 
 		s.mu.Lock()
-		for conn := range s.clients {
+		for conn, cw := range s.clients {
+			close(cw.done)
 			conn.Close()
 		}
-		s.clients = make(map[net.Conn]struct{})
+		s.clients = make(map[net.Conn]*clientWriter)
+		for _, lh := range s.broadcastListeners {
+			close(lh.done)
+		}
+		s.broadcastListeners = nil
 		s.mu.Unlock()
 
 		if s.listener != nil {
@@ -186,21 +230,79 @@ func (s *Server) acceptLoop() {
 			}
 		}
 
+		cw := &clientWriter{
+			conn:  conn,
+			queue: make(chan []byte, broadcastQueueSize),
+			done:  make(chan struct{}),
+		}
 		s.mu.Lock()
-		s.clients[conn] = struct{}{}
+		s.clients[conn] = cw
 		s.mu.Unlock()
 
+		go s.drainClient(cw)
 		go s.handleClient(conn)
 	}
 }
 
-func (s *Server) handleClient(conn net.Conn) {
-	defer func() {
-		s.mu.Lock()
+// drainClient reads from cw.queue and writes to the underlying conn under a
+// per-write deadline. A failed write evicts the client.
+func (s *Server) drainClient(cw *clientWriter) {
+	for {
+		select {
+		case line, ok := <-cw.queue:
+			if !ok {
+				return
+			}
+			if err := cw.conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline)); err != nil {
+				utils.Log("Server", "set write deadline failed: "+err.Error())
+			}
+			if _, err := cw.conn.Write(line); err != nil {
+				utils.Log("Server", fmt.Sprintf("broadcast write error (evicting client, %d events dropped): %s", atomic.LoadInt64(&cw.dropped), err.Error()))
+				s.evictClient(cw.conn)
+				return
+			}
+		case <-cw.done:
+			return
+		}
+	}
+}
+
+// evictClient removes a client from the broadcast set and closes its conn.
+// Safe to call multiple times.
+func (s *Server) evictClient(conn net.Conn) {
+	s.mu.Lock()
+	cw, ok := s.clients[conn]
+	if ok {
 		delete(s.clients, conn)
-		s.mu.Unlock()
+	}
+	s.mu.Unlock()
+	if ok {
+		select {
+		case <-cw.done:
+		default:
+			close(cw.done)
+		}
 		conn.Close()
-	}()
+	}
+}
+
+// drainListener calls the listener fn for each queued line until done is closed.
+func (s *Server) drainListener(lh *listenerHandle) {
+	for {
+		select {
+		case line, ok := <-lh.queue:
+			if !ok {
+				return
+			}
+			lh.fn(line)
+		case <-lh.done:
+			return
+		}
+	}
+}
+
+func (s *Server) handleClient(conn net.Conn) {
+	defer s.evictClient(conn)
 
 	scanner := bufio.NewScanner(conn)
 	// Allow large messages (1MB)
@@ -391,6 +493,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "shutdown":
 		_ = s.Stop()
 
+	case "health":
+		s.sendResult(conn, cmd, nil, s.healthSnapshot())
+
 	default:
 		utils.Warn("Server", "unknown command: "+cmd.Cmd)
 		s.sendResult(conn, cmd, fmt.Errorf("unknown command: %s", cmd.Cmd), nil)
@@ -434,36 +539,103 @@ func (s *Server) sendForkResult(conn net.Conn, cmd *protocol.ClientCommand, err 
 	s.writeToClient(conn, line)
 }
 
-// OnBroadcast registers a listener that receives every broadcast line.
-// Used by relay transport to forward engine events to mobile peers.
-func (s *Server) OnBroadcast(fn func(line string)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.broadcastListeners = append(s.broadcastListeners, fn)
+// healthSnapshot returns daemon liveness data for the health command.
+func (s *Server) healthSnapshot() map[string]interface{} {
+	version := s.version
+	if version == "" {
+		version = "dev"
+	}
+	return map[string]interface{}{
+		"ok":           true,
+		"version":      version,
+		"startedAt":    s.startedAt.UTC().Format(time.RFC3339),
+		"uptimeSec":    int64(time.Since(s.startedAt).Seconds()),
+		"sessionCount": len(s.manager.ListSessions()),
+		"socketPath":   s.socketPath,
+	}
 }
 
-func (s *Server) broadcast(line string) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// OnBroadcast registers a listener that receives every broadcast line.
+// Used by relay transport to forward engine events to mobile peers. Each
+// listener gets its own bounded queue + drain goroutine so a slow listener
+// cannot stall delivery to socket clients or other listeners.
+func (s *Server) OnBroadcast(fn func(line string)) {
+	lh := &listenerHandle{
+		fn:    fn,
+		queue: make(chan string, broadcastQueueSize),
+		done:  make(chan struct{}),
+	}
+	s.mu.Lock()
+	s.broadcastListeners = append(s.broadcastListeners, lh)
+	s.mu.Unlock()
+	go s.drainListener(lh)
+}
 
-	for conn := range s.clients {
-		_, err := conn.Write([]byte(line))
-		if err != nil {
-			utils.Log("Server", "broadcast write error: "+err.Error())
+// broadcast delivers line to every connected client and registered listener.
+// Per-client and per-listener delivery is non-blocking: each side has its own
+// bounded queue, drained by a dedicated goroutine. The Server lock is held
+// only for the snapshot read; no I/O happens under lock.
+func (s *Server) broadcast(line string) {
+	payload := []byte(line)
+	s.mu.RLock()
+	clients := make([]*clientWriter, 0, len(s.clients))
+	for _, cw := range s.clients {
+		clients = append(clients, cw)
+	}
+	listeners := make([]*listenerHandle, len(s.broadcastListeners))
+	copy(listeners, s.broadcastListeners)
+	s.mu.RUnlock()
+
+	for _, cw := range clients {
+		select {
+		case cw.queue <- payload:
+		default:
+			n := atomic.AddInt64(&cw.dropped, 1)
+			if n == 1 || n%256 == 0 {
+				utils.Log("Server", fmt.Sprintf("broadcast queue full; dropped %d events for slow client", n))
+			}
 		}
 	}
 
-	for _, fn := range s.broadcastListeners {
-		fn(line)
+	for _, lh := range listeners {
+		select {
+		case lh.queue <- line:
+		default:
+			n := atomic.AddInt64(&lh.dropped, 1)
+			if n == 1 || n%256 == 0 {
+				utils.Log("Server", fmt.Sprintf("broadcast listener queue full; dropped %d events", n))
+			}
+		}
 	}
 }
 
+// writeToClient routes a single line to the given conn through its queue, so
+// it is serialized with broadcast traffic on the same connection. A nil conn
+// is a relay-dispatched command with no socket reply (results go via
+// broadcast listeners).
 func (s *Server) writeToClient(conn net.Conn, line string) {
 	if conn == nil {
-		return // relay dispatch: results go via broadcast listeners
+		return
 	}
-	_, err := conn.Write([]byte(line))
-	if err != nil {
-		utils.Log("Server", "write error: "+err.Error())
+	s.mu.RLock()
+	cw, ok := s.clients[conn]
+	s.mu.RUnlock()
+	if !ok {
+		// Conn is not (or no longer) registered. Fall back to a direct write
+		// with a deadline so a wedged peer cannot stall the caller.
+		_ = conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline))
+		if _, err := conn.Write([]byte(line)); err != nil {
+			utils.Log("Server", "write error (untracked client): "+err.Error())
+		}
+		return
+	}
+	payload := []byte(line)
+	select {
+	case cw.queue <- payload:
+	default:
+		n := atomic.AddInt64(&cw.dropped, 1)
+		if n == 1 || n%256 == 0 {
+			utils.Log("Server", fmt.Sprintf("client queue full; dropped %d events", n))
+		}
 	}
 }

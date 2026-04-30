@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -29,7 +30,7 @@ func GrepTool() *types.ToolDef {
 	}
 }
 
-func executeGrep(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeGrep(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
 	pattern, _ := input["pattern"].(string)
 	if pattern == "" {
 		return &types.ToolResult{Content: "Error: pattern is required", IsError: true}, nil
@@ -39,15 +40,20 @@ func executeGrep(_ context.Context, input map[string]any, cwd string) (*types.To
 	glob := stringFromInput(input, "glob", "")
 	outputMode := stringFromInput(input, "output_mode", "content")
 
+	// Bound the search by wall clock so a pathological pattern can't wedge.
+	// The user-cancel context still cancels before the deadline.
+	cmdCtx, cancel := context.WithTimeout(ctx, globTimeout)
+	defer cancel()
+
 	// Try ripgrep first, fall back to grep.
 	rgPath, rgErr := exec.LookPath("rg")
 	if rgErr == nil {
-		return execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd)
+		return execRipgrep(cmdCtx, rgPath, pattern, searchPath, glob, outputMode, cwd)
 	}
-	return execGrepFallback(pattern, searchPath, glob, outputMode, cwd)
+	return execGrepFallback(cmdCtx, pattern, searchPath, glob, outputMode, cwd)
 }
 
-func execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {
+func execRipgrep(ctx context.Context, rgPath, pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {
 	args := []string{"--no-heading"}
 
 	switch outputMode {
@@ -68,11 +74,17 @@ func execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd string) (*ty
 		args = append(args, searchPath)
 	}
 
-	cmd := exec.Command(rgPath, args...)
+	cmd := exec.CommandContext(ctx, rgPath, args...)
 	cmd.Dir = cwd
 
 	out, err := cmd.Output()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if errors.Is(ctxErr, context.DeadlineExceeded) {
+				return &types.ToolResult{Content: fmt.Sprintf("Error: Grep exceeded %s deadline.", globTimeout), IsError: true}, nil
+			}
+			return &types.ToolResult{Content: "Error: Grep cancelled.", IsError: true}, nil
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			// rg returns exit code 1 for "no matches"
 			if exitErr.ExitCode() == 1 {
@@ -89,7 +101,7 @@ func execRipgrep(rgPath, pattern, searchPath, glob, outputMode, cwd string) (*ty
 	return &types.ToolResult{Content: result}, nil
 }
 
-func execGrepFallback(pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {
+func execGrepFallback(ctx context.Context, pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {
 	// -E enables extended regex so patterns like foo[0-9]+bar work the same
 	// way they do under ripgrep.
 	args := []string{"-rEn"}
@@ -112,11 +124,17 @@ func execGrepFallback(pattern, searchPath, glob, outputMode, cwd string) (*types
 		args = append(args, ".")
 	}
 
-	cmd := exec.Command("grep", args...)
+	cmd := exec.CommandContext(ctx, "grep", args...)
 	cmd.Dir = cwd
 
 	out, err := cmd.Output()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if errors.Is(ctxErr, context.DeadlineExceeded) {
+				return &types.ToolResult{Content: fmt.Sprintf("Error: Grep exceeded %s deadline.", globTimeout), IsError: true}, nil
+			}
+			return &types.ToolResult{Content: "Error: Grep cancelled.", IsError: true}, nil
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return &types.ToolResult{Content: "(no matches)"}, nil
 		}

@@ -42,7 +42,7 @@ function getAgentColor(agent: AgentStateUpdate): string {
 }
 
 function isAgentVisible(agent: AgentStateUpdate): boolean {
-  const visibility = meta(agent, 'visibility', 'ephemeral')
+  const visibility = meta<string>(agent, 'visibility', 'ephemeral')
   switch (visibility) {
     case 'always': return true
     case 'sticky': return meta(agent, 'invited', false)

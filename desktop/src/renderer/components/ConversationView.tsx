@@ -631,7 +631,7 @@ function MessageAttachments({ attachments }: { attachments: Attachment[] }) {
             <span className="flex-shrink-0" style={{ color: a.type === 'plan' ? 'rgba(34, 197, 94, 0.85)' : colors.textTertiary }}>
               {a.type === 'plan'
                 ? <ListChecks size={12} />
-                : (a.type !== 'plan' && FILE_ICONS[(a as any).mimeType || '']) || <File size={12} />}
+                : FILE_ICONS[(a as any).mimeType || ''] || <File size={12} />}
             </span>
             <span
               className="text-[10px] font-medium truncate"

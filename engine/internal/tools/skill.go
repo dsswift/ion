@@ -32,7 +32,10 @@ func SkillTool() *types.ToolDef {
 	}
 }
 
-func executeSkill(_ context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: Skill cancelled.", IsError: true}, nil
+	}
 	name, _ := input["skill"].(string)
 	if name == "" {
 		return &types.ToolResult{Content: "Missing required parameter: skill", IsError: true}, nil

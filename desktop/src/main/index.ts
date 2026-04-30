@@ -13,9 +13,11 @@ import { discoverCommands } from './cli-compat/command-discovery'
 import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, EnrichedError, WorktreeInfo, WorktreeStatus } from '../shared/types'
+import type { RunOptions, NormalizedEvent, EnrichedError, WorktreeInfo, WorktreeStatus, TabStatus } from '../shared/types'
 import { TerminalManager } from './terminal-manager'
 import { isValidProjectPath, isValidSessionId, validateExternalUrl } from './ipc-validation'
+import { atomicWriteFileSync } from './utils/atomicWrite'
+import { encryptSensitiveSettings, decryptSensitiveSettings, isSafeStorageReady } from './utils/secretStore'
 
 const gitExec = promisify(execFileCb)
 
@@ -739,10 +741,8 @@ ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
     // Only discover commands when Claude compat is enabled
     let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
     try {
-      if (existsSync(SETTINGS_FILE)) {
-        const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
-        claudeCompat = s.enableClaudeCompat ?? claudeCompat
-      }
+      const s = readSettings()
+      claudeCompat = s.enableClaudeCompat ?? claudeCompat
     } catch {}
     if (!claudeCompat) return []
     return await discoverCommands(projectPath)
@@ -1906,10 +1906,36 @@ const SETTINGS_DIR = join(homedir(), '.ion')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
 const SETTINGS_DEFAULTS = { themeMode: 'dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', showDirLabel: true, preferredOpenWith: 'cli', showImplementClearContext: false, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, allowSettingsEdits: false, enableClaudeCompat: true, preferredModel: 'claude-opus-4-6' }
 
+// readSettings loads settings.json with sensitive fields decrypted. Use this
+// instead of JSON.parse(readFileSync(SETTINGS_FILE)) so plaintext consumers
+// keep working transparently while disk storage stays encrypted.
+function readSettings(): Record<string, any> {
+  if (!existsSync(SETTINGS_FILE)) return {}
+  try {
+    const raw = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+    return decryptSensitiveSettings(raw)
+  } catch (err) {
+    log(`Failed to read settings: ${err}`)
+    return {}
+  }
+}
+
+// writeSettings persists settings.json atomically (temp+fsync+rename), with
+// sensitive fields encrypted via Electron safeStorage. Mode 0o600 because the
+// file may still contain plaintext on platforms without a keyring.
+function writeSettings(data: Record<string, any>): void {
+  if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
+  const encrypted = encryptSensitiveSettings(data)
+  atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(encrypted, null, 2), 0o600)
+  if (!isSafeStorageReady()) {
+    log('[Settings] safeStorage unavailable; secrets stored in plaintext (mode 0600)')
+  }
+}
+
 ipcMain.handle(IPC.LOAD_SETTINGS, () => {
   try {
     if (existsSync(SETTINGS_FILE)) {
-      const settings = { ...SETTINGS_DEFAULTS, ...JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) }
+      const settings: Record<string, any> = { ...SETTINGS_DEFAULTS, ...readSettings() }
       log(`[Settings] loaded: remoteEnabled=${settings.remoteEnabled} remoteTransport=${!!remoteTransport}`)
       // Initialize remote transport from persisted settings on first load.
       if (settings.remoteEnabled && !remoteTransport) {
@@ -1938,7 +1964,7 @@ function readEngineConfig(): Record<string, any> {
 
 function writeEngineConfig(config: Record<string, any>): void {
   if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-  writeFileSync(ENGINE_CONFIG_FILE, JSON.stringify(config, null, 2))
+  atomicWriteFileSync(ENGINE_CONFIG_FILE, JSON.stringify(config, null, 2), 0o644)
 }
 
 function getCurrentBackend(): 'api' | 'cli' {
@@ -2007,7 +2033,7 @@ ipcMain.handle(IPC.LOAD_TABS, () => {
 ipcMain.handle(IPC.SAVE_TABS, (_event, data: Record<string, unknown>) => {
   try {
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    writeFileSync(TABS_FILE, JSON.stringify(data, null, 2))
+    atomicWriteFileSync(TABS_FILE, JSON.stringify(data, null, 2), 0o644)
   } catch (err) {
     log(`Failed to save tabs: ${err}`)
   }
@@ -2031,7 +2057,7 @@ function loadSessionLabels(): Record<string, string> {
 function saveSessionLabels(labels: Record<string, string>): void {
   try {
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    writeFileSync(SESSION_LABELS_FILE, JSON.stringify(labels, null, 2))
+    atomicWriteFileSync(SESSION_LABELS_FILE, JSON.stringify(labels, null, 2), 0o644)
   } catch (err) {
     log(`Failed to save session labels: ${err}`)
   }
@@ -2078,7 +2104,7 @@ function loadSessionChains(): { chains: Record<string, string[]>; reverse: Recor
 function saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): void {
   try {
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    writeFileSync(SESSION_CHAINS_FILE, JSON.stringify(data, null, 2))
+    atomicWriteFileSync(SESSION_CHAINS_FILE, JSON.stringify(data, null, 2), 0o644)
   } catch (err) {
     log(`Failed to save session chains: ${err}`)
   }
@@ -2127,7 +2153,7 @@ function startTabSnapshotPolling(): void {
     if (!remoteTransport || remoteTransport.state === 'disconnected') return
     try {
       const tabs = await getRemoteTabStates()
-      const settings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+      const settings = readSettings()
       const recentDirectories: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
       remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
     } catch {}
@@ -2336,10 +2362,10 @@ function revokeDeviceLocally(deviceId: string): void {
   log(`[Remote] revoking device locally: ${deviceId}`)
   try {
     if (existsSync(SETTINGS_FILE)) {
-      const settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+      const settings = readSettings()
       const devices = Array.isArray(settings.pairedDevices) ? settings.pairedDevices : []
       settings.pairedDevices = devices.filter((d: any) => d.id !== deviceId)
-      writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2))
+      writeSettings(settings)
     }
   } catch (err) {
     log(`[Remote] failed to remove device from settings: ${(err as Error).message}`)
@@ -2373,14 +2399,14 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
     lanPort: (settings.lanServerPort as number) || 19837,
     getPairedDevice: (deviceId: string) => {
       try {
-        const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const s = readSettings()
         const devices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
         return devices.find((d: any) => d.id === deviceId) || null
       } catch { return null }
     },
     getAllPairedDevices: () => {
       try {
-        const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const s = readSettings()
         return Array.isArray(s.pairedDevices) ? s.pairedDevices : []
       } catch { return [] }
     },
@@ -2393,7 +2419,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
     // Without a shared secret there's no authenticated peer, so sending
     // tab state would leak data to any device on the LAN.
     try {
-      const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+      const s = readSettings()
       const devices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
       if (!devices.some((d: any) => d.sharedSecret)) {
         log('[Remote] peer connected but no paired device with shared secret -- skipping snapshot')
@@ -2407,7 +2433,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
 
       // Push current relay config so iOS always has the latest.
       try {
-        const settings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const settings = readSettings()
         const peerRecentDirs: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
         remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories: peerRecentDirs })
         const relayUrl = (settings.relayUrl as string) || ''
@@ -2427,7 +2453,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
     switch (cmd.type) {
       case 'sync': {
         const tabs = await getRemoteTabStates()
-        const syncSettings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+        const syncSettings = readSettings()
         const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
         remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
         // Send engine profiles so iOS can show a profile picker
@@ -2471,8 +2497,11 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         let dir = cmd.workingDirectory
         if (!dir) {
           // Resolve desktop default from settings, fall back to home
-          const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
-          dir = s.defaultBaseDirectory || homedir()
+          const s = readSettings()
+          dir = s.defaultBaseDirectory || homedir() || ''
+        }
+        if (!dir) {
+          break
         }
         try {
           const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -2686,9 +2715,10 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
       case 'create_terminal_tab': {
         let dir = cmd.workingDirectory
         if (!dir) {
-          const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
-          dir = s.defaultBaseDirectory || homedir()
+          const s = readSettings()
+          dir = s.defaultBaseDirectory || homedir() || ''
         }
+        if (!dir) break
         try {
           const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
           const tabId = await mainWindow?.webContents.executeJavaScript(`
@@ -2715,9 +2745,10 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
       case 'create_engine_tab': {
         let dir = cmd.workingDirectory
         if (!dir) {
-          const s = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
-          dir = s.defaultBaseDirectory || homedir()
+          const s = readSettings()
+          dir = s.defaultBaseDirectory || homedir() || ''
         }
+        if (!dir) break
         try {
           const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
           const tabId = await mainWindow?.webContents.executeJavaScript(`
@@ -2953,7 +2984,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
     let existingDevices: any[] = []
     try {
       if (existsSync(SETTINGS_FILE)) {
-        const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
+        const s = readSettings()
         relayUrl = s.relayUrl || ''
         relayApiKey = s.relayApiKey || ''
         existingDevices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
@@ -3024,16 +3055,14 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
 
     // Save paired device to settings and notify renderer.
     try {
-      const settings = existsSync(SETTINGS_FILE)
-        ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
-        : {}
+      const settings = readSettings()
       const devices = Array.isArray(settings.pairedDevices) ? settings.pairedDevices : []
       // Replace existing device with same id or name (name is stable across re-pairings).
       const idx = devices.findIndex((d: any) => d.id === pairedDevice.id || d.name === pairedDevice.name)
       if (idx >= 0) devices[idx] = pairedDevice
       else devices.push(pairedDevice)
       settings.pairedDevices = devices
-      writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2))
+      writeSettings(settings)
     } catch (err) {
       log(`Failed to save paired device: ${(err as Error).message}`)
     }
@@ -3049,7 +3078,7 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
     // Send a tab snapshot to the newly connected iOS client.
     setTimeout(async () => {
       const tabs = await getRemoteTabStates()
-      const pairSettings = existsSync(SETTINGS_FILE) ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) : {}
+      const pairSettings = readSettings()
       const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
       remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories: pairRecentDirs })
     }, 500)
@@ -3303,9 +3332,7 @@ ipcMain.handle(IPC.REMOTE_START_PAIRING, () => {
   try {
     // Restart transport if it was stopped (e.g. after revoking all devices).
     if (!remoteTransport) {
-      const settings = existsSync(SETTINGS_FILE)
-        ? JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
-        : {}
+      const settings = readSettings()
       if (settings.remoteEnabled) {
         initRemoteTransport(settings)
       }
@@ -3407,10 +3434,9 @@ ipcMain.handle(IPC.SAVE_SETTINGS, (_event, data: Record<string, unknown>) => {
   try {
     // Read previous settings to detect transport-config changes.
     let prev: Record<string, unknown> = {}
-    try { if (existsSync(SETTINGS_FILE)) prev = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) } catch {}
+    try { prev = readSettings() } catch {}
 
-    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2))
+    writeSettings(data as Record<string, any>)
 
     // Only reinitialize the transport when transport-level config changed
     // (not on every settings save, which includes pairedDevices changes).

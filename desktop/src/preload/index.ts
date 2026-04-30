@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, RemoteTransportState } from '../shared/types'
 import type { DiscoveredCommand } from '../main/cli-compat/command-discovery'
 
 export interface IonAPI {
@@ -25,6 +25,7 @@ export interface IonAPI {
   transcribeAudio(audioBase64: string): Promise<{ error: string | null; transcript: string | null }>
   getDiagnostics(): Promise<any>
   respondPermission(tabId: string, questionId: string, optionId: string): Promise<boolean>
+  approveDeniedTools(tabId: string, toolNames: string[]): Promise<boolean>
   initSession(tabId: string): void
   resetTabSession(tabId: string): void
   listSessions(projectPath?: string): Promise<SessionMeta[]>
@@ -114,7 +115,7 @@ export interface IonAPI {
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
   // ─── Remote control ───
-  remoteGetState(): Promise<{ transportState: string } | null>
+  remoteGetState(): Promise<{ transportState: RemoteTransportState } | null>
   remoteGetMessages(tabId: string): Promise<any[]>
   remoteStartPairing(): Promise<string | null>
   remoteCancelPairing(): void

@@ -32,17 +32,63 @@ export interface LANServerOptions {
  *  - 'client-disconnected' (connectionId: string, code: number, reason: string) -- client left
  *  - 'pair-request' -- pairing request from iOS
  */
+// Per-IP exponential backoff for failed auth attempts. Stops a stale
+// device on the LAN from reconnecting in a tight loop and flooding the log.
+// Backoff schedule: 1s, 5s, 30s, 5min cap. Reset on first successful auth.
+const AUTH_BACKOFF_STEPS_MS: number[] = [1_000, 5_000, 30_000, 300_000]
+
+interface AuthFailureRecord {
+  failCount: number
+  blockUntil: number
+  // Last time we logged a block message for this IP. Used to throttle log
+  // output to one line per cooldown window.
+  lastLoggedAt: number
+}
+
 export class LANServer extends EventEmitter {
   private httpServer: Server | null = null
   private wss: WebSocketServer | null = null
   private clients: Map<string, WebSocket> = new Map()
+  private clientIps: Map<string, string> = new Map()
   private port: number
   private dnssdProc: ChildProcess | null = null
   private nextId = 0
+  private failedAuth: Map<string, AuthFailureRecord> = new Map()
 
   constructor(options: LANServerOptions = {}) {
     super()
     this.port = options.port || DEFAULT_PORT
+  }
+
+  /** Returns ms remaining until this IP can attempt auth again, or 0 if not blocked. */
+  private blockedRemaining(ip: string): number {
+    const rec = this.failedAuth.get(ip)
+    if (!rec) return 0
+    const remaining = rec.blockUntil - Date.now()
+    if (remaining <= 0) return 0
+    return remaining
+  }
+
+  /** Record an auth failure from this IP. Bumps failCount and extends blockUntil. */
+  recordAuthFailure(ip: string): void {
+    if (!ip) return
+    const now = Date.now()
+    const rec = this.failedAuth.get(ip) ?? { failCount: 0, blockUntil: 0, lastLoggedAt: 0 }
+    rec.failCount += 1
+    const stepIdx = Math.min(rec.failCount - 1, AUTH_BACKOFF_STEPS_MS.length - 1)
+    rec.blockUntil = now + AUTH_BACKOFF_STEPS_MS[stepIdx]
+    this.failedAuth.set(ip, rec)
+  }
+
+  /** Clear backoff state for this IP after a successful auth. */
+  recordAuthSuccess(ip: string): void {
+    if (!ip) return
+    this.failedAuth.delete(ip)
+  }
+
+  /** Look up the originating IP for a connection (set on connect). */
+  getClientIp(connectionId: string): string | undefined {
+    return this.clientIps.get(connectionId)
   }
 
   get connected(): boolean {
@@ -64,14 +110,18 @@ export class LANServer extends EventEmitter {
   rekeyClient(oldId: string, newId: string): void {
     const ws = this.clients.get(oldId)
     if (!ws) return
+    const ip = this.clientIps.get(oldId)
     this.clients.delete(oldId)
+    this.clientIps.delete(oldId)
     // If there's already a client with newId, close the old one (latest wins per device).
     const existing = this.clients.get(newId)
     if (existing) {
       log(`replacing existing client for ${newId}`)
       try { existing.close() } catch { /* ignore */ }
+      this.clientIps.delete(newId)
     }
     this.clients.set(newId, ws)
+    if (ip) this.clientIps.set(newId, ip)
   }
 
   async start(): Promise<number> {
@@ -85,16 +135,35 @@ export class LANServer extends EventEmitter {
       this.wss = new WebSocketServer({ server: this.httpServer })
 
       this.wss.on('connection', (ws, req) => {
+        const ip = req.socket.remoteAddress || 'unknown'
+
         // Route /pair connections to the pairing handler.
         if (req.url === '/pair') {
-          log(`pairing connection from ${req.socket.remoteAddress}`)
+          log(`pairing connection from ${ip}`)
           this._handlePairingConnection(ws)
+          return
+        }
+
+        // Reject connections from IPs in auth-failure cooldown without
+        // running the handshake. This stops a stale device from reconnecting
+        // every ~500ms and flooding the log.
+        const remaining = this.blockedRemaining(ip)
+        if (remaining > 0) {
+          const rec = this.failedAuth.get(ip)
+          const now = Date.now()
+          // Log at most once per cooldown window to keep the noise floor low.
+          if (rec && now - rec.lastLoggedAt > 60_000) {
+            log(`auth-blocking ip=${ip} count=${rec.failCount} for=${Math.ceil(remaining / 1000)}s`)
+            rec.lastLoggedAt = now
+          }
+          try { ws.close(1008, `auth cooldown ${Math.ceil(remaining / 1000)}s`) } catch { /* ignore */ }
           return
         }
 
         const connectionId = `lan-${this.nextId++}`
         this.clients.set(connectionId, ws)
-        log(`client connected from ${req.socket.remoteAddress} (${connectionId})`)
+        this.clientIps.set(connectionId, ip)
+        log(`client connected from ${ip} (${connectionId})`)
         this.emit('raw-client-connected', ws, connectionId)
 
         ws.on('message', (raw: Buffer | string) => {
@@ -109,11 +178,13 @@ export class LANServer extends EventEmitter {
         ws.on('close', (code: number, reason: Buffer) => {
           if (this.clients.get(connectionId) === ws) {
             this.clients.delete(connectionId)
+            this.clientIps.delete(connectionId)
           }
           // Also check if the ws was re-keyed to a different id.
           for (const [id, client] of this.clients) {
             if (client === ws) {
               this.clients.delete(id)
+              this.clientIps.delete(id)
               log(`client disconnected ${id} (code=${code} reason=${reason.toString()})`)
               this.emit('client-disconnected', id, code, reason.toString())
               return

@@ -33,8 +33,8 @@ vi.mock('fs', async (importOriginal) => {
 
 // ─── Typed mock accessors ───
 
-const mockExecFile = childProcess.execFile as unknown as ReturnType<typeof vi.fn>
-const mockExistsSync = fs.existsSync as unknown as ReturnType<typeof vi.fn>
+const mockExecFile = childProcess.execFile as unknown as ReturnType<typeof vi.fn> & ((...args: any[]) => any)
+const mockExistsSync = fs.existsSync as unknown as ReturnType<typeof vi.fn> & ((...args: any[]) => any)
 
 // ─── Helpers ───
 

@@ -2479,17 +2479,6 @@ export function TabStrip() {
     scrollRef.current?.scrollBy({ left: amount, behavior: 'smooth' })
   }, [])
 
-  // Listen for CMD+R "open recent dirs" event from App
-  useEffect(() => {
-    const handler = () => {
-      if (!plusButtonRef.current) return
-      const rect = zoomRect(plusButtonRef.current.getBoundingClientRect())
-      setRecentDirsMenu({ x: rect.left, y: rect.bottom })
-    }
-    window.addEventListener('ion:open-recent-dirs', handler)
-    return () => window.removeEventListener('ion:open-recent-dirs', handler)
-  }, [])
-
   // Convert vertical wheel to horizontal scroll (also allow native horizontal scroll)
   const onWheel = useCallback((e: React.WheelEvent) => {
     if (!scrollRef.current) return
@@ -2527,7 +2516,7 @@ export function TabStrip() {
           <button
             onClick={() => scrollBy(-150)}
             className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-5 transition-opacity"
-            style={{ color: colors.textTertiary, background: `linear-gradient(to right, ${colors.bgSecondary}, transparent)` }}
+            style={{ color: colors.textTertiary, background: `linear-gradient(to right, ${colors.containerBg}, transparent)` }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textPrimary }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textTertiary }}
           >
@@ -2538,7 +2527,7 @@ export function TabStrip() {
           <button
             onClick={() => scrollBy(150)}
             className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-5 transition-opacity"
-            style={{ color: colors.textTertiary, background: `linear-gradient(to left, ${colors.bgSecondary}, transparent)` }}
+            style={{ color: colors.textTertiary, background: `linear-gradient(to left, ${colors.containerBg}, transparent)` }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textPrimary }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textTertiary }}
           >

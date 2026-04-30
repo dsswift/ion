@@ -1155,6 +1155,84 @@ func TestGlobToolMultipleExtensions(t *testing.T) {
 	}
 }
 
+// TestGlobToolHonorsCtxCancel verifies that executeGlob returns promptly when
+// the caller's context is cancelled before the call. This proves the ctx
+// propagation path that prevents the stuck-tab class of bug: a long-running
+// glob (e.g. a wide pattern over a huge subtree) must abort on cancel rather
+// than wedging the goroutine.
+func TestGlobToolHonorsCtxCancel(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.go"), []byte("x"), 0o644)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	start := time.Now()
+	result, err := ExecuteTool(ctx, "Glob", map[string]any{
+		"pattern": "**/*",
+		"path":    dir,
+	}, dir)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Errorf("expected IsError=true on cancelled ctx, got %q", result.Content)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("expected fast return on cancelled ctx, took %s", elapsed)
+	}
+}
+
+// TestGlobToolHonorsCtxDeadline verifies the wall-clock deadline path. With
+// a 1ms deadline, even a successful walk should be cut off and surface the
+// deadline as a tool-result error rather than running to completion.
+func TestGlobToolHonorsCtxDeadline(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 10; i++ {
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.txt", i)), []byte("x"), 0o644)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	// Sleep past the deadline to guarantee it has fired before the call.
+	time.Sleep(5 * time.Millisecond)
+
+	start := time.Now()
+	result, _ := ExecuteTool(ctx, "Glob", map[string]any{
+		"pattern": "**/*",
+		"path":    dir,
+	}, dir)
+	elapsed := time.Since(start)
+
+	if !result.IsError {
+		t.Errorf("expected IsError=true after deadline, got %q", result.Content)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("expected fast return after deadline, took %s", elapsed)
+	}
+}
+
+// TestGlobToolRejectsPathEscapingCwd verifies the safety gate that prevents
+// a search-dir argument from walking outside the working directory.
+func TestGlobToolRejectsPathEscapingCwd(t *testing.T) {
+	cwd := t.TempDir()
+	parent := filepath.Dir(cwd)
+
+	result, _ := ExecuteTool(context.Background(), "Glob", map[string]any{
+		"pattern": "*",
+		"path":    parent,
+	}, cwd)
+
+	if !result.IsError {
+		t.Errorf("expected IsError=true when path escapes cwd, got %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "escape") {
+		t.Errorf("expected error message to mention escape, got %q", result.Content)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Grep Tool Tests
 // ---------------------------------------------------------------------------

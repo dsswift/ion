@@ -451,11 +451,12 @@ export class RemoteTransport extends EventEmitter {
     const secret = this.deviceSecrets.get(deviceId)
     let payload: string | undefined
     if (secret && msg.nonce && msg.ciphertext) {
-      payload = decrypt(msg.nonce, msg.ciphertext, secret)
-      if (payload === null) {
+      const decrypted = decrypt(msg.nonce, msg.ciphertext, secret)
+      if (decrypted === null) {
         log(`decryption failed for seq=${msg.seq} from ${deviceId}`)
         return
       }
+      payload = decrypted
     } else if (secret && msg.payload) {
       // Shared secret is set but message is plaintext -- reject it.
       log(`rejecting plaintext message seq=${msg.seq} from ${deviceId} (encryption required)`)
@@ -558,6 +559,8 @@ export class RemoteTransport extends EventEmitter {
       if (this.lanAuthPending.has(connectionId)) {
         log(`LAN auth timed out for ${connectionId}`)
         this.lanAuthPending.delete(connectionId)
+        const ip = this.lan?.getClientIp(connectionId)
+        if (ip) this.lan?.recordAuthFailure(ip)
         this.lan?.disconnectClient(connectionId, 4003, 'auth timeout')
       }
     }, 10_000)
@@ -588,11 +591,14 @@ export class RemoteTransport extends EventEmitter {
       return
     }
 
+    const ip = this.lan?.getClientIp(connectionId)
+
     // Look up the device by ID.
     const device = this.config.getPairedDevice?.(authResp.deviceId)
     if (!device) {
       log(`LAN auth: unknown device ${authResp.deviceId}`)
       this._sendAuthResult(connectionId, false, 'unknown device')
+      if (ip) this.lan?.recordAuthFailure(ip)
       this.lan?.disconnectClient(connectionId, 4003, 'unknown device')
       return
     }
@@ -603,6 +609,7 @@ export class RemoteTransport extends EventEmitter {
     if (!valid) {
       log(`LAN auth: invalid proof from ${authResp.deviceId}`)
       this._sendAuthResult(connectionId, false, 'invalid proof')
+      if (ip) this.lan?.recordAuthFailure(ip)
       this.lan?.disconnectClient(connectionId, 4003, 'invalid proof')
       return
     }
@@ -621,6 +628,7 @@ export class RemoteTransport extends EventEmitter {
     // Reset dedup counter for new LAN session.
     this.lastReceivedSeq.set(device.id, 0)
 
+    if (ip) this.lan?.recordAuthSuccess(ip)
     log(`LAN auth: device ${authResp.deviceId} (${device.name}) authenticated`)
     this._sendAuthResult(device.id, true)
 

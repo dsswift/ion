@@ -182,11 +182,19 @@ Set the model you want in `~/.ion/engine.json` and configure its provider block:
   "defaultModel": "qwen2.5:14b",
   "providers": {
     "ollama": {},
-    "openai": { "apiKey": "OPENAI_API_KEY" },
-    "anthropic": { "apiKey": "ANTHROPIC_API_KEY" }
+    "openai": { "apiKey": "CUSTOM_OPEN_API_KEY_VAR" },
+    "anthropic": { "apiKey": "sk-ant-..." }
   }
 }
 ```
+
+> **How `apiKey` is resolved.** The `apiKey` field accepts three forms:
+>
+> 1. **Omitted**: the engine auto-resolves the key from provider's default environment variables (e.g. `OPENAI_API_KEY`), the system keychain, or its encrypted file store.
+> 2. **An environment variable name** (all-caps, digits, and underscores, e.g. `"OPENAI_API_KEY"`): expanded from the environment at startup.
+> 3. **A literal key** (e.g. `"sk-proj-..."`): used directly as-is.
+>
+> The examples above use both form 1 and form 2. The value `"CUSTOM_OPEN_API_KEY_VAR"` is not a literal API key; it tells the engine to read the corresponding environment variable.
 
 Need a custom name (a finetune, an OpenRouter route, a tier alias)? Register it under `~/.ion/models.json`:
 
@@ -944,7 +952,10 @@ cat > ~/.ion/engine.json << 'EOF'
 }
 EOF
 
-# A hosted variant, mixing two providers:
+# A hosted variant, mixing two providers.
+# "OPENAI_API_KEY" here is not a literal key. The engine sees the all-caps
+# name and expands it from the environment variable exported above.
+# You can also pass a literal key: { "apiKey": "sk-proj-..." }
 cat > ~/.ion/engine.json << 'EOF'
 {
   "defaultModel": "gpt-4o",

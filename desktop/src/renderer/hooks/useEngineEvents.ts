@@ -126,10 +126,10 @@ export function useEngineEvents() {
       const tabs = store.tabs.filter((t) => t.id !== tabId)
       const panes = new Map(store.terminalPanes)
       panes.delete(tabId)
-      const selected = store.selectedTabId === tabId
+      const selected = store.activeTabId === tabId
         ? (tabs[0]?.id ?? null)
-        : store.selectedTabId
-      useSessionStore.setState({ tabs, terminalPanes: panes, selectedTabId: selected })
+        : store.activeTabId
+      useSessionStore.setState({ tabs, terminalPanes: panes, activeTabId: selected })
     }
     window.ion.on(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
 

@@ -51,10 +51,13 @@ func ReadMcpResourceTool() *types.ToolDef {
 	}
 }
 
-func executeListMcpResources(_ context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+func executeListMcpResources(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
 	server, _ := input["server"].(string)
 	if server == "" {
 		return &types.ToolResult{Content: "Error: server is required", IsError: true}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: ListMcpResources cancelled.", IsError: true}, nil
 	}
 
 	resources, err := mcp.ListMcpResources(server)
@@ -77,7 +80,7 @@ func executeListMcpResources(_ context.Context, input map[string]any, _ string) 
 	return &types.ToolResult{Content: strings.Join(lines, "\n")}, nil
 }
 
-func executeReadMcpResource(_ context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+func executeReadMcpResource(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
 	server, _ := input["server"].(string)
 	if server == "" {
 		return &types.ToolResult{Content: "Error: server is required", IsError: true}, nil
@@ -85,6 +88,9 @@ func executeReadMcpResource(_ context.Context, input map[string]any, _ string) (
 	uri, _ := input["uri"].(string)
 	if uri == "" {
 		return &types.ToolResult{Content: "Error: uri is required", IsError: true}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: ReadMcpResource cancelled.", IsError: true}, nil
 	}
 
 	content, err := mcp.ReadMcpResource(server, uri)

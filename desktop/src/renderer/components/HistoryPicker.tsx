@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Clock, ChatCircle, Stack } from '@phosphor-icons/react'
+import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
@@ -34,8 +35,10 @@ export function HistoryPicker() {
   const tabs = useSessionStore((s) => s.tabs)
   const isExpanded = useSessionStore((s) => s.isExpanded)
   const activeTab = useSessionStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b && a.hasChosenDirectory === b.hasChosenDirectory && a.workingDirectory === b.workingDirectory),
+    useShallow((s) => {
+      const t = s.tabs.find((t) => t.id === s.activeTabId)
+      return t ? { hasChosenDirectory: t.hasChosenDirectory, workingDirectory: t.workingDirectory } : undefined
+    }),
   )
   const staticInfo = useSessionStore((s) => s.staticInfo)
   const popoverLayer = usePopoverLayer()
