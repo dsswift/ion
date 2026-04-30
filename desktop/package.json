@@ -19,6 +19,7 @@
     "dist": "electron-vite build --mode production && electron-builder --mac --dir",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "doctor": "bash scripts/doctor.sh",
     "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh && bash scripts/patch-zustand.sh"
   },
