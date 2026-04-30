@@ -392,6 +392,14 @@ func runHookCtx[T any](ctx context.Context, fn func() T) (T, error) {
 // will still let executeTools return.
 const defaultToolTimeout = 5 * time.Minute
 
+// toolStallThreshold is how long a tool call runs before a ToolStalledEvent
+// is emitted. This is a heuristic to surface tools that may be blocked by
+// macOS TCC permission dialogs or stuck on slow operations. The event is
+// informational -- it does NOT cancel the tool.
+//
+// Declared as a var (not const) so tests can shorten it without waiting 30s.
+var toolStallThreshold = 30 * time.Second
+
 // runLoop is the core agent loop. It calls the provider, processes the
 // response, executes tools, and loops until the model signals end_turn,
 // the budget is exceeded, or the context is cancelled.
@@ -1481,6 +1489,27 @@ func (b *ApiBackend) executeTools(
 				return nil
 			}
 
+			// Stall detection: emit ToolStalledEvent if the tool hasn't
+			// returned within the stall threshold. Informational only.
+			// Capture the threshold locally so the goroutine doesn't race
+			// with tests that reassign the package-level var.
+			stallThreshold := toolStallThreshold
+			toolDone := make(chan struct{})
+			go func() {
+				stallTimer := time.NewTimer(stallThreshold)
+				defer stallTimer.Stop()
+				select {
+				case <-stallTimer.C:
+					b.emit(run, types.NormalizedEvent{Data: &types.ToolStalledEvent{
+						ToolID:   block.ID,
+						ToolName: block.Name,
+						Elapsed:  stallThreshold.Seconds(),
+					}})
+				case <-toolDone:
+					// Tool finished before stall threshold; nothing to do.
+				}
+			}()
+
 			// Route to built-in, extension, or MCP tool (Step 5).
 			// Each tool call is bounded by defaultToolTimeout. A tool that
 			// observes ctx will cancel cleanly; a tool that ignores ctx will
@@ -1534,6 +1563,9 @@ func (b *ApiBackend) executeTools(
 					IsError: true,
 				}
 			}
+
+			// Signal stall timer that the tool has completed.
+			close(toolDone)
 
 			// End tool span
 			if toolSpan != nil {

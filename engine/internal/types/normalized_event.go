@@ -23,6 +23,7 @@ const (
 	EventPlanModeChanged   = "plan_mode_changed"
 	EventStreamReset       = "stream_reset"
 	EventCompacting        = "compacting"
+	EventToolStalled       = "tool_stalled"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -99,6 +100,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &StreamResetEvent{}
 	case EventCompacting:
 		target = &CompactingEvent{}
+	case EventToolStalled:
+		target = &ToolStalledEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -270,3 +273,15 @@ type CompactingEvent struct {
 }
 
 func (CompactingEvent) eventType() string { return EventCompacting }
+
+// ToolStalledEvent is emitted when a tool call has been running longer
+// than the stall threshold without returning. This is a heuristic signal
+// that the tool may be blocked (e.g. by a macOS TCC permission dialog)
+// or stuck on a slow operation. It is informational, not fatal.
+type ToolStalledEvent struct {
+	ToolID   string  `json:"toolId"`
+	ToolName string  `json:"toolName"`
+	Elapsed  float64 `json:"elapsed"`
+}
+
+func (ToolStalledEvent) eventType() string { return EventToolStalled }

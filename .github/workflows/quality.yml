@@ -46,15 +46,15 @@ jobs:
       # only-new-issues lints only diffs vs the base branch so the existing
       # backlog of issues does not block PRs; new code must stay clean.
       - name: golangci-lint (engine)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.11.3
           working-directory: engine
           only-new-issues: true
       - name: golangci-lint (relay)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.11.3
           working-directory: relay
           only-new-issues: true
 
@@ -134,7 +134,7 @@ jobs:
           tags: ion-engine:ci
 
   ios-build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Build iOS app
@@ -144,4 +144,5 @@ jobs:
             -project IonRemote.xcodeproj \
             -scheme IonRemote \
             -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
             build

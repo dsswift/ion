@@ -127,6 +127,7 @@ export type RemoteEvent =
   | { type: 'engine_message_end'; tabId: string; instanceId?: string | null; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
   | { type: 'engine_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
+  | { type: 'engine_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
   | { type: 'engine_dead'; tabId: string; instanceId?: string | null; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; tabId: string; instanceId?: string | null; message: string }
   | { type: 'engine_instance_added'; tabId: string; instance: { id: string; label: string } }

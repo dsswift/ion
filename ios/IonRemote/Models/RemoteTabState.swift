@@ -50,3 +50,15 @@ struct PermissionRequest: Codable, Identifiable, Sendable {
 
     var id: String { questionId }
 }
+
+// MARK: - ActiveToolInfo
+
+/// Tracks a tool call that is currently executing on the engine.
+/// Used by the iOS app to display active tool cards with elapsed time
+/// and an abort button when the tool appears stalled.
+struct ActiveToolInfo: Identifiable {
+    let id: String        // toolId from the engine
+    let toolName: String
+    let startTime: Date
+    var isStalled: Bool = false
+}
