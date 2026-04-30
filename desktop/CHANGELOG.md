@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.4.0](https://github.com/dsswift/ion/compare/desktop-v1.3.0...desktop-v1.4.0) (2026-04-30)
+
+### Features
+
+* **engine:** add tool stall detection and events ([205e32d](https://github.com/dsswift/ion/commit/205e32d83dfb59c05a701d8446403db18b3daaca))
+
 ## [1.3.0](https://github.com/dsswift/ion/compare/desktop-v1.2.0...desktop-v1.3.0) (2026-04-30)
 
 ### Features
