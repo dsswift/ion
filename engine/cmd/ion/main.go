@@ -341,9 +341,16 @@ func cmdServe() {
 	select {
 	case sig := <-sigCh:
 		utils.Log("main", fmt.Sprintf("received signal: %s, shutting down", sig))
+		// Best-effort durability: persist any in-flight conversation before
+		// the run goroutines are cancelled by srv.Stop(). This guarantees the
+		// user's most recent prompt and any complete assistant blocks survive
+		// graceful shutdown (Electron quit, kill -TERM, Ctrl+C). SIGKILL
+		// bypasses this; per-event Save() in the agent loop covers that.
+		b.FlushConversations()
 		srv.Stop()
 	case <-srv.Done():
 		utils.Log("main", "shutdown command received, shutting down")
+		b.FlushConversations()
 		// srv.Stop() already called by the shutdown command handler.
 	}
 

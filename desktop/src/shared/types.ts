@@ -172,6 +172,8 @@ export interface TabState {
   lastKnownSessionId: string | null
   status: TabStatus
   activeRequestId: string | null
+  /** Wall-clock ms of last engine-originated event for this tab. Drives the stuck-tab watchdog. Not persisted. */
+  lastEventAt: number | null
   hasUnread: boolean
   currentActivity: string
   permissionQueue: PermissionRequest[]

@@ -318,6 +318,9 @@ func (m *MockBackend) WriteToStdin(_ string, _ interface{}) error {
 	return nil
 }
 
+// FlushConversations is a no-op stub satisfying the RunBackend interface.
+func (m *MockBackend) FlushConversations() {}
+
 func (m *MockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -221,6 +221,8 @@ interface State {
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
   handleStatusChange: (tabId: string, newStatus: string, oldStatus: string) => void
   handleError: (tabId: string, error: EnrichedError) => void
+  /** Force-recover a stuck tab: reset to idle and append a system message. */
+  forceRecoverTab: (tabId: string, reason: string) => void
   moveTabToGroup: (tabId: string, groupId: string) => void
   setTabGroupId: (tabId: string, groupId: string | null) => void
   setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
@@ -232,6 +234,7 @@ interface State {
   removeEngineInstance: (tabId: string, instanceId: string) => void
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
+  reorderEngineInstances: (tabId: string, reordered: EngineInstance[]) => void
 }
 
 let msgCounter = 0
@@ -260,6 +263,7 @@ function makeLocalTab(): TabState {
     lastKnownSessionId: null,
     status: 'idle',
     activeRequestId: null,
+    lastEventAt: null,
     hasUnread: false,
     currentActivity: '',
     permissionQueue: [],
@@ -2041,6 +2045,7 @@ export const useSessionStore = create<State>((set, get) => ({
           ...withEffectiveBase,
           status: 'connecting' as TabStatus,
           activeRequestId: requestId,
+          lastEventAt: Date.now(),
           currentActivity: 'Starting...',
           title,
           attachments: [],
@@ -2148,6 +2153,7 @@ export const useSessionStore = create<State>((set, get) => ({
           ...t,
           status: 'connecting' as TabStatus,
           activeRequestId: requestId,
+          lastEventAt: Date.now(),
           currentActivity: 'Starting...',
           title,
           permissionDenied: null,
@@ -2288,7 +2294,7 @@ export const useSessionStore = create<State>((set, get) => ({
       const { activeTabId } = s
       const tabs = s.tabs.map((tab) => {
         if (tab.id !== tabId) return tab
-        const updated = { ...tab }
+        const updated = { ...tab, lastEventAt: Date.now() }
 
         switch (event.type) {
           case 'session_init':
@@ -2719,6 +2725,39 @@ export const useSessionStore = create<State>((set, get) => ({
       }),
     }))
   },
+
+  forceRecoverTab: (tabId, reason) => {
+    console.warn(`[Ion] forceRecoverTab: tab=${tabId} reason="${reason}"`)
+    // Best-effort: also signal the engine to drop any in-flight work for this tab.
+    try { window.ion.stopTab(tabId) } catch {}
+    set((s) => ({
+      tabs: s.tabs.map((t) => {
+        if (t.id !== tabId) return t
+        const lastMsg = t.messages[t.messages.length - 1]
+        const alreadyRecovered = lastMsg?.role === 'system' && lastMsg.content.startsWith('Recovered:')
+        return {
+          ...t,
+          status: 'idle' as TabStatus,
+          activeRequestId: null,
+          currentActivity: '',
+          permissionQueue: [],
+          permissionDenied: null,
+          lastEventAt: Date.now(),
+          messages: alreadyRecovered
+            ? t.messages
+            : [
+                ...t.messages,
+                {
+                  id: nextMsgId(),
+                  role: 'system' as const,
+                  content: `Recovered: ${reason}`,
+                  timestamp: Date.now(),
+                },
+              ],
+        }
+      }),
+    }))
+  },
   moveTabToGroup: (tabId, groupId) => {
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId)
@@ -2929,6 +2968,14 @@ export const useSessionStore = create<State>((set, get) => ({
     set({ enginePanes: panes })
   },
 
+  reorderEngineInstances: (tabId, reordered) => {
+    const panes = new Map(get().enginePanes)
+    const pane = panes.get(tabId)
+    if (!pane) return
+    panes.set(tabId, { ...pane, instances: reordered })
+    set({ enginePanes: panes })
+  },
+
   handleEngineEvent: (key, event) => {
     // Engine tabs use compound keys (tabId:instanceId). Plain UUID keys
     // belong to CLI proxy tabs handled via handleNormalizedEvent. Processing
@@ -2936,6 +2983,10 @@ export const useSessionStore = create<State>((set, get) => ({
     if (!key.includes(':')) return
 
     const tabId = key.split(':')[0]
+    // Stuck-tab watchdog: stamp every inbound event so the watchdog can detect silence.
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, lastEventAt: Date.now() } : t)),
+    }))
     switch (event.type) {
       case 'engine_agent_state': {
         const agents = event.agents || []
@@ -3437,6 +3488,29 @@ useSessionStore.subscribe((state, prev) => {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
   persistTabs()
 }
+
+// ─── Stuck-tab watchdog ───
+// If a tab is in running/connecting with an active requestId and we have not
+// seen ANY engine event for it in WATCHDOG_THRESHOLD_MS, force-recover it.
+// This is the user-visible safety net for hung engine sockets / dropped abort
+// messages. Independent from the per-interrupt 5s timer in InterruptButton.
+const WATCHDOG_INTERVAL_MS = 5_000
+const WATCHDOG_THRESHOLD_MS = 60_000
+function scanForStuckTabs(): void {
+  const now = Date.now()
+  const { tabs, forceRecoverTab } = useSessionStore.getState()
+  for (const t of tabs) {
+    if (t.status !== 'running' && t.status !== 'connecting') continue
+    if (!t.activeRequestId) continue
+    if (t.lastEventAt === null) continue
+    if (now - t.lastEventAt <= WATCHDOG_THRESHOLD_MS) continue
+    forceRecoverTab(t.id, `Tab idle for ${Math.round((now - t.lastEventAt) / 1000)}s with no engine activity. The engine may have hung; sending stop and resetting the tab. You can resume the conversation.`)
+  }
+}
+setInterval(scanForStuckTabs, WATCHDOG_INTERVAL_MS)
+// Heartbeat: also scan immediately when the window regains focus, so users
+// who alt-tab back to a stuck tab see recovery within seconds, not minutes.
+window.addEventListener('focus', scanForStuckTabs)
 
 // Close terminal, explorer, and git panel when conversation collapses
 // (unless the user has toggled "keep on collapse" for that pane)

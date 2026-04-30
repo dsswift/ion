@@ -443,6 +443,10 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 
 // WriteToStdin sends a JSON message to a running CLI process over its stdin pipe.
 // The message is marshalled to JSON and written as a single NDJSON line.
+// FlushConversations is a no-op for CliBackend; the underlying CLI process
+// owns its own persistence. RunBackend interface compliance.
+func (b *CliBackend) FlushConversations() {}
+
 func (b *CliBackend) WriteToStdin(requestID string, msg interface{}) error {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]

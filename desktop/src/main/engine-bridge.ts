@@ -316,7 +316,16 @@ export class EngineBridge extends EventEmitter {
   }
 
   sendAbort(key: string): void {
-    log(`sendAbort: key=${key} connected=${this.connected} connAlive=${!!(this.conn && !this.conn.destroyed)}`)
+    const alive = !!(this.conn && !this.conn.destroyed)
+    log(`sendAbort: key=${key} connected=${this.connected} connAlive=${alive}`)
+    if (!alive) {
+      // Socket is gone. Best-effort: schedule a reconnect so subsequent
+      // commands have a chance to land. Renderer-side watchdog will recover
+      // the stuck tab if no event arrives.
+      warn(`sendAbort: socket dead — abort cannot reach engine; renderer watchdog will recover tab=${key}`)
+      this._scheduleReconnect()
+      return
+    }
     this._send({ cmd: 'abort', key })
   }
 

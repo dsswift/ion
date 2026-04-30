@@ -228,6 +228,7 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 
 		// Create child backend
 		child := backend.NewApiBackend()
+		var childCfg *backend.RunConfig
 
 		// Load extension if specified
 		var childExtHost *extension.Host
@@ -261,18 +262,22 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 				}
 
 				// Wire tool_call hook for damage-control etc.
-				child.SetOnToolCall(func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
-					tcCtx := m.newExtContext(s, key)
-					result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{
-						ToolName: info.ToolName,
-						ToolID:   info.ToolID,
-						Input:    info.Input,
-					})
-					if result != nil && result.Block {
-						return &backend.ToolCallResult{Block: true, Reason: result.Reason}, nil
-					}
-					return nil, nil
-				})
+				childCfg = &backend.RunConfig{
+					Hooks: backend.RunHooks{
+						OnToolCall: func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
+							tcCtx := m.newExtContext(s, key)
+							result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{
+								ToolName: info.ToolName,
+								ToolID:   info.ToolID,
+								Input:    info.Input,
+							})
+							if result != nil && result.Block {
+								return &backend.ToolCallResult{Block: true, Reason: result.Reason}, nil
+							}
+							return nil, nil
+						},
+					},
+				}
 			}
 		}
 
@@ -332,7 +337,7 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 			runOpts.MaxTurns = opts.MaxTurns
 		}
 
-		child.StartRun(fmt.Sprintf("%s-dispatch-%s", key, opts.Name), runOpts)
+		child.StartRunWithConfig(fmt.Sprintf("%s-dispatch-%s", key, opts.Name), runOpts, childCfg)
 		childDone.Wait()
 
 		elapsed := time.Since(start).Seconds()
@@ -1119,23 +1124,25 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: model_select complete", key))
 	}
 
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: wiring backend hooks", key))
+	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: building backend run config", key))
 
-	// Wire ApiBackend hooks from session subsystems.
-	// NOTE: Hooks are re-wired on every SendPrompt call (not just once in
-	// StartSession) because the closures capture capturedRequestID, which
-	// changes per prompt. The extension context's GetContextUsage callback
-	// needs the current request ID to look up the active run. Moving this
-	// to StartSession would require a different approach (e.g. an indirect
-	// lookup via a mutable field) to resolve the current request ID.
+	// Build the per-run RunConfig that travels with this run on the backend.
+	// Storing hooks/perm engine/external tools/agent spawner on each run --
+	// rather than mutating shared state on the singleton ApiBackend --
+	// guarantees that concurrent sessions cannot trample each other's
+	// closures. Without this, two desktop tabs running in parallel would
+	// see each other's extension context, MCP tools, and agent spawn rules.
+	var runCfg *backend.RunConfig
 	if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
+		runCfg = &backend.RunConfig{}
+
 		// Wire permission engine
 		if permEng != nil {
-			apiBackend.SetPermissions(permEng)
+			runCfg.PermEngine = permEng
 		}
 		// Wire security config (opt-in features like secret redaction)
 		if m.config != nil && m.config.Security != nil {
-			apiBackend.SetSecurityConfig(m.config.Security)
+			runCfg.SecurityCfg = m.config.Security
 		}
 
 		// Wire extension hook callbacks
@@ -1159,7 +1166,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 				}
 				return nil
 			}()
-			apiBackend.SetOnToolCall(func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
+			runCfg.Hooks.OnToolCall = func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
 				// G07: Enterprise tool restriction check
 				if capturedEnterprise != nil && !ionconfig.IsToolAllowed(info.ToolName, capturedEnterprise) {
 					return &backend.ToolCallResult{Block: true, Reason: "tool blocked by enterprise policy"}, nil
@@ -1176,89 +1183,83 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 					return &backend.ToolCallResult{Block: true, Reason: result.Reason}, nil
 				}
 				return nil, nil
-			})
+			}
 
-			apiBackend.SetOnPerToolHook(func(toolName string, info interface{}, phase string) (interface{}, error) {
+			runCfg.Hooks.OnPerToolHook = func(toolName string, info interface{}, phase string) (interface{}, error) {
 				if phase == "before" {
 					return extGroup.FirePerToolCall(ctx, toolName, info)
 				}
 				return extGroup.FirePerToolResult(ctx, toolName, info)
-			})
+			}
 
-			apiBackend.SetTurnHooks(
-				func(_ string, turnNum int) {
-					extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
-				},
-				func(_ string, turnNum int) {
-					extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
-				},
-			)
+			runCfg.Hooks.OnTurnStart = func(_ string, turnNum int) {
+				extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
+			}
+			runCfg.Hooks.OnTurnEnd = func(_ string, turnNum int) {
+				extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
+			}
 
-			apiBackend.SetBeforePrompt(func(_ string, prompt string) (string, string) {
+			runCfg.Hooks.OnBeforePrompt = func(_ string, prompt string) (string, string) {
 				rewritten, sysPrompt, _ := extGroup.FireBeforePrompt(ctx, prompt)
 				return rewritten, sysPrompt
-			})
+			}
 
-			apiBackend.SetPlanModePromptHook(func(planFilePath string) (string, []string) {
+			runCfg.Hooks.OnPlanModePrompt = func(planFilePath string) (string, []string) {
 				return extGroup.FirePlanModePrompt(ctx, planFilePath)
-			})
+			}
 
-			apiBackend.SetCompactionHooks(
-				func(_ string) bool {
-					cancel, _ := extGroup.FireSessionBeforeCompact(ctx, extension.CompactionInfo{})
-					return cancel
-				},
-				func(_ string, info interface{}) {
-					if ci, ok := info.(map[string]interface{}); ok {
-						extGroup.FireSessionCompact(ctx, extension.CompactionInfo{
-							Strategy:       fmt.Sprintf("%v", ci["strategy"]),
-							MessagesBefore: toInt(ci["messagesBefore"]),
-							MessagesAfter:  toInt(ci["messagesAfter"]),
-						})
-					}
-				},
-			)
+			runCfg.Hooks.OnSessionBeforeCompact = func(_ string) bool {
+				cancel, _ := extGroup.FireSessionBeforeCompact(ctx, extension.CompactionInfo{})
+				return cancel
+			}
+			runCfg.Hooks.OnSessionCompact = func(_ string, info interface{}) {
+				if ci, ok := info.(map[string]interface{}); ok {
+					extGroup.FireSessionCompact(ctx, extension.CompactionInfo{
+						Strategy:       fmt.Sprintf("%v", ci["strategy"]),
+						MessagesBefore: toInt(ci["messagesBefore"]),
+						MessagesAfter:  toInt(ci["messagesAfter"]),
+					})
+				}
+			}
 
-			apiBackend.SetPermissionHooks(
-				func(_ string, info interface{}) {
-					if pi, ok := info.(map[string]interface{}); ok {
-						req := extension.PermissionRequestInfo{
-							ToolName: fmt.Sprintf("%v", pi["tool_name"]),
-							Input:    toStringMap(pi["input"]),
-							Decision: fmt.Sprintf("%v", pi["decision"]),
-						}
-						if t, ok := pi["tier"].(string); ok {
-							req.Tier = t
-						}
-						extGroup.FirePermissionRequest(ctx, req)
+			runCfg.Hooks.OnPermissionRequest = func(_ string, info interface{}) {
+				if pi, ok := info.(map[string]interface{}); ok {
+					req := extension.PermissionRequestInfo{
+						ToolName: fmt.Sprintf("%v", pi["tool_name"]),
+						Input:    toStringMap(pi["input"]),
+						Decision: fmt.Sprintf("%v", pi["decision"]),
 					}
-				},
-				func(_ string, info interface{}) {
-					if pi, ok := info.(map[string]interface{}); ok {
-						extGroup.FirePermissionDenied(ctx, extension.PermissionDeniedInfo{
-							ToolName: fmt.Sprintf("%v", pi["tool_name"]),
-							Input:    toStringMap(pi["input"]),
-							Reason:   fmt.Sprintf("%v", pi["reason"]),
-						})
+					if t, ok := pi["tier"].(string); ok {
+						req.Tier = t
 					}
-				},
-			)
+					extGroup.FirePermissionRequest(ctx, req)
+				}
+			}
+			runCfg.Hooks.OnPermissionDenied = func(_ string, info interface{}) {
+				if pi, ok := info.(map[string]interface{}); ok {
+					extGroup.FirePermissionDenied(ctx, extension.PermissionDeniedInfo{
+						ToolName: fmt.Sprintf("%v", pi["tool_name"]),
+						Input:    toStringMap(pi["input"]),
+						Reason:   fmt.Sprintf("%v", pi["reason"]),
+					})
+				}
+			}
 
-			apiBackend.SetPermissionClassifier(func(toolName string, input map[string]interface{}) string {
+			runCfg.Hooks.OnPermissionClassify = func(toolName string, input map[string]interface{}) string {
 				return extGroup.FirePermissionClassify(ctx, extension.PermissionClassifyInfo{
 					ToolName: toolName,
 					Input:    input,
 				})
-			})
+			}
 
-			apiBackend.SetFileChangedHook(func(_ string, path string, action string) {
+			runCfg.Hooks.OnFileChanged = func(_ string, path string, action string) {
 				extGroup.FireFileChanged(ctx, extension.FileChangedInfo{Path: path, Action: action})
-			})
+			}
 		}
 
 		// Wire telemetry adapter
 		if telemCollector != nil {
-			apiBackend.SetTelemetry(&telemetryAdapter{c: telemCollector})
+			runCfg.Telemetry = &telemetryAdapter{c: telemCollector}
 		}
 
 		// Wire external tools (MCP + extension-registered)
@@ -1315,7 +1316,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: total external tools: %d", key, len(combinedToolDefs)))
 		if len(combinedToolDefs) > 0 {
 			capturedExtGroup := extGroup
-			combinedRouter := func(name string, input map[string]interface{}) (string, bool, error) {
+			runCfg.ExternalTools = combinedToolDefs
+			runCfg.McpToolRouter = func(name string, input map[string]interface{}) (string, bool, error) {
 				// MCP tools (prefixed with mcp__)
 				if mcpRouter != nil && strings.HasPrefix(name, "mcp__") {
 					return mcpRouter(name, input)
@@ -1338,14 +1340,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 				}
 				return "", true, fmt.Errorf("external tool %q not found", name)
 			}
-			apiBackend.SetExternalTools(combinedToolDefs, combinedRouter)
 		}
 
 		// Wire agent spawner for Agent tool
 		capturedModel := opts.Model
 		capturedKey := key
 		var agentCounter int
-		apiBackend.SetAgentSpawner(func(ctx context.Context, requestedName, prompt, description, cwd, model string) (string, error) {
+		runCfg.AgentSpawner = func(ctx context.Context, requestedName, prompt, description, cwd, model string) (string, error) {
 			// If the LLM named a specialist, resolve it. Fires capability_match
 			// when not registered so a harness extension can promote a draft
 			// (via ctx.RegisterAgentSpec) and we resolve on the same call.
@@ -1505,7 +1506,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 				return "", childErr
 			}
 			return result, nil
-		})
+		}
 	}
 
 	// Wire permission hook settings for CLI backend
@@ -1604,7 +1605,14 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		Fields: &types.StatusFields{Label: key, State: "running", Model: opts.Model, ContextWindow: promptCtxWindow},
 	})
 
-	m.backend.StartRun(requestID, opts)
+	// Dispatch to backend. ApiBackend uses the per-run config built above so
+	// every closure on this run sees this session's hooks/tools/perms.
+	// CliBackend ignores runCfg and follows its own subprocess wiring.
+	if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
+		apiBackend.StartRunWithConfig(requestID, opts, runCfg)
+	} else {
+		m.backend.StartRun(requestID, opts)
+	}
 	return nil
 }
 

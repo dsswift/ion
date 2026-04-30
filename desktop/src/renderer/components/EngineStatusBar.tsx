@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { Plus, X } from '@phosphor-icons/react'
+import { Reorder } from 'framer-motion'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import type { EngineInstance } from '../../shared/types'
@@ -46,8 +47,12 @@ export function EngineStatusBar({ tabId }: Props) {
   const renderTab = (inst: EngineInstance) => {
     const isActive = inst.id === activeId
     return (
-      <div
+      <Reorder.Item
         key={inst.id}
+        value={inst}
+        as="div"
+        dragListener={editingId !== inst.id}
+        dragConstraints={{ top: 0, bottom: 0 }}
         data-ion-ui
         data-engine-tab-id={inst.id}
         onClick={() => useSessionStore.getState().selectEngineInstance(tabId, inst.id)}
@@ -58,7 +63,7 @@ export function EngineStatusBar({ tabId }: Props) {
           gap: 4,
           padding: '2px 8px',
           borderRadius: 6,
-          cursor: 'pointer',
+          cursor: editingId === inst.id ? 'text' : 'grab',
           fontSize: 11,
           fontWeight: isActive ? 600 : 400,
           color: isActive ? colors.textPrimary : colors.textSecondary,
@@ -66,6 +71,7 @@ export function EngineStatusBar({ tabId }: Props) {
           border: isActive ? `1px solid ${colors.accent}40` : '1px solid transparent',
           whiteSpace: 'nowrap',
           userSelect: 'none',
+          flexShrink: 0,
         }}
       >
         {editingId === inst.id ? (
@@ -93,6 +99,7 @@ export function EngineStatusBar({ tabId }: Props) {
         {/* Close button */}
         <button
           data-ion-ui
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); useSessionStore.getState().removeEngineInstance(tabId, inst.id) }}
           style={{
             background: 'none',
@@ -106,7 +113,7 @@ export function EngineStatusBar({ tabId }: Props) {
         >
           <X size={10} />
         </button>
-      </div>
+      </Reorder.Item>
     )
   }
 
@@ -125,7 +132,11 @@ export function EngineStatusBar({ tabId }: Props) {
       }}
     >
       <div style={{ position: 'relative', minWidth: 0, flex: 1 }}>
-        <div
+        <Reorder.Group
+          as="div"
+          axis="x"
+          values={instances}
+          onReorder={(reordered) => useSessionStore.getState().reorderEngineInstances(tabId, reordered)}
           ref={scrollRef}
           onWheel={onWheel}
           style={{
@@ -137,6 +148,9 @@ export function EngineStatusBar({ tabId }: Props) {
             scrollbarWidth: 'none',
             maskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
             WebkitMaskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
           }}
         >
           {instances.map(renderTab)}
@@ -159,7 +173,7 @@ export function EngineStatusBar({ tabId }: Props) {
           >
             <Plus size={12} />
           </button>
-        </div>
+        </Reorder.Group>
       </div>
     </div>
   )

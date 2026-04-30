@@ -304,10 +304,11 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		return fmt.Errorf("start extension: %w", err)
 	}
 
+	scanner := bufio.NewScanner(stdout)
 	h.cmd = cmd
 	h.process = cmd.Process
 	h.stdin = stdin
-	h.stdout = bufio.NewScanner(stdout)
+	h.stdout = scanner
 	h.dead.Store(false)
 	h.deathReported.Store(false)
 	h.lastParseErrAt.Store(0)
@@ -317,9 +318,11 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	h.deadOnce = &sync.Once{}
 
 	// Start the background response reader before sending init so we can
-	// receive the init response through the normal call path.
+	// receive the init response through the normal call path. Pass the
+	// scanner directly so the goroutine doesn't have to read h.stdout
+	// (which disposeInternal nils out under h.mu and would race here).
 	h.readerWg.Add(1)
-	go h.readLoop()
+	go h.readLoop(scanner)
 
 	// Ensure the config's ExtensionDir points to the directory containing
 	// the entry point so extensions can find sibling files.
@@ -1575,8 +1578,13 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 // readLoop continuously reads JSON-RPC responses from subprocess stdout and
 // dispatches them to the pending call channels. It runs until stdout closes
 // or the host is disposed.
-func (h *Host) readLoop() {
+//
+// The scanner is passed in by spawnAndInit rather than read from h.stdout to
+// avoid a race with disposeInternal, which nils h.stdout under h.mu while
+// this goroutine is still draining the underlying file descriptor.
+func (h *Host) readLoop(stdout *bufio.Scanner) {
 	defer h.readerWg.Done()
+
 	defer func() {
 		wasAlive := !h.dead.Load()
 		if wasAlive {
@@ -1598,7 +1606,10 @@ func (h *Host) readLoop() {
 		// Capture exit code/signal for downstream event payloads. Wait()
 		// blocks until the process is fully reaped, so do this off the
 		// reader goroutine if the subprocess is still finalizing.
-		if h.cmd != nil && wasAlive {
+		h.mu.Lock()
+		hasCmd := h.cmd != nil
+		h.mu.Unlock()
+		if hasCmd && wasAlive {
 			go h.captureExitStatus()
 		}
 
@@ -1613,8 +1624,8 @@ func (h *Host) readLoop() {
 		}
 	}()
 
-	for h.stdout != nil && h.stdout.Scan() {
-		line := h.stdout.Bytes()
+	for stdout != nil && stdout.Scan() {
+		line := stdout.Bytes()
 		if len(line) == 0 {
 			continue
 		}
