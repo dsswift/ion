@@ -100,6 +100,9 @@ jobs:
       - name: Install dependencies
         working-directory: desktop
         run: npm ci --ignore-scripts
+      - name: Type-check
+        working-directory: desktop
+        run: npm run typecheck
       - name: Run tests
         working-directory: desktop
         run: npm test
