@@ -13,7 +13,7 @@ import { discoverCommands } from './cli-compat/command-discovery'
 import { log as _log, LOG_FILE, flushLogs } from './logger'
 import { getCliEnv } from './cli-env'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, EnrichedError, WorktreeInfo, WorktreeStatus } from '../shared/types'
+import type { RunOptions, NormalizedEvent, EnrichedError, WorktreeInfo, WorktreeStatus, TabStatus } from '../shared/types'
 import { TerminalManager } from './terminal-manager'
 import { isValidProjectPath, isValidSessionId, validateExternalUrl } from './ipc-validation'
 import { atomicWriteFileSync } from './utils/atomicWrite'
@@ -2498,7 +2498,10 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         if (!dir) {
           // Resolve desktop default from settings, fall back to home
           const s = readSettings()
-          dir = s.defaultBaseDirectory || homedir()
+          dir = s.defaultBaseDirectory || homedir() || ''
+        }
+        if (!dir) {
+          break
         }
         try {
           const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -2713,8 +2716,9 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         let dir = cmd.workingDirectory
         if (!dir) {
           const s = readSettings()
-          dir = s.defaultBaseDirectory || homedir()
+          dir = s.defaultBaseDirectory || homedir() || ''
         }
+        if (!dir) break
         try {
           const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
           const tabId = await mainWindow?.webContents.executeJavaScript(`
@@ -2742,8 +2746,9 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
         let dir = cmd.workingDirectory
         if (!dir) {
           const s = readSettings()
-          dir = s.defaultBaseDirectory || homedir()
+          dir = s.defaultBaseDirectory || homedir() || ''
         }
+        if (!dir) break
         try {
           const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
           const tabId = await mainWindow?.webContents.executeJavaScript(`

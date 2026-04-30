@@ -298,6 +298,7 @@ export interface EngineConfig {
   extensions: string[]
   workingDirectory: string
   sessionId?: string
+  model?: string
   maxTokens?: number
   thinking?: { enabled: boolean; budgetTokens?: number }
 }
@@ -691,6 +692,8 @@ export interface PersistedTab {
   hasChosenDirectory: boolean
   additionalDirs: string[]
   permissionMode: 'auto' | 'plan'
+  permissionDenied?: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
+  planFilePath?: string | null
   bashResults?: Array<{ command: string; stdout: string; stderr: string }>
   pillColor?: string | null
   pillIcon?: string | null

@@ -32,7 +32,7 @@ const CATEGORIES: Category[] = [
   { id: 'engine', label: 'Engine', icon: Plugs, component: EngineCategory },
 ]
 
-const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] }
+const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
 interface SettingsDialogProps {
   onClose: () => void

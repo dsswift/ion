@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CaretDown, Check, FolderOpen, Plus, X, ShieldCheck, ListChecks, GitBranch, Code, TreeStructure, NotePencil, ArrowsOutSimple, ArrowsInSimple, Copy } from '@phosphor-icons/react'
+import { useShallow } from 'zustand/shallow'
 import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
 import { getModelContextWindow } from '../stores/model-labels'
 import { usePopoverLayer } from './PopoverLayer'
@@ -27,8 +28,10 @@ function ModelPicker() {
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
   const tab = useSessionStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b && a.status === b.status && a.sessionModel === b.sessionModel),
+    useShallow((s) => {
+      const t = s.tabs.find((t) => t.id === s.activeTabId)
+      return t ? { status: t.status, sessionModel: t.sessionModel } : undefined
+    }),
   )
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
@@ -151,11 +154,10 @@ function ContextIndicator() {
   const popoverLayer = usePopoverLayer()
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const { contextTokens, contextPercent } = useSessionStore(
-    (s) => {
+    useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
       return { contextTokens: tab?.contextTokens ?? null, contextPercent: tab?.contextPercent ?? null }
-    },
-    (a, b) => a.contextTokens === b.contextTokens && a.contextPercent === b.contextPercent,
+    }),
   )
 
   const [hover, setHover] = useState(false)
@@ -381,8 +383,10 @@ const OPEN_WITH_OPTIONS = [
 
 function OpenWithPicker() {
   const tab = useSessionStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b && a.conversationId === b.conversationId && a.workingDirectory === b.workingDirectory),
+    useShallow((s) => {
+      const t = s.tabs.find((t) => t.id === s.activeTabId)
+      return t ? { conversationId: t.conversationId, workingDirectory: t.workingDirectory } : undefined
+    }),
   )
   const preferredOpenWith = usePreferencesStore((s) => s.preferredOpenWith)
   const setPreferredOpenWith = usePreferencesStore((s) => s.setPreferredOpenWith)
@@ -507,7 +511,7 @@ function OpenWithPicker() {
                 <div className="mx-2 my-1" style={{ borderTop: `1px solid ${colors.popoverBorder}` }} />
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(tab.conversationId)
+                    if (tab.conversationId) navigator.clipboard.writeText(tab.conversationId)
                     setOpen(false)
                   }}
                   className="w-full flex items-center px-3 py-1.5 text-[11px] transition-colors"
@@ -559,15 +563,19 @@ function compactPath(fullPath: string): string {
 
 export function StatusBar() {
   const tab = useSessionStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b
-      && a.status === b.status
-      && a.additionalDirs === b.additionalDirs
-      && a.hasChosenDirectory === b.hasChosenDirectory
-      && a.workingDirectory === b.workingDirectory
-      && a.conversationId === b.conversationId
-      && (a.messages.length > 0) === (b.messages.length > 0)
-    ),
+    useShallow((s) => {
+      const t = s.tabs.find((t) => t.id === s.activeTabId)
+      return t
+        ? {
+            status: t.status,
+            additionalDirs: t.additionalDirs,
+            hasChosenDirectory: t.hasChosenDirectory,
+            workingDirectory: t.workingDirectory,
+            conversationId: t.conversationId,
+            messages: t.messages,
+          }
+        : undefined
+    }),
   )
   const addDirectory = useSessionStore((s) => s.addDirectory)
   const removeDirectory = useSessionStore((s) => s.removeDirectory)

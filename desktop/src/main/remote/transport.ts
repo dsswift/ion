@@ -451,11 +451,12 @@ export class RemoteTransport extends EventEmitter {
     const secret = this.deviceSecrets.get(deviceId)
     let payload: string | undefined
     if (secret && msg.nonce && msg.ciphertext) {
-      payload = decrypt(msg.nonce, msg.ciphertext, secret)
-      if (payload === null) {
+      const decrypted = decrypt(msg.nonce, msg.ciphertext, secret)
+      if (decrypted === null) {
         log(`decryption failed for seq=${msg.seq} from ${deviceId}`)
         return
       }
+      payload = decrypted
     } else if (secret && msg.payload) {
       // Shared secret is set but message is plaintext -- reject it.
       log(`rejecting plaintext message seq=${msg.seq} from ${deviceId} (encryption required)`)

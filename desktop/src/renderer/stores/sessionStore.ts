@@ -165,7 +165,7 @@ interface State {
   toggleTerminal: (tabId: string) => void
   runInTerminal: (tabId: string, cmd: string) => void
   consumeTerminalPendingCommand: (key: string) => string | undefined
-  createTerminalTab: () => Promise<string>
+  createTerminalTab: (dir?: string) => Promise<string>
   addTerminalInstance: (tabId: string, kind: string, cwd?: string) => string
   removeTerminalInstance: (tabId: string, instanceId: string) => void
   selectTerminalInstance: (tabId: string, instanceId: string) => void
@@ -2902,6 +2902,7 @@ export const useSessionStore = create<State>((set, get) => ({
     } else {
       // No profile -- start bare session with defaults
       window.ion.engineStart(key, {
+        profileId: '',
         extensions: [],
         workingDirectory: tab.workingDirectory,
       }).catch((err: any) => {
@@ -3166,7 +3167,7 @@ export const useSessionStore = create<State>((set, get) => ({
           const messages = new Map(state.engineMessages)
           const msgs = (messages.get(key) || []).map((m) => {
             if (m.toolId !== event.toolId) return m
-            return { ...m, content: event.result || '', toolStatus: (event.isError ? 'error' : 'completed') as const }
+            return { ...m, content: event.result || '', toolStatus: (event.isError ? 'error' : 'completed') as 'error' | 'completed' }
           })
           messages.set(key, msgs)
           return { engineMessages: messages }

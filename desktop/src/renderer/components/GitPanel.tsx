@@ -6,6 +6,7 @@ import {
   ArrowsClockwise, ArrowDown, ArrowUp, GitBranch, Folder, FolderOpen,
   Trash, Robot, Check, CheckCircle, X, SpinnerGap, ListBullets, TreeStructure,
 } from '@phosphor-icons/react'
+import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
@@ -1293,7 +1294,7 @@ function GitGraphSection({
 
       {/* Commit detail popup */}
       {popoverLayer && hoveredCommit && hoverRect && createPortal(
-        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={commitDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? rect.right} />,
+        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={commitDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? hoverRect.right} />,
         popoverLayer,
       )}
 
@@ -1638,8 +1639,10 @@ export function GitPanel() {
   const colors = useColors()
   const expandedUI = usePreferencesStore((s) => s.expandedUI)
   const tab = useSessionStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId),
-    (a, b) => a === b || (!!a && !!b && a.workingDirectory === b.workingDirectory && a.worktree === b.worktree),
+    useShallow((s) => {
+      const t = s.tabs.find((t) => t.id === s.activeTabId)
+      return t ? { workingDirectory: t.workingDirectory, worktree: t.worktree } : undefined
+    }),
   )
   const directory = tab?.workingDirectory || '~'
   const worktree = tab?.worktree ?? null
@@ -1665,7 +1668,7 @@ export function GitPanel() {
     const result = await window.ion.gitCommit(directory, commitMsg.trim())
     if (result.ok) {
       setCommitMsg('')
-      setRefreshKey((k) => k + 1)
+      useGitPollingStore.getState().refresh()
       // Move tab to done group after successful commit
       const { doneGroupId, tabGroupMode } = usePreferencesStore.getState()
       const { activeTabId: tabId, tabs: allTabs, moveTabToGroup } = useSessionStore.getState()
@@ -1770,7 +1773,7 @@ export function GitPanel() {
           </button>
           <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>
             Git
-            <span style={{ color: colors.textQuaternary, marginLeft: 4 }}>
+            <span style={{ color: colors.textMuted, marginLeft: 4 }}>
               {directory.split('/').filter(Boolean).pop() || '~'}
             </span>
           </span>
