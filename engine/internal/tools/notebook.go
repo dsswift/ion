@@ -126,7 +126,7 @@ func NotebookTool() *types.ToolDef {
 	}
 }
 
-func executeNotebook(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeNotebook(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
 	action, _ := input["action"].(string)
 	path, _ := input["path"].(string)
 	if action == "" || path == "" {
@@ -134,6 +134,9 @@ func executeNotebook(_ context.Context, input map[string]any, cwd string) (*type
 	}
 
 	filePath := resolvePath(cwd, path)
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: Notebook cancelled.", IsError: true}, nil
+	}
 
 	switch action {
 	case "read":

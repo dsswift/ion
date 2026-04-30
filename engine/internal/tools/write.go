@@ -26,7 +26,7 @@ func WriteTool() *types.ToolDef {
 	}
 }
 
-func executeWrite(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeWrite(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
 	filePath, _ := input["file_path"].(string)
 	if filePath == "" {
 		return &types.ToolResult{Content: "Error: file_path is required", IsError: true}, nil
@@ -35,6 +35,9 @@ func executeWrite(_ context.Context, input map[string]any, cwd string) (*types.T
 
 	filePath = resolvePath(cwd, filePath)
 
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: Write cancelled.", IsError: true}, nil
+	}
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error writing file: %s", err), IsError: true}, nil
 	}

@@ -22,7 +22,7 @@ type SearchResult struct {
 
 // SearchBackend is a pluggable web search provider.
 type SearchBackend interface {
-	Search(query string, maxResults int) ([]SearchResult, error)
+	Search(ctx context.Context, query string, maxResults int) ([]SearchResult, error)
 }
 
 // BraveSearchBackend uses the Brave Search API.
@@ -30,11 +30,11 @@ type BraveSearchBackend struct {
 	APIKey string
 }
 
-func (b *BraveSearchBackend) Search(query string, maxResults int) ([]SearchResult, error) {
+func (b *BraveSearchBackend) Search(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
 	u := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",
 		url.QueryEscape(query), maxResults)
 
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -85,14 +85,19 @@ type TavilyBackend struct {
 	APIKey string
 }
 
-func (t *TavilyBackend) Search(query string, maxResults int) ([]SearchResult, error) {
+func (t *TavilyBackend) Search(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"api_key":     t.APIKey,
 		"query":       query,
 		"max_results": maxResults,
 	})
 
-	resp, err := http.Post("https://api.tavily.com/search", "application/json", strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.tavily.com/search", strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -134,11 +139,15 @@ type SearXNGBackend struct {
 	BaseURL string
 }
 
-func (s *SearXNGBackend) Search(query string, maxResults int) ([]SearchResult, error) {
+func (s *SearXNGBackend) Search(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
 	u := fmt.Sprintf("%s/search?q=%s&format=json&pageno=1",
 		s.BaseURL, url.QueryEscape(query))
 
-	resp, err := http.Get(u)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +220,7 @@ func WebSearchTool() *types.ToolDef {
 	}
 }
 
-func executeWebSearch(_ context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+func executeWebSearch(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
 	query, _ := input["query"].(string)
 	if query == "" {
 		return &types.ToolResult{Content: "Error: query is required", IsError: true}, nil
@@ -227,7 +236,7 @@ func executeWebSearch(_ context.Context, input map[string]any, _ string) (*types
 		}, nil
 	}
 
-	results, err := backend.Search(query, maxResults)
+	results, err := backend.Search(ctx, query, maxResults)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Search error: %s", err), IsError: true}, nil
 	}

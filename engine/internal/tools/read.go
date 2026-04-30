@@ -30,13 +30,17 @@ func ReadTool() *types.ToolDef {
 	}
 }
 
-func executeRead(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeRead(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
 	filePath, _ := input["file_path"].(string)
 	if filePath == "" {
 		return &types.ToolResult{Content: "Error: file_path is required", IsError: true}, nil
 	}
 
 	filePath = resolvePath(cwd, filePath)
+
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: Read cancelled.", IsError: true}, nil
+	}
 
 	info, err := os.Stat(filePath)
 	if err != nil {
@@ -51,6 +55,9 @@ func executeRead(_ context.Context, input map[string]any, cwd string) (*types.To
 		return readPdf(filePath, input, info)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: Read cancelled.", IsError: true}, nil
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error reading file: %s", err), IsError: true}, nil

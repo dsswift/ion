@@ -83,12 +83,16 @@ func LspTool() *types.ToolDef {
 	}
 }
 
-func executeLsp(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeLsp(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
 	if lspManager == nil {
 		return &types.ToolResult{
 			Content: "LSP not configured. Harness must call SetLspManager() to enable LSP features.",
 			IsError: true,
 		}, nil
+	}
+
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: LSP cancelled.", IsError: true}, nil
 	}
 
 	operation, _ := input["operation"].(string)

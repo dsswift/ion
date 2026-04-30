@@ -55,7 +55,10 @@ func TaskCreateTool() *types.ToolDef {
 	}
 }
 
-func executeTaskCreate(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeTaskCreate(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: TaskCreate cancelled.", IsError: true}, nil
+	}
 	prompt, _ := input["prompt"].(string)
 	if prompt == "" {
 		return &types.ToolResult{Content: "Error: prompt is required", IsError: true}, nil
@@ -132,7 +135,10 @@ func TaskListTool() *types.ToolDef {
 	}
 }
 
-func executeTaskList(_ context.Context, _ map[string]any, _ string) (*types.ToolResult, error) {
+func executeTaskList(ctx context.Context, _ map[string]any, _ string) (*types.ToolResult, error) {
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: TaskList cancelled.", IsError: true}, nil
+	}
 	tasksMu.RLock()
 	defer tasksMu.RUnlock()
 
@@ -176,7 +182,10 @@ func TaskGetTool() *types.ToolDef {
 	}
 }
 
-func executeTaskGet(_ context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+func executeTaskGet(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: TaskGet cancelled.", IsError: true}, nil
+	}
 	taskID, _ := input["taskId"].(string)
 	if taskID == "" {
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil
@@ -235,7 +244,10 @@ func TaskStopTool() *types.ToolDef {
 	}
 }
 
-func executeTaskStop(_ context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+func executeTaskStop(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: TaskStop cancelled.", IsError: true}, nil
+	}
 	taskID, _ := input["taskId"].(string)
 	if taskID == "" {
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil

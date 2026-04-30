@@ -183,7 +183,18 @@ func (b *ApiBackend) FlushConversations() {
 	}
 }
 
-// Cancel stops a running agent loop. Returns true if a run was found and cancelled.
+// cancelWatchdogGrace is the grace period after Cancel before the watchdog
+// force-emits an exit and removes the run from activeRuns. Tuned long enough
+// for cooperative tool cancellations to land via ctx, short enough that the
+// frontend tab returns to idle without obvious lag.
+const cancelWatchdogGrace = 5 * time.Second
+
+// Cancel stops a running agent loop. Returns true if a run was found and
+// cancelled. Cancel is a contract: within cancelWatchdogGrace of this call
+// the desktop sees a terminal engine_status idle event regardless of whether
+// the run goroutine has actually returned. If the goroutine is wedged in a
+// blocking call that ignores ctx, the run state is force-cleared anyway and
+// the wedged goroutine is leaked until process exit.
 func (b *ApiBackend) Cancel(requestID string) bool {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
@@ -196,7 +207,31 @@ func (b *ApiBackend) Cancel(requestID string) bool {
 	}
 	utils.Info("ApiBackend", fmt.Sprintf("Cancel: cancelling requestID=%s (turn=%d)", requestID, run.turnCount.Load()))
 	run.cancel()
+	go b.cancelWatchdog(run, cancelWatchdogGrace)
 	return true
+}
+
+// cancelWatchdog force-clears a run if its goroutine has not returned within
+// the grace period. Idempotent against runLoop's own deferred removeRun.
+func (b *ApiBackend) cancelWatchdog(run *activeRun, grace time.Duration) {
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	<-timer.C
+
+	b.mu.Lock()
+	_, stillActive := b.activeRuns[run.requestID]
+	sessionID := ""
+	if run.conv != nil {
+		sessionID = run.conv.ID
+	}
+	b.mu.Unlock()
+	if !stillActive {
+		return
+	}
+
+	utils.Warn("ApiBackend", fmt.Sprintf("Cancel watchdog: forcing exit for requestID=%s after %s (run goroutine wedged in non-cancellable call)", run.requestID, grace))
+	b.emitExit(run.requestID, intPtr(0), strPtr("cancelled-forced"), sessionID)
+	b.removeRun(run.requestID)
 }
 
 // GetContextUsage returns the context usage for an active run, or nil if not found.
@@ -323,6 +358,39 @@ func (b *ApiBackend) emitError(run *activeRun, err error) {
 
 // contextPercent computes the compaction threshold.
 const compactThreshold = 80
+
+// runHookCtx runs fn on a goroutine and races it against ctx cancellation.
+// On cancel, returns ctx.Err() and discards the eventual result. The inner
+// goroutine continues to completion (it has no way to be cancelled — that's
+// why we need this wrapper) but its return value is dropped. Use to bound
+// per-tool extension hooks (OnToolCall, OnPermissionRequest, etc.) that are
+// implemented by extension subprocesses with no native ctx support.
+func runHookCtx[T any](ctx context.Context, fn func() T) (T, error) {
+	var zero T
+	ch := make(chan T, 1)
+	go func() {
+		defer func() {
+			// Hook callbacks are extension-supplied; recover panics so they
+			// can't take down the run. Drop the result on panic.
+			recover()
+		}()
+		ch <- fn()
+	}()
+	select {
+	case v := <-ch:
+		return v, nil
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	}
+}
+
+// defaultToolTimeout caps how long a single tool call may run. The cap is a
+// belt-and-suspenders backstop against tools that ignore ctx; properly
+// cooperating tools cancel via gCtx far sooner. Bash has its own much-longer
+// inner timeout (long shell commands are legitimate); this cap applies to the
+// surrounding goroutine, so a misbehaving Bash subprocess that ignores SIGTERM
+// will still let executeTools return.
+const defaultToolTimeout = 5 * time.Minute
 
 // runLoop is the core agent loop. It calls the provider, processes the
 // response, executes tools, and loops until the model signals end_turn,
@@ -1212,10 +1280,18 @@ func (b *ApiBackend) executeTools(
 			if permEng != nil {
 				// Classify first so the tier flows into the permission engine
 				// (for tier_rules matching) and onto the permission_request
-				// hook payload (for audit/observation).
+				// hook payload (for audit/observation). The classifier may
+				// invoke an LLM, so race against gCtx so a hung classifier
+				// can't wedge this goroutine.
 				var tier string
 				if permClassifyFn != nil {
-					tier = permClassifyFn(block.Name, block.Input)
+					t, hookErr := runHookCtx(gCtx, func() string {
+						return permClassifyFn(block.Name, block.Input)
+					})
+					if hookErr != nil {
+						return hookErr
+					}
+					tier = t
 				}
 				checkResult := permEng.Check(permissions.CheckInfo{
 					Tool:  block.Name,
@@ -1232,15 +1308,25 @@ func (b *ApiBackend) executeTools(
 					if tier != "" {
 						payload["tier"] = tier
 					}
-					permReqFn(run.requestID, payload)
+					if _, hookErr := runHookCtx(gCtx, func() struct{} {
+						permReqFn(run.requestID, payload)
+						return struct{}{}
+					}); hookErr != nil {
+						return hookErr
+					}
 				}
 				if checkResult.Decision == "deny" {
 					if permDenyFn != nil {
-						permDenyFn(run.requestID, map[string]interface{}{
-							"tool_name": block.Name,
-							"input":     block.Input,
-							"reason":    checkResult.Reason,
-						})
+						if _, hookErr := runHookCtx(gCtx, func() struct{} {
+							permDenyFn(run.requestID, map[string]interface{}{
+								"tool_name": block.Name,
+								"input":     block.Input,
+								"reason":    checkResult.Reason,
+							})
+							return struct{}{}
+						}); hookErr != nil {
+							return hookErr
+						}
 					}
 					results[i] = conversation.ToolResultEntry{
 						ToolUseID: block.ID,
@@ -1285,13 +1371,26 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Call onToolCall hook (extension hook)
+			// Call onToolCall hook (extension hook). Race against gCtx so a
+			// hung extension subprocess can't wedge this goroutine; the run's
+			// per-tool 5min timeout is the outer backstop.
 			if hookFn != nil {
-				result, err := hookFn(ToolCallInfo{
-					ToolName: block.Name,
-					ToolID:   block.ID,
-					Input:    block.Input,
+				type hookRet struct {
+					result *ToolCallResult
+					err    error
+				}
+				ret, hookErr := runHookCtx(gCtx, func() hookRet {
+					r, e := hookFn(ToolCallInfo{
+						ToolName: block.Name,
+						ToolID:   block.ID,
+						Input:    block.Input,
+					})
+					return hookRet{r, e}
 				})
+				if hookErr != nil {
+					return hookErr
+				}
+				result, err := ret.result, ret.err
 				if err != nil {
 					results[i] = conversation.ToolResultEntry{
 						ToolUseID: block.ID,
@@ -1317,7 +1416,12 @@ func (b *ApiBackend) executeTools(
 
 			// Pre-tool hook
 			if perToolHook != nil {
-				_, _ = perToolHook(block.Name, block.Input, "before")
+				if _, hookErr := runHookCtx(gCtx, func() struct{} {
+					_, _ = perToolHook(block.Name, block.Input, "before")
+					return struct{}{}
+				}); hookErr != nil {
+					return hookErr
+				}
 			}
 
 			// Telemetry span for tool execution
@@ -1377,22 +1481,56 @@ func (b *ApiBackend) executeTools(
 				return nil
 			}
 
-			// Route to built-in, extension, or MCP tool (Step 5)
+			// Route to built-in, extension, or MCP tool (Step 5).
+			// Each tool call is bounded by defaultToolTimeout. A tool that
+			// observes ctx will cancel cleanly; a tool that ignores ctx will
+			// be left running but its result is dropped, and executeTools
+			// returns once errgroup's children all return.
+			toolCtx, toolCancel := context.WithTimeout(gCtx, defaultToolTimeout)
+			defer toolCancel()
+
 			var toolResult *types.ToolResult
 			var err error
 
 			if tools.GetTool(block.Name) != nil {
-				toolResult, err = tools.ExecuteTool(gCtx, block.Name, block.Input, cwd)
+				toolResult, err = tools.ExecuteTool(toolCtx, block.Name, block.Input, cwd)
 			} else if mcpRouter != nil {
-				content, isErr, routeErr := mcpRouter(block.Name, block.Input)
-				if routeErr != nil {
-					err = routeErr
-				} else {
-					toolResult = &types.ToolResult{Content: content, IsError: isErr}
+				// mcpRouter does not yet take ctx; race its return against
+				// toolCtx so a hung MCP server cannot wedge the run.
+				type mcpRet struct {
+					content string
+					isErr   bool
+					err     error
+				}
+				resCh := make(chan mcpRet, 1)
+				go func() {
+					content, isErr, routeErr := mcpRouter(block.Name, block.Input)
+					resCh <- mcpRet{content, isErr, routeErr}
+				}()
+				select {
+				case r := <-resCh:
+					if r.err != nil {
+						err = r.err
+					} else {
+						toolResult = &types.ToolResult{Content: r.content, IsError: r.isErr}
+					}
+				case <-toolCtx.Done():
+					err = toolCtx.Err()
 				}
 			} else {
 				toolResult = &types.ToolResult{
 					Content: fmt.Sprintf("Unknown tool: %s", block.Name),
+					IsError: true,
+				}
+			}
+
+			// Surface per-tool deadline as a tool-result error rather than
+			// failing the whole run, so the LLM sees a clear "this tool timed
+			// out" message and can adapt.
+			if err != nil && toolCtx.Err() == context.DeadlineExceeded {
+				err = nil
+				toolResult = &types.ToolResult{
+					Content: fmt.Sprintf("Error: tool %q exceeded %s deadline. Narrow the request or split it into smaller calls.", block.Name, defaultToolTimeout),
 					IsError: true,
 				}
 			}
@@ -1422,21 +1560,36 @@ func (b *ApiBackend) executeTools(
 
 			// Fire file_changed hook for write/edit tools
 			if fileChangedFn != nil && !results[i].IsError {
+				var p string
+				var changeKind string
 				switch block.Name {
 				case "Write", "write":
-					if p, ok := block.Input["file_path"].(string); ok {
-						fileChangedFn(run.requestID, p, "write")
+					if v, ok := block.Input["file_path"].(string); ok {
+						p, changeKind = v, "write"
 					}
 				case "Edit", "edit":
-					if p, ok := block.Input["file_path"].(string); ok {
-						fileChangedFn(run.requestID, p, "edit")
+					if v, ok := block.Input["file_path"].(string); ok {
+						p, changeKind = v, "edit"
+					}
+				}
+				if p != "" {
+					if _, hookErr := runHookCtx(gCtx, func() struct{} {
+						fileChangedFn(run.requestID, p, changeKind)
+						return struct{}{}
+					}); hookErr != nil {
+						return hookErr
 					}
 				}
 			}
 
 			// Post-tool hook
 			if perToolHook != nil {
-				_, _ = perToolHook(block.Name, results[i], "after")
+				if _, hookErr := runHookCtx(gCtx, func() struct{} {
+					_, _ = perToolHook(block.Name, results[i], "after")
+					return struct{}{}
+				}); hookErr != nil {
+					return hookErr
+				}
 			}
 
 			// Emit tool_result event

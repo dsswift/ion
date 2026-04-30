@@ -91,7 +91,7 @@ func replaceRunes(s string, m map[rune]rune) string {
 	return sb.String()
 }
 
-func executeEdit(_ context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
+func executeEdit(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
 	filePath, _ := input["file_path"].(string)
 	if filePath == "" {
 		return &types.ToolResult{Content: "Error: file_path is required", IsError: true}, nil
@@ -102,6 +102,9 @@ func executeEdit(_ context.Context, input map[string]any, cwd string) (*types.To
 
 	filePath = resolvePath(cwd, filePath)
 
+	if err := ctx.Err(); err != nil {
+		return &types.ToolResult{Content: "Error: Edit cancelled.", IsError: true}, nil
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error editing file: %s", err), IsError: true}, nil

@@ -394,6 +394,61 @@ func TestCancelReturnsFalseForUnknown(t *testing.T) {
 	}
 }
 
+// TestCancelWatchdogForcesExitWhenRunGoroutineWedges is the regression test
+// for the stuck-tab class of bug. It simulates the scenario where the run
+// goroutine is wedged in a non-cancellable call (e.g. a tool that ignores
+// ctx, like the unfixed doublestar Glob walk): activeRuns still contains an
+// entry, but the run goroutine never returns. The cancel watchdog must
+// emit a synthetic exit so the desktop can return the tab to idle.
+func TestCancelWatchdogForcesExitWhenRunGoroutineWedges(t *testing.T) {
+	b := NewApiBackend()
+
+	// Manually populate activeRuns to simulate a wedged run with no real
+	// goroutine. Cancel will call run.cancel() (no-op since context is not
+	// observed by anyone), then the watchdog should still fire.
+	_, cancelFn := context.WithCancel(context.Background())
+	wedged := &activeRun{
+		requestID: "req-wedged",
+		cancel:    cancelFn,
+		startTime: time.Now(),
+		// conv intentionally nil — exercises the "no session ID" branch
+		// of cancelWatchdog.
+	}
+	b.mu.Lock()
+	b.activeRuns["req-wedged"] = wedged
+	b.mu.Unlock()
+
+	c := collectEvents(b, "req-wedged")
+
+	if !b.Cancel("req-wedged") {
+		t.Fatal("Cancel returned false for active run")
+	}
+
+	// Watchdog grace is 5s; allow generous slack.
+	if !waitForExit(c, 7*time.Second) {
+		t.Fatal("Cancel watchdog did not force exit within grace period")
+	}
+
+	// Verify the synthetic signal so future audits can grep for forced exits.
+	c.mu.Lock()
+	gotSignal := ""
+	if c.exitSignal != nil {
+		gotSignal = *c.exitSignal
+	}
+	c.mu.Unlock()
+	if gotSignal != "cancelled-forced" {
+		t.Errorf("expected exit signal %q, got %q", "cancelled-forced", gotSignal)
+	}
+
+	// activeRuns must be empty after the watchdog runs.
+	b.mu.Lock()
+	_, stillThere := b.activeRuns["req-wedged"]
+	b.mu.Unlock()
+	if stillThere {
+		t.Error("watchdog left run in activeRuns")
+	}
+}
+
 func TestCancelReturnsTrueAndStopsRun(t *testing.T) {
 	// Create a provider that blocks by sleeping in the stream goroutine
 	blockingProvider := &slowMockProvider{
