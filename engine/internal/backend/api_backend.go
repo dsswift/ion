@@ -1491,16 +1491,19 @@ func (b *ApiBackend) executeTools(
 
 			// Stall detection: emit ToolStalledEvent if the tool hasn't
 			// returned within the stall threshold. Informational only.
+			// Capture the threshold locally so the goroutine doesn't race
+			// with tests that reassign the package-level var.
+			stallThreshold := toolStallThreshold
 			toolDone := make(chan struct{})
 			go func() {
-				stallTimer := time.NewTimer(toolStallThreshold)
+				stallTimer := time.NewTimer(stallThreshold)
 				defer stallTimer.Stop()
 				select {
 				case <-stallTimer.C:
 					b.emit(run, types.NormalizedEvent{Data: &types.ToolStalledEvent{
 						ToolID:   block.ID,
 						ToolName: block.Name,
-						Elapsed:  toolStallThreshold.Seconds(),
+						Elapsed:  stallThreshold.Seconds(),
 					}})
 				case <-toolDone:
 					// Tool finished before stall threshold; nothing to do.

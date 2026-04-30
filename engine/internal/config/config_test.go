@@ -1095,12 +1095,29 @@ func TestLoadConfig_MalformedJSON(t *testing.T) {
 }
 
 func TestLoadConfig_PartialOverride(t *testing.T) {
+	// Isolate from the developer's real ~/.ion/engine.json so the test
+	// is deterministic on CI where no home config exists.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	// Write a known global config that provides maxBudgetUsd.
+	globalIonDir := filepath.Join(fakeHome, ".ion")
+	if err := os.MkdirAll(globalIonDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	globalData, _ := json.Marshal(map[string]any{
+		"limits": map[string]any{"maxBudgetUsd": 10},
+	})
+	if err := os.WriteFile(filepath.Join(globalIonDir, "engine.json"), globalData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Only override maxTurns
+	// Only override maxTurns at the project level.
 	data, _ := json.Marshal(map[string]any{
 		"limits": map[string]any{"maxTurns": 5},
 	})
