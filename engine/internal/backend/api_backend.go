@@ -2,11 +2,14 @@ package backend
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -22,24 +25,59 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// convSuffixCounter is a fallback used only when crypto/rand fails (it never
+// has, but the disk could be full at exactly the wrong moment). Combined with
+// the millisecond timestamp it still produces unique conversation IDs.
+var convSuffixCounter uint64
+
+// newConvSuffix returns a 12-hex-char random suffix. Callers prepend a
+// millisecond timestamp; the combined id is the conversation file name.
+// Two runs that begin in the same millisecond see different suffixes, so
+// their conversation files cannot collide.
+func newConvSuffix() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%012x", atomic.AddUint64(&convSuffixCounter, 1))
+	}
+	return hex.EncodeToString(b[:])
+}
+
 // activeRun tracks the state of a single in-flight agent loop.
+//
+// Per-run configuration (hooks, permission engine, external tools, agent
+// spawner, telemetry, etc.) lives here rather than on the parent ApiBackend
+// so concurrent runs cannot overwrite each other's closures. The cfg pointer
+// is set once at StartRun and read without locking from goroutines that the
+// run owns; it must not be mutated after StartRun returns.
 type activeRun struct {
-	mu                 sync.Mutex
-	requestID          string
-	conv               *conversation.Conversation
-	cancel             context.CancelFunc
-	turnCount          int
-	totalCost          float64
-	startTime          time.Time
-	steerCh            chan string
-	exitPlanMode       bool                     // set when ExitPlanMode tool is called during plan mode
-	permissionDenials  []types.PermissionDenial // tools intercepted/denied (e.g. ExitPlanMode sentinel)
-	planMode           bool                     // true when this run is in plan mode
-	planFilePath       string                   // only writable file during plan mode
+	mu        sync.Mutex
+	requestID string
+	conv      *conversation.Conversation
+	cancel    context.CancelFunc
+	// turnCount is read by Cancel (and other RPC paths) while runLoop is
+	// still mutating it. Atomic load/store gives the race detector the
+	// happens-before edge it needs without forcing every read site to
+	// take run.mu.
+	turnCount         atomic.Int64
+	totalCost         float64
+	startTime         time.Time
+	steerCh           chan string
+	exitPlanMode      bool                     // set when ExitPlanMode tool is called during plan mode
+	permissionDenials []types.PermissionDenial // tools intercepted/denied (e.g. ExitPlanMode sentinel)
+	planMode          bool                     // true when this run is in plan mode
+	planFilePath      string                   // only writable file during plan mode
+
+	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
 }
 
 // ApiBackend is the direct-API backend that runs an agentic loop against
 // an LLM provider, executing tools and managing conversation state.
+//
+// State on this struct is process-wide: the active-run registry, the three
+// event-routing callbacks (set once by the server wiring), and the auth
+// resolver. Per-session state (permissions, hooks, external tools, agent
+// spawner, telemetry) is no longer here -- it travels on each run's
+// *RunConfig. See StartRunWithConfig.
 type ApiBackend struct {
 	mu         sync.Mutex
 	activeRuns map[string]*activeRun
@@ -48,35 +86,7 @@ type ApiBackend struct {
 	onExit       func(string, *int, *string, string)
 	onError      func(string, error)
 
-	onToolCall    func(info ToolCallInfo) (*ToolCallResult, error)
-	onPerToolHook func(toolName string, info interface{}, phase string) (interface{}, error)
-
-	// Hook callbacks wired by session manager
-	onTurnStart            func(runID string, turnNumber int)
-	onTurnEnd              func(runID string, turnNumber int)
-	onBeforePrompt         func(runID string, prompt string) (string, string)
-	onPlanModePrompt       func(planFilePath string) (string, []string)
-	onSessionBeforeCompact func(runID string) bool
-	onSessionCompact       func(runID string, info interface{})
-	onFileChanged          func(runID string, path string, action string)
-	onPermissionRequest    func(runID string, info interface{})
-	onPermissionDenied     func(runID string, info interface{})
-	onPermissionClassify   func(toolName string, input map[string]interface{}) string
-
-	// Security
-	permEngine   *permissions.Engine
-	sandboxCfg   *sandbox.Config
 	authResolver *auth.Resolver
-	securityCfg  *types.SecurityConfig
-
-	// Agent spawner (session-scoped, wired by session manager)
-	agentSpawner tools.AgentSpawner
-
-	// External tools (MCP)
-	externalTools []types.LlmToolDef
-	mcpToolRouter func(name string, input map[string]interface{}) (string, bool, error)
-
-	telemetry TelemetryCollector
 }
 
 // NewApiBackend creates an ApiBackend ready for use.
@@ -107,125 +117,33 @@ func (b *ApiBackend) OnError(fn func(string, error)) {
 	b.onError = fn
 }
 
-// SetOnToolCall registers a hook called before each tool execution.
-// Returning a non-nil ToolCallResult with Block=true prevents the tool call.
-func (b *ApiBackend) SetOnToolCall(fn func(ToolCallInfo) (*ToolCallResult, error)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onToolCall = fn
-}
-
-// SetOnPerToolHook registers a hook called before and after each tool execution.
-func (b *ApiBackend) SetOnPerToolHook(fn func(string, interface{}, string) (interface{}, error)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onPerToolHook = fn
-}
-
-// SetTelemetry attaches a telemetry collector.
-func (b *ApiBackend) SetTelemetry(t TelemetryCollector) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.telemetry = t
-}
-
-// SetPermissions attaches a permission engine for tool call checks.
-func (b *ApiBackend) SetPermissions(e *permissions.Engine) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.permEngine = e
-}
-
-// SetSandboxConfig attaches sandbox configuration for bash wrapping.
-func (b *ApiBackend) SetSandboxConfig(cfg *sandbox.Config) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.sandboxCfg = cfg
-}
-
-// SetAuthResolver attaches an auth resolver for API key resolution.
+// SetAuthResolver attaches an auth resolver for API key resolution. Auth
+// resolution is process-wide (one set of provider credentials per ion
+// install), so this remains a singleton setter.
 func (b *ApiBackend) SetAuthResolver(r *auth.Resolver) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.authResolver = r
 }
 
-// SetExternalTools sets MCP tool definitions and router for execution.
-func (b *ApiBackend) SetExternalTools(defs []types.LlmToolDef, router func(string, map[string]interface{}) (string, bool, error)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.externalTools = defs
-	b.mcpToolRouter = router
-}
-
-// SetTurnHooks wires turn lifecycle callbacks.
-func (b *ApiBackend) SetTurnHooks(onStart func(string, int), onEnd func(string, int)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onTurnStart = onStart
-	b.onTurnEnd = onEnd
-}
-
-// SetBeforePrompt wires the prompt rewrite hook. The callback receives the
-// run ID and the current prompt, and returns an optional rewritten prompt and
-// an optional system prompt addition (either may be empty for no change).
-func (b *ApiBackend) SetBeforePrompt(fn func(string, string) (string, string)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onBeforePrompt = fn
-}
-
-// SetPlanModePromptHook wires the plan mode prompt hook. The callback receives
-// the plan file path and returns an optional custom prompt and tool list.
-// Empty prompt = use default. Nil tools = use default.
-func (b *ApiBackend) SetPlanModePromptHook(fn func(string) (string, []string)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onPlanModePrompt = fn
-}
-
-// SetCompactionHooks wires compaction lifecycle callbacks.
-func (b *ApiBackend) SetCompactionHooks(before func(string) bool, after func(string, interface{})) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onSessionBeforeCompact = before
-	b.onSessionCompact = after
-}
-
-// SetPermissionHooks wires permission event callbacks.
-func (b *ApiBackend) SetPermissionHooks(onReq func(string, interface{}), onDeny func(string, interface{})) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onPermissionRequest = onReq
-	b.onPermissionDenied = onDeny
-}
-
-// SetPermissionClassifier wires the permission_classify hook callback.
-// Called before each permission check; the returned tier label flows into
-// the permission engine (for tier_rules matching) and onto the
-// permission_request payload (for audit/observation).
-func (b *ApiBackend) SetPermissionClassifier(fn func(toolName string, input map[string]interface{}) string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onPermissionClassify = fn
-}
-
-// SetFileChangedHook wires file change callback.
-func (b *ApiBackend) SetFileChangedHook(fn func(string, string, string)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.onFileChanged = fn
-}
-
-// SetAgentSpawner wires a session-scoped spawner for the Agent tool.
-func (b *ApiBackend) SetAgentSpawner(fn tools.AgentSpawner) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.agentSpawner = fn
-}
-
-// StartRun begins an agent loop in a background goroutine.
+// StartRun begins an agent loop with no per-run config (no hooks, no
+// permission engine, no external tools). Equivalent to StartRunWithConfig
+// with a nil cfg. Provided for callers and tests that exercise the API
+// backend in isolation.
 func (b *ApiBackend) StartRun(requestID string, options types.RunOptions) {
+	b.StartRunWithConfig(requestID, options, nil)
+}
+
+// StartRunWithConfig begins an agent loop in a background goroutine and
+// attaches the supplied RunConfig to the run. Hooks, permission engine,
+// external tools, agent spawner, telemetry, and security config are all
+// captured on the activeRun -- they cannot be mutated after this returns,
+// which is what guarantees session isolation across concurrent runs.
+//
+// A nil cfg is permitted; the run executes with no hooks and no per-run
+// state. Existing call sites that don't need session integration (tests,
+// the Agent tool's child runs) keep using StartRun.
+func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptions, cfg *RunConfig) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	run := &activeRun{
@@ -235,6 +153,7 @@ func (b *ApiBackend) StartRun(requestID string, options types.RunOptions) {
 		steerCh:      make(chan string, 4),
 		planMode:     options.PlanMode,
 		planFilePath: options.PlanFilePath,
+		cfg:          cfg,
 	}
 
 	b.mu.Lock()
@@ -275,7 +194,7 @@ func (b *ApiBackend) Cancel(requestID string) bool {
 		utils.Warn("ApiBackend", fmt.Sprintf("Cancel: requestID=%s not found in activeRuns (have %d runs)", requestID, numRuns))
 		return false
 	}
-	utils.Info("ApiBackend", fmt.Sprintf("Cancel: cancelling requestID=%s (turn=%d)", requestID, run.turnCount))
+	utils.Info("ApiBackend", fmt.Sprintf("Cancel: cancelling requestID=%s (turn=%d)", requestID, run.turnCount.Load()))
 	run.cancel()
 	return true
 }
@@ -333,14 +252,11 @@ func (b *ApiBackend) removeRun(requestID string) {
 	b.mu.Unlock()
 }
 
-// SetSecurityConfig attaches security configuration for opt-in features.
-func (b *ApiBackend) SetSecurityConfig(cfg *types.SecurityConfig) {
-	b.securityCfg = cfg
-}
-
-func (b *ApiBackend) emit(runID string, event types.NormalizedEvent) {
-	// Redact secrets from tool results only when enabled by harness engineer
-	if b.securityCfg != nil && b.securityCfg.RedactSecrets {
+// emit forwards a normalized event to the registered onNormalized callback
+// (set once by the server). The redaction policy comes from the run's own
+// SecurityCfg so concurrent runs with different configs don't leak.
+func (b *ApiBackend) emit(run *activeRun, event types.NormalizedEvent) {
+	if run != nil && run.cfg != nil && run.cfg.SecurityCfg != nil && run.cfg.SecurityCfg.RedactSecrets {
 		if tr, ok := event.Data.(*types.ToolResultEvent); ok {
 			tr.Content = insights.RedactSecrets(tr.Content)
 			tr.Content = insights.MaskSensitiveFields(tr.Content)
@@ -350,6 +266,10 @@ func (b *ApiBackend) emit(runID string, event types.NormalizedEvent) {
 	fn := b.onNormalized
 	b.mu.Unlock()
 	if fn != nil {
+		runID := ""
+		if run != nil {
+			runID = run.requestID
+		}
 		fn(runID, event)
 	}
 }
@@ -371,7 +291,11 @@ func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID
 	}
 }
 
-func (b *ApiBackend) emitError(runID string, err error) {
+func (b *ApiBackend) emitError(run *activeRun, err error) {
+	runID := ""
+	if run != nil {
+		runID = run.requestID
+	}
 	utils.Error("ApiBackend", fmt.Sprintf("emitError: runID=%s err=%s", runID, err.Error()))
 
 	// Emit structured error through the normalized event pipeline so it
@@ -386,7 +310,7 @@ func (b *ApiBackend) emitError(runID string, err error) {
 		errEvent.Retryable = pe.Retryable
 		errEvent.RetryAfterMs = pe.RetryAfterMs
 	}
-	b.emit(runID, types.NormalizedEvent{Data: errEvent})
+	b.emit(run, types.NormalizedEvent{Data: errEvent})
 
 	// Still call onError callback for logging coordination
 	b.mu.Lock()
@@ -406,16 +330,24 @@ const compactThreshold = 80
 func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.RunOptions) {
 	defer b.removeRun(run.requestID)
 
+	// Snapshot per-run hooks once. Nil cfg means "no hooks" -- the empty
+	// RunHooks struct has nil callback fields, which the call sites below
+	// already guard against.
+	var hooks RunHooks
+	if run.cfg != nil {
+		hooks = run.cfg.Hooks
+	}
+
 	// Resolve provider
 	model := opts.Model
 	if model == "" {
 		msg := "no model configured: set defaultModel in ~/.ion/engine.json or pass --model. See docs/configuration/engine-json.md."
 		utils.Error("ApiBackend", msg)
-		b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 			ErrorMessage: msg,
 			ErrorCode:    "no_model_configured",
 		}})
-		b.emitError(run.requestID, fmt.Errorf("%s", msg))
+		b.emitError(run, fmt.Errorf("%s", msg))
 		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
 		return
 	}
@@ -436,11 +368,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	provider := providers.ResolveProvider(model)
 	if provider == nil {
 		utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
-		b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 			ErrorMessage: fmt.Sprintf("no provider found for model %q", model),
 			ErrorCode:    "invalid_model",
 		}})
-		b.emitError(run.requestID, fmt.Errorf("no provider found for model %q", model))
+		b.emitError(run, fmt.Errorf("no provider found for model %q", model))
 		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
 		return
 	}
@@ -458,8 +390,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			conv = loaded
 		}
 	} else {
+		// Append a 6-byte random suffix so two runs that begin in the same
+		// millisecond cannot collide on the conversation file. Falls back to
+		// a counter on the (extremely unlikely) rand.Read failure.
 		conv = conversation.CreateConversation(
-			fmt.Sprintf("%d", time.Now().UnixMilli()),
+			fmt.Sprintf("%d-%s", time.Now().UnixMilli(), newConvSuffix()),
 			opts.SystemPrompt,
 			model,
 		)
@@ -477,18 +412,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	if opts.PlanMode {
 		// Check extension hook for custom plan mode prompt
 		planPrompt := opts.PlanModePrompt
-		if planPrompt == "" {
-			b.mu.Lock()
-			hookFn := b.onPlanModePrompt
-			b.mu.Unlock()
-			if hookFn != nil {
-				customPrompt, customTools := hookFn(opts.PlanFilePath)
-				if customPrompt != "" {
-					planPrompt = customPrompt
-				}
-				if customTools != nil {
-					opts.PlanModeTools = customTools
-				}
+		if planPrompt == "" && hooks.OnPlanModePrompt != nil {
+			customPrompt, customTools := hooks.OnPlanModePrompt(opts.PlanFilePath)
+			if customPrompt != "" {
+				planPrompt = customPrompt
+			}
+			if customTools != nil {
+				opts.PlanModeTools = customTools
 			}
 		}
 		if planPrompt == "" {
@@ -499,11 +429,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		systemPrompt += "\n\n" + planPrompt
 	}
 	// Fire before_prompt hook (before finalizing system prompt)
-	b.mu.Lock()
-	beforePromptFn := b.onBeforePrompt
-	b.mu.Unlock()
-	if beforePromptFn != nil {
-		rewrittenPrompt, extraSystem := beforePromptFn(run.requestID, opts.Prompt)
+	if hooks.OnBeforePrompt != nil {
+		rewrittenPrompt, extraSystem := hooks.OnBeforePrompt(run.requestID, opts.Prompt)
 		if rewrittenPrompt != "" {
 			opts.Prompt = rewrittenPrompt
 		}
@@ -537,12 +464,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	// Build tool definitions (built-in + external/MCP + capabilities)
 	toolDefs := tools.GetToolDefs()
-	b.mu.Lock()
-	extToolCount := len(b.externalTools)
-	if extToolCount > 0 {
-		toolDefs = append(toolDefs, b.externalTools...)
+	var externalTools []types.LlmToolDef
+	if run.cfg != nil {
+		externalTools = run.cfg.ExternalTools
 	}
-	b.mu.Unlock()
+	extToolCount := len(externalTools)
+	if extToolCount > 0 {
+		toolDefs = append(toolDefs, externalTools...)
+	}
 	utils.Log("ApiBackend", fmt.Sprintf("tool count: builtin=%d external=%d total=%d", len(toolDefs)-extToolCount, extToolCount, len(toolDefs)))
 	if len(opts.CapabilityTools) > 0 {
 		toolDefs = append(toolDefs, opts.CapabilityTools...)
@@ -579,7 +508,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		})
 
 		// Signal to the desktop that plan mode is now active for this run.
-		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
+		b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
 		utils.Info("PlanMode", fmt.Sprintf("run=%s tools_filtered=%d allowed=%v", run.requestID, len(toolDefs), planTools))
 	}
 
@@ -641,12 +570,15 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	promptTooLongRetries := 0
 	const maxPromptTooLongRetries = 3
 
-	// Agent loop: turnCount increments at the top of each iteration (before
-	// turn_start fires), so the first turn has turnCount=1. This matches the
+	// Agent loop: turn increments at the top of each iteration (before
+	// turn_start fires), so the first turn has turn=1. This matches the
 	// TS reference where turnCount increments at the top of the while loop.
-	for maxTurns <= 0 || run.turnCount < maxTurns {
+	// run.turnCount mirrors `turn` atomically so Cancel and other RPC paths
+	// can read the latest value without taking run.mu.
+	var turn int
+	for maxTurns <= 0 || turn < maxTurns {
 		if ctx.Err() != nil {
-			utils.Warn("ApiBackend", fmt.Sprintf("run cancelled: runID=%s turns=%d cost=$%.4f", run.requestID, run.turnCount, run.totalCost))
+			utils.Warn("ApiBackend", fmt.Sprintf("run cancelled: runID=%s turns=%d cost=$%.4f", run.requestID, turn, run.totalCost))
 			b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 			return
 		}
@@ -664,30 +596,28 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		// Increment turn counter before firing turn_start, so the first turn
-		// reports turnCount=1 (matching TS behavior).
-		run.turnCount++
+		// reports turn=1 (matching TS behavior).
+		turn++
+		run.turnCount.Store(int64(turn))
 
 		// Wind-down: warn the LLM 2 turns before max so it can wrap up
-		if maxTurns > 4 && run.turnCount == maxTurns-2 {
+		if maxTurns > 4 && turn == maxTurns-2 {
 			conversation.AddUserMessage(run.conv, "[SYSTEM] You are approaching your turn limit. You have 2 turns remaining. Wrap up your current work, summarize what you've accomplished and what remains, then return your response.")
 			if err := conversation.Save(run.conv, ""); err != nil {
 				utils.Log("ApiBackend", "failed to save conversation after wind-down: "+err.Error())
 			}
-			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, run.turnCount, maxTurns))
+			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, turn, maxTurns))
 		}
 
 		// Fire turn_start hook
-		b.mu.Lock()
-		turnStartFn := b.onTurnStart
-		b.mu.Unlock()
-		if turnStartFn != nil {
-			turnStartFn(run.requestID, run.turnCount)
+		if hooks.OnTurnStart != nil {
+			hooks.OnTurnStart(run.requestID, turn)
 		}
 
 		// Check budget
 		if maxBudget > 0 && run.totalCost >= maxBudget {
 			utils.Warn("ApiBackend", fmt.Sprintf("budget exceeded: runID=%s cost=$%.4f budget=$%.4f", run.requestID, run.totalCost, maxBudget))
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+			b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 				ErrorMessage: fmt.Sprintf("budget exceeded: $%.4f >= $%.4f", run.totalCost, maxBudget),
 				IsError:      true,
 				ErrorCode:    "budget_exceeded",
@@ -703,18 +633,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		usage := conversation.GetContextUsage(conv, contextWindow)
 		if usage.Percent > threshold {
 			// Fire session_before_compact hook (can cancel)
-			b.mu.Lock()
-			beforeCompactFn := b.onSessionBeforeCompact
-			afterCompactFn := b.onSessionCompact
-			b.mu.Unlock()
-
 			cancelCompact := false
-			if beforeCompactFn != nil {
-				cancelCompact = beforeCompactFn(run.requestID)
+			if hooks.OnSessionBeforeCompact != nil {
+				cancelCompact = hooks.OnSessionBeforeCompact(run.requestID)
 			}
 
 			if !cancelCompact {
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
+				b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
 				msgBefore := len(conv.Messages)
 
 				// Step 1: MicroCompact (tool results, then assistant text)
@@ -743,10 +668,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 2: hard-truncated to %d messages", len(conv.Messages)))
 				}
 
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false}})
+				b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false}})
 
-				if afterCompactFn != nil {
-					afterCompactFn(run.requestID, map[string]interface{}{
+				if hooks.OnSessionCompact != nil {
+					hooks.OnSessionCompact(run.requestID, map[string]interface{}{
 						"strategy":       "auto",
 						"messagesBefore": msgBefore,
 						"messagesAfter":  len(conv.Messages),
@@ -777,14 +702,15 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			Persistent:    opts.Persistent,
 		}
 
-		b.mu.Lock()
-		telem := b.telemetry
-		b.mu.Unlock()
+		var telem TelemetryCollector
+		if run.cfg != nil {
+			telem = run.cfg.Telemetry
+		}
 		var llmSpan Span
 		if telem != nil {
 			llmSpan = telem.StartSpan("llm.call", map[string]interface{}{
 				"model": model,
-				"turn":  run.turnCount,
+				"turn":  turn,
 			})
 		}
 
@@ -804,18 +730,18 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		if streamErr != nil {
 			if ctx.Err() != nil {
-				utils.Warn("ApiBackend", fmt.Sprintf("stream cancelled: runID=%s turn=%d", run.requestID, run.turnCount))
+				utils.Warn("ApiBackend", fmt.Sprintf("stream cancelled: runID=%s turn=%d", run.requestID, turn))
 				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
 			// G33: prompt_too_long / overloaded -- 3-step cascade then retry (capped)
 			errMsg := streamErr.Error()
 			if (strings.Contains(errMsg, "prompt_too_long") || strings.Contains(errMsg, "prompt is too long") ||
-				strings.Contains(errMsg, "overloaded_error")) && run.turnCount > 0 {
+				strings.Contains(errMsg, "overloaded_error")) && turn > 0 {
 				promptTooLongRetries++
 				if promptTooLongRetries > maxPromptTooLongRetries {
 					utils.Error("ApiBackend", fmt.Sprintf("prompt_too_long: %d retries exhausted, giving up: runID=%s", maxPromptTooLongRetries, run.requestID))
-					b.emit(run.requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+					b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 						ErrorMessage: fmt.Sprintf("Context too large after %d compaction attempts. Start a new conversation or manually reduce context.", maxPromptTooLongRetries),
 						IsError:      true,
 						ErrorCode:    "compaction_failed",
@@ -825,17 +751,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				}
 
 				// Fire session_before_compact hook (can cancel)
-				b.mu.Lock()
-				reactiveBeforeFn := b.onSessionBeforeCompact
-				reactiveAfterFn := b.onSessionCompact
-				b.mu.Unlock()
-
-				if reactiveBeforeFn != nil && reactiveBeforeFn(run.requestID) {
+				if hooks.OnSessionBeforeCompact != nil && hooks.OnSessionBeforeCompact(run.requestID) {
 					utils.Log("ApiBackend", "reactive compaction cancelled by hook")
 					continue // skip compaction, retry the turn as-is
 				}
 
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
+				b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
 				utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long, compaction attempt %d/%d", promptTooLongRetries, maxPromptTooLongRetries))
 				msgBefore := len(conv.Messages)
 
@@ -865,11 +786,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				conversation.Compact(conv, keepTurns)
 				utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long hard-truncated to keepTurns=%d, %d messages remain", keepTurns, len(conv.Messages)))
 
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false}})
+				b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false}})
 
 				// Fire session_compact hook (observe)
-				if reactiveAfterFn != nil {
-					reactiveAfterFn(run.requestID, map[string]interface{}{
+				if hooks.OnSessionCompact != nil {
+					hooks.OnSessionCompact(run.requestID, map[string]interface{}{
 						"strategy":       "reactive",
 						"messagesBefore": msgBefore,
 						"messagesAfter":  len(conv.Messages),
@@ -877,8 +798,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				}
 				continue // retry the turn after compaction
 			}
-			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s", run.requestID, run.turnCount, streamErr.Error()))
-			b.emitError(run.requestID, streamErr)
+			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s", run.requestID, turn, streamErr.Error()))
+			b.emitError(run, streamErr)
 			b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 			return
 		}
@@ -889,8 +810,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Stream truncated (no stop reason) -- emit reset so desktop discards
 		// partial text, then retry the turn.
 		if stopReason == "" {
-			utils.Warn("ApiBackend", fmt.Sprintf("stream truncated (no stop reason): runID=%s turn=%d, retrying", run.requestID, run.turnCount))
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
+			utils.Warn("ApiBackend", fmt.Sprintf("stream truncated (no stop reason): runID=%s turn=%d, retrying", run.requestID, turn))
+			b.emit(run, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
 			continue
 		}
 
@@ -906,11 +827,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			outTok := turnUsage.OutputTokens
 			cacheRead := turnUsage.CacheReadInputTokens
 			cacheCreate := turnUsage.CacheCreationInputTokens
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.UsageEvent{
+			b.emit(run, types.NormalizedEvent{Data: &types.UsageEvent{
 				Usage: types.UsageData{
-					InputTokens:             &totalIn,
-					OutputTokens:            &outTok,
-					CacheReadInputTokens:    &cacheRead,
+					InputTokens:              &totalIn,
+					OutputTokens:             &outTok,
+					CacheReadInputTokens:     &cacheRead,
 					CacheCreationInputTokens: &cacheCreate,
 				},
 			}})
@@ -932,11 +853,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		// Fire turn_end hook
-		b.mu.Lock()
-		turnEndFn := b.onTurnEnd
-		b.mu.Unlock()
-		if turnEndFn != nil {
-			turnEndFn(run.requestID, run.turnCount)
+		if hooks.OnTurnEnd != nil {
+			hooks.OnTurnEnd(run.requestID, turn)
 		}
 
 		// Handle stop reason
@@ -956,12 +874,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 
 			elapsed := time.Since(run.startTime).Milliseconds()
-			utils.Info("ApiBackend", fmt.Sprintf("run complete: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, run.turnCount, run.totalCost, elapsed, conv.ID))
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+			utils.Info("ApiBackend", fmt.Sprintf("run complete: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, turn, run.totalCost, elapsed, conv.ID))
+			b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 				Result:     resultText,
 				CostUsd:    run.totalCost,
 				DurationMs: elapsed,
-				NumTurns:   run.turnCount,
+				NumTurns:   turn,
 				SessionID:  conv.ID,
 			}})
 			b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
@@ -990,7 +908,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					return
 				}
 				utils.Error("ApiBackend", fmt.Sprintf("tool execution failed: runID=%s err=%s", run.requestID, err.Error()))
-				b.emitError(run.requestID, err)
+				b.emitError(run, err)
 				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 				return
 			}
@@ -1016,12 +934,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					utils.Log("ApiBackend", "failed to save conversation: "+err.Error())
 				}
 				elapsed := time.Since(run.startTime).Milliseconds()
-				utils.Info("ApiBackend", fmt.Sprintf("plan mode exited: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, run.turnCount, run.totalCost, elapsed, conv.ID))
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+				utils.Info("ApiBackend", fmt.Sprintf("plan mode exited: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, turn, run.totalCost, elapsed, conv.ID))
+				b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 					Result:            "Plan mode exited.",
 					CostUsd:           run.totalCost,
 					DurationMs:        elapsed,
-					NumTurns:          run.turnCount,
+					NumTurns:          turn,
 					SessionID:         conv.ID,
 					PermissionDenials: denials,
 				}})
@@ -1037,7 +955,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 
 		case "max_tokens":
-			utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, run.turnCount))
+			utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, turn))
 			// Add continue message and loop
 			conversation.AddUserMessage(conv, "Continue from where you left off.")
 			if err := conversation.Save(conv, ""); err != nil {
@@ -1058,14 +976,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}
 
 	elapsed := time.Since(run.startTime).Milliseconds()
-	b.emit(run.requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 		Result:     fmt.Sprintf("Reached max turns (%d)", maxTurns),
 		CostUsd:    run.totalCost,
 		DurationMs: elapsed,
-		NumTurns:   run.turnCount,
+		NumTurns:   turn,
 		SessionID:  conv.ID,
 	}})
-	utils.Warn("ApiBackend", fmt.Sprintf("max turns exceeded: runID=%s turns=%d/%d cost=$%.4f", run.requestID, run.turnCount, maxTurns, run.totalCost))
+	utils.Warn("ApiBackend", fmt.Sprintf("max turns exceeded: runID=%s turns=%d/%d cost=$%.4f", run.requestID, turn, maxTurns, run.totalCost))
 	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
 }
 
@@ -1099,7 +1017,7 @@ func (b *ApiBackend) processStream(
 				if cumUsage.CacheReadInputTokens > 0 || cumUsage.CacheCreationInputTokens > 0 {
 					cri := cumUsage.CacheReadInputTokens
 					cci := cumUsage.CacheCreationInputTokens
-					b.emit(run.requestID, types.NormalizedEvent{Data: &types.UsageEvent{
+					b.emit(run, types.NormalizedEvent{Data: &types.UsageEvent{
 						Usage: types.UsageData{
 							CacheReadInputTokens:     &cri,
 							CacheCreationInputTokens: &cci,
@@ -1130,7 +1048,7 @@ func (b *ApiBackend) processStream(
 			assistantBlocks = appendOrGrow(assistantBlocks, currentBlockIndex, block)
 
 			if cb.Type == "tool_use" {
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolCallEvent{
+				b.emit(run, types.NormalizedEvent{Data: &types.ToolCallEvent{
 					ToolName: cb.Name,
 					ToolID:   cb.ID,
 					Index:    toolCallIndex,
@@ -1163,7 +1081,7 @@ func (b *ApiBackend) processStream(
 						}
 					}
 					if len(hits) > 0 {
-						b.emit(run.requestID, types.NormalizedEvent{Data: &types.WebSearchResultEvent{
+						b.emit(run, types.NormalizedEvent{Data: &types.WebSearchResultEvent{
 							Results: hits,
 						}})
 					}
@@ -1180,7 +1098,7 @@ func (b *ApiBackend) processStream(
 				if currentBlockIndex < len(assistantBlocks) {
 					assistantBlocks[currentBlockIndex].Text += delta.Text
 				}
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.TextChunkEvent{
+				b.emit(run, types.NormalizedEvent{Data: &types.TextChunkEvent{
 					Text: delta.Text,
 				}})
 			}
@@ -1189,7 +1107,7 @@ func (b *ApiBackend) processStream(
 				currentPartialJSON.WriteString(delta.PartialJSON)
 				if currentBlockIndex < len(assistantBlocks) {
 					toolID := assistantBlocks[currentBlockIndex].ID
-					b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolCallUpdateEvent{
+					b.emit(run, types.NormalizedEvent{Data: &types.ToolCallUpdateEvent{
 						ToolID:       toolID,
 						PartialInput: delta.PartialJSON,
 					}})
@@ -1224,7 +1142,7 @@ func (b *ApiBackend) processStream(
 				}
 			}
 
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolCallCompleteEvent{
+			b.emit(run, types.NormalizedEvent{Data: &types.ToolCallCompleteEvent{
 				Index: currentBlockIndex,
 			}})
 
@@ -1259,20 +1177,28 @@ func (b *ApiBackend) executeTools(
 	results := make([]conversation.ToolResultEntry, len(toolUseBlocks))
 	g, gCtx := errgroup.WithContext(ctx)
 
-	// Snapshot hook/config references once for all goroutines
-	b.mu.Lock()
-	hookFn := b.onToolCall
-	perToolHook := b.onPerToolHook
-	permEng := b.permEngine
-	sbCfg := b.sandboxCfg
-	mcpRouter := b.mcpToolRouter
-	fileChangedFn := b.onFileChanged
-	permReqFn := b.onPermissionRequest
-	permDenyFn := b.onPermissionDenied
-	permClassifyFn := b.onPermissionClassify
-	telem := b.telemetry
-	spawnerFn := b.agentSpawner
-	b.mu.Unlock()
+	// All per-run configuration lives on run.cfg. Reading it without a lock
+	// is safe because cfg is set once at StartRun and never mutated.
+	var hooks RunHooks
+	var permEng *permissions.Engine
+	var sbCfg *sandbox.Config
+	var mcpRouter func(string, map[string]interface{}) (string, bool, error)
+	var telem TelemetryCollector
+	var spawnerFn tools.AgentSpawner
+	if run.cfg != nil {
+		hooks = run.cfg.Hooks
+		permEng = run.cfg.PermEngine
+		sbCfg = run.cfg.SandboxCfg
+		mcpRouter = run.cfg.McpToolRouter
+		telem = run.cfg.Telemetry
+		spawnerFn = run.cfg.AgentSpawner
+	}
+	hookFn := hooks.OnToolCall
+	perToolHook := hooks.OnPerToolHook
+	fileChangedFn := hooks.OnFileChanged
+	permReqFn := hooks.OnPermissionRequest
+	permDenyFn := hooks.OnPermissionDenied
+	permClassifyFn := hooks.OnPermissionClassify
 
 	// Inject session-scoped agent spawner into context for Agent tool
 	if spawnerFn != nil {
@@ -1321,7 +1247,7 @@ func (b *ApiBackend) executeTools(
 						Content:   "Permission denied: " + checkResult.Reason,
 						IsError:   true,
 					}
-					b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 						ToolID:  block.ID,
 						Content: results[i].Content,
 						IsError: true,
@@ -1340,7 +1266,7 @@ func (b *ApiBackend) executeTools(
 							Content:   "Sandbox blocked: " + reason,
 							IsError:   true,
 						}
-						b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+						b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 							ToolID:  block.ID,
 							Content: results[i].Content,
 							IsError: true,
@@ -1380,7 +1306,7 @@ func (b *ApiBackend) executeTools(
 						Content:   "Blocked: " + result.Reason,
 						IsError:   true,
 					}
-					b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 						ToolID:  block.ID,
 						Content: "Blocked: " + result.Reason,
 						IsError: true,
@@ -1413,7 +1339,7 @@ func (b *ApiBackend) executeTools(
 							Content:   msg,
 							IsError:   true,
 						}
-						b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+						b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 							ToolID:  block.ID,
 							Content: msg,
 							IsError: true,
@@ -1437,13 +1363,13 @@ func (b *ApiBackend) executeTools(
 				})
 				run.mu.Unlock()
 				// Signal to the desktop that plan mode is now exiting.
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: false, PlanFilePath: run.planFilePath}})
+				b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: false, PlanFilePath: run.planFilePath}})
 				results[i] = conversation.ToolResultEntry{
 					ToolUseID: block.ID,
 					Content:   "Plan mode exited.",
 					IsError:   false,
 				}
-				b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 					ToolID:  block.ID,
 					Content: "Plan mode exited.",
 					IsError: false,
@@ -1514,7 +1440,7 @@ func (b *ApiBackend) executeTools(
 			}
 
 			// Emit tool_result event
-			b.emit(run.requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{
+			b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 				ToolID:  block.ID,
 				Content: results[i].Content,
 				IsError: results[i].IsError,

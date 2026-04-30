@@ -308,18 +308,22 @@ func TestApiBackendToolCallHook(t *testing.T) {
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	// Block Bash tool
-	b.SetOnToolCall(func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
-		if info.ToolName == "Bash" {
-			return &backend.ToolCallResult{Block: true, Reason: "dangerous command"}, nil
-		}
-		return nil, nil
-	})
+	// Block Bash tool via per-run hook in RunConfig.
+	cfg := &backend.RunConfig{
+		Hooks: backend.RunHooks{
+			OnToolCall: func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
+				if info.ToolName == "Bash" {
+					return &backend.ToolCallResult{Block: true, Reason: "dangerous command"}, nil
+				}
+				return nil, nil
+			},
+		},
+	}
 
-	b.StartRun("run-hook", types.RunOptions{
+	b.StartRunWithConfig("run-hook", types.RunOptions{
 		Prompt: "Delete everything",
 		Model:  "mock-model",
-	})
+	}, cfg)
 
 	be.waitForExit(t, 5*time.Second)
 
