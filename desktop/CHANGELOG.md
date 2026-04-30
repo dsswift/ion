@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.2.0](https://github.com/dsswift/ion/compare/desktop-v1.1.0...desktop-v1.2.0) (2026-04-30)
+
+### Features
+
+* **desktop:** add subtree abort for engine agent ([3f744fc](https://github.com/dsswift/ion/commit/3f744fc206d789b8b881eb6c2c7a6867deca505c))
+* **desktop:** add drag-to-reorder for engine tabs ([473aae8](https://github.com/dsswift/ion/commit/473aae82c9db89b3a9dc38dd56f96c35ed793ebc))
+
+### Bug Fixes
+
+* **desktop:** add watchdog to recover stuck tabs on abort ([1b0204c](https://github.com/dsswift/ion/commit/1b0204c8522daf854571683934bce6618df80ddf))
+
 ## [1.1.0](https://github.com/dsswift/ion/compare/desktop-v1.0.2...desktop-v1.1.0) (2026-04-29)
 
 ### Features
