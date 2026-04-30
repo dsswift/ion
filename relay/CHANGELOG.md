@@ -9,3 +9,6 @@ Initial 1.0.0 baseline. WebSocket relay container for connecting remote
 clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
+
+## [1.0.1](https://github.com/dsswift/ion/compare/relay-v1.0.0...relay-v1.0.1) (2026-04-30)
+
