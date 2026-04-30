@@ -279,8 +279,9 @@ func cmdServe() {
 	sock := socketPath()
 	srv := server.NewServer(sock, b)
 
-	// Expose config to server/session layer
+	// Expose config and version to server/session layer
 	srv.SetConfig(cfg)
+	srv.SetVersion(version)
 
 	// Start server (handles stale socket, platform-specific listen)
 	if err := srv.Start(); err != nil {
@@ -717,6 +718,30 @@ func cmdStop(flags map[string]string) {
 	fmt.Println(string(data))
 }
 
+func cmdHealth() {
+	result, err := connectAndSend(socketPath(), map[string]interface{}{
+		"cmd": "health",
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		os.Exit(1)
+	}
+	if errMsg, _ := result["error"].(string); errMsg != "" {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
+		os.Exit(1)
+	}
+	data, _ := result["data"].(map[string]interface{})
+	if data == nil {
+		fmt.Fprintln(os.Stderr, "Error: empty health response")
+		os.Exit(1)
+	}
+	out, _ := json.MarshalIndent(data, "", "  ")
+	fmt.Println(string(out))
+	if ok, _ := data["ok"].(bool); !ok {
+		os.Exit(1)
+	}
+}
+
 func cmdShutdown() {
 	result, err := connectAndSend(socketPath(), map[string]interface{}{
 		"cmd": "shutdown",
@@ -828,6 +853,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  status                   List sessions")
 	fmt.Fprintln(os.Stderr, "  stop --key               Stop session")
 	fmt.Fprintln(os.Stderr, "  shutdown                 Stop daemon")
+	fmt.Fprintln(os.Stderr, "  health                   Probe daemon liveness (exit 0=ok, 1=down)")
 	fmt.Fprintln(os.Stderr, "  record --output          Record session to NDJSON")
 	fmt.Fprintln(os.Stderr, "  rpc                      JSON-RPC over stdin/stdout")
 	fmt.Fprintln(os.Stderr, "  version                  Show version")
@@ -859,6 +885,8 @@ func main() {
 		cmdStop(flags)
 	case "shutdown":
 		cmdShutdown()
+	case "health":
+		cmdHealth()
 	case "record":
 		cmdRecord(flags)
 	case "rpc":

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -44,12 +45,19 @@ type Server struct {
 	broadcastListeners []func(line string)
 	done               chan struct{}
 	stopOnce           sync.Once
+	version            string
+	startedAt          time.Time
 }
 
 // SetConfig stores the engine runtime config for use by sessions.
 func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	s.config = cfg
 	s.manager.SetConfig(cfg)
+}
+
+// SetVersion stores the engine binary version for the health command.
+func (s *Server) SetVersion(v string) {
+	s.version = v
 }
 
 // NewServer creates a Server backed by the given RunBackend.
@@ -62,6 +70,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		clients:    make(map[net.Conn]struct{}),
 		manager:    mgr,
 		done:       make(chan struct{}),
+		startedAt:  time.Now(),
 	}
 
 	// Wire manager events to broadcast
@@ -391,6 +400,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "shutdown":
 		_ = s.Stop()
 
+	case "health":
+		s.sendResult(conn, cmd, nil, s.healthSnapshot())
+
 	default:
 		utils.Warn("Server", "unknown command: "+cmd.Cmd)
 		s.sendResult(conn, cmd, fmt.Errorf("unknown command: %s", cmd.Cmd), nil)
@@ -432,6 +444,22 @@ func (s *Server) sendForkResult(conn net.Conn, cmd *protocol.ClientCommand, err 
 	}
 	line := protocol.SerializeServerResult(result)
 	s.writeToClient(conn, line)
+}
+
+// healthSnapshot returns daemon liveness data for the health command.
+func (s *Server) healthSnapshot() map[string]interface{} {
+	version := s.version
+	if version == "" {
+		version = "dev"
+	}
+	return map[string]interface{}{
+		"ok":           true,
+		"version":      version,
+		"startedAt":    s.startedAt.UTC().Format(time.RFC3339),
+		"uptimeSec":    int64(time.Since(s.startedAt).Seconds()),
+		"sessionCount": len(s.manager.ListSessions()),
+		"socketPath":   s.socketPath,
+	}
 }
 
 // OnBroadcast registers a listener that receives every broadcast line.
