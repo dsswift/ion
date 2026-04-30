@@ -131,6 +131,8 @@ final class SessionViewModel {
     var enginePinnedPrompt: [String: String] = [:]
     /// Engine profiles synced from the desktop settings.
     var engineProfiles: [EngineProfile] = []
+    /// Active tool calls per tab, keyed by toolId.
+    var activeTools: [String: [String: ActiveToolInfo]] = [:]
     /// Tab IDs that iOS has requested to close but hasn't received tab_closed confirmation for.
     private var pendingCloseTabIds: Set<String> = []
 
@@ -344,6 +346,7 @@ final class SessionViewModel {
         engineProfiles = []
         pendingCloseTabIds = []
         pendingInputByTab = [:]
+        activeTools = [:]
     }
 
     // MARK: - Commands
@@ -979,6 +982,7 @@ final class SessionViewModel {
                     tabs[idx].permissionQueue.removeAll {
                         $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
                     }
+                    activeTools.removeValue(forKey: tabId)
                 }
             }
 
@@ -1016,6 +1020,7 @@ final class SessionViewModel {
                 }
             }
             liveText.removeValue(forKey: tabId)
+            activeTools.removeValue(forKey: tabId)
 
         case .permissionRequest(let tabId, let questionId, let toolName, let toolInput, let options):
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -1154,11 +1159,18 @@ final class SessionViewModel {
         case .engineWorkingMessage(let tabId, _, let message):
             engineWorkingMessages[tabId] = message
 
-        case .engineToolStart(_, _, _, _):
-            break
+        case .engineToolStart(let tabId, _, let toolName, let toolId):
+            let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
+            activeTools[tabId, default: [:]][toolId] = info
 
-        case .engineToolEnd(_, _, _, _, _):
-            break
+        case .engineToolEnd(let tabId, _, let toolId, _, _):
+            activeTools[tabId]?[toolId] = nil
+            if activeTools[tabId]?.isEmpty == true {
+                activeTools.removeValue(forKey: tabId)
+            }
+
+        case .engineToolStalled(let tabId, _, let toolId, _, _):
+            activeTools[tabId]?[toolId]?.isStalled = true
 
         case .engineError(let tabId, _, let message):
             print("[Engine] error for \(tabId): \(message)")

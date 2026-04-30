@@ -41,6 +41,7 @@ enum RemoteEvent: Codable, Sendable {
     case engineWorkingMessage(tabId: String, instanceId: String?, message: String)
     case engineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String)
     case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool)
+    case engineToolStalled(tabId: String, instanceId: String?, toolId: String, toolName: String, elapsed: Double)
     case engineError(tabId: String, instanceId: String?, message: String)
     case engineNotify(tabId: String, instanceId: String?, message: String, level: String)
     case engineDialog(tabId: String, instanceId: String?, dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?)
@@ -86,6 +87,7 @@ enum RemoteEvent: Codable, Sendable {
         case engineWorkingMessage = "engine_working_message"
         case engineToolStart = "engine_tool_start"
         case engineToolEnd = "engine_tool_end"
+        case engineToolStalled = "engine_tool_stalled"
         case engineError = "engine_error"
         case engineNotify = "engine_notify"
         case engineDialog = "engine_dialog"
@@ -109,7 +111,7 @@ enum RemoteEvent: Codable, Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
-        case signal, stderrTail, label, profiles
+        case signal, stderrTail, label, profiles, elapsed
     }
 
     init(from decoder: Decoder) throws {
@@ -287,6 +289,14 @@ enum RemoteEvent: Codable, Sendable {
             let result = try container.decodeIfPresent(String.self, forKey: .result)
             let isError = try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false
             self = .engineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError)
+
+        case .engineToolStalled:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let toolId = try container.decode(String.self, forKey: .toolId)
+            let toolName = try container.decode(String.self, forKey: .toolName)
+            let elapsed = try container.decode(Double.self, forKey: .elapsed)
+            self = .engineToolStalled(tabId: tabId, instanceId: instanceId, toolId: toolId, toolName: toolName, elapsed: elapsed)
 
         case .engineError:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -528,6 +538,14 @@ enum RemoteEvent: Codable, Sendable {
             try container.encode(toolId, forKey: .toolId)
             try container.encodeIfPresent(result, forKey: .result)
             try container.encode(isError, forKey: .isError)
+
+        case .engineToolStalled(let tabId, let instanceId, let toolId, let toolName, let elapsed):
+            try container.encode(TypeKey.engineToolStalled, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(toolId, forKey: .toolId)
+            try container.encode(toolName, forKey: .toolName)
+            try container.encode(elapsed, forKey: .elapsed)
 
         case .engineError(let tabId, let instanceId, let message):
             try container.encode(TypeKey.engineError, forKey: .type)
