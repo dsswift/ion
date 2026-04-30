@@ -1,0 +1,144 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2
+
+  engine-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+      - name: Unit tests with race detector
+        working-directory: engine
+        run: go test -race ./...
+      - name: Integration tests with race detector
+        working-directory: engine
+        run: go test -race -tags integration ./tests/integration/...
+
+  engine-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+      # only-new-issues lints only diffs vs the base branch so the existing
+      # backlog of issues does not block PRs; new code must stay clean.
+      - name: golangci-lint (engine)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: engine
+          only-new-issues: true
+      - name: golangci-lint (relay)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: relay
+          only-new-issues: true
+
+  engine-vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+      - name: govulncheck (engine)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+        working-directory: engine
+      - name: govulncheck (relay)
+        run: govulncheck ./...
+        working-directory: relay
+
+  relay-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: relay/go.mod
+      - name: Unit tests with race detector
+        working-directory: relay
+        run: go test -race ./...
+
+  desktop-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci --ignore-scripts
+      - name: Run tests
+        working-directory: desktop
+        run: npm test
+
+  desktop-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: npm audit (high+ only, prod deps)
+        working-directory: desktop
+        run: npm audit --audit-level=high --omit=dev
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build engine image
+        uses: docker/build-push-action@v5
+        with:
+          context: engine
+          push: false
+          platforms: linux/amd64
+          tags: ion-engine:ci
+
+  ios-build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build iOS app
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project IonRemote.xcodeproj \
+            -scheme IonRemote \
+            -destination 'generic/platform=iOS' \
+            build
