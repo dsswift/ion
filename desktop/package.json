@@ -74,7 +74,7 @@
         "to": "engine/ion"
       }
     ],
-    "afterPack": "build/afterPack.js",
+    "afterPack": "scripts/afterPack.js",
     "mac": {
       "icon": "resources/icon.icns",
       "identity": "Ion Local Dev",
