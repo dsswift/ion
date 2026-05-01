@@ -1,313 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import {
-  CaretDown, CaretRight, Folder, FolderOpen, X,
-  FilePlus, FolderPlus, ArrowsClockwise, ArrowsInLineVertical,
-  File, FileTs, FileJs, FileCode, FileText, FileCss, FileHtml, FilePy,
-  Image, GearSix,
-  Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut,
+  X, FilePlus, FolderPlus, ArrowsClockwise, ArrowsInLineVertical,
 } from '@phosphor-icons/react'
 import { useSessionStore, isTextFile } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
+import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
+import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
 import type { FsEntry } from '../../shared/types'
-
-// ─── File icon mapping ───
-
-interface FileIconInfo {
-  icon: React.ComponentType<{ size?: number; color?: string; weight?: 'fill' | 'regular' | 'bold' }>
-  color: string
-}
-
-function getFileIcon(name: string, fallbackColor: string): FileIconInfo {
-  const ext = name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : ''
-  const base = name.toLowerCase()
-
-  switch (ext) {
-    case '.ts':
-    case '.tsx':
-      return { icon: FileTs, color: '#3b82f6' }
-    case '.js':
-    case '.jsx':
-      return { icon: FileJs, color: '#eab308' }
-    case '.json':
-      return { icon: FileCode, color: '#22c55e' }
-    case '.md':
-      return { icon: FileText, color: '#60a5fa' }
-    case '.css':
-    case '.scss':
-      return { icon: FileCss, color: '#a855f7' }
-    case '.html':
-      return { icon: FileHtml, color: '#f97316' }
-    case '.png':
-    case '.jpg':
-    case '.jpeg':
-    case '.svg':
-    case '.gif':
-    case '.ico':
-    case '.webp':
-      return { icon: Image, color: '#a855f7' }
-    case '.py':
-      return { icon: FilePy, color: '#3b82f6' }
-    default:
-      break
-  }
-
-  // Config files by name
-  if (['.gitignore', '.env', '.editorconfig', '.prettierrc'].includes(base)) {
-    return { icon: GearSix, color: '#9ca3af' }
-  }
-
-  return { icon: File, color: fallbackColor }
-}
-
-// ─── Context Menu ───
-
-interface ContextMenuState {
-  x: number
-  y: number
-  entry: FsEntry
-}
-
-function ContextMenu({
-  menu,
-  workingDir,
-  onClose,
-  portalTarget,
-}: {
-  menu: ContextMenuState
-  workingDir: string
-  onClose: () => void
-  portalTarget: HTMLDivElement
-}) {
-  const colors = useColors()
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [onClose])
-
-  const { addAttachments } = useSessionStore.getState()
-
-  type MenuItem = { label: string; action: () => void; icon: React.ComponentType<{ size?: number; color?: string }>} | { separator: true }
-
-  const items: MenuItem[] = useMemo(() => {
-    const relativePath = menu.entry.path.startsWith(workingDir + '/')
-      ? menu.entry.path.slice(workingDir.length + 1)
-      : menu.entry.path
-    return [
-      { label: 'Attach to Conversation', icon: Paperclip, action: async () => {
-        const attachment = await window.ion.attachFileByPath(menu.entry.path)
-        if (attachment) addAttachments([attachment])
-        maybeCloseExplorerBeforeExternal()
-      }},
-      { separator: true as const },
-      { label: 'Copy Path', icon: Copy, action: () => navigator.clipboard.writeText(menu.entry.path) },
-      { label: 'Copy Relative Path', icon: Copy, action: () => navigator.clipboard.writeText(relativePath) },
-      { separator: true as const },
-      { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsRevealInFinder(menu.entry.path) } },
-      { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsOpenNative(menu.entry.path) } },
-    ]
-  }, [menu.entry.path, workingDir])
-
-  return createPortal(
-    <div
-      ref={ref}
-      data-ion-ui
-      className="glass-surface"
-      style={{
-        position: 'fixed',
-        left: menu.x,
-        top: menu.y,
-        background: colors.popoverBg,
-        border: `1px solid ${colors.popoverBorder}`,
-        borderRadius: 8,
-        boxShadow: colors.popoverShadow,
-        padding: '4px 0',
-        pointerEvents: 'auto',
-        zIndex: 10000,
-        minWidth: 160,
-      }}
-    >
-      {items.map((item, i) => {
-        if ('separator' in item) {
-          return <div key={`sep-${i}`} style={{ height: 1, background: colors.containerBorder, margin: '4px 8px' }} />
-        }
-        const Icon = item.icon
-        return (
-          <div
-            key={item.label}
-            onClick={() => { item.action(); onClose() }}
-            style={{
-              height: 28,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '0 12px',
-              fontSize: 11,
-              color: colors.textPrimary,
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-          >
-            <Icon size={14} color={colors.textTertiary} />
-            {item.label}
-          </div>
-        )
-      })}
-    </div>,
-    portalTarget,
-  )
-}
-
-// ─── Tree Row ───
-
-function TreeRow({
-  entry,
-  depth,
-  expanded,
-  selected,
-  isGitIgnored,
-  onToggle,
-  onClick,
-  onContextMenu,
-  colors,
-}: {
-  entry: FsEntry
-  depth: number
-  expanded: boolean
-  selected: boolean
-  isGitIgnored?: boolean
-  onToggle: () => void
-  onClick: () => void
-  onContextMenu: (e: React.MouseEvent) => void
-  colors: ReturnType<typeof useColors>
-}) {
-  const paddingLeft = depth * 16 + 4
-  const iconInfo = entry.isDirectory ? null : getFileIcon(entry.name, colors.textTertiary)
-
-  return (
-    <div
-      onClick={entry.isDirectory ? onToggle : onClick}
-      onContextMenu={onContextMenu}
-      style={{
-        height: 24,
-        display: 'flex',
-        alignItems: 'center',
-        paddingLeft,
-        paddingRight: 8,
-        cursor: 'pointer',
-        userSelect: 'none',
-        background: selected ? colors.surfaceHover : 'transparent',
-        borderRadius: selected ? 4 : 0,
-        gap: 4,
-        opacity: isGitIgnored ? 0.45 : undefined,
-      }}
-      onMouseEnter={(e) => {
-        if (!selected) (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover
-      }}
-      onMouseLeave={(e) => {
-        if (!selected) (e.currentTarget as HTMLDivElement).style.background = 'transparent'
-      }}
-    >
-      {entry.isDirectory ? (
-        <>
-          {expanded
-            ? <CaretDown size={10} color={colors.textTertiary} weight="fill" />
-            : <CaretRight size={10} color={colors.textTertiary} weight="fill" />
-          }
-          {expanded
-            ? <FolderOpen size={14} color={colors.accent} weight="fill" />
-            : <Folder size={14} color={colors.accent} weight="fill" />
-          }
-        </>
-      ) : (
-        <>
-          {/* Spacer matching chevron width */}
-          <span style={{ width: 10, flexShrink: 0 }} />
-          {iconInfo && <iconInfo.icon size={14} color={iconInfo.color} />}
-        </>
-      )}
-      <span
-        style={{
-          fontSize: 12,
-          color: isGitIgnored ? colors.textTertiary : colors.textPrimary,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          marginLeft: 2,
-        }}
-      >
-        {entry.name}
-      </span>
-    </div>
-  )
-}
-
-// ─── Inline Input ───
-
-function InlineInput({
-  depth,
-  onSubmit,
-  onCancel,
-  placeholder,
-  colors,
-}: {
-  depth: number
-  onSubmit: (name: string) => void
-  onCancel: () => void
-  placeholder: string
-  colors: ReturnType<typeof useColors>
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [value, setValue] = useState('')
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && value.trim()) {
-      onSubmit(value.trim())
-    } else if (e.key === 'Escape') {
-      onCancel()
-    }
-  }
-
-  return (
-    <div style={{ height: 24, display: 'flex', alignItems: 'center', paddingLeft: depth * 16 + 4 }}>
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={onCancel}
-        placeholder={placeholder}
-        style={{
-          fontSize: 12,
-          color: colors.textPrimary,
-          background: 'transparent',
-          border: `1px solid ${colors.containerBorder}`,
-          borderRadius: 4,
-          outline: 'none',
-          padding: '1px 6px',
-          width: '100%',
-          marginRight: 8,
-        }}
-      />
-    </div>
-  )
-}
-
-// ─── FileExplorer ───
 
 export function FileExplorer() {
   const colors = useColors()
@@ -409,66 +110,38 @@ export function FileExplorer() {
     setContextMenu({ x: e.clientX, y: e.clientY, entry })
   }, [])
 
+  // Find directory depth for inline-input placement.
+  const findInlineTarget = useCallback((selectedPath: string | null): { dir: string; depth: number } => {
+    if (!workingDir) return { dir: '', depth: 0 }
+    if (!selectedPath) return { dir: workingDir, depth: 0 }
+    const find = (dir: string, d: number): { dir: string; depth: number } | null => {
+      const items = dirCache.get(dir)
+      if (!items) return null
+      for (const item of items) {
+        if (item.path === selectedPath) {
+          return item.isDirectory ? { dir: item.path, depth: d + 1 } : { dir, depth: d }
+        }
+        if (item.isDirectory && explorerState.expandedPaths.has(item.path)) {
+          const found = find(item.path, d + 1)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    return find(workingDir, 0) || { dir: workingDir, depth: 0 }
+  }, [workingDir, explorerState.expandedPaths, dirCache])
+
   const handleNewFile = useCallback(() => {
     if (!workingDir) return
-    const selectedPath = explorerState.selectedPath
-    // Determine which directory to create in
-    let parentDir = workingDir
-    let depth = 0
-    if (selectedPath) {
-      // Check if selected path is a directory
-      const entries = dirCache.get(workingDir) || []
-      const findEntry = (dir: string, d: number): { dir: string; depth: number } | null => {
-        const items = dirCache.get(dir)
-        if (!items) return null
-        for (const item of items) {
-          if (item.path === selectedPath) {
-            return item.isDirectory ? { dir: item.path, depth: d + 1 } : { dir, depth: d }
-          }
-          if (item.isDirectory && explorerState.expandedPaths.has(item.path)) {
-            const found = findEntry(item.path, d + 1)
-            if (found) return found
-          }
-        }
-        return null
-      }
-      const result = findEntry(workingDir, 0)
-      if (result) {
-        parentDir = result.dir
-        depth = result.depth
-      }
-    }
-    setInlineInput({ type: 'file', parentDir, depth })
-  }, [workingDir, explorerState, dirCache])
+    const target = findInlineTarget(explorerState.selectedPath)
+    setInlineInput({ type: 'file', parentDir: target.dir, depth: target.depth })
+  }, [workingDir, explorerState.selectedPath, findInlineTarget])
 
   const handleNewFolder = useCallback(() => {
     if (!workingDir) return
-    const selectedPath = explorerState.selectedPath
-    let parentDir = workingDir
-    let depth = 0
-    if (selectedPath) {
-      const findEntry = (dir: string, d: number): { dir: string; depth: number } | null => {
-        const items = dirCache.get(dir)
-        if (!items) return null
-        for (const item of items) {
-          if (item.path === selectedPath) {
-            return item.isDirectory ? { dir: item.path, depth: d + 1 } : { dir, depth: d }
-          }
-          if (item.isDirectory && explorerState.expandedPaths.has(item.path)) {
-            const found = findEntry(item.path, d + 1)
-            if (found) return found
-          }
-        }
-        return null
-      }
-      const result = findEntry(workingDir, 0)
-      if (result) {
-        parentDir = result.dir
-        depth = result.depth
-      }
-    }
-    setInlineInput({ type: 'folder', parentDir, depth })
-  }, [workingDir, explorerState, dirCache])
+    const target = findInlineTarget(explorerState.selectedPath)
+    setInlineInput({ type: 'folder', parentDir: target.dir, depth: target.depth })
+  }, [workingDir, explorerState.selectedPath, findInlineTarget])
 
   const handleInlineSubmit = useCallback(async (name: string) => {
     if (!inlineInput) return
@@ -503,7 +176,7 @@ export function FileExplorer() {
     // Show inline input at this level if applicable
     if (inlineInput && inlineInput.parentDir === dirPath) {
       nodes.push(
-        <InlineInput
+        <FileExplorerInlineInput
           key="__inline__"
           depth={depth}
           onSubmit={handleInlineSubmit}
@@ -519,7 +192,7 @@ export function FileExplorer() {
       const isSelected = explorerState.selectedPath === entry.path
 
       nodes.push(
-        <TreeRow
+        <FileExplorerTreeRow
           key={entry.path}
           entry={entry}
           depth={depth}
@@ -644,7 +317,7 @@ export function FileExplorer() {
 
       {/* Context menu */}
       {contextMenu && popoverLayer && (
-        <ContextMenu
+        <FileExplorerContextMenu
           menu={contextMenu}
           workingDir={workingDir}
           onClose={() => setContextMenu(null)}
