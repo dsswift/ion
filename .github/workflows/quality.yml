@@ -46,6 +46,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # only-new-issues needs the merge-base to diff against; default
+          # fetch-depth: 1 leaves the action with no history and it falls
+          # back to reporting every existing issue.
+          fetch-depth: 0
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
