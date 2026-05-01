@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Local guardrail mirroring the CI file-size check. Runs before `git push`
+# so cap violations surface in seconds locally instead of after the PR
+# spins up CI. Bypass with `git push --no-verify` only when intentional.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+# (or `make hooks`).
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+exec "$REPO_ROOT/scripts/check-file-sizes.sh"

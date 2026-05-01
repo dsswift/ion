@@ -30,6 +30,10 @@ Cohesion of change: a feature lives in one folder. Full reference: `docs/archite
 - `CLAUDE.md` is a local-only symlink to sibling `AGENTS.md`. Gitignored. Run `make claude-symlinks` (or `npm install` in `desktop/`) to create.
 - Do not seed per-bounded-context `AGENTS.md`. Defer until traces show confusion.
 
+## Local hooks
+
+Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook runs `make check-file-sizes` so cap violations fail locally before reaching CI. Bypass with `--no-verify` only when intentional.
+
 ## Quality gates (must pass before merge)
 
 | Gate | Command |
