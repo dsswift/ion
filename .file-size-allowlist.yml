@@ -2,57 +2,13 @@
 #
 # Files listed here exceed the language hard cap defined in
 # docs/architecture/file-organization.md but are temporarily exempted from CI
-# enforcement during the god-file decomposition phase.
+# enforcement.
 #
 # Rules:
-# - The list shrinks per phase. Adding a new entry requires explicit reviewer
-#   approval and a tracking issue.
+# - Adding a new entry requires explicit reviewer approval and a tracking issue.
 # - When a file is decomposed, remove its entry the same PR.
 # - Use a `# @file-size-exception: <reason>` annotation on line 1 of the file
 #   for permanent, intrinsic exceptions (generated code, table-driven switches);
 #   do not add those to this list.
-# - The "phase" field is documentation only; the script does not parse it.
 
-files:
-  # Phase 1 (engine god files)
-  - ./engine/internal/session/manager.go            # 2876 lines, target ~600
-  - ./engine/internal/extension/host.go             # 2119 lines, target ~400
-
-  # Phase 2 (desktop main god file)
-  - ./desktop/src/main/index.ts                     # 4504 lines, target ~300
-
-  # Phase 3 (sessionStore god file)
-  - ./desktop/src/renderer/stores/sessionStore.ts   # 3541 lines, target ~250
-
-  # Phase 4 honorable mentions (separate spec)
-  - ./desktop/src/renderer/components/TabStrip.tsx  # 2798
-  - ./desktop/src/renderer/components/GitPanel.tsx  # 1958
-  - ./desktop/src/renderer/components/StatusBar.tsx # 881
-  - ./desktop/src/renderer/components/ConversationView.tsx # 768
-  - ./desktop/src/renderer/components/InputBar.tsx  # 829
-  - ./desktop/src/renderer/components/FileEditor.tsx # 837
-  - ./desktop/src/renderer/components/FileExplorer.tsx # 656
-  - ./desktop/src/renderer/components/settings/RemoteCategory.tsx # 611
-  - ./desktop/src/renderer/App.tsx                  # 1153
-  - ./desktop/src/renderer/preferences.ts           # 649
-  - ./desktop/src/shared/types.ts                   # 860
-  - ./desktop/src/main/engine-control-plane.ts      # 611
-  - ./desktop/src/main/remote/transport.ts          # 644
-  - ./engine/extensions/sdk/ion-sdk/types.ts        # 738 (SDK type registry, may stay as exception)
-  - ./engine/cmd/ion/main.go                        # 899
-  - ./engine/internal/extension/sdk.go              # 1237
-  - ./engine/internal/backend/api_backend.go        # 1665
-  - ./engine/internal/conversation/conversation.go  # 1085
-  - ./ios/IonRemote/ViewModels/SessionViewModel.swift # 1426
-  - ./ios/IonRemote/Networking/TransportManager.swift # 618
-  - ./ios/IonRemote/Models/NormalizedEvent.swift    # 862
-
-  # Test files exceeding cap. Lower priority; many of these are intrinsically
-  # large because they exercise a complete public surface from one package.
-  - ./engine/internal/tools/tools_test.go           # 2278
-  - ./engine/internal/extension/sdk_test.go         # 1710
-  - ./engine/internal/config/config_test.go         # 1792
-  - ./engine/internal/permissions/permissions_test.go # 2326
-  - ./engine/internal/conversation/conversation_test.go # 1803
-  - ./engine/internal/session/manager_test.go       # 2225
-  - ./ios/IonRemoteTests/NormalizedEventTests.swift # 879
+files: []
