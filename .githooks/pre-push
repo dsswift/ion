@@ -1,13 +1,89 @@
 #!/usr/bin/env bash
-# Local guardrail mirroring the CI file-size check. Runs before `git push`
-# so cap violations surface in seconds locally instead of after the PR
-# spins up CI. Bypass with `git push --no-verify` only when intentional.
+# Pre-push gate. Runs the subset of CI checks that are (a) likely to fail
+# from local edits and (b) fast enough to wait on. Anything network- or
+# build-heavy (engine race tests, govulncheck, docker, xcodebuild) stays in
+# CI — running it locally on every push would dominate flow time.
 #
-# Enable once per clone:
-#   git config core.hooksPath .githooks
-# (or `make hooks`).
+# Bypass: `git push --no-verify` (use sparingly).
+#
+# Enable once per clone via `make hooks`.
 
-set -euo pipefail
+set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-exec "$REPO_ROOT/scripts/check-file-sizes.sh"
+cd "$REPO_ROOT"
+
+# Resolve the merge-base against origin/main so we only run checks for the
+# components actually touched on this branch.
+BASE_REF="origin/main"
+if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
+  echo "pre-push: $BASE_REF not found locally; skipping change-scoped checks"
+  CHANGED=""
+else
+  CHANGED="$(git diff --name-only "$(git merge-base HEAD "$BASE_REF")"...HEAD 2>/dev/null || true)"
+fi
+
+touched() {
+  # touched <pattern> -> 0 if any changed file matches, 1 otherwise
+  local pattern="$1"
+  [ -z "$CHANGED" ] && return 0  # unknown scope -> assume touched (safer)
+  echo "$CHANGED" | grep -qE "$pattern"
+}
+
+failures=()
+run() {
+  local label="$1"; shift
+  echo
+  echo "▶ $label"
+  if "$@"; then
+    echo "  ✓ $label"
+  else
+    echo "  ✗ $label"
+    failures+=("$label")
+  fi
+}
+
+# File-size cap. Cheap, runs always — most file-size violations come from
+# files outside the changed set (e.g. an editor accidentally rewriting a
+# whole file's whitespace).
+run "file-size cap" bash scripts/check-file-sizes.sh
+
+# Engine: lint diff vs main. Mirrors CI's --new-from-merge-base flag.
+if touched "^engine/"; then
+  run "engine lint (new vs origin/main)" bash -c \
+    "cd engine && golangci-lint run --new-from-merge-base=origin/main"
+fi
+
+# Relay: same.
+if touched "^relay/"; then
+  run "relay lint (new vs origin/main)" bash -c \
+    "cd relay && golangci-lint run --new-from-merge-base=origin/main"
+fi
+
+# Desktop: typecheck + unit tests. Both fast.
+if touched "^desktop/"; then
+  run "desktop typecheck" bash -c "cd desktop && npm run typecheck"
+  run "desktop tests"     bash -c "cd desktop && npm test --silent"
+fi
+
+# Workflow YAML changes: actionlint mirrors CI.
+if touched "^\.github/workflows/"; then
+  if command -v actionlint >/dev/null 2>&1; then
+    run "actionlint" actionlint
+  else
+    echo
+    echo "▶ actionlint (skipped — install with: brew install actionlint)"
+  fi
+fi
+
+if [ ${#failures[@]} -gt 0 ]; then
+  echo
+  echo "pre-push BLOCKED. Failed gates:"
+  for f in "${failures[@]}"; do echo "  - $f"; done
+  echo
+  echo "Fix locally and re-push, or bypass with: git push --no-verify"
+  exit 1
+fi
+
+echo
+echo "pre-push: all gates passed"
