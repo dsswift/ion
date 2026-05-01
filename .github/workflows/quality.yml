@@ -16,6 +16,13 @@ jobs:
       - name: Run actionlint
         uses: raven-actions/actionlint@v2
 
+  file-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check file-size caps
+        run: bash scripts/check-file-sizes.sh
+
   engine-test:
     strategy:
       fail-fast: false
