@@ -541,7 +541,13 @@ final class TransportManager {
             return
         }
 
-        guard let event = try? JSONDecoder().decode(RemoteEvent.self, from: payloadData) else {
+        let event: RemoteEvent
+        do {
+            event = try JSONDecoder().decode(RemoteEvent.self, from: payloadData)
+        } catch {
+            // Log decode failures so we can diagnose dropped events
+            let typeHint = (try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any])?["type"] as? String ?? "unknown"
+            print("[Ion] ⚠️ Failed to decode event type=\(typeHint): \(error)")
             return
         }
 

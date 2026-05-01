@@ -51,6 +51,8 @@ enum RemoteEvent: Codable, Sendable {
     case engineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String])
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
+    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?)
+    case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
     case engineProfiles(profiles: [EngineProfile])
 
     // MARK: - Codable
@@ -97,6 +99,8 @@ enum RemoteEvent: Codable, Sendable {
         case engineDead = "engine_dead"
         case engineInstanceAdded = "engine_instance_added"
         case engineInstanceRemoved = "engine_instance_removed"
+        case engineHarnessMessage = "engine_harness_message"
+        case engineConversationHistory = "engine_conversation_history"
         case engineProfiles = "engine_profiles"
     }
 
@@ -111,7 +115,7 @@ enum RemoteEvent: Codable, Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
-        case signal, stderrTail, label, profiles, elapsed
+        case signal, stderrTail, label, profiles, elapsed, usage
     }
 
     init(from decoder: Decoder) throws {
@@ -272,7 +276,7 @@ enum RemoteEvent: Codable, Sendable {
         case .engineWorkingMessage:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let message = try container.decode(String.self, forKey: .message)
+            let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             self = .engineWorkingMessage(tabId: tabId, instanceId: instanceId, message: message)
 
         case .engineToolStart:
@@ -301,14 +305,14 @@ enum RemoteEvent: Codable, Sendable {
         case .engineError:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let message = try container.decode(String.self, forKey: .message)
+            let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             self = .engineError(tabId: tabId, instanceId: instanceId, message: message)
 
         case .engineNotify:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let message = try container.decode(String.self, forKey: .message)
-            let level = try container.decode(String.self, forKey: .level)
+            let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+            let level = try container.decodeIfPresent(String.self, forKey: .level) ?? "info"
             self = .engineNotify(tabId: tabId, instanceId: instanceId, message: message, level: level)
 
         case .engineDialog:
@@ -330,17 +334,15 @@ enum RemoteEvent: Codable, Sendable {
         case .engineTextDelta:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let text = try container.decode(String.self, forKey: .text)
+            let text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
             self = .engineTextDelta(tabId: tabId, instanceId: instanceId, text: text)
 
         case .engineMessageEnd:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let inputTokens = try container.decode(Int.self, forKey: .inputTokens)
-            let outputTokens = try container.decode(Int.self, forKey: .outputTokens)
-            let contextPercent = try container.decode(Double.self, forKey: .contextPercent)
-            let cost = try container.decode(Double.self, forKey: .costUsd)
-            self = .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, outputTokens: outputTokens, contextPercent: contextPercent, cost: cost)
+            // Usage is a nested object: { inputTokens, outputTokens, contextPercent, cost }
+            let usage = try container.decodeIfPresent(EngineMessageEndUsage.self, forKey: .usage)
+            self = .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0)
 
         case .engineDead:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -359,6 +361,19 @@ enum RemoteEvent: Codable, Sendable {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             self = .engineInstanceRemoved(tabId: tabId, instanceId: instanceId)
+
+        case .engineHarnessMessage:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+            let source = try container.decodeIfPresent(String.self, forKey: .source)
+            self = .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source)
+
+        case .engineConversationHistory:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let messages = try container.decode([EngineMessage].self, forKey: .messages)
+            self = .engineConversationHistory(tabId: tabId, instanceId: instanceId, messages: messages)
 
         case .engineProfiles:
             let profiles = try container.decode([EngineProfile].self, forKey: .profiles)
@@ -586,10 +601,7 @@ enum RemoteEvent: Codable, Sendable {
             try container.encode(TypeKey.engineMessageEnd, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(inputTokens, forKey: .inputTokens)
-            try container.encode(outputTokens, forKey: .outputTokens)
-            try container.encode(contextPercent, forKey: .contextPercent)
-            try container.encode(cost, forKey: .costUsd)
+            try container.encode(EngineMessageEndUsage(inputTokens: inputTokens, outputTokens: outputTokens, contextPercent: contextPercent, cost: cost), forKey: .usage)
 
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
             try container.encode(TypeKey.engineDead, forKey: .type)
@@ -608,6 +620,19 @@ enum RemoteEvent: Codable, Sendable {
             try container.encode(TypeKey.engineInstanceRemoved, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
+
+        case .engineHarnessMessage(let tabId, let instanceId, let message, let source):
+            try container.encode(TypeKey.engineHarnessMessage, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(message, forKey: .message)
+            try container.encodeIfPresent(source, forKey: .source)
+
+        case .engineConversationHistory(let tabId, let instanceId, let messages):
+            try container.encode(TypeKey.engineConversationHistory, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(messages, forKey: .messages)
 
         case .engineProfiles(let profiles):
             try container.encode(TypeKey.engineProfiles, forKey: .type)
@@ -634,7 +659,8 @@ struct PermissionOption: Codable, Identifiable, Sendable {
 // MARK: - AgentStateUpdate
 
 /// Structured agent state sent from the desktop engine runtime.
-/// Mirrors `AgentStateUpdate` in `src/shared/types.ts`.
+/// The wire format has `name`, `status`, and a `metadata` map containing
+/// all other fields (displayName, type, visibility, invited, etc.).
 struct AgentStateUpdate: Codable, Identifiable, Sendable {
     var id: String { name }
     let name: String
@@ -659,6 +685,67 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         default: return true
         }
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, status, metadata
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        status = try container.decode(String.self, forKey: .status)
+        let meta = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata) ?? [:]
+
+        displayName = (meta["displayName"]?.value as? String) ?? name
+        type = (meta["type"]?.value as? String) ?? "specialist"
+        visibility = (meta["visibility"]?.value as? String) ?? "ephemeral"
+        task = meta["task"]?.value as? String
+        lastWork = meta["lastWork"]?.value as? String
+        fullOutput = meta["fullOutput"]?.value as? String
+        color = meta["color"]?.value as? String
+
+        // Bool and numeric values may arrive as various types
+        if let inv = meta["invited"]?.value as? Bool {
+            invited = inv
+        } else if let inv = meta["invited"]?.value as? Int {
+            invited = inv != 0
+        } else {
+            invited = false
+        }
+        if let e = meta["elapsed"]?.value as? Double {
+            elapsed = e
+        } else if let e = meta["elapsed"]?.value as? Int {
+            elapsed = Double(e)
+        } else {
+            elapsed = nil
+        }
+        if let c = meta["cost"]?.value as? Double {
+            cost = c
+        } else if let c = meta["cost"]?.value as? Int {
+            cost = Double(c)
+        } else {
+            cost = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(status, forKey: .status)
+        var meta: [String: AnyCodable] = [
+            "displayName": AnyCodable(displayName),
+            "type": AnyCodable(type),
+            "visibility": AnyCodable(visibility),
+            "invited": AnyCodable(invited),
+        ]
+        if let task { meta["task"] = AnyCodable(task) }
+        if let lastWork { meta["lastWork"] = AnyCodable(lastWork) }
+        if let fullOutput { meta["fullOutput"] = AnyCodable(fullOutput) }
+        if let elapsed { meta["elapsed"] = AnyCodable(elapsed) }
+        if let cost { meta["cost"] = AnyCodable(cost) }
+        if let color { meta["color"] = AnyCodable(color) }
+        try container.encode(meta, forKey: .metadata)
+    }
 }
 
 // MARK: - StatusFields
@@ -668,7 +755,7 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
 struct StatusFields: Codable, Sendable {
     let label: String
     let state: String
-    let team: String
+    let team: String?            // omitempty in Go — may be absent
     let model: String
     let contextPercent: Double
     let contextWindow: Int
@@ -681,6 +768,54 @@ struct StatusFields: Codable, Sendable {
 struct EngineInstancePayload: Codable, Sendable {
     let id: String
     let label: String
+}
+
+// MARK: - EngineMessage
+
+/// A single message in the engine conversation history.
+/// Roles: "user", "assistant", "tool", "harness", "system".
+struct EngineMessage: Identifiable, Sendable {
+    let id: String
+    let role: String
+    var content: String
+    var toolName: String?
+    var toolId: String?
+    var toolStatus: String?
+    var timestamp: Double?
+}
+
+extension EngineMessage: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, role, content, toolName, toolId, toolStatus, timestamp
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // id: accept String or Int (coerce to String)
+        if let s = try? container.decode(String.self, forKey: .id) {
+            id = s
+        } else if let n = try? container.decode(Int.self, forKey: .id) {
+            id = String(n)
+        } else {
+            id = UUID().uuidString
+        }
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? "system"
+        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
+        toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
+        toolStatus = try container.decodeIfPresent(String.self, forKey: .toolStatus)
+        timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp)
+    }
+}
+
+// MARK: - EngineMessageEndUsage
+
+/// Nested usage stats within an engine_message_end event.
+struct EngineMessageEndUsage: Codable, Sendable {
+    let inputTokens: Int
+    let outputTokens: Int
+    let contextPercent: Double
+    let cost: Double
 }
 
 // MARK: - AnyCodable

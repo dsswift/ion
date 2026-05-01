@@ -5,19 +5,45 @@ struct EngineView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @State private var promptText = ""
     @FocusState private var isInputFocused: Bool
+    @State private var agentsPanelExpanded = true
+
+    private var instances: [EngineInstanceInfo] {
+        viewModel.engineInstances[tabId] ?? []
+    }
+
+    private var activeInstanceId: String {
+        viewModel.activeEngineInstance[tabId] ?? instances.first?.id ?? ""
+    }
+
+    private var compoundKey: String {
+        viewModel.engineCompoundKey(tabId: tabId)
+    }
 
     private var visibleAgents: [AgentStateUpdate] {
-        (viewModel.engineAgentStates[tabId] ?? []).filter(\.isVisible)
+        (viewModel.engineAgentStates[compoundKey] ?? []).filter(\.isVisible)
     }
 
     private var activeToolsList: [ActiveToolInfo] {
-        (viewModel.activeTools[tabId] ?? [:]).values.sorted { $0.startTime < $1.startTime }
+        (viewModel.activeTools[compoundKey] ?? [:]).values.sorted { $0.startTime < $1.startTime }
+    }
+
+    private var engineMsgs: [EngineMessage] {
+        viewModel.engineMessages[compoundKey] ?? []
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            // Engine instance bar (shown when multiple instances exist)
+            if instances.count > 1 {
+                EngineInstanceBar(
+                    tabId: tabId,
+                    instances: instances,
+                    activeInstanceId: activeInstanceId
+                )
+            }
+
             // Working message header
-            if let working = viewModel.engineWorkingMessages[tabId], !working.isEmpty {
+            if let working = viewModel.engineWorkingMessages[compoundKey], !working.isEmpty {
                 HStack {
                     ProgressView()
                         .scaleEffect(0.7)
@@ -34,7 +60,7 @@ struct EngineView: View {
             }
 
             // Pinned prompt header
-            if let prompt = viewModel.enginePinnedPrompt[tabId], !prompt.isEmpty {
+            if let prompt = viewModel.enginePinnedPrompt[compoundKey], !prompt.isEmpty {
                 HStack {
                     Text("> ")
                         .foregroundStyle(.orange)
@@ -50,8 +76,26 @@ struct EngineView: View {
                 .background(.ultraThinMaterial)
             }
 
-            // Conversation area (flex space)
-            Spacer()
+            // Conversation messages area
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(engineMsgs) { msg in
+                            EngineMessageRow(message: msg)
+                                .id(msg.id)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .onChange(of: engineMsgs.count) {
+                    if let last = engineMsgs.last {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+            }
 
             // Active tool cards (above agent bars)
             if !activeToolsList.isEmpty {
@@ -64,24 +108,50 @@ struct EngineView: View {
                 .padding(.vertical, 6)
             }
 
-            // Agent bars pinned to bottom (scrollable, max ~132pt = 6 rows)
+            // Agent bars with collapsible header
             if !visibleAgents.isEmpty {
-                ScrollView {
-                    VStack(spacing: 4) {
-                        ForEach(visibleAgents) { agent in
-                            AgentBarRow(agent: agent)
+                VStack(spacing: 0) {
+                    // Collapsible header
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            agentsPanelExpanded.toggle()
                         }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: agentsPanelExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2)
+                            Text("Agents")
+                                .font(.caption.weight(.semibold))
+                            Text("(\(visibleAgents.count))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Spacer()
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .buttonStyle(.plain)
+
+                    if agentsPanelExpanded {
+                        ScrollView {
+                            VStack(spacing: 4) {
+                                ForEach(visibleAgents) { agent in
+                                    AgentBarRow(agent: agent)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                        }
+                        .frame(maxHeight: 132)
+                    }
                 }
-                .frame(maxHeight: 132)
             }
 
             Divider()
 
             // Status footer
-            if let fields = viewModel.engineStatusFields[tabId] {
+            if let fields = viewModel.engineStatusFields[compoundKey] {
                 EngineFooterView(fields: fields)
             }
 
@@ -108,11 +178,31 @@ struct EngineView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .navigationTitle("Engine")
+        .navigationTitle(viewModel.tab(for: tabId)?.displayTitle ?? "Engine")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    viewModel.addEngineInstance(tabId: tabId)
+                } label: {
+                    Image(systemName: "plus.rectangle")
+                }
+            }
+        }
+        .onAppear {
+            viewModel.loadEngineConversation(tabId: tabId)
+        }
+        .task(id: compoundKey) {
+            // Retry loading if no messages arrived within 2 seconds
+            // (handles relay latency / dropped responses)
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled && engineMsgs.isEmpty {
+                viewModel.loadEngineConversation(tabId: tabId)
+            }
+        }
         // Dialog sheet
         .sheet(item: Binding(
-            get: { viewModel.engineDialogs[tabId] ?? nil },
+            get: { viewModel.engineDialogs[compoundKey] ?? nil },
             set: { _ in }
         )) { dialog in
             EngineDialogSheet(tabId: tabId, dialog: dialog)
@@ -124,6 +214,109 @@ struct EngineView: View {
         guard !trimmed.isEmpty else { return }
         viewModel.submitEnginePrompt(tabId: tabId, text: promptText)
         promptText = ""
+    }
+}
+
+// MARK: - EngineMessageRow
+
+/// Renders a single engine conversation message based on role.
+struct EngineMessageRow: View {
+    let message: EngineMessage
+
+    var body: some View {
+        switch message.role {
+        case "user":
+            userMessage
+        case "assistant":
+            assistantMessage
+        case "harness":
+            harnessMessage
+        case "tool":
+            toolMessage
+        default:
+            systemMessage
+        }
+    }
+
+    private var userMessage: some View {
+        HStack {
+            Spacer()
+            Text(message.content)
+                .font(.callout)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .foregroundStyle(.primary)
+        }
+    }
+
+    private var assistantMessage: some View {
+        HStack {
+            Text(message.content)
+                .font(.callout)
+                .textSelection(.enabled)
+            Spacer()
+        }
+    }
+
+    private var harnessMessage: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "gearshape.fill")
+                .font(.caption2)
+                .foregroundStyle(.orange.opacity(0.7))
+            Text(message.content)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .italic()
+            Spacer()
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var toolMessage: some View {
+        HStack(spacing: 6) {
+            toolStatusIcon
+            Text(message.toolName ?? "tool")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    @ViewBuilder
+    private var toolStatusIcon: some View {
+        switch message.toolStatus {
+        case "running":
+            ProgressView()
+                .scaleEffect(0.6)
+        case "completed":
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+        case "error":
+            Image(systemName: "xmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.red)
+        default:
+            Image(systemName: "wrench")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var systemMessage: some View {
+        HStack {
+            Spacer()
+            Text(message.content)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
     }
 }
 

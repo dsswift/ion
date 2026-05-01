@@ -124,11 +124,17 @@ final class SessionViewModel {
     /// Local display name overrides for terminal instances (keyed by "tabId:instanceId").
     var terminalInstanceLabels: [String: String] = [:]
     // Engine state (per engine tab)
-    var engineAgentStates: [String: [AgentStateUpdate]] = [:]  // tabId -> agents
-    var engineStatusFields: [String: StatusFields] = [:]        // tabId -> status fields
-    var engineWorkingMessages: [String: String] = [:]           // tabId -> working message
+    var engineAgentStates: [String: [AgentStateUpdate]] = [:]  // compoundKey -> agents
+    var engineStatusFields: [String: StatusFields] = [:]        // compoundKey -> status fields
+    var engineWorkingMessages: [String: String] = [:]           // compoundKey -> working message
     var engineDialogs: [String: EngineDialogInfo?] = [:]
     var enginePinnedPrompt: [String: String] = [:]
+    // Engine conversation messages (per compound key)
+    var engineMessages: [String: [EngineMessage]] = [:]         // compoundKey -> messages
+    var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history
+    // Engine instance state (per engine tab)
+    var engineInstances: [String: [EngineInstanceInfo]] = [:]   // tabId -> instances
+    var activeEngineInstance: [String: String] = [:]              // tabId -> active instanceId
     /// Engine profiles synced from the desktop settings.
     var engineProfiles: [EngineProfile] = []
     /// Active tool calls per tab, keyed by toolId.
@@ -171,6 +177,13 @@ final class SessionViewModel {
 
     func tab(for id: String) -> RemoteTabState? {
         tabs.first { $0.id == id }
+    }
+
+    /// Compute the compound key for the active engine instance.
+    /// Returns `"tabId:instanceId"` when an instance is active, or just `tabId` as fallback.
+    func engineCompoundKey(tabId: String) -> String {
+        let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id ?? ""
+        return instanceId.isEmpty ? tabId : "\(tabId):\(instanceId)"
     }
 
     /// Tabs grouped by working directory basename, preserving original order within each group.
@@ -343,6 +356,10 @@ final class SessionViewModel {
         engineWorkingMessages = [:]
         engineDialogs = [:]
         enginePinnedPrompt = [:]
+        engineMessages = [:]
+        engineConversationLoaded = []
+        engineInstances = [:]
+        activeEngineInstance = [:]
         engineProfiles = []
         pendingCloseTabIds = []
         pendingInputByTab = [:]
@@ -493,17 +510,53 @@ final class SessionViewModel {
     }
 
     func submitEnginePrompt(tabId: String, text: String) {
-        enginePinnedPrompt[tabId] = text
-        send(.enginePrompt(tabId: tabId, text: text))
+        let key = engineCompoundKey(tabId: tabId)
+        enginePinnedPrompt[key] = text
+        // Add user message to conversation
+        var msgs = engineMessages[key] ?? []
+        msgs.append(EngineMessage(id: UUID().uuidString, role: "user", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+        engineMessages[key] = msgs
+        // Set tab running
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].status = .running
+        }
+        let instanceId = activeEngineInstance[tabId]
+        send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId))
     }
 
     func abortEngine(tabId: String) {
-        send(.engineAbort(tabId: tabId))
+        let instanceId = activeEngineInstance[tabId]
+        send(.engineAbort(tabId: tabId, instanceId: instanceId))
     }
 
     func respondEngineDialog(tabId: String, dialogId: String, value: String) {
-        engineDialogs[tabId] = nil
-        send(.engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value))
+        let key = engineCompoundKey(tabId: tabId)
+        engineDialogs[key] = nil
+        let instanceId = activeEngineInstance[tabId]
+        send(.engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value, instanceId: instanceId))
+    }
+
+    // MARK: - Engine Instance Commands
+
+    func addEngineInstance(tabId: String) {
+        send(.engineAddInstance(tabId: tabId))
+    }
+
+    func removeEngineInstance(tabId: String, instanceId: String) {
+        send(.engineRemoveInstance(tabId: tabId, instanceId: instanceId))
+    }
+
+    func selectEngineInstance(tabId: String, instanceId: String) {
+        activeEngineInstance[tabId] = instanceId
+        send(.engineSelectInstance(tabId: tabId, instanceId: instanceId))
+        // Load conversation for the newly selected instance
+        loadEngineConversation(tabId: tabId)
+    }
+
+    func loadEngineConversation(tabId: String) {
+        let instanceId = activeEngineInstance[tabId]
+        print("[Ion] loadEngineConversation: tabId=\(tabId), instanceId=\(instanceId ?? "nil"), instances=\(engineInstances[tabId]?.map(\.id) ?? [])")
+        send(.loadEngineConversation(tabId: tabId, instanceId: instanceId))
     }
 
     func sendTerminalInput(tabId: String, instanceId: String, data: String) {
@@ -951,6 +1004,13 @@ final class SessionViewModel {
                     terminalInstances[tab.id] = instances
                     activeTerminalInstance[tab.id] = tab.activeTerminalInstanceId ?? instances.first?.id
                 }
+                // Populate engine instance state from snapshot tab data
+                if tab.isEngine == true, let instances = tab.engineInstances {
+                    engineInstances[tab.id] = instances.map { EngineInstanceInfo(id: $0.id, label: $0.label) }
+                    activeEngineInstance[tab.id] = tab.activeEngineInstanceId ?? instances.first?.id
+                    // Pre-load engine conversation history for all engine tabs
+                    loadEngineConversation(tabId: tab.id)
+                }
             }
 
         case .tabCreated(let tab):
@@ -965,6 +1025,31 @@ final class SessionViewModel {
             tabs.removeAll { $0.id == tabId }
             tabIds.remove(tabId)
             liveText.removeValue(forKey: tabId)
+            // Clean up all engine state for this tab
+            engineInstances.removeValue(forKey: tabId)
+            activeEngineInstance.removeValue(forKey: tabId)
+            for key in engineAgentStates.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                engineAgentStates.removeValue(forKey: key)
+            }
+            for key in engineStatusFields.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                engineStatusFields.removeValue(forKey: key)
+            }
+            for key in engineWorkingMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                engineWorkingMessages.removeValue(forKey: key)
+            }
+            for key in engineDialogs.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                engineDialogs.removeValue(forKey: key)
+            }
+            for key in enginePinnedPrompt.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                enginePinnedPrompt.removeValue(forKey: key)
+            }
+            for key in engineMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                engineMessages.removeValue(forKey: key)
+            }
+            for key in activeTools.keys where key == tabId || key.hasPrefix("\(tabId):") {
+                activeTools.removeValue(forKey: key)
+            }
+            engineConversationLoaded = engineConversationLoaded.filter { $0 != tabId && !$0.hasPrefix("\(tabId):") }
 
         case .tabStatus(let tabId, let status):
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -982,7 +1067,11 @@ final class SessionViewModel {
                     tabs[idx].permissionQueue.removeAll {
                         $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
                     }
+                    // Clear active tools for this tab (both bare tabId and compound keys)
                     activeTools.removeValue(forKey: tabId)
+                    for key in activeTools.keys where key.hasPrefix("\(tabId):") {
+                        activeTools.removeValue(forKey: key)
+                    }
                 }
             }
 
@@ -1021,6 +1110,9 @@ final class SessionViewModel {
             }
             liveText.removeValue(forKey: tabId)
             activeTools.removeValue(forKey: tabId)
+            for key in activeTools.keys where key.hasPrefix("\(tabId):") {
+                activeTools.removeValue(forKey: key)
+            }
 
         case .permissionRequest(let tabId, let questionId, let toolName, let toolInput, let options):
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -1150,56 +1242,154 @@ final class SessionViewModel {
             }
 
         // Engine events (structured)
-        case .engineAgentState(let tabId, _, let agents):
-            engineAgentStates[tabId] = agents
+        case .engineAgentState(let tabId, let instanceId, let agents):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            engineAgentStates[key] = agents
 
-        case .engineStatus(let tabId, _, let fields):
-            engineStatusFields[tabId] = fields
+        case .engineStatus(let tabId, let instanceId, let fields):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            engineStatusFields[key] = fields
 
-        case .engineWorkingMessage(let tabId, _, let message):
-            engineWorkingMessages[tabId] = message
+        case .engineWorkingMessage(let tabId, let instanceId, let message):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            engineWorkingMessages[key] = message
 
-        case .engineToolStart(let tabId, _, let toolName, let toolId):
+        case .engineToolStart(let tabId, let instanceId, let toolName, let toolId):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
             let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
-            activeTools[tabId, default: [:]][toolId] = info
+            activeTools[key, default: [:]][toolId] = info
+            // Add tool message to conversation
+            var msgs = engineMessages[key] ?? []
+            msgs.append(EngineMessage(id: toolId, role: "tool", content: "", toolName: toolName, toolId: toolId, toolStatus: "running", timestamp: Date().timeIntervalSince1970 * 1000))
+            engineMessages[key] = msgs
 
-        case .engineToolEnd(let tabId, _, let toolId, _, _):
-            activeTools[tabId]?[toolId] = nil
-            if activeTools[tabId]?.isEmpty == true {
-                activeTools.removeValue(forKey: tabId)
+        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            activeTools[key]?[toolId] = nil
+            if activeTools[key]?.isEmpty == true {
+                activeTools.removeValue(forKey: key)
+            }
+            // Update tool message status in conversation
+            if var msgs = engineMessages[key],
+               let idx = msgs.lastIndex(where: { $0.toolId == toolId }) {
+                msgs[idx].toolStatus = isError ? "error" : "completed"
+                if let result = result {
+                    msgs[idx].content = result
+                }
+                engineMessages[key] = msgs
             }
 
-        case .engineToolStalled(let tabId, _, let toolId, _, _):
-            activeTools[tabId]?[toolId]?.isStalled = true
+        case .engineToolStalled(let tabId, let instanceId, let toolId, _, _):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            activeTools[key]?[toolId]?.isStalled = true
 
-        case .engineError(let tabId, _, let message):
-            print("[Engine] error for \(tabId): \(message)")
-
-        case .engineNotify(let tabId, _, let message, _):
-            print("[Engine] notification for \(tabId): \(message)")
-
-        case .engineDialog(let tabId, _, let dialogId, let method, let title, let options, let defaultValue):
-            engineDialogs[tabId] = EngineDialogInfo(dialogId: dialogId, method: method, title: title, options: options, defaultValue: defaultValue)
-
-        case .engineDialogResolved(let tabId, _, _):
-            engineDialogs[tabId] = nil
-
-        case .engineTextDelta(_, _, _):
-            break
-
-        case .engineMessageEnd(_, _, _, _, _, _):
-            break
-
-        case .engineDead(let tabId, _, _, _, _):
-            if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-                tabs[idx].status = .dead
+        case .engineError(let tabId, let instanceId, let message):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            // Add error as system message in conversation
+            var msgs = engineMessages[key] ?? []
+            msgs.append(EngineMessage(id: UUID().uuidString, role: "system", content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000))
+            engineMessages[key] = msgs
+            // Reset tab to idle so user can retry
+            let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
+            if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+                tabs[idx].status = .idle
             }
 
-        case .engineInstanceAdded(_, _, _):
-            break
+        case .engineNotify(let tabId, let instanceId, let message, let level):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            // Surface notifications as system messages in the conversation
+            var msgs = engineMessages[key] ?? []
+            let prefix = level == "warning" ? "⚠️ " : level == "error" ? "❌ " : ""
+            msgs.append(EngineMessage(id: UUID().uuidString, role: "system", content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000))
+            engineMessages[key] = msgs
 
-        case .engineInstanceRemoved(_, _):
-            break
+        case .engineDialog(let tabId, let instanceId, let dialogId, let method, let title, let options, let defaultValue):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            engineDialogs[key] = EngineDialogInfo(dialogId: dialogId, method: method, title: title, options: options, defaultValue: defaultValue)
+
+        case .engineDialogResolved(let tabId, let instanceId, _):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            engineDialogs[key] = nil
+
+        case .engineTextDelta(let tabId, let instanceId, let text):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            var msgs = engineMessages[key] ?? []
+            if let last = msgs.last, last.role == "assistant" {
+                msgs[msgs.count - 1].content += text
+            } else {
+                msgs.append(EngineMessage(id: UUID().uuidString, role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+            }
+            engineMessages[key] = msgs
+            // Set tab running if this is the active instance
+            let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
+            if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+                tabs[idx].status = .running
+            }
+
+        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            // Clear pinned prompt after message completes
+            enginePinnedPrompt[key] = nil
+            // Set tab idle and update context stats if this is the active instance
+            let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
+            if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+                tabs[idx].status = .idle
+                tabs[idx].contextTokens = inputTokens
+                tabs[idx].contextPercent = contextPercent
+            }
+
+        case .engineHarnessMessage(let tabId, let instanceId, let message, _):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            var msgs = engineMessages[key] ?? []
+            msgs.append(EngineMessage(id: UUID().uuidString, role: "harness", content: message, timestamp: Date().timeIntervalSince1970 * 1000))
+            engineMessages[key] = msgs
+
+        case .engineConversationHistory(let tabId, let instanceId, let messages):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            print("[Ion] engineConversationHistory: key=\(key), messageCount=\(messages.count)")
+            engineMessages[key] = messages
+            engineConversationLoaded.insert(key)
+
+        case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
+            // exitCode 0/nil = normal exit or idle cleanup, not a real death
+            guard let exitCode, exitCode != 0 else { break }
+            // Only mark tab dead if no other instances are running
+            let instId = instanceId
+            let others = engineInstances[tabId]?.filter { $0.id != instId } ?? []
+            if others.isEmpty {
+                if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+                    tabs[idx].status = .dead
+                }
+            }
+            // Add a system message about the death
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            var msgs = engineMessages[key] ?? []
+            var deathMsg = "Engine process died (exit code \(exitCode))"
+            if let signal { deathMsg += ", signal: \(signal)" }
+            if !stderrTail.isEmpty { deathMsg += "\n" + stderrTail.suffix(5).joined(separator: "\n") }
+            msgs.append(EngineMessage(id: UUID().uuidString, role: "system", content: deathMsg, timestamp: Date().timeIntervalSince1970 * 1000))
+            engineMessages[key] = msgs
+
+        case .engineInstanceAdded(let tabId, let instanceId, let label):
+            let info = EngineInstanceInfo(id: instanceId, label: label)
+            engineInstances[tabId, default: []].append(info)
+            activeEngineInstance[tabId] = instanceId
+
+        case .engineInstanceRemoved(let tabId, let instanceId):
+            engineInstances[tabId]?.removeAll { $0.id == instanceId }
+            if activeEngineInstance[tabId] == instanceId {
+                activeEngineInstance[tabId] = engineInstances[tabId]?.first?.id
+            }
+            // Clean up compound-keyed state for removed instance
+            let removedKey = "\(tabId):\(instanceId)"
+            engineAgentStates.removeValue(forKey: removedKey)
+            engineStatusFields.removeValue(forKey: removedKey)
+            engineWorkingMessages.removeValue(forKey: removedKey)
+            engineDialogs.removeValue(forKey: removedKey)
+            enginePinnedPrompt.removeValue(forKey: removedKey)
+            activeTools.removeValue(forKey: removedKey)
+            engineMessages.removeValue(forKey: removedKey)
+            engineConversationLoaded.remove(removedKey)
 
         case .engineProfiles(let profiles):
             engineProfiles = profiles

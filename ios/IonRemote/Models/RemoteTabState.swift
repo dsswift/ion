@@ -12,12 +12,15 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var permissionQueue: [PermissionRequest]
     var lastMessage: String?
     var contextTokens: Int?
+    var contextPercent: Double?
     var messageCount: Int?
     var queuedPrompts: [String]?
     var isTerminalOnly: Bool?
     var isEngine: Bool?
     var terminalInstances: [TerminalInstanceInfo]?
     var activeTerminalInstanceId: String?
+    var engineInstances: [EngineInstanceInfo]?
+    var activeEngineInstanceId: String?
 
     var displayTitle: String {
         customTitle ?? title
@@ -32,6 +35,13 @@ struct TerminalInstanceInfo: Codable, Identifiable, Sendable {
     var kind: String
     var readOnly: Bool
     var cwd: String
+}
+
+// MARK: - EngineInstanceInfo
+
+struct EngineInstanceInfo: Codable, Identifiable, Sendable {
+    let id: String
+    var label: String
 }
 
 // MARK: - PermissionMode
