@@ -151,12 +151,12 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		stdin.Close()
+		_ = stdin.Close()
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		stdin.Close()
+		_ = stdin.Close()
 		return fmt.Errorf("start extension: %w", err)
 	}
 

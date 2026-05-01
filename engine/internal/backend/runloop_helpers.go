@@ -46,7 +46,7 @@ func runHookCtx[T any](ctx context.Context, fn func() T) (T, error) {
 		defer func() {
 			// Hook callbacks are extension-supplied; recover panics so they
 			// can't take down the run. Drop the result on panic.
-			recover()
+			_ = recover()
 		}()
 		ch <- fn()
 	}()

@@ -150,7 +150,7 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 			} else {
 				// Fire session_start on child extension
 				childCtx := m.newExtContext(s, key)
-				childExtHost.FireSessionStart(childCtx)
+				_ = childExtHost.FireSessionStart(childCtx)
 
 				// Wire before_agent_start for system prompt
 				basCtx := m.newExtContext(s, key)
@@ -620,7 +620,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 				EventMessage: "Initializing extensions...",
 			})
 			ctx := m.newExtContext(s, key)
-			group.FireSessionStart(ctx)
+			_ = group.FireSessionStart(ctx)
 
 			// Discover capabilities from extensions
 			caps := group.FireCapabilityDiscover(ctx)

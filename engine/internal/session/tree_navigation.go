@@ -79,7 +79,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 	// Fire session_fork hook after the fork succeeds.
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
-		extGroup.FireSessionFork(ctx, extension.ForkInfo{
+		_ = extGroup.FireSessionFork(ctx, extension.ForkInfo{
 			SourceSessionKey: key,
 			NewSessionKey:    newKey,
 			ForkMessageIndex: messageIndex,

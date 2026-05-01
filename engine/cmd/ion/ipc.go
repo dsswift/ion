@@ -18,10 +18,10 @@ func connectAndSend(sock string, msg map[string]interface{}) (map[string]interfa
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to engine at %s: %w", sock, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	data, _ := json.Marshal(msg)
-	conn.Write(append(data, '\n'))
+	_, _ = conn.Write(append(data, '\n'))
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -47,7 +47,7 @@ func attachStream(sock string, key string) {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -66,7 +66,7 @@ func streamUntilIdle(sock, key string) {
 		fmt.Fprintf(os.Stderr, "Error connecting to stream: %s\n", err)
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

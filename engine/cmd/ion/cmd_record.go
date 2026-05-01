@@ -21,14 +21,14 @@ func cmdRecord(flags map[string]string) {
 		fmt.Fprintf(os.Stderr, "Error creating file: %s\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	conn, err := net.Dial(dialNetwork(), socketPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	fmt.Printf("Recording to %s...\n", output)
 	if k := flags["key"]; k != "" {
@@ -51,7 +51,7 @@ func cmdRecord(flags map[string]string) {
 				}
 			}
 		}
-		f.WriteString(line + "\n")
+		_, _ = f.WriteString(line + "\n")
 		count++
 	}
 	fmt.Printf("\nRecorded %d messages to %s\n", count, output)
@@ -63,7 +63,7 @@ func cmdRpc() {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	fmt.Fprintln(os.Stderr, "Connected to engine server (RPC mode)")
 
@@ -82,8 +82,8 @@ func cmdRpc() {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) != "" {
-			conn.Write([]byte(line + "\n"))
+			_, _ = conn.Write([]byte(line + "\n"))
 		}
 	}
-	conn.Close()
+	_ = conn.Close()
 }

@@ -123,8 +123,7 @@ func defaultConfig() types.EngineConfig {
 	}
 }
 
-func intPtr(v int) *int       { return &v }
-func strPtr(v string) *string { return &v }
+func intPtr(v int) *int { return &v }
 
 // eventCollector captures events emitted by the manager.
 type eventCollector struct {
@@ -145,14 +144,6 @@ func newEventCollector(mgr *Manager) *eventCollector {
 		ec.mu.Unlock()
 	})
 	return ec
-}
-
-func (ec *eventCollector) all() []keyedEvent {
-	ec.mu.Lock()
-	defer ec.mu.Unlock()
-	out := make([]keyedEvent, len(ec.events))
-	copy(out, ec.events)
-	return out
 }
 
 func (ec *eventCollector) byType(t string) []keyedEvent {

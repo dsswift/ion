@@ -237,14 +237,13 @@ func TestLocalBashOperationsStderr(t *testing.T) {
 func TestLocalBashOperationsTimeout(t *testing.T) {
 	ops := &LocalBashOperations{}
 
-	_, err := ops.Exec(context.Background(), "sleep 30", os.TempDir(), ExecOptions{
+	result, err := ops.Exec(context.Background(), "sleep 30", os.TempDir(), ExecOptions{
 		Timeout: 200 * time.Millisecond,
 	})
-	// The context deadline should cause an error or non-zero exit.
-	// On timeout, exec returns an error.
-	if err == nil {
-		// If no Go error, verify exit code is non-zero.
-		// Some systems surface the kill as exit code -1.
+	// 200ms timeout against `sleep 30` should surface either a non-nil error
+	// or a non-zero ExitCode (Exec swallows ExitError into result.ExitCode).
+	if err == nil && (result == nil || result.ExitCode == 0) {
+		t.Fatal("expected timeout to produce error or non-zero exit, got clean result")
 	}
 }
 

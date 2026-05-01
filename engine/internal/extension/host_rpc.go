@@ -459,7 +459,7 @@ func (h *Host) sendResponse(id int64, result json.RawMessage, rpcErr *jsonrpcErr
 	}
 	data = append(data, '\n')
 	if h.stdin != nil {
-		h.stdin.Write(data)
+		_, _ = h.stdin.Write(data)
 	}
 }
 
@@ -481,6 +481,6 @@ func (h *Host) sendNotification(method string, params json.RawMessage) {
 	}
 	data = append(data, '\n')
 	if h.stdin != nil {
-		h.stdin.Write(data)
+		_, _ = h.stdin.Write(data)
 	}
 }

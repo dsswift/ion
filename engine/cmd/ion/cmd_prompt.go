@@ -129,12 +129,12 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			os.Exit(1)
 		}
 		streamUntilIdle(sock, key)
-		connectAndSend(sock, map[string]interface{}{
+		_, _ = connectAndSend(sock, map[string]interface{}{
 			"cmd": "stop_session",
 			"key": key,
 		})
 		if serverStarted {
-			connectAndSend(sock, map[string]interface{}{
+			_, _ = connectAndSend(sock, map[string]interface{}{
 				"cmd": "shutdown",
 			})
 		}

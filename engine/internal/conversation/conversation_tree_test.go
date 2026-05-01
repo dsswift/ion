@@ -240,7 +240,7 @@ func TestBuildContextPath_SingleMessage(t *testing.T) {
 func TestGetTree_EmptyConversation(t *testing.T) {
 	conv := CreateConversation("empty-tree", "", "claude-3")
 	tree := GetTree(conv)
-	if tree != nil && len(tree) != 0 {
+	if len(tree) != 0 {
 		t.Fatalf("expected nil or empty tree, got %d nodes", len(tree))
 	}
 }

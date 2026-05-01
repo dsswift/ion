@@ -252,11 +252,10 @@ func TestEngine_SensitivePaths(t *testing.T) {
 			Input: map[string]interface{}{"directory": home + "/.ssh"},
 			Cwd:   "/tmp",
 		})
-		// .ssh directory itself is not in the sensitive list (patterns are for files inside)
-		// This depends on exact pattern matching behavior
-		if result.Decision == "deny" {
-			// OK -- patterns may match the directory
-		}
+		// .ssh directory itself is not in the sensitive list (patterns target
+		// files inside). Engine may still deny via pattern matching on the
+		// directory path; either decision is acceptable here.
+		_ = result
 	})
 }
 

@@ -68,7 +68,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 	}
 	s.extGroup = group
 	ctx := m.newExtContext(s, key)
-	group.FireSessionStart(ctx)
+	_ = group.FireSessionStart(ctx)
 }
 
 // fireBeforeAgentStart fires before_agent_start for primary system prompt injection.

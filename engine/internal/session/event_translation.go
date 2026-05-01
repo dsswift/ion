@@ -36,13 +36,13 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		ctx := m.newExtContext(s, key)
 		switch e := event.Data.(type) {
 		case *types.ToolCallEvent:
-			s.extGroup.FireToolStart(ctx, extension.ToolStartInfo{
+			_ = s.extGroup.FireToolStart(ctx, extension.ToolStartInfo{
 				ToolName: e.ToolName,
 				ToolID:   e.ToolID,
 			})
 		case *types.ToolResultEvent:
 			_ = e // suppress unused
-			s.extGroup.FireToolEnd(ctx)
+			_ = s.extGroup.FireToolEnd(ctx)
 		}
 	}
 
@@ -50,7 +50,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	if sOk && s.extGroup != nil && !s.extGroup.IsEmpty() {
 		if errEv, ok := event.Data.(*types.ErrorEvent); ok {
 			errCtx := m.newExtContext(s, key)
-			s.extGroup.FireOnError(errCtx, extension.ErrorInfo{
+			_ = s.extGroup.FireOnError(errCtx, extension.ErrorInfo{
 				Message:      errEv.ErrorMessage,
 				ErrorCode:    errEv.ErrorCode,
 				Category:     classifyErrorCategory(errEv.ErrorCode),

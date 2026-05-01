@@ -188,7 +188,7 @@ func ForkConversation(conv *Conversation, atMessageIndex int) *Conversation {
 			idx = len(messageEntries) - 1
 		}
 		if idx >= 0 && idx < len(messageEntries) {
-			Branch(conv, messageEntries[idx].ID)
+			_, _ = Branch(conv, messageEntries[idx].ID)
 		}
 		return conv
 	}

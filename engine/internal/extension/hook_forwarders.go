@@ -114,11 +114,6 @@ func (h *Host) registerNoOpForwarder(hook string) {
 	})
 }
 
-func min(a, b int) int {
-	if a < b { return a }
-	return b
-}
-
 // registerStringForwarder registers a handler that forwards the hook and
 // returns the subprocess's result as a string. Accepts both the wrapped
 // `{"value": "..."}` shape (used when the handler also emits events) and

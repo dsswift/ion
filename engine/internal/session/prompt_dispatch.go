@@ -69,7 +69,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	if s.planMode && s.planFilePath == "" {
 		home, _ := os.UserHomeDir()
 		plansDir := filepath.Join(home, ".ion", "plans")
-		os.MkdirAll(plansDir, 0755)
+		_ = os.MkdirAll(plansDir, 0755)
 		s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
 	}
 

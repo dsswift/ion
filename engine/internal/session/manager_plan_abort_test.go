@@ -250,7 +250,7 @@ func TestAbortAllDescendants_ClearsRegistryAndEmits(t *testing.T) {
 	_, _ = mgr.StartSession("reap", defaultConfig())
 
 	var emittedAgentState bool
-	var lastEventAgents int = -1
+	lastEventAgents := -1
 	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
 		if ev.Type == "engine_agent_state" {
 			emittedAgentState = true

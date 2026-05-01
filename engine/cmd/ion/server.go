@@ -14,7 +14,7 @@ import (
 func ensureServer(sock string) bool {
 	conn, err := net.DialTimeout(dialNetwork(), sock, 500*time.Millisecond)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		return false
 	}
 
@@ -27,13 +27,13 @@ func ensureServer(sock string) bool {
 		fmt.Fprintf(os.Stderr, "Error: cannot start engine: %s\n", err)
 		os.Exit(1)
 	}
-	cmd.Process.Release()
+	_ = cmd.Process.Release()
 
 	for i := 0; i < 50; i++ {
 		time.Sleep(100 * time.Millisecond)
 		c, err := net.DialTimeout(dialNetwork(), sock, 200*time.Millisecond)
 		if err == nil {
-			c.Close()
+			_ = c.Close()
 			return true
 		}
 	}

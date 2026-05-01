@@ -28,7 +28,7 @@ import (
 func cmdServe() {
 	home, _ := os.UserHomeDir()
 	ionDir := filepath.Join(home, ".ion")
-	os.MkdirAll(ionDir, 0o700)
+	_ = os.MkdirAll(ionDir, 0o700)
 
 	cfg := config.LoadConfig("")
 	utils.Log("main", fmt.Sprintf("config loaded: backend=%s model=%s providers=%d mcp=%d",
@@ -166,7 +166,7 @@ func cmdServe() {
 		// graceful shutdown (Electron quit, kill -TERM, Ctrl+C). SIGKILL
 		// bypasses this; per-event Save() in the agent loop covers that.
 		b.FlushConversations()
-		srv.Stop()
+		_ = srv.Stop()
 	case <-srv.Done():
 		utils.Log("main", "shutdown command received, shutting down")
 		b.FlushConversations()
@@ -174,11 +174,11 @@ func cmdServe() {
 	}
 
 	if relay != nil {
-		relay.Close()
+		_ = relay.Close()
 	}
 
 	if pidLock != nil {
-		pidLock.Release()
+		_ = pidLock.Release()
 	}
 	fmt.Println("Engine stopped.")
 }

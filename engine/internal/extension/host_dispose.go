@@ -40,11 +40,11 @@ func (h *Host) disposeInternal() {
 
 	h.mu.Lock()
 	if h.stdin != nil {
-		h.stdin.Close()
+		_ = h.stdin.Close()
 		h.stdin = nil
 	}
 	if h.process != nil {
-		h.process.Kill()
+		_ = h.process.Kill()
 		h.process = nil
 	}
 	cmd := h.cmd
@@ -55,10 +55,10 @@ func (h *Host) disposeInternal() {
 	h.mu.Unlock()
 
 	if cmd != nil {
-		cmd.Wait()
+		_ = cmd.Wait()
 	}
 	for _, f := range tempFiles {
-		os.Remove(f)
+		_ = os.Remove(f)
 	}
 
 	// Wait for the reader goroutine to exit. Must be outside h.mu — the
