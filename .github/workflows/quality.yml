@@ -47,28 +47,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # only-new-issues needs the merge-base to diff against; default
-          # fetch-depth: 1 leaves the action with no history and it falls
-          # back to reporting every existing issue.
+          # Need full history so golangci-lint can compute a local diff
+          # against origin/main without touching the GitHub PR-diff API
+          # (20K-line cap; large PRs fall back to all-issues mode).
           fetch-depth: 0
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: engine/go.mod
-      # only-new-issues lints only diffs vs the base branch so the existing
-      # backlog of issues does not block PRs; new code must stay clean.
+      # `--new-from-merge-base=origin/main` filters issues to lines changed
+      # since the branch diverged. We pass it as a direct CLI flag instead
+      # of `only-new-issues: true` because the latter relies on the GitHub
+      # PR-diff REST endpoint, which 422s above 20K lines and trips the
+      # action's "report everything" fallback.
       - name: golangci-lint (engine)
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.3
           working-directory: engine
-          only-new-issues: true
+          args: --new-from-merge-base=origin/main
       - name: golangci-lint (relay)
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.3
           working-directory: relay
-          only-new-issues: true
+          args: --new-from-merge-base=origin/main
 
   engine-vuln:
     runs-on: ubuntu-latest
