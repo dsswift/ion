@@ -2224,6 +2224,17 @@ async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               });
               activeTerminalInstanceId = pane.activeInstanceId || pane.instances[0].id;
             }
+            // Extract engine pane state for engine tabs
+            var ePanes = state.enginePanes;
+            var ePane = ePanes && ePanes.get ? ePanes.get(t.id) : null;
+            var engineInstances = undefined;
+            var activeEngineInstanceId = undefined;
+            if (ePane && ePane.instances && ePane.instances.length > 0) {
+              engineInstances = ePane.instances.map(function(inst) {
+                return { id: inst.id, label: inst.label };
+              });
+              activeEngineInstanceId = ePane.activeInstanceId || ePane.instances[0].id;
+            }
             return {
               id: t.id,
               title: t.title,
@@ -2236,6 +2247,9 @@ async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               messageCount: msgs.length,
               queuedPrompts: t.queuedPrompts || [],
               isTerminalOnly: t.isTerminalOnly || undefined,
+              isEngine: t.isEngine || undefined,
+              engineInstances: engineInstances,
+              activeEngineInstanceId: activeEngineInstanceId,
               terminalInstances: terminalInstances,
               activeTerminalInstanceId: activeTerminalInstanceId,
               lastMessageContent: lastMsg,
@@ -2273,6 +2287,9 @@ async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         messageCount: t.messageCount || 0,
         queuedPrompts: t.queuedPrompts || [],
         isTerminalOnly: t.isTerminalOnly || undefined,
+        isEngine: t.isEngine || undefined,
+        engineInstances: t.engineInstances || undefined,
+        activeEngineInstanceId: t.activeEngineInstanceId || undefined,
         terminalInstances: t.terminalInstances || undefined,
         activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
         _activity: t.lastActivityTs || 0,
@@ -2785,6 +2802,117 @@ function initRemoteTransport(settings: Record<string, unknown>): void {
       case 'engine_dialog_response': {
         const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
         engineBridge.sendDialogResponse(hKey, cmd.dialogId, cmd.value)
+        break
+      }
+      case 'engine_add_instance': {
+        try {
+          const escaped = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const instanceId = await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__Ion_SESSION_STORE__;
+              if (!store) return null;
+              return store.getState().addEngineInstance('${escaped}');
+            })()
+          `)
+          if (instanceId) {
+            // Fetch the instance info from the store after creation
+            const instanceInfo = await mainWindow?.webContents.executeJavaScript(`
+              (function() {
+                var store = window.__Ion_SESSION_STORE__;
+                if (!store) return null;
+                var pane = store.getState().enginePanes.get('${escaped}');
+                if (!pane) return null;
+                var escapedId = '${instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}';
+                var inst = pane.instances.find(function(i) { return i.id === escapedId; });
+                return inst ? { id: inst.id, label: inst.label } : null;
+              })()
+            `)
+            if (instanceInfo) {
+              remoteTransport?.send({
+                type: 'engine_instance_added',
+                tabId: cmd.tabId,
+                instance: instanceInfo,
+              })
+            }
+          }
+        } catch (err) {
+          log(`engine_add_instance error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'engine_remove_instance': {
+        try {
+          const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__Ion_SESSION_STORE__;
+              if (!store) return;
+              store.getState().removeEngineInstance('${escapedTab}', '${escapedInst}');
+            })()
+          `)
+          remoteTransport?.send({ type: 'engine_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
+        } catch (err) {
+          log(`engine_remove_instance error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'engine_select_instance': {
+        try {
+          const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          await mainWindow?.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__Ion_SESSION_STORE__;
+              if (!store) return;
+              store.getState().selectEngineInstance('${escapedTab}', '${escapedInst}');
+            })()
+          `)
+        } catch (err) {
+          log(`engine_select_instance error: ${(err as Error).message}`)
+        }
+        break
+      }
+      case 'load_engine_conversation': {
+        try {
+          log(`load_engine_conversation: tabId=${cmd.tabId}, instanceId=${cmd.instanceId || 'null'}`)
+          if (!mainWindow) {
+            remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+            break
+          }
+          const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          // Determine compound key: use provided instanceId, or fall back to active instance
+          const compoundKey = cmd.instanceId
+            ? `${cmd.tabId}:${cmd.instanceId}`
+            : await mainWindow.webContents.executeJavaScript(`
+              (function() {
+                var store = window.__Ion_SESSION_STORE__;
+                if (!store) return '${escapedTab}';
+                var pane = store.getState().enginePanes.get('${escapedTab}');
+                return pane && pane.activeInstanceId ? '${escapedTab}:' + pane.activeInstanceId : '${escapedTab}';
+              })()
+            `) || cmd.tabId
+          const escapedKey = compoundKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          const msgs = await mainWindow.webContents.executeJavaScript(`
+            (function() {
+              var store = window.__Ion_SESSION_STORE__;
+              if (!store) return [];
+              var msgs = store.getState().engineMessages.get('${escapedKey}') || [];
+              return msgs.map(function(m) {
+                var content = m.content || '';
+                if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
+                else if (content.length > 10000) content = content.substring(0, 10000);
+                return { id: m.id, role: m.role, content: content, toolName: m.toolName, toolId: m.toolId, toolStatus: m.toolStatus, timestamp: m.timestamp };
+              });
+            })()
+          `) || []
+          const instanceId = compoundKey.includes(':') ? compoundKey.split(':')[1] : null
+          log(`load_engine_conversation: compoundKey=${compoundKey}, found ${msgs.length} messages, instanceId=${instanceId}`)
+          remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
+        } catch (err) {
+          log(`load_engine_conversation error: ${(err as Error).message}`)
+          remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+        }
         break
       }
       case 'terminal_input': {

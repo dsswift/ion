@@ -70,6 +70,7 @@ export class RemoteTransport extends EventEmitter {
   private static readonly CRITICAL_TYPES = new Set([
     'permission_request', 'snapshot', 'tab_created', 'tab_closed',
     'conversation_history', 'heartbeat', 'terminal_snapshot',
+    'engine_conversation_history',
   ])
 
   constructor(config: RemoteTransportConfig) {

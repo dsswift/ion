@@ -21,7 +21,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "doctor": "bash scripts/doctor.sh",
-    "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh && bash scripts/patch-zustand.sh"
+    "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh && bash scripts/patch-zustand.sh && bash ../scripts/setup-claude-symlinks.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

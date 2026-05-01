@@ -92,6 +92,7 @@ export type RemoteCommand =
   | { type: 'engine_add_instance'; tabId: string }
   | { type: 'engine_remove_instance'; tabId: string; instanceId: string }
   | { type: 'engine_select_instance'; tabId: string; instanceId: string }
+  | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'unpair' }
 
 // ─── Ion → iOS events ───
@@ -125,6 +126,7 @@ export type RemoteEvent =
   | { type: 'engine_dialog_resolved'; tabId: string; instanceId?: string | null; dialogId: string }
   | { type: 'engine_text_delta'; tabId: string; instanceId?: string | null; text: string }
   | { type: 'engine_message_end'; tabId: string; instanceId?: string | null; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
+  | { type: 'engine_harness_message'; tabId: string; instanceId?: string | null; message: string; source?: string }
   | { type: 'engine_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'engine_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
@@ -132,6 +134,7 @@ export type RemoteEvent =
   | { type: 'engine_error'; tabId: string; instanceId?: string | null; message: string }
   | { type: 'engine_instance_added'; tabId: string; instance: { id: string; label: string } }
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
+  | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   | { type: 'heartbeat'; seq: number; ts: number; buffered: number }
