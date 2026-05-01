@@ -50,23 +50,23 @@ final class TransportManager {
 
     // MARK: - Configuration
 
-    private let sharedKey: SymmetricKey
-    private var deviceId: String?
+    let sharedKey: SymmetricKey
+    var deviceId: String?
 
     // MARK: - Internals
 
-    private var seq: UInt64 = 0
-    private var lastReceivedSeq: UInt64 = 0
-    private var eventContinuation: AsyncStream<RemoteEvent>.Continuation
-    private var relayListenTask: Task<Void, Never>?
-    private var lanListenTask: Task<Void, Never>?
-    private var bonjourObservationTask: Task<Void, Never>?
-    private var relayStateTask: Task<Void, Never>?
-    private var lanStateTask: Task<Void, Never>?
-    private var pathMonitor: NWPathMonitor?
-    private var currentLANHost: DiscoveredHost?
-    private var disconnectGraceTask: Task<Void, Never>?
-    private static let disconnectGracePeriod: Duration = .seconds(4)
+    var seq: UInt64 = 0
+    var lastReceivedSeq: UInt64 = 0
+    let eventContinuation: AsyncStream<RemoteEvent>.Continuation
+    var relayListenTask: Task<Void, Never>?
+    var lanListenTask: Task<Void, Never>?
+    var bonjourObservationTask: Task<Void, Never>?
+    var relayStateTask: Task<Void, Never>?
+    var lanStateTask: Task<Void, Never>?
+    var pathMonitor: NWPathMonitor?
+    var currentLANHost: DiscoveredHost?
+    var disconnectGraceTask: Task<Void, Never>?
+    static let disconnectGracePeriod: Duration = .seconds(4)
 
     // MARK: - Init (Relay + LAN)
 
@@ -182,85 +182,15 @@ final class TransportManager {
         setState(.disconnected)
     }
 
-    /// Send a command to the Ion desktop via the preferred transport.
-    ///
-    /// Uses LAN when connected, otherwise falls back to relay. The command is
-    /// JSON-encoded, encrypted, wrapped in a `WireMessage` envelope, and sent
-    /// as binary data over the active WebSocket.
-    func send(_ command: RemoteCommand) async throws {
-        let payload = try JSONEncoder().encode(command)
-        let wire = try buildWireMessage(payload: payload)
-        let wireData = try JSONEncoder().encode(wire)
-
-        if state == .lanPreferred, lan.isConnected {
-            try await lan.send(data: wireData)
-        } else if let relay, relay.isConnected {
-            try await relay.send(data: wireData)
-        } else {
-            throw TransportError.noTransportAvailable
-        }
-    }
-
-    // MARK: - LAN Auth Handshake
-
-    /// Perform challenge-response authentication on the active LAN connection.
-    /// Waits for AuthChallenge from Ion, proves we hold the shared secret,
-    /// and waits for AuthResult.
-    private func performLANAuth() async -> Bool {
-        // Wait for the first message (should be AuthChallenge).
-        for await data in lan.messages {
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = json["type"] as? String else { continue }
-
-            if type == "auth_challenge", let nonceB64 = json["nonce"] as? String {
-                guard let nonceData = Data(base64Encoded: nonceB64) else { return false }
-                let proof = E2ECrypto.createAuthProof(nonce: nonceData, sharedSecret: sharedKey)
-
-                // Send auth_response as a WireMessage with payload.
-                let authResponse: [String: Any] = [
-                    "type": "auth_response",
-                    "deviceId": deviceId ?? "",
-                    "proof": proof.base64EncodedString(),
-                ]
-                if let responseData = try? JSONSerialization.data(withJSONObject: authResponse),
-                   let payloadStr = String(data: responseData, encoding: .utf8) {
-                    let wireMsg = WireMessage(seq: 0, ts: Date().timeIntervalSince1970 * 1000, payload: payloadStr)
-                    if let wireData = try? JSONEncoder().encode(wireMsg) {
-                        try? await lan.send(data: wireData)
-                    }
-                }
-
-                // Wait for AuthResult.
-                for await resultData in lan.messages {
-                    guard let resultJson = try? JSONSerialization.jsonObject(with: resultData) as? [String: Any],
-                          let rType = resultJson["type"] as? String else { continue }
-
-                    if rType == "auth_result" {
-                        return resultJson["success"] as? Bool == true
-                    }
-                    // Also check for WireMessage wrapping an auth_result
-                    if let payload = resultJson["payload"] as? String,
-                       let inner = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
-                       inner["type"] as? String == "auth_result" {
-                        return inner["success"] as? Bool == true
-                    }
-                }
-                return false
-            }
-            return false
-        }
-        return false
-    }
-
     // MARK: - State machine
 
-    private func setState(_ newState: TransportState) {
+    func setState(_ newState: TransportState) {
         guard state != newState else { return }
         print("[Ion] TransportManager: \(state) -> \(newState)")
         state = newState
     }
 
-    private func updateState() {
+    func updateState() {
         let lanUp = lan.isConnected
         let relayUp = relay?.isConnected ?? false
         let previousState = state
@@ -284,7 +214,7 @@ final class TransportManager {
 
     /// Start a grace period before emitting `peerDisconnected`. If either
     /// transport recovers within the window, the event is suppressed.
-    private func startDisconnectGracePeriod() {
+    func startDisconnectGracePeriod() {
         guard disconnectGraceTask == nil else { return }
         eventContinuation.yield(.transportReconnecting)
         disconnectGraceTask = Task { [weak self] in
@@ -300,84 +230,14 @@ final class TransportManager {
         }
     }
 
-    private func cancelDisconnectGracePeriod() {
+    func cancelDisconnectGracePeriod() {
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
     }
 
-    // MARK: - Relay listener
-
-    private func startRelayListener() {
-        guard let relay else { return }
-        relayListenTask?.cancel()
-        relayListenTask = Task { [weak self] in
-            guard let self else { return }
-            for await data in relay.messages {
-                guard !Task.isCancelled else { break }
-                // In lanPreferred mode, still check for relay control frames
-                // but skip data messages.
-                self.handleIncomingData(data, isRelay: true)
-            }
-        }
-    }
-
-    private func startRelayStateObservation() {
-        guard let relay else { return }
-        relayStateTask?.cancel()
-        relayStateTask = Task { [weak self] in
-            var wasConnected = false
-            while !Task.isCancelled {
-                guard let self else { break }
-                let connected = relay.isConnected
-                if connected != wasConnected {
-                    wasConnected = connected
-                    self.updateState()
-                }
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-        }
-    }
-
-    // MARK: - LAN listener
-
-    private func startLANListener() {
-        lanListenTask?.cancel()
-        lanListenTask = Task { [weak self] in
-            guard let self else { return }
-            for await data in self.lan.messages {
-                guard !Task.isCancelled else { break }
-                self.handleIncomingData(data, isRelay: false)
-            }
-            // LAN stream ended -- the WebSocket closed.
-            // Emit peerDisconnected if we have no relay fallback.
-            if self.relay == nil || !(self.relay?.isConnected ?? false) {
-                self.eventContinuation.yield(.peerDisconnected)
-            }
-            self.updateState()
-        }
-    }
-
-    private func startLANStateObservation() {
-        lanStateTask?.cancel()
-        lanStateTask = Task { [weak self] in
-            var wasConnected = false
-            while !Task.isCancelled {
-                guard let self else { break }
-                let connected = self.lan.isConnected
-                if connected != wasConnected {
-                    wasConnected = connected
-                    if !connected {
-                        self.updateState()
-                    }
-                }
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-        }
-    }
-
     // MARK: - Bonjour observation
 
-    private func startBonjourObservation() {
+    func startBonjourObservation() {
         bonjourObservationTask?.cancel()
         bonjourObservationTask = Task { [weak self] in
             var lastKnownCount = 0
@@ -441,7 +301,7 @@ final class TransportManager {
 
     // MARK: - Network monitor
 
-    private func startNetworkMonitor() {
+    func startNetworkMonitor() {
         pathMonitor?.cancel()
 
         let monitor = NWPathMonitor()
@@ -469,89 +329,6 @@ final class TransportManager {
         }
 
         monitor.start(queue: .main)
-    }
-
-    // MARK: - Wire message handling
-
-    private func buildWireMessage(payload: Data) throws -> WireMessage {
-        seq += 1
-
-        let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: payload, key: sharedKey)
-        return WireMessage(
-            seq: seq,
-            ts: Date().timeIntervalSince1970 * 1000,
-            payload: nil,
-            nonce: nonce.base64EncodedString(),
-            ciphertext: ciphertext.base64EncodedString(),
-            deviceId: deviceId
-        )
-    }
-
-    private func handleIncomingData(_ data: Data, isRelay: Bool) {
-        guard let wire = try? JSONDecoder().decode(WireMessage.self, from: data) else {
-            return
-        }
-
-        // Check for relay control frames BEFORE dedup/encryption.
-        // These are plaintext messages from the relay server itself.
-        if let payloadStr = wire.payload,
-           let json = try? JSONSerialization.jsonObject(with: Data(payloadStr.utf8)) as? [String: Any],
-           let type = json["type"] as? String, type.hasPrefix("relay:") {
-            if type == "relay:peer-disconnected" {
-                startDisconnectGracePeriod()
-            }
-            return
-        }
-
-        // Check for auth_result (late revocation during session).
-        if let payloadStr = wire.payload,
-           let json = try? JSONSerialization.jsonObject(with: Data(payloadStr.utf8)) as? [String: Any],
-           let type = json["type"] as? String, type == "auth_result" {
-            if json["success"] as? Bool == false {
-                eventContinuation.yield(.peerDisconnected)
-            }
-            return
-        }
-
-        // Dedup: drop if seq <= lastReceivedSeq
-        if wire.seq > 0, wire.seq <= lastReceivedSeq {
-            return
-        }
-        if wire.seq > 0 {
-            lastReceivedSeq = wire.seq
-        }
-
-        // In lanPreferred mode, skip relay data messages (control frames handled above).
-        if isRelay && state == .lanPreferred { return }
-
-        // Decrypt -- encryption is required for data messages.
-        guard let ciphertextB64 = wire.ciphertext, let nonceB64 = wire.nonce,
-              let ciphertext = Data(base64Encoded: ciphertextB64),
-              let nonce = Data(base64Encoded: nonceB64) else {
-            return
-        }
-
-        guard let payloadData = try? E2ECrypto.decrypt(ciphertext: ciphertext, nonce: nonce, key: sharedKey) else {
-            return
-        }
-
-        // Check for heartbeat: track but don't surface to the app
-        if let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
-           let type = json["type"] as? String, type == "heartbeat" {
-            return
-        }
-
-        let event: RemoteEvent
-        do {
-            event = try JSONDecoder().decode(RemoteEvent.self, from: payloadData)
-        } catch {
-            // Log decode failures so we can diagnose dropped events
-            let typeHint = (try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any])?["type"] as? String ?? "unknown"
-            print("[Ion] ⚠️ Failed to decode event type=\(typeHint): \(error)")
-            return
-        }
-
-        eventContinuation.yield(event)
     }
 }
 

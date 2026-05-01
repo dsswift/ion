@@ -24,8 +24,23 @@
 		A1B2C3D4E5F6000100001DAA /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001EAA /* PairingView.swift */; };
 		A1B2C3D4E5F6000100001FAA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000020AA /* SettingsView.swift */; };
 		A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */; };
+		A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */; };
+		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
+		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
+		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
+		A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */; };
+		A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */; };
+		A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */; };
+		A1B2C3D4E5F60001000232AA /* NormalizedEvent+Stream.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000233AA /* NormalizedEvent+Stream.swift */; };
+		A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */; };
+		A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */; };
+		A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */; };
 		A1B2C3D4E5F60001000023AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000024AA /* Assets.xcassets */; };
-		A1B2C3D4E5F60001000025AA /* NormalizedEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000026AA /* NormalizedEventTests.swift */; };
+		A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */; };
+		A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */; };
+		A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */; };
+		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
 		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
@@ -78,8 +93,23 @@
 		A1B2C3D4E5F6000100001EAA /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000020AA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModel.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Lifecycle.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Send.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Receive.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Lifecycle.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000233AA /* NormalizedEvent+Stream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Stream.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Permission.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Terminal.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Engine.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000024AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001000026AA /* NormalizedEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventStreamTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventPermissionTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventLifecycleTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
@@ -165,6 +195,11 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */,
+				A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */,
+				A1B2C3D4E5F60001000233AA /* NormalizedEvent+Stream.swift */,
+				A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */,
+				A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */,
+				A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */,
 				A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */,
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
@@ -181,6 +216,8 @@
 				A1B2C3D4E5F6000100000CAA /* RelayClient.swift */,
 				A1B2C3D4E5F6000100000EAA /* LANClient.swift */,
 				A1B2C3D4E5F60001000010AA /* TransportManager.swift */,
+				A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */,
+				A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */,
 				A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */,
 				A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */,
 			);
@@ -223,6 +260,11 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */,
+				A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */,
+				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
+				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
+				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -230,7 +272,10 @@
 		A1B2C3D4E5F60001000059AA /* IonRemoteTests */ = {
 			isa = PBXGroup;
 			children = (
-				A1B2C3D4E5F60001000026AA /* NormalizedEventTests.swift */,
+				A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */,
+				A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */,
+				A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */,
+				A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */,
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
@@ -385,6 +430,18 @@
 				A1B2C3D4E5F6000100001FAA /* SettingsView.swift in Sources */,
 				A1B2C3D4E5F60001000094AA /* InputBar.swift in Sources */,
 				A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */,
+				A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */,
+				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
+				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
+				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
+				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
+				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
+				A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */,
+				A1B2C3D4E5F60001000232AA /* NormalizedEvent+Stream.swift in Sources */,
+				A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */,
+				A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */,
+				A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */,
 				A1B2C3D4E5F600010000A0AA /* TerminalOutputRouter.swift in Sources */,
 				A1B2C3D4E5F600010000A2AA /* SwiftTermWrapper.swift in Sources */,
 				A1B2C3D4E5F600010000A4AA /* RemoteTerminalView.swift in Sources */,
@@ -403,7 +460,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A1B2C3D4E5F60001000025AA /* NormalizedEventTests.swift in Sources */,
+				A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */,
+				A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */,
+				A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */,
+				A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */,
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
