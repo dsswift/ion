@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.2.0](https://github.com/dsswift/ion/compare/ios-v1.1.0...ios-v1.2.0) (2026-05-01)
+
+### Features
+
+* **ios:** build engine viewer in remote app ([2ac41cd](https://github.com/dsswift/ion/commit/2ac41cdfeed87927e94cd27025d3969faa7fcd00))
+
 ## [1.1.0](https://github.com/dsswift/ion/compare/ios-v1.0.0...ios-v1.1.0) (2026-04-30)
 
 ### Features
