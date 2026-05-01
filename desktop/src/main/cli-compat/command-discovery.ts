@@ -1,13 +1,9 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join, relative, basename, extname } from 'path'
+import type { DiscoveredCommand } from '../../shared/types'
 
-export interface DiscoveredCommand {
-  name: string
-  description: string
-  scope: 'user' | 'project'
-  source: 'command' | 'skill'
-}
+export type { DiscoveredCommand }
 
 /**
  * Discover slash commands from user and project command/skill directories.

@@ -1,0 +1,14 @@
+# File-size allowlist
+#
+# Files listed here exceed the language hard cap defined in
+# docs/architecture/file-organization.md but are temporarily exempted from CI
+# enforcement.
+#
+# Rules:
+# - Adding a new entry requires explicit reviewer approval and a tracking issue.
+# - When a file is decomposed, remove its entry the same PR.
+# - Use a `# @file-size-exception: <reason>` annotation on line 1 of the file
+#   for permanent, intrinsic exceptions (generated code, table-driven switches);
+#   do not add those to this list.
+
+files: []

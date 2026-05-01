@@ -326,7 +326,7 @@ describe('TC-004: WhisperKit fallback skipped when first run produces stdout', (
 describe('TC-005: No execSync calls in TRANSCRIBE_AUDIO handler', () => {
   // Static analysis test: reads the source file and checks the handler body
 
-  const sourceFile = join(__dirname, '..', 'index.ts')
+  const sourceFile = join(__dirname, '..', 'ipc', 'transcribe.ts')
   let handlerSource: string
 
   beforeEach(() => {

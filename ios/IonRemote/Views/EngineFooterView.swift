@@ -18,11 +18,13 @@ struct EngineFooterView: View {
                 .frame(height: 12)
 
             // Team
-            Text(fields.team)
-                .foregroundStyle(.secondary)
+            if let team = fields.team, !team.isEmpty {
+                Text(team)
+                    .foregroundStyle(.secondary)
 
-            Divider()
-                .frame(height: 12)
+                Divider()
+                    .frame(height: 12)
+            }
 
             // Model
             Text(fields.model)

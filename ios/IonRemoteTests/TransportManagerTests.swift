@@ -52,7 +52,7 @@ final class TransportManagerTests: XCTestCase {
             sharedKey: key
         )
         // The relay client should exist and be disconnected initially.
-        XCTAssertFalse(manager.relay.isConnected)
+        XCTAssertFalse(manager.relay?.isConnected ?? true)
     }
 
     func testLANClientIsCreated() {
@@ -124,6 +124,7 @@ final class TransportManagerTests: XCTestCase {
     func testWireMessageEncodingEncrypted() throws {
         let wire = WireMessage(
             seq: 1,
+            ts: nil,
             payload: nil,
             nonce: "AAAAAAAAAAAAAAAA",
             ciphertext: "encrypteddata=="
@@ -137,7 +138,7 @@ final class TransportManagerTests: XCTestCase {
     }
 
     func testWireMessageRoundTrip() throws {
-        let wire = WireMessage(seq: 99, payload: "{}", nonce: nil, ciphertext: nil)
+        let wire = WireMessage(seq: 99, ts: nil, payload: "{}", nonce: nil, ciphertext: nil)
         let data = try JSONEncoder().encode(wire)
         let decoded = try JSONDecoder().decode(WireMessage.self, from: data)
         XCTAssertEqual(decoded.seq, wire.seq)

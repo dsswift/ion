@@ -1,4 +1,4 @@
-.PHONY: default desktop engine relay relay-local ios ios-check test clean
+.PHONY: default desktop engine relay relay-local ios ios-check test clean check-file-sizes claude-symlinks hooks
 
 default: engine
 
@@ -28,6 +28,21 @@ test:
 clean:
 	@cd engine && rm -rf bin/ dist/
 	@cd desktop && rm -rf dist/ out/
+
+# File-architecture guardrails (see docs/architecture/file-organization.md)
+check-file-sizes:
+	@bash scripts/check-file-sizes.sh
+
+# Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
+# CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.
+claude-symlinks:
+	@bash scripts/setup-claude-symlinks.sh
+
+# Point this clone's git hooks at the tracked .githooks/ directory so the
+# pre-push file-size check runs before pushes hit CI. One-time per clone.
+hooks:
+	@git config core.hooksPath .githooks
+	@echo "core.hooksPath -> .githooks"
 
 # Local pipeline testing (requires: brew install act)
 test-pipeline-dry:

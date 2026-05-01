@@ -12,16 +12,14 @@
 import { EventEmitter } from 'events'
 import { RelayClient, type RelayClientOptions } from './relay-client'
 import { LANServer, type LANServerOptions } from './lan-server'
-import { encrypt, decrypt, createAuthNonce, verifyAuthProof } from './crypto'
+import { encrypt, decrypt } from './crypto'
+import { startLanAuth, handleLanAuthResponse, type LanAuthCtx } from './transport-lan-auth'
 import { log as _log } from '../logger'
 import type {
   TransportState,
   WireMessage,
   RemoteEvent,
   RemoteCommand,
-  AuthChallenge,
-  AuthResponse,
-  AuthResult,
   PairedDevice,
 } from './protocol'
 
@@ -70,6 +68,7 @@ export class RemoteTransport extends EventEmitter {
   private static readonly CRITICAL_TYPES = new Set([
     'permission_request', 'snapshot', 'tab_created', 'tab_closed',
     'conversation_history', 'heartbeat', 'terminal_snapshot',
+    'engine_conversation_history',
   ])
 
   constructor(config: RemoteTransportConfig) {
@@ -543,101 +542,24 @@ export class RemoteTransport extends EventEmitter {
     return null
   }
 
-  // ─── LAN Auth Handshake ───
+  private _lanAuthCtx(): LanAuthCtx {
+    return {
+      lan: this.lan,
+      lanAuthPending: this.lanAuthPending,
+      lanDeviceMap: this.lanDeviceMap,
+      deviceSecrets: this.deviceSecrets,
+      lastReceivedSeq: this.lastReceivedSeq,
+      getPairedDevice: (id) => this.config.getPairedDevice?.(id) || null,
+      recomputeState: () => this._recomputeState(),
+      emit: (event, ...args) => { this.emit(event, ...args) },
+    }
+  }
 
   private _startLanAuth(connectionId: string): void {
-    const nonce = createAuthNonce()
-
-    const challenge: AuthChallenge = {
-      type: 'auth_challenge',
-      nonce,
-    }
-    this.lan?.sendRaw(JSON.stringify(challenge), connectionId)
-
-    // Timeout: if no valid auth_response within 10 seconds, close.
-    const timeout = setTimeout(() => {
-      if (this.lanAuthPending.has(connectionId)) {
-        log(`LAN auth timed out for ${connectionId}`)
-        this.lanAuthPending.delete(connectionId)
-        const ip = this.lan?.getClientIp(connectionId)
-        if (ip) this.lan?.recordAuthFailure(ip)
-        this.lan?.disconnectClient(connectionId, 4003, 'auth timeout')
-      }
-    }, 10_000)
-
-    this.lanAuthPending.set(connectionId, { nonce, timeout })
+    startLanAuth(this._lanAuthCtx(), connectionId)
   }
 
   private _handleLanAuthResponse(msg: WireMessage, connectionId: string): void {
-    let authResp: AuthResponse | null = null
-    try {
-      if (msg.payload) {
-        const parsed = JSON.parse(msg.payload)
-        if (parsed.type === 'auth_response') {
-          authResp = parsed as AuthResponse
-        }
-      }
-    } catch { /* not valid JSON */ }
-
-    if (!authResp) {
-      log('LAN auth: received non-auth message during handshake, ignoring')
-      return
-    }
-
-    const pending = this.lanAuthPending.get(connectionId)
-    if (!pending) {
-      log(`LAN auth: no active nonce for ${connectionId}`)
-      this._sendAuthResult(connectionId, false, 'no active challenge')
-      return
-    }
-
-    const ip = this.lan?.getClientIp(connectionId)
-
-    // Look up the device by ID.
-    const device = this.config.getPairedDevice?.(authResp.deviceId)
-    if (!device) {
-      log(`LAN auth: unknown device ${authResp.deviceId}`)
-      this._sendAuthResult(connectionId, false, 'unknown device')
-      if (ip) this.lan?.recordAuthFailure(ip)
-      this.lan?.disconnectClient(connectionId, 4003, 'unknown device')
-      return
-    }
-
-    // Verify the HMAC proof.
-    const secret = Buffer.from(device.sharedSecret, 'base64')
-    const valid = verifyAuthProof(pending.nonce, authResp.proof, secret)
-    if (!valid) {
-      log(`LAN auth: invalid proof from ${authResp.deviceId}`)
-      this._sendAuthResult(connectionId, false, 'invalid proof')
-      if (ip) this.lan?.recordAuthFailure(ip)
-      this.lan?.disconnectClient(connectionId, 4003, 'invalid proof')
-      return
-    }
-
-    // Auth succeeded.
-    clearTimeout(pending.timeout)
-    this.lanAuthPending.delete(connectionId)
-
-    // Re-key LAN client from temp connectionId to deviceId.
-    this.lan?.rekeyClient(connectionId, device.id)
-    this.lanDeviceMap.set(device.id, device.id)
-
-    // Store secret (may already exist from relay, but update in case of re-pair).
-    this.deviceSecrets.set(device.id, secret)
-
-    // Reset dedup counter for new LAN session.
-    this.lastReceivedSeq.set(device.id, 0)
-
-    if (ip) this.lan?.recordAuthSuccess(ip)
-    log(`LAN auth: device ${authResp.deviceId} (${device.name}) authenticated`)
-    this._sendAuthResult(device.id, true)
-
-    this._recomputeState()
-    this.emit('peer-connected')
-  }
-
-  private _sendAuthResult(connectionId: string, success: boolean, reason?: string): void {
-    const result: AuthResult = { type: 'auth_result', success, reason }
-    this.lan?.sendRaw(JSON.stringify(result), connectionId)
+    handleLanAuthResponse(this._lanAuthCtx(), msg, connectionId)
   }
 }

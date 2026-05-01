@@ -24,9 +24,13 @@ enum RemoteCommand: Codable, Sendable {
     case forkFromMessage(tabId: String, messageId: String)
     case unpair
     case createEngineTab(workingDirectory: String?, profileId: String?)
-    case enginePrompt(tabId: String, text: String)
-    case engineAbort(tabId: String)
-    case engineDialogResponse(tabId: String, dialogId: String, value: String)
+    case enginePrompt(tabId: String, text: String, instanceId: String? = nil)
+    case engineAbort(tabId: String, instanceId: String? = nil)
+    case engineDialogResponse(tabId: String, dialogId: String, value: String, instanceId: String? = nil)
+    case engineAddInstance(tabId: String)
+    case engineRemoveInstance(tabId: String, instanceId: String)
+    case engineSelectInstance(tabId: String, instanceId: String)
+    case loadEngineConversation(tabId: String, instanceId: String?)
 
     // MARK: - Codable
 
@@ -55,6 +59,10 @@ enum RemoteCommand: Codable, Sendable {
         case enginePrompt = "engine_prompt"
         case engineAbort = "engine_abort"
         case engineDialogResponse = "engine_dialog_response"
+        case engineAddInstance = "engine_add_instance"
+        case engineRemoveInstance = "engine_remove_instance"
+        case engineSelectInstance = "engine_select_instance"
+        case loadEngineConversation = "load_engine_conversation"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -173,17 +181,39 @@ enum RemoteCommand: Codable, Sendable {
         case .enginePrompt:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let text = try container.decode(String.self, forKey: .text)
-            self = .enginePrompt(tabId: tabId, text: text)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            self = .enginePrompt(tabId: tabId, text: text, instanceId: instanceId)
 
         case .engineAbort:
             let tabId = try container.decode(String.self, forKey: .tabId)
-            self = .engineAbort(tabId: tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            self = .engineAbort(tabId: tabId, instanceId: instanceId)
 
         case .engineDialogResponse:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let dialogId = try container.decode(String.self, forKey: .dialogId)
             let value = try container.decode(String.self, forKey: .value)
-            self = .engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            self = .engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value, instanceId: instanceId)
+
+        case .engineAddInstance:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            self = .engineAddInstance(tabId: tabId)
+
+        case .engineRemoveInstance:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            self = .engineRemoveInstance(tabId: tabId, instanceId: instanceId)
+
+        case .engineSelectInstance:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            self = .engineSelectInstance(tabId: tabId, instanceId: instanceId)
+
+        case .loadEngineConversation:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            self = .loadEngineConversation(tabId: tabId, instanceId: instanceId)
         }
     }
 
@@ -292,20 +322,42 @@ enum RemoteCommand: Codable, Sendable {
             try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
             try container.encodeIfPresent(profileId, forKey: .profileId)
 
-        case .enginePrompt(let tabId, let text):
+        case .enginePrompt(let tabId, let text, let instanceId):
             try container.encode(TypeKey.enginePrompt, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(text, forKey: .text)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
 
-        case .engineAbort(let tabId):
+        case .engineAbort(let tabId, let instanceId):
             try container.encode(TypeKey.engineAbort, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
 
-        case .engineDialogResponse(let tabId, let dialogId, let value):
+        case .engineDialogResponse(let tabId, let dialogId, let value, let instanceId):
             try container.encode(TypeKey.engineDialogResponse, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(dialogId, forKey: .dialogId)
             try container.encode(value, forKey: .value)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+
+        case .engineAddInstance(let tabId):
+            try container.encode(TypeKey.engineAddInstance, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+
+        case .engineRemoveInstance(let tabId, let instanceId):
+            try container.encode(TypeKey.engineRemoveInstance, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
+
+        case .engineSelectInstance(let tabId, let instanceId):
+            try container.encode(TypeKey.engineSelectInstance, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
+
+        case .loadEngineConversation(let tabId, let instanceId):
+            try container.encode(TypeKey.loadEngineConversation, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
         }
     }
 }

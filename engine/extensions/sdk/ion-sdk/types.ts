@@ -1,3 +1,4 @@
+// @file-size-exception: SDK public type registry. Single concept (the extension API surface) that extension authors import as one cohesive set; splitting fragments the discoverability of the API.
 // Ion Extension SDK -- type definitions.
 // All public types and interfaces. Imported by ./runtime.ts and re-exported
 // from ./index.ts.
