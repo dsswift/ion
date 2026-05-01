@@ -48,12 +48,12 @@ When adding a test, ensure it's a member of the `IonRemoteTests` target, not `Io
 - 600-line cap per `.swift`. CI hard-fails above. Override: `// @file-size-exception: <reason>` on line 1.
 - One type per file. Filename matches the type name.
 - Subfolder when a folder grows past ~5 files (Networking already splits this way).
-- Allowlisted (don't extend; extract): `IonRemote/ViewModels/SessionViewModel.swift`, `IonRemote/Networking/TransportManager.swift`, `IonRemote/Models/NormalizedEvent.swift`, `IonRemoteTests/NormalizedEventTests.swift`.
+- Allowlisted (don't extend; extract): `IonRemote/ViewModels/SessionViewModel.swift`, `IonRemote/Networking/TransportManager.swift`, `IonRemote/Models/NormalizedEvent.swift`.
 
 ## Tests (`IonRemoteTests/`)
 
-- XCTest. Mirror the source folder structure inside `IonRemoteTests/` (`IonRemoteTests/Models/NormalizedEventTests.swift` for `IonRemote/Models/NormalizedEvent.swift`).
-- Existing test files: `E2ECryptoTests.swift`, `NormalizedEventTests.swift`, `RelayClientTests.swift`, `TransportManagerTests.swift`.
+- XCTest. Mirror the source folder structure inside `IonRemoteTests/`.
+- Existing test files: `E2ECryptoTests.swift`, `NormalizedEventLifecycleTests.swift`, `NormalizedEventStreamTests.swift`, `NormalizedEventPermissionTests.swift`, `NormalizedEventTerminalTests.swift`, `RelayClientTests.swift`, `TransportManagerTests.swift`.
 - Wire-format changes (`NormalizedEvent`, `RemoteCommand`, `RemoteTabState`) must update the corresponding test fixtures.
 - Crypto changes must keep `E2ECryptoTests.swift` passing — it round-trips real pairing handshakes.
 - Network changes must keep `RelayClientTests.swift` and `TransportManagerTests.swift` green.
