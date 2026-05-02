@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.6.0](https://github.com/dsswift/ion/compare/desktop-v1.5.0...desktop-v1.6.0) (2026-05-02)
+
+### Features
+
+* **desktop:** expand engine bridge for ios ([4569575](https://github.com/dsswift/ion/commit/4569575b3237353613d3fe55312304ec668bbcea))
+
 ## [1.5.0](https://github.com/dsswift/ion/compare/desktop-v1.4.0...desktop-v1.5.0) (2026-05-01)
 
 ### Features
