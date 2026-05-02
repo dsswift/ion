@@ -111,6 +111,7 @@ extension SessionViewModel {
 
     func createTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
+        awaitingLocalTabCreation = true
         send(.createTab(workingDirectory: dir))
     }
 
@@ -152,6 +153,7 @@ extension SessionViewModel {
 
     func createTerminalTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
+        awaitingLocalTabCreation = true
         send(.createTerminalTab(workingDirectory: dir))
     }
 
@@ -159,6 +161,7 @@ extension SessionViewModel {
 
     func createEngineTab(workingDirectory: String? = nil, profileId: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
+        awaitingLocalTabCreation = true
         send(.createEngineTab(workingDirectory: dir, profileId: profileId))
     }
 

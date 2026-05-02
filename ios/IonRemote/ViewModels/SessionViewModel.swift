@@ -173,6 +173,9 @@ final class SessionViewModel {
     var recentDirectories: [String] = []
     /// Tab ID to auto-navigate to after remote creation.
     var pendingNavigationTabId: String? = nil
+    /// Set `true` before sending a create-tab command so the `tabCreated`
+    /// handler knows the creation was locally initiated and should navigate.
+    var awaitingLocalTabCreation = false
     /// Text to prefill into the input bar (set by rewind/fork responses).
     var pendingInputByTab: [String: String] = [:]
     /// Default directory for new tabs on iOS (independent of desktop setting).

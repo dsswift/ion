@@ -77,7 +77,10 @@ extension SessionViewModel {
                 tabs.append(tab)
                 tabIds.insert(tab.id)
             }
-            pendingNavigationTabId = tab.id
+            if awaitingLocalTabCreation {
+                pendingNavigationTabId = tab.id
+                awaitingLocalTabCreation = false
+            }
 
         case .tabClosed(let tabId):
             handleTabClosed(tabId: tabId)
