@@ -65,6 +65,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
 	s.requestID = requestID
+	s.cliTurnNumber = 0
+	s.cliTurnActive = false
 
 	if s.planMode && s.planFilePath == "" {
 		home, _ := os.UserHomeDir()
@@ -127,6 +129,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	m.wirePermissionHookServer(s, key, &opts, permEng)
 	m.wireToolServer(s, key, &opts, extGroup)
+
+	// Fire before_prompt for CliBackend (ApiBackend wires this inside buildRunConfig).
+	m.fireBeforePromptCli(s, key, extGroup, skipExtensions, &opts)
 
 	m.mu.RLock()
 	if len(s.suppressedTools) > 0 {
