@@ -59,6 +59,53 @@ func TestHandleNormalizedEvent_ToolCall(t *testing.T) {
 	}
 }
 
+func TestHandleNormalizedEvent_ToolCallUpdate(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("tcu", defaultConfig())
+	_ = mgr.SendPrompt("tcu", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "tool_up1", PartialInput: `{"file_path":"/tmp/test`},
+	})
+
+	updateEvents := ec.byType("engine_tool_update")
+	if len(updateEvents) == 0 {
+		t.Fatal("expected engine_tool_update event")
+	}
+	if updateEvents[0].event.ToolID != "tool_up1" {
+		t.Errorf("expected toolID 'tool_up1', got %q", updateEvents[0].event.ToolID)
+	}
+	if updateEvents[0].event.ToolPartialInput != `{"file_path":"/tmp/test` {
+		t.Errorf("expected partialInput, got %q", updateEvents[0].event.ToolPartialInput)
+	}
+}
+
+func TestHandleNormalizedEvent_ToolCallComplete(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("tcc", defaultConfig())
+	_ = mgr.SendPrompt("tcc", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 5},
+	})
+
+	completeEvents := ec.byType("engine_tool_complete")
+	if len(completeEvents) == 0 {
+		t.Fatal("expected engine_tool_complete event")
+	}
+	if completeEvents[0].event.ToolIndex == nil || *completeEvents[0].event.ToolIndex != 5 {
+		t.Errorf("expected ToolIndex 5, got %v", completeEvents[0].event.ToolIndex)
+	}
+}
+
 func TestHandleNormalizedEvent_ToolResult(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -516,6 +563,16 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 			input:    types.NormalizedEvent{Data: nil},
 			wantType: "engine_error",
 		},
+		{
+			name:     "tool_call_update",
+			input:    types.NormalizedEvent{Data: &types.ToolCallUpdateEvent{ToolID: "t1", PartialInput: `{"file`}},
+			wantType: "engine_tool_update",
+		},
+		{
+			name:     "tool_call_complete",
+			input:    types.NormalizedEvent{Data: &types.ToolCallCompleteEvent{Index: 2}},
+			wantType: "engine_tool_complete",
+		},
 	}
 
 	for _, tt := range tests {
@@ -548,6 +605,45 @@ func TestTranslateToEngineEvent_UnknownType(t *testing.T) {
 	}, 200000)
 	if result.Type != "" {
 		t.Errorf("expected empty type for unknown events (silent drop), got %q", result.Type)
+	}
+}
+
+func TestTranslateToEngineEvent_ToolCallUpdate(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "tool-42", PartialInput: `{"file_path":"/tmp`},
+	}, 200000)
+	if result.Type != "engine_tool_update" {
+		t.Fatalf("expected engine_tool_update, got %q", result.Type)
+	}
+	if result.ToolID != "tool-42" {
+		t.Errorf("expected ToolID 'tool-42', got %q", result.ToolID)
+	}
+	if result.ToolPartialInput != `{"file_path":"/tmp` {
+		t.Errorf("expected PartialInput, got %q", result.ToolPartialInput)
+	}
+}
+
+func TestTranslateToEngineEvent_ToolCallComplete(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 3},
+	}, 200000)
+	if result.Type != "engine_tool_complete" {
+		t.Fatalf("expected engine_tool_complete, got %q", result.Type)
+	}
+	if result.ToolIndex == nil || *result.ToolIndex != 3 {
+		t.Errorf("expected ToolIndex 3, got %v", result.ToolIndex)
+	}
+}
+
+func TestTranslateToEngineEvent_ToolCallCompleteZeroIndex(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 0},
+	}, 200000)
+	if result.Type != "engine_tool_complete" {
+		t.Fatalf("expected engine_tool_complete, got %q", result.Type)
+	}
+	if result.ToolIndex == nil || *result.ToolIndex != 0 {
+		t.Errorf("expected ToolIndex 0 (not nil), got %v", result.ToolIndex)
 	}
 }
 

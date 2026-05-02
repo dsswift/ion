@@ -310,6 +310,12 @@ type EngineEvent struct {
 	ToolName string `json:"toolName,omitempty"`
 	ToolID   string `json:"toolId,omitempty"`
 
+	// engine_tool_update
+	ToolPartialInput string `json:"partialInput,omitempty"`
+
+	// engine_tool_complete (pointer avoids zero-value omission for index 0)
+	ToolIndex *int `json:"index,omitempty"`
+
 	// engine_tool_end
 	ToolResult  string `json:"result,omitempty"`
 	ToolIsError bool   `json:"isError,omitempty"`

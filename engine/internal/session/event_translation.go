@@ -215,6 +215,13 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 	case *types.ToolCallEvent:
 		return types.EngineEvent{Type: "engine_tool_start", ToolName: e.ToolName, ToolID: e.ToolID}
 
+	case *types.ToolCallUpdateEvent:
+		return types.EngineEvent{Type: "engine_tool_update", ToolID: e.ToolID, ToolPartialInput: e.PartialInput}
+
+	case *types.ToolCallCompleteEvent:
+		idx := e.Index
+		return types.EngineEvent{Type: "engine_tool_complete", ToolIndex: &idx}
+
 	case *types.ToolResultEvent:
 		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError}
 
