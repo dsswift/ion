@@ -71,7 +71,7 @@ ion prompt "refactor this codebase" --max-turns 10 --max-budget 0.50
 ```
 
 - `--max-turns` caps LLM round-trips (default: 50)
-- `--max-budget` sets a cost ceiling in USD (default: $10.00)
+- `--max-budget` sets a cost ceiling in USD (default: unlimited)
 
 ## Daemon mode
 

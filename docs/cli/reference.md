@@ -75,7 +75,7 @@ ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMA
 |------|----------|---------|-------------|
 | `--model` | No | config default | Model override (e.g., `claude-sonnet-4-6`, `gpt-4.1-mini`) |
 | `--max-turns` | No | 50 | Maximum LLM round-trips |
-| `--max-budget` | No | 10.0 | Cost ceiling in USD |
+| `--max-budget` | No | unlimited | Cost ceiling in USD |
 | `--output` | No | `text` | Output format: `text`, `json`, or `stream-json` |
 | `--key` | No | (ephemeral) | Target session key |
 | `--extension` | No | -- | Path to extension directory |
@@ -234,7 +234,7 @@ These flags are recognized by `ion prompt`. Other commands accept subsets as doc
 |------|------|---------|-------------|
 | `--model` | string | config default (`claude-sonnet-4-6`) | LLM model identifier |
 | `--max-turns` | int | 50 | Maximum agent loop iterations |
-| `--max-budget` | float | 10.0 | Maximum spend in USD |
+| `--max-budget` | float | unlimited | Maximum spend in USD |
 | `--output` | string | `text` | Output format (`text`, `json`, `stream-json`) |
 | `--key` | string | -- | Session key |
 | `--extension` | string | -- | Extension directory path (supports `~` expansion) |
