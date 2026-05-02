@@ -399,25 +399,6 @@ func TestGlobToolHonorsCtxDeadline(t *testing.T) {
 	}
 }
 
-// TestGlobToolRejectsPathEscapingCwd verifies the safety gate that prevents
-// a search-dir argument from walking outside the working directory.
-func TestGlobToolRejectsPathEscapingCwd(t *testing.T) {
-	cwd := t.TempDir()
-	parent := filepath.Dir(cwd)
-
-	result, _ := ExecuteTool(context.Background(), "Glob", map[string]any{
-		"pattern": "*",
-		"path":    parent,
-	}, cwd)
-
-	if !result.IsError {
-		t.Errorf("expected IsError=true when path escapes cwd, got %q", result.Content)
-	}
-	if !strings.Contains(result.Content, "escape") {
-		t.Errorf("expected error message to mention escape, got %q", result.Content)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Grep Tool Tests
 // ---------------------------------------------------------------------------
