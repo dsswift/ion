@@ -421,6 +421,9 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 	case *types.CompactingEvent:
 		return types.EngineEvent{Type: "engine_compacting", CompactingActive: e.Active}
 
+	case *types.ToolStalledEvent:
+		return types.EngineEvent{Type: "engine_tool_stalled", ToolID: e.ToolID, ToolName: e.ToolName, ToolElapsed: e.Elapsed}
+
 	default:
 		return types.EngineEvent{}
 	}

@@ -10,15 +10,16 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// TestToolStalledEventEmitted verifies that a ToolStalledEvent is emitted
-// when a tool call takes longer than toolStallThreshold to return.
+// TestToolStalledEventEmitted verifies that ToolStalledEvent is emitted
+// periodically when a tool call takes longer than toolStallThreshold.
 func TestToolStalledEventEmitted(t *testing.T) {
 	// Shorten thresholds for the test so we don't wait 30 real seconds.
 	origStall := toolStallThreshold
-	toolStallThreshold = 500 * time.Millisecond
+	toolStallThreshold = 200 * time.Millisecond
 	defer func() { toolStallThreshold = origStall }()
 
-	// Register a tool that blocks for longer than the stall threshold.
+	// Register a tool that blocks for longer than 2x the stall threshold
+	// so we can observe at least two periodic stall events.
 	tools.RegisterTool(&types.ToolDef{
 		Name:        "test_slow_stall_tool",
 		Description: "blocks for a while",
@@ -61,26 +62,34 @@ func TestToolStalledEventEmitted(t *testing.T) {
 		t.Fatal("timed out waiting for exit")
 	}
 
-	// Should have a ToolStalledEvent for our slow tool.
+	// Should have multiple ToolStalledEvents for our slow tool (periodic).
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	found := false
+	stallCount := 0
+	var lastElapsed float64
 	for _, ev := range c.normalized {
 		if stall, ok := ev.Data.(*types.ToolStalledEvent); ok {
 			if stall.ToolID != "tool-stall-1" {
 				continue
 			}
-			found = true
+			stallCount++
 			if stall.ToolName != "test_slow_stall_tool" {
 				t.Errorf("expected toolName %q, got %q", "test_slow_stall_tool", stall.ToolName)
 			}
 			if stall.Elapsed <= 0 {
 				t.Errorf("expected positive elapsed, got %f", stall.Elapsed)
 			}
+			if stall.Elapsed <= lastElapsed {
+				t.Errorf("expected increasing elapsed, got %f after %f", stall.Elapsed, lastElapsed)
+			}
+			lastElapsed = stall.Elapsed
 		}
 	}
-	if !found {
-		t.Error("expected ToolStalledEvent to be emitted for slow tool")
+	if stallCount == 0 {
+		t.Error("expected at least one ToolStalledEvent to be emitted for slow tool")
+	}
+	if stallCount < 2 {
+		t.Errorf("expected at least 2 periodic stall events, got %d", stallCount)
 	}
 }
 

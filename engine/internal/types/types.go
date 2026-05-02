@@ -320,6 +320,9 @@ type EngineEvent struct {
 	ToolResult  string `json:"result,omitempty"`
 	ToolIsError bool   `json:"isError,omitempty"`
 
+	// engine_tool_stalled
+	ToolElapsed float64 `json:"toolElapsed,omitempty"`
+
 	// engine_dead
 	ExitCode   *int     `json:"exitCode,omitempty"`
 	Signal     *string  `json:"signal,omitempty"`
