@@ -4,6 +4,7 @@ struct PlanApprovalCardView: View {
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
     let request: PermissionRequest
+    @State private var showFullPlan = false
 
     private var planContent: String? {
         request.toolInput?["planContent"]?.value as? String
@@ -17,6 +18,14 @@ struct PlanApprovalCardView: View {
                     .foregroundStyle(.green)
                 Text("Plan Ready")
                     .font(.headline)
+                Spacer()
+                if planContent != nil {
+                    Button { showFullPlan = true } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             // Plan content
@@ -49,6 +58,11 @@ struct PlanApprovalCardView: View {
                 .fill(.ultraThickMaterial)
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
         )
+        .fullScreenCover(isPresented: $showFullPlan) {
+            if let content = planContent {
+                PlanFullScreenView(content: content)
+            }
+        }
     }
 
     private func implement() {
@@ -65,20 +79,10 @@ struct PlanApprovalCardView: View {
 
     @ViewBuilder
     private func planTextView(_ content: String) -> some View {
-        if let attributed = try? AttributedString(
-            markdown: content,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            Text(attributed)
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-        } else {
-            Text(content)
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-        }
+        Text(MarkdownFormatter.format(content))
+            .font(.caption)
+            .textSelection(.enabled)
+            .padding(8)
     }
 
     private func triggerHaptic() {
