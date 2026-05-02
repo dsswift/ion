@@ -88,6 +88,10 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
   ctx.lanAuthPending.delete(connectionId)
 
   ctx.lan?.rekeyClient(connectionId, device.id)
+  // Map both the original lan-N connectionId (used by the message handler
+  // closure) and the rekeyed device.id (used by the close handler after
+  // it finds the ws under its new key) to the device.
+  ctx.lanDeviceMap.set(connectionId, device.id)
   ctx.lanDeviceMap.set(device.id, device.id)
 
   ctx.deviceSecrets.set(device.id, secret)

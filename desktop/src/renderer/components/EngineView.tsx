@@ -274,10 +274,7 @@ export function EngineView({ tabId }: EngineViewProps) {
 
       {/* Status footer */}
       <EngineFooter
-        status={statusFields ? {
-          ...statusFields,
-          label: pane?.instances.find(i => i.id === activeInstanceId)?.label || statusFields.label,
-        } : null}
+        status={statusFields ?? null}
         isTall={isTall}
         onToggleTall={() => toggleTallView(tabId)}
       />

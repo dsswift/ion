@@ -37,7 +37,9 @@ export function EngineFooter({ status, isTall, onToggleTall }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
         {status ? (
           <>
-            <span style={{ color: colors.accent, fontWeight: 600 }}>{status.label}</span>
+            {status.extensionName && (
+              <span style={{ color: colors.accent, fontWeight: 600 }}>{status.extensionName}</span>
+            )}
             <span style={{ color: colors.textTertiary }}>[{status.state}]</span>
             {status.team && <>
               <span style={{ color: colors.textTertiary }}>|</span>
