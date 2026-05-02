@@ -16,6 +16,22 @@ struct TabListView: View {
                             NavigationLink(value: tab.id) {
                                 TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual")
                             }
+                            .contextMenu {
+                                if viewModel.tabGroupMode == "manual" {
+                                    let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
+                                    if !targets.isEmpty {
+                                        Menu {
+                                            ForEach(targets) { target in
+                                                Button(target.label) {
+                                                    viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
+                                                }
+                                            }
+                                        } label: {
+                                            Label("Move to Group", systemImage: "arrow.right.arrow.left")
+                                        }
+                                    }
+                                }
+                            }
                         }
                         .onDelete { offsets in
                             let ids = offsets.map { group.tabs[$0].id }

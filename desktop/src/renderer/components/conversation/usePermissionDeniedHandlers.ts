@@ -55,8 +55,8 @@ export function buildPermissionDeniedHandlers(
     useSessionStore.getState().setPermissionMode('auto', 'plan_approved')
 
     // Auto-move tab to in-progress group if designated
-    const { inProgressGroupId, tabGroupMode } = usePreferencesStore.getState()
-    if (inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
+    const { inProgressGroupId, tabGroupMode, autoGroupMovement } = usePreferencesStore.getState()
+    if (autoGroupMovement && inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
       useSessionStore.getState().moveTabToGroup(tab.id, inProgressGroupId)
     }
 

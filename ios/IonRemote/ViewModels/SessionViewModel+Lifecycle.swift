@@ -129,6 +129,7 @@ extension SessionViewModel {
         engineProfiles = []
         pendingCloseTabIds = []
         pendingInputByTab = [:]
+        awaitingLocalTabCreation = false
         activeTools = [:]
         tabGroupMode = "auto"
         tabGroups = []

@@ -32,6 +32,11 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	m.fireCliTurnHooks(s, key, sOk, event)
 
 	contextWindow := conversation.DefaultContext
+	m.mu.RLock()
+	if s, sOk2 := m.sessions[key]; sOk2 && s.lastContextWindow > 0 {
+		contextWindow = s.lastContextWindow
+	}
+	m.mu.RUnlock()
 
 	ee := translateToEngineEvent(event, contextWindow)
 	if ee.Type == "" {
@@ -39,6 +44,16 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		return
 	}
 	m.emit(key, ee)
+
+	// Track last-known context usage on the session so subsequent
+	// engine_status emissions carry the latest values.
+	if ee.EndUsage != nil && ee.EndUsage.ContextPercent > 0 {
+		m.mu.Lock()
+		if s, ok2 := m.sessions[key]; ok2 {
+			s.lastContextPct = ee.EndUsage.ContextPercent
+		}
+		m.mu.Unlock()
+	}
 
 	// G34: Fire tool_start/tool_end extension hooks
 	if sOk && s.extGroup != nil && !s.extGroup.IsEmpty() {
@@ -79,6 +94,16 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 				pct = 100
 			}
 		}
+		m.mu.Lock()
+		if s2, ok2 := m.sessions[key]; ok2 {
+			if pct > 0 {
+				s2.lastContextPct = pct
+			}
+			if tc.CostUsd > 0 {
+				s2.lastTotalCost = tc.CostUsd
+			}
+		}
+		m.mu.Unlock()
 		m.emit(key, types.EngineEvent{
 			Type: "engine_message_end",
 			EndUsage: &types.MessageEndUsage{
@@ -142,9 +167,27 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// Clear any stale working message before transitioning to idle
 	m.emit(key, types.EngineEvent{Type: "engine_working_message", EventMessage: ""})
 
+	// Carry last-known context/cost state into the idle status so the
+	// footer doesn't reset to 0% between runs.
+	m.mu.RLock()
+	var idlePct, idleCW int
+	var idleModel string
+	var idleCost float64
+	if s, ok := m.sessions[key]; ok {
+		idlePct = s.lastContextPct
+		idleCW = s.lastContextWindow
+		idleModel = s.lastModel
+		idleCost = s.lastTotalCost
+	}
+	m.mu.RUnlock()
+
 	m.emit(key, types.EngineEvent{
-		Type:   "engine_status",
-		Fields: &types.StatusFields{Label: key, State: "idle", SessionID: sessionID},
+		Type: "engine_status",
+		Fields: &types.StatusFields{
+			Label: key, State: "idle", SessionID: sessionID,
+			ContextPercent: idlePct, ContextWindow: idleCW,
+			Model: idleModel, TotalCostUsd: idleCost,
+		},
 	})
 
 	if (code != nil && *code != 0) || signal != nil {
@@ -296,6 +339,13 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError}
 
 	case *types.TaskCompleteEvent:
+		var pct int
+		if e.Usage.InputTokens != nil && contextWindow > 0 {
+			pct = *e.Usage.InputTokens * 100 / contextWindow
+			if pct > 100 {
+				pct = 100
+			}
+		}
 		return types.EngineEvent{
 			Type: "engine_status",
 			Fields: &types.StatusFields{
@@ -303,6 +353,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				SessionID:         e.SessionID,
 				TotalCostUsd:      e.CostUsd,
 				ContextWindow:     contextWindow,
+				ContextPercent:    pct,
 				PermissionDenials: e.PermissionDenials,
 			},
 		}
@@ -369,6 +420,9 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 
 	case *types.CompactingEvent:
 		return types.EngineEvent{Type: "engine_compacting", CompactingActive: e.Active}
+
+	case *types.ToolStalledEvent:
+		return types.EngineEvent{Type: "engine_tool_stalled", ToolID: e.ToolID, ToolName: e.ToolName, ToolElapsed: e.Elapsed}
 
 	default:
 		return types.EngineEvent{}

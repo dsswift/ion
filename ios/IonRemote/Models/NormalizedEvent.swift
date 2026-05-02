@@ -61,6 +61,7 @@ enum RemoteEvent: Codable, Sendable {
     case engineInstanceRemoved(tabId: String, instanceId: String)
     case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?)
     case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
+    case engineModelOverride(tabId: String, instanceId: String?, model: String)
     case engineProfiles(profiles: [EngineProfile])
 
     // MARK: - Codable keys
@@ -109,6 +110,7 @@ enum RemoteEvent: Codable, Sendable {
         case engineInstanceRemoved = "engine_instance_removed"
         case engineHarnessMessage = "engine_harness_message"
         case engineConversationHistory = "engine_conversation_history"
+        case engineModelOverride = "engine_model_override"
         case engineProfiles = "engine_profiles"
     }
 
@@ -123,7 +125,7 @@ enum RemoteEvent: Codable, Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
-        case signal, stderrTail, label, profiles, elapsed, usage
+        case signal, stderrTail, label, profiles, elapsed, usage, model
         case tabGroupMode, tabGroups
     }
 

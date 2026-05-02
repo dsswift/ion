@@ -261,24 +261,31 @@ func (b *ApiBackend) executeTools(
 				return nil
 			}
 
-			// Stall detection: emit ToolStalledEvent if the tool hasn't
-			// returned within the stall threshold. Informational only.
+			// Stall detection: emit ToolStalledEvent periodically while the
+			// tool runs longer than the stall threshold. The first event fires
+			// at stallThreshold, then repeats every stallThreshold until the
+			// tool completes. This keeps the desktop watchdog alive so it
+			// does not kill tabs that are legitimately running long tools.
 			// Capture the threshold locally so the goroutine doesn't race
 			// with tests that reassign the package-level var.
 			stallThreshold := toolStallThreshold
 			toolDone := make(chan struct{})
 			go func() {
-				stallTimer := time.NewTimer(stallThreshold)
-				defer stallTimer.Stop()
-				select {
-				case <-stallTimer.C:
-					b.emit(run, types.NormalizedEvent{Data: &types.ToolStalledEvent{
-						ToolID:   block.ID,
-						ToolName: block.Name,
-						Elapsed:  stallThreshold.Seconds(),
-					}})
-				case <-toolDone:
-					// Tool finished before stall threshold; nothing to do.
+				ticker := time.NewTicker(stallThreshold)
+				defer ticker.Stop()
+				ticks := 0
+				for {
+					select {
+					case <-ticker.C:
+						ticks++
+						b.emit(run, types.NormalizedEvent{Data: &types.ToolStalledEvent{
+							ToolID:   block.ID,
+							ToolName: block.Name,
+							Elapsed:  float64(ticks) * stallThreshold.Seconds(),
+						}})
+					case <-toolDone:
+						return
+					}
 				}
 			}()
 

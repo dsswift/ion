@@ -56,6 +56,7 @@ export interface State {
   engineConversationIds: Map<string, string[]>
   enginePanes: Map<string, EnginePaneState>
   engineMessages: Map<string, Message[]>
+  engineModelOverrides: Map<string, string>
 
   tallViewTabId: string | null
   scrollToBottomCounter: number
@@ -150,6 +151,7 @@ export interface State {
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
   reorderEngineInstances: (tabId: string, reordered: EngineInstance[]) => void
+  setEngineModel: (tabId: string, modelId: string) => void
 }
 
 export type StoreSet = (partial: State | Partial<State> | ((state: State) => State | Partial<State>), replace?: false) => void

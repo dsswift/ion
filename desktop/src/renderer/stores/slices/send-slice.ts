@@ -66,11 +66,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       if (tab.status === 'connecting') return
 
-      if (!tab.conversationId && tab.permissionMode === 'plan' && prompt.startsWith('/')) {
+      let effectiveMode = tab.permissionMode
+      if (!tab.conversationId && effectiveMode === 'plan' && prompt.startsWith('/')) {
         get().setPermissionMode('auto', 'slash_command')
+        effectiveMode = 'auto'
+      }
 
-        const { inProgressGroupId, tabGroupMode } = usePreferencesStore.getState()
-        if (inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
+      // Auto group movement: move tab based on effective permission mode
+      const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId } = usePreferencesStore.getState()
+      if (autoGroupMovement && tabGroupMode === 'manual') {
+        if (effectiveMode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
+          get().moveTabToGroup(tab.id, planningGroupId)
+        } else if (effectiveMode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
           get().moveTabToGroup(tab.id, inProgressGroupId)
         }
       }
@@ -204,6 +211,16 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       if (tab.status === 'connecting') return
+
+      // Auto group movement for remote prompts
+      const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId: ipGroupId } = usePreferencesStore.getState()
+      if (autoGroupMovement && tabGroupMode === 'manual') {
+        if (tab.permissionMode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
+          get().moveTabToGroup(tab.id, planningGroupId)
+        } else if (tab.permissionMode === 'auto' && ipGroupId && tab.groupId !== ipGroupId) {
+          get().moveTabToGroup(tab.id, ipGroupId)
+        }
+      }
 
       const resolvedPath = tab.hasChosenDirectory
         ? tab.workingDirectory

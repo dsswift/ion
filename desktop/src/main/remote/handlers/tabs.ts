@@ -73,7 +73,10 @@ async function createTabFromCommand(
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
-        return store.getState().${storeMethod}(${args});
+        var prev = store.getState().activeTabId;
+        var id = store.getState().${storeMethod}(${args});
+        store.setState({ activeTabId: prev });
+        return id;
       })()
     `)
     return tabId || null
@@ -117,7 +120,10 @@ export async function handleCreateEngineTab(cmd: Extract<RemoteCommand, { type: 
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
-        return store.getState().createEngineTab('${escaped}', ${profileArg});
+        var prev = store.getState().activeTabId;
+        var id = store.getState().createEngineTab('${escaped}', ${profileArg});
+        store.setState({ activeTabId: prev });
+        return id;
       })()
     `)
     if (tabId) notifyTabCreated(tabId)
@@ -370,5 +376,22 @@ export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 
   const settings = readSettings()
   settings.tabGroupMode = mode
   writeSettings(settings)
+  await handleSync()
+}
+
+export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: 'move_tab_to_group' }>): Promise<void> {
+  try {
+    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedGroup = cmd.groupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().moveTabToGroup('${escapedTab}', '${escapedGroup}');
+      })()
+    `)
+  } catch (err) {
+    log('move_tab_to_group error: ' + (err as Error).message)
+  }
   await handleSync()
 }

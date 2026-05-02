@@ -52,6 +52,13 @@ type engineSession struct {
 	pendingPermissions map[string]chan string
 	pendingElicit      map[string]chan elicitReply
 
+	// Last-known context usage state, carried forward across status
+	// emissions so the footer always reflects the most recent data.
+	lastContextPct    int
+	lastContextWindow int
+	lastModel         string
+	lastTotalCost     float64
+
 	// CLI backend turn tracking (populated by handleNormalizedEvent)
 	cliTurnNumber  int  // current turn number for CLI runs
 	cliTurnActive  bool // true between turn_start and turn_end

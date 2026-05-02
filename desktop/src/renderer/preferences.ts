@@ -51,6 +51,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   stashedManualTabAssignments: saved.stashedManualTabAssignments,
   inProgressGroupId: saved.inProgressGroupId,
   doneGroupId: saved.doneGroupId,
+  planningGroupId: saved.planningGroupId,
+  autoGroupMovement: saved.autoGroupMovement,
   commitCommand: saved.commitCommand,
   gitChangesTreeView: saved.gitChangesTreeView,
   quickTools: saved.quickTools,
@@ -66,6 +68,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultTallConversation: saved.defaultTallConversation,
   defaultTallTerminal: saved.defaultTallTerminal,
   defaultTallEngine: saved.defaultTallEngine,
+  tabRecoveryEnabled: saved.tabRecoveryEnabled,
+  tabRecoveryTimeoutSec: saved.tabRecoveryTimeoutSec,
   _systemIsDark: true,
   setDefaultTallConversation: (enabled) => {
     set({ defaultTallConversation: enabled })
@@ -77,6 +81,15 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setDefaultTallEngine: (enabled) => {
     set({ defaultTallEngine: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setTabRecoveryEnabled: (enabled) => {
+    set({ tabRecoveryEnabled: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setTabRecoveryTimeoutSec: (sec) => {
+    const clamped = Math.max(30, Math.min(600, Math.round(sec)))
+    set({ tabRecoveryTimeoutSec: clamped })
     saveSettings(getAllSettings(get))
   },
   setIsDark: (isDark) => {
@@ -266,6 +279,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     const patch: Partial<PreferencesState> = { tabGroups: updated }
     if (get().inProgressGroupId === groupId) patch.inProgressGroupId = null
     if (get().doneGroupId === groupId) patch.doneGroupId = null
+    if (get().planningGroupId === groupId) patch.planningGroupId = null
     set(patch)
     saveSettings(getAllSettings(get))
   },
@@ -296,6 +310,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setDoneGroupId: (groupId) => {
     set({ doneGroupId: groupId })
+    saveSettings(getAllSettings(get))
+  },
+  setPlanningGroupId: (groupId) => {
+    set({ planningGroupId: groupId })
+    saveSettings(getAllSettings(get))
+  },
+  setAutoGroupMovement: (enabled) => {
+    set({ autoGroupMovement: enabled })
     saveSettings(getAllSettings(get))
   },
   setCommitCommand: (cmd) => {

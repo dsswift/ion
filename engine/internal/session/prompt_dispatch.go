@@ -144,9 +144,20 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	if info := providers.GetModelInfo(opts.Model); info != nil {
 		promptCtxWindow = info.ContextWindow
 	}
+
+	m.mu.Lock()
+	s.lastModel = opts.Model
+	s.lastContextWindow = promptCtxWindow
+	lastPct := s.lastContextPct
+	m.mu.Unlock()
+
 	m.emit(key, types.EngineEvent{
-		Type:   "engine_status",
-		Fields: &types.StatusFields{Label: key, State: "running", Model: opts.Model, ContextWindow: promptCtxWindow},
+		Type: "engine_status",
+		Fields: &types.StatusFields{
+			Label: key, State: "running", Model: opts.Model,
+			ContextWindow:  promptCtxWindow,
+			ContextPercent: lastPct,
+		},
 	})
 
 	// Dispatch to backend. ApiBackend uses the per-run config built above so

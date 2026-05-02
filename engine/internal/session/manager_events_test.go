@@ -273,6 +273,34 @@ func TestHandleNormalizedEvent_NilDataReturnsError(t *testing.T) {
 	}
 }
 
+func TestHandleNormalizedEvent_ToolStalled(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("stall", defaultConfig())
+	_ = mgr.SendPrompt("stall", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolStalledEvent{ToolID: "tool-stall-1", ToolName: "Bash", Elapsed: 30.0},
+	})
+
+	stallEvents := ec.byType("engine_tool_stalled")
+	if len(stallEvents) == 0 {
+		t.Fatal("expected engine_tool_stalled event")
+	}
+	if stallEvents[0].event.ToolID != "tool-stall-1" {
+		t.Errorf("expected toolID 'tool-stall-1', got %q", stallEvents[0].event.ToolID)
+	}
+	if stallEvents[0].event.ToolName != "Bash" {
+		t.Errorf("expected toolName 'Bash', got %q", stallEvents[0].event.ToolName)
+	}
+	if stallEvents[0].event.ToolElapsed != 30.0 {
+		t.Errorf("expected ToolElapsed 30.0, got %f", stallEvents[0].event.ToolElapsed)
+	}
+}
+
 func TestHandleNormalizedEvent_UnknownRunIDIgnored(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -573,6 +601,11 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 			input:    types.NormalizedEvent{Data: &types.ToolCallCompleteEvent{Index: 2}},
 			wantType: "engine_tool_complete",
 		},
+		{
+			name:     "tool_stalled",
+			input:    types.NormalizedEvent{Data: &types.ToolStalledEvent{ToolID: "t1", ToolName: "Bash", Elapsed: 30.0}},
+			wantType: "engine_tool_stalled",
+		},
 	}
 
 	for _, tt := range tests {
@@ -644,6 +677,24 @@ func TestTranslateToEngineEvent_ToolCallCompleteZeroIndex(t *testing.T) {
 	}
 	if result.ToolIndex == nil || *result.ToolIndex != 0 {
 		t.Errorf("expected ToolIndex 0 (not nil), got %v", result.ToolIndex)
+	}
+}
+
+func TestTranslateToEngineEvent_ToolStalled(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.ToolStalledEvent{ToolID: "tool-99", ToolName: "Bash", Elapsed: 60.0},
+	}, 200000)
+	if result.Type != "engine_tool_stalled" {
+		t.Fatalf("expected engine_tool_stalled, got %q", result.Type)
+	}
+	if result.ToolID != "tool-99" {
+		t.Errorf("expected ToolID 'tool-99', got %q", result.ToolID)
+	}
+	if result.ToolName != "Bash" {
+		t.Errorf("expected ToolName 'Bash', got %q", result.ToolName)
+	}
+	if result.ToolElapsed != 60.0 {
+		t.Errorf("expected ToolElapsed 60.0, got %f", result.ToolElapsed)
 	}
 }
 

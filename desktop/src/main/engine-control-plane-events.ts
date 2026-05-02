@@ -168,6 +168,16 @@ export function handleEngineEvent(
       ctx.emit('event', tabId, { type: 'compacting', active: event.active } as NormalizedEvent)
       break
 
+    case 'engine_tool_stalled':
+      debug(`tool_stalled: tabId=${tabId} tool=${event.toolName} elapsed=${event.toolElapsed}s`)
+      ctx.emit('event', tabId, {
+        type: 'tool_stalled',
+        toolId: event.toolId,
+        toolName: event.toolName,
+        elapsed: event.toolElapsed,
+      } as NormalizedEvent)
+      break
+
     case 'engine_agent_state':
       ctx.emit('event', tabId, event as any)
       break

@@ -39,7 +39,22 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
         case 'engine_status': {
           set((state) => {
             const statusFields = new Map(state.engineStatusFields)
-            statusFields.set(key, event.fields)
+
+            // Merge last-known context/cost into incoming status fields
+            // so the footer doesn't reset to 0% when the engine emits a
+            // status event without usage data.
+            const prev = state.engineStatusFields.get(key)
+            const merged = { ...event.fields }
+            if (!merged.contextPercent) {
+              const usage = state.engineUsage.get(key)
+              if (usage && usage.percent > 0) {
+                merged.contextPercent = usage.percent
+              }
+            }
+            if (!merged.totalCostUsd && prev?.totalCostUsd) {
+              merged.totalCostUsd = prev.totalCostUsd
+            }
+            statusFields.set(key, merged)
             const sessionId = event.fields?.sessionId
             const pane = state.enginePanes.get(tabId)
             const isActive = !pane || pane.activeInstanceId === key.split(':')[1]

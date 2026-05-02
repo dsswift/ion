@@ -32,6 +32,8 @@ enum RemoteCommand: Codable, Sendable {
     case engineSelectInstance(tabId: String, instanceId: String)
     case loadEngineConversation(tabId: String, instanceId: String?)
     case setTabGroupMode(mode: String)
+    case moveTabToGroup(tabId: String, groupId: String)
+    case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
 
     // MARK: - Codable
 
@@ -65,13 +67,15 @@ enum RemoteCommand: Codable, Sendable {
         case engineSelectInstance = "engine_select_instance"
         case loadEngineConversation = "load_engine_conversation"
         case setTabGroupMode = "set_tab_group_mode"
+        case moveTabToGroup = "move_tab_to_group"
+        case engineSetModel = "engine_set_model"
     }
 
     private enum CodingKeys: String, CodingKey {
         case type
         case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
         case instanceId, data, cols, rows, customTitle, label, messageId
-        case dialogId, value, profileId
+        case dialogId, value, profileId, model, groupId
     }
 
     init(from decoder: Decoder) throws {
@@ -220,6 +224,17 @@ enum RemoteCommand: Codable, Sendable {
         case .setTabGroupMode:
             let mode = try container.decode(String.self, forKey: .mode)
             self = .setTabGroupMode(mode: mode)
+
+        case .moveTabToGroup:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let groupId = try container.decode(String.self, forKey: .groupId)
+            self = .moveTabToGroup(tabId: tabId, groupId: groupId)
+
+        case .engineSetModel:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let model = try container.decode(String.self, forKey: .model)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            self = .engineSetModel(tabId: tabId, model: model, instanceId: instanceId)
         }
     }
 
@@ -368,6 +383,17 @@ enum RemoteCommand: Codable, Sendable {
         case .setTabGroupMode(let mode):
             try container.encode(TypeKey.setTabGroupMode, forKey: .type)
             try container.encode(mode, forKey: .mode)
+
+        case .moveTabToGroup(let tabId, let groupId):
+            try container.encode(TypeKey.moveTabToGroup, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(groupId, forKey: .groupId)
+
+        case .engineSetModel(let tabId, let model, let instanceId):
+            try container.encode(TypeKey.engineSetModel, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(model, forKey: .model)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
         }
     }
 }

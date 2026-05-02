@@ -111,6 +111,7 @@ extension SessionViewModel {
 
     func createTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
+        awaitingLocalTabCreation = true
         send(.createTab(workingDirectory: dir))
     }
 
@@ -139,10 +140,20 @@ extension SessionViewModel {
         send(.setTabGroupMode(mode: mode))
     }
 
+    /// Move a tab to a different manual group on the desktop.
+    func moveTabToGroup(tabId: String, groupId: String) {
+        // Optimistic local update for responsive UI
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].groupId = groupId
+        }
+        send(.moveTabToGroup(tabId: tabId, groupId: groupId))
+    }
+
     // MARK: - Terminal Commands
 
     func createTerminalTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
+        awaitingLocalTabCreation = true
         send(.createTerminalTab(workingDirectory: dir))
     }
 
@@ -150,6 +161,7 @@ extension SessionViewModel {
 
     func createEngineTab(workingDirectory: String? = nil, profileId: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
+        awaitingLocalTabCreation = true
         send(.createEngineTab(workingDirectory: dir, profileId: profileId))
     }
 
@@ -166,6 +178,13 @@ extension SessionViewModel {
         }
         let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
         send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId))
+    }
+
+    func setEngineModel(tabId: String, model: String) {
+        let key = engineCompoundKey(tabId: tabId)
+        engineModelOverrides[key] = model
+        let instanceId = activeEngineInstance[tabId]
+        send(.engineSetModel(tabId: tabId, model: model, instanceId: instanceId))
     }
 
     func abortEngine(tabId: String) {
