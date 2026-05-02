@@ -110,7 +110,7 @@ export function makeLocalTab(): TabState {
 }
 
 export function isBlankConversationTab(t: TabState, dir: string): boolean {
-  return !t.isTerminalOnly && t.messages.length === 0 && !t.customTitle && t.workingDirectory === dir
+  return !t.isTerminalOnly && !t.isEngine && t.messages.length === 0 && !t.customTitle && t.workingDirectory === dir
 }
 
 export function isBlankTerminalTab(t: TabState, dir: string): boolean {
