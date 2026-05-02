@@ -10,6 +10,25 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.8.0](https://github.com/dsswift/ion/compare/desktop-v1.7.0...desktop-v1.8.0) (2026-05-02)
+
+### Features
+
+* **desktop:** add context tooltip to engine footer ([3e64508](https://github.com/dsswift/ion/commit/3e64508e535fb271516aef86c64743d1d2c61f3a))
+* **desktop:** add context window to status events ([d9b7504](https://github.com/dsswift/ion/commit/d9b7504ef640e0ae36410c84109c290d1ad54518))
+* **desktop:** add tab recovery settings ui ([d8b4ac0](https://github.com/dsswift/ion/commit/d8b4ac06eff53811b11e440395b63f5af1ca3318))
+* **desktop:** add tool stalled event handling ([5eb6b85](https://github.com/dsswift/ion/commit/5eb6b85c4aabbff7651ff01b24b8e600d95c7986))
+* **desktop:** add model selection to engine prompt ([f2488e2](https://github.com/dsswift/ion/commit/f2488e23525b9a8ac67d80ae7bacedfaed29db5f))
+* **desktop:** add model selector ui to engine footer ([48f2b7a](https://github.com/dsswift/ion/commit/48f2b7a0b11b45c52286f47f132183ec81901164))
+* **desktop:** add engine model override remote command ([e3446b2](https://github.com/dsswift/ion/commit/e3446b29ea5d10e377f944f9996e0edcda9942bd))
+* **ios:** add move to group context menu ([a5b3626](https://github.com/dsswift/ion/commit/a5b362685757df379cb150bd686c41ff425e77ec))
+* **desktop:** add mode-driven auto tab group movement ([26bdf2e](https://github.com/dsswift/ion/commit/26bdf2e04e02efbf96debf61635f818abee24aa9))
+* **desktop:** add draggable settings dialog ([6d2df24](https://github.com/dsswift/ion/commit/6d2df24b6c477fab695618733794f60be0f259a2))
+
+### Bug Fixes
+
+* **desktop:** preserve active tab when creating new tabs ([1048a73](https://github.com/dsswift/ion/commit/1048a733cd2d4f7399e3519a191549ab57762e78))
+
 ## [1.7.0](https://github.com/dsswift/ion/compare/desktop-v1.6.0...desktop-v1.7.0) (2026-05-02)
 
 ### Features

@@ -10,6 +10,18 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.5.0](https://github.com/dsswift/ion/compare/ios-v1.4.0...ios-v1.5.0) (2026-05-02)
+
+### Features
+
+* **ios:** add model selection to engine ui ([a0af220](https://github.com/dsswift/ion/commit/a0af2205da713960ebe061fc119fb940cb50937e))
+* **ios:** add full-screen plan viewer with markdown ([20181a8](https://github.com/dsswift/ion/commit/20181a829e1e95ec8a10a87c744d51c9acd72550))
+* **ios:** add move to group context menu ([a5b3626](https://github.com/dsswift/ion/commit/a5b362685757df379cb150bd686c41ff425e77ec))
+
+### Bug Fixes
+
+* **ios:** auto-navigate only for locally created tabs ([96e941b](https://github.com/dsswift/ion/commit/96e941bb0dd5ba4ae76f28592108ee30350c0a40))
+
 ## [1.4.0](https://github.com/dsswift/ion/compare/ios-v1.3.0...ios-v1.4.0) (2026-05-02)
 
 ### Features
