@@ -93,6 +93,7 @@ export type RemoteCommand =
   | { type: 'engine_add_instance'; tabId: string }
   | { type: 'engine_remove_instance'; tabId: string; instanceId: string }
   | { type: 'engine_select_instance'; tabId: string; instanceId: string }
+  | { type: 'engine_set_model'; tabId: string; instanceId?: string; model: string }
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'unpair' }
@@ -132,6 +133,7 @@ export type RemoteEvent =
   | { type: 'engine_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'engine_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
+  | { type: 'engine_model_override'; tabId: string; instanceId?: string | null; model: string }
   | { type: 'engine_dead'; tabId: string; instanceId?: string | null; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; tabId: string; instanceId?: string | null; message: string }
   | { type: 'engine_instance_added'; tabId: string; instance: { id: string; label: string } }

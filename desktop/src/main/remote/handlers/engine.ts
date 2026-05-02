@@ -58,6 +58,19 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
           instance: instanceInfo,
         })
       }
+      // Send the initial model override so iOS knows the configured model
+      const escapedInstId = instanceId!.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const modelOverride = await state.mainWindow.webContents.executeJavaScript(
+        `window.__Ion_resolveEngineModel('${escapedTab}:${escapedInstId}')`
+      )
+      if (modelOverride) {
+        state.remoteTransport?.send({
+          type: 'engine_model_override',
+          tabId: cmd.tabId,
+          instanceId,
+          model: modelOverride,
+        })
+      }
       // Wait for the engine session to initialise before sending the prompt
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
@@ -108,6 +121,19 @@ export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type
           tabId: cmd.tabId,
           instance: instanceInfo,
         })
+        // Send the initial model override so iOS knows the configured model
+        const escapedKey = `${escaped}:${instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}`
+        const modelOverride = await state.mainWindow?.webContents.executeJavaScript(
+          `window.__Ion_resolveEngineModel('${escapedKey}')`
+        )
+        if (modelOverride) {
+          state.remoteTransport?.send({
+            type: 'engine_model_override',
+            tabId: cmd.tabId,
+            instanceId,
+            model: modelOverride,
+          })
+        }
       }
     }
   } catch (err) {
@@ -145,6 +171,22 @@ export async function handleEngineSelectInstance(cmd: Extract<RemoteCommand, { t
     `)
   } catch (err) {
     log(`engine_select_instance error: ${(err as Error).message}`)
+  }
+}
+
+export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: 'engine_set_model' }>): Promise<void> {
+  try {
+    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().setEngineModel('${escapedTab}', '${escapedModel}');
+      })()
+    `)
+  } catch (err) {
+    log(`engine_set_model error: ${(err as Error).message}`)
   }
 }
 
@@ -206,7 +248,8 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
         var agents = s.engineAgentStates.get(key) || [];
         var status = s.engineStatusFields.get(key) || null;
         var working = s.engineWorkingMessages.get(key) || '';
-        return { agents: agents, status: status, working: working };
+        var modelOverride = window.__Ion_resolveEngineModel(key);
+        return { agents: agents, status: status, working: working, modelOverride: modelOverride };
       })()
     `)
     if (!snapshot) return
@@ -224,6 +267,11 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
     if (snapshot.working) {
       state.remoteTransport.send({
         type: 'engine_working_message', tabId, instanceId, message: snapshot.working,
+      })
+    }
+    if (snapshot.modelOverride) {
+      state.remoteTransport.send({
+        type: 'engine_model_override', tabId, instanceId, model: snapshot.modelOverride,
       })
     }
   } catch (err) {
