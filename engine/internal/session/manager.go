@@ -77,6 +77,13 @@ func (m *Manager) OnEvent(fn func(string, types.EngineEvent)) {
 
 func (m *Manager) emit(key string, event types.EngineEvent) {
 	m.mu.RLock()
+	// Stamp the stored extensionName onto engine-emitted status events so
+	// clients always receive the friendly name the extension broadcast.
+	if event.Type == "engine_status" && event.Fields != nil && event.Fields.ExtensionName == "" {
+		if s, ok := m.sessions[key]; ok && s.extensionName != "" {
+			event.Fields.ExtensionName = s.extensionName
+		}
+	}
 	fn := m.onEvent
 	m.mu.RUnlock()
 	if fn != nil {

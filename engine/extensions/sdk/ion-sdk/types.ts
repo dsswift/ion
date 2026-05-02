@@ -317,7 +317,7 @@ export interface ElicitResult {
  */
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: any[] }
-  | { type: 'engine_status'; fields: any }
+  | { type: 'engine_status'; fields: { extensionName?: string; [key: string]: unknown } }
   | { type: 'engine_working_message'; message: string }
   | { type: 'engine_notify'; message: string; level: string }
   | { type: 'engine_harness_message'; message: string; source?: string }

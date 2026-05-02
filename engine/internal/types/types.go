@@ -261,6 +261,11 @@ type StatusFields struct {
 	ContextWindow     int                `json:"contextWindow"`
 	TotalCostUsd      float64            `json:"totalCostUsd,omitempty"`
 	PermissionDenials []PermissionDenial `json:"permissionDenials,omitempty"`
+	// ExtensionName is a friendly display name broadcast by the extension via
+	// ext/emit engine_status. The engine preserves it across its own status
+	// transitions so clients can show "Chief of Staff [idle]" instead of a
+	// GUID compound key. Empty means no extension name was broadcast.
+	ExtensionName string `json:"extensionName,omitempty"`
 }
 
 // --- Engine Events ---

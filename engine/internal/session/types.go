@@ -30,6 +30,7 @@ type engineSession struct {
 	agentSpecs         map[string]types.AgentSpec
 	agentStates        []types.AgentStateUpdate
 	lastExtAgentStates []types.AgentStateUpdate
+	extensionName      string // friendly name broadcast by the extension
 	suppressedTools    []string
 	childPIDs     map[int]struct{}
 	planMode           bool

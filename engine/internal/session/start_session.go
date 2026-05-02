@@ -606,6 +606,12 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 						copy(s.lastExtAgentStates, ev.Agents)
 						m.mu.Unlock()
 					}
+					// Capture friendly extension name from extension-emitted status events
+					if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {
+						m.mu.Lock()
+						s.extensionName = ev.Fields.ExtensionName
+						m.mu.Unlock()
+					}
 					m.emit(capturedKey, ev)
 				})
 			}
