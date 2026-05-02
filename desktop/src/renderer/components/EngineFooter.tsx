@@ -1,6 +1,8 @@
-import React from 'react'
+import React, { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { usePopoverLayer } from './PopoverLayer'
 import type { StatusFields } from '../../shared/types'
 
 interface Props {
@@ -15,8 +17,32 @@ function renderContextBar(percent: number): string {
   return '[' + '#'.repeat(filled) + '.'.repeat(empty) + '] ' + percent + '%'
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  return `${Math.round(n / 1000)}k`
+}
+
 export function EngineFooter({ status, isTall, onToggleTall }: Props) {
   const colors = useColors()
+  const popoverLayer = usePopoverLayer()
+  const [hover, setHover] = useState(false)
+  const barRef = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState({ bottom: 0, left: 0 })
+
+  const handleBarEnter = () => {
+    if (barRef.current) {
+      const rect = barRef.current.getBoundingClientRect()
+      setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left + rect.width / 2 })
+    }
+    setHover(true)
+  }
+
+  const pct = status?.contextPercent ?? 0
+  const cw = status?.contextWindow ?? 0
+  const tokens = cw > 0 ? pct * cw / 100 : 0
+  const tooltip = cw > 0
+    ? `${formatTokens(tokens)} / ${formatTokens(cw)} tokens`
+    : `${pct}% context used`
 
   return (
     <div
@@ -61,9 +87,38 @@ export function EngineFooter({ status, isTall, onToggleTall }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         {status && (
           <>
-            <span style={{ fontFamily: 'monospace', fontSize: 10, color: colors.textTertiary }}>
+            <span
+              ref={barRef}
+              style={{ fontFamily: 'monospace', fontSize: 10, color: colors.textTertiary, cursor: 'default' }}
+              onMouseEnter={handleBarEnter}
+              onMouseLeave={() => setHover(false)}
+            >
               {renderContextBar(status.contextPercent)}
             </span>
+            {popoverLayer && hover && createPortal(
+              <div
+                style={{
+                  position: 'fixed',
+                  bottom: pos.bottom,
+                  left: pos.left,
+                  transform: 'translateX(-50%)',
+                  pointerEvents: 'none',
+                  background: colors.popoverBg,
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  border: `1px solid ${colors.popoverBorder}`,
+                  borderRadius: 6,
+                  padding: '3px 8px',
+                  fontSize: 10,
+                  color: colors.textSecondary,
+                  whiteSpace: 'nowrap',
+                  boxShadow: colors.popoverShadow,
+                }}
+              >
+                {tooltip}
+              </div>,
+              popoverLayer,
+            )}
             {status.totalCostUsd != null && status.totalCostUsd > 0 && (
               <span style={{ color: colors.textTertiary, fontSize: 10 }}>
                 ${status.totalCostUsd.toFixed(2)}
