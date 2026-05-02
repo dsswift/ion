@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.8.1](https://github.com/dsswift/ion/compare/desktop-v1.8.0...desktop-v1.8.1) (2026-05-02)
+
+### Bug Fixes
+
+* **desktop:** exclude engine tabs from blank check ([ef95b45](https://github.com/dsswift/ion/commit/ef95b45dd92c126f7f8ba7a67cf519b32534eaa6))
+
 ## [1.8.0](https://github.com/dsswift/ion/compare/desktop-v1.7.0...desktop-v1.8.0) (2026-05-02)
 
 ### Features
