@@ -303,6 +303,14 @@ extension SessionViewModel {
                 let snapshotIds = Set(merged[i].permissionQueue.map(\.questionId))
                 let localOnly = existing.permissionQueue.filter { !snapshotIds.contains($0.questionId) }
                 merged[i].permissionQueue.append(contentsOf: localOnly)
+                // Prefer local entry when it has richer data (e.g. planContent from live event)
+                for local in existing.permissionQueue where snapshotIds.contains(local.questionId) {
+                    if local.toolInput?["planContent"]?.value as? String != nil,
+                       let idx = merged[i].permissionQueue.firstIndex(where: { $0.questionId == local.questionId }),
+                       merged[i].permissionQueue[idx].toolInput?["planContent"]?.value as? String == nil {
+                        merged[i].permissionQueue[idx] = local
+                    }
+                }
             }
         }
         // Always prefer locally-tracked lastMessage over snapshot values.
