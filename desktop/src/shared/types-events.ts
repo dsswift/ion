@@ -145,3 +145,4 @@ export type NormalizedEvent =
   | { type: 'permission_request'; questionId: string; toolName: string; toolDescription?: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'stream_reset' }
   | { type: 'compacting'; active: boolean }
+  | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }

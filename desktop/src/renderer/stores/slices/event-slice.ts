@@ -54,6 +54,10 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               updated.currentActivity = event.active ? 'Compacting...' : 'Thinking...'
               break
 
+            case 'tool_stalled':
+              updated.currentActivity = `Running ${event.toolName} (${Math.round(event.elapsed)}s)...`
+              break
+
             case 'text_chunk': {
               console.log(`[DIAG] text_chunk: tab=${tabId} len=${(event as any).text?.length} prev_msg_len=${updated.messages[updated.messages.length - 1]?.content?.length ?? 'N/A'}`)
               updated.currentActivity = 'Writing...'

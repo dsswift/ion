@@ -153,16 +153,18 @@ async function persistSessionChains(useSessionStore: Store): Promise<void> {
 }
 
 const WATCHDOG_INTERVAL_MS = 5_000
-const WATCHDOG_THRESHOLD_MS = 60_000
 
 function scanForStuckTabs(useSessionStore: Store): void {
+  const { tabRecoveryEnabled, tabRecoveryTimeoutSec } = usePreferencesStore.getState()
+  if (!tabRecoveryEnabled) return
+  const thresholdMs = tabRecoveryTimeoutSec * 1000
   const now = Date.now()
   const { tabs, forceRecoverTab } = useSessionStore.getState()
   for (const t of tabs) {
     if (t.status !== 'running' && t.status !== 'connecting') continue
     if (!t.activeRequestId) continue
     if (t.lastEventAt === null) continue
-    if (now - t.lastEventAt <= WATCHDOG_THRESHOLD_MS) continue
+    if (now - t.lastEventAt <= thresholdMs) continue
     forceRecoverTab(t.id, `Tab idle for ${Math.round((now - t.lastEventAt) / 1000)}s with no engine activity. The engine may have hung; sending stop and resetting the tab. You can resume the conversation.`)
   }
 }
