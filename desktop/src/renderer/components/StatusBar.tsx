@@ -106,7 +106,7 @@ export function StatusBar() {
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 
         <BackendIndicator />
-        <ModelPicker />
+        {!isEngine && <ModelPicker />}
         <ContextIndicator />
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>

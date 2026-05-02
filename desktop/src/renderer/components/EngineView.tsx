@@ -65,6 +65,11 @@ export function EngineView({ tabId }: EngineViewProps) {
   const tabStatus = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.status)
   const isTall = useSessionStore(s => s.tallViewTabId === tabId)
   const toggleTallView = useSessionStore(s => s.toggleTallView)
+  const engineModelOverride = useSessionStore(s => {
+    const p = s.enginePanes.get(tabId)
+    const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
+    return k ? s.engineModelOverrides.get(k) : undefined
+  })
   const isRunning = tabStatus === 'running' || tabStatus === 'connecting'
   const hasRunningChildren = agentStates.some(a => a.status === 'running')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -277,6 +282,8 @@ export function EngineView({ tabId }: EngineViewProps) {
         status={statusFields ?? null}
         isTall={isTall}
         onToggleTall={() => toggleTallView(tabId)}
+        activeTabId={tabId}
+        engineModelOverride={engineModelOverride}
       />
 
       {/* Notification toasts */}
