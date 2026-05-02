@@ -31,6 +31,7 @@ enum RemoteCommand: Codable, Sendable {
     case engineRemoveInstance(tabId: String, instanceId: String)
     case engineSelectInstance(tabId: String, instanceId: String)
     case loadEngineConversation(tabId: String, instanceId: String?)
+    case setTabGroupMode(mode: String)
 
     // MARK: - Codable
 
@@ -63,6 +64,7 @@ enum RemoteCommand: Codable, Sendable {
         case engineRemoveInstance = "engine_remove_instance"
         case engineSelectInstance = "engine_select_instance"
         case loadEngineConversation = "load_engine_conversation"
+        case setTabGroupMode = "set_tab_group_mode"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -214,6 +216,10 @@ enum RemoteCommand: Codable, Sendable {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             self = .loadEngineConversation(tabId: tabId, instanceId: instanceId)
+
+        case .setTabGroupMode:
+            let mode = try container.decode(String.self, forKey: .mode)
+            self = .setTabGroupMode(mode: mode)
         }
     }
 
@@ -358,6 +364,10 @@ enum RemoteCommand: Codable, Sendable {
             try container.encode(TypeKey.loadEngineConversation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
+
+        case .setTabGroupMode(let mode):
+            try container.encode(TypeKey.setTabGroupMode, forKey: .type)
+            try container.encode(mode, forKey: .mode)
         }
     }
 }

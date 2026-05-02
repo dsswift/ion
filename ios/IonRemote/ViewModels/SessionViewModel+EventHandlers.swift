@@ -69,8 +69,8 @@ extension SessionViewModel {
             // so LAN auto-upgrade still works when the desktop comes back.
             disconnect()
 
-        case .snapshot(let snapshotTabs, let recentDirs):
-            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs)
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups):
+            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups)
 
         case .tabCreated(let tab):
             if !tabs.contains(where: { $0.id == tab.id }) {
@@ -260,12 +260,19 @@ extension SessionViewModel {
     }
 
     @MainActor
-    private func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String]) {
+    private func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?) {
         if connectionState != .connected {
             connectionState = .connected
         }
         if !recentDirs.isEmpty {
             recentDirectories = recentDirs
+        }
+        // Update tab group mode and groups from desktop
+        if let mode = groupMode {
+            tabGroupMode = mode
+        }
+        if let grps = groups {
+            tabGroups = grps
         }
         // Filter out tabs that iOS requested to close but hasn't received
         // tab_closed confirmation for yet. Without this, the snapshot
