@@ -53,7 +53,21 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
 
 ## Commits
 
-- Conventional Commits, allowed types: `feat:`, `fix:`, `chore:`, `docs:`, `feat!:`.
+- Conventional Commits with **required scope**: `type(scope): subject`.
+- Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`.
+- Allowed scopes (from `.commit.json`):
+
+| Scope | Path trigger |
+|-------|-------------|
+| `engine` | `engine/` |
+| `desktop` | `desktop/` |
+| `relay` | `relay/` |
+| `ios` | `ios/` |
+| `docs` | `docs/` |
+| `repo` | `.github/`, root files, or cross-cutting changes |
+
+- Pick the scope matching the primary path touched. If files span multiple scopes, use the scope of the *primary* change; for pure CI/config/root changes use `repo`.
+- Examples: `feat(engine): add streaming support`, `fix(desktop): correct tab order`, `chore(repo): update ci workflow`.
 - Subject ≤ 50 chars, lowercase, imperative, no period.
 - Never `--no-verify`.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
