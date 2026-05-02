@@ -265,6 +265,21 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 updated.permissionDenied = null
               }
               playNotificationIfHidden()
+              // Auto-move to done group on clean auto-mode completion
+              // Guard: only move if tab was actually running (not a stale task_complete
+              // from a killed session during resetTabSession → implement flow)
+              if (tab.status === 'running' && updated.permissionMode === 'auto' && updated.permissionDenied === null) {
+                const capturedTabId2 = tabId
+                setTimeout(() => {
+                  const { autoGroupMovement, tabGroupMode, doneGroupId } = usePreferencesStore.getState()
+                  if (autoGroupMovement && tabGroupMode === 'manual' && doneGroupId) {
+                    const currentTab = get().tabs.find(t => t.id === capturedTabId2)
+                    if (currentTab && currentTab.groupId !== doneGroupId) {
+                      get().moveTabToGroup(capturedTabId2, doneGroupId)
+                    }
+                  }
+                }, 0)
+              }
               if (
                 !updated.customTitle &&
                 usePreferencesStore.getState().aiGeneratedTitles

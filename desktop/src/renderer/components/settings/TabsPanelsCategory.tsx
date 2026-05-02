@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react'
-import { Trash, PencilSimple, Star, Plus, Lightning, CheckCircle } from '@phosphor-icons/react'
+import { Trash, PencilSimple, Star, Plus, Lightning, CheckCircle, Notepad } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { usePreferencesStore, getEffectiveTabGroups } from '../../preferences'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -17,6 +17,8 @@ export function TabsPanelsCategory() {
   const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const inProgressGroupId = usePreferencesStore((s) => s.inProgressGroupId)
   const doneGroupId = usePreferencesStore((s) => s.doneGroupId)
+  const planningGroupId = usePreferencesStore((s) => s.planningGroupId)
+  const autoGroupMovement = usePreferencesStore((s) => s.autoGroupMovement)
   const keepExplorerOnCollapse = usePreferencesStore((s) => s.keepExplorerOnCollapse)
   const setKeepExplorerOnCollapse = usePreferencesStore((s) => s.setKeepExplorerOnCollapse)
   const keepTerminalOnCollapse = usePreferencesStore((s) => s.keepTerminalOnCollapse)
@@ -63,11 +65,13 @@ export function TabsPanelsCategory() {
             return { ...t, groupId: defaultGroup.id }
           }),
         }))
-        // Clear in-progress/done if their groups no longer exist in stash
+        // Clear in-progress/done/planning if their groups no longer exist in stash
         const ipId = usePreferencesStore.getState().inProgressGroupId
         const doneId = usePreferencesStore.getState().doneGroupId
+        const planId = usePreferencesStore.getState().planningGroupId
         if (ipId && !groupIds.has(ipId)) usePreferencesStore.getState().setInProgressGroupId(null)
         if (doneId && !groupIds.has(doneId)) usePreferencesStore.getState().setDoneGroupId(null)
+        if (planId && !groupIds.has(planId)) usePreferencesStore.getState().setPlanningGroupId(null)
       } else {
         // No stash — use defaults (existing behavior)
         usePreferencesStore.getState().setTabGroups([])
@@ -77,8 +81,10 @@ export function TabsPanelsCategory() {
         }))
         const ipGroup = effectiveGroups.find(g => g.label === 'In Progress')
         const doneGroup = effectiveGroups.find(g => g.label === 'Testing')
+        const planGroup = effectiveGroups.find(g => g.label === 'Planning')
         if (ipGroup && !usePreferencesStore.getState().inProgressGroupId) usePreferencesStore.getState().setInProgressGroupId(ipGroup.id)
         if (doneGroup && !usePreferencesStore.getState().doneGroupId) usePreferencesStore.getState().setDoneGroupId(doneGroup.id)
+        if (planGroup && !usePreferencesStore.getState().planningGroupId) usePreferencesStore.getState().setPlanningGroupId(planGroup.id)
       }
     } else if (newMode === 'auto' && oldMode === 'manual') {
       useSessionStore.setState((s) => ({
@@ -107,8 +113,10 @@ export function TabsPanelsCategory() {
     }))
     const ipGroup = groups.find(g => g.label === 'In Progress')
     const doneGroup = groups.find(g => g.label === 'Testing')
+    const planGroup = groups.find(g => g.label === 'Planning')
     if (ipGroup && !usePreferencesStore.getState().inProgressGroupId) usePreferencesStore.getState().setInProgressGroupId(ipGroup.id)
     if (doneGroup && !usePreferencesStore.getState().doneGroupId) usePreferencesStore.getState().setDoneGroupId(doneGroup.id)
+    if (planGroup && !usePreferencesStore.getState().planningGroupId) usePreferencesStore.getState().setPlanningGroupId(planGroup.id)
     return groups
   }, [])
 
@@ -198,6 +206,27 @@ export function TabsPanelsCategory() {
                   }}
                 >
                   <Star size={14} weight={group.isDefault ? 'fill' : 'regular'} />
+                </button>
+
+                <button
+                  onClick={() => {
+                    const groups = materializeDefaults()
+                    const target = groups.find(g => g.label === group.label) || groups[0]
+                    const current = usePreferencesStore.getState().planningGroupId
+                    usePreferencesStore.getState().setPlanningGroupId(current === target.id ? null : target.id)
+                  }}
+                  title={planningGroupId === group.id ? 'Planning group (click to unset)' : 'Set as planning group'}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: planningGroupId === group.id ? '#5b9bd5' : colors.textTertiary,
+                  }}
+                >
+                  <Notepad size={14} weight={planningGroupId === group.id ? 'fill' : 'regular'} />
                 </button>
 
                 <button
@@ -387,6 +416,15 @@ export function TabsPanelsCategory() {
           </div>
         )
       })()}
+
+      {tabGroupMode === 'manual' && (
+        <SettingToggle
+          label="Auto-move Tabs by Mode"
+          description="Automatically move tabs between planning, in-progress, and done groups based on their mode."
+          checked={autoGroupMovement}
+          onChange={usePreferencesStore.getState().setAutoGroupMovement}
+        />
+      )}
 
       <SettingHeading>Minimize Behavior</SettingHeading>
 
