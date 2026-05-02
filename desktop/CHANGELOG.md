@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.7.0](https://github.com/dsswift/ion/compare/desktop-v1.6.0...desktop-v1.7.0) (2026-05-02)
+
+### Features
+
+* **desktop:** add tab group mode configuration ([babf2f6](https://github.com/dsswift/ion/commit/babf2f64189aecb5ea8586c4d8e9da745bccea0e))
+* **desktop:** add tool streaming event handlers ([ba39ef5](https://github.com/dsswift/ion/commit/ba39ef550a9e1325ee6ea11de87313dac2feac63))
+
 ## [1.6.0](https://github.com/dsswift/ion/compare/desktop-v1.5.0...desktop-v1.6.0) (2026-05-02)
 
 ### Features

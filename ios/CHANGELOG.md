@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.4.0](https://github.com/dsswift/ion/compare/ios-v1.3.0...ios-v1.4.0) (2026-05-02)
+
+### Features
+
+* **ios:** add tab group mode configuration ([e9b63ee](https://github.com/dsswift/ion/commit/e9b63ee5eadc80cb03846bafdb56eb011d58477c))
+* **ios:** add tool streaming event handlers ([58a5b05](https://github.com/dsswift/ion/commit/58a5b05fa34d3457608b2613db8b0f97a36cdeeb))
+
 ## [1.3.0](https://github.com/dsswift/ion/compare/ios-v1.2.0...ios-v1.3.0) (2026-05-02)
 
 ### Features
