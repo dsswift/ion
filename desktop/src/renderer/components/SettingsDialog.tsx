@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { X, GearSix, GitBranch, Columns, PaintBrush, TerminalWindow, SlidersHorizontal, WifiHigh, Plugs } from '@phosphor-icons/react'
@@ -38,10 +38,46 @@ interface SettingsDialogProps {
   onClose: () => void
 }
 
+const DIALOG_WIDTH = 700
+const DIALOG_HEIGHT = 600
+
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const [activeCategory, setActiveCategory] = useState('general')
+
+  // Position: always start centered
+  const [pos, setPos] = useState(() => ({
+    x: (window.innerWidth - DIALOG_WIDTH) / 2,
+    y: (window.innerHeight - DIALOG_HEIGHT) / 2,
+  }))
+  const dragRef = useRef<{
+    startX: number; startY: number; originX: number; originY: number
+  } | null>(null)
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: pos.x, originY: pos.y }
+  }, [pos])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const dx = e.clientX - dragRef.current.startX
+      const dy = e.clientY - dragRef.current.startY
+      const newX = Math.max(-200, Math.min(window.innerWidth - 100, dragRef.current.originX + dx))
+      const newY = Math.max(0, Math.min(window.innerHeight - 32, dragRef.current.originY + dy))
+      setPos({ x: newX, y: newY })
+    }
+    const handleMouseUp = () => { dragRef.current = null }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
 
   // Escape key dismisses
   useEffect(() => {
@@ -67,11 +103,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       className="glass-surface"
       style={{
         position: 'fixed',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: 700,
-        maxHeight: 600,
+        left: pos.x,
+        top: pos.y,
+        width: DIALOG_WIDTH,
+        maxHeight: DIALOG_HEIGHT,
         borderRadius: 20,
         display: 'flex',
         flexDirection: 'column',
@@ -80,13 +115,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         zIndex: 9999,
       }}
     >
-      {/* Header */}
+      {/* Header — drag handle */}
       <div
+        onMouseDown={handleDragStart}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '14px 16px 10px',
+          cursor: 'grab',
+          userSelect: 'none',
         }}
       >
         <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 600 }}>
@@ -94,6 +132,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         </span>
         <button
           onClick={onClose}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             background: 'none',
             border: 'none',
