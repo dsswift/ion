@@ -96,6 +96,7 @@ export type RemoteCommand =
   | { type: 'engine_set_model'; tabId: string; instanceId?: string; model: string }
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
+  | { type: 'move_tab_to_group'; tabId: string; groupId: string }
   | { type: 'unpair' }
 
 // ─── Ion → iOS events ───

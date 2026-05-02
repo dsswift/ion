@@ -372,3 +372,20 @@ export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 
   writeSettings(settings)
   await handleSync()
 }
+
+export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: 'move_tab_to_group' }>): Promise<void> {
+  try {
+    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedGroup = cmd.groupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().moveTabToGroup('${escapedTab}', '${escapedGroup}');
+      })()
+    `)
+  } catch (err) {
+    log('move_tab_to_group error: ' + (err as Error).message)
+  }
+  await handleSync()
+}

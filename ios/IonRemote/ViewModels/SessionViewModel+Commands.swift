@@ -139,6 +139,15 @@ extension SessionViewModel {
         send(.setTabGroupMode(mode: mode))
     }
 
+    /// Move a tab to a different manual group on the desktop.
+    func moveTabToGroup(tabId: String, groupId: String) {
+        // Optimistic local update for responsive UI
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].groupId = groupId
+        }
+        send(.moveTabToGroup(tabId: tabId, groupId: groupId))
+    }
+
     // MARK: - Terminal Commands
 
     func createTerminalTab(workingDirectory: String? = nil) {

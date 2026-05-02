@@ -11,6 +11,7 @@ import {
   handleSetPermissionMode,
   handleLoadConversation,
   handleSetTabGroupMode,
+  handleMoveTabToGroup,
 } from './handlers/tabs'
 import {
   handleEnginePrompt,
@@ -77,6 +78,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'rewind': await handleRewind(cmd); break
     case 'fork_from_message': await handleForkFromMessage(cmd); break
     case 'set_tab_group_mode': await handleSetTabGroupMode(cmd); break
+    case 'move_tab_to_group': await handleMoveTabToGroup(cmd); break
     case 'unpair': handleUnpair(deviceId); break
   }
 }
