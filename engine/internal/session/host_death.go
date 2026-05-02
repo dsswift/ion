@@ -75,8 +75,14 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		hadTurnInFlight := h.TurnInFlightAtDeath()
 
 		m.emit(key, types.EngineEvent{
-			Type:   "engine_status",
-			Fields: &types.StatusFields{Label: key, State: "extension_restarting"},
+			Type: "engine_status",
+			Fields: &types.StatusFields{
+				Label: key, State: "extension_restarting",
+				ContextPercent: s.lastContextPct,
+				ContextWindow:  s.lastContextWindow,
+				Model:          s.lastModel,
+				TotalCostUsd:   s.lastTotalCost,
+			},
 		})
 
 		attempt, err := h.Respawn()
@@ -127,9 +133,24 @@ func (m *Manager) respawnDeadExtensions(key string) {
 	}
 
 	// Settle status back to idle once all hosts have been processed.
+	m.mu.RLock()
+	var idlePct, idleCW int
+	var idleModel string
+	var idleCost float64
+	if sess, ok2 := m.sessions[key]; ok2 {
+		idlePct = sess.lastContextPct
+		idleCW = sess.lastContextWindow
+		idleModel = sess.lastModel
+		idleCost = sess.lastTotalCost
+	}
+	m.mu.RUnlock()
 	m.emit(key, types.EngineEvent{
-		Type:   "engine_status",
-		Fields: &types.StatusFields{Label: key, State: "idle"},
+		Type: "engine_status",
+		Fields: &types.StatusFields{
+			Label: key, State: "idle",
+			ContextPercent: idlePct, ContextWindow: idleCW,
+			Model: idleModel, TotalCostUsd: idleCost,
+		},
 	})
 }
 
