@@ -54,6 +54,21 @@ export function handleEngineEvent(
       } as NormalizedEvent)
       break
 
+    case 'engine_tool_update':
+      ctx.emit('event', tabId, {
+        type: 'tool_call_update',
+        toolId: event.toolId,
+        partialInput: event.partialInput,
+      } as NormalizedEvent)
+      break
+
+    case 'engine_tool_complete':
+      ctx.emit('event', tabId, {
+        type: 'tool_call_complete',
+        index: event.index,
+      } as NormalizedEvent)
+      break
+
     case 'engine_tool_end':
       debug(`tool_end: tabId=${tabId} toolId=${event.toolId} isError=${event.isError}`)
       ctx.emit('event', tabId, {

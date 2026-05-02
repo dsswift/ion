@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { IPC } from '../shared/types'
 import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log } from './logger'
-import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview } from './state'
+import { state, sessionPlane, engineBridge, activeAssistantMessages, activeToolInputs, lastMessagePreview } from './state'
 import { broadcast } from './broadcast'
 import { currentBackend } from './settings-store'
 import { normalizedToRemote } from './remote/protocol'
@@ -100,6 +100,19 @@ export function wireRemoteSessionPlaneForwarding(): void {
         })
         break
       }
+      case 'tool_call_update': {
+        if (!activeToolInputs.has(tabId)) activeToolInputs.set(tabId, new Map())
+        const tabTools = activeToolInputs.get(tabId)!
+        const current = (tabTools.get(event.toolId) || '') + event.partialInput
+        tabTools.set(event.toolId, current)
+        state.remoteTransport.send({
+          type: 'message_updated',
+          tabId,
+          messageId: event.toolId,
+          toolInput: current,
+        })
+        break
+      }
       case 'tool_result': {
         const content = event.content.length > 2048
           ? event.content.substring(0, 2048) + '\n... [truncated]'
@@ -119,6 +132,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           lastMessagePreview.set(tabId, assistantMsg.content.substring(0, 100))
         }
         activeAssistantMessages.delete(tabId)
+        activeToolInputs.delete(tabId)
 
         const exitPlanDenial = event.permissionDenials?.find(
           (d) => d.toolName === 'ExitPlanMode',
@@ -144,6 +158,15 @@ export function wireRemoteSessionPlaneForwarding(): void {
                         var fp = input.file_path;
                         if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
                       } catch(e) {}
+                    }
+                  }
+                  // Fallback: check permissionDenied for planFilePath
+                  var denied = tab.permissionDenied && tab.permissionDenied.tools;
+                  if (denied) {
+                    for (var d = 0; d < denied.length; d++) {
+                      if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
+                        return denied[d].toolInput.planFilePath;
+                      }
                     }
                   }
                   return null;
@@ -205,6 +228,15 @@ export function wireRemoteSessionPlaneForwarding(): void {
                     var fp = input.file_path;
                     if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
                   } catch(e) {}
+                }
+              }
+              // Fallback: check permissionDenied for planFilePath
+              var denied = tab.permissionDenied && tab.permissionDenied.tools;
+              if (denied) {
+                for (var d = 0; d < denied.length; d++) {
+                  if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
+                    return denied[d].toolInput.planFilePath;
+                  }
                 }
               }
               return null;

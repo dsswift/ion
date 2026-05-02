@@ -264,6 +264,15 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
                         } catch(e) {}
                       }
                     }
+                    // Fallback: check permissionDenied for planFilePath
+                    var denied = tab.permissionDenied && tab.permissionDenied.tools;
+                    if (denied) {
+                      for (var d = 0; d < denied.length; d++) {
+                        if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
+                          return denied[d].toolInput.planFilePath;
+                        }
+                      }
+                    }
                     return null;
                   })()
                 `) || undefined

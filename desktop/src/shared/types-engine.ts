@@ -66,6 +66,8 @@ export type EngineEvent =
   | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
+  | { type: 'engine_tool_update'; toolId: string; partialInput: string }
+  | { type: 'engine_tool_complete'; index?: number }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }

@@ -25,6 +25,7 @@ export const bashProcesses = new Map<string, ChildProcess>()
 export const fileWatchers = new Map<string, FileWatcherEntry>()
 export const recentlyWrittenPaths = new Set<string>()
 export const activeAssistantMessages = new Map<string, { id: string; content: string }>()
+export const activeToolInputs = new Map<string, Map<string, string>>() // tabId -> (toolId -> accumulated input)
 export const lastMessagePreview = new Map<string, string>()
 export const terminalOutputAccumulator = new Map<string, string>()
 

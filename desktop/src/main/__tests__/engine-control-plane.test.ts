@@ -217,5 +217,41 @@ describe('EngineControlPlane', () => {
       const tab = cp.getTabStatus(tabId)
       expect(tab?.status).toBe('idle')
     })
+
+    it('engine_tool_update emits tool_call_update with partialInput', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      const events: any[] = []
+      cp.on('event', (tid: string, ev: any) => events.push({ tid, ev }))
+
+      capturedEventHandler!(tabId, {
+        type: 'engine_tool_update',
+        toolId: 'tool-42',
+        partialInput: '{"file_path":"/tmp',
+      })
+
+      const update = events.find((e) => e.ev.type === 'tool_call_update')
+      expect(update).toBeDefined()
+      expect(update.ev.toolId).toBe('tool-42')
+      expect(update.ev.partialInput).toBe('{"file_path":"/tmp')
+    })
+
+    it('engine_tool_complete emits tool_call_complete with index', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      const events: any[] = []
+      cp.on('event', (tid: string, ev: any) => events.push({ tid, ev }))
+
+      capturedEventHandler!(tabId, {
+        type: 'engine_tool_complete',
+        index: 3,
+      })
+
+      const complete = events.find((e) => e.ev.type === 'tool_call_complete')
+      expect(complete).toBeDefined()
+      expect(complete.ev.index).toBe(3)
+    })
   })
 })
