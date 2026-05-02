@@ -66,6 +66,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultTallConversation: saved.defaultTallConversation,
   defaultTallTerminal: saved.defaultTallTerminal,
   defaultTallEngine: saved.defaultTallEngine,
+  tabRecoveryEnabled: saved.tabRecoveryEnabled,
+  tabRecoveryTimeoutSec: saved.tabRecoveryTimeoutSec,
   _systemIsDark: true,
   setDefaultTallConversation: (enabled) => {
     set({ defaultTallConversation: enabled })
@@ -77,6 +79,15 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setDefaultTallEngine: (enabled) => {
     set({ defaultTallEngine: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setTabRecoveryEnabled: (enabled) => {
+    set({ tabRecoveryEnabled: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setTabRecoveryTimeoutSec: (sec) => {
+    const clamped = Math.max(30, Math.min(600, Math.round(sec)))
+    set({ tabRecoveryTimeoutSec: clamped })
     saveSettings(getAllSettings(get))
   },
   setIsDark: (isDark) => {
