@@ -78,6 +78,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               activeEngineInstanceId: activeEngineInstanceId,
               terminalInstances: terminalInstances,
               activeTerminalInstanceId: activeTerminalInstanceId,
+              groupId: t.groupId || null,
               lastMessageContent: lastMsg,
               lastActivityTs: lastTs,
             };
@@ -98,16 +99,25 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         status: t.status || 'idle',
         workingDirectory: t.workingDirectory || '',
         permissionMode: (t.permissionMode === 'plan' ? 'plan' : 'auto') as 'auto' | 'plan',
-        permissionQueue: (t.permissionQueue || []).map((p: any) => ({
-          questionId: p.questionId,
-          toolName: p.toolTitle || '',
-          toolInput: p.toolInput,
-          options: (p.options || []).map((o: any) => ({
-            id: o.optionId,
-            kind: o.kind,
-            label: o.label,
-          })),
-        })),
+        permissionQueue: (t.permissionQueue || []).map((p: any) => {
+          const entry = {
+            questionId: p.questionId,
+            toolName: p.toolTitle || '',
+            toolInput: p.toolInput,
+            options: (p.options || []).map((o: any) => ({
+              id: o.optionId,
+              kind: o.kind,
+              label: o.label,
+            })),
+          }
+          // Enrich ExitPlanMode entries with planContent by reading the plan file
+          if (entry.toolName === 'ExitPlanMode' && entry.toolInput?.planFilePath && !entry.toolInput?.planContent) {
+            try {
+              entry.toolInput = { ...entry.toolInput, planContent: readFileSync(entry.toolInput.planFilePath as string, 'utf-8') }
+            } catch {}
+          }
+          return entry
+        }),
         lastMessage: t.lastMessageContent || lastMessagePreview.get(t.id) || null,
         contextTokens: t.contextTokens || null,
         messageCount: t.messageCount || 0,
@@ -118,6 +128,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         activeEngineInstanceId: t.activeEngineInstanceId || undefined,
         terminalInstances: t.terminalInstances || undefined,
         activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
+        groupId: t.groupId || null,
         _activity: t.lastActivityTs || 0,
       }))
 

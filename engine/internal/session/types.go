@@ -51,6 +51,10 @@ type engineSession struct {
 	pendingDialogs     map[string]chan interface{}
 	pendingPermissions map[string]chan string
 	pendingElicit      map[string]chan elicitReply
+
+	// CLI backend turn tracking (populated by handleNormalizedEvent)
+	cliTurnNumber  int  // current turn number for CLI runs
+	cliTurnActive  bool // true between turn_start and turn_end
 }
 
 // elicitReply carries a client's response to an engine_elicitation_request event.

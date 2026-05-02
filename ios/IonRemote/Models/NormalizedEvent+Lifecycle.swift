@@ -13,7 +13,9 @@ extension RemoteEvent {
         case .snapshot:
             let tabs = try container.decode([RemoteTabState].self, forKey: .tabs)
             let recentDirs = try container.decodeIfPresent([String].self, forKey: .recentDirectories) ?? []
-            return .snapshot(tabs: tabs, recentDirectories: recentDirs)
+            let tabGroupMode = try container.decodeIfPresent(String.self, forKey: .tabGroupMode)
+            let tabGroups = try container.decodeIfPresent([RemoteTabGroup].self, forKey: .tabGroups)
+            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups)
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
@@ -59,12 +61,14 @@ extension RemoteEvent {
     /// Encode lifecycle events. Returns `true` if the receiver was a lifecycle event.
     func encodeLifecycle(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .snapshot(let tabs, let recentDirectories):
+        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups):
             try container.encode(TypeKey.snapshot, forKey: .type)
             try container.encode(tabs, forKey: .tabs)
             if !recentDirectories.isEmpty {
                 try container.encode(recentDirectories, forKey: .recentDirectories)
             }
+            try container.encodeIfPresent(tabGroupMode, forKey: .tabGroupMode)
+            try container.encodeIfPresent(tabGroups, forKey: .tabGroups)
             return true
 
         case .tabCreated(let tab):

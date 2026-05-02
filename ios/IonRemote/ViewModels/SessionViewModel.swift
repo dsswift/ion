@@ -160,6 +160,11 @@ final class SessionViewModel {
     /// Tab IDs that iOS has requested to close but hasn't received tab_closed confirmation for.
     var pendingCloseTabIds: Set<String> = []
 
+    /// Tab group mode synced from the desktop: "off", "auto", or "manual".
+    var tabGroupMode: String = "auto"
+    /// Manual tab group definitions from the desktop (only meaningful when tabGroupMode == "manual").
+    var tabGroups: [RemoteTabGroup] = []
+
     var pairedDevices: [PairedDevice] = []
     var connectionState: ConnectionState = .disconnected
     var pairingState: PairingState = .idle
@@ -237,6 +242,39 @@ final class SessionViewModel {
                 label = base
             }
             return (directory: label, fullPath: fullPath, tabs: groups[fullPath]!)
+        }
+    }
+
+    /// Groups for display: manual groups when desktop is in manual mode,
+    /// otherwise auto-grouped by working directory.
+    /// Each tuple: (label, identifier for ForEach, icon name, directory for new-tab, tabs).
+    var displayGroups: [(label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])] {
+        if tabGroupMode == "manual", !tabGroups.isEmpty {
+            return tabsByManualGroup
+        }
+        return tabsByDirectory.map { group in
+            (label: group.directory, id: group.fullPath, icon: "folder", directory: group.fullPath, tabs: group.tabs)
+        }
+    }
+
+    /// Tabs grouped by manual group definitions from the desktop.
+    private var tabsByManualGroup: [(label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])] {
+        let sorted = tabGroups.sorted { $0.order < $1.order }
+        let defaultGroup = sorted.first(where: \.isDefault) ?? sorted.first
+        var groupMap: [String: [RemoteTabState]] = [:]
+        for g in sorted { groupMap[g.id] = [] }
+        for tab in tabs {
+            if let gid = tab.groupId, groupMap[gid] != nil {
+                groupMap[gid]!.append(tab)
+            } else if let dg = defaultGroup {
+                groupMap[dg.id, default: []].append(tab)
+            }
+        }
+        return sorted.compactMap { g in
+            let gTabs = groupMap[g.id] ?? []
+            guard !gTabs.isEmpty else { return nil }
+            let dir = gTabs.first?.workingDirectory
+            return (label: g.label, id: g.id, icon: "tray.2.fill", directory: dir, tabs: gTabs)
         }
     }
 

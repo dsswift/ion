@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -19,6 +20,17 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	utils.Debug("Session", fmt.Sprintf("normalized event: key=%s runID=%s type=%T", key, runID, event.Data))
 
+	// Look up session once for all downstream hook firing.
+	m.mu.RLock()
+	s, sOk := m.sessions[key]
+	m.mu.RUnlock()
+
+	// Fire CLI backend turn lifecycle hooks BEFORE the translate/drop gate.
+	// TaskUpdateEvent (assistant message complete) has no client-facing
+	// EngineEvent translation and would be dropped by the ee.Type == ""
+	// check below, but it is the signal for turn_end.
+	m.fireCliTurnHooks(s, key, sOk, event)
+
 	contextWindow := conversation.DefaultContext
 
 	ee := translateToEngineEvent(event, contextWindow)
@@ -29,9 +41,6 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	m.emit(key, ee)
 
 	// G34: Fire tool_start/tool_end extension hooks
-	m.mu.RLock()
-	s, sOk := m.sessions[key]
-	m.mu.RUnlock()
 	if sOk && s.extGroup != nil && !s.extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		switch e := event.Data.(type) {
@@ -189,6 +198,67 @@ func (m *Manager) handleRunError(runID string, err error) {
 	m.abortAllDescendants(key, fmt.Sprintf("parent run error: %s", err.Error()))
 }
 
+// fireCliTurnHooks fires turn_start / turn_end extension hooks for CLI
+// backend runs. No-op when the backend is not CliBackend or when the
+// session has no extension group.
+//
+// Turn boundaries are derived from the normalised event stream:
+//   - turn_start: first TextChunkEvent or ToolCallEvent after run start
+//     or after the previous turn ended.
+//   - turn_end: TaskUpdateEvent (completed assistant message) signals that
+//     the model finished responding and tools (if any) have been executed.
+//   - TaskCompleteEvent: final result; close any active turn before the
+//     run finishes.
+func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event types.NormalizedEvent) {
+	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+		return
+	}
+	if !sOk || s.extGroup == nil || s.extGroup.IsEmpty() {
+		return
+	}
+
+	switch event.Data.(type) {
+	case *types.TextChunkEvent, *types.ToolCallEvent:
+		m.mu.Lock()
+		alreadyActive := s.cliTurnActive
+		if !alreadyActive {
+			s.cliTurnNumber++
+			s.cliTurnActive = true
+		}
+		turnNum := s.cliTurnNumber
+		m.mu.Unlock()
+
+		if !alreadyActive {
+			ctx := m.newExtContext(s, key)
+			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		}
+
+	case *types.TaskUpdateEvent:
+		m.mu.Lock()
+		wasActive := s.cliTurnActive
+		s.cliTurnActive = false
+		turnNum := s.cliTurnNumber
+		m.mu.Unlock()
+
+		if wasActive {
+			ctx := m.newExtContext(s, key)
+			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		}
+
+	case *types.TaskCompleteEvent:
+		m.mu.Lock()
+		wasActive := s.cliTurnActive
+		s.cliTurnActive = false
+		turnNum := s.cliTurnNumber
+		m.mu.Unlock()
+
+		if wasActive {
+			ctx := m.newExtContext(s, key)
+			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		}
+	}
+}
+
 // classifyErrorCategory maps an error code to an extension ErrorCategory.
 func classifyErrorCategory(code string) extension.ErrorCategory {
 	switch code {
@@ -214,6 +284,13 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 
 	case *types.ToolCallEvent:
 		return types.EngineEvent{Type: "engine_tool_start", ToolName: e.ToolName, ToolID: e.ToolID}
+
+	case *types.ToolCallUpdateEvent:
+		return types.EngineEvent{Type: "engine_tool_update", ToolID: e.ToolID, ToolPartialInput: e.PartialInput}
+
+	case *types.ToolCallCompleteEvent:
+		idx := e.Index
+		return types.EngineEvent{Type: "engine_tool_complete", ToolIndex: &idx}
 
 	case *types.ToolResultEvent:
 		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError}

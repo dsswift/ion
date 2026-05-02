@@ -50,30 +50,15 @@ func executeGlob(ctx context.Context, input map[string]any, cwd string) (*types.
 		return &types.ToolResult{Content: "Error: pattern is required", IsError: true}, nil
 	}
 
-	searchDir, err := resolveSearchDir(input, cwd)
-	if err != nil {
-		return &types.ToolResult{Content: "Error: " + err.Error(), IsError: true}, nil
-	}
+	searchDir := resolveSearchDir(input, cwd)
 
 	// If pattern is absolute, split into static base + relative pattern so the
 	// walk is anchored as tightly as possible. (Mirrors Claude Code's
-	// extractGlobBaseDirectory.) The extracted base must still live under cwd
-	// so a wide absolute pattern cannot escape the working directory.
+	// extractGlobBaseDirectory.)
 	if filepath.IsAbs(pattern) {
 		baseDir, relPattern := extractGlobBase(pattern)
 		if baseDir != "" {
-			cleanBase := filepath.Clean(baseDir)
-			cwdClean := filepath.Clean(cwd)
-			if cwdClean != "" && cwdClean != "." {
-				rel, relErr := filepath.Rel(cwdClean, cleanBase)
-				if relErr != nil || strings.HasPrefix(rel, "..") {
-					return &types.ToolResult{
-						Content: fmt.Sprintf("Error: pattern base %q escapes cwd %q", cleanBase, cwdClean),
-						IsError: true,
-					}, nil
-				}
-			}
-			searchDir = cleanBase
+			searchDir = filepath.Clean(baseDir)
 			pattern = relPattern
 		}
 	}
@@ -114,9 +99,9 @@ func executeGlob(ctx context.Context, input map[string]any, cwd string) (*types.
 	return &types.ToolResult{Content: out}, nil
 }
 
-// resolveSearchDir resolves the input "path" argument to an absolute directory
-// rooted under cwd. Returns an error if the path escapes cwd via "..".
-func resolveSearchDir(input map[string]any, cwd string) (string, error) {
+// resolveSearchDir resolves the input "path" argument to an absolute directory.
+// Relative paths are resolved against cwd.
+func resolveSearchDir(input map[string]any, cwd string) string {
 	searchDir := stringFromInput(input, "path", cwd)
 	if searchDir == "" {
 		searchDir = cwd
@@ -124,17 +109,7 @@ func resolveSearchDir(input map[string]any, cwd string) (string, error) {
 	if !filepath.IsAbs(searchDir) {
 		searchDir = filepath.Join(cwd, searchDir)
 	}
-	searchDir = filepath.Clean(searchDir)
-	// Reject paths that escape cwd. cwd may itself be a non-canonical absolute
-	// path; canonicalize before comparing.
-	cwdClean := filepath.Clean(cwd)
-	if cwdClean != "" && cwdClean != "." {
-		rel, relErr := filepath.Rel(cwdClean, searchDir)
-		if relErr == nil && strings.HasPrefix(rel, "..") {
-			return "", fmt.Errorf("path %q escapes cwd %q", searchDir, cwdClean)
-		}
-	}
-	return searchDir, nil
+	return filepath.Clean(searchDir)
 }
 
 // extractGlobBase splits an absolute pattern into the longest static prefix

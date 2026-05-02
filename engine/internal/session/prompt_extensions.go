@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -83,6 +84,36 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
 		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: before_agent_start injected %d chars", key, len(agentSysPrompt)))
+	}
+}
+
+// fireBeforePromptCli fires the before_prompt hook for CliBackend runs.
+// ApiBackend wires this hook inside buildRunConfig; CliBackend skips that path,
+// so we fire the hook here and materialise the result into RunOptions before
+// the subprocess is launched. No-op when the backend is not CliBackend.
+func (m *Manager) fireBeforePromptCli(s *engineSession, key string, extGroup *extension.ExtensionGroup, skipExtensions bool, opts *types.RunOptions) {
+	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+		return
+	}
+	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
+		return
+	}
+	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing before_prompt (cli)", key))
+	ctx := m.newExtContext(s, key)
+	rewritten, extraSystem, err := extGroup.FireBeforePrompt(ctx, opts.Prompt)
+	if err != nil {
+		utils.Log("Session", fmt.Sprintf("before_prompt hook error (cli): %v", err))
+		return
+	}
+	if rewritten != "" {
+		opts.Prompt = rewritten
+	}
+	if extraSystem != "" {
+		if opts.AppendSystemPrompt == "" {
+			opts.AppendSystemPrompt = extraSystem
+		} else {
+			opts.AppendSystemPrompt += "\n\n" + extraSystem
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ struct SettingsView: View {
             List {
                 connectionSection
                 newTabSection
+                tabGroupsSection
                 pairedDevicesSection
                 aboutSection
             }
@@ -70,6 +71,39 @@ struct SettingsView: View {
                 ForEach(viewModel.recentDirectories, id: \.self) { dir in
                     Text((dir as NSString).lastPathComponent).tag(dir as String?)
                 }
+            }
+        }
+    }
+
+    private var tabGroupsSection: some View {
+        Section {
+            Picker("Grouping", selection: Binding<String>(
+                get: { viewModel.tabGroupMode == "manual" ? "manual" : "auto" },
+                set: { newValue in viewModel.setTabGroupMode(newValue) }
+            )) {
+                Text("Auto (by directory)").tag("auto")
+                Text("Manual (custom groups)").tag("manual")
+            }
+
+            if viewModel.tabGroupMode == "manual" {
+                let sorted = viewModel.tabGroups.sorted { $0.order < $1.order }
+                ForEach(sorted) { group in
+                    HStack {
+                        Text(group.label)
+                        Spacer()
+                        if group.isDefault {
+                            Image(systemName: "star.fill")
+                                .font(.caption)
+                                .foregroundStyle(.yellow)
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Tab Groups")
+        } footer: {
+            if viewModel.tabGroupMode == "manual" {
+                Text("Groups are managed on the desktop app. Create or rearrange groups from the desktop settings.")
             }
         }
     }

@@ -269,6 +269,17 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       }
 
+      // Remove closed tab from stashed manual tab assignments
+      const stashedAssignments = usePreferencesStore.getState().stashedManualTabAssignments
+      if (stashedAssignments[tabId]) {
+        const updatedAssignments = { ...stashedAssignments }
+        delete updatedAssignments[tabId]
+        usePreferencesStore.getState().setStashedManualGroups(
+          usePreferencesStore.getState().stashedManualGroups,
+          updatedAssignments,
+        )
+      }
+
       const s = get()
       const remaining = s.tabs.filter((t) => t.id !== tabId)
 

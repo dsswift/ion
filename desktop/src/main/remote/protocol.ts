@@ -29,6 +29,7 @@ export interface RemoteTabState {
   activeEngineInstanceId?: string | null
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
+  groupId?: string | null
 }
 
 // ─── Terminal instance metadata ───
@@ -93,12 +94,13 @@ export type RemoteCommand =
   | { type: 'engine_remove_instance'; tabId: string; instanceId: string }
   | { type: 'engine_select_instance'; tabId: string; instanceId: string }
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
+  | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'unpair' }
 
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[] }
+  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }> }
   | { type: 'tab_created'; tab: RemoteTabState }
   | { type: 'tab_closed'; tabId: string }
   | { type: 'tab_status'; tabId: string; status: TabStatus }

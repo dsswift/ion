@@ -70,3 +70,33 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
 Engine executes, harness decides. Engine never blocks for user input, never persists memory, never decides policy.
 
 When labeling work: engine, harness, or client. If a harness gap is caused by missing engine capability, note both.
+
+## Contract stability (never break the client)
+
+The client is the consumer of the Ion engine — desktop, iOS, and harness extensions all depend on published contracts. **Never ship a breaking change to a published contract.**
+
+### What counts as a contract
+
+| Surface | Key files |
+|---------|-----------|
+| Wire protocol | `engine/internal/protocol/protocol.go` (`ClientCommand`, `ServerMessage`, NDJSON shape) |
+| NormalizedEvent variants & fields | `engine/internal/types/normalized_event.go`, mirrored in `desktop/src/shared/types.ts` and `ios/IonRemote/Models/NormalizedEvent.swift` |
+| SDK types & hook signatures | `engine/internal/extension/sdk_types.go`, `sdk_hook_types.go` (`HookHandler`, `Context`, payload types) |
+| Hook names & payload shapes | All hooks registered in `engine/internal/extension/sdk_hooks_*.go` |
+| Engine events consumed by clients | Any event type or field a client reads to render UI |
+
+### Allowed (non-breaking)
+
+- **Add** new fields with zero-value defaults, new event variants, new hooks, new optional parameters.
+- **Fix** bugs in existing methods (behavior change that corrects a documented or obvious defect).
+- **Version** a new alternative when a design must evolve (e.g. `ToolCallV2`) — leave the original intact.
+
+### Forbidden (breaking)
+
+- Remove or rename a field, type, constant, hook name, or event variant.
+- Change a field's type (e.g. `string` → `int`, `[]T` → `map`).
+- Alter a hook's payload shape in a non-additive way.
+- Remove or reorder positional arguments in an SDK callback signature.
+- Change wire-protocol message framing or envelope structure.
+
+If you believe a break is truly necessary, stop and discuss with the user — never commit it silently.

@@ -134,6 +134,11 @@ extension SessionViewModel {
         send(.setPermissionMode(tabId: tabId, mode: mode))
     }
 
+    /// Request the desktop to change the tab group mode.
+    func setTabGroupMode(_ mode: String) {
+        send(.setTabGroupMode(mode: mode))
+    }
+
     // MARK: - Terminal Commands
 
     func createTerminalTab(workingDirectory: String? = nil) {

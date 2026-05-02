@@ -130,6 +130,8 @@ extension SessionViewModel {
         pendingCloseTabIds = []
         pendingInputByTab = [:]
         activeTools = [:]
+        tabGroupMode = "auto"
+        tabGroups = []
     }
 
     // MARK: - Device Management

@@ -10,11 +10,11 @@ struct TabListView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             List {
-                ForEach(viewModel.tabsByDirectory, id: \.fullPath) { group in
+                ForEach(viewModel.displayGroups, id: \.id) { group in
                     Section {
                         ForEach(group.tabs) { tab in
                             NavigationLink(value: tab.id) {
-                                TabRowView(tab: tab)
+                                TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual")
                             }
                         }
                         .onDelete { offsets in
@@ -25,32 +25,34 @@ struct TabListView: View {
                         }
                     } header: {
                         HStack {
-                            Label(group.directory, systemImage: "folder")
+                            Label(group.label, systemImage: group.icon)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button {
-                                viewModel.createTab(workingDirectory: group.fullPath)
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .contextMenu {
+                            if let dir = group.directory {
                                 Button {
-                                    viewModel.createTab(workingDirectory: group.fullPath)
+                                    viewModel.createTab(workingDirectory: dir)
                                 } label: {
-                                    Label("New Tab", systemImage: "plus")
+                                    Image(systemName: "plus")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
                                 }
-                                Button {
-                                    viewModel.createTerminalTab(workingDirectory: group.fullPath)
-                                } label: {
-                                    Label("New Terminal", systemImage: "terminal")
-                                }
-                                Button {
-                                    requestEngineTab(directory: group.fullPath)
-                                } label: {
-                                    Label("New Engine", systemImage: "bolt.fill")
+                                .contextMenu {
+                                    Button {
+                                        viewModel.createTab(workingDirectory: dir)
+                                    } label: {
+                                        Label("New Tab", systemImage: "plus")
+                                    }
+                                    Button {
+                                        viewModel.createTerminalTab(workingDirectory: dir)
+                                    } label: {
+                                        Label("New Terminal", systemImage: "terminal")
+                                    }
+                                    Button {
+                                        requestEngineTab(directory: dir)
+                                    } label: {
+                                        Label("New Engine", systemImage: "bolt.fill")
+                                    }
                                 }
                             }
                         }
@@ -228,6 +230,7 @@ struct TabListView: View {
 
 private struct TabRowView: View {
     let tab: RemoteTabState
+    var showDirectory: Bool = false
 
     @State private var pulseOpacity: Double = 1.0
 
@@ -270,6 +273,13 @@ private struct TabRowView: View {
                 Text(tab.displayTitle)
                     .font(.headline)
 
+                if showDirectory {
+                    Text(directoryLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
                 if let message = tab.lastMessage {
                     Text(message)
                         .font(.caption2)
@@ -281,6 +291,13 @@ private struct TabRowView: View {
             Spacer()
         }
         .padding(.vertical, 4)
+    }
+
+    private var directoryLabel: String {
+        let path = tab.workingDirectory
+        let base = (path as NSString).lastPathComponent
+        if base.isEmpty || path == "/" || path == "~" { return "Home" }
+        return base
     }
 
     /// Status color and pulse state matching desktop TabStrip priority order.

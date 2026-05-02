@@ -495,7 +495,16 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 
 	if s, exists := m.sessions[key]; exists {
 		convID := s.conversationID
+		needsExtensions := len(config.Extensions) > 0 && (s.extGroup == nil || s.extGroup.IsEmpty())
 		m.mu.Unlock()
+
+		// Re-register extensions when the session was restored without them
+		// (e.g. daemon restart where the extension subprocess was not persisted).
+		if needsExtensions {
+			utils.Log("Session", fmt.Sprintf("StartSession: key=%s re-registering %d extensions on existing session", key, len(config.Extensions)))
+			m.loadAndWireExtensions(s, key, config)
+		}
+
 		utils.Log("Session", fmt.Sprintf("StartSession: key=%s already exists (idempotent, conversationID=%s)", key, convID))
 		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
 	}
@@ -547,95 +556,8 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	})
 
 	// Load extensions if configured (outside lock -- subprocess may block)
-	extPaths := config.Extensions
-	if len(extPaths) > 0 {
-		group := extension.NewExtensionGroup()
-		for _, extPath := range extPaths {
-			m.emit(key, types.EngineEvent{
-				Type:         "engine_working_message",
-				EventMessage: fmt.Sprintf("Loading extension: %s", filepath.Base(filepath.Dir(extPath))),
-			})
-			host := extension.NewHost()
-
-			// Enterprise required hooks prepended before extension loads
-			if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
-				hooks := make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
-				for i, h := range m.config.Enterprise.RequiredHooks {
-					hooks[i] = struct{ Event, Handler string }{Event: h.Event, Handler: h.Handler}
-				}
-				host.RegisterRequiredHooks(hooks)
-			}
-
-			extCfg := &extension.ExtensionConfig{
-				ExtensionDir:     filepath.Dir(extPath),
-				WorkingDirectory: config.WorkingDirectory,
-			}
-			if err := host.Load(extPath, extCfg); err != nil {
-				utils.Log("Session", "extension load failed for "+extPath+": "+err.Error())
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_error",
-					EventMessage: fmt.Sprintf("extension load failed: %s", err.Error()),
-					ErrorCode:    "extension_load_failed",
-				})
-				continue
-			}
-			// Wire death detection so we can auto-respawn after the
-			// active run finishes. Captured key intentionally — host
-			// outlives this loop iteration.
-			capturedKey := key
-			host.SetOnDeath(func(h *extension.Host) {
-				m.handleHostDeath(capturedKey, h)
-			})
-			group.Add(host)
-		}
-		if !group.IsEmpty() {
-			// Wire send_message and persistent emit on each host
-			for _, host := range group.Hosts() {
-				capturedKey := key
-				host.SetOnSendMessage(func(text string) {
-					go func() {
-						if err := m.SendPrompt(capturedKey, text, nil); err != nil {
-							utils.Log("Session", fmt.Sprintf("ext/send_message failed: %v", err))
-						}
-					}()
-				})
-				host.SetPersistentEmit(func(ev types.EngineEvent) {
-					if ev.Type == "engine_agent_state" {
-						m.mu.Lock()
-						s.lastExtAgentStates = make([]types.AgentStateUpdate, len(ev.Agents))
-						copy(s.lastExtAgentStates, ev.Agents)
-						m.mu.Unlock()
-					}
-					// Capture friendly extension name from extension-emitted status events
-					if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {
-						m.mu.Lock()
-						s.extensionName = ev.Fields.ExtensionName
-						m.mu.Unlock()
-					}
-					m.emit(capturedKey, ev)
-				})
-			}
-
-			m.mu.Lock()
-			s.extGroup = group
-			m.mu.Unlock()
-
-			// Fire session_start
-			m.emit(key, types.EngineEvent{
-				Type:         "engine_working_message",
-				EventMessage: "Initializing extensions...",
-			})
-			ctx := m.newExtContext(s, key)
-			_ = group.FireSessionStart(ctx)
-
-			// Discover capabilities from extensions
-			caps := group.FireCapabilityDiscover(ctx)
-			for _, cap := range caps {
-				for _, host := range group.Hosts() {
-					host.SDK().RegisterCapability(cap)
-				}
-			}
-		}
+	if len(config.Extensions) > 0 {
+		m.loadAndWireExtensions(s, key, config)
 	}
 
 	// Load skills from default paths
@@ -681,4 +603,97 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	})
 
 	return &StartSessionResult{Existed: false, ConversationID: s.conversationID}, nil
+}
+
+// loadAndWireExtensions loads extension subprocesses, wires their hooks and
+// callbacks, and fires session_start. Safe to call on both new and existing
+// sessions — the caller must ensure the session does not already have a
+// loaded extension group.
+func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config types.EngineConfig) {
+	extPaths := config.Extensions
+	group := extension.NewExtensionGroup()
+	for _, extPath := range extPaths {
+		m.emit(key, types.EngineEvent{
+			Type:         "engine_working_message",
+			EventMessage: fmt.Sprintf("Loading extension: %s", filepath.Base(filepath.Dir(extPath))),
+		})
+		host := extension.NewHost()
+
+		// Enterprise required hooks prepended before extension loads
+		if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
+			hooks := make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
+			for i, h := range m.config.Enterprise.RequiredHooks {
+				hooks[i] = struct{ Event, Handler string }{Event: h.Event, Handler: h.Handler}
+			}
+			host.RegisterRequiredHooks(hooks)
+		}
+
+		extCfg := &extension.ExtensionConfig{
+			ExtensionDir:     filepath.Dir(extPath),
+			WorkingDirectory: config.WorkingDirectory,
+		}
+		if err := host.Load(extPath, extCfg); err != nil {
+			utils.Log("Session", "extension load failed for "+extPath+": "+err.Error())
+			m.emit(key, types.EngineEvent{
+				Type:         "engine_error",
+				EventMessage: fmt.Sprintf("extension load failed: %s", err.Error()),
+				ErrorCode:    "extension_load_failed",
+			})
+			continue
+		}
+		capturedKey := key
+		host.SetOnDeath(func(h *extension.Host) {
+			m.handleHostDeath(capturedKey, h)
+		})
+		group.Add(host)
+	}
+	if group.IsEmpty() {
+		return
+	}
+
+	// Wire send_message and persistent emit on each host
+	for _, host := range group.Hosts() {
+		capturedKey := key
+		host.SetOnSendMessage(func(text string) {
+			go func() {
+				if err := m.SendPrompt(capturedKey, text, nil); err != nil {
+					utils.Log("Session", fmt.Sprintf("ext/send_message failed: %v", err))
+				}
+			}()
+		})
+		host.SetPersistentEmit(func(ev types.EngineEvent) {
+			if ev.Type == "engine_agent_state" {
+				m.mu.Lock()
+				s.lastExtAgentStates = make([]types.AgentStateUpdate, len(ev.Agents))
+				copy(s.lastExtAgentStates, ev.Agents)
+				m.mu.Unlock()
+			}
+			if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {
+				m.mu.Lock()
+				s.extensionName = ev.Fields.ExtensionName
+				m.mu.Unlock()
+			}
+			m.emit(capturedKey, ev)
+		})
+	}
+
+	m.mu.Lock()
+	s.extGroup = group
+	m.mu.Unlock()
+
+	// Fire session_start
+	m.emit(key, types.EngineEvent{
+		Type:         "engine_working_message",
+		EventMessage: "Initializing extensions...",
+	})
+	ctx := m.newExtContext(s, key)
+	_ = group.FireSessionStart(ctx)
+
+	// Discover capabilities from extensions
+	caps := group.FireCapabilityDiscover(ctx)
+	for _, cap := range caps {
+		for _, host := range group.Hosts() {
+			host.SDK().RegisterCapability(cap)
+		}
+	}
 }

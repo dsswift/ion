@@ -31,16 +31,51 @@ export function TabsPanelsCategory() {
   const handleTabGroupModeChange = useCallback((newMode: TabGroupMode, oldMode: TabGroupMode) => {
     if (newMode === oldMode) return
 
+    // Stash current manual config when leaving manual mode
+    if (oldMode === 'manual') {
+      const currentGroups = usePreferencesStore.getState().tabGroups
+      const tabs = useSessionStore.getState().tabs
+      const assignments: Record<string, string> = {}
+      for (const t of tabs) {
+        if (t.groupId) assignments[t.id] = t.groupId
+      }
+      usePreferencesStore.getState().setStashedManualGroups(currentGroups, assignments)
+    }
+
     if (newMode === 'manual' && (oldMode === 'off' || oldMode === 'auto')) {
-      usePreferencesStore.getState().setTabGroups([])
-      const effectiveGroups = getEffectiveTabGroups([])
-      useSessionStore.setState((s) => ({
-        tabs: s.tabs.map((t) => ({ ...t, groupId: effectiveGroups[0].id })),
-      }))
-      const ipGroup = effectiveGroups.find(g => g.label === 'In Progress')
-      const doneGroup = effectiveGroups.find(g => g.label === 'Testing')
-      if (ipGroup && !usePreferencesStore.getState().inProgressGroupId) usePreferencesStore.getState().setInProgressGroupId(ipGroup.id)
-      if (doneGroup && !usePreferencesStore.getState().doneGroupId) usePreferencesStore.getState().setDoneGroupId(doneGroup.id)
+      const stashedGroups = usePreferencesStore.getState().stashedManualGroups
+      if (stashedGroups.length > 0) {
+        // Restore from stash
+        const stashedAssignments = usePreferencesStore.getState().stashedManualTabAssignments
+        usePreferencesStore.getState().setTabGroups(stashedGroups)
+        const defaultGroup = stashedGroups.find(g => g.isDefault) || stashedGroups[0]
+        const groupIds = new Set(stashedGroups.map(g => g.id))
+        useSessionStore.setState((s) => ({
+          tabs: s.tabs.map((t) => {
+            const stashedGroupId = stashedAssignments[t.id]
+            if (stashedGroupId && groupIds.has(stashedGroupId)) {
+              return { ...t, groupId: stashedGroupId }
+            }
+            return { ...t, groupId: defaultGroup.id }
+          }),
+        }))
+        // Clear in-progress/done if their groups no longer exist in stash
+        const ipId = usePreferencesStore.getState().inProgressGroupId
+        const doneId = usePreferencesStore.getState().doneGroupId
+        if (ipId && !groupIds.has(ipId)) usePreferencesStore.getState().setInProgressGroupId(null)
+        if (doneId && !groupIds.has(doneId)) usePreferencesStore.getState().setDoneGroupId(null)
+      } else {
+        // No stash — use defaults (existing behavior)
+        usePreferencesStore.getState().setTabGroups([])
+        const effectiveGroups = getEffectiveTabGroups([])
+        useSessionStore.setState((s) => ({
+          tabs: s.tabs.map((t) => ({ ...t, groupId: effectiveGroups[0].id })),
+        }))
+        const ipGroup = effectiveGroups.find(g => g.label === 'In Progress')
+        const doneGroup = effectiveGroups.find(g => g.label === 'Testing')
+        if (ipGroup && !usePreferencesStore.getState().inProgressGroupId) usePreferencesStore.getState().setInProgressGroupId(ipGroup.id)
+        if (doneGroup && !usePreferencesStore.getState().doneGroupId) usePreferencesStore.getState().setDoneGroupId(doneGroup.id)
+      }
     } else if (newMode === 'auto' && oldMode === 'manual') {
       useSessionStore.setState((s) => ({
         tabs: s.tabs.map((t) => ({ ...t, groupId: null })),

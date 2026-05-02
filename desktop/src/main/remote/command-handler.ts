@@ -10,6 +10,7 @@ import {
   handleCancel,
   handleSetPermissionMode,
   handleLoadConversation,
+  handleSetTabGroupMode,
 } from './handlers/tabs'
 import {
   handleEnginePrompt,
@@ -73,6 +74,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'rename_terminal_instance': handleRenameTerminalInstance(cmd); break
     case 'rewind': await handleRewind(cmd); break
     case 'fork_from_message': await handleForkFromMessage(cmd); break
+    case 'set_tab_group_mode': await handleSetTabGroupMode(cmd); break
     case 'unpair': handleUnpair(deviceId); break
   }
 }

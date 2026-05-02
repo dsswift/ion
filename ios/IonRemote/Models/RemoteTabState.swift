@@ -21,6 +21,7 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var activeTerminalInstanceId: String?
     var engineInstances: [EngineInstanceInfo]?
     var activeEngineInstanceId: String?
+    var groupId: String?
 
     var displayTitle: String {
         customTitle ?? title

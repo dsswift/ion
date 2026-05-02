@@ -2,8 +2,16 @@ import Foundation
 
 /// Events sent from Ion to the iOS app.
 /// Mirrors `RemoteEvent` in `src/main/remote/protocol.ts`.
+/// Manual tab group definition synced from the desktop.
+struct RemoteTabGroup: Codable, Identifiable, Sendable {
+    let id: String
+    let label: String
+    let isDefault: Bool
+    let order: Int
+}
+
 enum RemoteEvent: Codable, Sendable {
-    case snapshot(tabs: [RemoteTabState], recentDirectories: [String])
+    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?)
     case tabCreated(tab: RemoteTabState)
     case tabClosed(tabId: String)
     case tabStatus(tabId: String, status: TabStatus)
@@ -116,6 +124,7 @@ enum RemoteEvent: Codable, Sendable {
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
         case signal, stderrTail, label, profiles, elapsed, usage
+        case tabGroupMode, tabGroups
     }
 
     // MARK: - Decoder
