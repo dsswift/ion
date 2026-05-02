@@ -147,6 +147,7 @@ final class SessionViewModel {
     var engineWorkingMessages: [String: String] = [:]           // compoundKey -> working message
     var engineDialogs: [String: EngineDialogInfo?] = [:]
     var enginePinnedPrompt: [String: String] = [:]
+    var engineModelOverrides: [String: String] = [:]             // compoundKey -> model override
     // Engine conversation messages (per compound key)
     var engineMessages: [String: [EngineMessage]] = [:]         // compoundKey -> messages
     var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history

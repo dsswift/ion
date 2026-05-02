@@ -152,7 +152,13 @@ struct EngineView: View {
 
             // Status footer
             if let fields = viewModel.engineStatusFields[compoundKey] {
-                EngineFooterView(fields: fields)
+                EngineFooterView(
+                    fields: fields,
+                    onSelectModel: { model in
+                        viewModel.setEngineModel(tabId: tabId, model: model)
+                    },
+                    selectedModel: viewModel.engineModelOverrides[compoundKey] ?? ""
+                )
             }
 
             Divider()

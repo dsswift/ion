@@ -168,6 +168,13 @@ extension SessionViewModel {
         send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId))
     }
 
+    func setEngineModel(tabId: String, model: String) {
+        let key = engineCompoundKey(tabId: tabId)
+        engineModelOverrides[key] = model
+        let instanceId = activeEngineInstance[tabId]
+        send(.engineSetModel(tabId: tabId, model: model, instanceId: instanceId))
+    }
+
     func abortEngine(tabId: String) {
         let instanceId = activeEngineInstance[tabId]
         send(.engineAbort(tabId: tabId, instanceId: instanceId))

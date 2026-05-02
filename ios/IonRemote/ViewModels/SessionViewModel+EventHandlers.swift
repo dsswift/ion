@@ -229,6 +229,10 @@ extension SessionViewModel {
         case .engineInstanceRemoved(let tabId, let instanceId):
             handleEngineInstanceRemoved(tabId: tabId, instanceId: instanceId)
 
+        case .engineModelOverride(let tabId, let instanceId, let model):
+            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            engineModelOverrides[key] = model.isEmpty ? nil : model
+
         case .engineProfiles(let profiles):
             engineProfiles = profiles
         }
