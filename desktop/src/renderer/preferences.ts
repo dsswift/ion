@@ -47,6 +47,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   tabGroupMode: saved.tabGroupMode,
   tabGroups: saved.tabGroups,
   autoGroupOrder: saved.autoGroupOrder,
+  stashedManualGroups: saved.stashedManualGroups,
+  stashedManualTabAssignments: saved.stashedManualTabAssignments,
   inProgressGroupId: saved.inProgressGroupId,
   doneGroupId: saved.doneGroupId,
   commitCommand: saved.commitCommand,
@@ -282,6 +284,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setAutoGroupOrder: (order) => {
     set({ autoGroupOrder: order })
+    saveSettings(getAllSettings(get))
+  },
+  setStashedManualGroups: (groups, assignments) => {
+    set({ stashedManualGroups: groups, stashedManualTabAssignments: assignments })
     saveSettings(getAllSettings(get))
   },
   setInProgressGroupId: (groupId) => {

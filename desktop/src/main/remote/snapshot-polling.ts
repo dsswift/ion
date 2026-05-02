@@ -10,7 +10,9 @@ export function startTabSnapshotPolling(): void {
       const tabs = await getRemoteTabStates()
       const settings = readSettings()
       const recentDirectories: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
-      state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
+      const tabGroupMode = settings.tabGroupMode || 'off'
+      const tabGroups = Array.isArray(settings.tabGroups) ? settings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
+      state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups })
     } catch {}
   }, 5_000)
 }

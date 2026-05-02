@@ -5,7 +5,7 @@ import { log as _log } from '../../logger'
 import { state, sessionPlane, engineBridge } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
-import { readSettings } from '../../settings-store'
+import { readSettings, writeSettings } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
 import type { RemoteCommand } from '../protocol'
 
@@ -17,7 +17,9 @@ export async function handleSync(): Promise<void> {
   const tabs = await getRemoteTabStates()
   const syncSettings = readSettings()
   const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
-  state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories })
+  const tabGroupMode = syncSettings.tabGroupMode || 'off'
+  const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
+  state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups })
   const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
   state.remoteTransport?.send({ type: 'engine_profiles', profiles: engineProfiles })
   for (const tab of tabs) {
@@ -292,4 +294,72 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     log(`load_conversation error: ${(err as Error).message}`)
     state.remoteTransport?.send({ type: 'conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
   }
+}
+
+export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 'set_tab_group_mode' }>): Promise<void> {
+  const mode = cmd.mode
+  if (mode !== 'auto' && mode !== 'manual' && mode !== 'off') {
+    log(`Remote set_tab_group_mode: invalid mode "${mode}"`)
+    return
+  }
+  log(`Remote set_tab_group_mode: mode=${mode}`)
+  const escaped = mode.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  // Drive mode change through renderer to trigger stash/restore logic
+  try {
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var prefs = window.__Ion_PREFS_STORE__;
+        var session = window.__Ion_SESSION_STORE__;
+        if (!prefs || !session) return;
+        var oldMode = prefs.getState().tabGroupMode;
+        var newMode = '${escaped}';
+        if (oldMode === newMode) return;
+        if (oldMode === 'manual') {
+          var cg = prefs.getState().tabGroups;
+          var tabs = session.getState().tabs;
+          var asgn = {};
+          for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].groupId) asgn[tabs[i].id] = tabs[i].groupId;
+          }
+          prefs.getState().setStashedManualGroups(cg, asgn);
+        }
+        if (newMode === 'manual' && (oldMode === 'off' || oldMode === 'auto')) {
+          var sg = prefs.getState().stashedManualGroups;
+          if (sg.length > 0) {
+            var sa = prefs.getState().stashedManualTabAssignments;
+            prefs.getState().setTabGroups(sg);
+            var dg = sg.find(function(g) { return g.isDefault; }) || sg[0];
+            var gids = {};
+            for (var j = 0; j < sg.length; j++) gids[sg[j].id] = true;
+            session.setState(function(s) {
+              return { tabs: s.tabs.map(function(t) {
+                var g = sa[t.id];
+                if (g && gids[g]) return Object.assign({}, t, { groupId: g });
+                return Object.assign({}, t, { groupId: dg.id });
+              })};
+            });
+          } else {
+            prefs.getState().setTabGroups([]);
+            session.setState(function(s) {
+              return { tabs: s.tabs.map(function(t) {
+                return Object.assign({}, t, { groupId: null });
+              })};
+            });
+          }
+        } else if (newMode === 'auto' && oldMode === 'manual') {
+          session.setState(function(s) {
+            return { tabs: s.tabs.map(function(t) {
+              return Object.assign({}, t, { groupId: null });
+            })};
+          });
+        }
+        prefs.getState().setTabGroupMode(newMode);
+      })()
+    `)
+  } catch {}
+  // Also persist to settings file directly for consistency
+  const settings = readSettings()
+  settings.tabGroupMode = mode
+  writeSettings(settings)
+  await handleSync()
 }
