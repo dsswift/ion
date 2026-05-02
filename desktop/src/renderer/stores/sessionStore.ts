@@ -18,6 +18,7 @@ import { createEventSlice } from './slices/event-slice'
 import { createEngineSlice } from './slices/engine-slice'
 import { createEngineEventSlice } from './slices/engine-event-slice'
 import { setupPersistence } from './session-store-persistence'
+import { usePreferencesStore } from '../preferences'
 
 export { isTextFile, editorDirForTab } from './session-store-helpers'
 export { AVAILABLE_MODELS, getModelDisplayLabel } from './model-labels'
@@ -56,6 +57,7 @@ const initialState = {
   engineConversationIds: new Map<string, string[]>(),
   enginePanes: new Map<string, EnginePaneState>(),
   engineMessages: new Map<string, Message[]>(),
+  engineModelOverrides: new Map<string, string>(),
   tallViewTabId: null,
   scrollToBottomCounter: 0,
   settingsOpen: false,
@@ -84,6 +86,12 @@ export const useSessionStore = create<State>((set, get) => {
 })
 
 ;(window as any).__Ion_SESSION_STORE__ = useSessionStore
+;(window as any).__Ion_PREFERENCES_STORE__ = usePreferencesStore
+;(window as any).__Ion_resolveEngineModel = (compoundKey: string): string => {
+  const s = useSessionStore.getState()
+  const prefs = usePreferencesStore.getState()
+  return s.engineModelOverrides.get(compoundKey) || prefs.engineDefaultModel || prefs.preferredModel || 'claude-sonnet-4-6'
+}
 ;(window as any).__serializeTerminalBuffer = serializeTerminalBuffer
 
 setupPersistence(useSessionStore)
