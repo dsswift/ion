@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "transport")
 
 // MARK: - Inbound
 
@@ -30,6 +33,16 @@ extension TransportManager {
                 let connected = relay.isConnected
                 if connected != wasConnected {
                     wasConnected = connected
+                    if connected {
+                        // Relay just connected — send sync so the desktop
+                        // knows we're here and replies with a snapshot.
+                        do {
+                            try await self.send(.sync)
+                            print("[Ion] relay connected, sent sync")
+                        } catch {
+                            print("[Ion] relay connected, failed to send sync: \(error)")
+                        }
+                    }
                     self.updateState()
                 }
                 try? await Task.sleep(for: .milliseconds(250))
@@ -77,18 +90,26 @@ extension TransportManager {
     // MARK: - Wire message dispatch
 
     func handleIncomingData(_ data: Data, isRelay: Bool) {
-        guard let wire = try? JSONDecoder().decode(WireMessage.self, from: data) else {
+        // Check for relay control frames FIRST — they're bare JSON without a
+        // WireMessage envelope (no seq field), so WireMessage decode would fail.
+        if isRelay,
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let type = json["type"] as? String, type.hasPrefix("relay:") {
+            if type == "relay:peer-disconnected" {
+                // The relay told us the desktop disconnected. Start grace
+                // period with force=true because the relay WebSocket itself
+                // is still connected — the *peer* is gone.
+                startDisconnectGracePeriod(force: true)
+            } else if type == "relay:peer-reconnected" {
+                cancelDisconnectGracePeriod()
+                // Peer is back — reset dedup so fresh seq=1 messages aren't dropped.
+                lastReceivedSeq = 0
+                updateState()
+            }
             return
         }
 
-        // Check for relay control frames BEFORE dedup/encryption.
-        // These are plaintext messages from the relay server itself.
-        if let payloadStr = wire.payload,
-           let json = try? JSONSerialization.jsonObject(with: Data(payloadStr.utf8)) as? [String: Any],
-           let type = json["type"] as? String, type.hasPrefix("relay:") {
-            if type == "relay:peer-disconnected" {
-                startDisconnectGracePeriod()
-            }
+        guard let wire = try? JSONDecoder().decode(WireMessage.self, from: data) else {
             return
         }
 
@@ -117,10 +138,12 @@ extension TransportManager {
         guard let ciphertextB64 = wire.ciphertext, let nonceB64 = wire.nonce,
               let ciphertext = Data(base64Encoded: ciphertextB64),
               let nonce = Data(base64Encoded: nonceB64) else {
+            ionLog.warning("wire message seq=\(wire.seq) missing ciphertext/nonce fields")
             return
         }
 
         guard let payloadData = try? E2ECrypto.decrypt(ciphertext: ciphertext, nonce: nonce, key: sharedKey) else {
+            ionLog.warning("decrypt failed for seq=\(wire.seq) — possible key mismatch")
             return
         }
 
@@ -136,7 +159,7 @@ extension TransportManager {
         } catch {
             // Log decode failures so we can diagnose dropped events
             let typeHint = (try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any])?["type"] as? String ?? "unknown"
-            print("[Ion] ⚠️ Failed to decode event type=\(typeHint): \(error)")
+            ionLog.error("Failed to decode event type=\(typeHint): \(error)")
             return
         }
 

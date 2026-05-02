@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
 
 // MARK: - Event Listening
 
@@ -211,7 +214,7 @@ extension SessionViewModel {
 
         case .engineConversationHistory(let tabId, let instanceId, let messages):
             let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-            print("[Ion] engineConversationHistory: key=\(key), messageCount=\(messages.count)")
+            ionLog.info("engineConversationHistory: key=\(key), messageCount=\(messages.count)")
             engineMessages[key] = messages
             engineConversationLoaded.insert(key)
 
@@ -318,6 +321,7 @@ extension SessionViewModel {
             if tab.isEngine == true, let instances = tab.engineInstances {
                 engineInstances[tab.id] = instances.map { EngineInstanceInfo(id: $0.id, label: $0.label) }
                 activeEngineInstance[tab.id] = tab.activeEngineInstanceId ?? instances.first?.id
+                ionLog.info("snapshot: engine tab \(tab.id.prefix(8)), instances=\(instances.map(\.id)), active=\(tab.activeEngineInstanceId ?? "nil")")
                 // Pre-load engine conversation history for all engine tabs
                 loadEngineConversation(tabId: tab.id)
             }

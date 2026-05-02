@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
 
 // MARK: - Commands
 
@@ -156,7 +159,7 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].status = .running
         }
-        let instanceId = activeEngineInstance[tabId]
+        let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
         send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId))
     }
 
@@ -191,7 +194,7 @@ extension SessionViewModel {
 
     func loadEngineConversation(tabId: String) {
         let instanceId = activeEngineInstance[tabId]
-        print("[Ion] loadEngineConversation: tabId=\(tabId), instanceId=\(instanceId ?? "nil"), instances=\(engineInstances[tabId]?.map(\.id) ?? [])")
+        ionLog.info("loadEngineConversation: tabId=\(tabId), instanceId=\(instanceId ?? "nil"), instances=\(self.engineInstances[tabId]?.map(\.id) ?? [])")
         send(.loadEngineConversation(tabId: tabId, instanceId: instanceId))
     }
 
