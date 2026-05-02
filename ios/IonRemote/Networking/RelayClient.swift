@@ -13,6 +13,10 @@ final class RelayClient {
     // MARK: - Public state
 
     private(set) var isConnected = false
+    /// True while a connection attempt is in progress (between `connect()`
+    /// and the first successful receive or a failure). Prevents callers
+    /// like `NWPathMonitor` from triggering duplicate connection attempts.
+    private(set) var isConnecting = false
 
     // MARK: - Configuration
 
@@ -55,6 +59,7 @@ final class RelayClient {
         reconnectWork?.cancel()
         pingTimer?.invalidate()
         task?.cancel(with: .goingAway, reason: nil)
+        session?.invalidateAndCancel()
     }
 
     // MARK: - Public API
@@ -69,9 +74,12 @@ final class RelayClient {
         reconnectWork?.cancel()
         reconnectWork = nil
         reconnectAttempt = 0
+        isConnecting = false
         stopPing()
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
         isConnected = false
     }
 
@@ -87,8 +95,17 @@ final class RelayClient {
     private func doConnect() async {
         guard !intentionallyClosed else { return }
 
+        isConnecting = true
+
+        // Cancel any pending reconnect timer so we don't get a stale
+        // doConnect() call racing with this one.
+        reconnectWork?.cancel()
+        reconnectWork = nil
+
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
 
         // Build the WebSocket URL: {relayURL}/v1/channel/{channelId}?role=mobile
         var components = URLComponents()
@@ -126,10 +143,8 @@ final class RelayClient {
 
         wsTask.resume()
 
-        // The first successful receive confirms the connection is open.
-        reconnectAttempt = 0
-        isConnected = true
-        startPing()
+        // Don't set isConnected or reset backoff here — the first
+        // successful receive in receiveLoop confirms the handshake.
         receiveLoop(wsTask)
     }
 
@@ -137,8 +152,23 @@ final class RelayClient {
         wsTask.receive { [weak self] result in
             guard let self else { return }
 
+            // Ignore callbacks from a superseded task (e.g. after doConnect
+            // cancelled the old task and started a new one).
+            guard wsTask === self.task else { return }
+
             switch result {
             case .success(let message):
+                // First successful receive confirms the WebSocket is open.
+                if !self.isConnected {
+                    self.isConnected = true
+                    self.isConnecting = false
+                    self.reconnectAttempt = 0
+                    // Cancel any pending reconnect timer from a previous
+                    // failed attempt so it doesn't tear down this connection.
+                    self.reconnectWork?.cancel()
+                    self.reconnectWork = nil
+                    self.startPing()
+                }
                 switch message {
                 case .data(let data):
                     self.messageContinuation.yield(data)
@@ -161,8 +191,11 @@ final class RelayClient {
 
     private func handleDisconnect() {
         isConnected = false
+        isConnecting = false
         stopPing()
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
 
         if !intentionallyClosed {
             scheduleReconnect()
@@ -177,7 +210,7 @@ final class RelayClient {
             Self.backoffMax
         ) + Double.random(in: 0...Self.jitterMax)
 
-        print("[Ion] RelayClient: scheduleReconnect in \(Int(delay))ms (attempt \(reconnectAttempt + 1))")
+        print("[Ion] RelayClient: scheduleReconnect in \(Int(delay))s (attempt \(reconnectAttempt + 1))")
         reconnectAttempt += 1
 
         let work = DispatchWorkItem { [weak self] in

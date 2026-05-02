@@ -42,6 +42,7 @@ final class LANClient {
         messageContinuation?.finish()
         intentionallyClosed = true
         task?.cancel(with: .goingAway, reason: nil)
+        session?.invalidateAndCancel()
     }
 
     // MARK: - Public API
@@ -55,6 +56,8 @@ final class LANClient {
 
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
 
         // Create a fresh stream for this connection.
         var continuation: AsyncStream<Data>.Continuation!
@@ -78,6 +81,8 @@ final class LANClient {
         messageContinuation?.finish()
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
         isConnected = false
     }
 
@@ -117,6 +122,8 @@ final class LANClient {
     private func handleDisconnect() {
         isConnected = false
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
         // Finish the stream so any `for await` (auth, listener) exits.
         messageContinuation?.finish()
         // LAN client does not auto-reconnect. TransportManager handles

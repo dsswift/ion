@@ -145,6 +145,13 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
 
+    // Remote engine prompt (sent from iOS) — submit through the renderer's engine flow
+    // so the store adds the user message, sets status, and calls the engine bridge.
+    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string }) => {
+      useSessionStore.getState().submitEnginePrompt(data.tabId, data.text)
+    }
+    window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
+
     return () => {
       console.log('[DIAG] useEngineEvents: cleanup — removing handlers')
       unsubEvent()
@@ -158,6 +165,7 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
       window.ion.off(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
       window.ion.off(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
+      window.ion.off(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
       chunkBufferRef.current.clear()
     }

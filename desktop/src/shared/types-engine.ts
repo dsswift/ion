@@ -51,6 +51,8 @@ export interface StatusFields {
   /** Backend mode: 'api' (direct) or 'cli' (CC CLI proxy) */
   backend?: 'api' | 'cli'
   permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
+  /** Friendly display name broadcast by the extension (e.g. "Chief of Staff"). */
+  extensionName?: string
 }
 
 export type EngineEvent =

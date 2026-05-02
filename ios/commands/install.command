@@ -99,42 +99,46 @@ echo
 echo "═══ Installing to device ═══"
 echo
 
-# Use ios-deploy if available (faster, launches app), otherwise devicectl
-if command -v ios-deploy &>/dev/null; then
-  # Find the built .app in DerivedData
-  APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData \
+# Find the most recently built .app in DerivedData.
+# Multiple DerivedData directories may exist (e.g. from Xcode and
+# command-line builds). We pick the newest by modification time to
+# ensure we install the binary we just built, not a stale one.
+find_newest_app() {
+  find ~/Library/Developer/Xcode/DerivedData \
     -path "*/$SCHEME-*/$CONFIGURATION-iphoneos/$SCHEME.app" \
     -maxdepth 5 \
     -type d \
     2>/dev/null \
-    | head -1)
+    | while read -r app_dir; do
+        # Use the binary's mod-time as the sort key (epoch seconds)
+        binary="$app_dir/$SCHEME"
+        if [[ -f "$binary" ]]; then
+          echo "$(stat -f '%m' "$binary") $app_dir"
+        fi
+      done \
+    | sort -rn \
+    | head -1 \
+    | cut -d' ' -f2-
+}
 
-  if [[ -z "$APP_PATH" ]]; then
-    echo "✗ Could not find built .app bundle in DerivedData."
-    echo "  Expected: DerivedData/*/$CONFIGURATION-iphoneos/$SCHEME.app"
-    exit 1
-  fi
+APP_PATH=$(find_newest_app)
 
+if [[ -z "$APP_PATH" ]]; then
+  echo "✗ Could not find built .app bundle in DerivedData."
+  echo "  Expected: DerivedData/*/$CONFIGURATION-iphoneos/$SCHEME.app"
+  exit 1
+fi
+
+echo "  App: $APP_PATH"
+
+# Use ios-deploy if available (faster, launches app), otherwise devicectl
+if command -v ios-deploy &>/dev/null; then
   echo "  Using ios-deploy..."
   ios-deploy --id "$DEVICE_ID" --bundle "$APP_PATH" --no-wifi 2>&1 || {
     echo "  ios-deploy failed, falling back to devicectl..."
     xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1
   }
 else
-  # devicectl (Xcode 15+) — install from DerivedData
-  APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData \
-    -path "*/$SCHEME-*/$CONFIGURATION-iphoneos/$SCHEME.app" \
-    -maxdepth 5 \
-    -type d \
-    2>/dev/null \
-    | head -1)
-
-  if [[ -z "$APP_PATH" ]]; then
-    echo "✗ Could not find built .app bundle in DerivedData."
-    echo "  Expected: DerivedData/*/$CONFIGURATION-iphoneos/$SCHEME.app"
-    exit 1
-  fi
-
   echo "  Using devicectl..."
   xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1
 fi

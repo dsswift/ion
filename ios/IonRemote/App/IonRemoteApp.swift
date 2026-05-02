@@ -12,7 +12,7 @@ struct IonRemoteApp: App {
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active
-                        && viewModel.connectionState != .connected
+                        && viewModel.connectionState == .disconnected
                         && !viewModel.pairedDevices.isEmpty {
                         viewModel.reconnect()
                     }
@@ -32,11 +32,6 @@ struct ContentView: View {
                 disconnectedView
             } else {
                 TabListView()
-            }
-        }
-        .onAppear {
-            if !viewModel.pairedDevices.isEmpty && viewModel.connectionState == .disconnected {
-                viewModel.reconnect()
             }
         }
         .onChange(of: viewModel.connectionState) { _, newState in

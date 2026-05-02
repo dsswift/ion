@@ -56,7 +56,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
       break
     case 'set_permission_mode': handleSetPermissionMode(cmd); break
     case 'load_conversation': await handleLoadConversation(cmd); break
-    case 'engine_prompt': handleEnginePrompt(cmd); break
+    case 'engine_prompt': await handleEnginePrompt(cmd); break
     case 'engine_abort': handleEngineAbort(cmd); break
     case 'engine_dialog_response': handleEngineDialogResponse(cmd); break
     case 'engine_add_instance': await handleEngineAddInstance(cmd); break

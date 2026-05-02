@@ -6,10 +6,12 @@ struct EngineFooterView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Label + state
+            // Extension name + state
             HStack(spacing: 4) {
-                Text(fields.label)
-                    .fontWeight(.medium)
+                if let name = fields.extensionName, !name.isEmpty {
+                    Text(name)
+                        .fontWeight(.medium)
+                }
                 Text("[\(fields.state)]")
                     .foregroundStyle(.secondary)
             }

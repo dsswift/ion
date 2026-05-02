@@ -55,6 +55,9 @@ final class TransportManager {
 
     // MARK: - Internals
 
+    /// Set by `stop()` to prevent a deferred `start()` Task from
+    /// resurrecting a transport that was already torn down.
+    private(set) var isStopped = false
     var seq: UInt64 = 0
     var lastReceivedSeq: UInt64 = 0
     let eventContinuation: AsyncStream<RemoteEvent>.Continuation
@@ -111,6 +114,8 @@ final class TransportManager {
 
     /// Start all transports: relay connection, Bonjour discovery, and network monitoring.
     func start() async {
+        guard !isStopped else { return }
+
         bonjour.startBrowsing()
         startBonjourObservation()
 
@@ -160,6 +165,8 @@ final class TransportManager {
 
     /// Disconnect all transports and stop discovery.
     func stop() {
+        isStopped = true
+
         relayListenTask?.cancel()
         relayListenTask = nil
         lanListenTask?.cancel()
@@ -214,17 +221,28 @@ final class TransportManager {
 
     /// Start a grace period before emitting `peerDisconnected`. If either
     /// transport recovers within the window, the event is suppressed.
-    func startDisconnectGracePeriod() {
+    ///
+    /// - Parameter force: When `true` (relay told us the peer disconnected),
+    ///   emit `peerDisconnected` after the grace period even if the relay
+    ///   WebSocket itself is still connected. The relay transport being up
+    ///   doesn't mean the peer is reachable.
+    func startDisconnectGracePeriod(force: Bool = false) {
         guard disconnectGraceTask == nil else { return }
         eventContinuation.yield(.transportReconnecting)
         disconnectGraceTask = Task { [weak self] in
             try? await Task.sleep(for: Self.disconnectGracePeriod)
             guard !Task.isCancelled, let self else { return }
-            // Re-check: if still disconnected after the grace period, emit peerDisconnected.
-            let lanUp = self.lan.isConnected
-            let relayUp = self.relay?.isConnected ?? false
-            if !lanUp && !relayUp {
+            if force {
+                // The relay explicitly told us the peer is gone.
+                // Unless this task was cancelled (by peer-reconnected), emit.
                 self.eventContinuation.yield(.peerDisconnected)
+            } else {
+                // Transport-level disconnect: re-check connectivity.
+                let lanUp = self.lan.isConnected
+                let relayUp = self.relay?.isConnected ?? false
+                if !lanUp && !relayUp {
+                    self.eventContinuation.yield(.peerDisconnected)
+                }
             }
             self.disconnectGraceTask = nil
         }
@@ -308,17 +326,17 @@ final class TransportManager {
         self.pathMonitor = monitor
 
         monitor.pathUpdateHandler = { [weak self] path in
-            guard let self else { return }
+            guard let self, !self.isStopped else { return }
 
             if path.status == .satisfied {
                 // Network restored. Reconnect relay if needed.
-                if let relay, !relay.isConnected {
+                if let relay, !relay.isConnected, !relay.isConnecting {
                     print("[Ion] networkMonitor: path satisfied, relay NOT connected -- reconnecting")
                     Task { @MainActor in
                         await relay.connect()
                     }
                 } else {
-                    print("[Ion] networkMonitor: path satisfied, relay already connected=\(self.relay?.isConnected ?? false)")
+                    print("[Ion] networkMonitor: path satisfied, relay connected=\(self.relay?.isConnected ?? false) connecting=\(self.relay?.isConnecting ?? false)")
                 }
                 // Restart Bonjour to re-discover LAN hosts.
                 self.bonjour.startBrowsing()

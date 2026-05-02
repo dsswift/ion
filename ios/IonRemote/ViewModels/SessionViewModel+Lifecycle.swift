@@ -47,15 +47,6 @@ extension SessionViewModel {
 
         Task {
             await tm.start()
-            // Relay connected -- send sync so the desktop knows we're here
-            // and replies with a snapshot. The relay server may not send a
-            // peer-reconnected control frame to the desktop on its own.
-            do {
-                try await tm.send(.sync)
-                print("[Ion] connect: sent sync after relay connect")
-            } catch {
-                print("[Ion] connect: failed to send sync: \(error)")
-            }
         }
         startListening()
     }
