@@ -73,7 +73,10 @@ async function createTabFromCommand(
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
-        return store.getState().${storeMethod}(${args});
+        var prev = store.getState().activeTabId;
+        var id = store.getState().${storeMethod}(${args});
+        store.setState({ activeTabId: prev });
+        return id;
       })()
     `)
     return tabId || null
@@ -117,7 +120,10 @@ export async function handleCreateEngineTab(cmd: Extract<RemoteCommand, { type: 
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
-        return store.getState().createEngineTab('${escaped}', ${profileArg});
+        var prev = store.getState().activeTabId;
+        var id = store.getState().createEngineTab('${escaped}', ${profileArg});
+        store.setState({ activeTabId: prev });
+        return id;
       })()
     `)
     if (tabId) notifyTabCreated(tabId)
