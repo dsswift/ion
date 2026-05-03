@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.9.0](https://github.com/dsswift/ion/compare/desktop-v1.8.1...desktop-v1.9.0) (2026-05-03)
+
+### Features
+
+* **desktop:** add git operations command handlers ([91eb0eb](https://github.com/dsswift/ion/commit/91eb0eb0a84cb472bf55644aed94a45f721b3bb7))
+
 ## [1.8.1](https://github.com/dsswift/ion/compare/desktop-v1.8.0...desktop-v1.8.1) (2026-05-02)
 
 ### Bug Fixes

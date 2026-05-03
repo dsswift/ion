@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.6.0](https://github.com/dsswift/ion/compare/ios-v1.5.0...ios-v1.6.0) (2026-05-03)
+
+### Features
+
+* **ios:** add git integration ui and models ([66d6bce](https://github.com/dsswift/ion/commit/66d6bcea892d03a1558651c7a0b38f78453a70c6))
+
 ## [1.5.0](https://github.com/dsswift/ion/compare/ios-v1.4.0...ios-v1.5.0) (2026-05-02)
 
 ### Features
