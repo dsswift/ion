@@ -129,6 +129,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	m.wirePermissionHookServer(s, key, &opts, permEng)
 	m.wireToolServer(s, key, &opts, extGroup)
+	m.wireAgentToolServer(s, key, &opts)
 
 	// Fire before_prompt for CliBackend (ApiBackend wires this inside buildRunConfig).
 	m.fireBeforePromptCli(s, key, extGroup, skipExtensions, &opts)

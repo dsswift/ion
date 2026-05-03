@@ -522,3 +522,140 @@ func TestHandleNormalizedEvent_TaskUpdateFiresTurnEnd(t *testing.T) {
 		t.Errorf("expected turn_end(1) via handleNormalizedEvent, got %v", ends)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// wireAgentToolServer tests
+// ---------------------------------------------------------------------------
+
+func TestWireAgentToolServer_RegistersToolForCliBackend(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("agent-ts1")
+
+	mgr.mu.Lock()
+	mgr.sessions["agent-ts1"] = s
+	mgr.mu.Unlock()
+
+	opts := types.RunOptions{}
+	mgr.wireAgentToolServer(s, "agent-ts1", &opts)
+
+	mgr.mu.Lock()
+	ts := s.toolServer
+	mgr.mu.Unlock()
+
+	if ts == nil {
+		t.Fatal("expected ToolServer to be created")
+	}
+	if opts.McpConfig == "" {
+		t.Error("expected McpConfig to be set")
+	}
+
+	// Cleanup
+	ts.Stop()
+}
+
+func TestWireAgentToolServer_NoopForNonCliBackend(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	s := newCliSession("agent-ts2")
+
+	opts := types.RunOptions{}
+	mgr.wireAgentToolServer(s, "agent-ts2", &opts)
+
+	mgr.mu.Lock()
+	ts := s.toolServer
+	mgr.mu.Unlock()
+
+	if ts != nil {
+		t.Error("expected no ToolServer for non-CLI backend")
+	}
+	if opts.McpConfig != "" {
+		t.Error("expected no McpConfig for non-CLI backend")
+	}
+}
+
+func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("agent-ts3")
+
+	// Pre-create a ToolServer (as wireToolServer would)
+	existingTS := backend.NewToolServer("agent-ts3")
+	if err := existingTS.Start(); err != nil {
+		t.Fatalf("failed to start existing ToolServer: %v", err)
+	}
+	mgr.mu.Lock()
+	s.toolServer = existingTS
+	mgr.sessions["agent-ts3"] = s
+	mgr.mu.Unlock()
+
+	opts := types.RunOptions{}
+	mgr.wireAgentToolServer(s, "agent-ts3", &opts)
+
+	mgr.mu.Lock()
+	ts := s.toolServer
+	mgr.mu.Unlock()
+
+	// Should be the same ToolServer instance
+	if ts != existingTS {
+		t.Error("expected wireAgentToolServer to reuse existing ToolServer")
+	}
+
+	// McpConfig should NOT be set again (it was already set by wireToolServer)
+	if opts.McpConfig != "" {
+		t.Error("expected McpConfig not to be overwritten when ToolServer already exists")
+	}
+
+	// Cleanup
+	existingTS.Stop()
+}
+
+func TestWireAgentToolServer_SpecResolution(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("agent-ts4")
+
+	// Register an agent spec
+	s.agentSpecs["researcher"] = types.AgentSpec{
+		Name:         "researcher",
+		Model:        "test-model",
+		SystemPrompt: "You are a researcher.",
+		Tools:        []string{"Read", "Grep"},
+	}
+
+	mgr.mu.Lock()
+	mgr.sessions["agent-ts4"] = s
+	mgr.mu.Unlock()
+
+	// Build the handler directly and test spec resolution
+	handler := mgr.buildAgentToolHandler(s, "agent-ts4")
+
+	// Test with unknown spec name
+	result, err := handler(map[string]interface{}{
+		"prompt": "test task",
+		"name":   "nonexistent",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error for unregistered agent name")
+	}
+	if !strings.Contains(result.Content, "not registered") {
+		t.Errorf("expected 'not registered' error, got %q", result.Content)
+	}
+
+	// Test with missing prompt
+	result, err = handler(map[string]interface{}{
+		"name": "researcher",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error for missing prompt")
+	}
+	if !strings.Contains(result.Content, "prompt is required") {
+		t.Errorf("expected 'prompt is required' error, got %q", result.Content)
+	}
+}

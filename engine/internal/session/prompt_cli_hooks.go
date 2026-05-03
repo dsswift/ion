@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -105,4 +107,144 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 	s.toolServer = ts
 	m.mu.Unlock()
 	utils.Log("Session", fmt.Sprintf("ToolServer started for CLI backend (%d tools)", len(extTools)))
+}
+
+// wireAgentToolServer registers an ion_agent tool on the ToolServer for CLI
+// backend sessions. This exposes the engine's agent-spec system (spec
+// resolution from ~/.ion/agents/, capability_match hooks, model/system-prompt
+// overrides from spec frontmatter) to the CLI subprocess via MCP. The tool
+// appears as mcp__ion-extensions__ion_agent to the LLM.
+//
+// If wireToolServer already created a ToolServer (because extension tools
+// exist), the ion_agent tool is added to it. Otherwise a new ToolServer is
+// created and started.
+func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.RunOptions) {
+	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+		return
+	}
+
+	m.mu.Lock()
+	ts := s.toolServer
+	m.mu.Unlock()
+
+	needsStart := false
+	if ts == nil {
+		ts = backend.NewToolServer(key)
+		needsStart = true
+	}
+
+	ts.RegisterTool("ion_agent", m.buildAgentToolHandler(s, key))
+
+	if needsStart {
+		if err := ts.Start(); err != nil {
+			utils.Log("Session", "ToolServer start failed (agent tool): "+err.Error())
+			return
+		}
+		mcpPath, err := ts.McpConfigPath(key)
+		if err != nil {
+			utils.Log("Session", "ToolServer MCP config failed (agent tool): "+err.Error())
+			ts.Stop()
+			return
+		}
+		opts.McpConfig = mcpPath
+		m.mu.Lock()
+		s.toolServer = ts
+		m.mu.Unlock()
+	}
+
+	utils.Log("Session", "ion_agent tool registered on ToolServer for CLI backend")
+}
+
+// buildAgentToolHandler returns a ToolHandler closure that resolves ion agent
+// specs and runs child agents synchronously. It mirrors the spawner logic in
+// wireAgentSpawner but runs over MCP so the CLI subprocess can invoke it.
+func (m *Manager) buildAgentToolHandler(s *engineSession, key string) backend.ToolHandler {
+	return func(input map[string]interface{}) (*types.ToolResult, error) {
+		prompt, _ := input["prompt"].(string)
+		name, _ := input["name"].(string)
+		description, _ := input["description"].(string)
+		model, _ := input["model"].(string)
+
+		if prompt == "" {
+			return &types.ToolResult{Content: "error: prompt is required", IsError: true}, nil
+		}
+
+		// Resolve agent spec by name if provided.
+		var spec types.AgentSpec
+		var specMatched bool
+		if name != "" {
+			if matched, ok := m.resolveAgentSpec(s, key, name); ok {
+				spec = matched
+				specMatched = true
+			} else {
+				return &types.ToolResult{
+					Content: fmt.Sprintf("agent %q is not registered (capability_match returned no match)", name),
+					IsError: true,
+				}, nil
+			}
+		}
+
+		// Determine model: explicit > spec > parent config default.
+		childModel := model
+		if childModel == "" && specMatched {
+			childModel = spec.Model
+		}
+		if childModel == "" && m.config != nil {
+			childModel = m.config.DefaultModel
+		}
+
+		cwd := s.config.WorkingDirectory
+
+		runOpts := types.RunOptions{
+			Prompt:      prompt,
+			Model:       childModel,
+			ProjectPath: cwd,
+		}
+		if specMatched {
+			if spec.SystemPrompt != "" {
+				runOpts.AppendSystemPrompt = spec.SystemPrompt
+			}
+			if len(spec.Tools) > 0 {
+				runOpts.AllowedTools = spec.Tools
+			}
+		}
+		if description != "" && !specMatched {
+			runOpts.AppendSystemPrompt = description
+		}
+
+		child := m.newChildBackend()
+		var result string
+		var childErr error
+		var childDone sync.WaitGroup
+		childDone.Add(1)
+
+		child.OnNormalized(func(_ string, ev types.NormalizedEvent) {
+			if tc, ok := ev.Data.(*types.TaskCompleteEvent); ok {
+				result = tc.Result
+			}
+		})
+		child.OnExit(func(_ string, _ *int, _ *string, _ string) {
+			childDone.Done()
+		})
+		child.OnError(func(_ string, err error) {
+			childErr = err
+		})
+
+		childRequestID := fmt.Sprintf("%s-ion-agent-%s-%d", key, name, time.Now().UnixMilli())
+		child.StartRun(childRequestID, runOpts)
+		childDone.Wait()
+
+		if childErr != nil {
+			errParts := []string{"agent"}
+			if name != "" {
+				errParts = append(errParts, name)
+			}
+			return &types.ToolResult{
+				Content: fmt.Sprintf("%s failed: %s", strings.Join(errParts, " "), childErr.Error()),
+				IsError: true,
+			}, nil
+		}
+
+		return &types.ToolResult{Content: result, IsError: false}, nil
+	}
 }

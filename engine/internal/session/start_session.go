@@ -131,8 +131,9 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 			projectPath = s.config.WorkingDirectory
 		}
 
-		// Create child backend
-		child := backend.NewApiBackend()
+		// Create child backend matching the parent session's backend type.
+		// Uses the factory so CliBackend sessions spawn CLI children.
+		child := m.newChildBackend()
 		var childCfg *backend.RunConfig
 
 		// Load extension if specified
@@ -246,7 +247,12 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 			runOpts.MaxTurns = opts.MaxTurns
 		}
 
-		child.StartRunWithConfig(fmt.Sprintf("%s-dispatch-%s", key, opts.Name), runOpts, childCfg)
+		childReqID := fmt.Sprintf("%s-dispatch-%s", key, opts.Name)
+		if apiChild, ok := child.(*backend.ApiBackend); ok && childCfg != nil {
+			apiChild.StartRunWithConfig(childReqID, runOpts, childCfg)
+		} else {
+			child.StartRun(childReqID, runOpts)
+		}
 		childDone.Wait()
 
 		elapsed := time.Since(start).Seconds()

@@ -74,7 +74,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
 		start := time.Now()
-		child := backend.NewApiBackend()
+		child := m.newChildBackend()
 		var result string
 		var childErr error
 		var childDone sync.WaitGroup
