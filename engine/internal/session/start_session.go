@@ -186,7 +186,7 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 			}
 		}
 
-		// Route child events to parent event bus and optional extension callback
+		// Track child cost/tokens and forward events to extension callback
 		var totalCost float64
 		var totalInputTokens, totalOutputTokens int
 		var childSessionID string
@@ -197,10 +197,14 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 		childDone.Add(1)
 
 		child.OnNormalized(func(_ string, ev types.NormalizedEvent) {
-			// Route to parent event bus and optional extension callback
+			// Translate child events but do NOT broadcast to the parent socket
+			// stream. The extension already receives every child event via the
+			// private opts.OnEvent channel (dispatch_event JSON-RPC notification)
+			// and decides what to surface by calling ctx.emit(). This matches the
+			// built-in AgentSpawner which also never broadcasts child streaming
+			// events.
 			ee := translateToEngineEvent(ev, 0)
 			if ee.Type != "" {
-				m.emit(key, ee)
 				if opts.OnEvent != nil {
 					opts.OnEvent(ee)
 				}
