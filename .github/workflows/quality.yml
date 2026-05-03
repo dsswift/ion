@@ -12,14 +12,14 @@ jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run actionlint
         uses: raven-actions/actionlint@v2
 
   file-size:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check file-size caps
         run: bash scripts/check-file-sizes.sh
 
@@ -30,9 +30,9 @@ jobs:
         os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
       - name: Unit tests with race detector
@@ -45,14 +45,14 @@ jobs:
   engine-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Need full history so golangci-lint can compute a local diff
           # against origin/main without touching the GitHub PR-diff API
           # (20K-line cap; large PRs fall back to all-issues mode).
           fetch-depth: 0
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
       # `--new-from-merge-base=origin/main` filters issues to lines changed
@@ -61,13 +61,13 @@ jobs:
       # PR-diff REST endpoint, which 422s above 20K lines and trips the
       # action's "report everything" fallback.
       - name: golangci-lint (engine)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: engine
           args: --new-from-merge-base=origin/main
       - name: golangci-lint (relay)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: relay
@@ -76,9 +76,9 @@ jobs:
   engine-vuln:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
       - name: govulncheck (engine)
@@ -93,9 +93,9 @@ jobs:
   relay-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: relay/go.mod
       - name: Unit tests with race detector
@@ -105,9 +105,9 @@ jobs:
   desktop-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: npm
@@ -125,9 +125,9 @@ jobs:
   desktop-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
       - name: npm audit (high+ only, prod deps)
@@ -137,11 +137,11 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Build engine image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: engine
           push: false
@@ -151,7 +151,7 @@ jobs:
   ios-build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build iOS app
         working-directory: ios
         run: |
