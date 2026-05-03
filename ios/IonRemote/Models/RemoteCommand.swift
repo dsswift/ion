@@ -34,6 +34,12 @@ enum RemoteCommand: Codable, Sendable {
     case setTabGroupMode(mode: String)
     case moveTabToGroup(tabId: String, groupId: String)
     case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
+    case gitChanges(directory: String)
+    case gitGraph(directory: String, skip: Int? = nil, limit: Int? = nil)
+    case gitDiff(directory: String, path: String, staged: Bool)
+    case gitStage(directory: String, paths: [String])
+    case gitUnstage(directory: String, paths: [String])
+    case gitCommit(directory: String, message: String)
 
     // MARK: - Codable
 
@@ -69,6 +75,12 @@ enum RemoteCommand: Codable, Sendable {
         case setTabGroupMode = "set_tab_group_mode"
         case moveTabToGroup = "move_tab_to_group"
         case engineSetModel = "engine_set_model"
+        case gitChanges = "git_changes"
+        case gitGraph = "git_graph"
+        case gitDiff = "git_diff"
+        case gitStage = "git_stage"
+        case gitUnstage = "git_unstage"
+        case gitCommit = "git_commit"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -76,6 +88,7 @@ enum RemoteCommand: Codable, Sendable {
         case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
         case instanceId, data, cols, rows, customTitle, label, messageId
         case dialogId, value, profileId, model, groupId
+        case directory, path, staged, paths, skip, limit, message
     }
 
     init(from decoder: Decoder) throws {
@@ -235,6 +248,37 @@ enum RemoteCommand: Codable, Sendable {
             let model = try container.decode(String.self, forKey: .model)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             self = .engineSetModel(tabId: tabId, model: model, instanceId: instanceId)
+
+        case .gitChanges:
+            let directory = try container.decode(String.self, forKey: .directory)
+            self = .gitChanges(directory: directory)
+
+        case .gitGraph:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let skip = try container.decodeIfPresent(Int.self, forKey: .skip)
+            let limit = try container.decodeIfPresent(Int.self, forKey: .limit)
+            self = .gitGraph(directory: directory, skip: skip, limit: limit)
+
+        case .gitDiff:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let path = try container.decode(String.self, forKey: .path)
+            let staged = try container.decode(Bool.self, forKey: .staged)
+            self = .gitDiff(directory: directory, path: path, staged: staged)
+
+        case .gitStage:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let paths = try container.decode([String].self, forKey: .paths)
+            self = .gitStage(directory: directory, paths: paths)
+
+        case .gitUnstage:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let paths = try container.decode([String].self, forKey: .paths)
+            self = .gitUnstage(directory: directory, paths: paths)
+
+        case .gitCommit:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let message = try container.decode(String.self, forKey: .message)
+            self = .gitCommit(directory: directory, message: message)
         }
     }
 
@@ -394,6 +438,37 @@ enum RemoteCommand: Codable, Sendable {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(model, forKey: .model)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
+
+        case .gitChanges(let directory):
+            try container.encode(TypeKey.gitChanges, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+
+        case .gitGraph(let directory, let skip, let limit):
+            try container.encode(TypeKey.gitGraph, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encodeIfPresent(skip, forKey: .skip)
+            try container.encodeIfPresent(limit, forKey: .limit)
+
+        case .gitDiff(let directory, let path, let staged):
+            try container.encode(TypeKey.gitDiff, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(path, forKey: .path)
+            try container.encode(staged, forKey: .staged)
+
+        case .gitStage(let directory, let paths):
+            try container.encode(TypeKey.gitStage, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(paths, forKey: .paths)
+
+        case .gitUnstage(let directory, let paths):
+            try container.encode(TypeKey.gitUnstage, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(paths, forKey: .paths)
+
+        case .gitCommit(let directory, let message):
+            try container.encode(TypeKey.gitCommit, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(message, forKey: .message)
         }
     }
 }

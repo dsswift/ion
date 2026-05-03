@@ -8,6 +8,7 @@ struct ConversationView: View {
     @State private var cachedRestoredCard: PermissionRequest?
     @State private var scrollTask: Task<Void, Never>?
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var showGitPane = false
 
     private var tab: RemoteTabState? {
         viewModel.tab(for: tabId)
@@ -132,18 +133,27 @@ struct ConversationView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    guard let current = tab?.permissionMode else { return }
-                    let newMode: PermissionMode = current == .plan ? .auto : .plan
-                    viewModel.setPermissionMode(tabId: tabId, mode: newMode)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: tab?.permissionMode == .plan ? "doc.text" : "bolt.fill")
-                            .font(.caption)
-                        Text(tab?.permissionMode == .plan ? "Plan" : "Auto")
-                            .font(.caption.weight(.medium))
+                HStack(spacing: 12) {
+                    Button {
+                        showGitPane = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.subheadline)
                     }
-                    .foregroundStyle(tab?.permissionMode == .plan ? Color(hex: 0x2EB8A6) : .secondary)
+
+                    Button {
+                        guard let current = tab?.permissionMode else { return }
+                        let newMode: PermissionMode = current == .plan ? .auto : .plan
+                        viewModel.setPermissionMode(tabId: tabId, mode: newMode)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: tab?.permissionMode == .plan ? "doc.text" : "bolt.fill")
+                                .font(.caption)
+                            Text(tab?.permissionMode == .plan ? "Plan" : "Auto")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(tab?.permissionMode == .plan ? Color(hex: 0x2EB8A6) : .secondary)
+                    }
                 }
             }
         }
@@ -185,6 +195,10 @@ struct ConversationView: View {
             }
         }
         .animation(.default, value: pendingPermission?.id)
+        .fullScreenCover(isPresented: $showGitPane) {
+            GitPaneView(tabId: tabId)
+                .environment(viewModel)
+        }
     }
 
     // MARK: - Message List

@@ -38,6 +38,14 @@ import {
   handleForkFromMessage,
   handleUnpair,
 } from './handlers/history'
+import {
+  handleGitChanges,
+  handleGitGraph,
+  handleGitDiff,
+  handleGitStage,
+  handleGitUnstage,
+  handleGitCommit,
+} from './handlers/git'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string): void {
@@ -79,6 +87,12 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'fork_from_message': await handleForkFromMessage(cmd); break
     case 'set_tab_group_mode': await handleSetTabGroupMode(cmd); break
     case 'move_tab_to_group': await handleMoveTabToGroup(cmd); break
+    case 'git_changes': await handleGitChanges(cmd); break
+    case 'git_graph': await handleGitGraph(cmd); break
+    case 'git_diff': await handleGitDiff(cmd); break
+    case 'git_stage': await handleGitStage(cmd); break
+    case 'git_unstage': await handleGitUnstage(cmd); break
+    case 'git_commit': await handleGitCommit(cmd); break
     case 'unpair': handleUnpair(deviceId); break
   }
 }

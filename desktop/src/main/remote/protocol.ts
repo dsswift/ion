@@ -98,6 +98,12 @@ export type RemoteCommand =
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'move_tab_to_group'; tabId: string; groupId: string }
   | { type: 'unpair' }
+  | { type: 'git_changes'; directory: string }
+  | { type: 'git_graph'; directory: string; skip?: number; limit?: number }
+  | { type: 'git_diff'; directory: string; path: string; staged: boolean }
+  | { type: 'git_stage'; directory: string; paths: string[] }
+  | { type: 'git_unstage'; directory: string; paths: string[] }
+  | { type: 'git_commit'; directory: string; message: string }
 
 // ─── Ion → iOS events ───
 
@@ -145,6 +151,9 @@ export type RemoteEvent =
   | { type: 'heartbeat'; seq: number; ts: number; buffered: number }
   | { type: 'unpair' }
   | { type: 'relay_config'; relayUrl: string; relayApiKey: string }
+  | { type: 'git_changes_response'; directory: string; files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }>; branch: string; isGitRepo: boolean; ahead: number; behind: number }
+  | { type: 'git_graph_response'; directory: string; commits: Array<{ hash: string; fullHash: string; parents: string[]; authorName: string; authorDate: string; subject: string; refs: Array<{ name: string; type: string; isCurrent: boolean }> }>; isGitRepo: boolean; totalCount: number }
+  | { type: 'git_diff_response'; diff: string; fileName: string }
 
 // ─── Relay control frames (injected by relay, not by Ion) ───
 

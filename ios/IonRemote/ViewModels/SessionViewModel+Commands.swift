@@ -263,6 +263,33 @@ extension SessionViewModel {
         terminalInstanceLabels["\(tabId):\(instanceId)"] ?? fallback
     }
 
+    // MARK: - Git Commands
+
+    func requestGitChanges(directory: String) {
+        send(.gitChanges(directory: directory))
+    }
+
+    func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {
+        send(.gitGraph(directory: directory, skip: skip, limit: limit))
+    }
+
+    func requestGitDiff(directory: String, path: String, staged: Bool) {
+        gitDiffLoading = true
+        send(.gitDiff(directory: directory, path: path, staged: staged))
+    }
+
+    func gitStage(directory: String, paths: [String]) {
+        send(.gitStage(directory: directory, paths: paths))
+    }
+
+    func gitUnstage(directory: String, paths: [String]) {
+        send(.gitUnstage(directory: directory, paths: paths))
+    }
+
+    func gitCommit(directory: String, message: String) {
+        send(.gitCommit(directory: directory, message: message))
+    }
+
     // MARK: - Send
 
     func send(_ command: RemoteCommand) {

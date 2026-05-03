@@ -238,6 +238,17 @@ extension SessionViewModel {
 
         case .engineProfiles(let profiles):
             engineProfiles = profiles
+
+        // Git events
+        case .gitChangesResponse(let directory, let response):
+            gitChanges[directory] = response
+
+        case .gitGraphResponse(let directory, let response):
+            gitGraph[directory] = response
+
+        case .gitDiffResponse(let response):
+            gitDiffResult = response
+            gitDiffLoading = false
         }
     }
 

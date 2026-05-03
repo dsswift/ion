@@ -161,6 +161,12 @@ final class SessionViewModel {
     /// Tab IDs that iOS has requested to close but hasn't received tab_closed confirmation for.
     var pendingCloseTabIds: Set<String> = []
 
+    // Git state (per working directory)
+    var gitChanges: [String: GitChangesResponse] = [:]     // directory -> changes
+    var gitGraph: [String: GitGraphResponse] = [:]          // directory -> graph
+    var gitDiffResult: GitDiffResponse? = nil
+    var gitDiffLoading = false
+
     /// Tab group mode synced from the desktop: "off", "auto", or "manual".
     var tabGroupMode: String = "auto"
     /// Manual tab group definitions from the desktop (only meaningful when tabGroupMode == "manual").

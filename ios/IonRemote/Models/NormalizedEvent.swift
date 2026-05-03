@@ -63,6 +63,10 @@ enum RemoteEvent: Codable, Sendable {
     case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
     case engineModelOverride(tabId: String, instanceId: String?, model: String)
     case engineProfiles(profiles: [EngineProfile])
+    // Git events
+    case gitChangesResponse(directory: String, response: GitChangesResponse)
+    case gitGraphResponse(directory: String, response: GitGraphResponse)
+    case gitDiffResponse(response: GitDiffResponse)
 
     // MARK: - Codable keys
 
@@ -112,6 +116,9 @@ enum RemoteEvent: Codable, Sendable {
         case engineConversationHistory = "engine_conversation_history"
         case engineModelOverride = "engine_model_override"
         case engineProfiles = "engine_profiles"
+        case gitChangesResponse = "git_changes_response"
+        case gitGraphResponse = "git_graph_response"
+        case gitDiffResponse = "git_diff_response"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -127,6 +134,8 @@ enum RemoteEvent: Codable, Sendable {
         case agents, fields, inputTokens, outputTokens, contextPercent
         case signal, stderrTail, label, profiles, elapsed, usage, model
         case tabGroupMode, tabGroups
+        case directory, files, branch, isGitRepo, ahead, behind
+        case commits, totalCount, diff, fileName
     }
 
     // MARK: - Decoder
@@ -155,6 +164,10 @@ enum RemoteEvent: Codable, Sendable {
             self = event
             return
         }
+        if let event = try Self.decodeGit(type: type, container: container) {
+            self = event
+            return
+        }
         // Should be unreachable: every TypeKey must be handled by exactly one family.
         throw DecodingError.dataCorruptedError(
             forKey: .type,
@@ -173,6 +186,7 @@ enum RemoteEvent: Codable, Sendable {
         if try encodePermission(into: &container) { return }
         if try encodeTerminal(into: &container) { return }
         if try encodeEngine(into: &container) { return }
+        if try encodeGit(into: &container) { return }
         // Unreachable: every case must be encoded by exactly one family.
     }
 }
