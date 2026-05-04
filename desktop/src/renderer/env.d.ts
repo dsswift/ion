@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { IonAPI } from '../preload/index'
 
 declare module '*.mp3' {
