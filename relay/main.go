@@ -51,6 +51,7 @@ func main() {
 		if err != nil {
 			log.Printf("APNs disabled: %v", err)
 		} else {
+			pusher.Start()
 			log.Println("APNs push notifications enabled")
 		}
 	}

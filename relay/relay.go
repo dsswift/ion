@@ -167,7 +167,8 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	})
 	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 
-	go h.ping(conn)
+	done := make(chan struct{})
+	go h.ping(conn, done)
 
 	// Read loop: forward messages to the peer.
 	for {
@@ -215,6 +216,8 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 	log.Printf("channel=%s role=%s disconnected", channelID, role)
 	h.removeIfEmpty(channelID)
+	close(done)
+	conn.Close()
 }
 
 func (ch *Channel) getPeerLocked(myRole string) *SafeConn {
@@ -224,12 +227,17 @@ func (ch *Channel) getPeerLocked(myRole string) *SafeConn {
 	return ch.ion
 }
 
-func (h *Hub) ping(conn *SafeConn) {
+func (h *Hub) ping(conn *SafeConn, done <-chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		if err := conn.SafeWrite(websocket.PingMessage, nil, 5*time.Second); err != nil {
+	for {
+		select {
+		case <-done:
 			return
+		case <-ticker.C:
+			if err := conn.SafeWrite(websocket.PingMessage, nil, 5*time.Second); err != nil {
+				return
+			}
 		}
 	}
 }

@@ -25,6 +25,13 @@ const (
 	tokenTTL          = 50 * time.Minute // Apple requires refresh within 60 min
 )
 
+// pushRequest holds the parameters for a single push notification.
+type pushRequest struct {
+	deviceToken string
+	title       string
+	body        string
+}
+
 // APNsPusher sends push notifications via Apple's HTTP/2 APNs API.
 type APNsPusher struct {
 	client  *http.Client
@@ -36,6 +43,8 @@ type APNsPusher struct {
 	mu          sync.Mutex
 	cachedToken string
 	tokenExpiry time.Time
+
+	queue chan pushRequest
 }
 
 func NewAPNsPusher(keyPath, keyID, teamID string) (*APNsPusher, error) {
@@ -60,7 +69,7 @@ func NewAPNsPusher(keyPath, keyID, teamID string) (*APNsPusher, error) {
 	}
 
 	transport := &http2.Transport{}
-	client := &http.Client{Transport: transport}
+	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
 
 	// Use sandbox for development; production in release builds.
 	baseURL := apnsSandboxURL
@@ -74,6 +83,7 @@ func NewAPNsPusher(keyPath, keyID, teamID string) (*APNsPusher, error) {
 		keyID:   keyID,
 		teamID:  teamID,
 		key:     ecKey,
+		queue:   make(chan pushRequest, 64),
 	}, nil
 }
 
@@ -119,7 +129,20 @@ type apsAlert struct {
 }
 
 func (p *APNsPusher) Send(deviceToken, title, body string) {
-	go p.sendAsync(deviceToken, title, body)
+	select {
+	case p.queue <- pushRequest{deviceToken: deviceToken, title: title, body: body}:
+	default:
+		log.Printf("APNs push queue full, dropping notification")
+	}
+}
+
+// Start launches a single background worker that drains the push queue.
+func (p *APNsPusher) Start() {
+	go func() {
+		for req := range p.queue {
+			p.sendAsync(req.deviceToken, req.title, req.body)
+		}
+	}()
 }
 
 func (p *APNsPusher) sendAsync(deviceToken, title, body string) {
