@@ -125,6 +125,11 @@ export class RemoteTransport extends EventEmitter {
     this.lan.on('client-disconnected', (connectionId: string, code: number, _reason: string) => {
       const deviceId = this.lanDeviceMap.get(connectionId)
       this.lanDeviceMap.delete(connectionId)
+      if (deviceId) {
+        for (const [key, val] of this.lanDeviceMap) {
+          if (val === deviceId) this.lanDeviceMap.delete(key)
+        }
+      }
 
       // Clean up any pending auth for this connection.
       const pending = this.lanAuthPending.get(connectionId)
