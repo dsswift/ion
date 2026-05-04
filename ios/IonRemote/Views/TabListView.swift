@@ -87,10 +87,13 @@ struct TabListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
+                    HStack(spacing: 12) {
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        ConnectionQualityView(compact: true)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
