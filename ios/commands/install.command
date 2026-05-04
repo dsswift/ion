@@ -1,10 +1,12 @@
 #!/bin/bash
 # Build IonRemote and install to a connected iPhone.
-# Usage: bash commands/install.command [--device DEVICE_ID]
+# Usage: bash commands/install.command [--device DEVICE_ID] [--release]
 #
-# Requires a connected iPhone (USB or Wi-Fi paired).
-# Uses xcodebuild to build + install in one shot via
-# `build install-on-device`.
+# Supports two install paths:
+#   1. CoreDevice tunnel available → xcodebuild builds with device destination
+#   2. Tunnel unavailable but usbmuxd reachable → generic build + ios-deploy
+#
+# Requires: Xcode CLI tools. Optional: ios-deploy (brew install ios-deploy).
 
 set -euo pipefail
 
@@ -37,97 +39,114 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Find connected device ──
+# ── Detect device ──
+# Populates: DEVICE_ID, TUNNEL_OK, LEGACY_UDID
+TUNNEL_OK=false
+LEGACY_UDID=""
 
-if [[ -z "$DEVICE_ID" ]]; then
+detect_device() {
   echo "==> Detecting connected iPhone..."
 
-  # Prefer devicectl (CoreDevice) — it reports availability and provides
-  # the UUID that xcodebuild actually understands on modern Xcode.
-  # Fall back to xctrace only when devicectl is unavailable.
-  DEVICECTL_TMP=$(mktemp /tmp/devicectl.XXXXXX.json)
-  xcrun devicectl list devices --json-output "$DEVICECTL_TMP" >/dev/null 2>&1 || true
+  # Try devicectl (CoreDevice) first — modern Xcode 15+
+  local tmp
+  tmp=$(mktemp /tmp/devicectl.XXXXXX.json)
+  xcrun devicectl list devices --json-output "$tmp" >/dev/null 2>&1 || true
 
-  if [[ -s "$DEVICECTL_TMP" ]]; then
-    # Find the first physical iPhone from devicectl JSON output
-    DEVICE_RESULT=$(python3 -c "
-import json, sys
-data = json.load(open('$DEVICECTL_TMP'))
-devices = data.get('result', {}).get('devices', [])
-for d in devices:
+  if [[ -s "$tmp" ]]; then
+    local result
+    result=$(python3 -c "
+import json
+data = json.load(open('$tmp'))
+for d in data.get('result', {}).get('devices', []):
     hw = d.get('hardwareProperties', {})
+    if hw.get('reality') != 'physical' or hw.get('deviceType') != 'iPhone':
+        continue
     conn = d.get('connectionProperties', {})
     props = d.get('deviceProperties', {})
-    # Only physical iPhones
-    if hw.get('reality') != 'physical':
-        continue
-    if hw.get('deviceType', '') != 'iPhone':
-        continue
     udid = d.get('identifier', '')
     name = props.get('name', hw.get('marketingName', 'iPhone'))
     tunnel = conn.get('tunnelState', 'unavailable')
-    available = 'available' if tunnel not in ['unavailable'] else 'unavailable'
-    print(f'{available}|{udid}|{name}')
+    ok = 'yes' if tunnel not in ['unavailable'] else 'no'
+    print(f'{ok}|{udid}|{name}')
     break
 " 2>/dev/null || true)
-    rm -f "$DEVICECTL_TMP"
+    rm -f "$tmp"
 
-    if [[ -n "$DEVICE_RESULT" ]]; then
-      DEV_STATE=$(echo "$DEVICE_RESULT" | cut -d'|' -f1)
-      DEVICE_ID=$(echo "$DEVICE_RESULT" | cut -d'|' -f2)
-      DEV_NAME=$(echo "$DEVICE_RESULT" | cut -d'|' -f3)
-      echo "  Found: $DEV_NAME ($DEVICE_ID)"
-
-      if [[ "$DEV_STATE" != "available" ]]; then
-        echo
-        echo "✗ Device is connected but not available (tunnel: unavailable)."
-        echo
-        echo "  Try these steps:"
-        echo "    1. Unlock the phone and keep it unlocked"
-        echo "    2. Unplug USB and plug back in"
-        echo "    3. Tap 'Trust' if prompted on the phone"
-        echo "    4. Open Xcode.app and wait for device preparation"
-        echo "    5. Run: xcrun devicectl list devices | grep iPhone"
-        echo "       Wait until it shows 'available', then retry."
-        exit 1
+    if [[ -n "$result" ]]; then
+      TUNNEL_OK=$( [[ "$(echo "$result" | cut -d'|' -f1)" == "yes" ]] && echo true || echo false )
+      DEVICE_ID=$(echo "$result" | cut -d'|' -f2)
+      local name
+      name=$(echo "$result" | cut -d'|' -f3)
+      echo "  Found: $name ($DEVICE_ID)"
+      if $TUNNEL_OK; then
+        echo "  Tunnel: available ✓"
+      else
+        echo "  Tunnel: unavailable (will use ios-deploy fallback)"
       fi
+      return
     fi
   else
-    rm -f "$DEVICECTL_TMP"
+    rm -f "$tmp"
   fi
 
-  # Fallback: xctrace (for older Xcode or when devicectl has no results)
+  # Fallback: xctrace (older Xcode or devicectl returned nothing)
+  local line
+  line=$(xcrun xctrace list devices 2>/dev/null \
+    | grep -v "Simulator" \
+    | grep -v "^==" \
+    | grep -v "^$" \
+    | grep -vE "^$(scutil --get ComputerName 2>/dev/null || hostname -s)" \
+    | head -1)
+
+  if [[ -z "$line" ]]; then
+    echo "✗ No connected iPhone found."
+    echo "  Connect via USB or ensure Wi-Fi pairing is active."
+    exit 1
+  fi
+
+  DEVICE_ID=$(echo "$line" | grep -oE '[0-9A-Fa-f-]{20,}' | tail -1)
   if [[ -z "$DEVICE_ID" ]]; then
-    DEVICE_LINE=$(xcrun xctrace list devices 2>/dev/null \
-      | grep -v "Simulator" \
-      | grep -v "^==" \
-      | grep -v "^$" \
-      | grep -vE "^$(scutil --get ComputerName 2>/dev/null || hostname -s)" \
-      | head -1)
-
-    if [[ -z "$DEVICE_LINE" ]]; then
-      echo "✗ No connected iPhone found."
-      echo
-      echo "  Connect an iPhone via USB or ensure Wi-Fi pairing is active."
-      echo "  To list devices: xcrun devicectl list devices"
-      exit 1
-    fi
-
-    DEVICE_ID=$(echo "$DEVICE_LINE" | grep -oE '[0-9A-Fa-f-]{20,}' | tail -1)
-
-    if [[ -z "$DEVICE_ID" ]]; then
-      echo "✗ Could not parse device ID from: $DEVICE_LINE"
-      exit 1
-    fi
-
-    DEVICE_NAME=$(echo "$DEVICE_LINE" | sed 's/ (.*//')
-    echo "  Found: $DEVICE_NAME ($DEVICE_ID)"
+    echo "✗ Could not parse device ID from: $line"
+    exit 1
   fi
+
+  local dev_name
+  dev_name=$(echo "$line" | sed 's/ (.*//')
+  echo "  Found: $dev_name ($DEVICE_ID)"
+  echo "  Tunnel: unknown (xctrace fallback)"
+}
+
+# Resolve legacy UDID via usbmuxd (libimobiledevice) for ios-deploy
+detect_legacy_udid() {
+  if command -v idevice_id &>/dev/null; then
+    LEGACY_UDID=$(idevice_id -l 2>/dev/null | head -1)
+  fi
+}
+
+if [[ -z "$DEVICE_ID" ]]; then
+  detect_device
 fi
 
-DESTINATION="id=$DEVICE_ID"
+# ── Choose build strategy ──
 
-# ── Build + Install ──
+if $TUNNEL_OK; then
+  # CoreDevice tunnel works — build targeting the specific device
+  DESTINATION="id=$DEVICE_ID"
+else
+  # Tunnel broken — build for generic iOS and install separately
+  detect_legacy_udid
+  if [[ -z "$LEGACY_UDID" ]] && ! command -v ios-deploy &>/dev/null; then
+    echo
+    echo "✗ CoreDevice tunnel is unavailable and no fallback install tool found."
+    echo
+    echo "  Install ios-deploy:  brew install ios-deploy"
+    echo "  Or fix the tunnel:   unplug/replug USB, open Xcode, wait for device prep."
+    exit 1
+  fi
+  DESTINATION="generic/platform=iOS"
+fi
+
+# ── Build ──
 
 echo
 echo "═══ Building $SCHEME ($CONFIGURATION) ═══"
@@ -150,14 +169,13 @@ if [[ $BUILD_EXIT -ne 0 ]]; then
   exit 1
 fi
 
+# ── Install ──
+
 echo
 echo "═══ Installing to device ═══"
 echo
 
 # Find the most recently built .app in DerivedData.
-# Multiple DerivedData directories may exist (e.g. from Xcode and
-# command-line builds). We pick the newest by modification time to
-# ensure we install the binary we just built, not a stale one.
 find_newest_app() {
   find ~/Library/Developer/Xcode/DerivedData \
     -path "*/$SCHEME-*/$CONFIGURATION-iphoneos/$SCHEME.app" \
@@ -165,7 +183,6 @@ find_newest_app() {
     -type d \
     2>/dev/null \
     | while read -r app_dir; do
-        # Use the binary's mod-time as the sort key (epoch seconds)
         binary="$app_dir/$SCHEME"
         if [[ -f "$binary" ]]; then
           echo "$(stat -f '%m' "$binary") $app_dir"
@@ -186,11 +203,15 @@ fi
 
 echo "  App: $APP_PATH"
 
-# Use ios-deploy if available (faster, launches app), otherwise devicectl
+# Pick the best install method:
+# - ios-deploy uses usbmuxd (works even when CoreDevice tunnel is down)
+# - devicectl requires a working tunnel
+INSTALL_ID="${LEGACY_UDID:-$DEVICE_ID}"
+
 if command -v ios-deploy &>/dev/null; then
-  echo "  Using ios-deploy..."
-  ios-deploy --id "$DEVICE_ID" --bundle "$APP_PATH" --no-wifi 2>&1 || {
-    echo "  ios-deploy failed, falling back to devicectl..."
+  echo "  Using ios-deploy (device: $INSTALL_ID)..."
+  ios-deploy --id "$INSTALL_ID" --bundle "$APP_PATH" --no-wifi 2>&1 || {
+    echo "  ios-deploy failed, trying devicectl..."
     xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1
   }
 else
@@ -200,6 +221,6 @@ fi
 
 echo
 echo "═══ IonRemote installed ═══"
-echo "  Device: $DEVICE_ID"
+echo "  Device: $INSTALL_ID"
 echo "  Config: $CONFIGURATION"
 echo "  Bundle: $BUNDLE_ID"
