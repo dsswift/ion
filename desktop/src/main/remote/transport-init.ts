@@ -1,7 +1,7 @@
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import { state } from '../state'
-import { broadcast, startTerminalOutputFlushing } from '../broadcast'
+import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
 import { readSettings } from '../settings-store'
 import { RemoteTransport } from './transport'
 import { handleRemoteCommand } from './command-handler'
@@ -25,6 +25,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   if (!settings.remoteEnabled) {
     log('[Remote] remote not enabled, skipping')
+    stopTerminalOutputFlushing()
     return
   }
 
