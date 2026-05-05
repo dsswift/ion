@@ -7,13 +7,16 @@ import { terminalManager } from '../terminal-manager-instance'
 import { getRemoteTabStates } from '../remote/snapshot'
 import { expandSlashCommand } from '../cli-compat/slash-expand'
 import { readSettings, SETTINGS_DEFAULTS } from '../settings-store'
+import { broadcast } from '../broadcast'
 
 function log(msg: string): void {
   _log('main', msg)
 }
 
-/** Expand slash commands in-place on RunOptions when claudeCompat is enabled. */
-async function applySlashExpansion(options: RunOptions): Promise<void> {
+/** Expand slash commands in-place on RunOptions when claudeCompat is enabled.
+ *  When a command file is found, auto-switches the tab from plan → auto so the
+ *  expanded command executes immediately instead of being planned about. */
+async function applySlashExpansion(tabId: string, options: RunOptions): Promise<void> {
   let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
   try {
     const s = readSettings()
@@ -27,6 +30,9 @@ async function applySlashExpansion(options: RunOptions): Promise<void> {
     options.appendSystemPrompt = options.appendSystemPrompt
       ? options.appendSystemPrompt + '\n\n' + expansion.systemPrompt
       : expansion.systemPrompt
+    // Auto-switch plan → auto so expanded commands execute immediately
+    sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
+    broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
   }
 }
 
@@ -87,7 +93,7 @@ export function registerSessionIpc(): void {
     }
 
     try {
-      await applySlashExpansion(options)
+      await applySlashExpansion(tabId, options)
       await sessionPlane.submitPrompt(tabId, requestId, options)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -108,7 +114,7 @@ export function registerSessionIpc(): void {
 
   ipcMain.handle(IPC.RETRY, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
     log(`IPC RETRY: tab=${tabId} req=${requestId}`)
-    await applySlashExpansion(options)
+    await applySlashExpansion(tabId, options)
     return sessionPlane.retry(tabId, requestId, options)
   })
 

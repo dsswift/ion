@@ -66,11 +66,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       if (tab.status === 'connecting') return
 
-      let effectiveMode = tab.permissionMode
-      if (!tab.conversationId && effectiveMode === 'plan' && prompt.startsWith('/')) {
-        get().setPermissionMode('auto', 'slash_command')
-        effectiveMode = 'auto'
-      }
+      const effectiveMode = tab.permissionMode
 
       // Auto group movement: move tab based on effective permission mode
       const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId } = usePreferencesStore.getState()
@@ -176,7 +172,8 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       }
 
-      window.ion.setPermissionMode(activeTabId, tab.permissionMode, 'prompt_sync')
+      const currentMode = get().tabs.find(t => t.id === activeTabId)?.permissionMode ?? tab.permissionMode
+      window.ion.setPermissionMode(activeTabId, currentMode, 'prompt_sync')
 
       let extensions: string[] | undefined
       if (tab.isEngine && tab.engineProfileId) {
