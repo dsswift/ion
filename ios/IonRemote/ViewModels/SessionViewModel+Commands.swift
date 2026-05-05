@@ -292,9 +292,9 @@ extension SessionViewModel {
 
     // MARK: - File Explorer Commands
 
-    func requestFsListDir(directory: String) {
+    func requestFsListDir(directory: String, includeHidden: Bool = false) {
         fileListingLoading.insert(directory)
-        send(.fsListDir(directory: directory))
+        send(.fsListDir(directory: directory, includeHidden: includeHidden))
     }
 
     func requestFsReadFile(filePath: String) {

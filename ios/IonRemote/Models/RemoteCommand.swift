@@ -40,7 +40,7 @@ enum RemoteCommand: Codable, Sendable {
     case gitStage(directory: String, paths: [String])
     case gitUnstage(directory: String, paths: [String])
     case gitCommit(directory: String, message: String)
-    case fsListDir(directory: String)
+    case fsListDir(directory: String, includeHidden: Bool = false)
     case fsReadFile(filePath: String)
     case fsWriteFile(filePath: String, content: String)
 
@@ -94,7 +94,7 @@ enum RemoteCommand: Codable, Sendable {
         case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
         case instanceId, data, cols, rows, customTitle, label, messageId
         case dialogId, value, profileId, model, groupId
-        case directory, path, staged, paths, skip, limit, message, filePath, content
+        case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden
     }
 
     init(from decoder: Decoder) throws {
@@ -288,7 +288,8 @@ enum RemoteCommand: Codable, Sendable {
 
         case .fsListDir:
             let directory = try container.decode(String.self, forKey: .directory)
-            self = .fsListDir(directory: directory)
+            let includeHidden = try container.decodeIfPresent(Bool.self, forKey: .includeHidden) ?? false
+            self = .fsListDir(directory: directory, includeHidden: includeHidden)
 
         case .fsReadFile:
             let filePath = try container.decode(String.self, forKey: .filePath)
@@ -489,9 +490,12 @@ enum RemoteCommand: Codable, Sendable {
             try container.encode(directory, forKey: .directory)
             try container.encode(message, forKey: .message)
 
-        case .fsListDir(let directory):
+        case .fsListDir(let directory, let includeHidden):
             try container.encode(TypeKey.fsListDir, forKey: .type)
             try container.encode(directory, forKey: .directory)
+            if includeHidden {
+                try container.encode(includeHidden, forKey: .includeHidden)
+            }
 
         case .fsReadFile(let filePath):
             try container.encode(TypeKey.fsReadFile, forKey: .type)

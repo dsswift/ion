@@ -104,7 +104,7 @@ export type RemoteCommand =
   | { type: 'git_stage'; directory: string; paths: string[] }
   | { type: 'git_unstage'; directory: string; paths: string[] }
   | { type: 'git_commit'; directory: string; message: string }
-  | { type: 'fs_list_dir'; directory: string }
+  | { type: 'fs_list_dir'; directory: string; includeHidden?: boolean }
   | { type: 'fs_read_file'; filePath: string }
   | { type: 'fs_write_file'; filePath: string; content: string }
 

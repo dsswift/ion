@@ -9,6 +9,7 @@ struct FileExplorerView: View {
 
     @State private var expandedPaths: Set<String> = []
     @State private var loaded = false
+    @State private var showHidden = false
 
     private var directory: String {
         viewModel.tab(for: tabId)?.workingDirectory ?? ""
@@ -66,6 +67,14 @@ struct FileExplorerView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showHidden.toggle()
+                    } label: {
+                        Image(systemName: showHidden ? "eye" : "eye.slash")
+                    }
+                    .accessibilityLabel(showHidden ? "Hide hidden files" : "Show hidden files")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         refresh()
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -78,6 +87,10 @@ struct FileExplorerView: View {
                 refresh()
             }
             .refreshable {
+                refresh()
+            }
+            .onChange(of: showHidden) {
+                expandedPaths.removeAll()
                 refresh()
             }
         }
@@ -126,7 +139,7 @@ struct FileExplorerView: View {
                 expandedPaths.remove(entry.path)
             } else {
                 expandedPaths.insert(entry.path)
-                viewModel.requestFsListDir(directory: entry.path)
+                viewModel.requestFsListDir(directory: entry.path, includeHidden: showHidden)
             }
         }
     }
@@ -165,6 +178,6 @@ struct FileExplorerView: View {
 
     private func refresh() {
         guard !directory.isEmpty else { return }
-        viewModel.requestFsListDir(directory: directory)
+        viewModel.requestFsListDir(directory: directory, includeHidden: showHidden)
     }
 }

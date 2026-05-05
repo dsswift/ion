@@ -10,7 +10,7 @@ function log(msg: string): void {
 }
 
 export async function handleFsListDir(cmd: Extract<RemoteCommand, { type: 'fs_list_dir' }>): Promise<void> {
-  const { directory } = cmd
+  const { directory, includeHidden } = cmd
   try {
     if (!isValidProjectPath(directory)) {
       state.remoteTransport?.send({ type: 'fs_dir_listing', directory, entries: [], error: 'Invalid path' })
@@ -20,7 +20,7 @@ export async function handleFsListDir(cmd: Extract<RemoteCommand, { type: 'fs_li
     const entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }> = []
     for (const d of dirents) {
       if (d.name === '.DS_Store') continue
-      if (d.name.startsWith('.')) continue
+      if (!includeHidden && d.name.startsWith('.')) continue
       const fullPath = join(directory, d.name)
       try {
         const st = statSync(fullPath)
