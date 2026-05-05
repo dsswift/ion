@@ -7,6 +7,7 @@ import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
 import { readSettings, writeSettings } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
+import { discoverCommands } from '../../cli-compat/command-discovery'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -394,4 +395,15 @@ export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: '
     log('move_tab_to_group error: ' + (err as Error).message)
   }
   await handleSync()
+}
+
+export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type: 'discover_commands' }>): Promise<void> {
+  const { directory } = cmd
+  try {
+    const commands = await discoverCommands(directory)
+    state.remoteTransport?.send({ type: 'discover_commands_response', directory, commands })
+  } catch (err) {
+    log(`discover_commands error: ${(err as Error).message}`)
+    state.remoteTransport?.send({ type: 'discover_commands_response', directory, commands: [] })
+  }
 }

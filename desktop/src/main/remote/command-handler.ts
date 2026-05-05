@@ -12,6 +12,7 @@ import {
   handleLoadConversation,
   handleSetTabGroupMode,
   handleMoveTabToGroup,
+  handleDiscoverCommands,
 } from './handlers/tabs'
 import {
   handleEnginePrompt,
@@ -101,6 +102,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'fs_list_dir': await handleFsListDir(cmd); break
     case 'fs_read_file': await handleFsReadFile(cmd); break
     case 'fs_write_file': await handleFsWriteFile(cmd); break
+    case 'discover_commands': await handleDiscoverCommands(cmd); break
     case 'unpair': handleUnpair(deviceId); break
   }
 }

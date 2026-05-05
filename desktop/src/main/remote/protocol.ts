@@ -107,6 +107,7 @@ export type RemoteCommand =
   | { type: 'fs_list_dir'; directory: string; includeHidden?: boolean }
   | { type: 'fs_read_file'; filePath: string }
   | { type: 'fs_write_file'; filePath: string; content: string }
+  | { type: 'discover_commands'; directory: string }
 
 // ─── Ion → iOS events ───
 
@@ -160,6 +161,7 @@ export type RemoteEvent =
   | { type: 'fs_dir_listing'; directory: string; entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }>; error?: string }
   | { type: 'fs_file_content'; filePath: string; content: string | null; error?: string }
   | { type: 'fs_write_result'; filePath: string; ok: boolean; error?: string }
+  | { type: 'discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
 
 // ─── Relay control frames (injected by relay, not by Ion) ───
 
