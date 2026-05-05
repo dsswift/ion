@@ -174,6 +174,9 @@ final class SessionViewModel {
     var fileListingLoading: Set<String> = []
     var fileContentLoading: Set<String> = []
 
+    // Discovered slash commands (per working directory)
+    var discoveredCommands: [String: [DiscoveredSlashCommand]] = [:]
+
     /// Tab group mode synced from the desktop: "off", "auto", or "manual".
     var tabGroupMode: String = "auto"
     /// Manual tab group definitions from the desktop (only meaningful when tabGroupMode == "manual").

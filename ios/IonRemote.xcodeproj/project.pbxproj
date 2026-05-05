@@ -79,6 +79,8 @@
 		A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */; };
 		A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */; };
 		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
+		A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */; };
+		A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -167,6 +169,8 @@
 		A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventPermissionTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventLifecycleTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredSlashCommand.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandMenu.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -243,6 +247,7 @@
 				A1B2C3D4E5F60001000300AA /* GitTypes.swift */,
 				A1B2C3D4E5F60001000400AA /* FileTypes.swift */,
 				A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */,
+				A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -299,6 +304,7 @@
 				A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */,
 				A1B2C3D4E5F60001000408AA /* FileEditorView.swift */,
 				A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */,
+				A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -517,6 +523,8 @@
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
 				A1B2C3D4E5F60001000501AA /* ConnectionQuality.swift in Sources */,
 				A1B2C3D4E5F60001000503AA /* ConnectionQualityView.swift in Sources */,
+				A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */,
+				A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

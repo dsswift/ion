@@ -267,6 +267,10 @@ extension SessionViewModel {
 
         case .fsWriteResult(_, let response):
             fileWriteResult = response
+
+        // Command discovery events
+        case .discoverCommandsResponse(let directory, let commands):
+            discoveredCommands[directory] = commands
         }
     }
 

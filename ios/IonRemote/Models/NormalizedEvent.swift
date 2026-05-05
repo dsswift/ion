@@ -73,6 +73,8 @@ enum RemoteEvent: Codable, Sendable {
     case fsDirListing(directory: String, response: FsDirListingResponse)
     case fsFileContent(filePath: String, response: FsFileContentResponse)
     case fsWriteResult(filePath: String, response: FsWriteResultResponse)
+    // Command discovery events
+    case discoverCommandsResponse(directory: String, commands: [DiscoveredSlashCommand])
 
     // MARK: - Codable keys
 
@@ -128,6 +130,7 @@ enum RemoteEvent: Codable, Sendable {
         case fsDirListing = "fs_dir_listing"
         case fsFileContent = "fs_file_content"
         case fsWriteResult = "fs_write_result"
+        case discoverCommandsResponse = "discover_commands_response"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -146,6 +149,7 @@ enum RemoteEvent: Codable, Sendable {
         case directory, files, branch, isGitRepo, ahead, behind
         case commits, totalCount, diff, fileName
         case entries, filePath, ok, error
+        case commands
         case ts, buffered
     }
 

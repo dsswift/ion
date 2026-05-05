@@ -8,6 +8,7 @@ struct InputBar: View {
     @State private var promptText = ""
     @FocusState private var isFocused: Bool
     @State private var keyboardVisible = false
+    @State private var slashFilter: String?
 
     private var tab: RemoteTabState? {
         viewModel.tab(for: tabId)
@@ -25,8 +26,28 @@ struct InputBar: View {
         isRunning  // Will queue behind current run
     }
 
+    private var workingDirectory: String {
+        tab?.workingDirectory ?? ""
+    }
+
+    private var slashCommands: [DiscoveredSlashCommand] {
+        viewModel.discoveredCommands[workingDirectory] ?? []
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            if let filter = slashFilter, !slashCommands.isEmpty {
+                SlashCommandMenu(
+                    filter: filter,
+                    commands: slashCommands,
+                    onSelect: { cmd in
+                        promptText = "/\(cmd.name) "
+                        slashFilter = nil
+                    }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             if keyboardVisible {
                 KeyboardUtilityBar(
                     onDismiss: { isFocused = false },
@@ -81,6 +102,7 @@ struct InputBar: View {
         }
         .background(.ultraThinMaterial)
         .animation(.easeInOut(duration: 0.15), value: keyboardVisible)
+        .animation(.easeInOut(duration: 0.15), value: slashFilter)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
         }
@@ -93,6 +115,15 @@ struct InputBar: View {
                 viewModel.pendingInputByTab.removeValue(forKey: tabId)
             }
         }
+        .onChange(of: promptText) { _, newText in
+            updateSlashFilter(newText)
+        }
+        .onAppear {
+            fetchCommandsIfNeeded()
+        }
+        .onChange(of: workingDirectory) {
+            fetchCommandsIfNeeded()
+        }
     }
 
     private var sendButtonColor: Color {
@@ -100,5 +131,22 @@ struct InputBar: View {
             return .gray
         }
         return isQueued ? .orange : Color(hex: 0x4ECDC4)
+    }
+
+    /// Detect if the user is typing a slash command prefix.
+    private func updateSlashFilter(_ text: String) {
+        // Match a lone slash-prefixed token: /foo, /e2e:setup, etc.
+        let pattern = #"^\/[a-zA-Z0-9_:\-]*$"#
+        if text.range(of: pattern, options: .regularExpression) != nil {
+            slashFilter = text
+        } else {
+            slashFilter = nil
+        }
+    }
+
+    private func fetchCommandsIfNeeded() {
+        let dir = workingDirectory
+        guard !dir.isEmpty, viewModel.discoveredCommands[dir] == nil else { return }
+        viewModel.discoverCommands(directory: dir)
     }
 }

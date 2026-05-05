@@ -306,6 +306,13 @@ extension SessionViewModel {
         send(.fsWriteFile(filePath: filePath, content: content))
     }
 
+    // MARK: - Command Discovery
+
+    func discoverCommands(directory: String) {
+        guard !directory.isEmpty else { return }
+        send(.discoverCommands(directory: directory))
+    }
+
     // MARK: - Send
 
     func send(_ command: RemoteCommand) {

@@ -31,6 +31,11 @@ extension RemoteEvent {
             let response = FsWriteResultResponse(filePath: filePath, ok: ok, error: error)
             return .fsWriteResult(filePath: filePath, response: response)
 
+        case .discoverCommandsResponse:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let commands = try container.decode([DiscoveredSlashCommand].self, forKey: .commands)
+            return .discoverCommandsResponse(directory: directory, commands: commands)
+
         default:
             return nil
         }
@@ -58,6 +63,12 @@ extension RemoteEvent {
             try container.encode(response.filePath, forKey: .filePath)
             try container.encode(response.ok, forKey: .ok)
             try container.encodeIfPresent(response.error, forKey: .error)
+            return true
+
+        case .discoverCommandsResponse(let directory, let commands):
+            try container.encode(TypeKey.discoverCommandsResponse, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(commands, forKey: .commands)
             return true
 
         default:

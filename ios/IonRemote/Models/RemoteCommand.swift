@@ -43,6 +43,7 @@ enum RemoteCommand: Codable, Sendable {
     case fsListDir(directory: String, includeHidden: Bool = false)
     case fsReadFile(filePath: String)
     case fsWriteFile(filePath: String, content: String)
+    case discoverCommands(directory: String)
 
     // MARK: - Codable
 
@@ -87,6 +88,7 @@ enum RemoteCommand: Codable, Sendable {
         case fsListDir = "fs_list_dir"
         case fsReadFile = "fs_read_file"
         case fsWriteFile = "fs_write_file"
+        case discoverCommands = "discover_commands"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -299,6 +301,10 @@ enum RemoteCommand: Codable, Sendable {
             let filePath = try container.decode(String.self, forKey: .filePath)
             let content = try container.decode(String.self, forKey: .content)
             self = .fsWriteFile(filePath: filePath, content: content)
+
+        case .discoverCommands:
+            let directory = try container.decode(String.self, forKey: .directory)
+            self = .discoverCommands(directory: directory)
         }
     }
 
@@ -505,6 +511,10 @@ enum RemoteCommand: Codable, Sendable {
             try container.encode(TypeKey.fsWriteFile, forKey: .type)
             try container.encode(filePath, forKey: .filePath)
             try container.encode(content, forKey: .content)
+
+        case .discoverCommands(let directory):
+            try container.encode(TypeKey.discoverCommands, forKey: .type)
+            try container.encode(directory, forKey: .directory)
         }
     }
 }
