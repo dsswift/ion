@@ -20,22 +20,26 @@ permissions:
 jobs:
   build-engine:
     if: contains(fromJSON(inputs.release_report).components, 'engine')
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - goos: linux
             goarch: amd64
             ext: ""
+            runner: ubuntu-latest
           - goos: darwin
             goarch: amd64
             ext: ""
+            runner: macos-14
           - goos: darwin
             goarch: arm64
             ext: ""
+            runner: macos-14
           - goos: windows
             goarch: amd64
             ext: ".exe"
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -69,6 +73,73 @@ jobs:
           ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
           go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
             -o "${ASSET}" ./cmd/ion/
+
+      - name: Import signing certificate
+        if: matrix.goos == 'darwin'
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp /tmp/cert.XXXXXX.p12)
+          KEYCHAIN="build.keychain-db"
+          KEYCHAIN_PASS="ci-$(date +%s)"
+
+          echo "$APPLE_CERT_BASE64" | base64 --decode > "$CERT_FILE"
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 900 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+          security import "$CERT_FILE" -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          rm -f "$CERT_FILE"
+
+      - name: Sign binary
+        if: matrix.goos == 'darwin'
+        working-directory: engine
+        run: |
+          ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "Signing with: $IDENTITY"
+          codesign --force --sign "$IDENTITY" --options runtime "$ASSET"
+          codesign --verify --verbose "$ASSET"
+
+      - name: Notarize binary
+        if: matrix.goos == 'darwin'
+        working-directory: engine
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+
+          # notarytool requires a zip, dmg, or pkg
+          ZIP="${ASSET}.zip"
+          zip "$ZIP" "$ASSET"
+
+          # Write API key to file
+          KEY_FILE=$(mktemp /tmp/apikey.XXXXXX.p8)
+          echo "$APPLE_API_KEY" | base64 --decode > "$KEY_FILE"
+
+          xcrun notarytool submit "$ZIP" \
+            --key "$KEY_FILE" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait --timeout 10m
+
+          rm -f "$KEY_FILE" "$ZIP"
+
+      - name: Clean up keychain
+        if: matrix.goos == 'darwin' && always()
+        run: |
+          security delete-keychain build.keychain-db 2>/dev/null || true
 
       - name: Upload to release
         env:
@@ -148,3 +219,108 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}/relay:${{ steps.version.outputs.version }}
             ghcr.io/${{ github.repository }}/relay:latest
+
+  build-desktop:
+    if: contains(fromJSON(inputs.release_report).components, 'desktop')
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Get version
+        id: version
+        env:
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="desktop") | .new_version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: engine/go.mod
+
+      - name: Build engine for macOS universal
+        working-directory: engine
+        run: |
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ion-arm64 ./cmd/ion/
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ion-amd64 ./cmd/ion/
+          lipo -create -output ion ion-arm64 ion-amd64
+          rm ion-arm64 ion-amd64
+          file ion
+
+      - name: Copy engine to desktop resources
+        run: |
+          mkdir -p desktop/resources/engine
+          cp engine/ion desktop/resources/engine/ion
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Import signing certificate
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp /tmp/cert.XXXXXX.p12)
+          KEYCHAIN="build.keychain-db"
+          KEYCHAIN_PASS="ci-$(date +%s)"
+
+          echo "$APPLE_CERT_BASE64" | base64 --decode > "$CERT_FILE"
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 900 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+          security import "$CERT_FILE" -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          # Extract signing identity name for electron-builder
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+          rm -f "$CERT_FILE"
+
+      - name: Set version in package.json
+        working-directory: desktop
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
+
+      - name: Build and package
+        working-directory: desktop
+        env:
+          CI: "true"
+          CSC_LINK: ""
+          CSC_KEY_PASSWORD: ""
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          npx electron-builder --mac --universal --publish never \
+            -c.mac.identity="$APPLE_SIGNING_IDENTITY"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: desktop
+        run: |
+          TAG="desktop-v${{ steps.version.outputs.version }}"
+          for f in release/*.dmg release/*.zip release/latest-mac.yml; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber -R "${{ github.repository }}"
+          done
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain build.keychain-db 2>/dev/null || true
