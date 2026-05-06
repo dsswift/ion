@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.9.0](https://github.com/dsswift/ion/compare/ios-v1.8.0...ios-v1.9.0) (2026-05-06)
+
+### Features
+
+* **ios:** use block-based markdown rendering ([0911664](https://github.com/dsswift/ion/commit/0911664e45c451cf24404a5a9ba24ff2239dea3e))
+* **ios:** add slash command autocomplete ([454c1c9](https://github.com/dsswift/ion/commit/454c1c989a53d84828156f6b676cfe151029d7f4))
+* **ios:** add tab renaming via context menu ([df4b65f](https://github.com/dsswift/ion/commit/df4b65f92c38aebee76272b7523caf5b8e429ebd))
+* **ios:** add pink border to messages starting with '! ' ([2e9c83f](https://github.com/dsswift/ion/commit/2e9c83f313a7cc8466cb97931ac49f6c1bc522f2))
+* **ios:** add markdown rendering to user message bubbles ([c540117](https://github.com/dsswift/ion/commit/c54011775ee1ddcaf1cdb98b2356e282351f6432))
+
 ## [1.8.0](https://github.com/dsswift/ion/compare/ios-v1.7.0...ios-v1.8.0) (2026-05-05)
 
 ### Features

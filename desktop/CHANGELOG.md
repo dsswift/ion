@@ -10,6 +10,14 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.12.0](https://github.com/dsswift/ion/compare/desktop-v1.11.0...desktop-v1.12.0) (2026-05-06)
+
+### Features
+
+* **desktop:** auto-move tabs on remote mode change ([9e9b964](https://github.com/dsswift/ion/commit/9e9b964de5308eb18230f6c812362245dc5f572b))
+* **desktop:** add discover_commands remote protocol ([7508c90](https://github.com/dsswift/ion/commit/7508c903ab2b9c968fd39660f719cd15e51a1ad8))
+* **desktop:** add cmd+click links in terminal output ([7542aaa](https://github.com/dsswift/ion/commit/7542aaa5e629970b456f9c41fc129cbe813e499a))
+
 ## [1.11.0](https://github.com/dsswift/ion/compare/desktop-v1.10.0...desktop-v1.11.0) (2026-05-05)
 
 ### Features
