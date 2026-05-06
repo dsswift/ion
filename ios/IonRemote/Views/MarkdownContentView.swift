@@ -31,6 +31,11 @@ struct MarkdownContentView: View {
             listItemView(ordinal: ordinal, ordered: ordered, text: text)
         case .thematicBreak:
             thematicBreakView
+        case .table(let headers, let rows, let alignments):
+            tableView(
+                headers: headers, rows: rows,
+                alignments: alignments
+            )
         }
     }
 
@@ -128,6 +133,102 @@ struct MarkdownContentView: View {
             Text(text)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 6)
+        }
+    }
+
+    // MARK: - Table
+
+    private func tableView(
+        headers: [AttributedString],
+        rows: [[AttributedString]],
+        alignments: [TableColumnAlignment]
+    ) -> some View {
+        let colCount = max(
+            headers.count, rows.first?.count ?? 0
+        )
+        return ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, verticalSpacing: 0) {
+                if !headers.isEmpty {
+                    GridRow {
+                        ForEach(0..<colCount, id: \.self) { col in
+                            tableCellContent(
+                                text: col < headers.count
+                                    ? headers[col] : AttributedString(),
+                                alignment: tableAlignment(
+                                    col, alignments
+                                ),
+                                isHeader: true
+                            )
+                        }
+                    }
+                }
+
+                ForEach(
+                    Array(rows.enumerated()), id: \.offset
+                ) { _, row in
+                    GridRow {
+                        ForEach(0..<colCount, id: \.self) { col in
+                            tableCellContent(
+                                text: col < row.count
+                                    ? row[col] : AttributedString(),
+                                alignment: tableAlignment(
+                                    col, alignments
+                                ),
+                                isHeader: false
+                            )
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(.separator), lineWidth: 0.5)
+            )
+        }
+    }
+
+    private func tableCellContent(
+        text: AttributedString,
+        alignment: HorizontalAlignment,
+        isHeader: Bool
+    ) -> some View {
+        let textAlign: TextAlignment = switch alignment {
+        case .trailing: .trailing
+        case .center: .center
+        default: .leading
+        }
+        return Text(text)
+            .font(isHeader ? .subheadline.bold() : .subheadline)
+            .multilineTextAlignment(textAlign)
+            .frame(
+                maxWidth: .infinity,
+                alignment: Alignment(
+                    horizontal: alignment, vertical: .center
+                )
+            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                isHeader
+                    ? Color(.tertiarySystemFill)
+                    : Color.clear
+            )
+            .overlay(
+                Rectangle()
+                    .stroke(Color(.separator), lineWidth: 0.5)
+            )
+    }
+
+    private func tableAlignment(
+        _ col: Int,
+        _ alignments: [TableColumnAlignment]
+    ) -> HorizontalAlignment {
+        guard col < alignments.count else { return .leading }
+        return switch alignments[col] {
+        case .left: .leading
+        case .center: .center
+        case .right: .trailing
         }
     }
 

@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Column alignment parsed from a markdown table.
+enum TableColumnAlignment {
+    case left, center, right
+}
+
 /// A parsed markdown block produced by `MarkdownFormatter.parse`.
 enum MarkdownBlock: Identifiable {
     case heading(level: Int, text: AttributedString)
@@ -8,6 +13,11 @@ enum MarkdownBlock: Identifiable {
     case blockQuote(text: AttributedString)
     case listItem(ordinal: Int, ordered: Bool, text: AttributedString)
     case thematicBreak
+    case table(
+        headers: [AttributedString],
+        rows: [[AttributedString]],
+        alignments: [TableColumnAlignment]
+    )
 
     var id: String {
         switch self {
@@ -24,6 +34,11 @@ enum MarkdownBlock: Identifiable {
             return "\(k)-\(String(t.characters).hashValue)"
         case .thematicBreak:
             return "hr-\(Int.random(in: 0...Int.max))"
+        case .table(let h, let r, _):
+            let hh = h.map { String($0.characters) }.joined()
+            let rr = r.flatMap { $0.map { String($0.characters) } }
+                .joined()
+            return "tbl-\((hh + rr).hashValue)"
         }
     }
 }
@@ -53,18 +68,26 @@ enum MarkdownFormatter {
         var blocks: [MarkdownBlock] = []
         var accum = AttributedString()
         var currentKind: BlockKind?
+        var tableCells: [TableCellEntry] = []
 
         for run in parsed.runs {
             let segment = AttributedString(parsed[run.range])
             let kind = classify(run.presentationIntent)
 
             if kind != currentKind {
-                flush(currentKind, text: &accum, into: &blocks)
+                flush(
+                    currentKind, text: &accum,
+                    into: &blocks, tableCells: &tableCells
+                )
                 currentKind = kind
             }
             accum.append(segment)
         }
-        flush(currentKind, text: &accum, into: &blocks)
+        flush(
+            currentKind, text: &accum,
+            into: &blocks, tableCells: &tableCells
+        )
+        flushTable(&tableCells, into: &blocks)
         return blocks
     }
 
@@ -96,6 +119,16 @@ enum MarkdownFormatter {
                 var hr = AttributedString("───")
                 hr.foregroundColor = .secondary
                 result.append(hr)
+            case .table(let headers, let rows, _):
+                let headerLine = headers
+                    .map { String($0.characters) }.joined(separator: " | ")
+                result.append(AttributedString(headerLine))
+                for row in rows {
+                    result.append(AttributedString("\n"))
+                    let line = row.map { String($0.characters) }
+                        .joined(separator: " | ")
+                    result.append(AttributedString(line))
+                }
             }
         }
         return result
@@ -113,6 +146,7 @@ enum MarkdownFormatter {
         case blockQuote(Int)        // identity
         case listItem(Int, Bool, Int) // ordinal, ordered, identity
         case thematicBreak(Int)     // identity
+        case tableCell(Int, Bool, Int, Int, Int) // tableID, isHeader, row, col, cellID
         case unknown
     }
 
@@ -120,6 +154,36 @@ enum MarkdownFormatter {
         _ intent: PresentationIntent?
     ) -> BlockKind {
         guard let intent else { return .unknown }
+
+        // Table detection — components contain the full nesting path:
+        // [.table(columns:), .tableHeaderRow/.tableRow(rowIndex:),
+        //  .tableCell(columnIndex:)]
+        var tableID: Int?
+        var isHeader = false
+        var rowIndex = -1
+        var colIndex = 0
+        var cellID = 0
+
+        for component in intent.components {
+            switch component.kind {
+            case .table:
+                tableID = component.identity
+            case .tableHeaderRow:
+                isHeader = true
+                rowIndex = -1
+            case .tableRow(let idx):
+                isHeader = false
+                rowIndex = idx
+            case .tableCell(let col):
+                colIndex = col
+                cellID = component.identity
+            default:
+                break
+            }
+        }
+        if let tid = tableID {
+            return .tableCell(tid, isHeader, rowIndex, colIndex, cellID)
+        }
 
         for component in intent.components {
             switch component.kind {
@@ -145,12 +209,23 @@ enum MarkdownFormatter {
         return .paragraph(pid)
     }
 
+    // MARK: - Table cell entry
+
+    private struct TableCellEntry {
+        let tableID: Int
+        let isHeader: Bool
+        let rowIndex: Int
+        let columnIndex: Int
+        let text: AttributedString
+    }
+
     // MARK: - Flushing
 
     private static func flush(
         _ kind: BlockKind?,
         text: inout AttributedString,
-        into blocks: inout [MarkdownBlock]
+        into blocks: inout [MarkdownBlock],
+        tableCells: inout [TableCellEntry]
     ) {
         guard let kind, !text.characters.isEmpty else {
             text = AttributedString()
@@ -158,6 +233,21 @@ enum MarkdownFormatter {
         }
         let captured = text
         text = AttributedString()
+
+        if case .tableCell(let tid, let hdr, let row, let col, _) = kind {
+            // Flush any pending table from a *different* table first.
+            if let first = tableCells.first, first.tableID != tid {
+                flushTable(&tableCells, into: &blocks)
+            }
+            tableCells.append(TableCellEntry(
+                tableID: tid, isHeader: hdr,
+                rowIndex: row, columnIndex: col, text: captured
+            ))
+            return
+        }
+
+        // Transitioning away from table → assemble pending table.
+        flushTable(&tableCells, into: &blocks)
 
         switch kind {
         case .heading(let level, _):
@@ -174,9 +264,50 @@ enum MarkdownFormatter {
             ))
         case .thematicBreak:
             blocks.append(.thematicBreak)
+        case .tableCell:
+            break // handled above
         case .unknown:
             blocks.append(.paragraph(text: captured))
         }
+    }
+
+    // MARK: - Table assembly
+
+    private static func flushTable(
+        _ cells: inout [TableCellEntry],
+        into blocks: inout [MarkdownBlock]
+    ) {
+        guard !cells.isEmpty else { return }
+        blocks.append(assembleTable(cells))
+        cells.removeAll()
+    }
+
+    private static func assembleTable(
+        _ cells: [TableCellEntry]
+    ) -> MarkdownBlock {
+        let headerCells = cells.filter(\.isHeader)
+            .sorted { $0.columnIndex < $1.columnIndex }
+        let headers = headerCells.map(\.text)
+
+        let bodyCells = cells.filter { !$0.isHeader }
+        let grouped = Dictionary(grouping: bodyCells) { $0.rowIndex }
+        let rows = grouped.keys.sorted().map { rowIdx in
+            grouped[rowIdx]!
+                .sorted { $0.columnIndex < $1.columnIndex }
+                .map(\.text)
+        }
+
+        let colCount = max(
+            headers.count,
+            rows.first?.count ?? 0
+        )
+        let alignments = Array(
+            repeating: TableColumnAlignment.left, count: colCount
+        )
+
+        return .table(
+            headers: headers, rows: rows, alignments: alignments
+        )
     }
 
     // MARK: - Helpers
