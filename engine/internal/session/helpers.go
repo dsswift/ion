@@ -5,7 +5,6 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/telemetry"
-	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // keyForRun finds the session key that owns the given request ID.
@@ -18,35 +17,6 @@ func (m *Manager) keyForRun(runID string) string {
 		}
 	}
 	return ""
-}
-
-// mergeAgentStates combines extension-managed agent states with engine-managed
-// agent states into a single snapshot for emission to clients.
-func mergeAgentStates(extStates, engineStates []types.AgentStateUpdate) []types.AgentStateUpdate {
-	merged := make([]types.AgentStateUpdate, 0, len(extStates)+len(engineStates))
-	merged = append(merged, extStates...)
-	merged = append(merged, engineStates...)
-	return merged
-}
-
-// isDescendant checks if agent is a descendant of ancestor in the agent registry.
-func isDescendant(registry map[string]types.AgentHandle, agent, ancestor string) bool {
-	visited := make(map[string]bool)
-	current := agent
-	for {
-		handle, ok := registry[current]
-		if !ok || handle.ParentAgent == "" {
-			return false
-		}
-		if handle.ParentAgent == ancestor {
-			return true
-		}
-		if visited[handle.ParentAgent] {
-			return false // cycle protection
-		}
-		visited[current] = true
-		current = handle.ParentAgent
-	}
 }
 
 // killProcess sends SIGTERM to a process, then escalates to SIGKILL after 5s
