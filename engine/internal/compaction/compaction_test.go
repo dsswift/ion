@@ -1012,3 +1012,154 @@ func TestExtractFactsSourceIndex(t *testing.T) {
 		}
 	}
 }
+
+// ─── toolResultMsg helper tests ───
+
+func TestExtractFactsFromToolResultError(t *testing.T) {
+	msgs := []types.LlmMessage{
+		toolResultMsg("Build failed with error: missing module", true),
+	}
+	facts := ExtractFacts(msgs)
+	found := false
+	for _, f := range facts {
+		if f.Type == "error" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected error fact from tool_result content")
+	}
+}
+
+func TestExtractRecentFilesViaToolResultMsg(t *testing.T) {
+	msgs := []types.LlmMessage{
+		toolResultMsg("Wrote to /src/main.go successfully", false),
+	}
+	files := ExtractRecentFiles(msgs)
+	if len(files) != 1 || files[0] != "/src/main.go" {
+		t.Errorf("expected [/src/main.go], got %v", files)
+	}
+}
+
+func TestMicroCompactClearsToolResultViaHelper(t *testing.T) {
+	clearStrategiesForTest(t)
+	RegisterBuiltinStrategies()
+
+	msgs := []types.LlmMessage{
+		textMsg("user", "run the build"),
+		textMsg("assistant", "calling tool"),
+		toolResultMsg("long output from build process that should be cleared", false),
+		textMsg("assistant", "build completed"),
+	}
+	s := GetStrategy("micro-compact")
+	if s == nil {
+		t.Fatal("micro-compact strategy not found")
+	}
+	out, _, err := s.Compact(msgs, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The tool_result content should be compacted.
+	for _, msg := range out {
+		blocks, ok := msg.Content.([]types.LlmContentBlock)
+		if !ok {
+			continue
+		}
+		for _, b := range blocks {
+			if b.Type == "tool_result" && b.Content != "[compacted]" {
+				t.Errorf("expected [compacted], got %q", b.Content)
+			}
+		}
+	}
+}
+
+// ─── []any path tests (JSON round-trip) ───
+
+func TestExtractFactsFromAnySlice(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{
+			Role:    "assistant",
+			Content: []any{map[string]any{"type": "text", "text": "I decided to use Go"}},
+		},
+	}
+	facts := ExtractFacts(msgs)
+	found := false
+	for _, f := range facts {
+		if f.Type == "decision" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected decision fact from []any content")
+	}
+}
+
+func TestExtractRecentFilesFromAnySlice(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{
+			Role:    "user",
+			Content: []any{map[string]any{"type": "tool_result", "content": "Wrote /src/foo.ts"}},
+		},
+	}
+	files := ExtractRecentFiles(msgs)
+	if len(files) != 1 || files[0] != "/src/foo.ts" {
+		t.Errorf("expected [/src/foo.ts], got %v", files)
+	}
+}
+
+func TestExtractFactsFromStringContent(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{Role: "assistant", Content: "I decided to use Go"},
+	}
+	facts := ExtractFacts(msgs)
+	found := false
+	for _, f := range facts {
+		if f.Type == "decision" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected decision fact from plain string content")
+	}
+}
+
+// ─── Edge case tests ───
+
+func TestExtractMatchingSentenceTruncation(t *testing.T) {
+	// Build a sentence >200 chars containing a decision keyword.
+	long := "I decided to use " + strings.Repeat("x", 200) + " for this project."
+	msgs := []types.LlmMessage{textMsg("assistant", long)}
+	facts := ExtractFacts(msgs)
+	for _, f := range facts {
+		if f.Type == "decision" {
+			if len(f.Content) > 204 { // 200 + "..."
+				t.Errorf("expected truncation at ~203 chars, got %d", len(f.Content))
+			}
+			if !strings.HasSuffix(f.Content, "...") {
+				t.Error("expected truncated fact to end with ...")
+			}
+			return
+		}
+	}
+	t.Error("expected decision fact for truncation test")
+}
+
+func TestSplitSentencesEdgeCases(t *testing.T) {
+	// Multiple sentence boundaries: period, exclamation, question.
+	text := "I decided to use Go. The build failed! I just discovered something new."
+	msgs := []types.LlmMessage{textMsg("assistant", text)}
+	facts := ExtractFacts(msgs)
+	factTypes := map[string]bool{}
+	for _, f := range facts {
+		factTypes[f.Type] = true
+	}
+	if !factTypes["decision"] {
+		t.Error("expected decision fact from first sentence")
+	}
+	if !factTypes["error"] {
+		t.Error("expected error fact from second sentence")
+	}
+	if !factTypes["discovery"] {
+		t.Error("expected discovery fact from third sentence")
+	}
+}
