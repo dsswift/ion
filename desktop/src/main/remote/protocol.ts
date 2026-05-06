@@ -176,6 +176,8 @@ export interface WireMessage {
   ts: number               // Unix ms timestamp
   payload?: string         // JSON-encoded RemoteEvent or RemoteCommand (absent when encrypted)
   push?: boolean           // hint to relay: send APNs push if peer is disconnected
+  pushTitle?: string       // notification title (used by relay when push=true)
+  pushBody?: string        // notification body (used by relay when push=true)
   nonce?: string           // base64 12-byte nonce (present when encrypted)
   ciphertext?: string      // base64 encrypted payload (replaces `payload` when encrypted)
   deviceId?: string        // identifies the sending device (set by transport)

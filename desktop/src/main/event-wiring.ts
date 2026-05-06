@@ -53,7 +53,17 @@ export function wireRemoteSessionPlaneForwarding(): void {
     const remoteEvent = normalizedToRemote(tabId, event)
     if (remoteEvent) {
       const needsPush = event.type === 'permission_request'
-      state.remoteTransport.send(remoteEvent, needsPush)
+      if (needsPush) {
+        const pushTitle = 'Ion needs your attention'
+        const pushBody = event.toolName === 'AskUserQuestion'
+          ? 'Question waiting for your answer'
+          : event.toolName === 'ExitPlanMode'
+            ? 'Plan ready for your review'
+            : `Permission needed: ${event.toolName}`
+        state.remoteTransport.send(remoteEvent, true, { title: pushTitle, body: pushBody })
+      } else {
+        state.remoteTransport.send(remoteEvent)
+      }
     }
 
     switch (event.type) {
@@ -192,7 +202,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
             toolName: 'ExitPlanMode',
             toolInput,
             options: [],
-          }, true)
+          }, true, { title: 'Ion needs your attention', body: 'Plan ready for your review' })
         }
         break
       }
@@ -254,11 +264,17 @@ export function wireRemoteSessionPlaneForwarding(): void {
         }
       }
     }
+    const pushTitle = 'Ion needs your attention'
+    const pushBody = data.toolName === 'AskUserQuestion'
+      ? 'Question waiting for your answer'
+      : data.toolName === 'ExitPlanMode'
+        ? 'Plan ready for your review'
+        : `Permission needed: ${data.toolName}`
     state.remoteTransport.send({
       type: 'permission_request', tabId,
       questionId: data.questionId, toolName: data.toolName,
       toolInput, options: data.options,
-    }, true)
+    }, true, { title: pushTitle, body: pushBody })
     if (data.toolName !== 'AskUserQuestion' && data.toolName !== 'ExitPlanMode') {
       const resolveOnIdle = (changedTabId: string, status: string) => {
         if (changedTabId !== tabId) return
@@ -279,7 +295,11 @@ export function wireRemoteSessionPlaneForwarding(): void {
       activeAssistantMessages.delete(tabId)
     }
     if (!state.remoteTransport) return
-    state.remoteTransport.send({ type: 'tab_status', tabId, status: newStatus as any })
+    const pushOnIdle = newStatus === 'idle'
+    const pushMeta = pushOnIdle
+      ? { title: 'Task completed', body: lastMessagePreview.get(tabId) || 'Tab is now idle' }
+      : undefined
+    state.remoteTransport.send({ type: 'tab_status', tabId, status: newStatus as any }, pushOnIdle, pushMeta)
   })
 }
 

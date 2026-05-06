@@ -56,7 +56,7 @@ export class RemoteTransport extends EventEmitter {
   private seq = 0
   private static readonly MAX_QUEUE_SIZE = 500
   private static readonly HEARTBEAT_INTERVAL_MS = 15_000
-  private sendQueue: Array<{ event: RemoteEvent; push: boolean }> = []
+  private sendQueue: Array<{ event: RemoteEvent; push: boolean; pushTitle?: string; pushBody?: string }> = []
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   // LAN auth tracking per pending connection
@@ -225,7 +225,7 @@ export class RemoteTransport extends EventEmitter {
   }
 
   /** Send a remote event to all connected iOS devices via their preferred transport. */
-  send(event: RemoteEvent, push = false): void {
+  send(event: RemoteEvent, push = false, pushMeta?: { title?: string; body?: string }): void {
     // If queue is full, apply backpressure
     if (this.sendQueue.length >= RemoteTransport.MAX_QUEUE_SIZE) {
       const isCritical = RemoteTransport.CRITICAL_TYPES.has(event.type)
@@ -238,14 +238,14 @@ export class RemoteTransport extends EventEmitter {
       if (dropIdx >= 0) this.sendQueue.splice(dropIdx, 1)
     }
 
-    this.sendQueue.push({ event, push })
+    this.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body })
     this._drainQueue()
   }
 
   private _drainQueue(): void {
     while (this.sendQueue.length > 0) {
       const item = this.sendQueue[0]
-      const sent = this._sendToAll(item.event, item.push)
+      const sent = this._sendToAll(item.event, item.push, item.pushTitle, item.pushBody)
       if (sent) {
         this.sendQueue.shift()
       } else {
@@ -255,7 +255,7 @@ export class RemoteTransport extends EventEmitter {
   }
 
   /** Encrypt and send an event to all connected devices. Returns true if sent to at least one. */
-  private _sendToAll(event: RemoteEvent, push: boolean): boolean {
+  private _sendToAll(event: RemoteEvent, push: boolean, pushTitle?: string, pushBody?: string): boolean {
     const plaintext = JSON.stringify(event)
     let sentAny = false
 
@@ -278,9 +278,13 @@ export class RemoteTransport extends EventEmitter {
           continue
         }
         ;(msg as any).push = push || undefined
+        ;(msg as any).pushTitle = push ? pushTitle : undefined
+        ;(msg as any).pushBody = push ? pushBody : undefined
       } else {
         ;(msg as any).payload = plaintext
         ;(msg as any).push = push || undefined
+        ;(msg as any).pushTitle = push ? pushTitle : undefined
+        ;(msg as any).pushBody = push ? pushBody : undefined
       }
 
       // Prefer LAN if this device has an authenticated LAN connection.
