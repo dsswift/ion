@@ -15,7 +15,7 @@ struct InputBar: View {
     }
 
     private var isRunning: Bool {
-        tab?.status == .running
+        tab?.status == .running || tab?.status == .connecting
     }
 
     private var isConnected: Bool {

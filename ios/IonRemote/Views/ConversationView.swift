@@ -16,7 +16,7 @@ struct ConversationView: View {
     }
 
     private var isRunning: Bool {
-        tab?.status == .running
+        tab?.status == .running || tab?.status == .connecting
     }
 
     private var conversationMessages: [Message] {
@@ -33,6 +33,23 @@ struct ConversationView: View {
 
     private var loadFailed: Bool {
         viewModel.conversationLoadFailed.contains(tabId)
+    }
+
+    /// Derives a human-readable activity string from current state,
+    /// mirroring the desktop's `tab.currentActivity` ("Thinking…", etc.).
+    private var currentActivity: String {
+        // 1. Active tools → "Running {toolName}…"
+        if let tools = viewModel.activeTools[tabId], !tools.isEmpty {
+            if let first = tools.values.first {
+                return "Running \(first.toolName)…"
+            }
+        }
+        // 2. Last message is assistant and streaming → "Writing…"
+        if let last = conversationMessages.last, last.role == .assistant {
+            return "Writing…"
+        }
+        // 3. Default
+        return "Thinking…"
     }
 
     private var pendingPermission: PermissionRequest? {
@@ -97,6 +114,11 @@ struct ConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageList
+
+            // Activity indicator — pinned above input, always visible
+            if isRunning {
+                ActivityIndicatorView(text: currentActivity)
+            }
 
             if let request = pendingPermission {
                 PermissionCardView(tabId: tabId, request: request)
