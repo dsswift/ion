@@ -79,10 +79,12 @@ extension SessionViewModel {
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         // Clear pinned prompt after message completes
         enginePinnedPrompt[key] = nil
-        // Set tab idle and update context stats if this is the active instance
+        // Update context stats only — do NOT set status to .idle here.
+        // The agent may continue with tool calls after a message ends.
+        // Tab status transitions to idle only via authoritative events:
+        // tabStatus, taskComplete, engineDead, or snapshot reconciliation.
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
         if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].status = .idle
             tabs[idx].contextTokens = inputTokens
             tabs[idx].contextPercent = contextPercent
         }
