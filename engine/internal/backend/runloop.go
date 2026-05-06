@@ -125,6 +125,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, turn, maxTurns))
 		}
 
+		// Plan mode: inject sparse reminder on turn 2+ so the LLM
+		// doesn't drift from plan-mode constraints mid-conversation.
+		if run.planMode && turn > 1 {
+			conversation.AddUserMessage(run.conv, "[SYSTEM] "+buildPlanModeSparseReminder(run.planFilePath))
+		}
+
 		// Fire turn_start hook
 		if hooks.OnTurnStart != nil {
 			hooks.OnTurnStart(run.requestID, turn)
