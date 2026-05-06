@@ -77,11 +77,14 @@ extension TransportManager {
     // MARK: - Wire message builder
 
     func buildWireMessage(payload: Data) throws -> WireMessage {
+        seqLock.lock()
         seq += 1
+        let currentSeq = seq
+        seqLock.unlock()
 
         let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: payload, key: sharedKey)
         return WireMessage(
-            seq: seq,
+            seq: currentSeq,
             ts: Date().timeIntervalSince1970 * 1000,
             payload: nil,
             nonce: nonce.base64EncodedString(),

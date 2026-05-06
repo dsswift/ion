@@ -59,6 +59,7 @@ final class TransportManager {
     /// resurrecting a transport that was already torn down.
     private(set) var isStopped = false
     var seq: UInt64 = 0
+    let seqLock = NSLock()
     var lastReceivedSeq: UInt64 = 0
     let eventContinuation: AsyncStream<RemoteEvent>.Continuation
     var relayListenTask: Task<Void, Never>?
