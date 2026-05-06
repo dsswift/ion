@@ -12,7 +12,7 @@ const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-const IDENTITY = "Ion Local Dev";
+const IDENTITY = process.env.APPLE_SIGNING_IDENTITY || "Ion Local Dev";
 const ENTITLEMENTS = path.join(__dirname, "..", "resources", "entitlements.mac.plist");
 
 exports.default = async function afterPack(context) {
