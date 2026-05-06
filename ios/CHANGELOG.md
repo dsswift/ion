@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.11.0](https://github.com/dsswift/ion/compare/ios-v1.10.0...ios-v1.11.0) (2026-05-06)
+
+### Features
+
+* **ios:** add activity indicator to conversation view ([1794e80](https://github.com/dsswift/ion/commit/1794e80150c46d95c7a4cc0d2796a7c69bcf9aa8))
+
+### Bug Fixes
+
+* **ios:** preserve tab running state after message end ([73e2e88](https://github.com/dsswift/ion/commit/73e2e88fe19deaf6c7065f780f41b13dbd06cc40))
+
 ## [1.10.0](https://github.com/dsswift/ion/compare/ios-v1.9.0...ios-v1.10.0) (2026-05-06)
 
 ### Features
