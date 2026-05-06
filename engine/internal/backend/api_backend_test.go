@@ -285,12 +285,6 @@ func setupTestProvider(responses [][]types.LlmStreamEvent) *mockLlmProvider {
 	return mock
 }
 
-func cleanupTestProvider() {
-	// Use ResetRegistries or just re-register to clean
-	// Since we can't delete individual entries easily from outside the package,
-	// we just accept accumulation (tests use unique IDs)
-}
-
 type collectedEvents struct {
 	mu         sync.Mutex
 	normalized []types.NormalizedEvent

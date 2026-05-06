@@ -106,8 +106,6 @@ func (m *MockProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) 
 
 // --- Helper functions to build common event sequences ---
 
-func strPtr(s string) *string { return &s }
-
 // TextResponse returns a complete event sequence for a simple text response.
 func TextResponse(text string) []types.LlmStreamEvent {
 	stopReason := "end_turn"

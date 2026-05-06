@@ -433,11 +433,10 @@ func (t *stdioTransport) Close() error {
 // --- SSE transport ---
 
 type sseTransport struct {
-	baseURL  string
-	msgCh    chan json.RawMessage
-	client   *http.Client
-	cancelFn func()
-	done     chan struct{}
+	baseURL string
+	msgCh   chan json.RawMessage
+	client  *http.Client
+	done    chan struct{}
 }
 
 func newSSETransport(config types.McpServerConfig) (*sseTransport, error) {
