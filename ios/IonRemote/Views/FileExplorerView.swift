@@ -106,7 +106,8 @@ struct FileExplorerView: View {
                     FileExplorerRowView(
                         entry: item.entry,
                         depth: item.depth,
-                        isExpanded: expandedPaths.contains(item.entry.path)
+                        isExpanded: expandedPaths.contains(item.entry.path),
+                        rootDirectory: directory
                     ) {
                         handleTap(item.entry)
                     }

@@ -81,6 +81,9 @@
 		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
 		A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */; };
 		A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */; };
+		A1B2C3D4E5F60001000700AA /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000701AA /* MessageBubble.swift */; };
+		A1B2C3D4E5F60001000702AA /* ToolGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */; };
+		A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -171,6 +174,9 @@
 		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredSlashCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandMenu.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000701AA /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGrouping.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -305,6 +311,8 @@
 				A1B2C3D4E5F60001000408AA /* FileEditorView.swift */,
 				A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */,
 				A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */,
+				A1B2C3D4E5F60001000701AA /* MessageBubble.swift */,
+				A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -359,6 +367,7 @@
 			children = (
 				A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */,
 				A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */,
+				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -525,6 +534,9 @@
 				A1B2C3D4E5F60001000503AA /* ConnectionQualityView.swift in Sources */,
 				A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */,
 				A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */,
+				A1B2C3D4E5F60001000700AA /* MessageBubble.swift in Sources */,
+				A1B2C3D4E5F60001000702AA /* ToolGroupView.swift in Sources */,
+				A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
