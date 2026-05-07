@@ -12,6 +12,12 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
+// toolMeta stores tool call metadata keyed by tool ID.
+type toolMeta struct {
+	name  string
+	index int
+}
+
 // pendingPrompt holds a queued prompt waiting for the active run to finish.
 type pendingPrompt struct {
 	text         string
@@ -59,6 +65,20 @@ type engineSession struct {
 	// CLI backend turn tracking (populated by handleNormalizedEvent)
 	cliTurnNumber  int  // current turn number for CLI runs
 	cliTurnActive  bool // true between turn_start and turn_end
+
+	// CLI backend message_update text accumulator. TextChunkEvent deltas are
+	// appended here; on turn_end the accumulated content fires the
+	// message_update extension hook, then the buffer is reset.
+	cliTextBuf string
+
+	// CLI backend tool input tracking for firing tool_call hook on Agent
+	// dispatch. Maps tool ID → accumulated partial input JSON, and
+	// tool ID → tool metadata (name, index) from the ToolCallEvent.
+	// Index → tool ID reverse mapping for ToolCallCompleteEvent which
+	// only carries an index.
+	cliToolInputs  map[string]string
+	cliToolMeta    map[string]toolMeta
+	cliToolIndexID map[int]string
 }
 
 

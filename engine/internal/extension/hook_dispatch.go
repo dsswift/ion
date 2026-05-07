@@ -16,6 +16,9 @@ func (h *Host) FireSessionEnd(ctx *Context) error           { return h.sdk.FireS
 func (h *Host) FireMessageStart(ctx *Context) error         { return h.sdk.FireMessageStart(ctx) }
 func (h *Host) FireMessageEnd(ctx *Context) error           { return h.sdk.FireMessageEnd(ctx) }
 func (h *Host) FireToolEnd(ctx *Context) error              { return h.sdk.FireToolEnd(ctx) }
+func (h *Host) FireMessageUpdate(ctx *Context, info MessageUpdateInfo) error {
+	return h.sdk.FireMessageUpdate(ctx, info)
+}
 func (h *Host) FireOnError(ctx *Context, info ErrorInfo) error {
 	return h.sdk.FireOnError(ctx, info)
 }

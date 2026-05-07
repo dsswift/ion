@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -55,7 +56,8 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.mu.Unlock()
 	}
 
-	// G34: Fire tool_start/tool_end extension hooks
+	// G34: Fire tool_start/tool_end extension hooks and track tool inputs
+	// for Agent tool_call dispatch.
 	if sOk && s.extGroup != nil && !s.extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		switch e := event.Data.(type) {
@@ -64,6 +66,48 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 				ToolName: e.ToolName,
 				ToolID:   e.ToolID,
 			})
+			// Track tool metadata for Agent tool_call hook
+			m.mu.Lock()
+			if s.cliToolMeta == nil {
+				s.cliToolMeta = make(map[string]toolMeta)
+				s.cliToolInputs = make(map[string]string)
+				s.cliToolIndexID = make(map[int]string)
+			}
+			s.cliToolMeta[e.ToolID] = toolMeta{name: e.ToolName, index: e.Index}
+			s.cliToolIndexID[e.Index] = e.ToolID
+			m.mu.Unlock()
+
+		case *types.ToolCallUpdateEvent:
+			// Accumulate partial input for tool_call hook
+			m.mu.Lock()
+			if s.cliToolInputs != nil {
+				s.cliToolInputs[e.ToolID] += e.PartialInput
+			}
+			m.mu.Unlock()
+
+		case *types.ToolCallCompleteEvent:
+			// Fire tool_call hook for Agent tool calls so extensions can see
+			// which sub-agent is being dispatched.
+			m.mu.Lock()
+			toolID := s.cliToolIndexID[e.Index]
+			meta := s.cliToolMeta[toolID]
+			accumulated := s.cliToolInputs[toolID]
+			delete(s.cliToolInputs, toolID)
+			delete(s.cliToolMeta, toolID)
+			delete(s.cliToolIndexID, e.Index)
+			m.mu.Unlock()
+
+			if meta.name == "Agent" && accumulated != "" {
+				var input map[string]interface{}
+				if json.Unmarshal([]byte(accumulated), &input) == nil {
+					_, _ = s.extGroup.FireToolCall(ctx, extension.ToolCallInfo{
+						ToolName: "Agent",
+						ToolID:   toolID,
+						Input:    input,
+					})
+				}
+			}
+
 		case *types.ToolResultEvent:
 			_ = e // suppress unused
 			_ = s.extGroup.FireToolEnd(ctx)
@@ -260,8 +304,26 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 		return
 	}
 
-	switch event.Data.(type) {
-	case *types.TextChunkEvent, *types.ToolCallEvent:
+	switch e := event.Data.(type) {
+	case *types.TextChunkEvent:
+		// Accumulate assistant text for message_update hook.
+		m.mu.Lock()
+		s.cliTextBuf += e.Text
+		alreadyActive := s.cliTurnActive
+		if !alreadyActive {
+			s.cliTurnNumber++
+			s.cliTurnActive = true
+		}
+		turnNum := s.cliTurnNumber
+		m.mu.Unlock()
+
+		if !alreadyActive {
+			ctx := m.newExtContext(s, key)
+			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		}
+
+	case *types.ToolCallEvent:
+		_ = e // suppress unused
 		m.mu.Lock()
 		alreadyActive := s.cliTurnActive
 		if !alreadyActive {
@@ -277,26 +339,44 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 		}
 
 	case *types.TaskUpdateEvent:
+		_ = e // suppress unused
 		m.mu.Lock()
 		wasActive := s.cliTurnActive
 		s.cliTurnActive = false
 		turnNum := s.cliTurnNumber
+		accum := s.cliTextBuf
+		s.cliTextBuf = ""
 		m.mu.Unlock()
 
 		if wasActive {
 			ctx := m.newExtContext(s, key)
+			if accum != "" {
+				_ = s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{
+					Role:    "assistant",
+					Content: accum,
+				})
+			}
 			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
 		}
 
 	case *types.TaskCompleteEvent:
+		_ = e // suppress unused
 		m.mu.Lock()
 		wasActive := s.cliTurnActive
 		s.cliTurnActive = false
 		turnNum := s.cliTurnNumber
+		accum := s.cliTextBuf
+		s.cliTextBuf = ""
 		m.mu.Unlock()
 
 		if wasActive {
 			ctx := m.newExtContext(s, key)
+			if accum != "" {
+				_ = s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{
+					Role:    "assistant",
+					Content: accum,
+				})
+			}
 			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
 		}
 	}
