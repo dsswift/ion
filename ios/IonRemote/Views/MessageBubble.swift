@@ -7,6 +7,7 @@ struct MessageBubble: View {
     var isRunning: Bool = false
     var onRewind: ((String) -> Void)?
     var onFork: ((String) -> Void)?
+    var copyableContent: String?
 
     @State private var isToolExpanded = false
     @State private var showRewindConfirm = false
@@ -119,6 +120,21 @@ struct MessageBubble: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 12)
         .padding(.vertical, 2)
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = copyableContent ?? message.content
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+            ShareLink(item: copyableContent ?? message.content) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        } preview: {
+            Text(message.content.prefix(200) + (message.content.count > 200 ? "…" : ""))
+                .font(.body)
+                .padding()
+                .frame(maxWidth: 300, alignment: .leading)
+        }
     }
 
     // MARK: - Tool
