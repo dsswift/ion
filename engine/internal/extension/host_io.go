@@ -49,11 +49,19 @@ func (e *jsonrpcError) Error() string {
 
 // send writes a JSON-RPC request to the subprocess stdin. Caller must not
 // hold h.mu if calling from the reader goroutine context (it doesn't).
+//
+// The stdin reference is snapshotted under pendMu so that a concurrent
+// disposeInternal (which nils h.stdin under h.mu) cannot create a race.
+// The actual write is serialised under writeMu so concurrent goroutines
+// cannot interleave NDJSON frames.
 func (h *Host) send(msg rpcRequest) error {
 	if h.dead.Load() {
 		return fmt.Errorf("extension subprocess is dead")
 	}
-	if h.stdin == nil {
+	h.pendMu.Lock()
+	w := h.stdin
+	h.pendMu.Unlock()
+	if w == nil {
 		return fmt.Errorf("extension not loaded")
 	}
 	data, err := json.Marshal(msg)
@@ -61,7 +69,9 @@ func (h *Host) send(msg rpcRequest) error {
 		return err
 	}
 	data = append(data, '\n')
-	_, err = h.stdin.Write(data)
+	h.writeMu.Lock()
+	_, err = w.Write(data)
+	h.writeMu.Unlock()
 	return err
 }
 

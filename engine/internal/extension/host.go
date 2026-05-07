@@ -25,6 +25,11 @@ type Host struct {
 	stdout  *bufio.Scanner
 	cmd     *exec.Cmd
 
+	// writeMu serialises all writes to h.stdin so concurrent goroutines
+	// (send, sendResponse, sendNotification) cannot interleave NDJSON
+	// frames. Acquired AFTER snapshotting h.stdin under h.pendMu.
+	writeMu sync.Mutex
+
 	// JSON-RPC response routing
 	nextID   atomic.Int64
 	pending  map[int64]chan *jsonrpcResponse
