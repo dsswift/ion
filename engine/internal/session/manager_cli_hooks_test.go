@@ -658,3 +658,171 @@ func TestWireAgentToolServer_SpecResolution(t *testing.T) {
 		t.Errorf("expected 'prompt is required' error, got %q", result.Content)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// message_update hook tests — verify TextChunkEvent accumulation fires
+// FireMessageUpdate with the correct content on turn end.
+// ---------------------------------------------------------------------------
+
+// msgRecorder captures message_update hook payloads.
+type msgRecorder struct {
+	mu   sync.Mutex
+	msgs []extension.MessageUpdateInfo
+}
+
+func (r *msgRecorder) get() []extension.MessageUpdateInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]extension.MessageUpdateInfo, len(r.msgs))
+	copy(out, r.msgs)
+	return out
+}
+
+// newMsgUpdateGroup builds an ExtensionGroup whose message_update hook
+// records into the returned msgRecorder.
+func newMsgUpdateGroup(rec *msgRecorder) *extension.ExtensionGroup {
+	host := extension.NewHost()
+	host.SDK().On(extension.HookMessageUpdate, func(ctx *extension.Context, payload interface{}) (interface{}, error) {
+		info := payload.(extension.MessageUpdateInfo)
+		rec.mu.Lock()
+		rec.msgs = append(rec.msgs, info)
+		rec.mu.Unlock()
+		return nil, nil
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+	return group
+}
+
+func TestFireCliTurnHooks_MessageUpdateAccumulation(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("mu1")
+
+	rec := &msgRecorder{}
+	s.extGroup = newMsgUpdateGroup(rec)
+
+	mgr.mu.Lock()
+	mgr.sessions = map[string]*engineSession{"mu1": s}
+	mgr.mu.Unlock()
+
+	// Simulate three text chunks then a TaskUpdate (turn end).
+	mgr.fireCliTurnHooks(s, "mu1", true, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: "Hello"},
+	})
+	mgr.fireCliTurnHooks(s, "mu1", true, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: ", "},
+	})
+	mgr.fireCliTurnHooks(s, "mu1", true, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: "world!"},
+	})
+	mgr.fireCliTurnHooks(s, "mu1", true, types.NormalizedEvent{
+		Data: &types.TaskUpdateEvent{},
+	})
+
+	msgs := rec.get()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message_update, got %d", len(msgs))
+	}
+	if msgs[0].Role != "assistant" {
+		t.Errorf("expected role=assistant, got %q", msgs[0].Role)
+	}
+	if msgs[0].Content != "Hello, world!" {
+		t.Errorf("expected accumulated content 'Hello, world!', got %q", msgs[0].Content)
+	}
+}
+
+func TestFireCliTurnHooks_MessageUpdateOnTaskComplete(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("mu2")
+
+	rec := &msgRecorder{}
+	s.extGroup = newMsgUpdateGroup(rec)
+
+	mgr.mu.Lock()
+	mgr.sessions = map[string]*engineSession{"mu2": s}
+	mgr.mu.Unlock()
+
+	// Text chunks followed by TaskComplete (skipping TaskUpdate).
+	mgr.fireCliTurnHooks(s, "mu2", true, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: "final answer"},
+	})
+	mgr.fireCliTurnHooks(s, "mu2", true, types.NormalizedEvent{
+		Data: &types.TaskCompleteEvent{Result: "done"},
+	})
+
+	msgs := rec.get()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message_update on TaskComplete, got %d", len(msgs))
+	}
+	if msgs[0].Content != "final answer" {
+		t.Errorf("expected 'final answer', got %q", msgs[0].Content)
+	}
+}
+
+func TestFireCliTurnHooks_NoMessageUpdateWithoutText(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("mu3")
+
+	rec := &msgRecorder{}
+	s.extGroup = newMsgUpdateGroup(rec)
+
+	mgr.mu.Lock()
+	mgr.sessions = map[string]*engineSession{"mu3": s}
+	mgr.mu.Unlock()
+
+	// Tool call (starts turn) → TaskUpdate (ends turn) with NO text chunks.
+	mgr.fireCliTurnHooks(s, "mu3", true, types.NormalizedEvent{
+		Data: &types.ToolCallEvent{ToolName: "Bash", ToolID: "t1"},
+	})
+	mgr.fireCliTurnHooks(s, "mu3", true, types.NormalizedEvent{
+		Data: &types.TaskUpdateEvent{},
+	})
+
+	msgs := rec.get()
+	if len(msgs) != 0 {
+		t.Errorf("expected no message_update when no text was accumulated, got %d", len(msgs))
+	}
+}
+
+func TestFireCliTurnHooks_MultiTurnMessageUpdate(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("mu4")
+
+	rec := &msgRecorder{}
+	s.extGroup = newMsgUpdateGroup(rec)
+
+	mgr.mu.Lock()
+	mgr.sessions = map[string]*engineSession{"mu4": s}
+	mgr.mu.Unlock()
+
+	// Turn 1
+	mgr.fireCliTurnHooks(s, "mu4", true, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: "turn one"},
+	})
+	mgr.fireCliTurnHooks(s, "mu4", true, types.NormalizedEvent{
+		Data: &types.TaskUpdateEvent{},
+	})
+
+	// Turn 2
+	mgr.fireCliTurnHooks(s, "mu4", true, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: "turn two"},
+	})
+	mgr.fireCliTurnHooks(s, "mu4", true, types.NormalizedEvent{
+		Data: &types.TaskCompleteEvent{Result: "done"},
+	})
+
+	msgs := rec.get()
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 message_updates (one per turn), got %d", len(msgs))
+	}
+	if msgs[0].Content != "turn one" {
+		t.Errorf("turn 1 content = %q, want 'turn one'", msgs[0].Content)
+	}
+	if msgs[1].Content != "turn two" {
+		t.Errorf("turn 2 content = %q, want 'turn two'", msgs[1].Content)
+	}
+}

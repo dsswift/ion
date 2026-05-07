@@ -1,6 +1,8 @@
 package extension
 
 import (
+	"bufio"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -52,6 +54,87 @@ func TestCallWithTimeout_DeadChUnblocksMidFlight(t *testing.T) {
 	h.pendMu.Unlock()
 	if leftover != 0 {
 		t.Fatalf("pending map not drained: %d entries remain", leftover)
+	}
+}
+
+// TestConcurrentStdinWrites verifies that concurrent calls to send(),
+// sendResponse(), and sendNotification() do not interleave NDJSON frames.
+// Under -race this also proves the writeMu serialisation is correct.
+func TestConcurrentStdinWrites(t *testing.T) {
+	h := &Host{}
+	h.pending = make(map[int64]chan *jsonrpcResponse)
+	h.deadCh = make(chan struct{})
+	h.deadOnce = &sync.Once{}
+	h.nextID.Store(1)
+
+	pr, pw := io.Pipe()
+	h.stdin = pw
+
+	// Collect all lines written to stdin from a reader goroutine.
+	lines := make(chan string, 2000)
+	go func() {
+		defer close(lines)
+		scanner := bufio.NewScanner(pr)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	const goroutines = 10
+	const msgsPerGoroutine = 50
+
+	var wg sync.WaitGroup
+
+	// Half the goroutines use send()
+	for i := 0; i < goroutines/2; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			for j := 0; j < msgsPerGoroutine; j++ {
+				_ = h.send(rpcRequest{
+					JSONRPC: "2.0",
+					Method:  "test/send",
+					ID:      h.nextID.Add(1),
+					Params:  map[string]interface{}{"i": idx, "j": j},
+				})
+			}
+		}(i)
+	}
+
+	// Other half alternate between sendResponse() and sendNotification()
+	for i := goroutines / 2; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			for j := 0; j < msgsPerGoroutine; j++ {
+				if j%2 == 0 {
+					h.sendResponse(int64(idx*1000+j), nil, nil)
+				} else {
+					h.sendNotification("test/notif", nil)
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	pw.Close()
+
+	// Drain and verify every line is valid JSON (no interleaving).
+	count := 0
+	for line := range lines {
+		count++
+		if line == "" {
+			t.Fatal("received empty line — frames may be interleaved")
+		}
+		var raw map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
+			t.Fatalf("line %d is not valid JSON (frame interleaved?): %q — err: %v", count, line, err)
+		}
+	}
+
+	expected := goroutines * msgsPerGoroutine
+	if count != expected {
+		t.Fatalf("expected %d lines, got %d", expected, count)
 	}
 }
 

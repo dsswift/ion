@@ -117,25 +117,40 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	return s
 }
 
-// Start begins listening on the socket. On Unix, uses a Unix domain socket
-// with stale socket detection. On Windows, uses TCP loopback on port 21017.
+// looksLikeHostPort returns true when path looks like "host:port" rather
+// than a Unix domain socket path. Used to enable TCP listen/dial on any
+// platform via ION_SOCKET_PATH=host:port.
+func looksLikeHostPort(path string) bool {
+	// Must contain a colon and must not start with "/" (absolute path)
+	// or "." (relative path).
+	if len(path) == 0 || path[0] == '/' || path[0] == '.' {
+		return false
+	}
+	return strings.Contains(path, ":")
+}
+
+// Start begins listening on the socket. When the socket path looks like
+// "host:port" (set via ION_SOCKET_PATH), uses TCP so the engine can serve
+// LAN clients. Otherwise uses a Unix domain socket with stale socket detection.
+// TCP always binds to tcp4 to avoid macOS dual-stack quirks where Go's
+// default "tcp" might bind only to [::1].
 func (s *Server) Start() error {
 	var ln net.Listener
 	var err error
 
-	if runtime.GOOS == "windows" {
-		// Windows: use TCP loopback since Go doesn't natively support named pipes.
-		conn, dialErr := net.Dial("tcp", s.socketPath)
+	if looksLikeHostPort(s.socketPath) {
+		// TCP mode — cross-platform (LAN / Windows / remote desktop).
+		conn, dialErr := net.Dial("tcp4", s.socketPath)
 		if dialErr == nil {
 			conn.Close()
 			return fmt.Errorf("engine already listening on %s", s.socketPath)
 		}
-		ln, err = net.Listen("tcp", s.socketPath)
+		ln, err = net.Listen("tcp4", s.socketPath)
 		if err != nil {
 			return fmt.Errorf("failed to listen on %s: %w", s.socketPath, err)
 		}
 	} else {
-		// Unix: stale socket detection, then bind.
+		// Unix domain socket mode.
 		if _, statErr := os.Stat(s.socketPath); statErr == nil {
 			conn, dialErr := net.Dial("unix", s.socketPath)
 			if dialErr != nil {
@@ -184,8 +199,9 @@ func (s *Server) Stop() error {
 			s.listener.Close()
 		}
 
-		// Only remove socket file on Unix; TCP listeners have no file to clean up.
-		if runtime.GOOS != "windows" {
+		// Only remove socket file for Unix domain sockets; TCP listeners
+		// have no file to clean up.
+		if !looksLikeHostPort(s.socketPath) {
 			os.Remove(s.socketPath)
 		}
 		utils.Log("Server", "stopped")
@@ -494,7 +510,22 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		_ = s.Stop()
 
 	case "health":
-		s.sendResult(conn, cmd, nil, s.healthSnapshot())
+		type healthResult struct {
+			data map[string]interface{}
+		}
+		ch := make(chan healthResult, 1)
+		go func() {
+			ch <- healthResult{data: s.healthSnapshot()}
+		}()
+		select {
+		case r := <-ch:
+			s.sendResult(conn, cmd, nil, r.data)
+		case <-time.After(5 * time.Second):
+			s.sendResult(conn, cmd, nil, map[string]interface{}{
+				"ok":    false,
+				"error": "health snapshot timed out",
+			})
+		}
 
 	default:
 		utils.Warn("Server", "unknown command: "+cmd.Cmd)

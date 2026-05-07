@@ -33,90 +33,95 @@ fi
 
 # ── 2. Whisper (required for voice input) ──
 
-step "Step 2/6 — Checking voice support (Whisper)"
-
-if command -v whisperkit-cli &>/dev/null || command -v whisper-cli &>/dev/null || command -v whisper &>/dev/null; then
-  echo "Whisper is already installed."
+if [ "${SKIP_WHISPER:-0}" = "1" ]; then
+  step "Step 2/6 — Skipping Whisper (SKIP_WHISPER=1)"
+  echo "Voice input will be unavailable. Unset SKIP_WHISPER or set it to 0 to install."
 else
-  echo "Whisper is not installed. Voice input requires it."
-  echo
+  step "Step 2/6 — Checking voice support (Whisper)"
 
-  if ! command -v brew &>/dev/null; then
-    echo "Homebrew is required to install Whisper but was not found."
+  if command -v whisperkit-cli &>/dev/null || command -v whisper-cli &>/dev/null || command -v whisper &>/dev/null; then
+    echo "Whisper is already installed."
+  else
+    echo "Whisper is not installed. Voice input requires it."
     echo
-    echo "  Install Homebrew first:"
-    echo "    /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-    echo
-    echo "  Then double-click this file again."
-    echo
-    exit 1
-  fi
 
-  ARCH="$(uname -m)"
-  INSTALLED=""
-
-  if [ "$ARCH" = "arm64" ]; then
-    # Apple Silicon: prefer whisperkit-cli, fall back to whisper-cpp
-    echo "Installing Whisper via Homebrew (whisperkit-cli for $ARCH)..."
-    echo
-    if brew install whisperkit-cli; then
-      INSTALLED="whisperkit-cli"
-    else
+    if ! command -v brew &>/dev/null; then
+      echo "Homebrew is required to install Whisper but was not found."
       echo
-      echo "whisperkit-cli failed — falling back to whisper-cpp..."
+      echo "  Install Homebrew first:"
+      echo "    /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+      echo
+      echo "  Then double-click this file again."
+      echo
+      exit 1
+    fi
+
+    ARCH="$(uname -m)"
+    INSTALLED=""
+
+    if [ "$ARCH" = "arm64" ]; then
+      # Apple Silicon: prefer whisperkit-cli, fall back to whisper-cpp
+      echo "Installing Whisper via Homebrew (whisperkit-cli for $ARCH)..."
+      echo
+      if brew install whisperkit-cli; then
+        INSTALLED="whisperkit-cli"
+      else
+        echo
+        echo "whisperkit-cli failed — falling back to whisper-cpp..."
+        echo
+        if brew install whisper-cpp; then
+          INSTALLED="whisper-cpp"
+        fi
+      fi
+    else
+      # Intel: whisper-cpp only (whisperkit-cli requires arm64)
+      echo "Installing Whisper via Homebrew (whisper-cpp for $ARCH)..."
       echo
       if brew install whisper-cpp; then
         INSTALLED="whisper-cpp"
       fi
     fi
-  else
-    # Intel: whisper-cpp only (whisperkit-cli requires arm64)
-    echo "Installing Whisper via Homebrew (whisper-cpp for $ARCH)..."
-    echo
-    if brew install whisper-cpp; then
-      INSTALLED="whisper-cpp"
-    fi
-  fi
 
-  if [ -z "$INSTALLED" ]; then
-    echo
-    echo "Whisper installation failed."
-    echo
-    echo "  Try running manually:"
-    if [ "$ARCH" = "arm64" ]; then
-      echo "    brew install whisperkit-cli"
-      echo "  or:"
-      echo "    brew install whisper-cpp"
+    if [ -z "$INSTALLED" ]; then
+      echo
+      echo "Whisper installation failed."
+      echo
+      echo "  Try running manually:"
+      if [ "$ARCH" = "arm64" ]; then
+        echo "    brew install whisperkit-cli"
+        echo "  or:"
+        echo "    brew install whisper-cpp"
+      else
+        echo "    brew install whisper-cpp"
+      fi
+      echo
+      echo "  Then double-click this file again."
+      echo
+      exit 1
+    fi
+
+    # Verify — check for the executable that the installed formula provides
+    if [ "$INSTALLED" = "whisperkit-cli" ]; then
+      VERIFY_BIN="whisperkit-cli"
     else
-      echo "    brew install whisper-cpp"
+      VERIFY_BIN="whisper-cli"
     fi
-    echo
-    echo "  Then double-click this file again."
-    echo
-    exit 1
-  fi
 
-  # Verify — check for the executable that the installed formula provides
-  if [ "$INSTALLED" = "whisperkit-cli" ]; then
-    VERIFY_BIN="whisperkit-cli"
-  else
-    VERIFY_BIN="whisper-cli"
-  fi
+    if ! command -v "$VERIFY_BIN" &>/dev/null; then
+      echo
+      echo "Whisper was installed but the command is not available."
+      echo
+      echo "  Try opening a new Terminal window and running:"
+      echo "    $VERIFY_BIN --help"
+      echo
+      echo "  If that works, double-click this file again."
+      echo
+      exit 1
+    fi
 
-  if ! command -v "$VERIFY_BIN" &>/dev/null; then
-    echo
-    echo "Whisper was installed but the command is not available."
-    echo
-    echo "  Try opening a new Terminal window and running:"
-    echo "    $VERIFY_BIN --help"
-    echo
-    echo "  If that works, double-click this file again."
-    echo
-    exit 1
+    echo "Whisper installed successfully ($INSTALLED)."
   fi
-
-  echo "Whisper installed successfully ($INSTALLED)."
-fi
+fi  # SKIP_WHISPER guard
 
 # ── 3. Build ──
 

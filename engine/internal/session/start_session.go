@@ -227,6 +227,16 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 				continue
 			}
 			m.mu.Lock()
+			// Guard against session disposal/replacement while Connect() was
+			// blocking. If the session is gone or has been replaced, close the
+			// freshly-opened connection immediately to avoid a file-descriptor
+			// leak.
+			if cur, ok := m.sessions[key]; !ok || cur != s {
+				m.mu.Unlock()
+				_ = conn.Close()
+				utils.Log("Session", fmt.Sprintf("MCP %s: session %s disposed during connect — closing leaked conn", name, key))
+				continue
+			}
 			s.mcpConns = append(s.mcpConns, conn)
 			m.mu.Unlock()
 			utils.Log("Session", fmt.Sprintf("MCP server %s connected (%d tools)", name, len(conn.Tools())))

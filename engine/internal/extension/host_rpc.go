@@ -458,8 +458,13 @@ func (h *Host) sendResponse(id int64, result json.RawMessage, rpcErr *jsonrpcErr
 		return
 	}
 	data = append(data, '\n')
-	if h.stdin != nil {
-		_, _ = h.stdin.Write(data)
+	h.pendMu.Lock()
+	w := h.stdin
+	h.pendMu.Unlock()
+	if w != nil {
+		h.writeMu.Lock()
+		_, _ = w.Write(data)
+		h.writeMu.Unlock()
 	}
 }
 
@@ -480,7 +485,12 @@ func (h *Host) sendNotification(method string, params json.RawMessage) {
 		return
 	}
 	data = append(data, '\n')
-	if h.stdin != nil {
-		_, _ = h.stdin.Write(data)
+	h.pendMu.Lock()
+	w := h.stdin
+	h.pendMu.Unlock()
+	if w != nil {
+		h.writeMu.Lock()
+		_, _ = w.Write(data)
+		h.writeMu.Unlock()
 	}
 }

@@ -249,8 +249,12 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		"--include-partial-messages",
 	}
 
-	// Permission mode: respect caller override, default to "auto"
-	permMode := "auto"
+	// Permission mode: respect caller override, default to "bypassPermissions".
+	// The engine is security-free by design — the harness is responsible for
+	// implementing whatever approval layer it needs via hooks.  Defaulting to
+	// "auto" would inject Claude Code's interactive prompts, which hangs
+	// headless / daemon deployments where no user is present to approve.
+	permMode := "bypassPermissions"
 	if opts.PermissionModeCli != "" {
 		permMode = opts.PermissionModeCli
 	}

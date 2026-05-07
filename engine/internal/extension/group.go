@@ -80,6 +80,10 @@ func (g *ExtensionGroup) FireMessageEnd(ctx *Context) error {
 	return g.fireVoid(func(h *Host) error { return h.FireMessageEnd(ctx) })
 }
 
+func (g *ExtensionGroup) FireMessageUpdate(ctx *Context, info MessageUpdateInfo) error {
+	return g.fireVoid(func(h *Host) error { return h.FireMessageUpdate(ctx, info) })
+}
+
 func (g *ExtensionGroup) FireToolEnd(ctx *Context) error {
 	return g.fireVoid(func(h *Host) error { return h.FireToolEnd(ctx) })
 }
