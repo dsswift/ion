@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.14.0](https://github.com/dsswift/ion/compare/desktop-v1.13.0...desktop-v1.14.0) (2026-05-07)
+
+### Features
+
+* **desktop:** remote engine connect and auto-reconnect ([cef1bc6](https://github.com/dsswift/ion/commit/cef1bc618e1d04f3806419c473fe7a2e07c2a809))
+
+### Bug Fixes
+
+* **desktop:** patch dev deps via npm audit fix ([8714235](https://github.com/dsswift/ion/commit/8714235c49a9a0d859e7c3034c320b3c91399a14))
+
 ## [1.13.0](https://github.com/dsswift/ion/compare/desktop-v1.12.0...desktop-v1.13.0) (2026-05-07)
 
 ### Features
