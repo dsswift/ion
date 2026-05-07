@@ -10,6 +10,14 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.13.0](https://github.com/dsswift/ion/compare/desktop-v1.12.0...desktop-v1.13.0) (2026-05-07)
+
+### Features
+
+* **desktop:** add auto-update functionality ([7868f03](https://github.com/dsswift/ion/commit/7868f03cd451d0583677d5a9d2a5ed7016a10d6d))
+* **desktop:** add code signing and notarization ([d43fcd1](https://github.com/dsswift/ion/commit/d43fcd1f273cac715b78227e0c17f05a29f3afb9))
+* **desktop:** add crash reporting ([ab14b4d](https://github.com/dsswift/ion/commit/ab14b4def7dc861b1c9b06a34c1c696ec7753311))
+
 ## [1.12.0](https://github.com/dsswift/ion/compare/desktop-v1.11.0...desktop-v1.12.0) (2026-05-06)
 
 ### Features

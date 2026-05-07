@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.10.0](https://github.com/dsswift/ion/compare/engine-v1.9.0...engine-v1.10.0) (2026-05-07)
+
+### Features
+
+* **engine:** add upgrade command ([aba5ff2](https://github.com/dsswift/ion/commit/aba5ff29baa01269f98a4465bfedbc0b816918ae))
+
 ## [1.9.0](https://github.com/dsswift/ion/compare/engine-v1.8.2...engine-v1.9.0) (2026-05-06)
 
 ### Features

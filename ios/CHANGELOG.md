@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.12.0](https://github.com/dsswift/ion/compare/ios-v1.11.0...ios-v1.12.0) (2026-05-07)
+
+### Features
+
+* **ios:** add crash reporting and app delegate ([27ba7b7](https://github.com/dsswift/ion/commit/27ba7b705080d127c796b63fa22192bf4760cc25))
+
 ## [1.11.0](https://github.com/dsswift/ion/compare/ios-v1.10.0...ios-v1.11.0) (2026-05-06)
 
 ### Features
