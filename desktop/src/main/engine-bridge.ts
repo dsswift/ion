@@ -18,6 +18,14 @@ const SOCKET_PATH = join(ION_HOME, 'desktop.sock')
 const PID_PATH = join(ION_HOME, 'desktop.pid')
 
 /**
+ * When ION_DESKTOP_ENGINE_SOCKET is set to "host:port", the bridge connects
+ * over TCP to a remote engine instead of spawning a local one. Reconnect on
+ * disconnect is automatic with exponential backoff (500 ms → 8 s, then 30 s cap).
+ */
+const REMOTE_SOCKET = process.env.ION_DESKTOP_ENGINE_SOCKET || ''
+const IS_REMOTE = REMOTE_SOCKET.includes(':')
+
+/**
  * EngineBridge: thin socket client connecting Ion to the standalone
  * ion engine server process.
  *
@@ -61,7 +69,12 @@ export class EngineBridge extends EventEmitter {
       await this._connectSocket()
       return
     } catch {
-      // Server not running, start it
+      // Server not running, start it (unless remote mode)
+    }
+
+    // In remote mode we never auto-start — just retry.
+    if (IS_REMOTE) {
+      throw new Error(`Remote engine at ${REMOTE_SOCKET} is not reachable`)
     }
 
     await this._startServer()
@@ -84,7 +97,14 @@ export class EngineBridge extends EventEmitter {
 
   private _connectSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const conn = createConnection(SOCKET_PATH)
+      let conn: Socket
+      if (IS_REMOTE) {
+        const [host, portStr] = REMOTE_SOCKET.split(':')
+        const port = parseInt(portStr, 10)
+        conn = createConnection({ host, port })
+      } else {
+        conn = createConnection(SOCKET_PATH)
+      }
 
       conn.on('connect', () => {
         const wasReconnect = this.reconnectAttempts > 0
@@ -96,6 +116,7 @@ export class EngineBridge extends EventEmitter {
         resolve()
         if (wasReconnect) {
           this.emit('reconnected')
+          this._reRegisterSessions()
         }
       })
 
@@ -117,12 +138,19 @@ export class EngineBridge extends EventEmitter {
         this._scheduleReconnect()
       })
 
-      conn.on('error', (err) => {
+      conn.on('error', (err: NodeJS.ErrnoException) => {
         if (!this.connected) {
           reject(err)
           return
         }
-        log(`Connection error: ${err.message}`)
+        // For remote connections, emit a toast-friendly event for transient
+        // network errors instead of flooding each chat with error bubbles.
+        if (IS_REMOTE && (err.code === 'EHOSTDOWN' || err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET')) {
+          warn(`Remote engine unreachable (${err.code}) — will reconnect`)
+          this._failPendingRequests('Remote engine unreachable')
+        } else {
+          log(`Connection error: ${err.message}`)
+        }
         this.connected = false
         this.conn = null
         this._scheduleReconnect()
@@ -185,7 +213,7 @@ export class EngineBridge extends EventEmitter {
     if (this.reconnectTimer) return
     if (this.connected) return
     this.reconnectAttempts++
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
+    const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), IS_REMOTE ? 8000 : 30000)
     log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null
@@ -196,6 +224,28 @@ export class EngineBridge extends EventEmitter {
         this._scheduleReconnect()
       }
     }, delay)
+  }
+
+  /** Reject all pending request callbacks with an error message. */
+  private _failPendingRequests(reason: string): void {
+    for (const [id, cb] of this.requestCallbacks) {
+      cb({ ok: false, error: reason })
+    }
+    this.requestCallbacks.clear()
+  }
+
+  /** Re-register all tracked sessions on a reconnected engine. */
+  private _reRegisterSessions(): void {
+    for (const [key, entry] of this.activeSessions) {
+      log(`Re-registering session after reconnect: key=${key}`)
+      const config = { ...entry.config }
+      if (entry.conversationId) {
+        config.sessionId = entry.conversationId
+      }
+      this._sendWithResult({ cmd: 'start_session', key, config }).catch(() => {
+        warn(`Failed to re-register session ${key}`)
+      })
+    }
   }
 
   private _handleMessage(line: string): void {
