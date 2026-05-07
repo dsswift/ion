@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.12.1](https://github.com/dsswift/ion/compare/ios-v1.12.0...ios-v1.12.1) (2026-05-07)
+
+### Bug Fixes
+
+* **ios:** track spm package.resolved for xcode cloud ([9b8eb8e](https://github.com/dsswift/ion/commit/9b8eb8ea2d76953a1e0a5cb16b1f3e4fa543a535))
+
 ## [1.12.0](https://github.com/dsswift/ion/compare/ios-v1.11.0...ios-v1.12.0) (2026-05-07)
 
 ### Features
