@@ -386,3 +386,67 @@ sdk.on("tool_call", (ctx, payload) => {
   return null;
 });
 ```
+
+## System Message Customization
+
+### Customize turn limit warning
+
+Use the `system_inject` hook to replace the default wind-down message with project-specific wrap-up instructions:
+
+```go
+sdk.On("system_inject", func(ctx *extension.Context, payload interface{}) (interface{}, error) {
+    info, ok := payload.(extension.SystemInjectInfo)
+    if !ok {
+        return nil, nil
+    }
+    if info.Kind == "turn_limit_warning" {
+        return extension.SystemInjectResult{
+            Text: "[SYSTEM] You have 2 turns left. Save all work, commit changes, and summarize status.",
+        }, nil
+    }
+    return nil, nil
+})
+```
+
+### Suppress plan mode reminders programmatically
+
+If your extension manages its own plan mode constraints, suppress the engine's built-in reminder:
+
+```go
+sdk.On("system_inject", func(ctx *extension.Context, payload interface{}) (interface{}, error) {
+    info, ok := payload.(extension.SystemInjectInfo)
+    if !ok {
+        return nil, nil
+    }
+    if info.Kind == "plan_mode_reminder" {
+        return extension.SystemInjectResult{Suppress: true}, nil
+    }
+    return nil, nil
+})
+```
+
+### Disable injections via config (no hook code needed)
+
+If you want to disable specific injections entirely without writing hook code, use the config flags in `engine.json`:
+
+```json
+{
+  "limits": {
+    "disablePlanModeReminder": true,
+    "disableTurnLimitWarning": true,
+    "disableMaxTokenContinue": true
+  }
+}
+```
+
+To keep the steering messages for the LLM but hide them from session history:
+
+```json
+{
+  "limits": {
+    "suppressSystemMessages": true
+  }
+}
+```
+
+See [System Message Control](../configuration/limits.md#system-message-control) for a full breakdown of the four control levels.

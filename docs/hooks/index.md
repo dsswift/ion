@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Hook System
 
-The Ion Engine exposes 59 hooks across 16 categories. Hooks let extensions observe, modify, and gate engine behavior without changing engine code. Extensions register handlers via the SDK; the engine fires hooks at defined points during session and tool lifecycles.
+The Ion Engine exposes 60 hooks across 17 categories. Hooks let extensions observe, modify, and gate engine behavior without changing engine code. Extensions register handlers via the SDK; the engine fires hooks at defined points during session and tool lifecycles.
 
 ## Dispatch Model
 
@@ -83,6 +83,7 @@ Examples: context_inject, capability_discover
 | Task Lifecycle | 2 | Observe task creation and completion |
 | Elicitation | 2 | Handle and observe structured user input requests |
 | Plan Mode | 1 | Override plan mode prompt and tool list |
+| System Message Injection | 1 | Override or suppress engine steering messages |
 | Context Injection | 1 | Inject additional context into system prompt |
 | Capability Framework | 3 | Discover, match, and gate capabilities |
 | Extension Lifecycle | 4 | React to extension subprocess crashes and auto-respawn |

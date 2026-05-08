@@ -52,6 +52,10 @@ Resource limits for agent runs. All fields are optional pointers -- omitting a f
 |-------|------|---------|-------------|
 | `maxTurns` | int (nullable) | unset (unlimited) | Maximum number of LLM turns before the agent stops. Unset or `<= 0` means no cap. |
 | `maxBudgetUsd` | float (nullable) | unset (unlimited) | Cost ceiling in USD. The agent stops when estimated spend reaches this value. Unset or `<= 0` means no cap. |
+| `suppressSystemMessages` | bool (nullable) | unset (`false`) | When `true`, engine-injected steering messages are sent to the LLM in-memory but not persisted to the session conversation file. Default: unset (`false`). |
+| `disablePlanModeReminder` | bool (nullable) | unset (`false`) | When `true`, the plan mode sparse reminder is not injected on turn 2+. Default: unset (`false`). |
+| `disableTurnLimitWarning` | bool (nullable) | unset (`false`) | When `true`, the turn-limit wind-down message is not injected. Default: unset (`false`). |
+| `disableMaxTokenContinue` | bool (nullable) | unset (`false`) | When `true`, the max-tokens continue prompt is not injected. Default: unset (`false`). |
 
 These can also be overridden per-session via CLI flags. See [Limits](limits.md) for details.
 
@@ -59,7 +63,11 @@ These can also be overridden per-session via CLI flags. See [Limits](limits.md) 
 {
   "limits": {
     "maxTurns": 100,
-    "maxBudgetUsd": 25.0
+    "maxBudgetUsd": 25.0,
+    "suppressSystemMessages": false,
+    "disablePlanModeReminder": false,
+    "disableTurnLimitWarning": false,
+    "disableMaxTokenContinue": false
   }
 }
 ```
@@ -327,7 +335,11 @@ A multi-provider configuration mixing a local Ollama model with a hosted OpenAI 
   },
   "limits": {
     "maxTurns": 100,
-    "maxBudgetUsd": 25.0
+    "maxBudgetUsd": 25.0,
+    "suppressSystemMessages": false,
+    "disablePlanModeReminder": false,
+    "disableTurnLimitWarning": false,
+    "disableMaxTokenContinue": false
   },
   "mcpServers": {
     "filesystem": {

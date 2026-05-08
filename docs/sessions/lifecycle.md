@@ -41,6 +41,18 @@ If a session with the same key already exists, `StartSession` returns an error.
 10. Emit `engine_status` with state `running`.
 11. Call `backend.StartRun()`.
 
+### System Message Injection
+
+During the agent loop, the engine may inject internal user-role messages for LLM steering:
+
+| Type | When | Default text |
+|------|------|-------------|
+| Plan mode reminder | Turn 2+ in plan mode | `[SYSTEM] Plan mode still active...` |
+| Turn limit warning | 2 turns before `maxTurns` | `[SYSTEM] You are approaching your turn limit...` |
+| Max token continue | `max_tokens` stop reason | `Continue from where you left off.` |
+
+These messages are hookable via [`system_inject`](../hooks/reference.md#system-message-injection-1), individually disableable via `limits.disable*` flags, and suppressible from persistence via `limits.suppressSystemMessages`. See [System Message Control](../configuration/limits.md#system-message-control) for full details.
+
 ### Per-prompt overrides
 
 Clients can override these fields per prompt without changing the session config:

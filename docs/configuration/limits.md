@@ -14,6 +14,10 @@ Resource limits control how long an agent session can run and how much it can sp
 |-------|------|---------|----------|-------------|
 | `maxTurns` | int | unset (unlimited) | `--max-turns N` | Maximum number of LLM turns before the agent stops. Each turn is one request-response cycle with the model. Unset or `<= 0` means no cap. |
 | `maxBudgetUsd` | float | unset (unlimited) | `--max-budget USD` | Cost ceiling in US dollars. The agent stops when estimated spend reaches this value. Unset or `<= 0` means no cap. |
+| `suppressSystemMessages` | bool | unset (`false`) | -- | When `true`, engine-injected steering messages are sent to the LLM but not persisted to session history. |
+| `disablePlanModeReminder` | bool | unset (`false`) | -- | When `true`, the plan mode sparse reminder is not injected on turn 2+. |
+| `disableTurnLimitWarning` | bool | unset (`false`) | -- | When `true`, the turn-limit wind-down message is not injected. |
+| `disableMaxTokenContinue` | bool | unset (`false`) | -- | When `true`, the max-tokens continue prompt is not injected. |
 
 The engine ships unopinionated. There is no built-in default cap on turns, budget, or idle timeout. Harness engineers and operators set them via `engine.json`, CLI flags, or per-call options.
 
@@ -58,6 +62,61 @@ Limits are evaluated independently. The agent stops when any limit is reached. L
 - If neither is set, the session runs until the LLM emits a terminal stop or the caller cancels.
 
 The agent reports which limit caused termination in the session end event.
+
+## System Message Control
+
+During the agent loop, the engine injects internal user-role messages for LLM steering. These are not user input — they are engine-generated guidance to keep the LLM on track.
+
+### Types of system messages
+
+| Type | When injected | Purpose |
+|------|--------------|---------|
+| Plan mode reminder | Turn 2+ during plan mode | Prevents LLM from drifting out of plan-mode constraints |
+| Turn limit warning | 2 turns before `maxTurns` | Tells the LLM to wrap up |
+| Max token continue | LLM response hits `max_tokens` | Prompts the LLM to continue its truncated response |
+
+### Four levels of control
+
+| Control | Config / Hook | LLM sees it? | Persisted? | Client sees it? |
+|---------|--------------|-------------|-----------|----------------|
+| Disable flag | `limits.disable*` | No | No | No |
+| Hook suppress | `system_inject` → `suppress: true` | No | No | No |
+| Suppress from history | `limits.suppressSystemMessages` | Yes | No | No |
+| Default (tag + client filter) | none needed | Yes | Yes (tagged `internal`) | Client decides |
+
+### Disable individually
+
+Use the per-injection flags to prevent specific injections entirely. The LLM does not see them, nothing is persisted, and the `system_inject` hook does not fire:
+
+```json
+{
+  "limits": {
+    "disablePlanModeReminder": true,
+    "disableTurnLimitWarning": true,
+    "disableMaxTokenContinue": true
+  }
+}
+```
+
+### Suppress from history
+
+Use `suppressSystemMessages` to let the LLM see the steering messages but not persist them to session history. Useful when you want the steering behavior but don't want the messages cluttering history:
+
+```json
+{
+  "limits": {
+    "suppressSystemMessages": true
+  }
+}
+```
+
+### Customize via hook
+
+Use the [`system_inject`](../hooks/reference.md#system-message-injection-1) hook to replace or conditionally suppress the message text. See [hook patterns](../hooks/patterns.md#system-message-customization) for examples.
+
+### Client filtering
+
+When messages are persisted (the default), they are tagged with `internal: true` in `load_session_history` responses. Clients can filter them for display. The Ion Desktop and iOS apps hide internal messages by default.
 
 ## Enterprise constraints
 
