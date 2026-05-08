@@ -10,6 +10,18 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.13.0](https://github.com/dsswift/ion/compare/ios-v1.12.1...ios-v1.13.0) (2026-05-08)
+
+### Features
+
+* **ios:** add assistant message grouping for copy ([fb5239c](https://github.com/dsswift/ion/commit/fb5239cb4c89c04c3b7d96ff7fe3dff72d725710))
+* **ios:** filter internal messages from session ([9f704ad](https://github.com/dsswift/ion/commit/9f704ada72102ad7e6916a051295c2705b6e1830))
+* **ios:** add scroll-to-bottom button in conversation ([d3d6aba](https://github.com/dsswift/ion/commit/d3d6aba928e4d044768851b4bd0dfb68ecb38bed))
+
+### Bug Fixes
+
+* **ios:** use compact preview for assistant context menu ([dd663b8](https://github.com/dsswift/ion/commit/dd663b83145bb3470f7fd608984cf4ae89b19d59))
+
 ## [1.12.1](https://github.com/dsswift/ion/compare/ios-v1.12.0...ios-v1.12.1) (2026-05-07)
 
 ### Bug Fixes

@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.15.0](https://github.com/dsswift/ion/compare/desktop-v1.14.0...desktop-v1.15.0) (2026-05-08)
+
+### Features
+
+* **desktop:** add error boundary to conversation views ([2f5a217](https://github.com/dsswift/ion/commit/2f5a217bc270b426566a821259f5dc79f5fb52e1))
+* **desktop:** filter internal messages from history ([4943f57](https://github.com/dsswift/ion/commit/4943f57490f848c689bbed5efad0465ccc41a36e))
+
+### Bug Fixes
+
+* **desktop:** handle null content in message components ([3bba731](https://github.com/dsswift/ion/commit/3bba7315fbefe7a4871c3dac91a2a6c15918cce9))
+
 ## [1.14.0](https://github.com/dsswift/ion/compare/desktop-v1.13.0...desktop-v1.14.0) (2026-05-07)
 
 ### Features
