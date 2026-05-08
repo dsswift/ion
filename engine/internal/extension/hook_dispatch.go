@@ -35,6 +35,10 @@ func (h *Host) FirePlanModePrompt(ctx *Context, planFilePath string) (string, []
 	return h.sdk.FirePlanModePrompt(ctx, planFilePath)
 }
 
+func (h *Host) FireSystemInject(ctx *Context, info SystemInjectInfo) (string, bool) {
+	return h.sdk.FireSystemInject(ctx, info)
+}
+
 func (h *Host) FireContextInject(ctx *Context, info ContextInjectInfo) []ContextEntry {
 	return h.sdk.FireContextInject(ctx, info)
 }

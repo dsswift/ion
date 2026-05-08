@@ -8,6 +8,7 @@ struct ConversationView: View {
     @State private var cachedRestoredCard: PermissionRequest?
     @State private var scrollTask: Task<Void, Never>?
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var isNearBottom: Bool = true
     @State private var showGitPane = false
     @State private var showFileExplorer = false
 
@@ -113,7 +114,30 @@ struct ConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            messageList
+            ZStack(alignment: .bottom) {
+                messageList
+                if !isNearBottom {
+                    Button {
+                        isNearBottom = true
+                        if let proxy = scrollProxy {
+                            withAnimation {
+                                proxy.scrollTo("bottom", anchor: .bottom)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                    }
+                    .padding(.bottom, 12)
+                    .transition(.opacity.combined(with: .scale))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: isNearBottom)
 
             // Activity indicator — pinned above input, always visible
             if isRunning {
@@ -206,6 +230,13 @@ struct ConversationView: View {
                 viewModel.suppressScrollToBottom = false
                 return
             }
+            // Always scroll to bottom when the user sends a message,
+            // even if they were scrolled up — matches desktop behavior.
+            let userSent = conversationMessages.last?.role == .user
+            if userSent {
+                isNearBottom = true
+            }
+            guard isNearBottom else { return }
             // Defer scroll to let LazyVStack finish layout
             scrollTask?.cancel()
             scrollTask = Task { @MainActor in
@@ -221,6 +252,20 @@ struct ConversationView: View {
         .onChange(of: viewModel.connectionState) { _, newState in
             if newState == .disconnected {
                 dismiss()
+            }
+        }
+        .onChange(of: isNearBottom) { _, newValue in
+            if newValue, isRunning {
+                scrollTask?.cancel()
+                scrollTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    guard !Task.isCancelled else { return }
+                    if let proxy = scrollProxy {
+                        withAnimation {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                }
             }
         }
         .onChange(of: viewModel.tabIds) { _, newIds in
@@ -301,6 +346,7 @@ struct ConversationView: View {
                         .id("bottom")
                 }
                 .padding(.vertical)
+                .background(ScrollOffsetReader(isNearBottom: $isNearBottom))
             }
             .onAppear { scrollProxy = proxy }
         }
@@ -326,9 +372,13 @@ struct ConversationView: View {
 
         case .assistant(let message):
             let isLast = message.id == conversationMessages.last?.id
+            let combined = consecutiveAssistantContent(
+                for: message.id, in: conversationMessages
+            )
             MessageBubble(
                 message: message,
-                isRunning: isRunning && isLast
+                isRunning: isRunning && isLast,
+                copyableContent: combined
             )
             .id(message.id)
 
@@ -339,6 +389,72 @@ struct ConversationView: View {
         case .toolGroup(let tools):
             ToolGroupView(tools: tools, isTabRunning: isRunning)
                 .id(item.id)
+        }
+    }
+}
+
+// MARK: - UIKit Scroll Offset Reader
+
+/// Finds the parent UIScrollView and observes contentOffset via KVO
+/// to reliably determine whether the user is near the bottom.
+private struct ScrollOffsetReader: UIViewRepresentable {
+    @Binding var isNearBottom: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        // Defer scroll view lookup to next layout pass
+        DispatchQueue.main.async {
+            guard let scrollView = findScrollView(in: view) else { return }
+            context.coordinator.observe(scrollView: scrollView)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isNearBottom: $isNearBottom)
+    }
+
+    private func findScrollView(in view: UIView) -> UIScrollView? {
+        var current: UIView? = view
+        while let parent = current?.superview {
+            if let scrollView = parent as? UIScrollView {
+                return scrollView
+            }
+            current = parent
+        }
+        return nil
+    }
+
+    final class Coordinator: NSObject {
+        private var isNearBottom: Binding<Bool>
+        private var observation: NSKeyValueObservation?
+
+        init(isNearBottom: Binding<Bool>) {
+            self.isNearBottom = isNearBottom
+        }
+
+        func observe(scrollView: UIScrollView) {
+            observation = scrollView.observe(
+                \.contentOffset, options: [.new]
+            ) { [weak self] sv, _ in
+                let distanceFromBottom =
+                    sv.contentSize.height - sv.contentOffset.y - sv.bounds.height
+                    + sv.adjustedContentInset.bottom
+                let nearBottom = distanceFromBottom < 100
+                if self?.isNearBottom.wrappedValue != nearBottom {
+                    DispatchQueue.main.async {
+                        self?.isNearBottom.wrappedValue = nearBottom
+                    }
+                }
+            }
+        }
+
+        deinit {
+            observation = nil
         }
     }
 }

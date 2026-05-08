@@ -10,7 +10,8 @@ interface SystemMessageProps {
 }
 
 export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
-  const isError = message.content.startsWith('Error:') || message.content.includes('unexpectedly')
+  const content = message.content || ''
+  const isError = content.startsWith('Error:') || content.includes('unexpectedly')
   const colors = useColors()
 
   const inner = (
@@ -23,9 +24,9 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
           userSelect: 'text',
         }}
       >
-        {message.content}
+        {content}
       </div>
-      {isError && <CopyButton text={message.content} />}
+      {isError && <CopyButton text={content} />}
     </div>
   )
 

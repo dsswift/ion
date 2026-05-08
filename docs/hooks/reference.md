@@ -1,12 +1,12 @@
 ---
 title: Hook Reference
-description: Complete reference for all 59 Ion Engine hooks with payloads, return types, and behavior.
+description: Complete reference for all 60 Ion Engine hooks with payloads, return types, and behavior.
 sidebar_position: 2
 ---
 
 # Hook Reference
 
-All 59 hooks grouped by category. For each hook: when it fires, what payload it receives, what return values do, and the dispatch pattern.
+All 60 hooks grouped by category. For each hook: when it fires, what payload it receives, what return values do, and the dispatch pattern.
 
 ## Lifecycle (13)
 
@@ -337,6 +337,42 @@ type ElicitationResultInfo struct {
 type PlanModePromptResult struct {
     Prompt string   // custom plan mode prompt; empty = use default
     Tools  []string // custom allowed tools; nil = use default
+}
+```
+
+## System Message Injection (1)
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `system_inject` | Before each engine-injected steering message | `SystemInjectInfo` | `SystemInjectResult` | Override or suppress engine steering messages |
+
+**Precedence:** Per-injection disable flags (`limits.disablePlanModeReminder`, etc.) are checked first. If a flag disables the injection, the hook does **not** fire. If the flag is not set (default), the hook fires and can still suppress or customize.
+
+#### `SystemInjectInfo`
+
+```go
+type SystemInjectInfo struct {
+    Kind        string `json:"kind"`        // injection type
+    DefaultText string `json:"defaultText"` // engine's default message text
+    Turn        int    `json:"turn"`        // current turn number
+    MaxTurns    int    `json:"maxTurns"`    // configured max turns (0 = unlimited)
+}
+```
+
+**Kind values:**
+
+| Kind | When injected | Default text pattern |
+|------|--------------|---------------------|
+| `"plan_mode_reminder"` | Turn 2+ during plan mode | `[SYSTEM] Plan mode still active...` |
+| `"turn_limit_warning"` | 2 turns before `maxTurns` | `[SYSTEM] You are approaching your turn limit...` |
+| `"max_token_continue"` | LLM response hits `max_tokens` | `Continue from where you left off.` |
+
+#### `SystemInjectResult`
+
+```go
+type SystemInjectResult struct {
+    Text     string `json:"text,omitempty"`     // replacement text; empty = use default
+    Suppress bool   `json:"suppress,omitempty"` // true = do not inject
 }
 ```
 

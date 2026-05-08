@@ -293,10 +293,12 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				}
 			}
 			if len(textParts) > 0 {
+				content := strings.Join(textParts, "\n")
 				result = append(result, types.SessionMessage{
 					Role:      "user",
-					Content:   strings.Join(textParts, "\n"),
+					Content:   content,
 					Timestamp: entry.Timestamp,
+					Internal:  isInternalMessage(content),
 				})
 			}
 
@@ -371,6 +373,19 @@ func AddLabelEntry(conv *Conversation, label string) {
 	AppendEntry(conv, EntryLabel, LabelData{
 		Label: &label,
 	})
+}
+
+// isInternalMessage returns true if a user message was injected by the engine
+// for LLM steering purposes. These messages should be tagged as internal so
+// clients can choose to hide them.
+func isInternalMessage(content string) bool {
+	if strings.HasPrefix(content, "[SYSTEM] ") {
+		return true
+	}
+	if content == "Continue from where you left off." {
+		return true
+	}
+	return false
 }
 
 func truncate(s string, maxLen int) string {

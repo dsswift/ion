@@ -220,6 +220,20 @@ type PlanModePromptResult struct {
 	Tools  []string `json:"tools,omitempty"`  // custom allowed tools; nil means use default
 }
 
+// SystemInjectInfo is the payload for the system_inject hook.
+type SystemInjectInfo struct {
+	Kind        string `json:"kind"`        // "plan_mode_reminder", "turn_limit_warning", "max_token_continue"
+	DefaultText string `json:"defaultText"` // engine's default injection text
+	Turn        int    `json:"turn"`        // current turn number
+	MaxTurns    int    `json:"maxTurns"`    // configured max turns (0 = unlimited)
+}
+
+// SystemInjectResult holds the optional overrides a system_inject handler may return.
+type SystemInjectResult struct {
+	Text     string `json:"text,omitempty"`     // replacement text; empty means use default
+	Suppress bool   `json:"suppress,omitempty"` // true = do not inject this message
+}
+
 // ExtensionRespawnedInfo carries the payload for the extension_respawned hook.
 type ExtensionRespawnedInfo struct {
 	AttemptNumber int    `json:"attemptNumber"`

@@ -37,7 +37,7 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   }
 
   for (const msg of messages) {
-    if (msg.role === 'assistant' && hidden.includes(msg.content.trim())) continue
+    if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
     if (msg.role === 'tool') {
       toolBuf.push(msg)
     } else {

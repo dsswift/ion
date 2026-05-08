@@ -118,17 +118,18 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Wind-down: warn the LLM 2 turns before max so it can wrap up
 		if maxTurns > 4 && turn == maxTurns-2 {
-			conversation.AddUserMessage(run.conv, "[SYSTEM] You are approaching your turn limit. You have 2 turns remaining. Wrap up your current work, summarize what you've accomplished and what remains, then return your response.")
-			if err := conversation.Save(run.conv, ""); err != nil {
-				utils.Log("ApiBackend", "failed to save conversation after wind-down: "+err.Error())
-			}
+			b.injectSystemMessage(run, conv, hooks, opts, "turn_limit_warning",
+				"[SYSTEM] You are approaching your turn limit. You have 2 turns remaining. Wrap up your current work, summarize what you've accomplished and what remains, then return your response.",
+				turn, maxTurns)
 			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, turn, maxTurns))
 		}
 
 		// Plan mode: inject sparse reminder on turn 2+ so the LLM
 		// doesn't drift from plan-mode constraints mid-conversation.
 		if run.planMode && turn > 1 {
-			conversation.AddUserMessage(run.conv, "[SYSTEM] "+buildPlanModeSparseReminder(run.planFilePath))
+			b.injectSystemMessage(run, conv, hooks, opts, "plan_mode_reminder",
+				"[SYSTEM] "+buildPlanModeSparseReminder(run.planFilePath),
+				turn, maxTurns)
 		}
 
 		// Fire turn_start hook
@@ -384,11 +385,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		case "max_tokens":
 			utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, turn))
-			// Add continue message and loop
-			conversation.AddUserMessage(conv, "Continue from where you left off.")
-			if err := conversation.Save(conv, ""); err != nil {
-				utils.Log("ApiBackend", "failed to save conversation after max_tokens continue: "+err.Error())
-			}
+			b.injectSystemMessage(run, conv, hooks, opts, "max_token_continue",
+				"Continue from where you left off.",
+				turn, maxTurns)
 
 		default:
 			// Unknown stop reason; break the loop
@@ -413,4 +412,54 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}})
 	utils.Warn("ApiBackend", fmt.Sprintf("max turns exceeded: runID=%s turns=%d/%d cost=$%.4f", run.requestID, turn, maxTurns, run.totalCost))
 	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
+}
+
+// injectSystemMessage handles all engine-injected steering messages.
+// It checks disable flags, fires the system_inject hook, and either
+// adds a transient message (suppress mode) or persists it normally.
+func (b *ApiBackend) injectSystemMessage(
+	run *activeRun,
+	conv *conversation.Conversation,
+	hooks RunHooks,
+	opts types.RunOptions,
+	kind, defaultText string,
+	turn, maxTurns int,
+) {
+	// Check per-injection disable flag
+	switch kind {
+	case "plan_mode_reminder":
+		if opts.DisablePlanModeReminder {
+			return
+		}
+	case "turn_limit_warning":
+		if opts.DisableTurnLimitWarning {
+			return
+		}
+	case "max_token_continue":
+		if opts.DisableMaxTokenContinue {
+			return
+		}
+	}
+
+	// Fire hook if registered
+	text := defaultText
+	if hooks.OnSystemInject != nil {
+		hookText, suppress := hooks.OnSystemInject(kind, defaultText, turn, maxTurns)
+		if suppress {
+			return
+		}
+		if hookText != "" {
+			text = hookText
+		}
+	}
+
+	// Add message: transient (in-memory only) or persistent
+	if opts.SuppressSystemMessages {
+		conversation.AddTransientUserMessage(conv, text)
+	} else {
+		conversation.AddUserMessage(conv, text)
+		if err := conversation.Save(conv, ""); err != nil {
+			utils.Log("ApiBackend", "failed to save conversation after system inject: "+err.Error())
+		}
+	}
 }

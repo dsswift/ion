@@ -55,6 +55,31 @@ func groupConversationItems(_ messages: [Message]) -> [ConversationItem] {
     return result
 }
 
+// MARK: - Consecutive assistant content
+
+/// Returns the combined content of all consecutive assistant messages around
+/// the message with the given ID.  Stops at any non-assistant boundary (tool,
+/// user, system), so text is never merged across tool groups.
+func consecutiveAssistantContent(for messageId: String, in messages: [Message]) -> String {
+    guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return "" }
+
+    // Expand backward.
+    var start = idx
+    while start > 0 && messages[start - 1].role == .assistant {
+        start -= 1
+    }
+    // Expand forward.
+    var end = idx
+    while end < messages.count - 1 && messages[end + 1].role == .assistant {
+        end += 1
+    }
+
+    return messages[start...end]
+        .map(\.content)
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
+}
+
 // MARK: - Tool description (ported from desktop getToolDescription)
 
 /// Human-readable one-liner for a single tool invocation.

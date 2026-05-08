@@ -394,9 +394,13 @@ type RunOptions struct {
 	PlanModeTools      []string        `json:"planModeTools,omitempty"`
 	PlanFilePath       string          `json:"planFilePath,omitempty"`
 	PlanModePrompt     string          `json:"planModePrompt,omitempty"`
-	CompactThreshold   float64         `json:"compactThreshold,omitempty"`
-	CapabilityTools    []LlmToolDef    `json:"-"` // capability tools injected by session manager
-	CapabilityPrompt   string          `json:"-"` // capability prompt content injected by session manager
+	CompactThreshold        float64      `json:"compactThreshold,omitempty"`
+	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
+	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
+	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`
+	DisableMaxTokenContinue bool         `json:"disableMaxTokenContinue,omitempty"`
+	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
+	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
 }
 
 // StoredSessionInfo is metadata for a saved conversation on disk.
@@ -419,6 +423,7 @@ type SessionMessage struct {
 	ToolID    string `json:"toolId,omitempty"`
 	ToolInput string `json:"toolInput,omitempty"`
 	Timestamp int64  `json:"timestamp"`
+	Internal  bool   `json:"internal,omitempty"`
 }
 
 // PermissionDenialEntry is the wire format for permission denials in ResultEvent.

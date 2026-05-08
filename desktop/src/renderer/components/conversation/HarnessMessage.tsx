@@ -20,7 +20,7 @@ export function HarnessMessage({ message, skipMotion }: HarnessMessageProps) {
         borderLeft: `2px solid ${colors.accent}`,
       }}
     >
-      {message.content}
+      {message.content || ''}
     </div>
   )
 

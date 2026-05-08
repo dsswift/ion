@@ -61,6 +61,18 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	if opts.CompactThreshold <= 0 && m.config.Compaction != nil && m.config.Compaction.Threshold > 0 {
 		opts.CompactThreshold = m.config.Compaction.Threshold
 	}
+	if m.config.Limits.SuppressSystemMessages != nil && *m.config.Limits.SuppressSystemMessages {
+		opts.SuppressSystemMessages = true
+	}
+	if m.config.Limits.DisablePlanModeReminder != nil && *m.config.Limits.DisablePlanModeReminder {
+		opts.DisablePlanModeReminder = true
+	}
+	if m.config.Limits.DisableTurnLimitWarning != nil && *m.config.Limits.DisableTurnLimitWarning {
+		opts.DisableTurnLimitWarning = true
+	}
+	if m.config.Limits.DisableMaxTokenContinue != nil && *m.config.Limits.DisableMaxTokenContinue {
+		opts.DisableMaxTokenContinue = true
+	}
 }
 
 // resolveModelTier resolves model tier aliases (e.g. "fast" -> configured fast model).

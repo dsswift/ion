@@ -10,6 +10,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
 import { TerminalBigScreen } from './components/TerminalBigScreen'
 import { EngineView } from './components/EngineView'
+import { ConversationErrorBoundary } from './components/conversation'
 import { FileExplorer } from './components/FileExplorer'
 import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
@@ -211,7 +212,9 @@ export default function App() {
             {/* Engine tab: custom engine view */}
             {isEngine && activeTab && (
               <div style={{ height: isEngineTall ? tallBodyMax : 420 }}>
-                <EngineView tabId={activeTabId} />
+                <ConversationErrorBoundary>
+                  <EngineView tabId={activeTabId} />
+                </ConversationErrorBoundary>
               </div>
             )}
 
@@ -241,7 +244,9 @@ export default function App() {
                 className="overflow-hidden"
               >
                 <div style={{ maxHeight: bodyMaxHeight, display: 'flex', flexDirection: 'column' }}>
-                  <ConversationView />
+                  <ConversationErrorBoundary>
+                    <ConversationView />
+                  </ConversationErrorBoundary>
                   <StatusBar />
                 </div>
               </motion.div>

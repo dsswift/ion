@@ -114,6 +114,15 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		return extGroup.FirePlanModePrompt(ctx, planFilePath)
 	}
 
+	runCfg.Hooks.OnSystemInject = func(kind, defaultText string, turn, maxTurns int) (string, bool) {
+		return extGroup.FireSystemInject(ctx, extension.SystemInjectInfo{
+			Kind:        kind,
+			DefaultText: defaultText,
+			Turn:        turn,
+			MaxTurns:    maxTurns,
+		})
+	}
+
 	runCfg.Hooks.OnSessionBeforeCompact = func(_ string) bool {
 		cancel, _ := extGroup.FireSessionBeforeCompact(ctx, extension.CompactionInfo{})
 		return cancel

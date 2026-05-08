@@ -149,7 +149,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
     code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, onOpenFile, onOpenUrl])
 
-  const displayContent = useMemo(() => message.content.replace(TASK_NOTIFICATION_RE, '').trim(), [message.content])
+  const displayContent = useMemo(() => (message.content || '').replace(TASK_NOTIFICATION_RE, '').trim(), [message.content])
 
   if (!displayContent) return null
 

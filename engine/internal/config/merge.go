@@ -195,6 +195,18 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Limits.MaxBudgetUsd != nil {
 		dst.Limits.MaxBudgetUsd = src.Limits.MaxBudgetUsd
 	}
+	if src.Limits.SuppressSystemMessages != nil {
+		dst.Limits.SuppressSystemMessages = src.Limits.SuppressSystemMessages
+	}
+	if src.Limits.DisablePlanModeReminder != nil {
+		dst.Limits.DisablePlanModeReminder = src.Limits.DisablePlanModeReminder
+	}
+	if src.Limits.DisableTurnLimitWarning != nil {
+		dst.Limits.DisableTurnLimitWarning = src.Limits.DisableTurnLimitWarning
+	}
+	if src.Limits.DisableMaxTokenContinue != nil {
+		dst.Limits.DisableMaxTokenContinue = src.Limits.DisableMaxTokenContinue
+	}
 
 	// MCP servers: merge maps
 	if len(src.McpServers) > 0 {

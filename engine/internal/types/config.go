@@ -103,8 +103,12 @@ type ProviderConfig struct {
 // LimitsConfig defines resource limits for a run.
 // Pointer fields distinguish "not set" (nil) from "explicitly zero".
 type LimitsConfig struct {
-	MaxTurns     *int     `json:"maxTurns,omitempty"`
-	MaxBudgetUsd *float64 `json:"maxBudgetUsd,omitempty"`
+	MaxTurns                *int     `json:"maxTurns,omitempty"`
+	MaxBudgetUsd            *float64 `json:"maxBudgetUsd,omitempty"`
+	SuppressSystemMessages  *bool    `json:"suppressSystemMessages,omitempty"`
+	DisablePlanModeReminder *bool    `json:"disablePlanModeReminder,omitempty"`
+	DisableTurnLimitWarning *bool    `json:"disableTurnLimitWarning,omitempty"`
+	DisableMaxTokenContinue *bool    `json:"disableMaxTokenContinue,omitempty"`
 }
 
 // McpServerConfig defines an MCP server connection.

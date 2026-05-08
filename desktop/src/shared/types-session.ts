@@ -246,6 +246,7 @@ export interface SessionLoadMessage {
   userExecuted?: boolean
   attachments?: Attachment[]
   timestamp: number
+  internal?: boolean
 }
 
 // ─── Terminal Multiplexing ───

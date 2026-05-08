@@ -255,6 +255,11 @@ export function decodeProjectPath(encoded: string): string | null {
   return current
 }
 
+/** Returns true if the message was injected by the engine for LLM steering. */
+function isInternalMessage(content: string): boolean {
+  return content.startsWith('[SYSTEM] ') || content === 'Continue from where you left off.'
+}
+
 export function loadEngineConversationMessages(sessionId: string): any[] {
   const convDir = join(homedir(), '.ion', 'conversations')
   const filePath = join(convDir, `${sessionId}.jsonl`)
@@ -281,7 +286,10 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
     if (msg.role === 'user') {
       const content = msg.content
       if (typeof content === 'string') {
-        if (content.trim()) result.push({ role: 'user', content: cleanCliTags(content), timestamp })
+        if (content.trim()) {
+          const cleaned = cleanCliTags(content)
+          result.push({ role: 'user', content: cleaned, timestamp, internal: isInternalMessage(content) })
+        }
       } else if (Array.isArray(content)) {
         const textParts: string[] = []
         for (const block of content) {
@@ -305,7 +313,8 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
           }
         }
         if (textParts.length > 0) {
-          result.push({ role: 'user', content: textParts.join('\n'), timestamp })
+          const joined = textParts.join('\n')
+          result.push({ role: 'user', content: joined, timestamp, internal: isInternalMessage(joined) })
         }
       }
     } else if (msg.role === 'assistant') {
@@ -375,7 +384,8 @@ export function loadClaudeSessionMessages(sessionId: string, projectPath?: strin
     if (type === 'user') {
       if (typeof content === 'string') {
         if (content.trim()) {
-          result.push({ role: 'user', content: cleanCliTags(content), timestamp })
+          const cleaned = cleanCliTags(content)
+          result.push({ role: 'user', content: cleaned, timestamp, internal: isInternalMessage(content) })
         }
       } else if (Array.isArray(content)) {
         const textParts: string[] = []
@@ -400,7 +410,8 @@ export function loadClaudeSessionMessages(sessionId: string, projectPath?: strin
           }
         }
         if (textParts.length > 0) {
-          result.push({ role: 'user', content: textParts.join('\n'), timestamp })
+          const joined = textParts.join('\n')
+          result.push({ role: 'user', content: joined, timestamp, internal: isInternalMessage(joined) })
         }
       }
     } else if (type === 'assistant') {

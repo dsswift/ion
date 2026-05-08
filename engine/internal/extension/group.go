@@ -303,6 +303,22 @@ func (g *ExtensionGroup) FirePlanModePrompt(ctx *Context, planFilePath string) (
 	return prompt, allTools
 }
 
+// FireSystemInject fires system_inject across all hosts. Last non-empty text
+// or first suppress=true wins.
+func (g *ExtensionGroup) FireSystemInject(ctx *Context, info SystemInjectInfo) (string, bool) {
+	text := info.DefaultText
+	for _, h := range g.hosts {
+		t, suppress := h.FireSystemInject(ctx, info)
+		if suppress {
+			return "", true
+		}
+		if t != "" {
+			text = t
+		}
+	}
+	return text, false
+}
+
 // ---------------------------------------------------------------------------
 // Info merge: concatenate results from all hosts.
 // ---------------------------------------------------------------------------

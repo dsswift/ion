@@ -41,7 +41,7 @@ func (h *Host) registerHookForwarders() {
 	// String-returning hooks: parse result.value, return if non-empty.
 	stringHooks := []string{
 		HookInput, HookModelSelect, HookContext,
-		HookPlanModePrompt, HookContextInject,
+		HookPlanModePrompt, HookSystemInject, HookContextInject,
 		HookCapabilityDiscover, HookCapabilityMatch, HookCapabilityInvoke,
 		HookPermissionClassify,
 	}

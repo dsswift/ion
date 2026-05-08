@@ -413,10 +413,9 @@ Provide either `key` (load a single session) or `sessionIds` (load a chain of se
 | `toolId`    | string | Tool use ID                   |
 | `toolInput` | string | Serialized tool input         |
 | `timestamp` | number | Unix timestamp (milliseconds) |
+| `internal`  | bool (optional) | `true` when the message was injected by the engine for LLM steering (e.g. plan mode reminders, turn limit warnings). Clients should filter these from user-facing display. Absent or `false` for normal user/assistant messages. |
 
 ---
-
-### save_session_label
 
 Save a custom label for a session.
 

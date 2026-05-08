@@ -76,6 +76,11 @@ type RunHooks struct {
 	// OnPlanModePrompt provides plan-mode prompt customization.
 	OnPlanModePrompt func(planFilePath string) (customPrompt string, customTools []string)
 
+	// OnSystemInject fires before each engine-injected steering message.
+	// Returns (text, suppress). If suppress is true, the message is not injected.
+	// If text is non-empty, it replaces the default.
+	OnSystemInject func(kind, defaultText string, turn, maxTurns int) (text string, suppress bool)
+
 	// OnSessionBeforeCompact may cancel a compaction (return true to cancel).
 	OnSessionBeforeCompact func(runID string) bool
 	// OnSessionCompact observes a completed compaction.

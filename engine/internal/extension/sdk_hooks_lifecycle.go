@@ -82,6 +82,44 @@ func (s *SDK) FirePlanModePrompt(ctx *Context, planFilePath string) (string, []s
 	return outPrompt, outTools
 }
 
+// FireSystemInject fires the system_inject hook. Handlers may return a
+// SystemInjectResult with custom Text or Suppress=true to prevent injection.
+// Last non-nil result wins. If no handler returns a result, returns
+// (defaultText, false).
+func (s *SDK) FireSystemInject(ctx *Context, info SystemInjectInfo) (string, bool) {
+	results := s.fire(HookSystemInject, ctx, info)
+	text := info.DefaultText
+	suppress := false
+	for i := len(results) - 1; i >= 0; i-- {
+		switch v := results[i].(type) {
+		case SystemInjectResult:
+			if v.Suppress {
+				return "", true
+			}
+			if v.Text != "" {
+				return v.Text, false
+			}
+		case *SystemInjectResult:
+			if v != nil {
+				if v.Suppress {
+					return "", true
+				}
+				if v.Text != "" {
+					return v.Text, false
+				}
+			}
+		case map[string]interface{}:
+			if sup, ok := v["suppress"].(bool); ok && sup {
+				return "", true
+			}
+			if t, ok := v["text"].(string); ok && t != "" {
+				return t, false
+			}
+		}
+	}
+	return text, suppress
+}
+
 // FireTurnStart fires the turn_start hook.
 func (s *SDK) FireTurnStart(ctx *Context, info TurnInfo) error {
 	s.fire(HookTurnStart, ctx, info)

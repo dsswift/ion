@@ -78,7 +78,7 @@ export function EngineView({ tabId }: EngineViewProps) {
   const visibleMessages = messages
   const grouped = useMemo(() => groupMessages(visibleMessages, { includeUser: true }), [visibleMessages])
 
-  const hasContent = visibleMessages.some(m => m.role === 'assistant' && m.content.length > 0)
+  const hasContent = visibleMessages.some(m => m.role === 'assistant' && (m.content || '').length > 0)
   const showThinking = isRunning && !hasContent && agentStates.filter(a => a.status === 'running').length === 0
 
   // Auto-scroll

@@ -172,10 +172,10 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
             await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
           }
         }
-        const messages: Message[] = history.map((m) => ({
+        const messages: Message[] = history.filter((m: any) => !m.internal).map((m) => ({
           id: nextMsgId(),
           role: m.role as Message['role'],
-          content: m.content,
+          content: m.content || '',
           toolName: m.toolName,
           toolId: m.toolId,
           toolInput: m.toolInput,
@@ -245,11 +245,11 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         const allMessages: Message[] = []
         for (const histId of historicalSessionIds) {
           const history = await window.ion.loadSession(histId, defaultDir, encodedDir || undefined).catch(() => [])
-          for (const m of history) {
+          for (const m of history.filter((h: any) => !h.internal)) {
             allMessages.push({
               id: nextMsgId(),
               role: m.role as Message['role'],
-              content: m.content,
+              content: m.content || '',
               toolName: m.toolName,
               toolId: m.toolId,
               toolInput: m.toolInput,
@@ -262,11 +262,11 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         }
 
         const currentHistory = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined).catch(() => [])
-        for (const m of currentHistory) {
+        for (const m of currentHistory.filter((h: any) => !h.internal)) {
           allMessages.push({
             id: nextMsgId(),
             role: m.role as Message['role'],
-            content: m.content,
+            content: m.content || '',
             toolName: m.toolName,
             toolId: m.toolId,
             toolInput: m.toolInput,

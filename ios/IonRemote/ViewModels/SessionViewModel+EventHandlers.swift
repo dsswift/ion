@@ -223,8 +223,9 @@ extension SessionViewModel {
 
         case .engineConversationHistory(let tabId, let instanceId, let messages):
             let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-            ionLog.info("engineConversationHistory: key=\(key), messageCount=\(messages.count)")
-            engineMessages[key] = messages
+            let filtered = messages.filter { $0.isInternal != true }
+            ionLog.info("engineConversationHistory: key=\(key), messageCount=\(messages.count), filtered=\(filtered.count)")
+            engineMessages[key] = filtered
             engineConversationLoaded.insert(key)
 
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):

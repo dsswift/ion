@@ -425,11 +425,13 @@ struct EngineMessage: Identifiable, Sendable {
     var toolId: String?
     var toolStatus: String?
     var timestamp: Double?
+    var isInternal: Bool?
 }
 
 extension EngineMessage: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, role, content, toolName, toolId, toolStatus, timestamp
+        case isInternal = "internal"
     }
 
     init(from decoder: Decoder) throws {
@@ -448,6 +450,7 @@ extension EngineMessage: Codable {
         toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
         toolStatus = try container.decodeIfPresent(String.self, forKey: .toolStatus)
         timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp)
+        isInternal = try container.decodeIfPresent(Bool.self, forKey: .isInternal)
     }
 }
 

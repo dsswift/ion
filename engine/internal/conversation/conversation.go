@@ -157,6 +157,15 @@ func AddUserMessage(conv *Conversation, content any) {
 	}
 }
 
+// AddTransientUserMessage appends a user message to the in-memory conversation
+// for the current API call but does NOT persist it to the session entry list.
+// Used when SuppressSystemMessages is enabled: the LLM sees the message, but
+// it won't appear in session history on reload.
+func AddTransientUserMessage(conv *Conversation, content string) {
+	blocks := []types.LlmContentBlock{textBlock(content)}
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
+}
+
 // AddAssistantMessage appends an assistant message with usage tracking.
 func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage) {
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})

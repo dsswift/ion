@@ -20,7 +20,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const isBashCmd = !!message.userExecuted
   const { onOpenFile, onOpenUrl } = useNavigableText()
 
-  const displayContent = message.content
+  const displayContent = (message.content || '')
     .replace(/^\[Attached (?:image|file): .+\]\n*/gm, '')
     .trim()
 
