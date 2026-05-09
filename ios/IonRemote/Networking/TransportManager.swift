@@ -299,6 +299,11 @@ final class TransportManager {
                         let authed = await self.startLANWithAuth(host: host.host, port: host.port)
                         if authed {
                             didRestartBrowser = false
+                            do {
+                                try await self.send(.sync)
+                            } catch {
+                                print("[Ion] bonjour auth ok but sync failed: \(error)")
+                            }
                         } else {
                             self.currentLANHost = nil
                         }

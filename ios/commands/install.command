@@ -12,10 +12,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-TEAM_ID="P6UU9VHF7D"
+TEAM_ID="837B5TTFJK"
 SCHEME="IonRemote"
 PROJECT="IonRemote.xcodeproj"
-BUNDLE_ID="com.sprague.ion.mobile"
+BUNDLE_ID="com.geektechlive.ion.mobile"
 CONFIGURATION="Debug"
 DEVICE_ID=""
 
