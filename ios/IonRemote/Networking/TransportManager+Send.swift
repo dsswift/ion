@@ -93,10 +93,10 @@ extension TransportManager {
     // MARK: - Wire message builder
 
     func buildWireMessage(payload: Data) throws -> WireMessage {
-        seqLock.lock()
-        seq += 1
-        let currentSeq = seq
-        seqLock.unlock()
+        let currentSeq = _seqLock.withLock { state -> UInt64 in
+            state += 1
+            return state
+        }
 
         let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: payload, key: sharedKey)
         return WireMessage(

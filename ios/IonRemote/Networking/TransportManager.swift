@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 import Network
 import Observation
+import os
 
 // MARK: - TransportState
 
@@ -58,8 +59,7 @@ final class TransportManager {
     /// Set by `stop()` to prevent a deferred `start()` Task from
     /// resurrecting a transport that was already torn down.
     private(set) var isStopped = false
-    var seq: UInt64 = 0
-    let seqLock = NSLock()
+    let _seqLock = OSAllocatedUnfairLock(initialState: UInt64(0))
     var lastReceivedSeq: UInt64 = 0
     let eventContinuation: AsyncStream<RemoteEvent>.Continuation
     var relayListenTask: Task<Void, Never>?
@@ -151,7 +151,7 @@ final class TransportManager {
             )
             // Reset dedup for fresh connection
             lastReceivedSeq = 0
-            seq = 0
+            _seqLock.withLock { state in state = 0 }
             startLANListener()
             startLANStateObservation()
             startNetworkMonitor()

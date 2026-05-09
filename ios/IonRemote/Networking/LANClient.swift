@@ -72,7 +72,6 @@ final class LANClient {
         self.task = wsTask
 
         wsTask.resume()
-        isConnected = true
         receiveLoop(wsTask)
     }
 
@@ -101,6 +100,7 @@ final class LANClient {
 
             switch result {
             case .success(let message):
+                if !self.isConnected { self.isConnected = true }
                 switch message {
                 case .data(let data):
                     self.messageContinuation?.yield(data)
