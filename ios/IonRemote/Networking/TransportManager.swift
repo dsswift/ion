@@ -117,7 +117,7 @@ final class TransportManager {
     func start() async {
         guard !isStopped else { return }
 
-        bonjour.startBrowsing()
+        await MainActor.run { self.bonjour.startBrowsing() }
         startBonjourObservation()
 
         if let relay {
@@ -155,7 +155,6 @@ final class TransportManager {
             startLANListener()
             startLANStateObservation()
             startNetworkMonitor()
-            bonjour.startBrowsing()
             startBonjourObservation()
             setState(.lanPreferred)
         } else {
@@ -267,7 +266,7 @@ final class TransportManager {
             while !Task.isCancelled {
                 guard let self else { break }
 
-                let hosts = self.bonjour.discoveredHosts
+                let hosts = await MainActor.run { self.bonjour.discoveredHosts }
                 let countChanged = hosts.count != lastKnownCount
                 if countChanged {
                     lastKnownCount = hosts.count
@@ -290,7 +289,7 @@ final class TransportManager {
                 if needsConnect, hosts.first(where: { $0.kind == .ionDirect }) == nil, !didRestartBrowser {
                     didRestartBrowser = true
                     lastKnownCount = 0
-                    self.bonjour.startBrowsing()
+                    await MainActor.run { self.bonjour.startBrowsing() }
                 }
 
                 if countChanged || needsConnect {
