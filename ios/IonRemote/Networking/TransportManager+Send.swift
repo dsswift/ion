@@ -34,6 +34,7 @@ extension TransportManager {
             group.addTask { await self.performLANAuthCore() }
             group.addTask { [weak self] in
                 try? await Task.sleep(for: .seconds(8))
+                guard !Task.isCancelled else { return false }
                 self?.lan.disconnect()
                 return false
             }
