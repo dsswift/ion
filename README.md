@@ -1,4 +1,4 @@
-# Ion Engine
+<img src="assets/images/ion-engine-hero-web.png" width="100%">
 
 A headless agent runtime. One binary. Zero opinions. Fifty-five hooks to make it yours.
 
