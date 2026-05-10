@@ -10,7 +10,7 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
-## [1.16.0](https://github.com/dsswift/ion/compare/desktop-v1.15.2...desktop-v1.16.0) (2026-05-10)
+## [1.16.0](https://github.com/dsswift/ion/compare/desktop-v1.15.3...desktop-v1.16.0) (2026-05-10)
 
 ### Features
 
@@ -20,9 +20,19 @@ Subsequent versions will be auto-generated from conventional commit messages.
 
 * **desktop:** fix file explorer initial load ([d416079](https://github.com/dsswift/ion/commit/d4160799f32eb3bf561eb695312a215493645f20))
 
+## [1.15.3](https://github.com/dsswift/ion/compare/desktop-v1.15.2...desktop-v1.15.3) (2026-05-09)
+
+### Bug Fixes
+
+* **desktop:** fix _getLanConnectionForDevice to return rekeyed device.id ([ff30cc8](https://github.com/dsswift/ion/commit/ff30cc81220c42541d81389b6fe636be074469de))
+
 ## [1.15.2](https://github.com/dsswift/ion/compare/desktop-v1.15.1...desktop-v1.15.2) (2026-05-09)
 
+Dependency updates only.
+
 ## [1.15.1](https://github.com/dsswift/ion/compare/desktop-v1.15.0...desktop-v1.15.1) (2026-05-08)
+
+Dependency updates only.
 
 ## [1.15.0](https://github.com/dsswift/ion/compare/desktop-v1.14.0...desktop-v1.15.0) (2026-05-08)
 
@@ -65,7 +75,6 @@ Subsequent versions will be auto-generated from conventional commit messages.
 
 ### Features
 
-* **ios:** add show hidden files toggle to file explorer ([07bcae5](https://github.com/dsswift/ion/commit/07bcae52ae633e061a5d76303bb0e58e6f856042))
 * **desktop:** auto-switch plan to auto for slash commands ([a84b2b5](https://github.com/dsswift/ion/commit/a84b2b5869b681bfd8df167e7e167dfb7264537c))
 
 ### Bug Fixes
@@ -94,7 +103,11 @@ Subsequent versions will be auto-generated from conventional commit messages.
 
 ## [1.9.2](https://github.com/dsswift/ion/compare/desktop-v1.9.1...desktop-v1.9.2) (2026-05-04)
 
+Dependency updates only.
+
 ## [1.9.1](https://github.com/dsswift/ion/compare/desktop-v1.9.0...desktop-v1.9.1) (2026-05-03)
+
+Dependency updates only.
 
 ## [1.9.0](https://github.com/dsswift/ion/compare/desktop-v1.8.1...desktop-v1.9.0) (2026-05-03)
 
@@ -119,7 +132,6 @@ Subsequent versions will be auto-generated from conventional commit messages.
 * **desktop:** add model selection to engine prompt ([f2488e2](https://github.com/dsswift/ion/commit/f2488e23525b9a8ac67d80ae7bacedfaed29db5f))
 * **desktop:** add model selector ui to engine footer ([48f2b7a](https://github.com/dsswift/ion/commit/48f2b7a0b11b45c52286f47f132183ec81901164))
 * **desktop:** add engine model override remote command ([e3446b2](https://github.com/dsswift/ion/commit/e3446b29ea5d10e377f944f9996e0edcda9942bd))
-* **ios:** add move to group context menu ([a5b3626](https://github.com/dsswift/ion/commit/a5b362685757df379cb150bd686c41ff425e77ec))
 * **desktop:** add mode-driven auto tab group movement ([26bdf2e](https://github.com/dsswift/ion/commit/26bdf2e04e02efbf96debf61635f818abee24aa9))
 * **desktop:** add draggable settings dialog ([6d2df24](https://github.com/dsswift/ion/commit/6d2df24b6c477fab695618733794f60be0f259a2))
 
@@ -148,9 +160,7 @@ Subsequent versions will be auto-generated from conventional commit messages.
 
 ## [1.4.0](https://github.com/dsswift/ion/compare/desktop-v1.3.0...desktop-v1.4.0) (2026-04-30)
 
-### Features
-
-* **engine:** add tool stall detection and events ([205e32d](https://github.com/dsswift/ion/commit/205e32d83dfb59c05a701d8446403db18b3daaca))
+Version bump only (cross-component release).
 
 ## [1.3.0](https://github.com/dsswift/ion/compare/desktop-v1.2.0...desktop-v1.3.0) (2026-04-30)
 
@@ -184,7 +194,5 @@ Subsequent versions will be auto-generated from conventional commit messages.
 
 ## [1.0.1](https://github.com/dsswift/ion/compare/desktop-v1.0.0...desktop-v1.0.1) (2026-04-29)
 
-### Bug Fixes
-
-* **engine:** populate extensiondir in hook context ([1d36c16](https://github.com/dsswift/ion/commit/1d36c16a5384eda3fb0e3e95d10e9195dfd2279d))
+Version bump only (cross-component release).
 
