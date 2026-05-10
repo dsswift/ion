@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )

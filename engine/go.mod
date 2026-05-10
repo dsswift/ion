@@ -11,4 +11,4 @@ require (
 	golang.org/x/text v0.36.0
 )
 
-require nhooyr.io/websocket v1.8.17
+require github.com/coder/websocket v1.8.14

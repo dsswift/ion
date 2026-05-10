@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // wsTransport implements mcpTransport over a WebSocket connection.
