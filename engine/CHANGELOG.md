@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.13.0](https://github.com/dsswift/ion/compare/engine-v1.12.0...engine-v1.13.0) (2026-05-10)
+
+### Features
+
+* **engine:** add server tool pairing to sanitizer ([6a797f1](https://github.com/dsswift/ion/commit/6a797f1778f14c85d6f2cb66723081504379b2da))
+
 ## [1.12.0](https://github.com/dsswift/ion/compare/engine-v1.11.0...engine-v1.12.0) (2026-05-08)
 
 ### Features
