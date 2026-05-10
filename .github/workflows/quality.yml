@@ -38,6 +38,9 @@ jobs:
       - name: Unit tests with race detector
         working-directory: engine
         run: go test -race ./...
+      - name: Contract manifest up to date
+        working-directory: engine
+        run: go test ./internal/types/ -run TestContractManifest -v
       - name: Integration tests with race detector
         working-directory: engine
         run: go test -race -tags integration ./tests/integration/...

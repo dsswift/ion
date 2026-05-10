@@ -389,11 +389,13 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
 struct StatusFields: Codable, Sendable {
     var label: String
     let state: String
+    let sessionId: String?       // omitempty in Go — may be absent
     let team: String?            // omitempty in Go — may be absent
     let model: String
     let contextPercent: Double
     let contextWindow: Int
     let totalCostUsd: Double?
+    let permissionDenials: [PermissionDenialEntry]?
     /// Friendly display name broadcast by the extension (e.g. "Chief of Staff").
     let extensionName: String?
 
@@ -403,6 +405,13 @@ struct StatusFields: Codable, Sendable {
         copy.label = newLabel
         return copy
     }
+}
+
+/// A permission denial record within StatusFields.
+struct PermissionDenialEntry: Codable, Sendable {
+    let toolName: String
+    let toolUseId: String
+    let toolInput: [String: AnyCodable]?
 }
 
 // MARK: - EngineInstancePayload

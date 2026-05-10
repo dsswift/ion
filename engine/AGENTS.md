@@ -95,6 +95,19 @@ Client --[Unix socket, NDJSON]--> Server
 
 Engine executes, harness decides. Engine never blocks for user input, never persists memory, never decides policy. Engine is UI-agnostic — emits typed data events; clients interpret.
 
+## Contract manifest (cross-language sync)
+
+Go is the source of truth for shared types. `internal/types/contract_test.go` uses reflection to extract JSON field names from all shared structs into `internal/types/testdata/contracts.json`. TS and Swift tests validate against this file at CI time.
+
+**When you add/rename a field in any struct under `internal/types/` (NormalizedEvent variants, StatusFields, EngineConfig, etc.):**
+
+1. Make your change.
+2. Run: `go test ./internal/types/ -run TestContractManifest -update` — regenerates the golden manifest.
+3. Commit the updated `testdata/contracts.json` alongside your Go change.
+4. Update the TS and Swift mirrors (see root `AGENTS.md` for the full workflow).
+
+If you forget step 2, `go test ./internal/types/` fails. If you forget step 4, desktop and iOS CI fail.
+
 ## Socket protocol
 
 `~/.ion/engine.sock`. Client → Server: NDJSON `ClientCommand`. Server → Client: NDJSON `ServerMessage` (broadcast). 16 command types. See `protocol/protocol.go`.

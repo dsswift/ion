@@ -131,7 +131,6 @@ export interface UnknownEvent {
 export type NormalizedEvent =
   | { type: 'session_init'; sessionId: string; tools: string[]; model: string; mcpServers: Array<{ name: string; status: string }>; skills: string[]; version: string; isWarmup?: boolean }
   | { type: 'text_chunk'; text: string }
-  | { type: 'thinking_delta'; text: string }
   | { type: 'tool_call'; toolName: string; toolId: string; index: number }
   | { type: 'tool_call_update'; toolId: string; partialInput: string }
   | { type: 'tool_call_complete'; index: number }
@@ -143,6 +142,7 @@ export type NormalizedEvent =
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }
   | { type: 'usage'; usage: UsageData }
   | { type: 'permission_request'; questionId: string; toolName: string; toolDescription?: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
+  | { type: 'plan_mode_changed'; enabled: boolean; planFilePath?: string }
   | { type: 'stream_reset' }
   | { type: 'compacting'; active: boolean }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }

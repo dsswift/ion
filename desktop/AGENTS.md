@@ -83,6 +83,18 @@ desktop/src/
 - Live in `desktop/src/shared/types.ts`.
 - Renderer must not import from `main/` (one type-only violation in `InputBar.tsx` for `DiscoveredCommand` — fix by lifting to `shared/types.ts`).
 
+## Contract sync (cross-language types)
+
+Shared types (`NormalizedEvent`, `StatusFields`, `EngineConfig`, etc.) are mirrored from Go. A contract test (`src/shared/__tests__/contract-sync.test.ts`) validates TS types against the Go-generated manifest (`engine/internal/types/testdata/contracts.json`).
+
+**When you add/change a shared type in `types-engine.ts` or `types-events.ts`:**
+
+1. Update the type definition.
+2. Update the field map in `src/shared/__tests__/contract-sync.test.ts` (e.g. add the new field name to the `TS_NORMALIZED_EVENTS` or `TS_SHARED_TYPES` entry).
+3. Run `npm test` — the contract sync test will fail if your map doesn't match the Go manifest.
+
+If a Go struct gained a field you don't have, the test says `"Go-only: [fieldName]"`. If you have a field Go doesn't, it says `"TS-only: [fieldName]"`. Fields intentionally TS-only (like `StatusFields.backend`) are excluded from the map with a comment.
+
 ## Done criteria
 
 1. `npm run typecheck` passes.

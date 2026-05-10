@@ -14,6 +14,7 @@ export interface EngineConfig {
   model?: string
   maxTokens?: number
   thinking?: { enabled: boolean; budgetTokens?: number }
+  systemHint?: string
 }
 
 export interface EngineInstance {

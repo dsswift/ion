@@ -1,4 +1,4 @@
-.PHONY: default desktop engine relay relay-local ios ios-check test clean check-file-sizes claude-symlinks hooks
+.PHONY: default desktop engine relay relay-local ios ios-check test clean check-file-sizes check-contracts claude-symlinks hooks
 
 default: engine
 
@@ -32,6 +32,12 @@ clean:
 # File-architecture guardrails (see docs/architecture/file-organization.md)
 check-file-sizes:
 	@bash scripts/check-file-sizes.sh
+
+# Cross-language contract drift detection.
+# Asserts the Go-generated contracts.json is up to date; TS and Swift tests
+# validate against it via their own test suites (npm test / xcodebuild test).
+check-contracts:
+	@cd engine && go test ./internal/types/ -run TestContractManifest
 
 # Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
 # CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.

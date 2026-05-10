@@ -1,0 +1,184 @@
+{
+  "normalizedEvents": {
+    "compacting": [
+      "active"
+    ],
+    "error": [
+      "errorCode",
+      "httpStatus",
+      "isError",
+      "message",
+      "retryAfterMs",
+      "retryable",
+      "sessionId"
+    ],
+    "permission_request": [
+      "options",
+      "questionId",
+      "toolDescription",
+      "toolInput",
+      "toolName"
+    ],
+    "plan_mode_changed": [
+      "enabled",
+      "planFilePath"
+    ],
+    "rate_limit": [
+      "rateLimitType",
+      "resetsAt",
+      "status"
+    ],
+    "session_dead": [
+      "exitCode",
+      "signal",
+      "stderrTail"
+    ],
+    "session_init": [
+      "isWarmup",
+      "mcpServers",
+      "model",
+      "sessionId",
+      "skills",
+      "tools",
+      "version"
+    ],
+    "stream_reset": null,
+    "task_complete": [
+      "costUsd",
+      "durationMs",
+      "numTurns",
+      "permissionDenials",
+      "result",
+      "sessionId",
+      "usage"
+    ],
+    "task_update": [
+      "message"
+    ],
+    "text_chunk": [
+      "text"
+    ],
+    "tool_call": [
+      "index",
+      "toolId",
+      "toolName"
+    ],
+    "tool_call_complete": [
+      "index"
+    ],
+    "tool_call_update": [
+      "partialInput",
+      "toolId"
+    ],
+    "tool_result": [
+      "content",
+      "isError",
+      "toolId"
+    ],
+    "tool_stalled": [
+      "elapsed",
+      "toolId",
+      "toolName"
+    ],
+    "usage": [
+      "usage"
+    ]
+  },
+  "engineEvent": [
+    "active",
+    "agents",
+    "attemptNumber",
+    "cancelled",
+    "defaultValue",
+    "dialogId",
+    "elicitMode",
+    "errorCategory",
+    "errorCode",
+    "exitCode",
+    "extensionName",
+    "fields",
+    "httpStatus",
+    "index",
+    "isError",
+    "level",
+    "message",
+    "method",
+    "options",
+    "partialInput",
+    "permOptions",
+    "permToolDescription",
+    "permToolInput",
+    "permToolName",
+    "planFilePath",
+    "planModeEnabled",
+    "questionId",
+    "requestId",
+    "response",
+    "result",
+    "retryAfterMs",
+    "retryable",
+    "schema",
+    "signal",
+    "source",
+    "stderrTail",
+    "text",
+    "title",
+    "toolElapsed",
+    "toolId",
+    "toolName",
+    "type",
+    "url",
+    "usage"
+  ],
+  "sharedTypes": {
+    "AgentStateUpdate": [
+      "metadata",
+      "name",
+      "status"
+    ],
+    "EngineConfig": [
+      "extensions",
+      "maxTokens",
+      "model",
+      "profileId",
+      "sessionId",
+      "systemHint",
+      "thinking",
+      "workingDirectory"
+    ],
+    "McpServerInfo": [
+      "name",
+      "status"
+    ],
+    "MessageEndUsage": [
+      "contextPercent",
+      "cost",
+      "inputTokens",
+      "outputTokens"
+    ],
+    "PermissionOpt": [
+      "id",
+      "kind",
+      "label"
+    ],
+    "StatusFields": [
+      "contextPercent",
+      "contextWindow",
+      "extensionName",
+      "label",
+      "model",
+      "permissionDenials",
+      "sessionId",
+      "state",
+      "team",
+      "totalCostUsd"
+    ],
+    "UsageData": [
+      "cache_creation_input_tokens",
+      "cache_read_input_tokens",
+      "input_tokens",
+      "output_tokens",
+      "service_tier"
+    ]
+  }
+}

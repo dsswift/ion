@@ -39,6 +39,7 @@ Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook 
 | Gate | Command |
 |------|---------|
 | File-size cap | `make check-file-sizes` |
+| Contract sync | `make check-contracts` |
 | Engine tests + race | `cd engine && go test -race ./...` |
 | Engine integration | `cd engine && go test -race -tags integration ./tests/integration/...` |
 | Engine vuln | `cd engine && govulncheck ./...` |
@@ -114,3 +115,18 @@ The client is the consumer of the Ion engine — desktop, iOS, and harness exten
 - Change wire-protocol message framing or envelope structure.
 
 If you believe a break is truly necessary, stop and discuss with the user — never commit it silently.
+
+### Cross-language contract sync
+
+Go is the source of truth. A reflection-based test (`engine/internal/types/contract_test.go`) extracts every shared struct's JSON field names into a golden manifest (`engine/internal/types/testdata/contracts.json`). TS and Swift tests validate against it.
+
+**Workflow when you change a shared type (NormalizedEvent variant, StatusFields, EngineConfig, etc.):**
+
+1. Make the Go change in `engine/internal/types/`.
+2. Regenerate the manifest: `cd engine && go test ./internal/types/ -run TestContractManifest -update`
+3. Update the TS field map in `desktop/src/shared/__tests__/contract-sync.test.ts` to match.
+4. Update the TS type definition in `desktop/src/shared/types-engine.ts` or `types-events.ts`.
+5. Update the Swift type in `ios/IonRemote/Models/` and the Swift contract test if field coverage changed.
+6. Run `make check-contracts`, `npm test`, and `make ios-check` to verify.
+
+If you skip a step, CI fails with a clear message identifying the drift (e.g. `"Go-only: [newField]"`).

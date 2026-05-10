@@ -192,6 +192,7 @@ type EngineConfig struct {
 	Extensions       []string          `json:"extensions"`
 	WorkingDirectory string            `json:"workingDirectory"`
 	SessionID        string            `json:"sessionId,omitempty"`
+	Model            string            `json:"model,omitempty"`
 	MaxTokens        int               `json:"maxTokens,omitempty"`
 	Thinking         *ThinkingConfig   `json:"thinking,omitempty"`
 	SystemHint       string            `json:"systemHint,omitempty"`

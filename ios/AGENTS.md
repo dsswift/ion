@@ -74,6 +74,18 @@ LAN and relay share `RemoteCommand` and `RemoteTabState`. Pairing is ECDH; share
 
 iOS models (`NormalizedEvent`, `RemoteCommand`, `RemoteTabState`) mirror desktop/engine wire types. When the engine adds an event variant or field, the iOS Swift type must add it too — otherwise relay/LAN messages decode incorrectly. Source of truth: `engine/internal/types/normalized_event.go` and `desktop/src/shared/types.ts`.
 
+## Contract sync (cross-language types)
+
+Shared types (`StatusFields`, `MessageEndUsage`, etc.) are validated against the Go-generated manifest (`engine/internal/types/testdata/contracts.json`) by `IonRemoteTests/ContractSyncTests.swift`.
+
+**When you add/change a field in a shared Swift type (`StatusFields`, `EngineMessageEndUsage`, etc.):**
+
+1. Update the Swift struct in `Models/`.
+2. Update the field coverage set in `ContractSyncTests.swift` (the `swiftHandled` set for that type).
+3. Run the test target — it will fail if Go has fields you haven't accounted for.
+
+The test also decodes representative JSON for each engine event type, catching mismatches between Go's JSON keys and Swift's `CodingKeys`. Note: `StatusFields.contextPercent` is `Double` in Swift vs `int` in Go — this is intentional (Swift `Double` decodes JSON integers).
+
 ## Done criteria
 
 1. `make ios-check` succeeds.
