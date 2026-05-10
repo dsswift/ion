@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.16.0](https://github.com/dsswift/ion/compare/desktop-v1.15.2...desktop-v1.16.0) (2026-05-10)
+
+### Features
+
+* **desktop:** add copy commit message to context menu ([68e98df](https://github.com/dsswift/ion/commit/68e98dfadefb899e2456af7ff659ffcd804c39b1))
+
+### Bug Fixes
+
+* **desktop:** fix file explorer initial load ([d416079](https://github.com/dsswift/ion/commit/d4160799f32eb3bf561eb695312a215493645f20))
+
 ## [1.15.2](https://github.com/dsswift/ion/compare/desktop-v1.15.1...desktop-v1.15.2) (2026-05-09)
 
 ## [1.15.1](https://github.com/dsswift/ion/compare/desktop-v1.15.0...desktop-v1.15.1) (2026-05-08)
