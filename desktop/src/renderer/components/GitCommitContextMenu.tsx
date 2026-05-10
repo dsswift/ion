@@ -30,6 +30,7 @@ export function CommitContextMenu({ anchor, commit, onClose }: {
 
   const items = [
     { label: 'Copy Commit Hash', action: () => navigator.clipboard.writeText(commit.fullHash) },
+    { label: 'Copy Commit Message', action: () => navigator.clipboard.writeText(commit.subject) },
   ]
 
   return (

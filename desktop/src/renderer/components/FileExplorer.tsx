@@ -76,7 +76,7 @@ export function FileExplorer() {
   // Initial load + auto-refresh every 5 seconds
   useEffect(() => {
     if (!workingDir) return
-    fetchDir(workingDir)
+    refreshAll()
     fetchIgnored(workingDir)
     const interval = setInterval(() => {
       refreshCounter.current++
@@ -84,7 +84,7 @@ export function FileExplorer() {
       fetchIgnored(workingDir)
     }, 5000)
     return () => clearInterval(interval)
-  }, [workingDir, fetchDir, refreshAll, fetchIgnored])
+  }, [workingDir, refreshAll, fetchIgnored])
 
   // Fetch newly expanded dirs
   const handleToggleDir = useCallback((entry: FsEntry) => {
