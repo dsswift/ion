@@ -10,6 +10,16 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.2.0](https://github.com/dsswift/ion/compare/relay-v1.1.2...relay-v1.2.0) (2026-05-11)
+
+### Features
+
+* **relay:** make relay timeouts configurable via env vars ([6ae245f](https://github.com/dsswift/ion/commit/6ae245f48fd803ba9de3925cfa277e11f3778cd3))
+
+### Bug Fixes
+
+* **relay:** enable compression and graceful close on replacement ([5cc1cef](https://github.com/dsswift/ion/commit/5cc1cef89477f87c254f78ee2df8b5c297137964))
+
 ## [1.1.2](https://github.com/dsswift/ion/compare/relay-v1.1.1...relay-v1.1.2) (2026-05-08)
 
 Dependency updates only.

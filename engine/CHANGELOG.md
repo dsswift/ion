@@ -13,6 +13,26 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.15.0](https://github.com/dsswift/ion/compare/engine-v1.14.0...engine-v1.15.0) (2026-05-11)
+
+### Features
+
+* **engine:** emit engine_events_dropped on queue recovery ([0ad1b11](https://github.com/dsswift/ion/commit/0ad1b11f549e62229f53c7c5b193d8bace43953a))
+* **engine:** add TimeoutsConfig for configurable timeouts ([227decc](https://github.com/dsswift/ion/commit/227deccaa3a19a4077ca509c0479bd8cf7015b34))
+* **engine:** read tool timeouts from config ([a0b7855](https://github.com/dsswift/ion/commit/a0b78559f547072b4b6f6ac9c68563844e2abc8d))
+* **engine:** make mcp and extension timeouts configurable ([1bad1ea](https://github.com/dsswift/ion/commit/1bad1ea8a586773e72cfe83cccfe7a4cba69e6b3))
+* **engine:** add timeout option to ext/call_tool rpc ([825150f](https://github.com/dsswift/ion/commit/825150f4d4476421e913bca3b2813b0e3da215af))
+* **engine:** add --timeout flag to ion prompt ([a5984f1](https://github.com/dsswift/ion/commit/a5984f1024ce4ae20384dd2b8424e6a1da278db6))
+
+### Bug Fixes
+
+* **engine:** add configurable timeout to mcp calls ([4fda025](https://github.com/dsswift/ion/commit/4fda025c1b6181e6b94701f0fa1077099cd3bb9b))
+* **engine:** add read limit and write timeouts for websocket ([d52aace](https://github.com/dsswift/ion/commit/d52aace6ffb1df42a965e7776be6047efbc286b8))
+* **engine:** add panic recovery to server handlers ([bac2f90](https://github.com/dsswift/ion/commit/bac2f90d327b309475bb7c7e46895790bddddeda))
+* **engine:** add retry caps and context timeouts ([c7f9e92](https://github.com/dsswift/ion/commit/c7f9e922b53e96fcc2dfa67f903b75b510cf7b29))
+* **engine:** wire extensionRpcMs config to host rpc timeout ([52d017a](https://github.com/dsswift/ion/commit/52d017a2787be1274ccf3f389a44b4a74d618f5e))
+* **engine:** honor --timeout for stream-json output mode ([f71aaf2](https://github.com/dsswift/ion/commit/f71aaf2fbb937b52f8d95efe271403df675e1c4f))
+
 ## [1.14.0](https://github.com/dsswift/ion/compare/engine-v1.13.0...engine-v1.14.0) (2026-05-10)
 
 ### Features

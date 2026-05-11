@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.18.0](https://github.com/dsswift/ion/compare/desktop-v1.17.0...desktop-v1.18.0) (2026-05-11)
+
+### Features
+
+* **desktop:** handle engine_events_dropped event ([a4c46d4](https://github.com/dsswift/ion/commit/a4c46d4bdb5ea77a9314fa829e09e64e0f9d0246))
+
 ## [1.17.0](https://github.com/dsswift/ion/compare/desktop-v1.16.0...desktop-v1.17.0) (2026-05-10)
 
 ### Features
