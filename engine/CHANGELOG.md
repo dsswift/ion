@@ -13,6 +13,18 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.16.1](https://github.com/dsswift/ion/compare/engine-v1.16.0...engine-v1.16.1) (2026-05-11)
+
+### Bug Fixes
+
+* **engine:** fix mcp stdio env inheritance and process reap ([2a24560](https://github.com/dsswift/ion/commit/2a245600f9178f8a2813842984984bac3fa32145))
+* **engine:** fix mcp notification id violation ([ad4d5b4](https://github.com/dsswift/ion/commit/ad4d5b4f2adb3b2d47e25835f6078352e4f3117d))
+* **engine:** mark mcp connection dead on timeout ([c6b26bc](https://github.com/dsswift/ion/commit/c6b26bc783188e81d6f7322b3b5dd2752353b6c0))
+* **engine:** add close safety to mcp ws and http transports ([62ad8e6](https://github.com/dsswift/ion/commit/62ad8e63658afdaf207ef686b40303879a58b91f))
+* **engine:** fix mcp calltool error masking ([6ea28ad](https://github.com/dsswift/ion/commit/6ea28ada4117d1e417ef7b84f0576e4aa9baf000))
+* **engine:** singleton oauth store for mcp ([56b1b4c](https://github.com/dsswift/ion/commit/56b1b4cdab85bac699382ac52b4f563958fe4a2f))
+* **engine:** implement mcp sse event stream reader ([7b17d93](https://github.com/dsswift/ion/commit/7b17d9397abac6d84b1a6248ed2874e40395cf54))
+
 ## [1.16.0](https://github.com/dsswift/ion/compare/engine-v1.15.0...engine-v1.16.0) (2026-05-11)
 
 ### Features
