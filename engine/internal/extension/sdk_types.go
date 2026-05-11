@@ -79,6 +79,12 @@ type Context struct {
 	// engine still fire.
 	CallTool func(toolName string, input map[string]interface{}) (string, bool, error)
 
+	// CallToolWithContext is like CallTool but accepts an optional timeout in
+	// milliseconds. When timeoutMs is non-nil, the tool call is bounded by
+	// that deadline. This is wired by the ext/call_tool RPC handler when the
+	// extension provides a timeout parameter.
+	CallToolWithContext func(toolName string, input map[string]interface{}, timeoutMs *float64) (string, bool, error)
+
 	// SendPrompt queues a fresh prompt on this session's agent loop. The
 	// call returns once the engine has accepted (or rejected) the prompt;
 	// it does NOT wait for the LLM to finish. `model` is an optional

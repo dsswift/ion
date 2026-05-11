@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // SSHConfig holds connection parameters for SSH-based bash execution.
@@ -26,6 +28,9 @@ func (s *SSHBashOperations) Exec(ctx context.Context, command, cwd string, opts 
 	timeout := opts.Timeout
 	if timeout == 0 {
 		timeout = 120 * time.Second
+		if t := types.TimeoutsFrom(ctx); t != nil && t.SshDefaultMs != 0 {
+			timeout = t.SshDefault()
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)

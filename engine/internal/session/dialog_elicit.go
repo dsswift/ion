@@ -70,7 +70,10 @@ func (m *Manager) elicit(s *engineSession, key string, info extension.Elicitatio
 		}
 	}()
 
-	const timeout = 5 * time.Minute
+	timeout := 5 * time.Minute
+	if m.config != nil && m.config.Timeouts != nil {
+		timeout = m.config.Timeouts.Elicitation()
+	}
 	select {
 	case reply := <-ch:
 		// Mirror the response back through the elicitation_result hook so

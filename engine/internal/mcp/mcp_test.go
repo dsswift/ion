@@ -1,8 +1,12 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -369,5 +373,86 @@ func TestConnectionRegistry(t *testing.T) {
 	unregisterConnection("reg-test")
 	if getConnection("reg-test") != nil {
 		t.Error("expected nil after unregister")
+	}
+}
+
+// slowTransport blocks on Receive until closed.
+type slowTransport struct {
+	sent   []json.RawMessage
+	done   chan struct{}
+	closed bool
+}
+
+func (s *slowTransport) Send(msg json.RawMessage) error {
+	s.sent = append(s.sent, msg)
+	return nil
+}
+
+func (s *slowTransport) Receive() (json.RawMessage, error) {
+	<-s.done // Block until closed.
+	return nil, io.EOF
+}
+
+func (s *slowTransport) Close() error {
+	if !s.closed {
+		s.closed = true
+		close(s.done)
+	}
+	return nil
+}
+
+func TestCall_Timeout(t *testing.T) {
+	st := &slowTransport{done: make(chan struct{})}
+	defer st.Close()
+
+	conn := &Connection{
+		name:        "timeout-test",
+		transport:   st,
+		callTimeout: 100 * time.Millisecond,
+	}
+
+	_, err := conn.call(context.Background(), "tools/list", nil)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("expected timeout in error, got: %s", err)
+	}
+}
+
+// errorTransport returns an error from Receive.
+type errorTransport struct {
+	sent    []json.RawMessage
+	recvErr error
+}
+
+func (e *errorTransport) Send(msg json.RawMessage) error {
+	e.sent = append(e.sent, msg)
+	return nil
+}
+
+func (e *errorTransport) Receive() (json.RawMessage, error) {
+	return nil, e.recvErr
+}
+
+func (e *errorTransport) Close() error {
+	return nil
+}
+
+func TestCall_ReceiveError(t *testing.T) {
+	et := &errorTransport{recvErr: fmt.Errorf("connection reset")}
+
+	conn := &Connection{
+		name:        "error-test",
+		transport:   et,
+		callTimeout: 5 * time.Second,
+	}
+
+	_, err := conn.call(context.Background(), "tools/list", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "connection reset") {
+		t.Errorf("expected 'connection reset' in error, got: %s", err)
 	}
 }

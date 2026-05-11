@@ -54,6 +54,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "    --no-extensions        Skip extensions for this prompt")
 	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
 	fmt.Fprintln(os.Stderr, "    --attach               Stream output until idle (keyed sessions)")
+	fmt.Fprintln(os.Stderr, "    --timeout DURATION      Wall-clock deadline (e.g. 60s, 5m, 2h); exit 124 on timeout")
 	fmt.Fprintln(os.Stderr, "  attach                   Stream events (NDJSON)")
 	fmt.Fprintln(os.Stderr, "  status                   List sessions")
 	fmt.Fprintln(os.Stderr, "  stop --key               Stop session")

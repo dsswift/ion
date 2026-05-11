@@ -187,7 +187,7 @@ func (p *APNsPusher) sendAsync(deviceToken, title, body string) {
 		log.Printf("APNs send error: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)

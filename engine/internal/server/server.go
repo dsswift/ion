@@ -39,8 +39,9 @@ func DefaultSocketPath() string {
 const broadcastQueueSize = 256
 
 // broadcastWriteDeadline is how long a single per-client write may take before
-// the drainer treats the connection as dead and evicts it.
-const broadcastWriteDeadline = 5 * time.Second
+// the drainer treats the connection as dead and evicts it. Configurable via
+// TimeoutsConfig.BroadcastWrite().
+var broadcastWriteDeadline = 5 * time.Second
 
 // clientWriter owns a connected client's outbound queue. A drain goroutine
 // reads from queue and writes to conn under a per-write deadline. Slow or
@@ -83,6 +84,9 @@ type Server struct {
 func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	s.config = cfg
 	s.manager.SetConfig(cfg)
+	if cfg != nil && cfg.Timeouts != nil {
+		broadcastWriteDeadline = cfg.Timeouts.BroadcastWrite()
+	}
 }
 
 // SetVersion stores the engine binary version for the health command.
@@ -319,6 +323,13 @@ func (s *Server) drainListener(lh *listenerHandle) {
 
 func (s *Server) handleClient(conn net.Conn) {
 	defer s.evictClient(conn)
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			utils.Error("Server", fmt.Sprintf("panic in handleClient: %v\n%s", r, buf[:n]))
+		}
+	}()
 
 	scanner := bufio.NewScanner(conn)
 	// Allow large messages (1MB)
@@ -348,6 +359,15 @@ func (s *Server) handleClient(conn net.Conn) {
 }
 
 func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			utils.Error("Server", fmt.Sprintf("panic in dispatch cmd=%s key=%s: %v\n%s", cmd.Cmd, cmd.Key, r, buf[:n]))
+			s.sendResult(conn, cmd, fmt.Errorf("internal error"), nil)
+		}
+	}()
+
 	utils.Debug("Server", fmt.Sprintf("dispatch: cmd=%s key=%s requestID=%s", cmd.Cmd, cmd.Key, cmd.RequestID))
 	switch cmd.Cmd {
 	case "start_session":
@@ -498,6 +518,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Run in a goroutine to avoid blocking the client's read loop
 		// while the LLM call is in flight.
 		go func(c net.Conn, command *protocol.ClientCommand) {
+			defer func() {
+				if r := recover(); r != nil {
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					utils.Error("Server", fmt.Sprintf("panic in generate_title: %v\n%s", r, buf[:n]))
+					s.sendResult(c, command, fmt.Errorf("internal error"), nil)
+				}
+			}()
 			title, err := titling.GenerateTitle(context.Background(), command.Text)
 			if err != nil {
 				s.sendResult(c, command, err, nil)
@@ -620,6 +648,15 @@ func (s *Server) broadcast(line string) {
 	for _, cw := range clients {
 		select {
 		case cw.queue <- payload:
+			// If events were previously dropped, notify the client now that the queue has room.
+			if n := atomic.LoadInt64(&cw.dropped); n > 0 {
+				select {
+				case cw.queue <- eventsDroppedLine(n):
+					atomic.StoreInt64(&cw.dropped, 0)
+				default:
+					// Queue full again — notification will be retried on the next successful send.
+				}
+			}
 		default:
 			n := atomic.AddInt64(&cw.dropped, 1)
 			if n == 1 || n%256 == 0 {
@@ -631,6 +668,13 @@ func (s *Server) broadcast(line string) {
 	for _, lh := range listeners {
 		select {
 		case lh.queue <- line:
+			if n := atomic.LoadInt64(&lh.dropped); n > 0 {
+				select {
+				case lh.queue <- string(eventsDroppedLine(n)):
+					atomic.StoreInt64(&lh.dropped, 0)
+				default:
+				}
+			}
 		default:
 			n := atomic.AddInt64(&lh.dropped, 1)
 			if n == 1 || n%256 == 0 {
@@ -638,6 +682,11 @@ func (s *Server) broadcast(line string) {
 			}
 		}
 	}
+}
+
+// eventsDroppedLine returns a JSON line notifying the client that events were dropped.
+func eventsDroppedLine(count int64) []byte {
+	return []byte(fmt.Sprintf("{\"type\":\"engine_events_dropped\",\"count\":%d}\n", count))
 }
 
 // writeToClient routes a single line to the given conn through its queue, so

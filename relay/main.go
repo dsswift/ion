@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -42,6 +43,29 @@ func main() {
 	cfg := loadConfig()
 
 	hub := NewHub()
+
+	// Apply optional env var overrides for relay timeouts.
+	if v := os.Getenv("RELAY_WRITE_TIMEOUT_MS"); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
+			hub.WriteTimeout = time.Duration(ms) * time.Millisecond
+		}
+	}
+	if v := os.Getenv("RELAY_PING_INTERVAL_S"); v != "" {
+		if s, err := strconv.Atoi(v); err == nil && s > 0 {
+			hub.PingInterval = time.Duration(s) * time.Second
+		}
+	}
+	if v := os.Getenv("RELAY_PING_TIMEOUT_S"); v != "" {
+		if s, err := strconv.Atoi(v); err == nil && s > 0 {
+			hub.PingTimeout = time.Duration(s) * time.Second
+		}
+	}
+	if v := os.Getenv("RELAY_MAX_MESSAGE_SIZE"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			hub.MaxMessageSize = n
+		}
+	}
+
 	auth := NewAuthMiddleware(cfg.APIKey)
 
 	var pusher *APNsPusher
@@ -61,7 +85,7 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {

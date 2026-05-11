@@ -85,6 +85,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	// Track consecutive prompt_too_long compaction failures to prevent infinite loops
 	promptTooLongRetries := 0
+	truncationRetries := 0
 
 	// Agent loop: turn increments at the top of each iteration (before
 	// turn_start fires), so the first turn has turn=1. This matches the
@@ -233,16 +234,32 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			return
 		}
 
-		// Stream succeeded -- reset compaction retry counter
-		promptTooLongRetries = 0
-
 		// Stream truncated (no stop reason) -- emit reset so desktop discards
-		// partial text, then retry the turn.
+		// partial text, then retry the turn (capped at 3 consecutive).
 		if stopReason == "" {
-			utils.Warn("ApiBackend", fmt.Sprintf("stream truncated (no stop reason): runID=%s turn=%d, retrying", run.requestID, turn))
+			truncationRetries++
+			maxTruncation := 3
+			if run.cfg != nil && run.cfg.Timeouts != nil {
+				maxTruncation = run.cfg.Timeouts.TruncationRetryLimit()
+			}
+			if truncationRetries > maxTruncation {
+				utils.Error("ApiBackend", fmt.Sprintf("stream truncated %d consecutive times, giving up: runID=%s", truncationRetries, run.requestID))
+				b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
+					ErrorMessage: fmt.Sprintf("Stream truncated %d consecutive times. The provider may be experiencing issues.", truncationRetries),
+					IsError:      true,
+					ErrorCode:    "stream_truncated",
+				}})
+				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
+				return
+			}
+			utils.Warn("ApiBackend", fmt.Sprintf("stream truncated (no stop reason): runID=%s turn=%d attempt=%d/3, retrying", run.requestID, turn, truncationRetries))
 			b.emit(run, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
 			continue
 		}
+
+		// Stream succeeded with a valid stop reason -- reset retry counters.
+		promptTooLongRetries = 0
+		truncationRetries = 0
 
 		// Track usage and cost
 		if turnUsage != nil {

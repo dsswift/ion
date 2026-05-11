@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -72,7 +74,9 @@ func ListMcpResources(serverName string) ([]McpResource, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("MCP server %q not connected", serverName)
 	}
-	return conn.ListResources()
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
+	defer cancel()
+	return conn.ListResources(ctx)
 }
 
 // ReadMcpResource reads a resource from a connected MCP server by name and URI.
@@ -81,16 +85,35 @@ func ReadMcpResource(serverName, uri string) (*McpResourceContent, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("MCP server %q not connected", serverName)
 	}
-	return conn.ReadResource(uri)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
+	defer cancel()
+	return conn.ReadResource(ctx, uri)
 }
+
+const mcpCallTimeoutDefault = 60 * time.Second
+
+// DefaultCallTimeout is the fallback MCP tool call timeout when no per-server
+// override is configured. Set at startup from TimeoutsConfig.McpCall().
+var DefaultCallTimeout = mcpCallTimeoutDefault
+
+// DefaultMetadataTimeout is the timeout for MCP metadata operations
+// (initialize, listTools, listResources, readResource).
+var DefaultMetadataTimeout = 30 * time.Second
+
+// SetDefaultCallTimeout overrides the default MCP tool call timeout.
+func SetDefaultCallTimeout(d time.Duration) { DefaultCallTimeout = d }
+
+// SetDefaultMetadataTimeout overrides the default MCP metadata timeout.
+func SetDefaultMetadataTimeout(d time.Duration) { DefaultMetadataTimeout = d }
 
 // Connection is an active MCP server connection.
 type Connection struct {
-	name      string
-	tools     []ToolDef
-	transport mcpTransport
-	nextID    atomic.Int64
-	mu        sync.Mutex
+	name        string
+	tools       []ToolDef
+	transport   mcpTransport
+	nextID      atomic.Int64
+	mu          sync.Mutex
+	callTimeout time.Duration
 }
 
 // mcpTransport abstracts stdio vs SSE communication.
@@ -168,6 +191,9 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		name:      name,
 		transport: transport,
 	}
+	if config.TimeoutSeconds > 0 {
+		conn.callTimeout = time.Duration(config.TimeoutSeconds) * time.Second
+	}
 
 	// Initialize the connection.
 	if err := conn.initialize(); err != nil {
@@ -190,7 +216,9 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 }
 
 func (c *Connection) initialize() error {
-	resp, err := c.call("initialize", map[string]any{
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
+	defer cancel()
+	resp, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
@@ -213,7 +241,9 @@ func (c *Connection) initialize() error {
 }
 
 func (c *Connection) listTools() ([]ToolDef, error) {
-	resp, err := c.call("tools/list", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
+	defer cancel()
+	resp, err := c.call(ctx, "tools/list", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -227,9 +257,14 @@ func (c *Connection) listTools() ([]ToolDef, error) {
 	return result.Tools, nil
 }
 
-func (c *Connection) call(method string, params any) (json.RawMessage, error) {
+func (c *Connection) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	timeout := c.callTimeout
+	if timeout == 0 {
+		timeout = DefaultCallTimeout
+	}
 
 	id := c.nextID.Add(1)
 	req := jsonRPCRequest{
@@ -248,32 +283,54 @@ func (c *Connection) call(method string, params any) (json.RawMessage, error) {
 		return nil, fmt.Errorf("send: %w", err)
 	}
 
-	// Read responses until we get one matching our ID.
-	for {
-		respData, err := c.transport.Receive()
-		if err != nil {
-			return nil, fmt.Errorf("receive: %w", err)
-		}
+	// Read responses in a goroutine so we can enforce a timeout.
+	type callResult struct {
+		data json.RawMessage
+		err  error
+	}
+	ch := make(chan callResult, 1)
+	go func() {
+		for {
+			respData, err := c.transport.Receive()
+			if err != nil {
+				ch <- callResult{nil, fmt.Errorf("receive: %w", err)}
+				return
+			}
 
-		var resp jsonRPCResponse
-		if err := json.Unmarshal(respData, &resp); err != nil {
-			continue // Skip non-response messages (notifications).
-		}
+			var resp jsonRPCResponse
+			if err := json.Unmarshal(respData, &resp); err != nil {
+				continue // Skip non-response messages (notifications).
+			}
 
-		if resp.ID != id {
-			continue // Skip responses for other requests.
-		}
+			if resp.ID != id {
+				continue // Skip responses for other requests.
+			}
 
-		if resp.Error != nil {
-			return nil, fmt.Errorf("rpc error %d: %s", resp.Error.Code, resp.Error.Message)
+			if resp.Error != nil {
+				ch <- callResult{nil, fmt.Errorf("rpc error %d: %s", resp.Error.Code, resp.Error.Message)}
+				return
+			}
+			ch <- callResult{resp.Result, nil}
+			return
 		}
-		return resp.Result, nil
+	}()
+
+	select {
+	case r := <-ch:
+		return r.data, r.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("mcp call %s: %w", method, ctx.Err())
+	case <-time.After(timeout):
+		// Note: the goroutine running Receive() may leak if the transport
+		// truly hangs, but this is strictly better than the caller also
+		// hanging indefinitely (the previous behavior).
+		return nil, fmt.Errorf("mcp call %s: timeout after %s", method, timeout)
 	}
 }
 
 // CallTool invokes a tool on the MCP server and returns the text result.
-func (c *Connection) CallTool(toolName string, params map[string]interface{}) (string, error) {
-	resp, err := c.call("tools/call", map[string]any{
+func (c *Connection) CallTool(ctx context.Context, toolName string, params map[string]interface{}) (string, error) {
+	resp, err := c.call(ctx, "tools/call", map[string]any{
 		"name":      toolName,
 		"arguments": params,
 	})
@@ -317,8 +374,8 @@ func (c *Connection) Tools() []ToolDef {
 }
 
 // ListResources returns resources available on the MCP server.
-func (c *Connection) ListResources() ([]McpResource, error) {
-	resp, err := c.call("resources/list", nil)
+func (c *Connection) ListResources(ctx context.Context) ([]McpResource, error) {
+	resp, err := c.call(ctx, "resources/list", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -333,8 +390,8 @@ func (c *Connection) ListResources() ([]McpResource, error) {
 }
 
 // ReadResource reads a specific resource by URI from the MCP server.
-func (c *Connection) ReadResource(uri string) (*McpResourceContent, error) {
-	resp, err := c.call("resources/read", map[string]any{
+func (c *Connection) ReadResource(ctx context.Context, uri string) (*McpResourceContent, error) {
+	resp, err := c.call(ctx, "resources/read", map[string]any{
 		"uri": uri,
 	})
 	if err != nil {

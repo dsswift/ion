@@ -64,7 +64,11 @@ func executeGlob(ctx context.Context, input map[string]any, cwd string) (*types.
 	}
 
 	// Bound the walk by wall clock, regardless of caller ctx.
-	walkCtx, cancel := context.WithTimeout(ctx, globTimeout)
+	walkTimeout := globTimeout
+	if t := types.TimeoutsFrom(ctx); t != nil && t.GlobMs != 0 {
+		walkTimeout = t.Glob()
+	}
+	walkCtx, cancel := context.WithTimeout(ctx, walkTimeout)
 	defer cancel()
 
 	matches, truncated, err := globWithRipgrep(walkCtx, searchDir, pattern)
@@ -76,7 +80,7 @@ func executeGlob(ctx context.Context, input map[string]any, cwd string) (*types.
 		// timeout/cancel rather than crashing the run loop.
 		if errors.Is(err, context.DeadlineExceeded) {
 			return &types.ToolResult{
-				Content: fmt.Sprintf("Error: Glob exceeded %s deadline (pattern=%q under %q). Narrow the pattern or path.", globTimeout, pattern, searchDir),
+				Content: fmt.Sprintf("Error: Glob exceeded %s deadline (pattern=%q under %q). Narrow the pattern or path.", walkTimeout, pattern, searchDir),
 				IsError: true,
 			}, nil
 		}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func cmdPrompt(positional []string, flags map[string]string, listFlags map[string][]string) {
@@ -15,6 +16,17 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 	if text == "" {
 		fmt.Fprintln(os.Stderr, "Error: prompt text required")
 		os.Exit(1)
+	}
+
+	// Parse --timeout flag (duration string like 60s, 5m, 2h).
+	var timeout time.Duration
+	if t := flags["timeout"]; t != "" {
+		d, err := time.ParseDuration(t)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid --timeout value %q: %s\n", t, err)
+			os.Exit(1)
+		}
+		timeout = d
 	}
 
 	sock := socketPath()
@@ -128,7 +140,14 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
 			os.Exit(1)
 		}
-		streamUntilIdle(sock, key)
+		timedOut := streamUntilIdle(sock, key, timeout)
+		if timedOut {
+			// Send abort so the engine doesn't keep running.
+			_, _ = connectAndSend(sock, map[string]interface{}{
+				"cmd": "abort",
+				"key": key,
+			})
+		}
 		_, _ = connectAndSend(sock, map[string]interface{}{
 			"cmd": "stop_session",
 			"key": key,
@@ -137,6 +156,9 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			_, _ = connectAndSend(sock, map[string]interface{}{
 				"cmd": "shutdown",
 			})
+		}
+		if timedOut {
+			os.Exit(124)
 		}
 		return
 	}
@@ -151,7 +173,25 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
 			os.Exit(1)
 		}
-		attachStream(sock, key)
+		timedOut := attachStream(sock, key, timeout)
+		if timedOut {
+			if ephemeral {
+				_, _ = connectAndSend(sock, map[string]interface{}{
+					"cmd": "abort",
+					"key": key,
+				})
+				_, _ = connectAndSend(sock, map[string]interface{}{
+					"cmd": "stop_session",
+					"key": key,
+				})
+				if serverStarted {
+					_, _ = connectAndSend(sock, map[string]interface{}{
+						"cmd": "shutdown",
+					})
+				}
+			}
+			os.Exit(124)
+		}
 		return
 	}
 
@@ -173,7 +213,11 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 	}
 	if ok, _ := result["ok"].(bool); ok {
 		if flags["attach"] == "true" {
-			streamUntilIdle(sock, key)
+			timedOut := streamUntilIdle(sock, key, timeout)
+			if timedOut {
+				fmt.Fprintf(os.Stderr, "\nTimeout: prompt exceeded %s deadline\n", timeout)
+				os.Exit(124)
+			}
 		} else {
 			fmt.Println("Prompt sent. Use `ion attach` to stream output.")
 		}

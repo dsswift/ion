@@ -7,8 +7,9 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // wsTransport implements mcpTransport over a WebSocket connection.
@@ -43,10 +44,18 @@ func newWSTransport(url string, headers map[string]string) (*wsTransport, error)
 	}, nil
 }
 
+// DefaultWriteTimeout is the MCP WebSocket write timeout.
+var DefaultWriteTimeout = 30 * time.Second
+
+// SetDefaultWriteTimeout overrides the default MCP WebSocket write timeout.
+func SetDefaultWriteTimeout(d time.Duration) { DefaultWriteTimeout = d }
+
 func (t *wsTransport) Send(msg json.RawMessage) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.conn.Write(context.Background(), websocket.MessageText, msg)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultWriteTimeout)
+	defer cancel()
+	return t.conn.Write(ctx, websocket.MessageText, msg)
 }
 
 func (t *wsTransport) Receive() (json.RawMessage, error) {

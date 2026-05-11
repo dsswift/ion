@@ -131,7 +131,11 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 	}
 
 	// Build request.
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	fetchTimeout := 30 * time.Second
+	if t := types.TimeoutsFrom(ctx); t != nil && t.WebFetchMs != 0 {
+		fetchTimeout = t.WebFetch()
+	}
+	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
 	var bodyReader io.Reader
@@ -156,7 +160,7 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return &types.ToolResult{Content: "Request timed out after 30s", IsError: true}, nil
+			return &types.ToolResult{Content: fmt.Sprintf("Request timed out after %s", fetchTimeout), IsError: true}, nil
 		}
 		return &types.ToolResult{Content: fmt.Sprintf("Fetch error: %s", err), IsError: true}, nil
 	}

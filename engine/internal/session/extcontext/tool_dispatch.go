@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/tools"
 )
 
@@ -22,7 +23,7 @@ import (
 // tool names so the SDK can surface a Promise rejection on what is almost
 // always a programming error. Tool-internal failures resolve as
 // (errorMessage, true, nil).
-func CallToolFromExtension(sa SessionAccessor, toolName string, input map[string]interface{}) (string, bool, error) {
+func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName string, input map[string]interface{}) (string, bool, error) {
 	if input == nil {
 		input = map[string]interface{}{}
 	}
@@ -52,7 +53,7 @@ func CallToolFromExtension(sa SessionAccessor, toolName string, input map[string
 
 	// 1. Built-in tools (Read, Write, Edit, Bash, Grep, Glob, Agent, etc).
 	if tools.GetTool(toolName) != nil {
-		toolResult, err := tools.ExecuteTool(context.Background(), toolName, input, cwd)
+		toolResult, err := tools.ExecuteTool(ctx, toolName, input, cwd)
 		if err != nil {
 			return "", true, err
 		}
@@ -73,7 +74,9 @@ func CallToolFromExtension(sa SessionAccessor, toolName string, input map[string
 		innerName := parts[2]
 		for _, conn := range mcpConns {
 			if conn.Name() == serverName {
-				content, err := conn.CallTool(innerName, input)
+				callCtx, callCancel := context.WithTimeout(ctx, mcp.DefaultCallTimeout)
+				content, err := conn.CallTool(callCtx, innerName, input)
+				callCancel()
 				if err != nil {
 					return "", true, err
 				}

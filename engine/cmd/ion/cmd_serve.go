@@ -13,8 +13,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/config"
+	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/featureflags"
 	"github.com/dsswift/ion/engine/internal/filelock"
+	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/protocol"
@@ -74,6 +76,14 @@ func cmdServe() {
 
 	resolver := auth.NewResolver(cfg.Auth)
 
+	// Wire configurable timeouts into MCP and extension subsystems.
+	if cfg.Timeouts != nil {
+		mcp.SetDefaultCallTimeout(cfg.Timeouts.McpCall())
+		mcp.SetDefaultMetadataTimeout(cfg.Timeouts.McpMetadata())
+		mcp.SetDefaultWriteTimeout(cfg.Timeouts.McpWrite())
+		extension.ConfiguredDefaultTimeout = cfg.Timeouts.HookDefault()
+	}
+
 	for name, pcfg := range cfg.Providers {
 		if pcfg.APIKey != "" {
 			resolver.SetProgrammatic(name, pcfg.APIKey)
@@ -127,6 +137,9 @@ func cmdServe() {
 	var relay *transport.RelayTransport
 	if cfg.Relay != nil && cfg.Relay.URL != "" && cfg.Relay.ChannelID != "" {
 		relay = transport.NewRelayTransport(cfg.Relay.URL, cfg.Relay.APIKey, cfg.Relay.ChannelID)
+		if cfg.Timeouts != nil {
+			relay.SetWriteTimeout(cfg.Timeouts.RelayWrite())
+		}
 
 		relay.OnMessage = func(data []byte) {
 			line := strings.TrimSpace(string(data))

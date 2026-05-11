@@ -281,6 +281,21 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           })
           break
         }
+        case 'engine_events_dropped': {
+          set((state) => {
+            const notifications = new Map(state.engineNotifications)
+            const keyNotifications = [...(notifications.get(key) || [])]
+            keyNotifications.push({
+              id: nextMsgId(),
+              message: `Connection fell behind — ${event.count} events dropped. State may be stale.`,
+              level: 'warning',
+              timestamp: Date.now(),
+            })
+            notifications.set(key, keyNotifications)
+            return { engineNotifications: notifications }
+          })
+          break
+        }
       }
     },
   }

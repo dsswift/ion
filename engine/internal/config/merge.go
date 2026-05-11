@@ -244,6 +244,11 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
 	}
+
+	// Timeouts: merge non-zero fields
+	if src.Timeouts != nil {
+		dst.Timeouts = types.MergeTimeouts(dst.Timeouts, src.Timeouts)
+	}
 }
 
 func contains(slice []string, item string) bool {

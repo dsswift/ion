@@ -732,6 +732,180 @@ func TestStopNonExistentSession(t *testing.T) {
 	}
 }
 
+// ─── Panic recovery tests ───
+
+// registerPipeClient creates a net.Pipe, registers the server-side end in
+// srv.clients (so writeToClient can route results through the queue), starts
+// the drain goroutine, and returns the client-side end for reading.
+func registerPipeClient(t *testing.T, srv *Server) (serverConn, clientConn net.Conn) {
+	t.Helper()
+	serverConn, clientConn = net.Pipe()
+	cw := &clientWriter{
+		conn:  serverConn,
+		queue: make(chan []byte, broadcastQueueSize),
+		done:  make(chan struct{}),
+	}
+	srv.mu.Lock()
+	srv.clients[serverConn] = cw
+	srv.mu.Unlock()
+	go srv.drainClient(cw)
+	t.Cleanup(func() {
+		srv.evictClient(serverConn)
+		clientConn.Close()
+	})
+	return serverConn, clientConn
+}
+
+// TestDispatchPanicRecovery verifies that a panic in dispatch() is recovered and
+// returns a structured error result to the client, and the connection remains
+// functional for subsequent commands.
+func TestDispatchPanicRecovery(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+
+	serverConn, clientConn := registerPipeClient(t, srv)
+
+	// dispatch() dereferences *cmd.Config, which panics on nil. The recovery
+	// guard should catch it and send an error result.
+	cmd := &protocol.ClientCommand{
+		Cmd:       "start_session",
+		Key:       "panic-test",
+		RequestID: "req-panic",
+		Config:    nil, // will cause nil-pointer dereference
+	}
+	srv.dispatch(serverConn, cmd)
+
+	// Read the error result sent by the recovery guard.
+	lines := readLines(t, clientConn, 3, 2*time.Second)
+	r := findResult(t, lines)
+	if r == nil {
+		t.Fatalf("expected error result from panic recovery; lines=%v", lines)
+	}
+	if r.OK {
+		t.Error("expected ok=false from panic recovery, got true")
+	}
+	if r.RequestID != "req-panic" {
+		t.Errorf("expected requestId=req-panic, got %q", r.RequestID)
+	}
+	if r.Error != "internal error" {
+		t.Errorf("expected error='internal error', got %q", r.Error)
+	}
+
+	// Verify the server is still functional via a real socket client.
+	conn := dialServer(t, srv)
+	defer conn.Close()
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd":       "list_sessions",
+		"requestId": "req-after-panic",
+	})
+	afterLines := readLines(t, conn, 3, 2*time.Second)
+	rAfter := findResult(t, afterLines)
+	if rAfter == nil {
+		t.Fatalf("server unresponsive after panic; lines=%v", afterLines)
+	}
+	if !rAfter.OK {
+		t.Errorf("list_sessions after panic failed: %s", rAfter.Error)
+	}
+}
+
+// TestDispatchPanicRecoveryRelayPath verifies that a panic via the relay path
+// (DispatchCommand with conn=nil) is recovered without a secondary panic from
+// sendResult writing to a nil conn.
+func TestDispatchPanicRecoveryRelayPath(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+
+	// DispatchCommand calls dispatch(nil, cmd). The nil-config causes a panic
+	// in dispatch(). The recovery guard calls sendResult(nil, ...) which must
+	// not panic itself (writeToClient has a nil-conn guard).
+	cmd := &protocol.ClientCommand{
+		Cmd:       "start_session",
+		Key:       "relay-panic",
+		RequestID: "req-relay-panic",
+		Config:    nil,
+	}
+	// This must not panic. If recovery or the nil-conn path is broken,
+	// the test process crashes.
+	srv.DispatchCommand(cmd)
+
+	// Verify the server is still functional: a new client can connect and
+	// execute commands.
+	conn := dialServer(t, srv)
+	defer conn.Close()
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd":       "list_sessions",
+		"requestId": "req-after-relay-panic",
+	})
+	lines := readLines(t, conn, 3, 2*time.Second)
+	r := findResult(t, lines)
+	if r == nil {
+		t.Fatalf("server unresponsive after relay panic; lines=%v", lines)
+	}
+	if !r.OK {
+		t.Errorf("list_sessions after relay panic failed: %s", r.Error)
+	}
+}
+
+// TestDispatchPanicRecoveryServerSurvives verifies that a panic in one client's
+// dispatch does not affect other connected clients (daemon stability).
+func TestDispatchPanicRecoveryServerSurvives(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+
+	// Pipe client: will trigger a panic via direct dispatch call.
+	serverConn, clientConn := registerPipeClient(t, srv)
+
+	// Socket client: connected before the panic, should remain functional.
+	conn2 := dialServer(t, srv)
+	defer conn2.Close()
+
+	// Trigger a panic on the pipe client's dispatch path.
+	cmd := &protocol.ClientCommand{
+		Cmd:       "start_session",
+		Key:       "panic-victim",
+		RequestID: "req-victim",
+		Config:    nil,
+	}
+	srv.dispatch(serverConn, cmd)
+
+	// Drain the error result from the pipe client.
+	readLines(t, clientConn, 3, 1*time.Second)
+
+	// Socket client should be completely unaffected.
+	startSession(t, conn2, "survivor", "req-survivor")
+
+	// Verify via list_sessions that the survivor session exists.
+	sendJSON(t, conn2, map[string]interface{}{
+		"cmd":       "list_sessions",
+		"requestId": "req-list-survive",
+	})
+	lines := readLines(t, conn2, 5, 2*time.Second)
+	r := findResult(t, lines)
+	if r == nil {
+		t.Fatalf("conn2 unresponsive after panic; lines=%v", lines)
+	}
+	if !r.OK {
+		t.Errorf("list_sessions failed: %s", r.Error)
+	}
+
+	dataJSON, _ := json.Marshal(r.Data)
+	var sessions []protocol.SessionInfo
+	if err := json.Unmarshal(dataJSON, &sessions); err != nil {
+		t.Fatalf("unmarshal sessions: %v", err)
+	}
+	var found bool
+	for _, s := range sessions {
+		if s.Key == "survivor" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("survivor session not found after panic on another client")
+	}
+}
+
 // TestDuplicateStartSession verifies that starting a session with a key that
 // already exists returns success (idempotent) with existed=true.
 func TestDuplicateStartSession(t *testing.T) {

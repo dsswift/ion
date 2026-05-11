@@ -1,8 +1,10 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
@@ -30,6 +32,12 @@ func (m *Manager) buildRunConfig(
 	currentModel string,
 ) *backend.RunConfig {
 	runCfg := &backend.RunConfig{}
+
+	// Thread timeouts config into the run so tool execution and the run loop
+	// can read configured values.
+	if m.config != nil && m.config.Timeouts != nil {
+		runCfg.Timeouts = m.config.Timeouts
+	}
 
 	if permEng != nil {
 		runCfg.PermEngine = permEng
@@ -196,7 +204,10 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 			toolName := parts[2]
 			for _, conn := range mcpConns {
 				if conn.Name() == serverName {
-					content, err := conn.CallTool(toolName, input)
+					mcpTimeout := m.mcpCallTimeout()
+					callCtx, callCancel := context.WithTimeout(context.Background(), mcpTimeout)
+					content, err := conn.CallTool(callCtx, toolName, input)
+					callCancel()
 					if err != nil {
 						return "", true, err
 					}
@@ -249,4 +260,12 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 		}
 		return "", true, fmt.Errorf("external tool %q not found", name)
 	}
+}
+
+// mcpCallTimeout returns the configured MCP call timeout or the default (60s).
+func (m *Manager) mcpCallTimeout() time.Duration {
+	if m.config != nil && m.config.Timeouts != nil {
+		return m.config.Timeouts.McpCall()
+	}
+	return 60 * time.Second
 }

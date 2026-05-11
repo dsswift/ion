@@ -269,6 +269,9 @@ func (b *ApiBackend) executeTools(
 			// Capture the threshold locally so the goroutine doesn't race
 			// with tests that reassign the package-level var.
 			stallThreshold := toolStallThreshold
+			if run.cfg != nil && run.cfg.Timeouts != nil {
+				stallThreshold = run.cfg.Timeouts.ToolStall()
+			}
 			toolDone := make(chan struct{})
 			go func() {
 				ticker := time.NewTicker(stallThreshold)
@@ -290,12 +293,21 @@ func (b *ApiBackend) executeTools(
 			}()
 
 			// Route to built-in, extension, or MCP tool (Step 5).
-			// Each tool call is bounded by defaultToolTimeout. A tool that
-			// observes ctx will cancel cleanly; a tool that ignores ctx will
+			// Each tool call is bounded by the configured tool timeout. A tool
+			// that observes ctx will cancel cleanly; a tool that ignores ctx will
 			// be left running but its result is dropped, and executeTools
 			// returns once errgroup's children all return.
-			toolCtx, toolCancel := context.WithTimeout(gCtx, defaultToolTimeout)
+			toolTimeout := defaultToolTimeout
+			if run.cfg != nil && run.cfg.Timeouts != nil {
+				toolTimeout = run.cfg.Timeouts.ToolDefault()
+			}
+			toolCtx, toolCancel := context.WithTimeout(gCtx, toolTimeout)
 			defer toolCancel()
+
+			// Inject timeouts config into context for individual tools to read.
+			if run.cfg != nil && run.cfg.Timeouts != nil {
+				toolCtx = types.WithTimeouts(toolCtx, run.cfg.Timeouts)
+			}
 
 			var toolResult *types.ToolResult
 			var err error
@@ -338,7 +350,7 @@ func (b *ApiBackend) executeTools(
 			if err != nil && toolCtx.Err() == context.DeadlineExceeded {
 				err = nil
 				toolResult = &types.ToolResult{
-					Content: fmt.Sprintf("Error: tool %q exceeded %s deadline. Narrow the request or split it into smaller calls.", block.Name, defaultToolTimeout),
+					Content: fmt.Sprintf("Error: tool %q exceeded %s deadline. Narrow the request or split it into smaller calls.", block.Name, toolTimeout),
 					IsError: true,
 				}
 			}

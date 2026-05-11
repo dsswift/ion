@@ -78,4 +78,5 @@ export type EngineEvent =
   | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }
   | { type: 'engine_extension_died'; extensionName: string; exitCode: number | null; signal: string | null }
   | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }
+  | { type: 'engine_events_dropped'; count: number }
   | { type: 'engine_extension_dead_permanent'; extensionName: string; attemptNumber: number }

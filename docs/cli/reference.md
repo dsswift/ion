@@ -68,7 +68,7 @@ ion start --profile backend --dir . --key api-session --extension ~/.ion/extensi
 Send a prompt to the engine. If no daemon is running, one is auto-started. If no `--key` is provided, an ephemeral session is created, used, and cleaned up.
 
 ```bash
-ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMAT] [--key KEY] [--extension PATH] [--no-extensions]
+ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMAT] [--key KEY] [--extension PATH] [--no-extensions] [--attach] [--timeout DURATION]
 ```
 
 | Flag | Required | Default | Description |
@@ -80,6 +80,8 @@ ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMA
 | `--key` | No | (ephemeral) | Target session key |
 | `--extension` | No | -- | Path to extension directory |
 | `--no-extensions` | No | false | Skip all extensions for this prompt |
+| `--attach` | No | false | Stream output until idle (non-ephemeral sessions) |
+| `--timeout` | No | -- | Wall-clock deadline (e.g. `60s`, `5m`, `2h`). Applies to `text` and `stream-json` output modes. For ephemeral prompts, the engine aborts the in-progress run before cleanup. For keyed sessions, the CLI disconnects but the engine session continues. Exit code 124. Not applicable to `json` output (returns immediately). |
 
 #### Output formats
 
@@ -87,7 +89,7 @@ ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMA
 
 **`json`**: Returns the raw command response as indented JSON. Does not stream.
 
-**`stream-json`**: Streams all engine events as NDJSON to stdout. Includes text deltas, tool use, status changes, and errors. Does not exit automatically; connect to watch the full event stream.
+**`stream-json`**: Streams all engine events as NDJSON to stdout. Includes text deltas, tool use, status changes, and errors. Continues until the connection closes or `--timeout` fires (exit 124).
 
 #### Examples
 
@@ -106,6 +108,9 @@ ion prompt "hello" --output stream-json
 
 # Skip extensions
 ion prompt "hello" --no-extensions
+
+# CI/scripting: fail if not done in 5 minutes
+ion prompt "run the test suite" --timeout 5m
 ```
 
 ---
@@ -175,6 +180,54 @@ Returns the shutdown acknowledgment as JSON, then the daemon exits.
 
 ---
 
+### `ion health`
+
+Probe daemon liveness.
+
+```bash
+ion health
+```
+
+Returns a JSON health report with version, uptime, and session count. Exits 0 if the daemon is healthy, 1 if it's down or unhealthy.
+
+```bash
+# Use in scripts or monitoring
+ion health && echo "Engine is running"
+
+# Pretty-print the health report
+ion health | jq .
+```
+
+---
+
+### `ion upgrade`
+
+Upgrade the engine to the latest release.
+
+```bash
+ion upgrade
+```
+
+Downloads the latest release from GitHub, verifies the SHA-256 checksum, and atomically replaces the running binary. Development builds (`version = "dev"`) cannot be upgraded — install a release build first.
+
+```bash
+# Check and upgrade
+ion upgrade
+# Checking for updates...
+# Update available: 0.1.0 → 0.2.0
+# Downloading ion-darwin-arm64...
+# Checksum verified.
+# Upgraded: 0.1.0 → 0.2.0
+```
+
+If already on the latest version:
+
+```
+Already up to date: 0.2.0
+```
+
+---
+
 ### `ion record`
 
 Record session events to an NDJSON file.
@@ -233,12 +286,14 @@ These flags are recognized by `ion prompt`. Other commands accept subsets as doc
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--model` | string | config default (`claude-sonnet-4-6`) | LLM model identifier |
-| `--max-turns` | int | 50 | Maximum agent loop iterations |
+| `--max-turns` | int | 50 (server default) | Maximum agent loop iterations. Applied server-side; if not specified, the engine uses its built-in default of 50. |
 | `--max-budget` | float | unlimited | Maximum spend in USD |
 | `--output` | string | `text` | Output format (`text`, `json`, `stream-json`) |
 | `--key` | string | -- | Session key |
 | `--extension` | string | -- | Extension directory path (supports `~` expansion) |
 | `--no-extensions` | bool | false | Skip all extensions |
+| `--timeout` | duration | -- | Wall-clock deadline for `ion prompt` (e.g. `60s`, `5m`). Applies to `text` and `stream-json` modes. Exit 124 on timeout. |
+| `--attach` | bool | false | Stream output until idle (keyed sessions) |
 
 ## Daemon auto-start
 
@@ -266,3 +321,4 @@ This makes `ion prompt` fully self-contained for one-shot use. For persistent se
 |------|---------|
 | 0 | Success |
 | 1 | Error (connection failed, invalid arguments, engine error) |
+| 124 | Timeout (prompt exceeded `--timeout` deadline) |

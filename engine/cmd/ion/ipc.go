@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 // connectAndSend connects to the engine socket, sends a command, waits for response.
@@ -40,14 +41,21 @@ func connectAndSend(sock string, msg map[string]interface{}) (map[string]interfa
 	return nil, fmt.Errorf("connection closed before receiving response")
 }
 
-// attachStream connects to engine and streams all events to stdout.
-func attachStream(sock string, key string) {
+// attachStream connects to engine and streams all events to stdout. When
+// deadline is non-zero, the stream is bounded by that wall-clock timeout —
+// returns true if the deadline fired (caller should exit 124). A zero deadline
+// means "no limit".
+func attachStream(sock string, key string, deadline time.Duration) (timedOut bool) {
 	conn, err := net.Dial(dialNetwork(), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = conn.Close() }()
+
+	if deadline > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(deadline))
+	}
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -56,17 +64,32 @@ func attachStream(sock string, key string) {
 			fmt.Println(line)
 		}
 	}
+	if scanErr := scanner.Err(); scanErr != nil && deadline > 0 {
+		if netErr, ok := scanErr.(net.Error); ok && netErr.Timeout() {
+			fmt.Fprintf(os.Stderr, "\nTimeout: stream exceeded %s deadline\n", deadline)
+			return true
+		}
+	}
+	return false
 }
 
 // streamUntilIdle connects to the engine socket and streams text deltas to
-// stdout until the session emits engine_status with state=idle.
-func streamUntilIdle(sock, key string) {
+// stdout until the session emits engine_status with state=idle. When deadline
+// is non-zero, the stream is bounded by that wall-clock timeout — returns true
+// if the deadline fired (caller should abort and exit 124). A zero deadline
+// means "no limit".
+func streamUntilIdle(sock, key string, deadline time.Duration) (timedOut bool) {
 	conn, err := net.Dial(dialNetwork(), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to stream: %s\n", err)
-		return
+		return false
 	}
 	defer func() { _ = conn.Close() }()
+
+	// Set a read deadline so the scanner unblocks when the timeout fires.
+	if deadline > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(deadline))
+	}
 
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -97,14 +120,22 @@ func streamUntilIdle(sock, key string) {
 			if fields != nil {
 				if state, _ := fields["state"].(string); state == "idle" {
 					fmt.Println()
-					return
+					return false
 				}
 			}
 		case "engine_error":
 			if errMsg, ok := event["message"].(string); ok {
 				fmt.Fprintf(os.Stderr, "\nError: %s\n", errMsg)
-				return
+				return false
 			}
 		}
 	}
+	// Scanner exited — check if it was a timeout.
+	if scanErr := scanner.Err(); scanErr != nil && deadline > 0 {
+		if netErr, ok := scanErr.(net.Error); ok && netErr.Timeout() {
+			fmt.Fprintf(os.Stderr, "\nTimeout: prompt exceeded %s deadline\n", deadline)
+			return true
+		}
+	}
+	return false
 }

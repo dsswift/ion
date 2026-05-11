@@ -16,8 +16,8 @@ type MDNSHandle struct {
 
 func (h *MDNSHandle) Shutdown() {
 	if h.cmd != nil && h.cmd.Process != nil {
-		h.cmd.Process.Kill()
-		h.cmd.Wait()
+		_ = h.cmd.Process.Kill()
+		_ = h.cmd.Wait()
 	}
 }
 

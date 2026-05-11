@@ -77,7 +77,7 @@ func (h *Host) send(msg rpcRequest) error {
 
 // call sends a JSON-RPC request and waits for the matching response.
 func (h *Host) call(method string, params interface{}) (json.RawMessage, error) {
-	return h.callWithTimeout(method, params, rpcCallTimeout)
+	return h.callWithTimeout(method, params, h.rpcTimeout)
 }
 
 func (h *Host) callWithTimeout(method string, params interface{}, timeout time.Duration) (json.RawMessage, error) {

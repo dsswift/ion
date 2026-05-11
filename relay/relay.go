@@ -1,47 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  64 * 1024,
-	WriteBufferSize: 256 * 1024,
-	// Reject connections with an Origin header. Native apps (Ion desktop,
-	// iOS) don't send Origin; browsers do. This prevents browser-based
-	// cross-site WebSocket hijacking attacks against the relay.
-	CheckOrigin: func(r *http.Request) bool {
-		return r.Header.Get("Origin") == ""
-	},
-}
-
-// SafeConn wraps a websocket.Conn with a write mutex.
-// gorilla/websocket requires that at most one goroutine calls write methods
-// concurrently. SafeConn serializes all writes through SafeWrite.
-type SafeConn struct {
-	*websocket.Conn
-	writeMu sync.Mutex
-}
-
-// SafeWrite sends a WebSocket message while holding the write mutex.
-func (sc *SafeConn) SafeWrite(msgType int, data []byte, deadline time.Duration) error {
-	sc.writeMu.Lock()
-	defer sc.writeMu.Unlock()
-	sc.Conn.SetWriteDeadline(time.Now().Add(deadline))
-	return sc.Conn.WriteMessage(msgType, data)
-}
 
 // Channel holds the two sides of a relay channel.
 type Channel struct {
 	mu     sync.Mutex
-	ion    *SafeConn
-	mobile *SafeConn
+	ion    *websocket.Conn
+	mobile *websocket.Conn
 
 	// APNs device token for push notifications (set by mobile on connect).
 	apnsToken string
@@ -51,11 +25,21 @@ type Channel struct {
 type Hub struct {
 	mu       sync.RWMutex
 	channels map[string]*Channel
+
+	// Configurable timeouts and limits (set at construction, read-only after).
+	WriteTimeout   time.Duration // forward write deadline (default 10s)
+	PingInterval   time.Duration // keepalive ping interval (default 30s)
+	PingTimeout    time.Duration // pong wait deadline (default 10s)
+	MaxMessageSize int64         // read limit in bytes (default 1MB)
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		channels: make(map[string]*Channel),
+		channels:       make(map[string]*Channel),
+		WriteTimeout:   10 * time.Second,
+		PingInterval:   30 * time.Second,
+		PingTimeout:    10 * time.Second,
+		MaxMessageSize: 1024 * 1024,
 	}
 }
 
@@ -91,14 +75,21 @@ func (h *Hub) CloseAll() {
 	for _, ch := range h.channels {
 		ch.mu.Lock()
 		if ch.ion != nil {
-			ch.ion.Close()
+			_ = ch.ion.CloseNow()
 		}
 		if ch.mobile != nil {
-			ch.mobile.Close()
+			_ = ch.mobile.CloseNow()
 		}
 		ch.mu.Unlock()
 	}
 	h.channels = make(map[string]*Channel)
+}
+
+// ChannelCount returns the number of active channels (used by tests).
+func (h *Hub) ChannelCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.channels)
 }
 
 // controlMessage is a relay-originated control frame.
@@ -106,9 +97,13 @@ type controlMessage struct {
 	Type string `json:"type"`
 }
 
-func sendControl(conn *SafeConn, msgType string) {
+func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration) {
 	msg, _ := json.Marshal(controlMessage{Type: msgType})
-	conn.SafeWrite(websocket.TextMessage, msg, 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
+		log.Printf("sendControl(%s) error: %v", msgType, err)
+	}
 }
 
 // relayMessage wraps a forwarded payload to check for push flags.
@@ -119,13 +114,25 @@ type relayMessage struct {
 }
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID, role string, pusher *APNsPusher) {
-	rawConn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("upgrade error: %v", err)
+	// Reject connections with an Origin header. Native apps (Ion desktop,
+	// iOS) don't send Origin; browsers do. This prevents browser-based
+	// cross-site WebSocket hijacking attacks against the relay.
+	if r.Header.Get("Origin") != "" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	conn := &SafeConn{Conn: rawConn}
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+		CompressionMode:    websocket.CompressionContextTakeover,
+	})
+	if err != nil {
+		log.Printf("accept error: %v", err)
+		return
+	}
+
+	// Allow messages up to the configured max (default 1MB).
+	conn.SetReadLimit(h.MaxMessageSize)
 
 	ch := h.getOrCreateChannel(channelID)
 
@@ -135,12 +142,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	switch role {
 	case "ion":
 		if ch.ion != nil {
-			ch.ion.Close()
+			_ = ch.ion.Close(websocket.StatusGoingAway, "replaced")
 		}
 		ch.ion = conn
 	case "mobile":
 		if ch.mobile != nil {
-			ch.mobile.Close()
+			_ = ch.mobile.Close(websocket.StatusGoingAway, "replaced")
 		}
 		ch.mobile = conn
 	}
@@ -155,26 +162,22 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	// Notify peer that the other side connected.
 	peer := ch.getPeerLocked(role)
 	if peer != nil {
-		sendControl(peer, "relay:peer-reconnected")
+		sendControl(peer, "relay:peer-reconnected", h.WriteTimeout)
 	}
 
 	ch.mu.Unlock()
 
 	log.Printf("channel=%s role=%s connected", channelID, role)
 
-	// Set up ping/pong keepalive.
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-		return nil
-	})
-	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-
+	// Start keepalive pings. Essential for public internet deployments where
+	// NAT timeouts, load balancer idle limits, and mobile network switches
+	// can silently kill connections.
 	done := make(chan struct{})
-	go h.ping(conn, done)
+	go ping(conn, done, h.PingInterval, h.PingTimeout)
 
 	// Read loop: forward messages to the peer.
 	for {
-		msgType, data, err := conn.ReadMessage()
+		msgType, data, err := conn.Read(context.Background())
 		if err != nil {
 			break
 		}
@@ -185,9 +188,11 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		ch.mu.Unlock()
 
 		if peer != nil {
-			if err := peer.SafeWrite(msgType, data, 10*time.Second); err != nil {
+			writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
+			if err := peer.Write(writeCtx, msgType, data); err != nil {
 				log.Printf("channel=%s forward error: %v", channelID, err)
 			}
+			writeCancel()
 		} else if role == "ion" && pusher != nil && apnsToken != "" {
 			// Peer not connected. Check if this message requests a push notification.
 			var msg relayMessage
@@ -221,31 +226,38 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	ch.mu.Unlock()
 
 	if peer != nil {
-		sendControl(peer, "relay:peer-disconnected")
+		sendControl(peer, "relay:peer-disconnected", h.WriteTimeout)
 	}
 
 	log.Printf("channel=%s role=%s disconnected", channelID, role)
 	h.removeIfEmpty(channelID)
 	close(done)
-	_ = conn.Close()
+	_ = conn.CloseNow()
 }
 
-func (ch *Channel) getPeerLocked(myRole string) *SafeConn {
+func (ch *Channel) getPeerLocked(myRole string) *websocket.Conn {
 	if myRole == "ion" {
 		return ch.mobile
 	}
 	return ch.ion
 }
 
-func (h *Hub) ping(conn *SafeConn, done <-chan struct{}) {
-	ticker := time.NewTicker(30 * time.Second)
+// ping sends WebSocket pings at the configured interval to detect dead connections.
+// If a pong is not received within pingTimeout, the connection is closed,
+// which causes the read loop to exit.
+func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-done:
 			return
 		case <-ticker.C:
-			if err := conn.SafeWrite(websocket.PingMessage, nil, 5*time.Second); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+			err := conn.Ping(ctx)
+			cancel()
+			if err != nil {
+				_ = conn.CloseNow()
 				return
 			}
 		}

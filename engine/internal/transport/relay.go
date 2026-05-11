@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -30,6 +30,9 @@ type RelayTransport struct {
 	apiKey    string
 	channelID string
 
+	// writeTimeout is the timeout for relay broadcast writes (default 10s).
+	writeTimeout time.Duration
+
 	// OnMessage is called for each non-control WebSocket message received
 	// from the relay (i.e. commands forwarded from the mobile peer).
 	// Must be set before calling Listen.
@@ -45,11 +48,17 @@ type RelayTransport struct {
 // NewRelayTransport creates a relay transport targeting the given WebSocket URL.
 func NewRelayTransport(url, apiKey, channelID string) *RelayTransport {
 	return &RelayTransport{
-		url:       url,
-		apiKey:    apiKey,
-		channelID: channelID,
-		done:      make(chan struct{}),
+		url:          url,
+		apiKey:       apiKey,
+		channelID:    channelID,
+		writeTimeout: 10 * time.Second,
+		done:         make(chan struct{}),
 	}
+}
+
+// SetWriteTimeout overrides the relay broadcast write timeout.
+func (r *RelayTransport) SetWriteTimeout(d time.Duration) {
+	r.writeTimeout = d
 }
 
 // Listen starts the WebSocket connection loop with reconnection.
@@ -82,10 +91,8 @@ func (r *RelayTransport) connectLoop(handler func(conn Conn)) {
 
 			r.mu.Lock()
 			r.attempt++
-			if r.attempt > 100 {
-				r.mu.Unlock()
-				utils.Log("Relay", "max reconnection attempts reached")
-				return
+			if r.attempt > 0 && r.attempt%50 == 0 {
+				utils.Warn("Relay", fmt.Sprintf("still trying to reconnect (attempt %d)", r.attempt))
 			}
 			r.mu.Unlock()
 			continue
@@ -130,12 +137,15 @@ func (r *RelayTransport) dial() error {
 		HTTPHeader: http.Header{
 			"Authorization": []string{"Bearer " + r.apiKey},
 		},
+		CompressionMode: websocket.CompressionContextTakeover,
 	}
 
 	conn, _, err := websocket.Dial(context.Background(), dialURL, opts)
 	if err != nil {
 		return fmt.Errorf("websocket dial: %w", err)
 	}
+
+	conn.SetReadLimit(1024 * 1024) // 1MB, matching relay server limit
 
 	r.mu.Lock()
 	r.conn = conn
@@ -207,7 +217,9 @@ func (r *RelayTransport) Broadcast(data []byte) {
 		return
 	}
 
-	err := conn.Write(context.Background(), websocket.MessageText, data)
+	writeCtx, writeCancel := context.WithTimeout(context.Background(), r.writeTimeout)
+	defer writeCancel()
+	err := conn.Write(writeCtx, websocket.MessageText, data)
 	if err != nil {
 		utils.Log("Relay", fmt.Sprintf("broadcast write error: %v", err))
 	}

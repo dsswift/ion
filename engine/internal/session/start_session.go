@@ -268,6 +268,9 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			EventMessage: fmt.Sprintf("Loading extension: %s", filepath.Base(filepath.Dir(extPath))),
 		})
 		host := extension.NewHost()
+		if m.config != nil && m.config.Timeouts != nil {
+			host.SetRPCTimeout(m.config.Timeouts.ExtensionRpc())
+		}
 
 		// Enterprise required hooks prepended before extension loads
 		if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
