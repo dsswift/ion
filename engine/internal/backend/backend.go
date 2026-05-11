@@ -114,4 +114,5 @@ type RunConfig struct {
 	McpToolRouter func(name string, input map[string]interface{}) (content string, isErr bool, err error)
 	AgentSpawner  tools.AgentSpawner
 	Telemetry     TelemetryCollector
+	Timeouts      *types.TimeoutsConfig
 }

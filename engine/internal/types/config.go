@@ -74,6 +74,7 @@ type EngineRuntimeConfig struct {
 	Enterprise   *EnterpriseConfig             `json:"enterprise,omitempty"`
 	FeatureFlags *FeatureFlagsConfig           `json:"featureFlags,omitempty"`
 	Relay        *RelayConfig                  `json:"relay,omitempty"`
+	Timeouts     *TimeoutsConfig               `json:"timeouts,omitempty"`
 	LogLevel     string                        `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
 }
 
