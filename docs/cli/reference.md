@@ -81,7 +81,7 @@ ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMA
 | `--extension` | No | -- | Path to extension directory |
 | `--no-extensions` | No | false | Skip all extensions for this prompt |
 | `--attach` | No | false | Stream output until idle (non-ephemeral sessions) |
-| `--timeout` | No | -- | Wall-clock deadline for the prompt (e.g. `60s`, `5m`, `2h`). When exceeded, the engine aborts the run and the CLI exits with code 124. |
+| `--timeout` | No | -- | Wall-clock deadline for the prompt (e.g. `60s`, `5m`, `2h`). For ephemeral prompts, the engine aborts the in-progress run before cleanup. For keyed sessions with `--attach`, the CLI disconnects but the engine session continues. Exit code 124. |
 
 #### Output formats
 

@@ -106,5 +106,6 @@ The relay server (a separate Go binary, not part of the engine) reads its config
 | `APNS_KEY_PATH` | -- | Path to APNs `.p8` key file for iOS push notifications. |
 | `APNS_KEY_ID` | -- | APNs key ID from Apple Developer portal. |
 | `APNS_TEAM_ID` | -- | Apple Developer team ID. |
+| `APNS_PRODUCTION` | -- | Set to `1` to use Apple's production APNs endpoint. Default uses the sandbox endpoint. |
 
 See [Relay Deployment](../deployment/relay.md) for full deployment instructions.

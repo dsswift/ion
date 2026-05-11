@@ -80,7 +80,7 @@ Every WebSocket upgrade request must include a valid Bearer token. The relay com
 
 ### Origin rejection
 
-The relay rejects WebSocket upgrades with an `Origin` header that does not match expected patterns. This prevents browser-based cross-origin attacks.
+The relay rejects WebSocket upgrades that include an `Origin` header. Native clients (engine, iOS) do not send this header; browsers do. This prevents browser-based cross-origin attacks.
 
 ### End-to-end encryption
 
@@ -100,4 +100,4 @@ mDNS is best-effort. If it fails to start (common in containers without host net
 
 When all three APNs environment variables are configured (`APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`), the relay can send push notifications to wake the iOS app when a message arrives and the mobile peer is disconnected.
 
-This is a background push (content-available), not a user-visible notification. It wakes the app so it can reconnect to the relay and receive the pending message.
+This is a user-visible alert notification (with title, body, and sound) that also sets `content-available` to wake the app in the background.

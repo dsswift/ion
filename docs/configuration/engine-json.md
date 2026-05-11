@@ -300,20 +300,20 @@ Tune every internal timeout and retry limit. All duration fields are in millisec
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `toolDefaultMs` | int | `300000` (5 min) | Per-tool execution timeout. Applies to built-in tools unless a tool-specific timeout overrides it. |
-| `toolStallMs` | int | `30000` (30 s) | Stall detection threshold. If a tool produces no output for this long, the engine logs a warning. |
-| `bashDefaultMs` | int | `120000` (2 min) | Default timeout for `Bash` tool commands. Overridable per-call via the tool's `timeout` parameter. |
-| `mcpCallMs` | int | `60000` (60 s) | MCP tool call timeout. How long the engine waits for an MCP server to return a tool result. |
-| `mcpMetadataMs` | int | `30000` (30 s) | MCP metadata operation timeout (`initialize`, `listTools`, `listResources`, `readResource`). |
-| `mcpWriteMs` | int | `30000` (30 s) | MCP WebSocket write timeout. How long a write to an MCP server's WebSocket can block. |
-| `webFetchMs` | int | `30000` (30 s) | HTTP request timeout for the `WebFetch` tool. |
-| `globMs` | int | `60000` (60 s) | Filesystem walk timeout for the `Glob` tool. |
-| `sshDefaultMs` | int | `120000` (2 min) | Default timeout for SSH operations. |
-| `extensionRpcMs` | int | `30000` (30 s) | How long the engine waits for an extension to respond to an RPC call (init, hook, tool, command). |
-| `hookDefaultMs` | int | `30000` (30 s) | Default timeout for external hook execution. |
-| `elicitationMs` | int | `300000` (5 min) | How long the engine waits for user input during an elicitation dialog. |
-| `relayWriteMs` | int | `10000` (10 s) | Write timeout when forwarding messages to the relay server. |
-| `broadcastWriteMs` | int | `5000` (5 s) | Write timeout for broadcasting events to connected socket clients. |
+| `toolDefaultMs` | int64 | `300000` (5 min) | Per-tool execution timeout. Applies to built-in tools unless a tool-specific timeout overrides it. |
+| `toolStallMs` | int64 | `30000` (30 s) | Stall detection threshold. If a tool produces no output for this long, the engine logs a warning. |
+| `bashDefaultMs` | int64 | `120000` (2 min) | Default timeout for `Bash` tool commands. Overridable per-call via the tool's `timeout` parameter. |
+| `mcpCallMs` | int64 | `60000` (60 s) | MCP tool call timeout. How long the engine waits for an MCP server to return a tool result. |
+| `mcpMetadataMs` | int64 | `30000` (30 s) | MCP metadata operation timeout (`initialize`, `listTools`, `listResources`, `readResource`). |
+| `mcpWriteMs` | int64 | `30000` (30 s) | MCP WebSocket write timeout. How long a write to an MCP server's WebSocket can block. |
+| `webFetchMs` | int64 | `30000` (30 s) | HTTP request timeout for the `WebFetch` tool. |
+| `globMs` | int64 | `60000` (60 s) | Filesystem walk timeout for the `Glob` tool. |
+| `sshDefaultMs` | int64 | `120000` (2 min) | Default timeout for SSH operations. |
+| `extensionRpcMs` | int64 | `30000` (30 s) | How long the engine waits for an extension to respond to an RPC call (init, hook, tool, command). |
+| `hookDefaultMs` | int64 | `30000` (30 s) | Default timeout for external hook execution. |
+| `elicitationMs` | int64 | `300000` (5 min) | How long the engine waits for user input during an elicitation dialog. |
+| `relayWriteMs` | int64 | `10000` (10 s) | Write timeout when forwarding messages to the relay server. |
+| `broadcastWriteMs` | int64 | `5000` (5 s) | Write timeout for broadcasting events to connected socket clients. |
 | `truncationRetries` | int | `3` | Maximum consecutive retries when the LLM response is truncated (hits `max_tokens`). |
 
 These follow the same merge semantics as other config fields: higher-priority layers override lower ones. Zero means "use the compiled default."
