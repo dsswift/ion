@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.14.2](https://github.com/dsswift/ion/compare/ios-v1.14.1...ios-v1.14.2) (2026-05-11)
+
+### Bug Fixes
+
+* **ios:** keep transport alive on peer disconnect ([637088a](https://github.com/dsswift/ion/commit/637088a8d2440efd7e1c68205839ba3cb445c39f))
+* **ios:** resolve legacy udid before ios-deploy install ([ef05a29](https://github.com/dsswift/ion/commit/ef05a29bb34def19ca92c94485e39cf63b30d764))
+
 ## [1.14.1](https://github.com/dsswift/ion/compare/ios-v1.14.0...ios-v1.14.1) (2026-05-11)
 
 ## [1.14.0](https://github.com/dsswift/ion/compare/ios-v1.13.2...ios-v1.14.0) (2026-05-10)

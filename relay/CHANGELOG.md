@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.2.1](https://github.com/dsswift/ion/compare/relay-v1.2.0...relay-v1.2.1) (2026-05-11)
+
+### Bug Fixes
+
+* **relay:** disable websocket compression for mobile role ([2d86b57](https://github.com/dsswift/ion/commit/2d86b57935d4f22ab13804265193f7224589ef26))
+
 ## [1.2.0](https://github.com/dsswift/ion/compare/relay-v1.1.2...relay-v1.2.0) (2026-05-11)
 
 ### Features

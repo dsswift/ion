@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.16.2](https://github.com/dsswift/ion/compare/engine-v1.16.1...engine-v1.16.2) (2026-05-11)
+
+### Bug Fixes
+
+* **engine:** prevent tool goroutines from wedging indefinitely ([7b5c208](https://github.com/dsswift/ion/commit/7b5c20883eadc6ba404548c4309cee478ee90219))
+
 ## [1.16.1](https://github.com/dsswift/ion/compare/engine-v1.16.0...engine-v1.16.1) (2026-05-11)
 
 ### Bug Fixes
