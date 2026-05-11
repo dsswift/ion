@@ -220,6 +220,18 @@ function handleStatusEvent(
     ctx.setStatus(tabId, hasExitPlan ? 'completed' : 'idle')
     ctx.checkDrain()
   } else if (event.fields.state === 'running') {
+    if (tab.status !== 'running') {
+      ctx.emit('event', tabId, {
+        type: 'session_init',
+        sessionId: tab.conversationId || '',
+        tools: [],
+        model: event.fields.model || '',
+        mcpServers: [],
+        skills: [],
+        version: '',
+        isWarmup: false,
+      } as NormalizedEvent)
+    }
     ctx.setStatus(tabId, 'running')
   }
 }
