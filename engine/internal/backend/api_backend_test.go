@@ -797,9 +797,10 @@ func TestConcurrentMultipleRuns(t *testing.T) {
 	bMulti.OnNormalized(func(runID string, event types.NormalizedEvent) {
 		mu.Lock()
 		defer mu.Unlock()
-		if runID == "req-ma" {
+		switch runID {
+		case "req-ma":
 			eventsA = append(eventsA, event)
-		} else if runID == "req-mb" {
+		case "req-mb":
 			eventsB = append(eventsB, event)
 		}
 	})
@@ -807,9 +808,10 @@ func TestConcurrentMultipleRuns(t *testing.T) {
 	bMulti.OnExit(func(runID string, code *int, signal *string, sessionID string) {
 		mu.Lock()
 		defer mu.Unlock()
-		if runID == "req-ma" {
+		switch runID {
+		case "req-ma":
 			exitA = code
-		} else if runID == "req-mb" {
+		case "req-mb":
 			exitB = code
 		}
 	})
