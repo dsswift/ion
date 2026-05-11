@@ -3,6 +3,9 @@
 package extcontext
 
 import (
+	"context"
+	"time"
+
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
@@ -84,7 +87,16 @@ func NewExtContext(sa SessionAccessor) *extension.Context {
 			return sa.Elicit(info)
 		},
 		CallTool: func(toolName string, input map[string]interface{}) (string, bool, error) {
-			return CallToolFromExtension(sa, toolName, input)
+			return CallToolFromExtension(context.Background(), sa, toolName, input)
+		},
+		CallToolWithContext: func(toolName string, input map[string]interface{}, timeoutMs *float64) (string, bool, error) {
+			callCtx := context.Background()
+			if timeoutMs != nil && *timeoutMs > 0 {
+				var cancel context.CancelFunc
+				callCtx, cancel = context.WithTimeout(callCtx, time.Duration(*timeoutMs)*time.Millisecond)
+				defer cancel()
+			}
+			return CallToolFromExtension(callCtx, sa, toolName, input)
 		},
 		SendPrompt: func(text string, model string) error {
 			return sa.SendPrompt(text, model)

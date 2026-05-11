@@ -358,8 +358,9 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	case "ext/call_tool":
 		var req struct {
 			Params struct {
-				Name  string                 `json:"name"`
-				Input map[string]interface{} `json:"input"`
+				Name    string                 `json:"name"`
+				Input   map[string]interface{} `json:"input"`
+				Timeout *float64               `json:"timeout,omitempty"` // optional ms
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -370,12 +371,28 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "tool name required"})
 			return
 		}
-		if ctx == nil || ctx.CallTool == nil {
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "callTool not available outside an active session"})
+		if ctx == nil || ctx.CallToolWithContext == nil {
+			// Fall back to legacy CallTool if the new API isn't wired.
+			if ctx == nil || ctx.CallTool == nil {
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "callTool not available outside an active session"})
+				return
+			}
+			go func() {
+				content, isError, err := ctx.CallTool(req.Params.Name, req.Params.Input)
+				if err != nil {
+					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+					return
+				}
+				data, _ := json.Marshal(struct {
+					Content string `json:"content"`
+					IsError bool   `json:"isError,omitempty"`
+				}{Content: content, IsError: isError})
+				h.sendResponse(id, json.RawMessage(data), nil)
+			}()
 			return
 		}
 		go func() {
-			content, isError, err := ctx.CallTool(req.Params.Name, req.Params.Input)
+			content, isError, err := ctx.CallToolWithContext(req.Params.Name, req.Params.Input, req.Params.Timeout)
 			if err != nil {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 				return
