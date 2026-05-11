@@ -375,7 +375,7 @@ func (c *Connection) CallTool(ctx context.Context, toolName string, params map[s
 		IsError bool `json:"isError"`
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return string(resp), nil
+		return "", fmt.Errorf("unexpected tool response format: %w (raw: %.200s)", err, resp)
 	}
 
 	if result.IsError {
