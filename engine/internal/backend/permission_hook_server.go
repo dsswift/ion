@@ -61,7 +61,7 @@ func NewPermissionHookServer(permEng *permissions.Engine) (*PermissionHookServer
 	mux.HandleFunc("/hook/pre-tool-use/", s.handlePreToolUse)
 
 	s.server = &http.Server{Handler: mux}
-	go s.server.Serve(listener)
+	go func() { _ = s.server.Serve(listener) }()
 
 	utils.Log("PermissionHookServer", fmt.Sprintf("listening on port %d", s.Port()))
 
@@ -117,7 +117,7 @@ func (s *PermissionHookServer) SetOnAsk(fn PermissionAskCallback) {
 
 // Close shuts down the hook server.
 func (s *PermissionHookServer) Close() {
-	s.server.Close()
+	_ = s.server.Close()
 }
 
 func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.Request) {
@@ -237,5 +237,5 @@ func writePermissionResponse(w http.ResponseWriter, decision string) {
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

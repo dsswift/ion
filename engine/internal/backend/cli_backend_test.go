@@ -157,7 +157,8 @@ func TestCliRunFieldsPresent(t *testing.T) {
 		t.Error("stdinPipe should be nil by default")
 	}
 
-	// stdinMu should be usable
+	// stdinMu should be usable (lock/unlock without deadlock)
 	run.stdinMu.Lock()
+	_ = run.stdinPipe // access guarded field
 	run.stdinMu.Unlock()
 }

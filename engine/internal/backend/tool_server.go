@@ -29,7 +29,7 @@ type ToolHandler func(input map[string]interface{}) (*types.ToolResult, error)
 func NewToolServer(sessionID string) *ToolServer {
 	home, _ := os.UserHomeDir()
 	sockDir := filepath.Join(home, ".ion", "mcp")
-	os.MkdirAll(sockDir, 0o700)
+	_ = os.MkdirAll(sockDir, 0o700)
 
 	return &ToolServer{
 		tools:    make(map[string]ToolHandler),
@@ -50,7 +50,7 @@ func (ts *ToolServer) Start() error {
 	defer ts.mu.Unlock()
 
 	// Clean up stale socket
-	os.Remove(ts.sockPath)
+	_ = os.Remove(ts.sockPath)
 
 	listener, err := net.Listen("unix", ts.sockPath)
 	if err != nil {
@@ -72,9 +72,9 @@ func (ts *ToolServer) Stop() {
 
 	ts.running = false
 	if ts.listener != nil {
-		ts.listener.Close()
+		_ = ts.listener.Close()
 	}
-	os.Remove(ts.sockPath)
+	_ = os.Remove(ts.sockPath)
 }
 
 // SocketPath returns the path to the Unix socket.
@@ -129,7 +129,7 @@ func (ts *ToolServer) acceptLoop() {
 }
 
 func (ts *ToolServer) handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
@@ -161,7 +161,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			}
 			ts.mu.Unlock()
 
-			encoder.Encode(map[string]interface{}{
+			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"result":  map[string]interface{}{"tools": toolList},
@@ -172,14 +172,14 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 				Name      string                 `json:"name"`
 				Arguments map[string]interface{} `json:"arguments"`
 			}
-			json.Unmarshal(req.Params, &params)
+			_ = json.Unmarshal(req.Params, &params)
 
 			ts.mu.Lock()
 			handler, exists := ts.tools[params.Name]
 			ts.mu.Unlock()
 
 			if !exists {
-				encoder.Encode(map[string]interface{}{
+				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
 					"error":   map[string]interface{}{"code": -32601, "message": "tool not found: " + params.Name},
@@ -189,7 +189,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 
 			result, err := handler(params.Arguments)
 			if err != nil {
-				encoder.Encode(map[string]interface{}{
+				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
 					"result": map[string]interface{}{
@@ -200,7 +200,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 					},
 				})
 			} else {
-				encoder.Encode(map[string]interface{}{
+				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
 					"result": map[string]interface{}{
@@ -213,7 +213,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			}
 
 		default:
-			encoder.Encode(map[string]interface{}{
+			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"error":   map[string]interface{}{"code": -32601, "message": "method not found"},

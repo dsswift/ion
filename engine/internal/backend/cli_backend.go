@@ -131,14 +131,14 @@ func (b *CliBackend) Cancel(requestID string) bool {
 
 	// Send SIGINT (graceful) on Unix, Kill directly on Windows
 	if runtime.GOOS == "windows" {
-		proc.Kill()
+		_ = proc.Kill()
 		run.cancel()
 		return true
 	}
 
 	if err := proc.Signal(syscall.SIGINT); err != nil {
 		utils.Log("CliBackend", "SIGINT failed, killing: "+err.Error())
-		proc.Kill()
+		_ = proc.Kill()
 		run.cancel()
 		return true
 	}
@@ -155,7 +155,7 @@ func (b *CliBackend) Cancel(requestID string) bool {
 		b.mu.Unlock()
 		if stillActive {
 			utils.Log("CliBackend", "process did not exit after SIGINT, sending SIGKILL: "+requestID)
-			proc.Signal(syscall.SIGKILL)
+			_ = proc.Signal(syscall.SIGKILL)
 			run.cancel()
 		}
 	}()
@@ -361,7 +361,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		},
 	}
 	if data, err := json.Marshal(initMsg); err == nil {
-		stdinPipe.Write(append(data, '\n'))
+		_, _ = stdinPipe.Write(append(data, '\n'))
 	}
 
 	// Capture stderr in ring buffer
@@ -391,7 +391,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		if json.Unmarshal(raw, &peek) == nil && peek.Type == "result" {
 			run.stdinMu.Lock()
 			if run.stdinPipe != nil {
-				run.stdinPipe.Close()
+				_ = run.stdinPipe.Close()
 				run.stdinPipe = nil
 			}
 			run.stdinMu.Unlock()
@@ -482,7 +482,7 @@ func (b *CliBackend) removeRun(requestID string) {
 		// Ensure stdin pipe is closed on cleanup
 		run.stdinMu.Lock()
 		if run.stdinPipe != nil {
-			run.stdinPipe.Close()
+			_ = run.stdinPipe.Close()
 			run.stdinPipe = nil
 		}
 		run.stdinMu.Unlock()
