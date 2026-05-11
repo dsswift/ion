@@ -78,6 +78,7 @@
     "afterPack": "scripts/afterPack.js",
     "mac": {
       "icon": "resources/icon.icns",
+      "x64ArchFiles": "**/node_modules/node-pty/prebuilds/darwin-*/*",
       "target": [
         {
           "target": "dmg",

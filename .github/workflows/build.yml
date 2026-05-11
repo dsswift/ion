@@ -49,6 +49,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
 
       - name: Get version
         id: version
@@ -245,6 +246,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
 
       - name: Build engine for macOS universal
         working-directory: engine
