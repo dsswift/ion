@@ -195,9 +195,7 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 			"input_schema": t.InputSchema,
 		})
 	}
-	for _, st := range opts.ServerTools {
-		allTools = append(allTools, st)
-	}
+	allTools = append(allTools, opts.ServerTools...)
 	if len(allTools) > 0 {
 		body["tools"] = allTools
 	}
@@ -220,7 +218,7 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 func (p *anthropicProvider) formatMessages(messages []types.LlmMessage) []map[string]any {
 	result := make([]map[string]any, 0, len(messages))
 
-	for i, msg := range messages {
+	for _, msg := range messages {
 		blocks := contentBlocks(msg)
 		if blocks == nil {
 			continue
@@ -234,18 +232,30 @@ func (p *anthropicProvider) formatMessages(messages []types.LlmMessage) []map[st
 			}
 		}
 
-		// Cache early user messages (first 2 user messages) for prompt caching
-		if msg.Role == "user" && i < 4 && len(formatted) > 0 {
-			last := formatted[len(formatted)-1]
-			if _, hasCacheCtrl := last["cache_control"]; !hasCacheCtrl {
-				last["cache_control"] = map[string]string{"type": "ephemeral"}
-			}
-		}
-
 		result = append(result, map[string]any{
 			"role":    msg.Role,
 			"content": formatted,
 		})
+	}
+
+	// Apply cache_control to the last N user messages (walking backwards).
+	// Budget: Anthropic allows max 4 cache_control blocks per request;
+	// 1 is used by the system prompt, leaving 3 for messages.
+	const messageCacheBudget = 3
+	remaining := messageCacheBudget
+	for i := len(result) - 1; i >= 0 && remaining > 0; i-- {
+		if result[i]["role"] != "user" {
+			continue
+		}
+		content, ok := result[i]["content"].([]map[string]any)
+		if !ok || len(content) == 0 {
+			continue
+		}
+		last := content[len(content)-1]
+		if _, hasCacheCtrl := last["cache_control"]; !hasCacheCtrl {
+			last["cache_control"] = map[string]string{"type": "ephemeral"}
+		}
+		remaining--
 	}
 
 	return result
