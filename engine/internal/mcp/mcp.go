@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -435,8 +436,11 @@ func newStdioTransport(config types.McpServerConfig) (*stdioTransport, error) {
 	}
 
 	cmd := exec.Command(config.Command, config.Args...)
-	for k, v := range config.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
+	if len(config.Env) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range config.Env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
 	}
 
 	stdin, err := cmd.StdinPipe()
@@ -483,8 +487,12 @@ func (t *stdioTransport) Receive() (json.RawMessage, error) {
 }
 
 func (t *stdioTransport) Close() error {
-	t.stdin.Close()
-	return t.cmd.Process.Kill()
+	_ = t.stdin.Close()
+	_ = t.cmd.Process.Kill()
+	// Wait reaps the child process to prevent zombies. The error from Wait is
+	// always non-nil after Kill, so we ignore it.
+	_ = t.cmd.Wait()
+	return nil
 }
 
 // --- SSE transport ---
