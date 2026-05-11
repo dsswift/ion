@@ -90,3 +90,21 @@ MCP servers configured with `type: "stdio"` can receive custom environment varia
 ```
 
 These variables are only visible to the MCP server subprocess and do not affect the engine process.
+
+## Relay server
+
+The relay server (a separate Go binary, not part of the engine) reads its configuration from environment variables. These are documented here for convenience; the relay is deployed independently.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RELAY_API_KEY` | -- (required) | Hex secret for Bearer authentication. Generate with `openssl rand -hex 32`. |
+| `RELAY_PORT` | `8443` | Listen port. |
+| `RELAY_WRITE_TIMEOUT_MS` | `10000` | Write timeout in milliseconds when forwarding messages to a peer. |
+| `RELAY_PING_INTERVAL_S` | `30` | Interval in seconds between WebSocket keepalive pings. |
+| `RELAY_PING_TIMEOUT_S` | `10` | Maximum seconds to wait for a pong response before closing the connection. |
+| `RELAY_MAX_MESSAGE_SIZE` | `1048576` (1 MB) | Maximum WebSocket message size in bytes. |
+| `APNS_KEY_PATH` | -- | Path to APNs `.p8` key file for iOS push notifications. |
+| `APNS_KEY_ID` | -- | APNs key ID from Apple Developer portal. |
+| `APNS_TEAM_ID` | -- | Apple Developer team ID. |
+
+See [Relay Deployment](../deployment/relay.md) for full deployment instructions.

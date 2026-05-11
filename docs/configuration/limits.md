@@ -19,7 +19,7 @@ Resource limits control how long an agent session can run and how much it can sp
 | `disableTurnLimitWarning` | bool | unset (`false`) | -- | When `true`, the turn-limit wind-down message is not injected. |
 | `disableMaxTokenContinue` | bool | unset (`false`) | -- | When `true`, the max-tokens continue prompt is not injected. |
 
-The engine ships unopinionated. There is no built-in default cap on turns, budget, or idle timeout. Harness engineers and operators set them via `engine.json`, CLI flags, or per-call options.
+The engine ships unopinionated. There is no built-in default cap on turns or budget. Harness engineers and operators set them via `engine.json`, CLI flags, or per-call options. For operational timeouts (tool execution, MCP calls, extension RPC, etc.), see the [`timeouts`](engine-json.md#timeouts) section.
 
 ## Configuration
 
@@ -131,3 +131,11 @@ Enterprise policy can enforce limit values that lower layers cannot weaken. If t
 | Large refactors | `maxTurns: 200`, `maxBudgetUsd: 50.0` |
 | Background agents | `maxTurns: 500`, `maxBudgetUsd: 100.0` |
 | Unbounded (engine default) | omit both fields |
+
+## Timeouts
+
+Resource limits (turns, budget) control *how much* work a session does. Timeouts control *how long* individual operations take. The two are independent.
+
+Tool execution timeouts, MCP call timeouts, extension RPC timeouts, and other operational timeouts are configured via the `timeouts` block in `engine.json`. See [engine.json Reference — timeouts](engine-json.md#timeouts) for the full field reference.
+
+For CLI prompts, the `--timeout` flag sets a wall-clock deadline for the entire prompt execution. See [CLI Reference](../cli/reference.md#ion-prompt) for details.

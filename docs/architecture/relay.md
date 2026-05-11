@@ -36,6 +36,7 @@ Key behaviors:
 - Second peer joins the existing channel
 - If a peer reconnects, it replaces the previous connection for that role
 - Messages are forwarded synchronously (no buffering or queuing)
+- Messages are forwarded with `permessage-deflate` compression when the client supports it
 
 ## Protocol
 
@@ -54,6 +55,8 @@ The relay validates the Bearer token against `RELAY_API_KEY` before upgrading to
 
 Once connected, all WebSocket frames from one peer are forwarded to the other peer on the same channel. The relay treats every frame as opaque bytes. It does not parse, validate, or transform the content.
 
+The relay offers `permessage-deflate` compression during the WebSocket handshake. Both the engine client and iOS client negotiate compression automatically.
+
 ### Health
 
 ```
@@ -62,6 +65,12 @@ GET /healthz
 ```
 
 No authentication required.
+
+## Keepalive
+
+The relay sends WebSocket ping frames every 30 seconds (configurable via `RELAY_PING_INTERVAL_S`) to detect dead connections. If no pong arrives within 10 seconds (configurable via `RELAY_PING_TIMEOUT_S`), the connection is closed.
+
+All relay timeouts (write, ping interval, ping timeout, max message size) are configurable via environment variables. See [Relay Deployment](../deployment/relay.md) for the full list.
 
 ## Security
 

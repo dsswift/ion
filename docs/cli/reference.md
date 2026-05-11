@@ -68,7 +68,7 @@ ion start --profile backend --dir . --key api-session --extension ~/.ion/extensi
 Send a prompt to the engine. If no daemon is running, one is auto-started. If no `--key` is provided, an ephemeral session is created, used, and cleaned up.
 
 ```bash
-ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMAT] [--key KEY] [--extension PATH] [--no-extensions]
+ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMAT] [--key KEY] [--extension PATH] [--no-extensions] [--attach] [--timeout DURATION]
 ```
 
 | Flag | Required | Default | Description |
@@ -80,6 +80,8 @@ ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMA
 | `--key` | No | (ephemeral) | Target session key |
 | `--extension` | No | -- | Path to extension directory |
 | `--no-extensions` | No | false | Skip all extensions for this prompt |
+| `--attach` | No | false | Stream output until idle (non-ephemeral sessions) |
+| `--timeout` | No | -- | Wall-clock deadline for the prompt (e.g. `60s`, `5m`, `2h`). When exceeded, the engine aborts the run and the CLI exits with code 124. |
 
 #### Output formats
 
@@ -106,6 +108,9 @@ ion prompt "hello" --output stream-json
 
 # Skip extensions
 ion prompt "hello" --no-extensions
+
+# CI/scripting: fail if not done in 5 minutes
+ion prompt "run the test suite" --timeout 5m
 ```
 
 ---
@@ -239,6 +244,8 @@ These flags are recognized by `ion prompt`. Other commands accept subsets as doc
 | `--key` | string | -- | Session key |
 | `--extension` | string | -- | Extension directory path (supports `~` expansion) |
 | `--no-extensions` | bool | false | Skip all extensions |
+| `--timeout` | duration | -- | Wall-clock deadline for `ion prompt` (e.g. `60s`, `5m`). Exit 124 on timeout. |
+| `--attach` | bool | false | Stream output until idle (keyed sessions) |
 
 ## Daemon auto-start
 
@@ -266,3 +273,4 @@ This makes `ion prompt` fully self-contained for one-shot use. For persistent se
 |------|---------|
 | 0 | Success |
 | 1 | Error (connection failed, invalid arguments, engine error) |
+| 124 | Timeout (prompt exceeded `--timeout` deadline) |

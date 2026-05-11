@@ -374,7 +374,8 @@ Dispatch a tool call from extension code through the same registry the LLM uses 
   "method": "ext/call_tool",
   "params": {
     "name": "Read",
-    "input": { "file_path": "/Users/you/project/README.md" }
+    "input": { "file_path": "/Users/you/project/README.md" },
+    "timeout": 120000
   }
 }
 ```
@@ -393,6 +394,8 @@ Dispatch a tool call from extension code through the same registry the LLM uses 
 ```
 
 `name` is required. `input` may be omitted or null and is treated as an empty object.
+
+`timeout` is optional. When set (in milliseconds), it overrides the default MCP/tool call timeout for this single invocation. Use this for long-running tools where you know the call will exceed the default timeout. Omit or set to `0` to use the default.
 
 The result mirrors what an LLM-issued tool call would receive. Permission `deny` decisions resolve with `{ content, isError: true }` describing the rule that fired. `ask` decisions auto-deny with the same shape -- extension calls cannot block on user elicitation, so the harness must configure an explicit allow rule for the specific tool to permit it from extension code.
 
@@ -479,4 +482,16 @@ Use standard JSON-RPC 2.0 error codes:
 
 ## Timeout
 
-The engine waits up to 30 seconds for each RPC response. If the extension does not respond within this window, the call fails with a timeout error and the engine continues without the extension's result.
+The engine waits up to 30 seconds by default for each RPC response. If the extension does not respond within this window, the call fails with a timeout error and the engine continues without the extension's result.
+
+This timeout is configurable via the `extensionRpcMs` field in `engine.json`:
+
+```json
+{
+  "timeouts": {
+    "extensionRpcMs": 60000
+  }
+}
+```
+
+See [engine.json Reference](../configuration/engine-json.md#timeouts) for all configurable timeouts.
