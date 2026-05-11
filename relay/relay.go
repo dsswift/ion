@@ -114,6 +114,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
+		CompressionMode:    websocket.CompressionContextTakeover,
 	})
 	if err != nil {
 		log.Printf("accept error: %v", err)
@@ -131,12 +132,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	switch role {
 	case "ion":
 		if ch.ion != nil {
-			_ = ch.ion.CloseNow()
+			_ = ch.ion.Close(websocket.StatusGoingAway, "replaced")
 		}
 		ch.ion = conn
 	case "mobile":
 		if ch.mobile != nil {
-			_ = ch.mobile.CloseNow()
+			_ = ch.mobile.Close(websocket.StatusGoingAway, "replaced")
 		}
 		ch.mobile = conn
 	}

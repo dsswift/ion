@@ -54,6 +54,7 @@ func dialWS(t *testing.T, server *httptest.Server, channelID, role, apiKey strin
 		HTTPHeader: http.Header{
 			"Authorization": []string{"Bearer " + apiKey},
 		},
+		CompressionMode: websocket.CompressionContextTakeover,
 	})
 	if err != nil {
 		t.Fatalf("dial failed: %v", err)
@@ -468,5 +469,31 @@ func TestLargeMessageForwarding(t *testing.T) {
 		if data[idx] != largeMsg[idx] {
 			t.Errorf("byte mismatch at index %d: got %d, want %d", idx, data[idx], largeMsg[idx])
 		}
+	}
+}
+
+func TestCompressionNegotiation(t *testing.T) {
+	apiKey := "test-key-compress"
+	server, _ := startTestRelay(t, apiKey)
+
+	// dialWS enables CompressionContextTakeover. If negotiation fails or
+	// corrupts data, this test will catch it.
+	ion := dialWS(t, server, "chan-compress", "ion", apiKey)
+	mobile := dialWS(t, server, "chan-compress", "mobile", apiKey)
+
+	// Consume peer-reconnected on ion.
+	readExpected(t, ion, "ion-ctrl")
+
+	// Send a highly compressible message (repetitive JSON keys).
+	msg := `{"event":"streaming","data":"` + strings.Repeat("abcdef1234", 500) + `"}`
+
+	ctx := context.Background()
+	if err := ion.Write(ctx, websocket.MessageText, []byte(msg)); err != nil {
+		t.Fatalf("compressed write failed: %v", err)
+	}
+
+	data := readExpected(t, mobile, "mobile-compressed")
+	if string(data) != msg {
+		t.Errorf("compressed message mismatch: got %d bytes, want %d bytes", len(data), len(msg))
 	}
 }
