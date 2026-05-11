@@ -319,6 +319,13 @@ func (s *Server) drainListener(lh *listenerHandle) {
 
 func (s *Server) handleClient(conn net.Conn) {
 	defer s.evictClient(conn)
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			utils.Error("Server", fmt.Sprintf("panic in handleClient: %v\n%s", r, buf[:n]))
+		}
+	}()
 
 	scanner := bufio.NewScanner(conn)
 	// Allow large messages (1MB)
@@ -348,6 +355,15 @@ func (s *Server) handleClient(conn net.Conn) {
 }
 
 func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			utils.Error("Server", fmt.Sprintf("panic in dispatch cmd=%s key=%s: %v\n%s", cmd.Cmd, cmd.Key, r, buf[:n]))
+			s.sendResult(conn, cmd, fmt.Errorf("internal error"), nil)
+		}
+	}()
+
 	utils.Debug("Server", fmt.Sprintf("dispatch: cmd=%s key=%s requestID=%s", cmd.Cmd, cmd.Key, cmd.RequestID))
 	switch cmd.Cmd {
 	case "start_session":
@@ -498,6 +514,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Run in a goroutine to avoid blocking the client's read loop
 		// while the LLM call is in flight.
 		go func(c net.Conn, command *protocol.ClientCommand) {
+			defer func() {
+				if r := recover(); r != nil {
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					utils.Error("Server", fmt.Sprintf("panic in generate_title: %v\n%s", r, buf[:n]))
+					s.sendResult(c, command, fmt.Errorf("internal error"), nil)
+				}
+			}()
 			title, err := titling.GenerateTitle(context.Background(), command.Text)
 			if err != nil {
 				s.sendResult(c, command, err, nil)
