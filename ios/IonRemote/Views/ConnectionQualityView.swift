@@ -13,7 +13,7 @@ struct ConnectionQualityView: View {
     @State private var showPopover = false
 
     var body: some View {
-        if viewModel.connectionState == .connected {
+        if viewModel.connectionState == .connected || viewModel.connectionState == .reconnecting {
             content
         } else {
             EmptyView()

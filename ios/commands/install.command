@@ -129,12 +129,15 @@ fi
 
 # ── Choose build strategy ──
 
+# Always resolve the legacy UDID for the install step.  ios-deploy uses
+# usbmuxd which needs the 40-char hex UDID, not the CoreDevice UUID.
+detect_legacy_udid
+
 if $TUNNEL_OK; then
   # CoreDevice tunnel works — build targeting the specific device
   DESTINATION="id=$DEVICE_ID"
 else
   # Tunnel broken — build for generic iOS and install separately
-  detect_legacy_udid
   if [[ -z "$LEGACY_UDID" ]] && ! command -v ios-deploy &>/dev/null; then
     echo
     echo "✗ CoreDevice tunnel is unavailable and no fallback install tool found."

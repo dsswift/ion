@@ -100,6 +100,8 @@ extension SessionViewModel {
 
     /// Disconnect from the current transport and wipe all transient state.
     func disconnect() {
+        reconnectSafetyTask?.cancel()
+        reconnectSafetyTask = nil
         eventTask?.cancel()
         eventTask = nil
         flushTask?.cancel()
@@ -107,6 +109,25 @@ extension SessionViewModel {
         transport?.stop()
         transport = nil
         wipeTransientState()
+    }
+
+    /// Start a safety timer that forces a full reconnect if the app stays
+    /// in `.reconnecting` for too long (e.g. the relay can't reach the peer).
+    func startReconnectSafetyTimer() {
+        reconnectSafetyTask?.cancel()
+        reconnectSafetyTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled, let self else { return }
+            if self.connectionState == .reconnecting {
+                self.reconnect()
+            }
+        }
+    }
+
+    /// Cancel the reconnect safety timer (called when we reach `.connected`).
+    func cancelReconnectSafetyTimer() {
+        reconnectSafetyTask?.cancel()
+        reconnectSafetyTask = nil
     }
 
     /// Clear all transient state (tabs, messages, etc.) to prevent stale data.

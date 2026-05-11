@@ -55,6 +55,7 @@
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
+		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
 		A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */; };
 		A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */; };
 		A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */; };
@@ -152,6 +153,7 @@
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Snapshot.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Send.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Receive.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Lifecycle.swift"; sourceTree = "<group>"; };
@@ -334,6 +336,7 @@
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
+				A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -507,6 +510,7 @@
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
+				A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */,
 				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
 				A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */,

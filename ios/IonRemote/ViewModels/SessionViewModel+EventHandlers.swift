@@ -38,13 +38,17 @@ extension SessionViewModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(16))
                 guard !Task.isCancelled, let self else { break }
-
                 let batch = await self.eventBatcher.drain()
-                if !batch.isEmpty {
-                    await MainActor.run {
-                        for event in batch {
-                            self.handleEvent(event)
-                        }
+                // Sync connectionQuality.transportState so signal bars update promptly.
+                let latestTransport = self.transport?.state ?? .disconnected
+                let needsStateSync = self.connectionQuality.transportState != latestTransport
+                guard !batch.isEmpty || needsStateSync else { continue }
+                await MainActor.run {
+                    for event in batch {
+                        self.handleEvent(event)
+                    }
+                    if needsStateSync {
+                        self.connectionQuality.transportState = latestTransport
                     }
                 }
             }
@@ -67,16 +71,20 @@ extension SessionViewModel {
             if connectionState == .connected {
                 connectionState = .reconnecting
             }
+            connectionQuality.transportState = transport?.state ?? .disconnected
 
         case .heartbeat(let senderTs, let buffered):
             connectionQuality.transportState = transport?.state ?? .disconnected
             connectionQuality.recordHeartbeat(senderTs: senderTs, buffered: buffered)
 
         case .peerDisconnected:
-            // Tear down and let the auto-retry in IonRemoteApp reconnect.
-            // connect() creates a relay-capable transport and starts Bonjour,
-            // so LAN auto-upgrade still works when the desktop comes back.
-            disconnect()
+            // Don't tear down the transport — the relay auto-reconnects and
+            // startRelayStateObservation re-sends sync when the peer returns.
+            if connectionState == .connected || connectionState == .connecting {
+                connectionState = .reconnecting
+                startReconnectSafetyTimer()
+            }
+            connectionQuality.transportState = transport?.state ?? .disconnected
 
         case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups):
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups)
@@ -300,99 +308,6 @@ extension SessionViewModel {
             pairedDevices[0].relayURL = relayUrl
             pairedDevices[0].relayAPIKey = relayApiKey
             savePairedDevices()
-        }
-    }
-
-    @MainActor
-    private func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?) {
-        if connectionState != .connected {
-            connectionState = .connected
-        }
-        connectionQuality.transportState = transport?.state ?? .disconnected
-        if !recentDirs.isEmpty {
-            recentDirectories = recentDirs
-        }
-        // Update tab group mode and groups from desktop
-        if let mode = groupMode {
-            tabGroupMode = mode
-        }
-        if let grps = groups {
-            tabGroups = grps
-        }
-        // Filter out tabs that iOS requested to close but hasn't received
-        // tab_closed confirmation for yet. Without this, the snapshot
-        // resurrects tabs that the user just swiped away.
-        let filteredTabs = snapshotTabs.filter { !pendingCloseTabIds.contains($0.id) }
-        // Preserve locally-injected permission queue entries that arrived
-        // via permission_request events. Snapshots pull the queue from the
-        // desktop renderer, which may have already auto-allowed tools like
-        // AskUserQuestion/ExitPlanMode (empty queue), while iOS still needs
-        // to show the card until the user taps an answer.
-        var merged = filteredTabs
-        for i in merged.indices {
-            let tabId = merged[i].id
-
-            // Strip ExitPlanMode/AskUserQuestion entries from the snapshot
-            // queue if the user already dismissed the card on this tab.
-            // The 5-second snapshot polling can re-inject stale entries
-            // from the desktop's permissionDenied before it's cleared.
-            if dismissedLiveSpecialTabs.contains(tabId) {
-                merged[i].permissionQueue.removeAll {
-                    $0.toolName == "ExitPlanMode" || $0.toolName == "AskUserQuestion"
-                }
-            }
-
-            if let existing = tabs.first(where: { $0.id == tabId }),
-               !existing.permissionQueue.isEmpty {
-                // Keep existing local queue entries that aren't in the snapshot
-                let snapshotIds = Set(merged[i].permissionQueue.map(\.questionId))
-                let isRunning = merged[i].status == .running
-                let localOnly = existing.permissionQueue.filter { entry in
-                    if snapshotIds.contains(entry.questionId) { return false }
-                    // Don't re-inject stale plan/question cards once a new task is running
-                    if isRunning && (entry.toolName == "ExitPlanMode" || entry.toolName == "AskUserQuestion") {
-                        return false
-                    }
-                    return true
-                }
-                merged[i].permissionQueue.append(contentsOf: localOnly)
-                // Prefer local entry when it has richer data (e.g. planContent from live event)
-                for local in existing.permissionQueue where snapshotIds.contains(local.questionId) {
-                    if local.toolInput?["planContent"]?.value as? String != nil,
-                       let idx = merged[i].permissionQueue.firstIndex(where: { $0.questionId == local.questionId }),
-                       merged[i].permissionQueue[idx].toolInput?["planContent"]?.value as? String == nil {
-                        merged[i].permissionQueue[idx] = local
-                    }
-                }
-            }
-        }
-        // Always prefer locally-tracked lastMessage over snapshot values.
-        // Real-time textChunk/messageAdded events update lastMessage on iOS
-        // faster than the 5-second snapshot poll, so the local value is
-        // always equal or fresher. The snapshot value is only used for
-        // initial population (when no local value exists yet).
-        for i in merged.indices {
-            if let existing = tabs.first(where: { $0.id == merged[i].id }),
-               existing.lastMessage != nil {
-                merged[i].lastMessage = existing.lastMessage
-            }
-        }
-        tabs = merged
-        tabIds = Set(merged.map(\.id))
-        // Populate terminal state from snapshot tab data
-        for tab in merged {
-            if tab.isTerminalOnly == true, let instances = tab.terminalInstances {
-                terminalInstances[tab.id] = instances
-                activeTerminalInstance[tab.id] = tab.activeTerminalInstanceId ?? instances.first?.id
-            }
-            // Populate engine instance state from snapshot tab data
-            if tab.isEngine == true, let instances = tab.engineInstances {
-                engineInstances[tab.id] = instances.map { EngineInstanceInfo(id: $0.id, label: $0.label) }
-                activeEngineInstance[tab.id] = tab.activeEngineInstanceId ?? instances.first?.id
-                ionLog.info("snapshot: engine tab \(tab.id.prefix(8)), instances=\(instances.map(\.id)), active=\(tab.activeEngineInstanceId ?? "nil")")
-                // Pre-load engine conversation history for all engine tabs
-                loadEngineConversation(tabId: tab.id)
-            }
         }
     }
 

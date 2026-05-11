@@ -122,9 +122,19 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		return
 	}
 
+	// Enable compression only for the desktop ("ion") role.  Apple's
+	// URLSessionWebSocketTask offers permessage-deflate in the handshake
+	// but its inflate implementation is broken for context-takeover mode,
+	// causing immediate "Protocol error" disconnects on every received
+	// frame.  Disabling compression for mobile avoids this.
+	compressionMode := websocket.CompressionDisabled
+	if role == "ion" {
+		compressionMode = websocket.CompressionContextTakeover
+	}
+
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
-		CompressionMode:    websocket.CompressionContextTakeover,
+		CompressionMode:    compressionMode,
 	})
 	if err != nil {
 		log.Printf("accept error: %v", err)

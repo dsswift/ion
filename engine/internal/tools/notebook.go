@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -204,8 +205,10 @@ func executeNotebook(ctx context.Context, input map[string]any, cwd string) (*ty
 		}
 
 		code := strings.Join(cell.Source, "")
-		cmd := exec.Command("python3", "-c", code)
+		cmd := exec.CommandContext(ctx, "python3", "-c", code)
 		cmd.Dir = cwd
+		configureProcGroup(cmd)
+		cmd.WaitDelay = 5 * time.Second
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return &types.ToolResult{

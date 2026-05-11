@@ -52,9 +52,12 @@ struct ContentView: View {
         Group {
             if viewModel.pairedDevices.isEmpty || viewModel.connectionState == .authFailed {
                 PairingView()
-            } else if viewModel.connectionState == .disconnected || viewModel.connectionState == .connecting || viewModel.connectionState == .reconnecting {
+            } else if viewModel.connectionState == .disconnected || viewModel.connectionState == .connecting {
                 disconnectedView
             } else {
+                // .connected and .reconnecting both show the tab list.
+                // During .reconnecting the transport stays alive and will
+                // auto-recover; the signal-quality bars give visual feedback.
                 TabListView()
             }
         }
@@ -98,15 +101,14 @@ struct ContentView: View {
                           viewModel.connectionState == .disconnected else { break }
                     viewModel.reconnect()
                 }
-            case .connecting, .reconnecting:
+            case .connecting:
                 // Break out of a stuck handshake after 15 seconds and keep retrying.
                 // Loop because reconnect() may batch .connecting→.disconnected→.connecting
                 // in a single SwiftUI update so .task(id:) wouldn't restart.
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15))
                     guard !Task.isCancelled,
-                          viewModel.connectionState == .connecting
-                              || viewModel.connectionState == .reconnecting else { return }
+                          viewModel.connectionState == .connecting else { return }
                     viewModel.reconnect()
                 }
             default:

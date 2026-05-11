@@ -61,6 +61,12 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 	// entire subprocess tree, not just the direct shell child.
 	configureProcGroup(cmd)
 
+	// WaitDelay bounds how long cmd.Wait() lingers after Cancel fires.
+	// Without it, Wait() blocks until all I/O pipes close -- an orphaned
+	// grandchild (daemon, setsid, changed PGID) that inherited stdout/stderr
+	// can hold pipes open indefinitely, wedging the goroutine forever.
+	cmd.WaitDelay = 5 * time.Second
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -135,7 +135,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Fire turn_start hook
 		if hooks.OnTurnStart != nil {
-			hooks.OnTurnStart(run.requestID, turn)
+			if _, err := runHookCtx(ctx, func() struct{} {
+				hooks.OnTurnStart(run.requestID, turn)
+				return struct{}{}
+			}); err != nil {
+				utils.Warn("ApiBackend", fmt.Sprintf("turn_start hook cancelled: runID=%s turn=%d", run.requestID, turn))
+				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
+				return
+			}
 		}
 
 		// Check budget
@@ -300,7 +307,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Fire turn_end hook
 		if hooks.OnTurnEnd != nil {
-			hooks.OnTurnEnd(run.requestID, turn)
+			if _, err := runHookCtx(ctx, func() struct{} {
+				hooks.OnTurnEnd(run.requestID, turn)
+				return struct{}{}
+			}); err != nil {
+				utils.Warn("ApiBackend", fmt.Sprintf("turn_end hook cancelled: runID=%s turn=%d", run.requestID, turn))
+				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
+				return
+			}
 		}
 
 		// Handle stop reason

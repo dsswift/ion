@@ -219,6 +219,8 @@ final class SessionViewModel {
     var transport: TransportManager?
     var eventTask: Task<Void, Never>?
     var flushTask: Task<Void, Never>?
+    /// Safety timer: if `.reconnecting` lingers too long, force a full reconnect.
+    var reconnectSafetyTask: Task<Void, Never>?
     let eventBatcher = EventBatcher()
     /// Standalone browser for pairing discovery (before a transport exists).
     private(set) var pairingBrowser = BonjourBrowser()
