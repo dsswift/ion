@@ -185,13 +185,25 @@ func (s *OAuthStore) load() {
 	s.tokens = tokens
 }
 
+// getOAuthStore returns the package-level singleton OAuthStore instance.
+// Multiple MCP connections share one store to avoid concurrent file I/O.
+var (
+	globalOAuthStore     *OAuthStore
+	globalOAuthStoreOnce sync.Once
+)
+
+func getOAuthStore() *OAuthStore {
+	globalOAuthStoreOnce.Do(func() { globalOAuthStore = NewOAuthStore() })
+	return globalOAuthStore
+}
+
 // resolveOAuthHeaders returns auth headers for a server, refreshing if needed.
 func resolveOAuthHeaders(serverName string, oauthConfig *OAuthConfig) map[string]string {
 	if oauthConfig == nil {
 		return nil
 	}
 
-	store := NewOAuthStore()
+	store := getOAuthStore()
 	token := store.GetToken(serverName)
 
 	// Try refresh if token is expired but refresh token exists.
