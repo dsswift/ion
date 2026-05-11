@@ -39,8 +39,9 @@ func DefaultSocketPath() string {
 const broadcastQueueSize = 256
 
 // broadcastWriteDeadline is how long a single per-client write may take before
-// the drainer treats the connection as dead and evicts it.
-const broadcastWriteDeadline = 5 * time.Second
+// the drainer treats the connection as dead and evicts it. Configurable via
+// TimeoutsConfig.BroadcastWrite().
+var broadcastWriteDeadline = 5 * time.Second
 
 // clientWriter owns a connected client's outbound queue. A drain goroutine
 // reads from queue and writes to conn under a per-write deadline. Slow or
@@ -83,6 +84,9 @@ type Server struct {
 func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	s.config = cfg
 	s.manager.SetConfig(cfg)
+	if cfg != nil && cfg.Timeouts != nil {
+		broadcastWriteDeadline = cfg.Timeouts.BroadcastWrite()
+	}
 }
 
 // SetVersion stores the engine binary version for the health command.

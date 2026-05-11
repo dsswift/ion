@@ -30,6 +30,9 @@ type RelayTransport struct {
 	apiKey    string
 	channelID string
 
+	// writeTimeout is the timeout for relay broadcast writes (default 10s).
+	writeTimeout time.Duration
+
 	// OnMessage is called for each non-control WebSocket message received
 	// from the relay (i.e. commands forwarded from the mobile peer).
 	// Must be set before calling Listen.
@@ -45,11 +48,17 @@ type RelayTransport struct {
 // NewRelayTransport creates a relay transport targeting the given WebSocket URL.
 func NewRelayTransport(url, apiKey, channelID string) *RelayTransport {
 	return &RelayTransport{
-		url:       url,
-		apiKey:    apiKey,
-		channelID: channelID,
-		done:      make(chan struct{}),
+		url:          url,
+		apiKey:       apiKey,
+		channelID:    channelID,
+		writeTimeout: 10 * time.Second,
+		done:         make(chan struct{}),
 	}
+}
+
+// SetWriteTimeout overrides the relay broadcast write timeout.
+func (r *RelayTransport) SetWriteTimeout(d time.Duration) {
+	r.writeTimeout = d
 }
 
 // Listen starts the WebSocket connection loop with reconnection.
@@ -208,7 +217,7 @@ func (r *RelayTransport) Broadcast(data []byte) {
 		return
 	}
 
-	writeCtx, writeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	writeCtx, writeCancel := context.WithTimeout(context.Background(), r.writeTimeout)
 	defer writeCancel()
 	err := conn.Write(writeCtx, websocket.MessageText, data)
 	if err != nil {

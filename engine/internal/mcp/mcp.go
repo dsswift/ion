@@ -74,7 +74,7 @@ func ListMcpResources(serverName string) ([]McpResource, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("MCP server %q not connected", serverName)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
 	return conn.ListResources(ctx)
 }
@@ -85,12 +85,26 @@ func ReadMcpResource(serverName, uri string) (*McpResourceContent, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("MCP server %q not connected", serverName)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
 	return conn.ReadResource(ctx, uri)
 }
 
-const mcpCallTimeout = 60 * time.Second
+const mcpCallTimeoutDefault = 60 * time.Second
+
+// DefaultCallTimeout is the fallback MCP tool call timeout when no per-server
+// override is configured. Set at startup from TimeoutsConfig.McpCall().
+var DefaultCallTimeout = mcpCallTimeoutDefault
+
+// DefaultMetadataTimeout is the timeout for MCP metadata operations
+// (initialize, listTools, listResources, readResource).
+var DefaultMetadataTimeout = 30 * time.Second
+
+// SetDefaultCallTimeout overrides the default MCP tool call timeout.
+func SetDefaultCallTimeout(d time.Duration) { DefaultCallTimeout = d }
+
+// SetDefaultMetadataTimeout overrides the default MCP metadata timeout.
+func SetDefaultMetadataTimeout(d time.Duration) { DefaultMetadataTimeout = d }
 
 // Connection is an active MCP server connection.
 type Connection struct {
@@ -202,7 +216,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 }
 
 func (c *Connection) initialize() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
 	resp, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
@@ -227,7 +241,7 @@ func (c *Connection) initialize() error {
 }
 
 func (c *Connection) listTools() ([]ToolDef, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
 	resp, err := c.call(ctx, "tools/list", nil)
 	if err != nil {
@@ -249,7 +263,7 @@ func (c *Connection) call(ctx context.Context, method string, params any) (json.
 
 	timeout := c.callTimeout
 	if timeout == 0 {
-		timeout = mcpCallTimeout
+		timeout = DefaultCallTimeout
 	}
 
 	id := c.nextID.Add(1)

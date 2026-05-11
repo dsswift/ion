@@ -20,6 +20,10 @@ const (
 	DefaultTimeout = 30 * time.Second
 )
 
+// ConfiguredDefaultTimeout overrides DefaultTimeout when set from TimeoutsConfig
+// at startup. A zero value means "use DefaultTimeout".
+var ConfiguredDefaultTimeout time.Duration
+
 // ExternalHookConfig defines a shell command triggered by an engine event.
 type ExternalHookConfig struct {
 	Command []string      `json:"command"`
@@ -66,6 +70,15 @@ func (m *ExternalHookManager) parseConfig(config map[string]interface{}) {
 	}
 }
 
+// effectiveDefaultTimeout returns ConfiguredDefaultTimeout when set,
+// otherwise DefaultTimeout.
+func effectiveDefaultTimeout() time.Duration {
+	if ConfiguredDefaultTimeout > 0 {
+		return ConfiguredDefaultTimeout
+	}
+	return DefaultTimeout
+}
+
 // parseHookEntry parses a single hook entry. Supports two formats:
 //   - Array format: ["cmd", "arg1", "arg2"] (fire-and-forget, default timeout)
 //   - Object format: {"command": ["cmd","arg"], "await": true, "timeout": 5000}
@@ -80,7 +93,7 @@ func (m *ExternalHookManager) parseHookEntry(entry interface{}) *ExternalHookCon
 		return &ExternalHookConfig{
 			Command: cmd,
 			Await:   false,
-			Timeout: DefaultTimeout,
+			Timeout: effectiveDefaultTimeout(),
 		}
 
 	case map[string]interface{}:
@@ -101,7 +114,7 @@ func (m *ExternalHookManager) parseHookEntry(entry interface{}) *ExternalHookCon
 		cfg := ExternalHookConfig{
 			Command: cmd,
 			Await:   false,
-			Timeout: DefaultTimeout,
+			Timeout: effectiveDefaultTimeout(),
 		}
 
 		if await, ok := v["await"].(bool); ok {

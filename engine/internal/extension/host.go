@@ -12,7 +12,8 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-const rpcCallTimeout = 30 * time.Second
+// defaultRPCTimeout is the compiled default for extension RPC calls.
+const defaultRPCTimeout = 30 * time.Second
 
 // Host manages extension subprocess lifecycle. It supports both in-process
 // extensions (Go functions registered directly on the SDK) and subprocess
@@ -24,6 +25,10 @@ type Host struct {
 	stdin   io.WriteCloser
 	stdout  *bufio.Scanner
 	cmd     *exec.Cmd
+
+	// rpcTimeout is the per-call timeout for extension RPC requests.
+	// Defaults to defaultRPCTimeout (30s), overridable via SetRPCTimeout.
+	rpcTimeout time.Duration
 
 	// writeMu serialises all writes to h.stdin so concurrent goroutines
 	// (send, sendResponse, sendNotification) cannot interleave NDJSON
@@ -118,8 +123,9 @@ func (h *Host) SetPersistentEmit(fn func(types.EngineEvent)) {
 // NewHost creates a new extension host with an empty SDK.
 func NewHost() *Host {
 	h := &Host{
-		sdk:     NewSDK(),
-		pending: make(map[int64]chan *jsonrpcResponse),
+		sdk:        NewSDK(),
+		pending:    make(map[int64]chan *jsonrpcResponse),
+		rpcTimeout: defaultRPCTimeout,
 	}
 	// Start IDs at 1 (0 is reserved/unused).
 	h.nextID.Store(1)
@@ -132,6 +138,11 @@ func NewHost() *Host {
 // SDK returns the underlying hook registry for direct registration.
 func (h *Host) SDK() *SDK {
 	return h.sdk
+}
+
+// SetRPCTimeout overrides the per-call timeout for extension RPC requests.
+func (h *Host) SetRPCTimeout(d time.Duration) {
+	h.rpcTimeout = d
 }
 
 // Name returns the extension's name as reported by the init handshake.

@@ -44,10 +44,16 @@ func newWSTransport(url string, headers map[string]string) (*wsTransport, error)
 	}, nil
 }
 
+// DefaultWriteTimeout is the MCP WebSocket write timeout.
+var DefaultWriteTimeout = 30 * time.Second
+
+// SetDefaultWriteTimeout overrides the default MCP WebSocket write timeout.
+func SetDefaultWriteTimeout(d time.Duration) { DefaultWriteTimeout = d }
+
 func (t *wsTransport) Send(msg json.RawMessage) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultWriteTimeout)
 	defer cancel()
 	return t.conn.Write(ctx, websocket.MessageText, msg)
 }
