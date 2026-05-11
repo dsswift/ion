@@ -23,6 +23,9 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 	group := extension.NewExtensionGroup()
 	for _, extPath := range overrides.Extensions {
 		host := extension.NewHost()
+		if m.config != nil && m.config.Timeouts != nil {
+			host.SetRPCTimeout(m.config.Timeouts.ExtensionRpc())
+		}
 		if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
 			hooks := make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
 			for i, h := range m.config.Enterprise.RequiredHooks {

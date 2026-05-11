@@ -38,6 +38,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor) func(extension.DispatchAgentOpts
 		var childExtHost *extension.Host
 		if opts.ExtensionDir != "" {
 			childExtHost = extension.NewHost()
+			if cfg := sa.EngineConfig(); cfg != nil && cfg.Timeouts != nil {
+				childExtHost.SetRPCTimeout(cfg.Timeouts.ExtensionRpc())
+			}
 			extCfg := &extension.ExtensionConfig{
 				ExtensionDir:     opts.ExtensionDir,
 				Model:            model,
