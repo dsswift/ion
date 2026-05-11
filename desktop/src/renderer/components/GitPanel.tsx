@@ -196,59 +196,73 @@ export function GitPanel() {
               >
                 {gitChangesTreeView ? <ListBullets size={11} /> : <TreeStructure size={11} />}
               </button>
-              <input
-                value={commitMsg}
-                onChange={(e) => setCommitMsg(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleCommit() }}
-                placeholder="Commit message..."
-                onClick={(e) => e.stopPropagation()}
-                className="text-[10px] bg-transparent outline-none rounded px-1.5"
-                style={{
-                  color: colors.textPrimary,
-                  border: `1px solid ${colors.containerBorder}`,
-                  height: 20,
-                  flex: '1 1 0',
-                  minWidth: 0,
-                  maxWidth: 160,
-                }}
-              />
-              <button
-                onClick={handleCommit}
-                disabled={!commitMsg.trim() || stagedCount === 0}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '0 2px',
-                  cursor: (!commitMsg.trim() || stagedCount === 0) ? 'not-allowed' : 'pointer',
-                  color: (!commitMsg.trim() || stagedCount === 0) ? colors.textMuted : colors.accent,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                title="Commit staged changes"
-              >
-                <Check size={13} weight="bold" />
-              </button>
-              <button
-                onClick={handleQuickCommit}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '0 2px',
-                  cursor: 'pointer',
-                  color: colors.textTertiary,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                title={commitCommand ? `Run: ${commitCommand}` : 'Let Ion commit'}
-              >
-                <Robot size={13} />
-              </button>
             </>
           )}
         </div>
         {changesOpen && (
-          <div style={{ height: changesContentHeight, overflow: 'auto' }}>
-            <GitChangesSection directory={directory} files={files} onRefresh={refresh} commitMsg={commitMsg} setCommitMsg={setCommitMsg} treeView={gitChangesTreeView} />
+          <div style={{ height: changesContentHeight, display: 'flex', flexDirection: 'column' }}>
+            {/* Commit input row */}
+            {files.length > 0 && (
+              <div
+                className="flex items-center gap-1 px-2.5"
+                style={{
+                  height: 28,
+                  flexShrink: 0,
+                  borderBottom: `1px solid ${colors.containerBorder}`,
+                  background: colors.surfacePrimary,
+                }}
+              >
+                <input
+                  value={commitMsg}
+                  onChange={(e) => setCommitMsg(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleCommit() }}
+                  placeholder="Commit message..."
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[10px] bg-transparent outline-none rounded px-1.5"
+                  style={{
+                    color: colors.textPrimary,
+                    border: `1px solid ${colors.containerBorder}`,
+                    height: 20,
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                />
+                <button
+                  onClick={handleCommit}
+                  disabled={!commitMsg.trim() || stagedCount === 0}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0 2px',
+                    cursor: (!commitMsg.trim() || stagedCount === 0) ? 'not-allowed' : 'pointer',
+                    color: (!commitMsg.trim() || stagedCount === 0) ? colors.textMuted : colors.accent,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Commit staged changes"
+                >
+                  <Check size={13} weight="bold" />
+                </button>
+                <button
+                  onClick={handleQuickCommit}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0 2px',
+                    cursor: 'pointer',
+                    color: colors.textTertiary,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title={commitCommand ? `Run: ${commitCommand}` : 'Let Ion commit'}
+                >
+                  <Robot size={13} />
+                </button>
+              </div>
+            )}
+            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              <GitChangesSection directory={directory} files={files} onRefresh={refresh} commitMsg={commitMsg} setCommitMsg={setCommitMsg} treeView={gitChangesTreeView} />
+            </div>
           </div>
         )}
       </div>
