@@ -32,7 +32,11 @@ func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.
 		return &types.ToolResult{Content: "Error: command is required", IsError: true}, nil
 	}
 
-	timeoutMs := intFromInput(input, "timeout", 120000)
+	defaultMs := int64(120000)
+	if t := types.TimeoutsFrom(ctx); t != nil && t.BashDefaultMs != 0 {
+		defaultMs = t.BashDefaultMs
+	}
+	timeoutMs := intFromInput(input, "timeout", int(defaultMs))
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 
 	ops := GetBashOperations()

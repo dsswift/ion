@@ -238,7 +238,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// partial text, then retry the turn (capped at 3 consecutive).
 		if stopReason == "" {
 			truncationRetries++
-			if truncationRetries > 3 {
+			maxTruncation := 3
+			if run.cfg != nil && run.cfg.Timeouts != nil {
+				maxTruncation = run.cfg.Timeouts.TruncationRetryLimit()
+			}
+			if truncationRetries > maxTruncation {
 				utils.Error("ApiBackend", fmt.Sprintf("stream truncated %d consecutive times, giving up: runID=%s", truncationRetries, run.requestID))
 				b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 					ErrorMessage: fmt.Sprintf("Stream truncated %d consecutive times. The provider may be experiencing issues.", truncationRetries),
