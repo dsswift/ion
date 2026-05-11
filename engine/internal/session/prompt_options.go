@@ -73,6 +73,9 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	if m.config.Limits.DisableMaxTokenContinue != nil && *m.config.Limits.DisableMaxTokenContinue {
 		opts.DisableMaxTokenContinue = true
 	}
+	if m.config.WebSearch != nil && m.config.WebSearch.Mode != "" {
+		opts.WebSearchMode = m.config.WebSearch.Mode
+	}
 }
 
 // resolveModelTier resolves model tier aliases (e.g. "fast" -> configured fast model).

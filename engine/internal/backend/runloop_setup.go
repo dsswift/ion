@@ -64,7 +64,11 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 		systemPrompt = opts.SystemPrompt
 	}
 	if opts.AppendSystemPrompt != "" {
-		systemPrompt += "\n\n" + opts.AppendSystemPrompt
+		// When AppendSystemPrompt is set, always rebuild from the explicit
+		// SystemPrompt base (or empty string). This prevents duplication
+		// when conv.System already contains content from a previous run.
+		base := opts.SystemPrompt // explicit override, or ""
+		systemPrompt = base + "\n\n" + opts.AppendSystemPrompt
 	}
 	if opts.PlanMode {
 		// Check extension hook for custom plan mode prompt
@@ -187,10 +191,32 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		toolDefs = filtered
 	}
 
-	// When provider supports server-side web search, swap client WebSearch for server tool
+	// Web search mode resolution: determine whether to use server-side
+	// (Anthropic built-in) or client-side (Brave/Tavily/SearXNG) web search.
 	var serverTools []map[string]any
 	providerID := provider.ID()
-	if providerID == "anthropic" || providerID == "vertex" {
+	supportsServer := providerID == "anthropic" || providerID == "vertex"
+	mode := opts.WebSearchMode
+	if mode == "" {
+		mode = "auto"
+	}
+
+	useServer := false
+	switch mode {
+	case "server":
+		useServer = supportsServer
+	case "client":
+		useServer = false
+	default: // "auto"
+		// Prefer client if a backend key is configured (better reliability:
+		// model gets a follow-up turn to process results). Fall back to
+		// server on Anthropic/Vertex when no client key is available.
+		if supportsServer && !tools.HasSearchBackend() {
+			useServer = true
+		}
+	}
+
+	if useServer {
 		filtered := toolDefs[:0]
 		for _, td := range toolDefs {
 			if td.Name != "WebSearch" {

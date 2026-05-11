@@ -402,6 +402,7 @@ type RunOptions struct {
 	DisableMaxTokenContinue bool         `json:"disableMaxTokenContinue,omitempty"`
 	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
 	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
+	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config
 }
 
 // StoredSessionInfo is metadata for a saved conversation on disk.

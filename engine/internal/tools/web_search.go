@@ -202,6 +202,12 @@ func resolveSearchBackend() SearchBackend {
 	return nil
 }
 
+// HasSearchBackend reports whether a client-side search backend is configured
+// via environment variables (BRAVE_SEARCH_API_KEY, TAVILY_API_KEY, or SEARXNG_URL).
+func HasSearchBackend() bool {
+	return resolveSearchBackend() != nil
+}
+
 // WebSearchTool returns a ToolDef that searches the web using a pluggable
 // backend (Brave, Tavily, or SearXNG).
 func WebSearchTool() *types.ToolDef {

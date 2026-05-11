@@ -75,6 +75,7 @@ type EngineRuntimeConfig struct {
 	FeatureFlags *FeatureFlagsConfig           `json:"featureFlags,omitempty"`
 	Relay        *RelayConfig                  `json:"relay,omitempty"`
 	Timeouts     *TimeoutsConfig               `json:"timeouts,omitempty"`
+	WebSearch    *WebSearchConfig              `json:"webSearch,omitempty"`
 	LogLevel     string                        `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
 }
 
@@ -291,4 +292,9 @@ type OtelConfig struct {
 	Headers            map[string]string `json:"headers,omitempty"`
 	ServiceName        string            `json:"serviceName,omitempty"`
 	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
+}
+
+// WebSearchConfig controls web search tool behavior.
+type WebSearchConfig struct {
+	Mode string `json:"mode,omitempty"` // "auto", "client", or "server"; default "auto"
 }
