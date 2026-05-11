@@ -173,7 +173,25 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
 			os.Exit(1)
 		}
-		attachStream(sock, key)
+		timedOut := attachStream(sock, key, timeout)
+		if timedOut {
+			if ephemeral {
+				_, _ = connectAndSend(sock, map[string]interface{}{
+					"cmd": "abort",
+					"key": key,
+				})
+				_, _ = connectAndSend(sock, map[string]interface{}{
+					"cmd": "stop_session",
+					"key": key,
+				})
+				if serverStarted {
+					_, _ = connectAndSend(sock, map[string]interface{}{
+						"cmd": "shutdown",
+					})
+				}
+			}
+			os.Exit(124)
+		}
 		return
 	}
 

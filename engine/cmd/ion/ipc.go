@@ -41,14 +41,21 @@ func connectAndSend(sock string, msg map[string]interface{}) (map[string]interfa
 	return nil, fmt.Errorf("connection closed before receiving response")
 }
 
-// attachStream connects to engine and streams all events to stdout.
-func attachStream(sock string, key string) {
+// attachStream connects to engine and streams all events to stdout. When
+// deadline is non-zero, the stream is bounded by that wall-clock timeout —
+// returns true if the deadline fired (caller should exit 124). A zero deadline
+// means "no limit".
+func attachStream(sock string, key string, deadline time.Duration) (timedOut bool) {
 	conn, err := net.Dial(dialNetwork(), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = conn.Close() }()
+
+	if deadline > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(deadline))
+	}
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -57,6 +64,13 @@ func attachStream(sock string, key string) {
 			fmt.Println(line)
 		}
 	}
+	if scanErr := scanner.Err(); scanErr != nil && deadline > 0 {
+		if netErr, ok := scanErr.(net.Error); ok && netErr.Timeout() {
+			fmt.Fprintf(os.Stderr, "\nTimeout: stream exceeded %s deadline\n", deadline)
+			return true
+		}
+	}
+	return false
 }
 
 // streamUntilIdle connects to the engine socket and streams text deltas to

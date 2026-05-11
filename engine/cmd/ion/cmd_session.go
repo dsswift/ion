@@ -50,7 +50,7 @@ func cmdStart(flags map[string]string, listFlags map[string][]string) {
 }
 
 func cmdAttach(flags map[string]string) {
-	attachStream(socketPath(), flags["key"])
+	attachStream(socketPath(), flags["key"], 0)
 }
 
 func cmdStatus() {
