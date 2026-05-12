@@ -1,5 +1,8 @@
 import Foundation
 import CryptoKit
+import os
+
+private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "lifecycle")
 
 // MARK: - Lifecycle
 
@@ -11,7 +14,7 @@ extension SessionViewModel {
         tearDownTransport()
 
         guard let device = activeDevice else {
-            print("[Ion] connect: no paired devices")
+            ionLog.warning("connect: no paired devices")
             return
         }
 
@@ -25,7 +28,7 @@ extension SessionViewModel {
            let url = URL(string: effectiveRelayURL),
            let host = url.host(percentEncoded: false),
            let port = url.port {
-            print("[Ion] connect: device=\(device.name) via LAN-only (\(host):\(port))")
+            ionLog.info("connect: device=\(device.name) via LAN-only (\(host):\(port))")
             restoreCachedLayout(for: device.id)
             connectLAN(host: host, port: UInt16(port))
             return
@@ -34,11 +37,11 @@ extension SessionViewModel {
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
 
-        print("[Ion] connect: device=\(device.name) relayURL=\(effectiveRelayURL) channelId=\(channelId.prefix(8))...")
+        ionLog.info("connect: device=\(device.name) relayURL=\(effectiveRelayURL) channelId=\(channelId.prefix(8))...")
 
         guard !effectiveRelayURL.isEmpty,
               let url = URL(string: effectiveRelayURL) else {
-            print("[Ion] connect: invalid or empty relay URL, aborting")
+            ionLog.error("connect: invalid or empty relay URL for device=\(device.name) apiKey=\(effectiveAPIKey), aborting")
             return
         }
 
@@ -68,6 +71,8 @@ extension SessionViewModel {
 
         guard let device = activeDevice else { return }
 
+        ionLog.info("connectLAN: device=\(device.name) host=\(host):\(port)")
+
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
         tm.deviceName = device.name
@@ -77,11 +82,13 @@ extension SessionViewModel {
         Task {
             let authed = await tm.startLANWithAuth(host: host, port: port)
             if authed {
+                ionLog.info("connectLAN: auth succeeded for \(device.name)")
                 await MainActor.run {
                     self.connectionState = .connected
                     self.send(.sync)
                 }
             } else {
+                ionLog.error("connectLAN: auth FAILED for \(device.name)")
                 await MainActor.run {
                     self.connectionState = .authFailed
                     self.transport?.stop()
@@ -102,6 +109,8 @@ extension SessionViewModel {
 
         let effectiveRelayURL = device.relayURL ?? relayURL
         let effectiveAPIKey = device.relayAPIKey ?? relayAPIKey
+
+        ionLog.info("softReconnect: device=\(device.name) apiKey=\(effectiveAPIKey) relayURL=\(effectiveRelayURL)")
 
         // LAN-only device: reconnect directly without a relay.
         if effectiveAPIKey == "lan-direct",
@@ -166,6 +175,7 @@ extension SessionViewModel {
     /// Switch to a different paired desktop.
     func switchToDevice(id: String) {
         guard id != activeDevice?.id else { return }
+        ionLog.info("switchToDevice: \(id)")
         disconnect()
         activeDeviceId = id
         restoreCachedLayout(for: id)

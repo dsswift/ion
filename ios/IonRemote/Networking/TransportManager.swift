@@ -157,6 +157,10 @@ final class TransportManager {
             startLANListener()
             startLANStateObservation()
             startNetworkMonitor()
+            // Start Bonjour browsing so the observation loop can auto-reconnect
+            // if this connection drops. In LAN-only mode (no relay), the browser
+            // wouldn't be started otherwise since start() is never called.
+            await MainActor.run { self.bonjour.startBrowsing() }
             startBonjourObservation()
             setState(.lanPreferred)
         } else {

@@ -310,6 +310,19 @@ extension SessionViewModel {
     @MainActor
     private func handleRelayConfig(relayUrl: String, relayApiKey: String) {
         // Desktop pushed updated relay config -- persist it for roaming.
+        // Guard: if the active device is a LAN-only pairing (apiKey "lan-direct")
+        // and the incoming config doesn't provide BOTH a relay URL and API key,
+        // keep the LAN-direct sentinel intact. Without this, a desktop with no
+        // relay would overwrite the "lan-direct" marker, breaking reconnects.
+        // A legitimate relay upgrade must provide both values.
+        if let device = activeDevice, device.relayAPIKey == "lan-direct" {
+            guard !relayUrl.isEmpty, !relayApiKey.isEmpty else {
+                print("[Ion] handleRelayConfig: ignoring incomplete relay config for LAN-direct device \(device.name)")
+                return
+            }
+            // Legitimate upgrade from LAN-direct to relay — fall through.
+        }
+
         self.relayURL = relayUrl
         self.relayAPIKey = relayApiKey
         if let device = activeDevice,

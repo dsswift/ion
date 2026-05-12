@@ -62,10 +62,16 @@ extension TransportManager {
             // Skip if cancelled (transport.stop() was called): yielding peerDisconnected
             // here would call disconnect() and clobber a new connection being set up.
             guard !Task.isCancelled else { return }
-            if let self, self.relay == nil || !(self.relay?.isConnected ?? false) {
+            guard let self else { return }
+            // If the LAN client already reconnected (Bonjour observation called
+            // startLANWithAuth which creates a new stream), don't emit
+            // peerDisconnected — the new connection is alive and a new listener
+            // task was started by that reconnection.
+            if self.lan.isConnected { return }
+            if self.relay == nil || !(self.relay?.isConnected ?? false) {
                 self.eventContinuation.yield(.peerDisconnected)
             }
-            self?.updateState()
+            self.updateState()
         }
     }
 
