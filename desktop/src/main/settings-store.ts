@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { log as _log } from './logger'
 import { atomicWriteFileSync } from './utils/atomicWrite'
-import { encryptSensitiveSettings, decryptSensitiveSettings, isSafeStorageReady } from './utils/secretStore'
+import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -45,9 +45,6 @@ export function writeSettings(data: Record<string, any>): void {
   if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
   const encrypted = encryptSensitiveSettings(data)
   atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(encrypted, null, 2), 0o600)
-  if (!isSafeStorageReady()) {
-    log('[Settings] safeStorage unavailable; secrets stored in plaintext (mode 0600)')
-  }
 }
 
 export function readEngineConfig(): Record<string, any> {
