@@ -33,6 +33,17 @@ struct EngineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Context usage bar
+            if let fields = viewModel.engineStatusFields[compoundKey] {
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(contextBarColor(fields.contextPercent))
+                        .frame(width: geo.size.width * min(CGFloat(fields.contextPercent) / 100, 1))
+                }
+                .frame(height: 3)
+                .background(Color(.tertiarySystemFill))
+            }
+
             // Engine instance bar (shown when multiple instances exist)
             if instances.count > 1 {
                 EngineInstanceBar(
@@ -55,8 +66,10 @@ struct EngineView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
+                .background(Capsule().fill(Color(.tertiarySystemFill)))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.ultraThinMaterial)
             }
 
             // Pinned prompt header
@@ -69,11 +82,11 @@ struct EngineView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                .font(.caption.monospaced())
+                .font(IonTheme.codeFont(size: 12))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.ultraThinMaterial)
+                .background(Color(.secondarySystemFill).opacity(0.7))
             }
 
             // Conversation messages area
@@ -113,7 +126,7 @@ struct EngineView: View {
                 VStack(spacing: 0) {
                     // Collapsible header
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(IonTheme.snappySpring) {
                             agentsPanelExpanded.toggle()
                         }
                     } label: {
@@ -166,17 +179,19 @@ struct EngineView: View {
             // Input bar
             HStack(spacing: 8) {
                 TextField("Send a prompt...", text: $promptText)
-                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
+                    .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(Color(.separator), lineWidth: 1))
                     .focused($isInputFocused)
-                    .onSubmit {
-                        submitPrompt()
-                    }
+                    .onSubmit { submitPrompt() }
 
                 Button {
                     submitPrompt()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
+                        .font(.title)
                         .foregroundStyle(.orange)
                 }
                 .disabled(promptText.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -218,8 +233,15 @@ struct EngineView: View {
     private func submitPrompt() {
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
+        Haptic.light()
         viewModel.submitEnginePrompt(tabId: tabId, text: promptText)
         promptText = ""
+    }
+
+    private func contextBarColor(_ percent: Double) -> Color {
+        if percent < 50 { return .green }
+        if percent < 80 { return .orange }
+        return .red
     }
 }
 

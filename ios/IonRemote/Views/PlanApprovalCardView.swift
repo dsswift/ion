@@ -14,10 +14,12 @@ struct PlanApprovalCardView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack(spacing: 6) {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
                 Text("Plan Ready")
-                    .font(.headline)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.green.opacity(0.15), in: Capsule())
                 Spacer()
                 if planContent != nil {
                     Button { showFullPlan = true } label: {
@@ -37,27 +39,32 @@ struct PlanApprovalCardView: View {
                 .frame(maxHeight: 300)
                 .background(Color(.tertiarySystemFill))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 8)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 8)
+                    }
+                )
             }
 
             // Action buttons
             Button {
-                triggerHaptic()
+                Haptic.medium()
                 implement()
             } label: {
                 Text("Implement")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 14)
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThickMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-        )
+        .cardStyle()
         .fullScreenCover(isPresented: $showFullPlan) {
             if let content = planContent {
                 PlanFullScreenView(content: content)
@@ -83,10 +90,5 @@ struct PlanApprovalCardView: View {
             .font(.caption)
             .textSelection(.enabled)
             .padding(8)
-    }
-
-    private func triggerHaptic() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
     }
 }

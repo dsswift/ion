@@ -22,7 +22,7 @@ struct AskUserQuestionCardView: View {
                 // Header
                 HStack(spacing: 6) {
                     Image(systemName: "questionmark.circle.fill")
-                        .foregroundStyle(Color(hex: 0x4ECDC4))
+                        .foregroundStyle(IonTheme.accent)
                     Text(data.header)
                         .font(.headline)
                 }
@@ -38,37 +38,29 @@ struct AskUserQuestionCardView: View {
                     ForEach(data.options, id: \.self) { option in
                         if let label = option["label"] {
                             Button {
-                                triggerHaptic()
+                                Haptic.medium()
                                 viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
                                 viewModel.sendPrompt(tabId: tabId, text: label)
                             } label: {
                                 Text(label)
                                     .font(.subheadline.weight(.medium))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(Color(hex: 0x4ECDC4))
+                            .clipShape(Capsule())
+                            .tint(IonTheme.accent)
                             .help(option["description"] ?? "")
                         }
                     }
                 }
             }
             .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.ultraThickMaterial)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-            )
+            .cardStyle()
         } else {
             // Fallback to generic card if question data can't be parsed
             PermissionCardGenericView(tabId: tabId, request: request)
         }
-    }
-
-    private func triggerHaptic() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
     }
 }
 

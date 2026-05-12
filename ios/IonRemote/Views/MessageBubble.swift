@@ -11,6 +11,8 @@ struct MessageBubble: View {
 
     @State private var isToolExpanded = false
     @State private var showRewindConfirm = false
+    @State private var showCopyButton = false
+    @State private var showCopiedCheck = false
 
     var body: some View {
         switch message.role {
@@ -23,6 +25,15 @@ struct MessageBubble: View {
         case .system:
             systemBubble
         }
+    }
+
+    // MARK: - Timestamp helper
+
+    private var relativeTimestamp: String {
+        let date = Date(timeIntervalSince1970: message.timestamp / 1000)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: - User
@@ -40,20 +51,34 @@ struct MessageBubble: View {
                     }
                     .foregroundStyle(.secondary)
                 }
-                MarkdownContentView(
-                    blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                HStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(IonTheme.accent)
+                        .frame(width: 2.5)
+                    MarkdownContentView(
+                        blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                    )
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .background(
+                    ZStack {
+                        Color(.tertiarySystemBackground)
+                        IonTheme.userBubbleTint
+                    }
                 )
-                .textSelection(.enabled)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(hex: 0x4ECDC4).opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
                 .overlay(
                     message.content.hasPrefix("! ")
-                        ? RoundedRectangle(cornerRadius: 12)
+                        ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
                             .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
                         : nil
                 )
+
+                Text(relativeTimestamp)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
             .padding(.trailing, 12)
             .padding(.vertical, 2)
@@ -97,27 +122,66 @@ struct MessageBubble: View {
 
     private var assistantBubble: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if !message.content.isEmpty {
-                MarkdownContentView(
-                    blocks: MarkdownBlockCache.shared.blocks(for: message.content)
-                )
-                .textSelection(.enabled)
+            ZStack(alignment: .bottomTrailing) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !message.content.isEmpty {
+                        MarkdownContentView(
+                            blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                        )
+                        .textSelection(.enabled)
+                    }
+
+                    // Blinking cursor for streaming
+                    if isRunning && message.isAssistant {
+                        RoundedRectangle(cornerRadius: 0.5)
+                            .fill(Color.primary)
+                            .frame(width: 2, height: 18)
+                            .modifier(BlinkingModifier())
+                    }
+                }
+
+                // Copy button overlay
+                if showCopyButton {
+                    Button {
+                        UIPasteboard.general.string = copyableContent ?? message.content
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showCopiedCheck = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            withAnimation { showCopiedCheck = false }
+                        }
+                    } label: {
+                        Image(systemName: showCopiedCheck ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .transition(.opacity)
+                    .padding(4)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: UIScreen.main.bounds.width * 0.92, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !showCopyButton else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showCopyButton = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    withAnimation(.easeOut(duration: 0.3)) { showCopyButton = false }
+                }
             }
 
-            // Blinking cursor for streaming
-            if isRunning && message.isAssistant {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.primary)
-                    .frame(width: 8, height: 16)
-                    .opacity(0.6)
-                    .modifier(BlinkingModifier())
-            }
+            Text(relativeTimestamp)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 4)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 12)
         .padding(.vertical, 2)
         .contextMenu {
@@ -139,60 +203,75 @@ struct MessageBubble: View {
 
     // MARK: - Tool
 
+    private var toolAccentColor: Color {
+        switch message.toolStatus {
+        case .running:  return .orange
+        case .completed: return .green
+        case .error:    return .red
+        case nil:       return .gray
+        }
+    }
+
     private var toolBubble: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isToolExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    toolStatusIcon
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(toolAccentColor)
+                .frame(width: 2)
 
-                    Text(message.toolName ?? "Tool")
-                        .font(.subheadline.monospaced())
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    Image(systemName: isToolExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            }
-            .buttonStyle(.plain)
-
-            if isToolExpanded {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let input = message.toolInput, !input.isEmpty {
-                        Text("Input:")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                        Text(input)
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
-                            .lineLimit(10)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    withAnimation(IonTheme.snappySpring) {
+                        isToolExpanded.toggle()
                     }
-                    if !message.content.isEmpty {
-                        Text(message.toolStatus == .error ? "Error:" : "Result:")
-                            .font(.caption.bold())
-                            .foregroundStyle(message.toolStatus == .error ? .red : .secondary)
-                        Text(message.content)
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
-                            .lineLimit(20)
-                            .foregroundStyle(message.toolStatus == .error ? .red : .primary)
+                } label: {
+                    HStack(spacing: 8) {
+                        toolStatusIcon
+
+                        Text(message.toolName ?? "Tool")
+                            .font(.subheadline.monospaced())
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        Image(systemName: isToolExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .buttonStyle(.plain)
+
+                if isToolExpanded {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let input = message.toolInput, !input.isEmpty {
+                            Text("Input:")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            Text(input)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .lineLimit(10)
+                        }
+                        if !message.content.isEmpty {
+                            Text(message.toolStatus == .error ? "Error:" : "Result:")
+                                .font(.caption.bold())
+                                .foregroundStyle(message.toolStatus == .error ? .red : .secondary)
+                            Text(message.content)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .lineLimit(20)
+                                .foregroundStyle(message.toolStatus == .error ? .red : .primary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
         .background(Color(.tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 12)
         .padding(.vertical, 1)
     }
@@ -222,30 +301,32 @@ struct MessageBubble: View {
     // MARK: - System
 
     private var systemBubble: some View {
-        HStack {
-            Spacer()
+        HStack(spacing: 8) {
+            VStack { Divider() }
             Text(message.content)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
-            Spacer()
+                .lineLimit(2)
+                .layoutPriority(1)
+            VStack { Divider() }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 6)
     }
 }
 
 // MARK: - BlinkingModifier
 
 struct BlinkingModifier: ViewModifier {
-    @State private var isVisible = true
+    @State private var pulse = false
 
     func body(content: Content) -> some View {
         content
-            .opacity(isVisible ? 1 : 0)
+            .opacity(pulse ? 0.3 : 1.0)
             .onAppear {
-                withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                    isVisible = false
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    pulse = true
                 }
             }
     }

@@ -6,7 +6,7 @@ import SwiftUI
 struct ActivityIndicatorView: View {
     let text: String
 
-    private let dotSize: CGFloat = 4 // matches desktop 4×4px dots
+    private let dotSize: CGFloat = 5 // matches desktop 4×4px dots (bumped to 5 for mobile)
     private let dotColor = Color(hex: 0xE8854A) // matches desktop statusRunning
 
     var body: some View {
@@ -21,9 +21,11 @@ struct ActivityIndicatorView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .background(Capsule().fill(Color(.tertiarySystemFill)))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
     }
 }
 
@@ -58,7 +60,7 @@ private struct BouncingDot: View {
     ///   80%–100%: hold at 0
     private static func yOffset(date: Date, delay: Double) -> CGFloat {
         let cycle = 1.2 // seconds — matches desktop
-        let peak: CGFloat = -3.5
+        let peak: CGFloat = -4.5
 
         // Seconds since reference, shifted by per-dot stagger
         let t = (date.timeIntervalSinceReferenceDate - delay)

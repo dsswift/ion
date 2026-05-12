@@ -10,6 +10,21 @@ struct ToolGroupView: View {
     var isTabRunning: Bool = false
 
     @State private var isExpanded = false
+    @State private var forceExpandAll: Bool?
+
+    // MARK: Composite accent color
+
+    private var compositeAccentColor: Color {
+        if tools.contains(where: { $0.toolStatus == .running }) {
+            return .orange
+        } else if tools.contains(where: { $0.toolStatus == .error }) {
+            return .red
+        } else if tools.allSatisfy({ $0.toolStatus == .completed }) {
+            return .green
+        } else {
+            return Color(.tertiaryLabel)
+        }
+    }
 
     // MARK: Body
 
@@ -25,46 +40,65 @@ struct ToolGroupView: View {
     // MARK: - Group card (2+ tools)
 
     private var groupCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header row — always visible.
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    compositeStatusIcon
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(compositeAccentColor)
+                .frame(width: 2)
 
-                    if isExpanded {
-                        Text("Used \(tools.count) tools")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text(toolGroupSummary(tools))
-                            .font(.subheadline.monospaced())
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 0) {
+                // Header row — always visible.
+                Button {
+                    withAnimation(IonTheme.snappySpring) {
+                        isExpanded.toggle()
                     }
+                } label: {
+                    HStack(spacing: 8) {
+                        compositeStatusIcon
 
-                    Spacer()
+                        if isExpanded {
+                            Text("Used \(tools.count) tools")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(toolGroupSummary(tools))
+                                .font(.subheadline.monospaced())
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            }
-            .buttonStyle(.plain)
+                        Spacer()
 
-            // Expanded: individual tool rows.
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(tools) { tool in
-                        ToolItemRow(message: tool)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .buttonStyle(.plain)
+
+                // Expanded: individual tool rows.
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(tools) { tool in
+                            ToolItemRow(message: tool, forceExpanded: forceExpandAll)
+                        }
+
+                        if tools.count >= 3 {
+                            Button {
+                                let newState = !(forceExpandAll ?? false)
+                                forceExpandAll = newState
+                            } label: {
+                                Text(forceExpandAll == true ? "Collapse all" : "Expand all")
+                                    .font(.caption2)
+                                    .foregroundStyle(IonTheme.accent)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
         .background(Color(.tertiarySystemFill))
@@ -105,12 +139,13 @@ struct ToolGroupView: View {
 /// description, and can be tapped to reveal input/output.
 private struct ToolItemRow: View {
     let message: Message
+    var forceExpanded: Bool? = nil
     @State private var isDetailExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(IonTheme.snappySpring) {
                     isDetailExpanded.toggle()
                 }
             } label: {
@@ -168,6 +203,13 @@ private struct ToolItemRow: View {
         // Subtle separator between items (except the last).
         Divider()
             .padding(.horizontal, 12)
+            .onChange(of: forceExpanded) { _, val in
+                if let v = val {
+                    withAnimation(IonTheme.snappySpring) {
+                        isDetailExpanded = v
+                    }
+                }
+            }
     }
 
     private var itemStatusIcon: some View {

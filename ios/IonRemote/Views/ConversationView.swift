@@ -128,8 +128,8 @@ struct ConversationView: View {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 36, height: 36)
-                            .background(.ultraThinMaterial)
+                            .frame(width: 40, height: 40)
+                            .background(.regularMaterial)
                             .clipShape(Circle())
                             .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                     }
@@ -137,7 +137,7 @@ struct ConversationView: View {
                     .transition(.opacity.combined(with: .scale))
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: isNearBottom)
+            .animation(IonTheme.snappySpring, value: isNearBottom)
 
             // Activity indicator — pinned above input, always visible
             if isRunning {
@@ -146,7 +146,8 @@ struct ConversationView: View {
 
             if let request = pendingPermission {
                 PermissionCardView(tabId: tabId, request: request)
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -159,7 +160,9 @@ struct ConversationView: View {
                         .font(.caption)
                 }
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 4)
+                .background(Capsule().fill(Color(.tertiarySystemFill)))
             }
 
             InputBar(tabId: tabId)
@@ -211,7 +214,10 @@ struct ConversationView: View {
                             Text(tab?.permissionMode == .plan ? "Plan" : "Auto")
                                 .font(.caption.weight(.medium))
                         }
-                        .foregroundStyle(tab?.permissionMode == .plan ? Color(hex: 0x2EB8A6) : .secondary)
+                        .foregroundStyle(tab?.permissionMode == .plan ? IonTheme.accent : .secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color(.tertiarySystemFill)))
                     }
                 }
             }
@@ -290,7 +296,7 @@ struct ConversationView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 4) {
+                LazyVStack(spacing: 6) {
                     // "Load more" button at the top
                     if viewModel.conversationHasMore[tabId] == true {
                         Button {
@@ -328,6 +334,22 @@ struct ConversationView: View {
                         .padding(.top, 40)
                     }
 
+                    // Empty conversation welcome state
+                    if conversationMessages.isEmpty && !isLoading && !loadFailed {
+                        VStack(spacing: 12) {
+                            Image("IonIcon")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 48, height: 48)
+                                .foregroundStyle(.tertiary)
+                            Text("Send a message to get started")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 80)
+                    }
+
                     // Messages (grouped)
                     ForEach(groupedItems) { item in
                         conversationItemView(item)
@@ -348,6 +370,7 @@ struct ConversationView: View {
                 .padding(.vertical)
                 .background(ScrollOffsetReader(isNearBottom: $isNearBottom))
             }
+            .scrollDismissesKeyboard(.interactively)
             .onAppear { scrollProxy = proxy }
         }
     }

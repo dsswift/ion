@@ -42,7 +42,7 @@ struct SlashCommandMenu: View {
             }
             .frame(maxHeight: 260)
             .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
             .shadow(color: .black.opacity(0.15), radius: 8, y: -2)
             .padding(.horizontal)
         }
@@ -78,9 +78,9 @@ struct SlashCommandMenu: View {
 
                     if !cmd.description.isEmpty {
                         Text(cmd.description)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
                 }
 
@@ -91,5 +91,6 @@ struct SlashCommandMenu: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
     }
 }

@@ -11,6 +11,7 @@ struct IonRemoteApp: App {
             ContentView()
                 .environment(viewModel)
                 .preferredColorScheme(.dark)
+                .tint(IonTheme.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
                 }
@@ -35,6 +36,8 @@ struct IonRemoteApp: App {
 
 struct ContentView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @State private var connectingElapsed: Int = 0
+    @State private var showTroubleshooting = false
 
     var body: some View {
         Group {
@@ -60,6 +63,9 @@ struct ContentView: View {
     private var disconnectedView: some View {
         VStack(spacing: 16) {
             Spacer()
+            Image(systemName: "bolt.shield.fill")
+                .font(.system(size: 50))
+                .foregroundStyle(IonTheme.accent)
             ProgressView()
                 .controlSize(.large)
             Text(viewModel.connectionState.label)
@@ -67,11 +73,45 @@ struct ContentView: View {
             Text("Waiting for Ion desktop...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if viewModel.connectionState == .connecting && connectingElapsed > 0 {
+                Text("Attempting connection… \(connectingElapsed)s")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
             Button("Retry") {
                 viewModel.reconnect()
             }
             .buttonStyle(.borderedProminent)
+            .tint(IonTheme.accent)
             .padding(.top, 8)
+            if connectingElapsed > 10 {
+                DisclosureGroup("Troubleshooting", isExpanded: $showTroubleshooting) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Make sure Ion desktop is running", systemImage: "desktopcomputer")
+                        Label("Check you're on the same network", systemImage: "wifi")
+                        Label("Try tapping Retry", systemImage: "arrow.clockwise")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+                .padding(.horizontal, 32)
+                .tint(.secondary)
+            }
+            if connectingElapsed > 10, viewModel.pairedDevices.count > 1 {
+                let others = viewModel.pairedDevices.filter { $0.id != viewModel.activeDeviceId }
+                if let other = others.first {
+                    Button {
+                        viewModel.switchToDevice(id: other.id)
+                        connectingElapsed = 0
+                    } label: {
+                        Label("Try \(other.name)", systemImage: "arrow.right.arrow.left")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(IonTheme.accent)
+                }
+            }
             Spacer()
             Button("Unpair and Start Over", role: .destructive) {
                 viewModel.resetAll()
@@ -91,12 +131,16 @@ struct ContentView: View {
                     viewModel.reconnect()
                 }
             case .connecting:
-                // Break out of a stuck handshake after 15 seconds and keep retrying.
+                connectingElapsed = 0
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(15))
+                    try? await Task.sleep(for: .seconds(1))
                     guard !Task.isCancelled,
                           viewModel.connectionState == .connecting else { return }
-                    viewModel.reconnect()
+                    connectingElapsed += 1
+                    if connectingElapsed >= 15 {
+                        viewModel.reconnect()
+                        connectingElapsed = 0
+                    }
                 }
             default:
                 break

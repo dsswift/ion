@@ -7,7 +7,7 @@ struct MarkdownContentView: View {
     let blocks: [MarkdownBlock]
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 14) {
+        LazyVStack(alignment: .leading, spacing: 16) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 blockView(block)
             }
@@ -51,7 +51,15 @@ struct MarkdownContentView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if level <= 2 {
-                Divider()
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(.separator), Color(.separator).opacity(0)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 0.5)
             }
         }
     }
@@ -79,26 +87,30 @@ struct MarkdownContentView: View {
         code: String
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let lang = language, !lang.isEmpty {
-                Text(lang)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+            HStack {
+                if let lang = language, !lang.isEmpty {
+                    Text(lang)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                CodeBlockCopyButton(code: code)
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
                     .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, language != nil ? 6 : 10)
+                    .padding(.vertical, 6)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color(.secondarySystemFill).opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Block quote
@@ -106,8 +118,8 @@ struct MarkdownContentView: View {
     private func blockQuoteView(text: AttributedString) -> some View {
         HStack(alignment: .top, spacing: 0) {
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color(hex: 0x4ECDC4).opacity(0.6))
-                .frame(width: 3)
+                .fill(IonTheme.accent.opacity(0.6))
+                .frame(width: 3.5)
 
             Text(text)
                 .foregroundStyle(.secondary)
@@ -165,7 +177,7 @@ struct MarkdownContentView: View {
 
                 ForEach(
                     Array(rows.enumerated()), id: \.offset
-                ) { _, row in
+                ) { rowIndex, row in
                     GridRow {
                         ForEach(0..<colCount, id: \.self) { col in
                             tableCellContent(
@@ -178,6 +190,11 @@ struct MarkdownContentView: View {
                             )
                         }
                     }
+                    .background(
+                        rowIndex.isMultiple(of: 2)
+                            ? Color(.tertiarySystemFill).opacity(0.5)
+                            : Color.clear
+                    )
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -237,5 +254,30 @@ struct MarkdownContentView: View {
     private var thematicBreakView: some View {
         Divider()
             .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Code block copy button
+
+private struct CodeBlockCopyButton: View {
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = code
+            copied = true
+            Haptic.light()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                copied = false
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.caption2)
+                .foregroundStyle(copied ? Color.green : Color(.tertiaryLabel))
+                .frame(width: 24, height: 24)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
     }
 }

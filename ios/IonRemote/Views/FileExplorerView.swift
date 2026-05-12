@@ -135,7 +135,7 @@ struct FileExplorerView: View {
 
     private func handleTap(_ entry: FsEntry) {
         guard entry.isDirectory else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(IonTheme.snappySpring) {
             if expandedPaths.contains(entry.path) {
                 expandedPaths.remove(entry.path)
             } else {
