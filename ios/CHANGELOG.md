@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.15.1](https://github.com/dsswift/ion/compare/ios-v1.15.0...ios-v1.15.1) (2026-05-12)
+
+### Bug Fixes
+
+* **ios:** raise WebSocket maximumMessageSize to 16 MiB ([066ec8a](https://github.com/dsswift/ion/commit/066ec8aa6d423ab251a1d1dad1a9795de4070782))
+* **ios:** remove redundant permission badge from tab rows ([8468566](https://github.com/dsswift/ion/commit/8468566326a4d77ab68030642f7f6d86cc97c138))
+
 ## [1.15.0](https://github.com/dsswift/ion/compare/ios-v1.14.2...ios-v1.15.0) (2026-05-12)
 
 ### Features
