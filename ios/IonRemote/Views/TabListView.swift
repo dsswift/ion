@@ -381,12 +381,6 @@ private struct TabRowView: View {
             }
 
             Spacer()
-
-            if !tab.permissionQueue.isEmpty && tab.status != .running {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 6, height: 6)
-            }
         }
         .padding(.vertical, 4)
     }
