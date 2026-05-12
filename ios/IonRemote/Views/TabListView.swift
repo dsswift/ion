@@ -4,6 +4,7 @@ struct TabListView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @State private var showSettings = false
     @State private var showNewTab = false
+    @State private var showPairingSheet = false
     @State private var navigationPath = NavigationPath()
     @State private var enginePickerDirectory: String? = nil
     @State private var renamingTabId: String?
@@ -83,7 +84,12 @@ struct TabListView: View {
                     }
                 }
             }
-            .navigationTitle("Ion")
+            .navigationTitle("")
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+                }
+            }
             .alert("Rename Tab", isPresented: .init(
                 get: { renamingTabId != nil },
                 set: { if !$0 { renamingTabId = nil } }
@@ -137,11 +143,6 @@ struct TabListView: View {
             .refreshable {
                 viewModel.sync()
             }
-            .onChange(of: viewModel.connectionState) { _, newState in
-                if newState == .disconnected {
-                    navigationPath = NavigationPath()
-                }
-            }
             .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
                 if let tabId {
                     navigationPath.append(tabId)
@@ -150,6 +151,9 @@ struct TabListView: View {
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showPairingSheet) {
+                PairingView()
             }
             .sheet(isPresented: $showNewTab) {
                 NavigationStack {
@@ -227,6 +231,9 @@ struct TabListView: View {
             }
         }
     }
+
+    // MARK: - Reconnecting Indicator
+
 
     /// Handle engine tab creation with profile selection.
     /// - 0 profiles: auto-create without a profileId (engine uses default)

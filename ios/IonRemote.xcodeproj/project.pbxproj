@@ -88,6 +88,9 @@
 		A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */; };
 		A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */; };
 		A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000901AA /* AppDelegate.swift */; };
+		A1B2C3D4E5F60001001000AA /* LayoutCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001001AA /* LayoutCache.swift */; };
+		A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */; };
+		A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -185,6 +188,9 @@
 		A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGrouping.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicatorView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001001001AA /* LayoutCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutCache.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPoller.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPickerMenu.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -277,6 +283,7 @@
 				A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */,
 				A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */,
 				A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */,
+				A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -323,6 +330,7 @@
 				A1B2C3D4E5F60001000701AA /* MessageBubble.swift */,
 				A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */,
 				A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */,
+				A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -380,6 +388,7 @@
 				A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */,
 				A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */,
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
+				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -552,6 +561,9 @@
 				A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */,
 				A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */,
 				A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */,
+				A1B2C3D4E5F60001001000AA /* LayoutCache.swift in Sources */,
+				A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */,
+				A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

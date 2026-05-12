@@ -185,6 +185,30 @@ final class SessionViewModel {
     var pairedDevices: [PairedDevice] = []
     var connectionState: ConnectionState = .disconnected
     var pairingState: PairingState = .idle
+
+    /// Which desktop is currently selected (persisted in UserDefaults).
+    var activeDeviceId: String? {
+        get { UserDefaults.standard.string(forKey: "activeDeviceId") }
+        set { UserDefaults.standard.set(newValue, forKey: "activeDeviceId") }
+    }
+
+    /// The currently active paired device, falling back to the first device.
+    var activeDevice: PairedDevice? {
+        if let id = activeDeviceId {
+            return pairedDevices.first { $0.id == id } ?? pairedDevices.first
+        }
+        return pairedDevices.first
+    }
+
+    /// True once we've received at least one snapshot (enables cached layout restoration).
+    var hasConnectedBefore: Bool = false
+
+    /// Online status of non-active paired devices (from relay polling).
+    /// Key: device ID. Value: true=online, false=offline, nil=unknown/error.
+    var deviceOnlineStatus: [String: Bool?] = [:]
+    /// Background task for periodic device status polling.
+    var deviceStatusTask: Task<Void, Never>?
+
     /// Recent base directories from the desktop, updated via snapshot events.
     var recentDirectories: [String] = []
     /// Tab ID to auto-navigate to after remote creation.
@@ -234,6 +258,28 @@ final class SessionViewModel {
     /// Navigate to a specific tab (e.g. from a push notification tap).
     func navigateToTab(_ tabId: String) {
         pendingNavigationTabId = tabId
+    }
+
+    /// Poll relay channel status for all non-active paired devices.
+    func pollDeviceStatus() {
+        let activeId = activeDevice?.id
+        let devices = pairedDevices.filter { $0.id != activeId }
+        guard !devices.isEmpty else { return }
+        Task {
+            for device in devices {
+                let relayUrl = device.relayURL ?? relayURL
+                let apiKey = device.relayAPIKey ?? relayAPIKey
+                let channelId = E2ECrypto.deriveChannelId(
+                    sharedSecret: SymmetricKey(data: device.sharedSecret)
+                )
+                let online = await PeerStatusPoller.checkDesktopOnline(
+                    relayURL: relayUrl, apiKey: apiKey, channelId: channelId
+                )
+                await MainActor.run {
+                    self.deviceOnlineStatus[device.id] = online
+                }
+            }
+        }
     }
 
     /// Compute the compound key for the active engine instance.
@@ -316,5 +362,7 @@ final class SessionViewModel {
 
     init() {
         loadPairedDevices()
+        // Restore hasConnectedBefore from UserDefaults
+        hasConnectedBefore = UserDefaults.standard.bool(forKey: "hasConnectedBefore")
     }
 }

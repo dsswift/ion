@@ -53,6 +53,10 @@ final class TransportManager {
 
     let sharedKey: SymmetricKey
     var deviceId: String?
+    /// Bonjour service name of the paired desktop (e.g. "MacBookPro").
+    /// Used to filter Bonjour discovery to the correct host when multiple
+    /// Ion instances are on the network.
+    var deviceName: String?
 
     // MARK: - Internals
 
@@ -284,14 +288,14 @@ final class TransportManager {
                 // browser once to force NWBrowser to re-discover services.
                 // NWBrowser can miss re-advertisements of a service with the
                 // same name after the old one disappears.
-                if needsConnect, hosts.first(where: { $0.kind == .ionDirect }) == nil, !didRestartBrowser {
+                if needsConnect, self.matchingLANHost(hosts) == nil, !didRestartBrowser {
                     didRestartBrowser = true
                     lastKnownCount = 0
                     await MainActor.run { self.bonjour.startBrowsing() }
                 }
 
                 if countChanged || needsConnect {
-                    if let host = hosts.first(where: { $0.kind == .ionDirect }),
+                    if let host = self.matchingLANHost(hosts),
                        !self.lan.isConnected {
                         self.currentLANHost = host
                         let authed = await self.startLANWithAuth(host: host.host, port: host.port)
@@ -318,6 +322,19 @@ final class TransportManager {
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
+    }
+
+    /// Find the Bonjour host that matches the active paired device.
+    /// When `deviceName` is set, only the host with a matching Bonjour service
+    /// name is returned. This prevents connecting to the wrong desktop when
+    /// multiple Ion instances are on the network.
+    private func matchingLANHost(_ hosts: [DiscoveredService]) -> DiscoveredService? {
+        let ionHosts = hosts.filter { $0.kind == .ionDirect }
+        if let name = deviceName {
+            return ionHosts.first { $0.name == name }
+        }
+        // Fallback: no name filter (single desktop / legacy).
+        return ionHosts.first
     }
 
     // MARK: - Network monitor

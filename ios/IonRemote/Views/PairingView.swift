@@ -225,8 +225,8 @@ struct PairingView: View {
                     }
                 }
             }
-            .onChange(of: viewModel.pairedDevices.count) { _, count in
-                if count > 0 { selectedService = nil }
+            .onChange(of: viewModel.pairedDevices.count) { oldCount, newCount in
+                if newCount > oldCount { selectedService = nil }
             }
             .task {
                 // Auto-attempt codeless recovery before showing code entry.

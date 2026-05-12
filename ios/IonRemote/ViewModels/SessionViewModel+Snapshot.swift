@@ -103,5 +103,20 @@ extension SessionViewModel {
         for tabId in loadingConversation {
             send(.loadConversation(tabId: tabId, before: conversationCursor[tabId]))
         }
+
+        // Cache layout for the active device so reconnects restore it.
+        if let deviceId = activeDevice?.id {
+            if !hasConnectedBefore {
+                hasConnectedBefore = true
+                UserDefaults.standard.set(true, forKey: "hasConnectedBefore")
+            }
+            LayoutCache.save(
+                deviceId: deviceId,
+                tabs: merged,
+                tabGroupMode: tabGroupMode,
+                tabGroups: tabGroups,
+                recentDirectories: recentDirectories
+            )
+        }
     }
 }

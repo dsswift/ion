@@ -21,6 +21,12 @@ final class LANClient {
     private var session: URLSession?
     private var intentionallyClosed = false
 
+    /// Monotonically increasing connection generation. Each `connect()` call
+    /// bumps this so that stale `receiveLoop` callbacks from a previous
+    /// URLSessionWebSocketTask can detect they belong to a superseded
+    /// connection and avoid finishing the current continuation.
+    private var connectionGen: UInt64 = 0
+
     /// Continuation for the current connection's message stream.
     /// Replaced on each `connect()` so old iterators terminate cleanly.
     private var messageContinuation: AsyncStream<Data>.Continuation?
@@ -59,6 +65,11 @@ final class LANClient {
         session?.invalidateAndCancel()
         session = nil
 
+        // Bump generation BEFORE creating the new stream so any in-flight
+        // callback from the old task sees a stale gen and bails out.
+        connectionGen &+= 1
+        let gen = connectionGen
+
         // Create a fresh stream for this connection.
         var continuation: AsyncStream<Data>.Continuation!
         self.messages = AsyncStream { continuation = $0 }
@@ -72,7 +83,7 @@ final class LANClient {
         self.task = wsTask
 
         wsTask.resume()
-        receiveLoop(wsTask)
+        receiveLoop(wsTask, gen: gen)
     }
 
     func disconnect() {
@@ -94,9 +105,16 @@ final class LANClient {
 
     // MARK: - Receive loop
 
-    private func receiveLoop(_ wsTask: URLSessionWebSocketTask) {
+    private func receiveLoop(_ wsTask: URLSessionWebSocketTask, gen: UInt64) {
         wsTask.receive { [weak self] result in
             guard let self else { return }
+
+            // If connect() was called again, this callback belongs to a
+            // superseded connection — drop it silently. Without this guard
+            // the old task's cancellation-failure fires handleDisconnect()
+            // which finishes the NEW connection's continuation, killing the
+            // listener stream ~100ms after auth.
+            guard gen == self.connectionGen else { return }
 
             switch result {
             case .success(let message):
@@ -111,15 +129,19 @@ final class LANClient {
                 @unknown default:
                     break
                 }
-                self.receiveLoop(wsTask)
+                self.receiveLoop(wsTask, gen: gen)
 
             case .failure:
-                self.handleDisconnect()
+                self.handleDisconnect(gen: gen)
             }
         }
     }
 
-    private func handleDisconnect() {
+    private func handleDisconnect(gen: UInt64) {
+        // Only act if this disconnect belongs to the current connection.
+        // A stale receiveLoop from a previous connect() must not touch
+        // the new connection's state or continuation.
+        guard gen == connectionGen else { return }
         isConnected = false
         task = nil
         session?.invalidateAndCancel()

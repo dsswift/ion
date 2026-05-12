@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showPairingSheet = false
     var body: some View {
         NavigationStack {
             List {
@@ -18,6 +19,9 @@ struct SettingsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showPairingSheet) {
+                PairingView()
             }
         }
     }
@@ -109,23 +113,37 @@ struct SettingsView: View {
     }
 
     private var pairedDevicesSection: some View {
-        Section("Paired Device") {
+        Section("Paired Desktops") {
             if viewModel.pairedDevices.isEmpty {
                 Text("No paired devices")
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(viewModel.pairedDevices) { device in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(device.name)
-                            .font(.headline)
-                        Text("Paired \(device.pairedAt.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let lastSeen = device.lastSeen {
-                            Text("Last seen \(lastSeen.formatted(.relative(presentation: .named)))")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                    let isActive = device.id == viewModel.activeDevice?.id
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(device.name)
+                                    .font(.headline)
+                                if isActive {
+                                    Text("Active")
+                                        .font(.caption2)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.green, in: Capsule())
+                                }
+                            }
+                            Text("Paired \(device.pairedAt.formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let lastSeen = device.lastSeen {
+                                Text("Last seen \(lastSeen.formatted(.relative(presentation: .named)))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
+                        Spacer()
                     }
                 }
                 .onDelete { offsets in
@@ -134,6 +152,12 @@ struct SettingsView: View {
                         viewModel.unpairDevice(device)
                     }
                 }
+            }
+
+            Button {
+                showPairingSheet = true
+            } label: {
+                Label("Pair New Desktop…", systemImage: "plus")
             }
         }
     }
@@ -151,7 +175,7 @@ struct SettingsView: View {
                 dismiss()
                 viewModel.resetAll()
             } label: {
-                Text("Unpair Device")
+                Text("Unpair All Devices")
             }
         }
     }

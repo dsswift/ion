@@ -5,7 +5,6 @@ struct IonRemoteApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var viewModel = SessionViewModel()
     @Environment(\.scenePhase) private var scenePhase
-    @State private var didGoToBackground = false
 
     var body: some Scene {
         WindowGroup {
@@ -19,24 +18,13 @@ struct IonRemoteApp: App {
                     switch newPhase {
                     case .active:
                         guard !viewModel.pairedDevices.isEmpty else { break }
-                        if didGoToBackground {
-                            didGoToBackground = false
-                            // Returning from a true app switch (went through .background).
-                            // disconnect() already fired; only reconnect if a retry loop
-                            // hasn't already started a new attempt.
-                            if viewModel.connectionState == .disconnected {
-                                viewModel.reconnect()
-                            }
-                        } else {
-                            // Returning from screen lock (.inactive only, no .background).
-                            // Reconnect on any non-connected state to recover silent relay drops.
-                            if viewModel.connectionState != .connected {
-                                viewModel.reconnect()
-                            }
-                        }
+                        // Resume transport without wiping state.
+                        viewModel.resumeTransport()
                     case .background:
-                        didGoToBackground = true
-                        viewModel.disconnect()
+                        // Stop transport but preserve all state (tabs, messages,
+                        // navigation, typed input) so the user returns to the
+                        // same view when the app foregrounds.
+                        viewModel.suspendTransport()
                     default:
                         break
                     }
@@ -52,12 +40,13 @@ struct ContentView: View {
         Group {
             if viewModel.pairedDevices.isEmpty || viewModel.connectionState == .authFailed {
                 PairingView()
-            } else if viewModel.connectionState == .disconnected || viewModel.connectionState == .connecting {
+            } else if !viewModel.hasConnectedBefore && viewModel.tabs.isEmpty
+                        && viewModel.connectionState != .connected {
+                // First launch with no cached data — show the connecting screen.
                 disconnectedView
             } else {
-                // .connected and .reconnecting both show the tab list.
-                // During .reconnecting the transport stays alive and will
-                // auto-recover; the signal-quality bars give visual feedback.
+                // Show tab list whenever we have data (live or cached).
+                // A reconnecting banner handles transient disconnects.
                 TabListView()
             }
         }
@@ -103,8 +92,6 @@ struct ContentView: View {
                 }
             case .connecting:
                 // Break out of a stuck handshake after 15 seconds and keep retrying.
-                // Loop because reconnect() may batch .connecting→.disconnected→.connecting
-                // in a single SwiftUI update so .task(id:) wouldn't restart.
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15))
                     guard !Task.isCancelled,

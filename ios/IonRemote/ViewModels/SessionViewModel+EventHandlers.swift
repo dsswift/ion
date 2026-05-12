@@ -20,16 +20,15 @@ extension SessionViewModel {
                 await self.eventBatcher.enqueue(event)
             }
 
-            // Stream ended naturally -- flush remaining events and wipe state.
-            // Skip if cancelled (disconnect/reconnect): connect() may have already
-            // advanced connectionState to .connecting and we must not clobber it.
+            // Stream ended naturally -- flush remaining events.
+            // Don't wipe state here: softReconnect keeps state alive.
+            // Only wipe if cancelled explicitly via disconnect().
             guard !Task.isCancelled else { return }
             let remaining = await self.eventBatcher.drain()
-            await MainActor.run {
-                for event in remaining {
-                    self.handleEvent(event)
+            if !remaining.isEmpty {
+                await MainActor.run {
+                    for event in remaining { self.handleEvent(event) }
                 }
-                self.wipeTransientState()
             }
         }
 
@@ -290,13 +289,22 @@ extension SessionViewModel {
 
     @MainActor
     private func handleUnpair() {
-        // Desktop revoked our pairing -- clear everything and return to discovery.
-        // Clear pairedDevices BEFORE disconnect so SwiftUI doesn't briefly show
-        // the disconnected view (which auto-triggers reconnect while devices exist).
-        pairedDevices = []
-        try? KeychainStore.deleteAll()
-        pairingState = .idle
-        disconnect()
+        // Desktop revoked our pairing -- remove only the active device.
+        if let device = activeDevice {
+            pairedDevices.removeAll { $0.id == device.id }
+            LayoutCache.delete(deviceId: device.id)
+        }
+        savePairedDevices()
+        if pairedDevices.isEmpty {
+            try? KeychainStore.deleteAll()
+            activeDeviceId = nil
+            pairingState = .idle
+            disconnect()
+        } else {
+            // Switch to the next available device.
+            let nextId = pairedDevices.first!.id
+            switchToDevice(id: nextId)
+        }
     }
 
     @MainActor
@@ -304,9 +312,10 @@ extension SessionViewModel {
         // Desktop pushed updated relay config -- persist it for roaming.
         self.relayURL = relayUrl
         self.relayAPIKey = relayApiKey
-        if !pairedDevices.isEmpty {
-            pairedDevices[0].relayURL = relayUrl
-            pairedDevices[0].relayAPIKey = relayApiKey
+        if let device = activeDevice,
+           let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
+            pairedDevices[idx].relayURL = relayUrl
+            pairedDevices[idx].relayAPIKey = relayApiKey
             savePairedDevices()
         }
     }
