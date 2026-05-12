@@ -92,6 +92,19 @@ func (h *Hub) ChannelCount() int {
 	return len(h.channels)
 }
 
+// ChannelStatus returns whether the ion and mobile roles are connected for a channel.
+func (h *Hub) ChannelStatus(channelID string) (ionConnected, mobileConnected bool) {
+	h.mu.RLock()
+	ch, ok := h.channels[channelID]
+	h.mu.RUnlock()
+	if !ok {
+		return false, false
+	}
+	ch.mu.Lock()
+	defer ch.mu.Unlock()
+	return ch.ion != nil, ch.mobile != nil
+}
+
 // controlMessage is a relay-originated control frame.
 type controlMessage struct {
 	Type string `json:"type"`

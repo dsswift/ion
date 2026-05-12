@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -102,6 +103,19 @@ func main() {
 		}
 
 		hub.HandleWebSocket(w, r, channelID, role, pusher)
+	})
+
+	mux.HandleFunc("GET /v1/channel/{channelId}/status", func(w http.ResponseWriter, r *http.Request) {
+		if !auth.Validate(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		channelID := r.PathValue("channelId")
+		ion, mobile := hub.ChannelStatus(channelID)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]bool{"ion": ion, "mobile": mobile}); err != nil {
+			log.Printf("channel status: encode error: %v", err)
+		}
 	})
 
 	server := &http.Server{
