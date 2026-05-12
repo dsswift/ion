@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.20.0](https://github.com/dsswift/ion/compare/desktop-v1.19.0...desktop-v1.20.0) (2026-05-12)
+
+### Features
+
+* **desktop:** add two-tier secret encryption at rest ([ec22e54](https://github.com/dsswift/ion/commit/ec22e54f3b168d2fc8d68fa29160df10a27b281d))
+
 ## [1.19.0](https://github.com/dsswift/ion/compare/desktop-v1.18.1...desktop-v1.19.0) (2026-05-11)
 
 ### Features
