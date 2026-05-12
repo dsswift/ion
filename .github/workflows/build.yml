@@ -294,7 +294,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
 
           # Extract signing identity name for electron-builder
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' | sed 's/^Developer ID Application: //')
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
           rm -f "$CERT_FILE"
