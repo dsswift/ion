@@ -104,7 +104,37 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'creat
 
 export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type: 'create_terminal_tab' }>): Promise<void> {
   const tabId = await createTabFromCommand(cmd, 'createTerminalTab')
-  if (tabId) notifyTabCreated(tabId)
+  if (tabId) {
+    // Eagerly create a terminal instance + PTY so remote clients can use it
+    // without waiting for the desktop renderer to navigate to this tab.
+    try {
+      const escaped = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const instance = await state.mainWindow?.webContents.executeJavaScript(`
+        (function() {
+          var store = window.__Ion_SESSION_STORE__;
+          if (!store) return null;
+          var id = store.getState().addTerminalInstance('${escaped}', 'user');
+          var pane = store.getState().terminalPanes.get('${escaped}');
+          if (!pane) return null;
+          var inst = pane.instances.find(function(i) { return i.id === id; });
+          if (!inst) return null;
+          return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
+        })()
+      `)
+      if (instance) {
+        const key = `${tabId}:${instance.id}`
+        terminalManager.create(key, instance.cwd || cmd.workingDirectory || '~')
+        state.remoteTransport?.send({
+          type: 'terminal_instance_added',
+          tabId,
+          instance: { id: instance.id, label: instance.label || 'Shell', kind: instance.kind || 'user', readOnly: false, cwd: instance.cwd || '' },
+        })
+      }
+    } catch (err) {
+      log(`create_terminal_tab: instance creation error: ${(err as Error).message}`)
+    }
+    notifyTabCreated(tabId)
+  }
 }
 
 export async function handleCreateEngineTab(cmd: Extract<RemoteCommand, { type: 'create_engine_tab' }>): Promise<void> {

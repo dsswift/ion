@@ -26,10 +26,17 @@ export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { ty
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
-        return store.getState().addTerminalInstance('${escaped}', 'user');
+        var id = store.getState().addTerminalInstance('${escaped}', 'user');
+        var pane = store.getState().terminalPanes.get('${escaped}');
+        if (!pane) return null;
+        var inst = pane.instances.find(function(i) { return i.id === id; });
+        if (!inst) return null;
+        return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
       })()
     `)
     if (result) {
+      const key = `${cmd.tabId}:${result.id}`
+      terminalManager.create(key, result.cwd || '~')
       state.remoteTransport?.send({
         type: 'terminal_instance_added',
         tabId: cmd.tabId,
