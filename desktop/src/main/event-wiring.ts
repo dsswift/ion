@@ -36,6 +36,10 @@ export function wireEngineBridgeEvents(): void {
       const instanceId = key.split(':')[1] || null
       state.remoteTransport.send({ type: `engine_${event.type.replace('engine_', '')}`, tabId, instanceId, ...event })
     }
+    // Auto-reconcile on event drops so state self-heals
+    if (event.type === 'engine_events_dropped') {
+      engineBridge.sendReconcileState(key)
+    }
   })
 }
 

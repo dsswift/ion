@@ -450,6 +450,11 @@ export class EngineBridge extends EventEmitter {
     return result.data?.title || ''
   }
 
+  sendReconcileState(key: string): void {
+    log(`sendReconcileState: key=${key}`)
+    this._send({ cmd: 'reconcile_state', key })
+  }
+
   stopByPrefix(prefix: string): void {
     for (const key of this.activeSessions.keys()) {
       if (key.startsWith(prefix)) this.activeSessions.delete(key)
