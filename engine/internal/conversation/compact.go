@@ -124,6 +124,10 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 
 // MicroCompact progressively shrinks older messages to reduce context size.
 // Pass 1: replaces tool_result content >100 chars with "[cleared]".
+//
+//	Image blocks (type "image") are never cleared — they carry vision data
+//	that cannot be meaningfully summarised as text.
+//
 // Pass 2 (when pass 1 returns 0): also truncates long assistant text blocks.
 // Returns the number of blocks modified.
 func MicroCompact(conv *Conversation, keepTurns int) int {
@@ -151,6 +155,9 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 			continue
 		}
 		for j := range blocks {
+			if blocks[j].Type == "image" {
+				continue // never clear vision data
+			}
 			if blocks[j].Type == "tool_result" && len(blocks[j].Content) > 100 {
 				blocks[j].Content = "[cleared]"
 				cleared++

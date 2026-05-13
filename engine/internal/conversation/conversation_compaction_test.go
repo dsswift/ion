@@ -510,3 +510,108 @@ func TestGetContextUsage_ExactThreshold(t *testing.T) {
 		t.Errorf("expected 100%% at exact limit, got %d", info.Percent)
 	}
 }
+
+func TestMicroCompact_SkipsImageBlocks(t *testing.T) {
+	conv := CreateConversation("micro-image", "", "claude-3")
+
+	longContent := strings.Repeat("x", 200)
+
+	// Old turn with tool_result + image blocks
+	conv.Messages = append(conv.Messages, types.LlmMessage{
+		Role: "user",
+		Content: []types.LlmContentBlock{
+			{Type: "tool_result", ToolUseID: "tu_1", Content: longContent},
+			{Type: "image", Source: &types.ImageSource{
+				Type: "base64", MediaType: "image/png", Data: strings.Repeat("A", 500),
+			}},
+		},
+	})
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "done"})
+
+	// Recent turn
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "next"})
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "ok"})
+
+	cleared := MicroCompact(conv, 1)
+	if cleared != 1 {
+		t.Fatalf("expected 1 cleared (tool_result only), got %d", cleared)
+	}
+
+	blocks := conv.Messages[0].Content.([]types.LlmContentBlock)
+	// tool_result should be cleared
+	if blocks[0].Content != "[cleared]" {
+		t.Errorf("expected tool_result to be cleared, got %q", blocks[0].Content)
+	}
+	// image block should be preserved
+	if blocks[1].Type != "image" {
+		t.Error("image block type should be preserved")
+	}
+	if blocks[1].Source == nil || blocks[1].Source.Data == "" {
+		t.Error("image block source data should be preserved")
+	}
+}
+
+func TestAddToolResults_DeepCopy(t *testing.T) {
+	conv := CreateConversation("deep-copy", "", "claude-3")
+
+	longContent := strings.Repeat("z", 200)
+	AddToolResults(conv, []ToolResultEntry{
+		{ToolUseID: "tu_1", Content: longContent},
+	})
+
+	// Simulate MicroCompact clearing the Messages copy
+	msgBlocks := conv.Messages[0].Content.([]types.LlmContentBlock)
+	msgBlocks[0].Content = "[cleared]"
+
+	// Entry copy should be unaffected
+	md := asMessageData(conv.Entries[0].Data)
+	if md == nil {
+		t.Fatal("expected MessageData in entry")
+	}
+	entryBlocks, ok := md.Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatal("expected []LlmContentBlock in entry content")
+	}
+	if entryBlocks[0].Content == "[cleared]" {
+		t.Error("entry should NOT be affected by Message mutation (deep copy)")
+	}
+	if entryBlocks[0].Content != longContent {
+		t.Errorf("expected original content in entry, got %q", entryBlocks[0].Content)
+	}
+}
+
+func TestAddToolResults_WithImages(t *testing.T) {
+	conv := CreateConversation("tool-images", "", "claude-3")
+
+	AddToolResults(conv, []ToolResultEntry{
+		{
+			ToolUseID: "tu_1",
+			Content:   "[Image: test.png]",
+			Images: []*types.ImageSource{
+				{Type: "base64", MediaType: "image/png", Data: "iVBOR..."},
+			},
+		},
+	})
+
+	if len(conv.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(conv.Messages))
+	}
+
+	blocks, ok := conv.Messages[0].Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatal("expected []LlmContentBlock")
+	}
+	// Should have tool_result + image blocks
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (tool_result + image), got %d", len(blocks))
+	}
+	if blocks[0].Type != "tool_result" {
+		t.Errorf("first block type = %q, want tool_result", blocks[0].Type)
+	}
+	if blocks[1].Type != "image" {
+		t.Errorf("second block type = %q, want image", blocks[1].Type)
+	}
+	if blocks[1].Source == nil || blocks[1].Source.MediaType != "image/png" {
+		t.Error("image block should carry image source data")
+	}
+}
