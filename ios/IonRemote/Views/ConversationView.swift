@@ -53,6 +53,13 @@ struct ConversationView: View {
         return "Thinking…"
     }
 
+    /// True when the engine is actively compacting context.
+    /// Detected from the last system message being a compacting marker,
+    /// or from a snapshot that included compacting status.
+    private var isCompacting: Bool {
+        currentActivity.hasPrefix("Compacting")
+    }
+
     private var pendingPermission: PermissionRequest? {
         if let queue = tab?.permissionQueue {
             // ExitPlanMode cards should only show when the tab is no longer running
@@ -141,7 +148,10 @@ struct ConversationView: View {
 
             // Activity indicator — pinned above input, always visible
             if isRunning {
-                ActivityIndicatorView(text: currentActivity)
+                ActivityIndicatorView(
+                    text: currentActivity,
+                    dotColorOverride: isCompacting ? .blue : nil
+                )
             }
 
             if let request = pendingPermission {
@@ -412,6 +422,10 @@ struct ConversationView: View {
         case .toolGroup(let tools):
             ToolGroupView(tools: tools, isTabRunning: isRunning)
                 .id(item.id)
+
+        case .compaction(let message):
+            CompactionRowView(message: message)
+                .id(message.id)
         }
     }
 }

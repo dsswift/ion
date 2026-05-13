@@ -10,6 +10,7 @@ enum ConversationItem: Identifiable {
     case assistant(Message)
     case system(Message)
     case toolGroup([Message])
+    case compaction(Message)
 
     var id: String {
         switch self {
@@ -19,6 +20,7 @@ enum ConversationItem: Identifiable {
         case .toolGroup(let msgs):
             // Stable ID based on the first tool in the group.
             return "tg-\(msgs.first?.id ?? "empty")"
+        case .compaction(let m): return m.id
         }
     }
 }
@@ -46,7 +48,12 @@ func groupConversationItems(_ messages: [Message]) -> [ConversationItem] {
             switch msg.role {
             case .user:      result.append(.user(msg))
             case .assistant: result.append(.assistant(msg))
-            case .system:    result.append(.system(msg))
+            case .system:
+                if msg.content.hasPrefix("[Compaction]") {
+                    result.append(.compaction(msg))
+                } else {
+                    result.append(.system(msg))
+                }
             case .tool:      break // already handled above
             }
         }

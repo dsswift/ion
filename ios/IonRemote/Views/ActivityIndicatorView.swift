@@ -5,9 +5,12 @@ import SwiftUI
 /// bouncing dots + currentActivity text like "Thinking…" or "Running Bash…").
 struct ActivityIndicatorView: View {
     let text: String
+    var dotColorOverride: Color? = nil
 
     private let dotSize: CGFloat = 5 // matches desktop 4×4px dots (bumped to 5 for mobile)
-    private let dotColor = Color(hex: 0xE8854A) // matches desktop statusRunning
+    private let defaultDotColor = Color(hex: 0xE8854A) // matches desktop statusRunning
+
+    private var dotColor: Color { dotColorOverride ?? defaultDotColor }
 
     var body: some View {
         HStack(spacing: 6) {
