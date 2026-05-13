@@ -1,7 +1,12 @@
 {
   "normalizedEvents": {
     "compacting": [
-      "active"
+      "active",
+      "clearedBlocks",
+      "messagesAfter",
+      "messagesBefore",
+      "strategy",
+      "summary"
     ],
     "error": [
       "errorCode",
