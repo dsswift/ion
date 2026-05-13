@@ -83,9 +83,14 @@ function getStatusSuffix(agent: AgentStateUpdate): string {
 
 function formatDuration(secs: number): string {
   if (secs < 60) return `${secs}s`
-  const m = Math.floor(secs / 60)
-  const s = secs % 60
-  return `${m}m ${s}s`
+  if (secs < 3600) {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return `${m}m ${s}s`
+  }
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  return `${h}h ${m}m`
 }
 
 function DurationDisplay({ startTime, elapsed, status }: { startTime?: number; elapsed?: number; status: string }) {
