@@ -95,9 +95,10 @@ type ContextUsageInfo struct {
 
 // ToolResultEntry is a tool result to add as a user message.
 type ToolResultEntry struct {
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	IsError   bool   `json:"is_error,omitempty"`
+	ToolUseID string              `json:"tool_use_id"`
+	Content   string              `json:"content"`
+	IsError   bool                `json:"is_error,omitempty"`
+	Images    []*types.ImageSource `json:"images,omitempty"` // vision images to attach alongside text
 }
 
 // ContextFile is a discovered context file on disk.
@@ -184,21 +185,33 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 }
 
 // AddToolResults appends tool results as a user message with tool_result content blocks.
+// When a result includes images, each image is emitted as a separate image block
+// immediately after the tool_result block so the LLM can see the visual content.
 func AddToolResults(conv *Conversation, results []ToolResultEntry) {
-	blocks := make([]types.LlmContentBlock, len(results))
-	for i, r := range results {
+	var blocks []types.LlmContentBlock
+	for _, r := range results {
 		isErr := r.IsError
-		blocks[i] = types.LlmContentBlock{
+		blocks = append(blocks, types.LlmContentBlock{
 			Type:      "tool_result",
 			ToolUseID: r.ToolUseID,
 			Content:   r.Content,
 			IsError:   &isErr,
+		})
+		for _, img := range r.Images {
+			blocks = append(blocks, types.LlmContentBlock{
+				Type:   "image",
+				Source: img,
+			})
 		}
 	}
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+		// Deep-copy blocks so MicroCompact mutations on conv.Messages
+		// cannot corrupt the persisted entry history.
+		entryCopy := make([]types.LlmContentBlock, len(blocks))
+		copy(entryCopy, blocks)
+		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy})
 	}
 }
 
