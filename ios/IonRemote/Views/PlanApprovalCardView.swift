@@ -5,6 +5,7 @@ struct PlanApprovalCardView: View {
     let tabId: String
     let request: PermissionRequest
     @State private var showFullPlan = false
+    @State private var implementOnDismiss = false
 
     private var planContent: String? {
         request.toolInput?["planContent"]?.value as? String
@@ -65,23 +66,30 @@ struct PlanApprovalCardView: View {
         }
         .padding()
         .cardStyle()
-        .fullScreenCover(isPresented: $showFullPlan) {
+        .fullScreenCover(isPresented: $showFullPlan, onDismiss: {
+            if implementOnDismiss {
+                implementOnDismiss = false
+                implement()
+            }
+        }) {
             if let content = planContent {
-                PlanFullScreenView(content: content)
+                PlanFullScreenView(content: content) {
+                    implementOnDismiss = true
+                    showFullPlan = false
+                }
             }
         }
     }
 
     private func implement() {
-        viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-        viewModel.setPermissionMode(tabId: tabId, mode: .auto)
         let prompt: String
         if let content = planContent, !content.isEmpty {
             prompt = "Implement the following plan:\n\n\(content)"
         } else {
             prompt = "Implement the plan."
         }
-        viewModel.sendPrompt(tabId: tabId, text: prompt)
+        viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
+        viewModel.implementPlan(tabId: tabId, prompt: prompt)
     }
 
     @ViewBuilder

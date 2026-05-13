@@ -135,6 +135,22 @@ extension SessionViewModel {
         send(.setPermissionMode(tabId: tabId, mode: mode))
     }
 
+    /// Switch to auto mode and send the implementation prompt in a single
+    /// ordered Task so the mode change is guaranteed to arrive at the desktop
+    /// before the prompt. Without this, two separate `Task {}` blocks can
+    /// race and the prompt may arrive while the engine is still in plan mode.
+    func implementPlan(tabId: String, prompt: String) {
+        // Optimistic local update for responsive UI
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].permissionMode = .auto
+        }
+        guard let transport else { return }
+        Task {
+            try? await transport.send(.setPermissionMode(tabId: tabId, mode: .auto))
+            try? await transport.send(.prompt(tabId: tabId, text: prompt))
+        }
+    }
+
     /// Request the desktop to change the tab group mode.
     func setTabGroupMode(_ mode: String) {
         send(.setTabGroupMode(mode: mode))
