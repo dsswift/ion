@@ -115,6 +115,8 @@ export interface TabState {
   contextTokens: number | null
   /** Engine-computed context usage percentage (accounts for model-specific context window) */
   contextPercent: number | null
+  /** True while the engine is actively compacting context */
+  isCompacting: boolean
   /** Terminal-focused tab with no conversation */
   isTerminalOnly: boolean
   /** Whether this tab runs an engine session instead of CLI backend */

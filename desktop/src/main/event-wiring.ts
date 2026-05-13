@@ -210,6 +210,31 @@ export function wireRemoteSessionPlaneForwarding(): void {
         }
         break
       }
+      case 'compacting': {
+        // When compaction finishes, send a system message to iOS so it renders
+        // the compaction marker in the conversation (mirrors desktop event-slice).
+        if (!event.active && (event.messagesBefore || event.summary)) {
+          const parts = ['[Compaction]']
+          if (event.strategy) parts.push(event.strategy)
+          if (event.messagesBefore && event.messagesAfter != null) {
+            parts.push(`${event.messagesBefore} → ${event.messagesAfter} messages`)
+          }
+          if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
+          let content = parts.join(' · ')
+          if (event.summary) content += '\n\n' + event.summary
+          state.remoteTransport.send({
+            type: 'message_added',
+            tabId,
+            message: {
+              id: `compaction-${Date.now()}-${tabId}`,
+              role: 'system',
+              content,
+              timestamp: Date.now(),
+            },
+          })
+        }
+        break
+      }
     }
   })
 

@@ -10,6 +10,7 @@ import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, InterruptButton,
   UserMessage, QueuedMessage, MessageActions, EmptyState,
+  CompactionRow,
 } from './conversation'
 import { buildPermissionDeniedHandlers } from './conversation/usePermissionDeniedHandlers'
 
@@ -159,6 +160,8 @@ export function ConversationView() {
                 return <AssistantMessage key={item.message.id} message={item.message} skipMotion={isHistorical} actions={<MessageActions message={item.message} variant="assistant" />} />
               case 'tool-group':
                 return <ToolGroup key={`tg-${item.messages[0].id}`} tools={item.messages} skipMotion={isHistorical} />
+              case 'compaction':
+                return <CompactionRow key={item.message.id} message={item.message} skipMotion={isHistorical} />
               case 'system':
                 return <SystemMessage key={item.message.id} message={item.message} skipMotion={isHistorical} />
               default:
@@ -224,9 +227,9 @@ export function ConversationView() {
           {isRunning && (
             <span className="flex items-center gap-1.5">
               <span className="flex gap-[3px]">
-                <span className="w-[4px] h-[4px] rounded-full animate-bounce-dot" style={{ background: colors.statusRunning, animationDelay: '0ms' }} />
-                <span className="w-[4px] h-[4px] rounded-full animate-bounce-dot" style={{ background: colors.statusRunning, animationDelay: '150ms' }} />
-                <span className="w-[4px] h-[4px] rounded-full animate-bounce-dot" style={{ background: colors.statusRunning, animationDelay: '300ms' }} />
+                <span className="w-[4px] h-[4px] rounded-full animate-bounce-dot" style={{ background: tab.isCompacting ? colors.statusCompacting : colors.statusRunning, animationDelay: '0ms' }} />
+                <span className="w-[4px] h-[4px] rounded-full animate-bounce-dot" style={{ background: tab.isCompacting ? colors.statusCompacting : colors.statusRunning, animationDelay: '150ms' }} />
+                <span className="w-[4px] h-[4px] rounded-full animate-bounce-dot" style={{ background: tab.isCompacting ? colors.statusCompacting : colors.statusRunning, animationDelay: '300ms' }} />
               </span>
               <span style={{ color: colors.textSecondary }}>{tab.currentActivity || 'Working...'}</span>
             </span>
