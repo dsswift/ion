@@ -354,8 +354,8 @@ extension SessionViewModel {
     // MARK: - File Explorer Commands
 
     /// Upload an image from the iOS device to the desktop as a temp file.
-    func uploadAttachment(dataUrl: String, name: String) {
-        send(.uploadAttachment(dataUrl: dataUrl, name: name))
+    func uploadAttachment(dataUrl: String, name: String, correlationId: String) {
+        send(.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId))
     }
 
     func requestFsListDir(directory: String, includeHidden: Bool = false) {

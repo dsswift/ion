@@ -40,8 +40,9 @@ extension RemoteEvent {
             let id = try container.decode(String.self, forKey: .id)
             let name = try container.decode(String.self, forKey: .name)
             let path = try container.decode(String.self, forKey: .path)
+            let correlationId = try container.decodeIfPresent(String.self, forKey: .correlationId)
             let error = try container.decodeIfPresent(String.self, forKey: .error)
-            return .uploadAttachmentResult(id: id, name: name, path: path, error: error)
+            return .uploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)
 
         default:
             return nil
@@ -78,11 +79,12 @@ extension RemoteEvent {
             try container.encode(commands, forKey: .commands)
             return true
 
-        case .uploadAttachmentResult(let id, let name, let path, let error):
+        case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
             try container.encode(TypeKey.uploadAttachmentResult, forKey: .type)
             try container.encode(id, forKey: .id)
             try container.encode(name, forKey: .name)
             try container.encode(path, forKey: .path)
+            try container.encodeIfPresent(correlationId, forKey: .correlationId)
             try container.encodeIfPresent(error, forKey: .error)
             return true
 

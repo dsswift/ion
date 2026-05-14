@@ -76,7 +76,7 @@ enum RemoteEvent: Codable, Sendable {
     // Command discovery events
     case discoverCommandsResponse(directory: String, commands: [DiscoveredSlashCommand])
     // Upload attachment result
-    case uploadAttachmentResult(id: String, name: String, path: String, error: String?)
+    case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?)
 
     // MARK: - Codable keys
 
@@ -155,6 +155,7 @@ enum RemoteEvent: Codable, Sendable {
         case commands
         case ts, buffered
         case id, name, path
+        case correlationId
     }
 
     // MARK: - Decoder

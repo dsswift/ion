@@ -48,7 +48,7 @@ enum RemoteCommand: Codable, Sendable {
     case fsReadFile(filePath: String)
     case fsWriteFile(filePath: String, content: String)
     case discoverCommands(directory: String)
-    case uploadAttachment(dataUrl: String, name: String)
+    case uploadAttachment(dataUrl: String, name: String, correlationId: String)
 
     // MARK: - Codable
 
@@ -107,7 +107,7 @@ enum RemoteCommand: Codable, Sendable {
         case instanceId, data, cols, rows, customTitle, label, messageId
         case dialogId, value, profileId, model, groupId
         case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden
-        case attachments, dataUrl, name
+        case attachments, dataUrl, name, correlationId
     }
 
     init(from decoder: Decoder) throws {
@@ -341,7 +341,8 @@ enum RemoteCommand: Codable, Sendable {
         case .uploadAttachment:
             let dataUrl = try container.decode(String.self, forKey: .dataUrl)
             let name = try container.decode(String.self, forKey: .name)
-            self = .uploadAttachment(dataUrl: dataUrl, name: name)
+            let correlationId = try container.decode(String.self, forKey: .correlationId)
+            self = .uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
         }
     }
 
@@ -574,10 +575,11 @@ enum RemoteCommand: Codable, Sendable {
             try container.encode(TypeKey.discoverCommands, forKey: .type)
             try container.encode(directory, forKey: .directory)
 
-        case .uploadAttachment(let dataUrl, let name):
+        case .uploadAttachment(let dataUrl, let name, let correlationId):
             try container.encode(TypeKey.uploadAttachment, forKey: .type)
             try container.encode(dataUrl, forKey: .dataUrl)
             try container.encode(name, forKey: .name)
+            try container.encode(correlationId, forKey: .correlationId)
         }
     }
 }

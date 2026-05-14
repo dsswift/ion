@@ -281,8 +281,8 @@ extension SessionViewModel {
         case .fsWriteResult(_, let response):
             fileWriteResult = response
 
-        case .uploadAttachmentResult(let id, let name, let path, let error):
-            handleUploadAttachmentResult(id: id, name: name, path: path, error: error)
+        case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
+            handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)
 
         // Command discovery events
         case .discoverCommandsResponse(let directory, let commands):
@@ -551,11 +551,11 @@ extension SessionViewModel {
     // MARK: - Upload attachment result
 
     @MainActor
-    private func handleUploadAttachmentResult(id: String, name: String, path: String, error: String?) {
+    private func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?) {
         if let error, !error.isEmpty {
-            pendingUploadResults.append(UploadAttachmentResult(id: "", name: name, path: "", error: error))
+            pendingUploadResults.append(UploadAttachmentResult(id: "", name: name, path: "", correlationId: correlationId, error: error))
         } else {
-            pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, error: nil))
+            pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: nil))
         }
     }
 

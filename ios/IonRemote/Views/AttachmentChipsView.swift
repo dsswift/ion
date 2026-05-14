@@ -7,6 +7,7 @@ struct PendingAttachment: Identifiable {
     let name: String
     let path: String
     var isUploading: Bool
+    var correlationId: String = ""
 
     var commandAttachment: CommandAttachment {
         CommandAttachment(type: type, name: name, path: path)

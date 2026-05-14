@@ -16,9 +16,10 @@ extension EngineView {
 
     func handlePhotoSelection(_ item: PhotosPickerItem) {
         let placeholderId = UUID().uuidString
-        let name = "photo-\(Int(Date().timeIntervalSince1970)).jpeg"
+        let correlationId = UUID().uuidString
+        let name = "photo-\(Int(Date().timeIntervalSince1970 * 1000)).jpeg"
         pendingAttachments.append(PendingAttachment(
-            id: placeholderId, type: "image", name: name, path: "", isUploading: true
+            id: placeholderId, type: "image", name: name, path: "", isUploading: true, correlationId: correlationId
         ))
 
         Task {
@@ -30,7 +31,7 @@ extension EngineView {
             let base64 = compressed.base64EncodedString()
             let dataUrl = "data:image/jpeg;base64,\(base64)"
             await MainActor.run {
-                viewModel.uploadAttachment(dataUrl: dataUrl, name: name)
+                viewModel.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
             }
         }
     }
@@ -44,23 +45,24 @@ extension EngineView {
             guard let data = try? Data(contentsOf: url) else { continue }
 
             let placeholderId = UUID().uuidString
+            let correlationId = UUID().uuidString
             let imageExts: Set = ["png", "jpg", "jpeg", "gif", "webp", "svg"]
             let ext = url.pathExtension.lowercased()
             let type = imageExts.contains(ext) ? "image" : "file"
 
             pendingAttachments.append(PendingAttachment(
-                id: placeholderId, type: type, name: name, path: "", isUploading: true
+                id: placeholderId, type: type, name: name, path: "", isUploading: true, correlationId: correlationId
             ))
             if type == "image" {
                 let compressed = compressImage(data: data, maxBytes: 1_000_000)
                 let base64 = compressed.base64EncodedString()
                 let mimeExt = (ext == "jpg" || ext == "jpeg") ? "jpeg" : ext
                 let dataUrl = "data:image/\(mimeExt);base64,\(base64)"
-                viewModel.uploadAttachment(dataUrl: dataUrl, name: name)
+                viewModel.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
             } else {
                 let base64 = data.base64EncodedString()
                 let dataUrl = "data:application/octet-stream;base64,\(base64)"
-                viewModel.uploadAttachment(dataUrl: dataUrl, name: name)
+                viewModel.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
             }
         }
     }
@@ -79,17 +81,25 @@ extension EngineView {
 
     func consumeUploadResults(_ results: [UploadAttachmentResult]) {
         guard !results.isEmpty else { return }
+        var consumedIds = Set<String>()
         for result in results {
-            if let idx = pendingAttachments.firstIndex(where: { $0.isUploading && $0.name == result.name }) {
+            guard let cid = result.correlationId, !cid.isEmpty else { continue }
+            if let idx = pendingAttachments.firstIndex(where: { $0.isUploading && $0.correlationId == cid }) {
+                consumedIds.insert(cid)
                 if let error = result.error, !error.isEmpty {
                     pendingAttachments.remove(at: idx)
                 } else {
                     pendingAttachments[idx] = PendingAttachment(
-                        id: result.id, type: pendingAttachments[idx].type, name: result.name, path: result.path, isUploading: false
+                        id: result.id, type: pendingAttachments[idx].type, name: result.name, path: result.path, isUploading: false, correlationId: cid
                     )
                 }
             }
         }
-        viewModel.pendingUploadResults = []
+        if !consumedIds.isEmpty {
+            viewModel.pendingUploadResults.removeAll { r in
+                guard let cid = r.correlationId else { return false }
+                return consumedIds.contains(cid)
+            }
+        }
     }
 }

@@ -17,5 +17,6 @@ struct UploadAttachmentResult: Identifiable, Sendable, Equatable {
     let id: String
     let name: String
     let path: String
+    let correlationId: String?
     let error: String?
 }
