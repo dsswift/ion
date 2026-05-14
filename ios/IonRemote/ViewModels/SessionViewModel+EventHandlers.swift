@@ -345,6 +345,7 @@ extension SessionViewModel {
     @MainActor
     private func handleTabClosed(tabId: String) {
         pendingCloseTabIds.remove(tabId)
+        tabIdleSince.removeValue(forKey: tabId)
         tabs.removeAll { $0.id == tabId }
         tabIds.remove(tabId)
         liveText.removeValue(forKey: tabId)
@@ -406,6 +407,12 @@ extension SessionViewModel {
                 }
             }
         }
+        // Track idle-since timestamp for sidebar display
+        if status == .running || status == .connecting {
+            tabIdleSince.removeValue(forKey: tabId)
+        } else if tabIdleSince[tabId] == nil {
+            tabIdleSince[tabId] = Date()
+        }
     }
 
     @MainActor
@@ -427,6 +434,7 @@ extension SessionViewModel {
         for key in activeTools.keys where key.hasPrefix("\(tabId):") {
             activeTools.removeValue(forKey: key)
         }
+        tabIdleSince[tabId] = Date()
 
         // Speak the final assistant response via TTS (if voice is enabled)
         let key = engineCompoundKey(tabId: tabId)

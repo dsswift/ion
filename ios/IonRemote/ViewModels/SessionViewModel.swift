@@ -165,6 +165,8 @@ final class SessionViewModel {
     var activeTools: [String: [String: ActiveToolInfo]] = [:]
     /// Tab IDs that iOS has requested to close but hasn't received tab_closed confirmation for.
     var pendingCloseTabIds: Set<String> = []
+    /// Timestamps when tabs transitioned to an idle/completed/failed/dead state (for "idle since" display).
+    var tabIdleSince: [String: Date] = [:]
 
     // Git state (per working directory)
     var gitChanges: [String: GitChangesResponse] = [:]     // directory -> changes

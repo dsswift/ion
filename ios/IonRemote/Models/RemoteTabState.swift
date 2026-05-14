@@ -23,6 +23,8 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var activeEngineInstanceId: String?
     var groupId: String?
     var modelOverride: String?
+    /// Unix ms timestamp of the last status-changing activity (from desktop snapshot).
+    var lastActivityAt: Double?
 
     var displayTitle: String {
         customTitle ?? title

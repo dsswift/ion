@@ -90,6 +90,24 @@ extension SessionViewModel {
         }
         tabs = merged
         tabIds = Set(merged.map(\.id))
+        // Reconcile idle-since timestamps with snapshot state
+        let mergedIds = Set(merged.map(\.id))
+        for tab in merged {
+            if tab.status == .running || tab.status == .connecting {
+                tabIdleSince.removeValue(forKey: tab.id)
+            } else if tabIdleSince[tab.id] == nil {
+                // Prefer the desktop-provided activity timestamp over local Date()
+                if let ms = tab.lastActivityAt, ms > 0 {
+                    tabIdleSince[tab.id] = Date(timeIntervalSince1970: ms / 1000.0)
+                } else {
+                    tabIdleSince[tab.id] = Date()
+                }
+            }
+        }
+        // Clean up idle-since entries for tabs no longer present
+        for tabId in tabIdleSince.keys where !mergedIds.contains(tabId) {
+            tabIdleSince.removeValue(forKey: tabId)
+        }
         // Populate terminal state from snapshot tab data
         for tab in merged {
             if tab.isTerminalOnly == true, let instances = tab.terminalInstances {

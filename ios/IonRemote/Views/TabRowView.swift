@@ -5,6 +5,7 @@ import SwiftUI
 struct TabRowView: View {
     let tab: RemoteTabState
     var showDirectory: Bool = false
+    var idleSince: Date?
 
     @State private var pulseOpacity: Double = 1.0
 
@@ -60,6 +61,13 @@ struct TabRowView: View {
                         .font(.caption2)
                         .foregroundStyle(IonTheme.statusRunning)
                         .lineLimit(1)
+                } else if let since = idleSince, tab.isTerminalOnly != true {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        Text(idleLabel(at: context.date, since: since))
+                            .font(.caption2)
+                            .foregroundStyle(idleLabelColor)
+                            .lineLimit(1)
+                    }
                 }
 
                 if let message = tab.lastMessage {
@@ -80,6 +88,48 @@ struct TabRowView: View {
         let base = (path as NSString).lastPathComponent
         if base.isEmpty || path == "/" || path == "~" { return "Home" }
         return base
+    }
+
+    // MARK: - Idle Label
+
+    private func idleLabel(at now: Date, since: Date) -> String {
+        let elapsed = relativeTime(from: since, to: now)
+        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
+        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
+
+        if hasQuestion {
+            return "Waiting on you · \(elapsed)"
+        } else if hasPlanReady {
+            return "Plan ready · \(elapsed)"
+        } else if tab.status == .failed {
+            return "Failed \(elapsed)"
+        } else if tab.status == .dead {
+            return "Dead \(elapsed)"
+        } else if tab.status == .completed {
+            return "Completed \(elapsed)"
+        } else {
+            return "Idle \(elapsed)"
+        }
+    }
+
+    private var idleLabelColor: Color {
+        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
+        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
+        if hasQuestion { return Color(hex: 0x4A9EF5) }
+        if hasPlanReady { return .green }
+        if tab.status == .failed || tab.status == .dead { return Color(hex: 0xC47060) }
+        return Color(hex: 0x8A8A80)
+    }
+
+    private func relativeTime(from start: Date, to end: Date) -> String {
+        let seconds = Int(end.timeIntervalSince(start))
+        if seconds < 60 { return "just now" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        let days = hours / 24
+        return "\(days)d ago"
     }
 
     /// Status color and pulse state matching desktop TabStrip priority order.

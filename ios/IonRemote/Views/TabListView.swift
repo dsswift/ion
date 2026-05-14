@@ -188,10 +188,10 @@ struct TabListView: View {
                         switch selectionStyle {
                         case .navigation:
                             NavigationLink(value: tab.id) {
-                                TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual")
+                                TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id])
                             }
                         case .selection:
-                            TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual")
+                            TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id])
                                 .tag(tab.id)
                         }
                     }
