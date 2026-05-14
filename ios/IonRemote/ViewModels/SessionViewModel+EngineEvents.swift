@@ -67,6 +67,7 @@ extension SessionViewModel {
             msgs.append(EngineMessage(id: UUID().uuidString, role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
         }
         engineMessages[key] = msgs
+        engineTurnHasText.insert(key)
         // Set tab running if this is the active instance
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
         if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -88,6 +89,16 @@ extension SessionViewModel {
             tabs[idx].contextTokens = inputTokens
             tabs[idx].contextPercent = contextPercent
         }
+        // Only speak if this LLM sub-turn produced text — prevents re-speaking the
+        // previous turn's response when the current sub-turn only used tools.
+        if engineTurnHasText.contains(key),
+           let lastAssistant = engineMessages[key]?.last(where: { $0.role == "assistant" }),
+           !lastAssistant.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           lastAssistant.content.count > 20
+        {
+            voiceService.speak(text: lastAssistant.content)
+        }
+        engineTurnHasText.remove(key)
     }
 
     @MainActor
@@ -128,5 +139,6 @@ extension SessionViewModel {
         activeTools.removeValue(forKey: removedKey)
         engineMessages.removeValue(forKey: removedKey)
         engineConversationLoaded.remove(removedKey)
+        engineTurnHasText.remove(removedKey)
     }
 }
