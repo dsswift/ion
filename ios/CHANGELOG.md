@@ -10,6 +10,23 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.16.0](https://github.com/dsswift/ion/compare/ios-v1.15.1...ios-v1.16.0) (2026-05-14)
+
+### Features
+
+* **ios:** add agent status ui and dialog sheet ([da7bd9c](https://github.com/dsswift/ion/commit/da7bd9cdb4e413dc51720643fc6f2d213e47ebb3))
+* **ios:** enhance agent bar with live timer and expansion ([7b00e53](https://github.com/dsswift/ion/commit/7b00e53d4833131939b09932ba1ae656a1df44bd))
+* **ios:** add hours to duration display format ([c83599f](https://github.com/dsswift/ion/commit/c83599f059170fc17a159b4dffe075bb9bf56650))
+* **ios:** add attachment support for conversations and engine tabs ([182e1aa](https://github.com/dsswift/ion/commit/182e1aafb670f1b4d3e11b96ff82c825557124bc))
+* **ios:** add compaction row and blue activity indicator ([3c97833](https://github.com/dsswift/ion/commit/3c978330eb7567d3ea3b3b9e93e1449ebabd0aba))
+* **ios:** dismiss keyboard after sending message ([75821c9](https://github.com/dsswift/ion/commit/75821c9a0d9835605bb59c8b97712b86b64b23a2))
+* **ios:** add implement button to plan full screen ([7928f26](https://github.com/dsswift/ion/commit/7928f26e9820d677c68dcd4913a8ee476cc7be02))
+* **ios:** add native iPad support with sidebar navigation ([0260248](https://github.com/dsswift/ion/commit/026024888b1ffacbbe8c47d1ccc7342523d9f015))
+* **ios:** add multi-device install with interactive selec... ([5755dbe](https://github.com/dsswift/ion/commit/5755dbeda0b60e42f92d7ba014d89551af532284))
+* **ios:** add model selection commands and ui ([d05bbda](https://github.com/dsswift/ion/commit/d05bbda2c437e49d2765fc8522befc1ab9f539e9))
+* **ios:** add optimistic user message rendering ([0420f85](https://github.com/dsswift/ion/commit/0420f85915bd82364f58e016f3ac6726b4275575))
+* **ios:** replace LazyVStack scroll with UICollectionView ([beb41a4](https://github.com/dsswift/ion/commit/beb41a44d65adca4e51638e49c9c948972abf275))
+
 ## [1.15.1](https://github.com/dsswift/ion/compare/ios-v1.15.0...ios-v1.15.1) (2026-05-12)
 
 ### Bug Fixes

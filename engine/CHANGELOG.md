@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.17.0](https://github.com/dsswift/ion/compare/engine-v1.16.2...engine-v1.17.0) (2026-05-14)
+
+### Features
+
+* **engine:** add broadcast state reconciliation ([dd094e9](https://github.com/dsswift/ion/commit/dd094e93e0e0d334e0c2d93192756b5e49a99809))
+* **engine:** add SearchHistory tool for compacted context recovery ([156a8b8](https://github.com/dsswift/ion/commit/156a8b865b70b95f571936736c07fb70476bcd40))
+* **engine:** preserve vision data in micro-compact ([52cbf94](https://github.com/dsswift/ion/commit/52cbf94aa0840adbf631d09963d200c85632fbcf))
+* **engine:** add vision support to tool results ([c4d1175](https://github.com/dsswift/ion/commit/c4d11752b9a1eab29faa62a180ac9c474f66eebc))
+* **engine:** enrich compacting event with summary metadata ([88b3fe2](https://github.com/dsswift/ion/commit/88b3fe2bbfc60f872fa7f565f4f8e9a341c10a0c))
+* **engine:** forward compaction summary to engine tabs ([fdf7dde](https://github.com/dsswift/ion/commit/fdf7dde316408b9de7aaddec4c8205db2251bcaa))
+
 ## [1.16.2](https://github.com/dsswift/ion/compare/engine-v1.16.1...engine-v1.16.2) (2026-05-11)
 
 ### Bug Fixes

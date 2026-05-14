@@ -10,6 +10,20 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.21.0](https://github.com/dsswift/ion/compare/desktop-v1.20.0...desktop-v1.21.0) (2026-05-14)
+
+### Features
+
+* **desktop:** add auto-reconcile on event drops ([cefe8f0](https://github.com/dsswift/ion/commit/cefe8f070c7f72090a6683dcaaf4359daebc3cf6))
+* **desktop:** enhance agent panel with status ui ([f56bb5e](https://github.com/dsswift/ion/commit/f56bb5eb3faf990234181029215258efea26f450))
+* **desktop:** add hours to duration display format ([4f9a04c](https://github.com/dsswift/ion/commit/4f9a04ca55dc1d39c3ae301af5b5dc932b9ff9b2))
+* **ios:** add attachment support for conversations and engine tabs ([182e1aa](https://github.com/dsswift/ion/commit/182e1aafb670f1b4d3e11b96ff82c825557124bc))
+* **desktop:** add compaction visibility ui and remote forwarding ([b221eca](https://github.com/dsswift/ion/commit/b221eca3869458779f15082bcdab5782aa157a39))
+* **desktop:** add alt/cmd+arrow navigation in terminal ([80d8ede](https://github.com/dsswift/ion/commit/80d8edebf8ebb7ec31302de9196ac80ef0247809))
+* **desktop:** eagerly create terminal pty for remote clients ([4547401](https://github.com/dsswift/ion/commit/4547401e49c3d6347aa096bdd4d579c1f9d59a5f))
+* **engine:** forward compaction summary to engine tabs ([fdf7dde](https://github.com/dsswift/ion/commit/fdf7dde316408b9de7aaddec4c8205db2251bcaa))
+* **desktop:** add model selection commands and ui ([70b99f4](https://github.com/dsswift/ion/commit/70b99f46191e6436898d0943a264f0d4ee4fd66b))
+
 ## [1.20.0](https://github.com/dsswift/ion/compare/desktop-v1.19.0...desktop-v1.20.0) (2026-05-12)
 
 ### Features
