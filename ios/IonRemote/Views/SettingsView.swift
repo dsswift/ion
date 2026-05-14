@@ -4,10 +4,12 @@ struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showPairingSheet = false
+    @State private var elevenLabsKey: String = ""
     var body: some View {
         NavigationStack {
             List {
                 connectionSection
+                voiceSection
                 diagnosticsSection
                 newTabSection
                 tabGroupsSection
@@ -47,6 +49,36 @@ struct SettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var voiceSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { viewModel.voiceService.isEnabled },
+                set: { viewModel.voiceService.isEnabled = $0 }
+            )) {
+                Label("Voice Responses", systemImage: "waveform")
+            }
+            SecureField("ElevenLabs API Key", text: $elevenLabsKey)
+                .textContentType(.password)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Button("Save Key") {
+                if elevenLabsKey.trimmingCharacters(in: .whitespaces).isEmpty {
+                    KeychainHelper.delete("com.ion.remote.elevenlabs")
+                } else {
+                    KeychainHelper.set(elevenLabsKey, service: "com.ion.remote.elevenlabs")
+                }
+            }
+            .foregroundStyle(IonTheme.accent)
+        } header: {
+            Text("Voice")
+        } footer: {
+            Text(viewModel.voiceService.isEnabled ? "Ion will speak assistant responses aloud." : "Voice is off.")
+        }
+        .onAppear {
+            elevenLabsKey = KeychainHelper.get("com.ion.remote.elevenlabs") ?? ""
+        }
+    }
 
     @ViewBuilder
     private var connectionSection: some View {
