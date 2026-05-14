@@ -144,6 +144,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const engineDialogs = new Map(get().engineDialogs)
       const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
       const engineUsage = new Map(get().engineUsage)
+      const engineDraftInputs = new Map(get().engineDraftInputs)
       engineMessages.delete(key)
       engineAgentStates.delete(key)
       engineStatusFields.delete(key)
@@ -152,9 +153,10 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       engineDialogs.delete(key)
       enginePinnedPrompt.delete(key)
       engineUsage.delete(key)
+      engineDraftInputs.delete(key)
       const engineModelOverrides = new Map(get().engineModelOverrides)
       engineModelOverrides.delete(key)
-      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineModelOverrides })
+      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineDraftInputs, engineModelOverrides })
     },
 
     selectEngineInstance: (tabId, instanceId) => {
@@ -255,6 +257,12 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         messages.set(key, msgs)
         return { engineMessages: messages }
       })
+    },
+
+    setEngineDraftInput: (key, text) => {
+      const engineDraftInputs = new Map(get().engineDraftInputs)
+      engineDraftInputs.set(key, text)
+      set({ engineDraftInputs })
     },
   }
 }
