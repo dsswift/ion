@@ -25,6 +25,21 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
                 break;
               }
             }
+            // For engine tabs, scan engineMessages for last user/assistant activity
+            if (t.isEngine && !lastTs && s.engineMessages && s.engineMessages.get) {
+              var ep = s.enginePanes && s.enginePanes.get ? s.enginePanes.get(t.id) : null;
+              var instId = ep ? (ep.activeInstanceId || (ep.instances && ep.instances[0] && ep.instances[0].id)) : null;
+              var eKey = instId ? (t.id + ':' + instId) : null;
+              var eMsgs = eKey ? s.engineMessages.get(eKey) : null;
+              if (eMsgs) {
+                for (var j = eMsgs.length - 1; j >= 0; j--) {
+                  if (eMsgs[j].role === 'assistant' || eMsgs[j].role === 'user') {
+                    lastTs = eMsgs[j].timestamp || 0;
+                    break;
+                  }
+                }
+              }
+            }
             var queue = (t.permissionQueue || []).slice();
             if (t.status !== 'failed' && t.status !== 'dead') {
               var denied = t.permissionDenied && t.permissionDenied.tools;
@@ -81,7 +96,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               groupId: t.groupId || null,
               modelOverride: t.modelOverride || null,
               lastMessageContent: lastMsg,
-              lastActivityTs: lastTs,
+              lastActivityTs: lastTs || 0,
             };
           });
         } catch(e) { return []; }
@@ -131,17 +146,17 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
         groupId: t.groupId || null,
         modelOverride: t.modelOverride || null,
-        _activity: t.lastActivityTs || 0,
+        lastActivityAt: t.lastActivityTs || undefined,
       }))
 
     mapped.sort((a, b) => {
       const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
       const bRunning = b.status === 'running' || b.status === 'connecting' ? 1 : 0
       if (aRunning !== bRunning) return bRunning - aRunning
-      return (b._activity as number) - (a._activity as number)
+      return (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
     })
 
-    return mapped.map(({ _activity, ...rest }) => rest)
+    return mapped
   }
 
   const health = sessionPlane.getHealth()
@@ -161,7 +176,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
     }
   } catch {}
 
-  const results: Array<RemoteTabState & { _activity: number }> = []
+  const results: RemoteTabState[] = []
 
   if (persistedTabs.length > 0) {
     for (let i = 0; i < persistedTabs.length; i++) {
@@ -180,7 +195,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         messageCount: 0,
         queuedPrompts: t.queuedPrompts || [],
         modelOverride: null,
-        _activity: h?.lastActivityAt || 0,
+        lastActivityAt: h?.lastActivityAt || undefined,
       })
     }
   } else {
@@ -197,7 +212,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         contextTokens: null,
         messageCount: 0,
         queuedPrompts: [],
-        _activity: t.lastActivityAt || 0,
+        lastActivityAt: t.lastActivityAt || undefined,
       })
     }
   }
@@ -206,8 +221,8 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
     const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
     const bRunning = b.status === 'running' || b.status === 'connecting' ? 1 : 0
     if (aRunning !== bRunning) return bRunning - aRunning
-    return b._activity - a._activity
+    return (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
   })
 
-  return results.map(({ _activity, ...rest }) => rest)
+  return results
 }

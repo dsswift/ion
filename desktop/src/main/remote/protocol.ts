@@ -31,6 +31,8 @@ export interface RemoteTabState {
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
   groupId?: string | null
+  /** Unix ms timestamp of the last status-changing activity (message, status change). */
+  lastActivityAt?: number
 }
 
 // ─── Terminal instance metadata ───
