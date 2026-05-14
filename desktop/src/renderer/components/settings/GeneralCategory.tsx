@@ -5,6 +5,7 @@ import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
+import { AVAILABLE_MODELS } from '../../stores/model-labels'
 
 export function GeneralCategory() {
   const colors = useColors()
@@ -26,6 +27,10 @@ export function GeneralCategory() {
   const setAiGeneratedTitles = usePreferencesStore((s) => s.setAiGeneratedTitles)
   const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
+  const preferredModel = usePreferencesStore((s) => s.preferredModel)
+  const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
+  const engineDefaultModel = usePreferencesStore((s) => s.engineDefaultModel)
+  const setEngineDefaultModel = usePreferencesStore((s) => s.setEngineDefaultModel)
 
   const handleBrowse = async () => {
     const dir = await window.ion.selectDirectory()
@@ -130,6 +135,94 @@ export function GeneralCategory() {
               }}
             >
               {mode}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
+
+      <SettingHeading>Models</SettingHeading>
+
+      <SettingSection
+        label="Default Conversation Model"
+        description="The model new tabs use for conversations. Can be overridden per-tab from the status bar."
+      >
+        <div
+          style={{
+            display: 'flex',
+            background: colors.surfacePrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          {AVAILABLE_MODELS.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setPreferredModel(m.id)}
+              style={{
+                flex: 1,
+                padding: '7px 0',
+                background: preferredModel === m.id ? colors.accent : 'transparent',
+                color: preferredModel === m.id ? '#fff' : colors.textSecondary,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: preferredModel === m.id ? 600 : 400,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
+
+      <SettingSection
+        label="Default Engine Model"
+        description="The model used for engine tasks. 'Default' uses the conversation model."
+      >
+        <div
+          style={{
+            display: 'flex',
+            background: colors.surfacePrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          <button
+            onClick={() => setEngineDefaultModel('')}
+            style={{
+              flex: 1,
+              padding: '7px 0',
+              background: engineDefaultModel === '' ? colors.accent : 'transparent',
+              color: engineDefaultModel === '' ? '#fff' : colors.textSecondary,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: engineDefaultModel === '' ? 600 : 400,
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            Default
+          </button>
+          {AVAILABLE_MODELS.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setEngineDefaultModel(m.id)}
+              style={{
+                flex: 1,
+                padding: '7px 0',
+                background: engineDefaultModel === m.id ? colors.accent : 'transparent',
+                color: engineDefaultModel === m.id ? '#fff' : colors.textSecondary,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: engineDefaultModel === m.id ? 600 : 400,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {m.label}
             </button>
           ))}
         </div>

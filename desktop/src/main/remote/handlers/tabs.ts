@@ -20,7 +20,7 @@ export async function handleSync(): Promise<void> {
   const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
   const tabGroupMode = syncSettings.tabGroupMode || 'off'
   const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
-  state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups })
+  state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups, preferredModel: syncSettings.preferredModel || undefined, engineDefaultModel: syncSettings.engineDefaultModel || undefined })
   const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
   state.remoteTransport?.send({ type: 'engine_profiles', profiles: engineProfiles })
   for (const tab of tabs) {
@@ -453,5 +453,51 @@ export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type:
   } catch (err) {
     log(`discover_commands error: ${(err as Error).message}`)
     state.remoteTransport?.send({ type: 'discover_commands_response', directory, commands: [] })
+  }
+}
+
+export async function handleSetTabModel(cmd: Extract<RemoteCommand, { type: 'set_tab_model' }>): Promise<void> {
+  try {
+    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().setTabModel('${escapedTab}', '${escapedModel}');
+      })()
+    `)
+  } catch (err) {
+    log('set_tab_model error: ' + (err as Error).message)
+  }
+}
+
+export async function handleSetPreferredModel(cmd: Extract<RemoteCommand, { type: 'set_preferred_model' }>): Promise<void> {
+  try {
+    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var prefs = window.__Ion_PREFS_STORE__;
+        if (!prefs) return;
+        prefs.getState().setPreferredModel('${escapedModel}');
+      })()
+    `)
+  } catch (err) {
+    log('set_preferred_model error: ' + (err as Error).message)
+  }
+}
+
+export async function handleSetEngineDefaultModel(cmd: Extract<RemoteCommand, { type: 'set_engine_default_model' }>): Promise<void> {
+  try {
+    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var prefs = window.__Ion_PREFS_STORE__;
+        if (!prefs) return;
+        prefs.getState().setEngineDefaultModel('${escapedModel}');
+      })()
+    `)
+  } catch (err) {
+    log('set_engine_default_model error: ' + (err as Error).message)
   }
 }

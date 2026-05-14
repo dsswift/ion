@@ -70,6 +70,7 @@ export interface State {
   closeTab: (tabId: string) => void
   reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
+  setTabModel: (tabId: string, model: string) => void
   setTabPillColor: (tabId: string, color: string | null) => void
   setTabPillIcon: (tabId: string, icon: string | null) => void
   clearTab: () => void

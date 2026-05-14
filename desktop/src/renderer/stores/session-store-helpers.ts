@@ -81,6 +81,7 @@ export function makeLocalTab(): TabState {
     customTitle: null,
     lastResult: null,
     sessionModel: null,
+    modelOverride: null,
     sessionTools: [],
     sessionMcpServers: [],
     sessionSkills: [],

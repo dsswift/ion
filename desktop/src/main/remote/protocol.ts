@@ -20,6 +20,7 @@ export interface RemoteTabState {
   permissionQueue: PermissionRequest[]
   lastMessage: string | null
   contextTokens: number | null
+  modelOverride?: string | null
   messageCount: number
   queuedPrompts: string[]
   isTerminalOnly?: boolean
@@ -97,6 +98,9 @@ export type RemoteCommand =
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'move_tab_to_group'; tabId: string; groupId: string }
+  | { type: 'set_tab_model'; tabId: string; model: string }
+  | { type: 'set_preferred_model'; model: string }
+  | { type: 'set_engine_default_model'; model: string }
   | { type: 'unpair' }
   | { type: 'git_changes'; directory: string }
   | { type: 'git_graph'; directory: string; skip?: number; limit?: number }
@@ -113,7 +117,7 @@ export type RemoteCommand =
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }> }
+  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string }
   | { type: 'tab_created'; tab: RemoteTabState }
   | { type: 'tab_closed'; tabId: string }
   | { type: 'tab_status'; tabId: string; status: TabStatus }

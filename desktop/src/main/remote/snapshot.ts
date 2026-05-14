@@ -79,6 +79,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               terminalInstances: terminalInstances,
               activeTerminalInstanceId: activeTerminalInstanceId,
               groupId: t.groupId || null,
+              modelOverride: t.modelOverride || null,
               lastMessageContent: lastMsg,
               lastActivityTs: lastTs,
             };
@@ -129,6 +130,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         terminalInstances: t.terminalInstances || undefined,
         activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
         groupId: t.groupId || null,
+        modelOverride: t.modelOverride || null,
         _activity: t.lastActivityTs || 0,
       }))
 
@@ -177,6 +179,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         contextTokens: t.contextTokens || null,
         messageCount: 0,
         queuedPrompts: t.queuedPrompts || [],
+        modelOverride: null,
         _activity: h?.lastActivityAt || 0,
       })
     }

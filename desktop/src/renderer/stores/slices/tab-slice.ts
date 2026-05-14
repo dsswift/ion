@@ -318,6 +318,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
     },
 
+    setTabModel: (tabId, model) => {
+      set((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === tabId ? { ...t, modelOverride: model } : t
+        ),
+      }))
+    },
+
     setTabPillColor: (tabId, color) => {
       set((s) => ({
         tabs: s.tabs.map((t) =>

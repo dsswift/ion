@@ -75,6 +75,7 @@ export interface TabState {
   lastResult: RunResult | null
   /** Session metadata from init event */
   sessionModel: string | null
+  modelOverride: string | null
   sessionTools: string[]
   sessionMcpServers: Array<{ name: string; status: string }>
   sessionSkills: string[]

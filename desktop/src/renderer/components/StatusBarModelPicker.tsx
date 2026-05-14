@@ -12,17 +12,16 @@ import { usePreferencesStore } from '../preferences'
 
 export function ModelPicker() {
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
   const tab = useSessionStore(
     useShallow((s) => {
       const t = s.tabs.find((t) => t.id === s.activeTabId)
-      return t ? { status: t.status, sessionModel: t.sessionModel } : undefined
+      return t ? { status: t.status, sessionModel: t.sessionModel, modelOverride: t.modelOverride } : undefined
     }),
   )
+  const activeTabId = useSessionStore((s) => s.activeTabId)
+  const setTabModel = useSessionStore((s) => s.setTabModel)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
-
-  const activeTabId = useSessionStore((s) => s.activeTabId)
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -59,7 +58,12 @@ export function ModelPicker() {
     setOpen((o) => !o)
   }
 
+  const effectiveModel = tab?.modelOverride || preferredModel || AVAILABLE_MODELS[0].id
+
   const activeLabel = (() => {
+    if (tab?.modelOverride) {
+      return getModelDisplayLabel(tab.modelOverride)
+    }
     if (preferredModel) {
       return getModelDisplayLabel(preferredModel)
     }
@@ -109,11 +113,11 @@ export function ModelPicker() {
         >
           <div className="py-1">
             {AVAILABLE_MODELS.map((m) => {
-              const isSelected = preferredModel === m.id || (!preferredModel && m.id === AVAILABLE_MODELS[0].id)
+              const isSelected = m.id === effectiveModel
               return (
                 <button
                   key={m.id}
-                  onClick={() => { setPreferredModel(m.id); setOpen(false) }}
+                  onClick={() => { if (activeTabId) setTabModel(activeTabId, m.id); setOpen(false) }}
                   className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
                   style={{
                     color: isSelected ? colors.textPrimary : colors.textSecondary,
