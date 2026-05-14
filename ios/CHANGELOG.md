@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.18.0](https://github.com/dsswift/ion/compare/ios-v1.17.0...ios-v1.18.0) (2026-05-14)
+
+### Features
+
+* **ios:** add voice readback with ElevenLabs TTS on task complete ([baeb06e](https://github.com/dsswift/ion/commit/baeb06e6be66501c4f754313abb659060faa93dd))
+
 ## [1.17.0](https://github.com/dsswift/ion/compare/ios-v1.16.0...ios-v1.17.0) (2026-05-14)
 
 ### Features
