@@ -9,6 +9,7 @@ import { usePreferencesStore } from '../preferences'
 import type { DiscoveredCommand } from '../../shared/types'
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
+import { UpdateButton } from './UpdateButton'
 import { executeBuiltinCommand, resolveModelSwitch } from './InputBarCommandHandlers'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
@@ -460,6 +461,7 @@ export function InputBar() {
             />
 
             <div className="flex items-center justify-end gap-1" style={{ marginTop: 0, paddingBottom: 4 }}>
+              <UpdateButton />
               <VoiceButtons
                 voiceState={voiceState}
                 isConnecting={isConnecting}
@@ -494,6 +496,7 @@ export function InputBar() {
             />
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
+              <UpdateButton />
               <VoiceButtons
                 voiceState={voiceState}
                 isConnecting={isConnecting}

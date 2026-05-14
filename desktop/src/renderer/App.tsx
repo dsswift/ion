@@ -16,7 +16,7 @@ import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
-import { UpdateBanner } from './components/UpdateBanner'
+import { UpdateDialog } from './components/UpdateDialog'
 import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
 import { useThemeSync } from './hooks/useThemeSync'
@@ -28,6 +28,7 @@ import { useWindowHeight, useInputRowHeight } from './hooks/useWindowGeometry'
 import { useSessionStore, editorDirForTab } from './stores/sessionStore'
 import { useColors, spacing } from './theme'
 import { usePreferencesStore } from './preferences'
+import { useUpdateStore } from './stores/update-store'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -38,6 +39,13 @@ export default function App() {
   useTrayMenuListeners()
   useTabRestoration()
   useClickThrough()
+
+  // Listen for auto-update download notifications from the main process
+  useEffect(() => {
+    return window.ion.onUpdateDownloaded((info) => {
+      useUpdateStore.getState().setAvailable(info.version)
+    })
+  }, [])
 
   const [closeConfirmTab, setCloseConfirmTab] = useState<{ id: string; title: string; directory: string } | null>(null)
   useKeyboardShortcuts(setCloseConfirmTab)
@@ -373,8 +381,8 @@ export default function App() {
           <TerminalBigScreen tabId={activeTabId} />
         )}
 
-        {/* Auto-update notification */}
-        <UpdateBanner />
+        {/* Auto-update install dialog */}
+        <UpdateDialog />
       </div>
     </PopoverLayerProvider>
   )
