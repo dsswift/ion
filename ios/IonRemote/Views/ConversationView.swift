@@ -147,13 +147,24 @@ struct ConversationView: View {
             }
             .animation(IonTheme.snappySpring, value: isNearBottom)
 
-            // Activity indicator — pinned above input, always visible
+            // Activity indicator — pinned above status bar, always visible
             if isRunning {
                 ActivityIndicatorView(
                     text: currentActivity,
                     dotColorOverride: isCompacting ? .blue : nil
                 )
             }
+
+            ConversationStatusBar(
+                modelOverride: tab?.modelOverride,
+                preferredModel: viewModel.preferredModel,
+                contextPercent: tab?.contextPercent,
+                contextTokens: tab?.contextTokens,
+                isRunning: isRunning,
+                onSelectModel: { model in
+                    viewModel.setTabModel(tabId: tabId, model: model)
+                }
+            )
 
             if let request = pendingPermission {
                 PermissionCardView(tabId: tabId, request: request)
@@ -233,7 +244,7 @@ struct ConversationView: View {
                 }
             }
         }
-        .onAppear {
+        .task {
             viewModel.loadConversation(tabId: tabId)
             cachedRestoredCard = computeRestoredSpecialCard()
         }

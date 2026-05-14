@@ -341,7 +341,7 @@ struct EngineView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { toolbarButtons }
         }
-        .onAppear {
+        .task {
             viewModel.loadEngineConversation(tabId: tabId)
         }
         .task(id: compoundKey) {

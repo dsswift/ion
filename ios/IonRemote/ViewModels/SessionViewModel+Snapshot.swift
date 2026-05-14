@@ -8,7 +8,7 @@ private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engi
 extension SessionViewModel {
 
     @MainActor
-    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?) {
+    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil) {
         if connectionState != .connected {
             connectionState = .connected
             cancelReconnectSafetyTimer()
@@ -23,6 +23,12 @@ extension SessionViewModel {
         }
         if let grps = groups {
             tabGroups = grps
+        }
+        if let pm = preferredModel {
+            self.preferredModel = pm
+        }
+        if let edm = engineDefaultModel {
+            self.engineDefaultModel = edm
         }
         // Filter out tabs that iOS requested to close but hasn't received
         // tab_closed confirmation for yet. Without this, the snapshot

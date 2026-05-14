@@ -10,6 +10,7 @@ struct SettingsView: View {
                 connectionSection
                 diagnosticsSection
                 newTabSection
+                modelsSection
                 tabGroupsSection
                 pairedDevicesSection
                 aboutSection
@@ -114,6 +115,33 @@ struct SettingsView: View {
                 Text("None (desktop default)").tag(nil as String?)
                 ForEach(viewModel.recentDirectories, id: \.self) { dir in
                     Text((dir as NSString).lastPathComponent).tag(dir as String?)
+                }
+            }
+        }
+    }
+
+    private var modelsSection: some View {
+        let models: [(id: String, label: String)] = [
+            ("claude-opus-4-6", "Opus 4.6"),
+            ("claude-sonnet-4-6", "Sonnet 4.6"),
+            ("claude-haiku-4-5-20251001", "Haiku 4.5"),
+        ]
+        return Section("Models") {
+            Picker("Conversation", selection: Binding<String>(
+                get: { viewModel.preferredModel },
+                set: { newValue in viewModel.setPreferredModelDefault(newValue) }
+            )) {
+                ForEach(models, id: \.id) { model in
+                    Text(model.label).tag(model.id)
+                }
+            }
+            Picker("Engine", selection: Binding<String>(
+                get: { viewModel.engineDefaultModel },
+                set: { newValue in viewModel.setEngineDefaultModelDefault(newValue) }
+            )) {
+                Text("Same as Conversation").tag("")
+                ForEach(models, id: \.id) { model in
+                    Text(model.label).tag(model.id)
                 }
             }
         }

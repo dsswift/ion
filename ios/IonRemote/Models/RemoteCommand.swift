@@ -35,6 +35,9 @@ enum RemoteCommand: Codable, Sendable {
     case setTabGroupMode(mode: String)
     case moveTabToGroup(tabId: String, groupId: String)
     case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
+    case setTabModel(tabId: String, model: String)
+    case setPreferredModel(model: String)
+    case setEngineDefaultModel(model: String)
     case gitChanges(directory: String)
     case gitGraph(directory: String, skip: Int? = nil, limit: Int? = nil)
     case gitDiff(directory: String, path: String, staged: Bool)
@@ -82,6 +85,9 @@ enum RemoteCommand: Codable, Sendable {
         case setTabGroupMode = "set_tab_group_mode"
         case moveTabToGroup = "move_tab_to_group"
         case engineSetModel = "engine_set_model"
+        case setTabModel = "set_tab_model"
+        case setPreferredModel = "set_preferred_model"
+        case setEngineDefaultModel = "set_engine_default_model"
         case gitChanges = "git_changes"
         case gitGraph = "git_graph"
         case gitDiff = "git_diff"
@@ -269,6 +275,19 @@ enum RemoteCommand: Codable, Sendable {
             let model = try container.decode(String.self, forKey: .model)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             self = .engineSetModel(tabId: tabId, model: model, instanceId: instanceId)
+
+        case .setTabModel:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let model = try container.decode(String.self, forKey: .model)
+            self = .setTabModel(tabId: tabId, model: model)
+
+        case .setPreferredModel:
+            let model = try container.decode(String.self, forKey: .model)
+            self = .setPreferredModel(model: model)
+
+        case .setEngineDefaultModel:
+            let model = try container.decode(String.self, forKey: .model)
+            self = .setEngineDefaultModel(model: model)
 
         case .gitChanges:
             let directory = try container.decode(String.self, forKey: .directory)
@@ -490,6 +509,19 @@ enum RemoteCommand: Codable, Sendable {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(model, forKey: .model)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
+
+        case .setTabModel(let tabId, let model):
+            try container.encode(TypeKey.setTabModel, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(model, forKey: .model)
+
+        case .setPreferredModel(let model):
+            try container.encode(TypeKey.setPreferredModel, forKey: .type)
+            try container.encode(model, forKey: .model)
+
+        case .setEngineDefaultModel(let model):
+            try container.encode(TypeKey.setEngineDefaultModel, forKey: .type)
+            try container.encode(model, forKey: .model)
 
         case .gitChanges(let directory):
             try container.encode(TypeKey.gitChanges, forKey: .type)

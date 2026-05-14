@@ -68,6 +68,8 @@ extension SessionViewModel {
         conversationLoaded.remove(tabId)
         conversationHasMore.removeValue(forKey: tabId)
         conversationCursor.removeValue(forKey: tabId)
+        loadingConversation.remove(tabId)
+        cancelLoadTimer(tabId: tabId)
         dismissedRestoredCards = dismissedRestoredCards.filter { !$0.hasPrefix("restored-") }
     }
 
@@ -194,6 +196,23 @@ extension SessionViewModel {
         }
         let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
         send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId, attachments: attachments))
+    }
+
+    func setTabModel(tabId: String, model: String) {
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].modelOverride = model
+        }
+        send(.setTabModel(tabId: tabId, model: model))
+    }
+
+    func setPreferredModelDefault(_ model: String) {
+        preferredModel = model
+        send(.setPreferredModel(model: model))
+    }
+
+    func setEngineDefaultModelDefault(_ model: String) {
+        engineDefaultModel = model
+        send(.setEngineDefaultModel(model: model))
     }
 
     func setEngineModel(tabId: String, model: String) {
