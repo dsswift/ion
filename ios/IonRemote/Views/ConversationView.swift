@@ -204,7 +204,6 @@ struct ConversationView: View {
                 )
             }
 
-
             // Voice playback bar — always visible when speaking
             if viewModel.voiceService.isSpeaking {
                 VoicePlaybackBar(
@@ -213,6 +212,13 @@ struct ConversationView: View {
                     hasPending: viewModel.voiceService.hasPending
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if let request = pendingPermission {
+                PermissionCardView(tabId: tabId, request: request)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             ConversationStatusBar(
@@ -225,13 +231,6 @@ struct ConversationView: View {
                     viewModel.setTabModel(tabId: tabId, model: model)
                 }
             )
-
-            if let request = pendingPermission {
-                PermissionCardView(tabId: tabId, request: request)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
 
             // Queued prompts indicator
             if let queued = tab?.queuedPrompts, !queued.isEmpty {
