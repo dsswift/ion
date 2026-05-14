@@ -21,7 +21,7 @@
 		A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000018AA /* TabListView.swift */; };
 		A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FDAA /* TabRowView.swift */; };
 		A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001AAA /* ConversationView.swift */; };
-		A1B2C3D4E5F6000100400BAA /* ScrollOffsetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400AAA /* ScrollOffsetReader.swift */; };
+		A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */; };
 		A1B2C3D4E5F6000100400DAA /* EngineView+Attachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400CAA /* EngineView+Attachments.swift */; };
 		A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */; };
 		A1B2C3D4E5F6000100001DAA /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001EAA /* PairingView.swift */; };
@@ -133,7 +133,7 @@
 		A1B2C3D4E5F60001000018AA /* TabListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FDAA /* TabRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001AAA /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F6000100400AAA /* ScrollOffsetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollOffsetReader.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCollectionView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400CAA /* EngineView+Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineView+Attachments.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCardView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001EAA /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
@@ -331,7 +331,7 @@
 				A1B2C3D4E5F60001000018AA /* TabListView.swift */,
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F6000100001AAA /* ConversationView.swift */,
-				A1B2C3D4E5F6000100400AAA /* ScrollOffsetReader.swift */,
+				A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */,
 				A1B2C3D4E5F6000100400CAA /* EngineView+Attachments.swift */,
 				A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */,
 				A1B2C3D4E5F60001000097AA /* AskUserQuestionCardView.swift */,
@@ -550,7 +550,7 @@
 				A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */,
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */,
-				A1B2C3D4E5F6000100400BAA /* ScrollOffsetReader.swift in Sources */,
+				A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */,
 				A1B2C3D4E5F6000100400DAA /* EngineView+Attachments.swift in Sources */,
 				A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */,
 				A1B2C3D4E5F60001000096AA /* AskUserQuestionCardView.swift in Sources */,
