@@ -172,7 +172,7 @@ export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'close_tab' }
 }
 
 export function handlePrompt(cmd: Extract<RemoteCommand, { type: 'prompt' }>): void {
-  const reqId = `remote-${Date.now()}`
+  const reqId = cmd.clientMsgId || `remote-${Date.now()}`
   const promptText = cmd.text.trim()
     .replace(/—/g, '--')
     .replace(/–/g, '-')

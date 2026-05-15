@@ -74,7 +74,7 @@ export type RemoteCommand =
   | { type: 'create_tab'; workingDirectory?: string }
   | { type: 'create_terminal_tab'; workingDirectory?: string }
   | { type: 'close_tab'; tabId: string }
-  | { type: 'prompt'; tabId: string; text: string; origin?: 'desktop' | 'remote'; attachments?: Array<{ type: 'image' | 'file'; name: string; path: string }> }
+  | { type: 'prompt'; tabId: string; text: string; origin?: 'desktop' | 'remote'; clientMsgId?: string; attachments?: Array<{ type: 'image' | 'file'; name: string; path: string }> }
   | { type: 'cancel'; tabId: string }
   | { type: 'respond_permission'; tabId: string; questionId: string; optionId: string }
   | { type: 'set_permission_mode'; tabId: string; mode: 'auto' | 'plan' }
