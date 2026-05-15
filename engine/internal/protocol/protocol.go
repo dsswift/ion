@@ -48,6 +48,13 @@ type ClientCommand struct {
 	ElicitRequestID string                 `json:"elicitRequestId,omitempty"`
 	ElicitResponse  map[string]interface{} `json:"elicitResponse,omitempty"`
 	ElicitCancelled bool                   `json:"elicitCancelled,omitempty"`
+
+	// send_prompt: pre-encoded image attachments to attach to the user
+	// message as native image content blocks. The engine has no opinion on
+	// any client-side marker syntax inside Text — clients pass image bytes
+	// here and the backend forwards them to the provider via its multimodal
+	// content format.
+	Attachments []types.ImageAttachment `json:"attachments,omitempty"`
 }
 
 var validCommands = map[string]bool{

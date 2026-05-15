@@ -408,6 +408,11 @@ type RunOptions struct {
 	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
 	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
 	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config
+
+	// Attachments are pre-encoded images supplied by the client alongside the
+	// text prompt. When non-empty the backend appends one image content block
+	// per attachment to the user message, in addition to the text block.
+	Attachments []ImageAttachment `json:"attachments,omitempty"`
 }
 
 // StoredSessionInfo is metadata for a saved conversation on disk.

@@ -41,6 +41,17 @@ type ImageSource struct {
 	Data      string `json:"data"`
 }
 
+// ImageAttachment carries pre-encoded image bytes supplied alongside a user
+// prompt. The engine does not parse any client-side marker syntax; clients
+// that want the LLM to see images send them through this structured field.
+// Path is optional and used only for logging / correlation; the engine never
+// reads from disk based on it.
+type ImageAttachment struct {
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+	Path      string `json:"path,omitempty"`
+}
+
 // LlmToolDef defines a tool available to the LLM provider.
 type LlmToolDef struct {
 	Name        string         `json:"name"`

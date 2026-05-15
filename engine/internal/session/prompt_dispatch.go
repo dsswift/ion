@@ -22,6 +22,9 @@ type PromptOverrides struct {
 	Extensions         []string
 	NoExtensions       bool
 	AppendSystemPrompt string
+	// Attachments are pre-encoded images supplied by the client to be sent
+	// to the LLM as native image content blocks alongside the text prompt.
+	Attachments []types.ImageAttachment
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -187,6 +190,7 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 		pp.maxBudgetUsd = overrides.MaxBudgetUsd
 		pp.extensions = overrides.Extensions
 		pp.noExtensions = overrides.NoExtensions
+		pp.attachments = overrides.Attachments
 	}
 	s.promptQueue = append(s.promptQueue, pp)
 	utils.Log("Session", fmt.Sprintf("prompt queued for %s (%d in queue)", key, len(s.promptQueue)))

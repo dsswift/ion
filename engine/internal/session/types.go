@@ -26,6 +26,7 @@ type pendingPrompt struct {
 	maxBudgetUsd float64
 	extensions   []string
 	noExtensions bool
+	attachments  []types.ImageAttachment
 }
 
 // engineSession holds the state for a single session managed by the Manager.

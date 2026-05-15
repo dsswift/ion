@@ -270,8 +270,13 @@ func (s *Server) handleClient(conn net.Conn) {
 	}()
 
 	scanner := bufio.NewScanner(conn)
-	// Allow large messages (1MB)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// 8 MB per NDJSON line. Generous enough for an image-bearing prompt
+	// (Anthropic caps inputs at ~5 MB raw per image; base64 inflates by
+	// 4/3, so ~7 MB worst case + envelope) without inviting clients to
+	// spray multi-megabyte payloads. Old cap of 1 MB caused mid-stream
+	// EPIPE on the client write whenever an image attachment landed on
+	// the wire.
+	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -315,7 +320,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 {
 			overrides = &session.PromptOverrides{
 				Model:              cmd.Model,
 				MaxTurns:           cmd.MaxTurns,
@@ -323,6 +328,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				Extensions:         resolvedExts,
 				NoExtensions:       cmd.NoExtensions,
 				AppendSystemPrompt: cmd.AppendSystemPrompt,
+				Attachments:        cmd.Attachments,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)

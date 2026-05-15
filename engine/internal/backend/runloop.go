@@ -59,8 +59,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID)
 
-	// Add user message (using potentially-rewritten prompt)
-	conversation.AddUserMessage(conv, opts.Prompt)
+	// Add user message (using potentially-rewritten prompt). When the client
+	// supplied pre-encoded image attachments, build a structured content
+	// block list so the provider sends them as native multimodal content
+	// (Anthropic image blocks, OpenAI image_url, Gemini inlineData, Bedrock
+	// image content). Engine has no opinion on any client-side marker
+	// syntax inside opts.Prompt — bytes ride in opts.Attachments.
+	if len(opts.Attachments) > 0 {
+		conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
+	} else {
+		conversation.AddUserMessage(conv, opts.Prompt)
+	}
 	// Persist immediately: if the engine dies mid-stream, the user prompt
 	// must survive so the user does not lose what they just typed.
 	if err := conversation.Save(conv, ""); err != nil {

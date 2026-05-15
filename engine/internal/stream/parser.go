@@ -18,7 +18,9 @@ type Parser struct {
 // NewParser creates a Parser that reads NDJSON lines from r.
 func NewParser(r io.Reader) *Parser {
 	s := bufio.NewScanner(r)
-	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// Match the server's per-line cap so attachment-bearing lines aren't
+	// truncated mid-stream. See server.go for the rationale on the size.
+	s.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	return &Parser{scanner: s}
 }
 

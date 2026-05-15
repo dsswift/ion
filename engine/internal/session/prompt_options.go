@@ -35,6 +35,9 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.AppendSystemPrompt != "" {
 			opts.AppendSystemPrompt += "\n\n" + overrides.AppendSystemPrompt
 		}
+		if len(overrides.Attachments) > 0 {
+			opts.Attachments = overrides.Attachments
+		}
 	}
 
 	if s.config.SystemHint != "" {
