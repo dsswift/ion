@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.23.0](https://github.com/dsswift/ion/compare/desktop-v1.22.0...desktop-v1.23.0) (2026-05-15)
+
+### Features
+
+* **desktop:** add image attachments to messages ([0f75fdc](https://github.com/dsswift/ion/commit/0f75fdc598feb0edccffaff9bfb7c4174822e18d))
+
 ## [1.22.0](https://github.com/dsswift/ion/compare/desktop-v1.21.0...desktop-v1.22.0) (2026-05-15)
 
 ### Features

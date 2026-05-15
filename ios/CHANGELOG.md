@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.20.0](https://github.com/dsswift/ion/compare/ios-v1.19.0...ios-v1.20.0) (2026-05-15)
+
+### Features
+
+* **ios:** add image attachments to messages ([109795c](https://github.com/dsswift/ion/commit/109795c54a055d92832415528fa77bef8dce1a80))
+
 ## [1.19.0](https://github.com/dsswift/ion/compare/ios-v1.18.1...ios-v1.19.0) (2026-05-15)
 
 ### Features
