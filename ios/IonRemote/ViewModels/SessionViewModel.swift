@@ -187,6 +187,9 @@ final class SessionViewModel {
     // Upload attachment results (consumed by InputBar / EngineView)
     var pendingUploadResults: [UploadAttachmentResult] = []
 
+    // MARK: - Toast Messages
+    var toastMessages: [ToastMessage] = []
+
     /// Tab group mode synced from the desktop: "off", "auto", or "manual".
     var tabGroupMode: String = "auto"
     /// Manual tab group definitions from the desktop (only meaningful when tabGroupMode == "manual").
@@ -369,6 +372,27 @@ final class SessionViewModel {
     // MARK: - Voice
 
     let voiceService = VoiceService()
+
+    // MARK: - Toast
+
+    @MainActor
+    func showToast(_ message: ToastMessage) {
+        toastMessages.append(message)
+        // Cap at 2 visible; drop oldest if exceeded.
+        if toastMessages.count > 2 {
+            toastMessages.removeFirst(toastMessages.count - 2)
+        }
+        let id = message.id
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(message.duration))
+            self?.dismissToast(id: id)
+        }
+    }
+
+    @MainActor
+    func dismissToast(id: UUID) {
+        toastMessages.removeAll { $0.id == id }
+    }
 
     // MARK: - Init
 

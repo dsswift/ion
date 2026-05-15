@@ -165,10 +165,22 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].permissionMode = .auto
         }
-        guard let transport else { return }
-        Task {
-            try? await transport.send(.setPermissionMode(tabId: tabId, mode: .auto))
-            try? await transport.send(.prompt(tabId: tabId, text: prompt))
+        guard let transport else {
+            Task { @MainActor [weak self] in
+                self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
+            }
+            return
+        }
+        Task { [weak self] in
+            do {
+                try await transport.send(.setPermissionMode(tabId: tabId, mode: .auto))
+                try await transport.send(.prompt(tabId: tabId, text: prompt))
+            } catch {
+                let detail = error.localizedDescription
+                await MainActor.run {
+                    self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                }
+            }
         }
     }
 
@@ -396,9 +408,21 @@ extension SessionViewModel {
     // MARK: - Send
 
     func send(_ command: RemoteCommand) {
-        guard let transport else { return }
-        Task {
-            try? await transport.send(command)
+        guard let transport else {
+            Task { @MainActor [weak self] in
+                self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
+            }
+            return
+        }
+        Task { [weak self] in
+            do {
+                try await transport.send(command)
+            } catch {
+                let detail = error.localizedDescription
+                await MainActor.run {
+                    self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                }
+            }
         }
     }
 }

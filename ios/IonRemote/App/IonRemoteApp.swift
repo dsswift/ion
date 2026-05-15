@@ -53,6 +53,12 @@ struct ContentView: View {
                 TabListView()
             }
         }
+        .overlay(alignment: .top) {
+            ToastOverlay(
+                messages: viewModel.toastMessages,
+                onDismiss: { viewModel.dismissToast(id: $0) }
+            )
+        }
         .onChange(of: viewModel.connectionState) { _, newState in
             if newState == .authFailed {
                 viewModel.resetAll()

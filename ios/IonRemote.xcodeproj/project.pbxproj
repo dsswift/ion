@@ -107,6 +107,7 @@
 		A1B2C3D4E5F60001004000AA /* ActiveToolRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004001AA /* ActiveToolRow.swift */; };
 		A1B2C3D4E5F60001004002AA /* AttachmentChipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004003AA /* AttachmentChipsView.swift */; };
 		A1B2C3D4E5F60001004004AA /* FilePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */; };
+		A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001006001AA /* ToastView.swift */; };
 		A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */; };
 		A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005101AA /* VoiceService.swift */; };
 		A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */; };
@@ -234,6 +235,7 @@
 		A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImagePreview.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001006001AA /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcher.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -392,6 +394,7 @@
 					A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */,
 					A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */,
 					A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */,
+					A1B2C3D4E5F60001006001AA /* ToastView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -658,6 +661,7 @@
 				A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */,
 				A1B2C3D4E5F60001004004AA /* FilePickerSheet.swift in Sources */,
 				A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */,
+				A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */,
 				A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */,
 				A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */,
 			);
