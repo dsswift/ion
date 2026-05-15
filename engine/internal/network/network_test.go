@@ -297,6 +297,18 @@ func TestInitNetworkTransportSettings(t *testing.T) {
 	if transport.DialContext == nil {
 		t.Error("DialContext should be set (for dial timeout and TCP keepalive)")
 	}
+	if transport.ResponseHeaderTimeout != 60*time.Second {
+		t.Errorf("ResponseHeaderTimeout = %v, want 60s (caps first-byte wait for long LLM streams)", transport.ResponseHeaderTimeout)
+	}
+	if transport.HTTP2 == nil {
+		t.Fatal("HTTP2 config must be set so silently half-open h2 streams fail fast via PINGs")
+	}
+	if transport.HTTP2.SendPingTimeout != 15*time.Second {
+		t.Errorf("HTTP2.SendPingTimeout = %v, want 15s", transport.HTTP2.SendPingTimeout)
+	}
+	if transport.HTTP2.PingTimeout != 15*time.Second {
+		t.Errorf("HTTP2.PingTimeout = %v, want 15s", transport.HTTP2.PingTimeout)
+	}
 }
 
 // TestInitNetworkOverwritesPreviousConfig verifies that calling InitNetwork a
