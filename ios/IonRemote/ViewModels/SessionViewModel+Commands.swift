@@ -29,8 +29,9 @@ extension SessionViewModel {
                 timestamp: Date().timeIntervalSince1970,
                 source: .remote
             )
-            if messages[tabId] != nil {
-                messages[tabId]!.append(optimistic)
+            if var existing = messages[tabId] {
+                existing.append(optimistic)
+                messages[tabId] = existing
             } else {
                 messages[tabId] = [optimistic]
             }

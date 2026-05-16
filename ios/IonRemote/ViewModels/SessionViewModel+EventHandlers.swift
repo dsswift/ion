@@ -394,14 +394,15 @@ extension SessionViewModel {
             }
         }
         guard conversationLoaded.contains(tabId) else { return }
-        if messages[tabId] != nil {
+        if var existing = messages[tabId] {
             // ID-based reconciliation: if a message with this ID already exists
             // (optimistic insert), replace it with the canonical version from desktop.
-            if let existingIdx = messages[tabId]!.firstIndex(where: { $0.id == message.id }) {
-                messages[tabId]![existingIdx] = message
-                return
+            if let existingIdx = existing.firstIndex(where: { $0.id == message.id }) {
+                existing[existingIdx] = message
+            } else {
+                existing.append(message)
             }
-            messages[tabId]!.append(message)
+            messages[tabId] = existing
         } else {
             messages[tabId] = [message]
         }
@@ -410,24 +411,27 @@ extension SessionViewModel {
 
     @MainActor
     private func handleMessageUpdated(tabId: String, messageId: String, content: String?, toolStatus: ToolStatus?, toolInput: String?) {
-        guard conversationLoaded.contains(tabId) else { return }
-        if let idx = messages[tabId]?.firstIndex(where: { $0.id == messageId }) {
-            if let content {
-                messages[tabId]![idx].content = content
-            }
-            if let toolStatus {
-                // Meta-tools report as errors but should show as completed (not error, not stuck running)
-                let toolName = messages[tabId]![idx].toolName
-                if toolName == "ExitPlanMode" || toolName == "AskUserQuestion" {
-                    messages[tabId]![idx].toolStatus = .completed
-                } else {
-                    messages[tabId]![idx].toolStatus = toolStatus
-                }
-            }
-            if let toolInput {
-                messages[tabId]![idx].toolInput = toolInput
+        guard conversationLoaded.contains(tabId),
+              var msgs = messages[tabId],
+              let idx = msgs.firstIndex(where: { $0.id == messageId })
+        else { return }
+
+        if let content {
+            msgs[idx].content = content
+        }
+        if let toolStatus {
+            // Meta-tools report as errors but should show as completed (not error, not stuck running)
+            let toolName = msgs[idx].toolName
+            if toolName == "ExitPlanMode" || toolName == "AskUserQuestion" {
+                msgs[idx].toolStatus = .completed
+            } else {
+                msgs[idx].toolStatus = toolStatus
             }
         }
+        if let toolInput {
+            msgs[idx].toolInput = toolInput
+        }
+        messages[tabId] = msgs
     }
 
     @MainActor
