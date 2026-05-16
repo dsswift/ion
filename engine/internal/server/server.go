@@ -482,6 +482,69 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.manager.ReconcileState(cmd.Key)
 		s.sendResult(conn, cmd, nil, nil)
 
+	case "migrate_conversation":
+		go func(c net.Conn, command *protocol.ClientCommand) {
+			defer func() {
+				if r := recover(); r != nil {
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					utils.Error("Server", fmt.Sprintf("panic in migrate_conversation: %v\n%s", r, buf[:n]))
+					s.sendResult(c, command, fmt.Errorf("internal error"), nil)
+				}
+			}()
+
+			sourceID := command.Key
+			targetFormat := command.Text
+			targetDir := command.Message
+			newSessionID := conversation.GenEntryID() + "-" + conversation.GenEntryID()
+
+			var result *conversation.MigrateResult
+			var sourceMsgs []conversation.ValidationMsg
+			var err error
+
+			switch targetFormat {
+			case "claude_code":
+				var conv *conversation.Conversation
+				conv, err = conversation.Load(sourceID, "")
+				if err != nil {
+					s.sendResult(c, command, fmt.Errorf("load source conversation: %w", err), nil)
+					return
+				}
+				sourceMsgs = conversation.ExtractValidationMsgs(conv)
+				result, err = conversation.ConvertIonToClaudeCode(conv, newSessionID, targetDir)
+			case "ion":
+				// For Claude Code → Ion, key is the source session ID and
+				// args contains the source directory for the Claude Code JSONL.
+				sourceDir := command.Args
+				if sourceDir == "" {
+					s.sendResult(c, command, fmt.Errorf("args (source dir) required for ion conversion"), nil)
+					return
+				}
+				sourcePath := filepath.Join(sourceDir, sourceID+".jsonl")
+				sourceMsgs, err = conversation.ExtractValidationMsgsFromClaudeCode(sourcePath)
+				if err != nil {
+					s.sendResult(c, command, fmt.Errorf("load source messages: %w", err), nil)
+					return
+				}
+				result, err = conversation.ConvertClaudeCodeToIon(sourcePath, newSessionID, targetDir)
+			default:
+				s.sendResult(c, command, fmt.Errorf("unknown target format: %s", targetFormat), nil)
+				return
+			}
+
+			if err != nil {
+				s.sendResult(c, command, err, nil)
+				return
+			}
+
+			if err := conversation.ValidateConversion(sourceMsgs, result.OutputPath, targetFormat); err != nil {
+				s.sendResult(c, command, fmt.Errorf("validation failed: %w", err), nil)
+				return
+			}
+
+			s.sendResult(c, command, nil, result)
+		}(conn, cmd)
+
 	case "shutdown":
 		_ = s.Stop()
 

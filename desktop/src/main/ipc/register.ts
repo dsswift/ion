@@ -14,6 +14,7 @@ import { registerGitIpc } from './git'
 import { registerWorktreeIpc } from './worktree'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
+import { registerMigrationIpc } from './migration'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -32,4 +33,5 @@ export function registerAllIpc(): void {
   registerWorktreeIpc()
   registerSettingsIpc()
   registerRemoteControlIpc()
+  registerMigrationIpc()
 }

@@ -56,6 +56,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	conv := loadOrCreateConversation(opts, model)
 	run.conv = conv
 
+	// Persist the working directory so migrated conversations carry the project context.
+	if opts.ProjectPath != "" && conv.WorkingDirectory == "" {
+		conv.WorkingDirectory = opts.ProjectPath
+	}
+
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID)
 
@@ -336,6 +341,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				llmUsage = *turnUsage
 			}
 			conversation.AddAssistantMessage(conv, assistantBlocks, llmUsage)
+			conversation.SetAssistantMeta(conv, model, stopReason)
 			// Persist immediately so the assistant turn survives mid-loop crashes.
 			// The end-of-turn Save() below remains as the canonical write that
 			// also captures stop-reason transitions.

@@ -59,6 +59,8 @@ export interface IonAPI {
   getConversation(conversationId: string, offset?: number, limit?: number): Promise<{ messages: any[]; total: number; hasMore: boolean }>
   getBackend(): Promise<'api' | 'cli'>
   switchBackend(backend: 'api' | 'cli'): Promise<void>
+  loadOtherBackendTabs(): Promise<Array<{ conversationId: string; title: string; customTitle: string | null; workingDirectory: string; permissionMode: string }>>
+  migrateTabs(conversationIds: string[], targetBackend: 'api' | 'cli'): Promise<{ backupPaths: string[]; migrated: Array<{ conversationId: string; newConversationId: string; title: string }>; failed: Array<{ conversationId: string; title: string; error: string }> }>
 
   // ─── Git operations ───
   gitIsRepo(directory: string): Promise<{ isRepo: boolean }>
@@ -222,6 +224,8 @@ const api: IonAPI = {
     ipcRenderer.invoke(IPC.GET_CONVERSATION, { conversationId, offset, limit }),
   getBackend: () => ipcRenderer.invoke(IPC.GET_BACKEND),
   switchBackend: (backend) => ipcRenderer.invoke(IPC.SWITCH_BACKEND, backend),
+  loadOtherBackendTabs: () => ipcRenderer.invoke(IPC.LOAD_OTHER_BACKEND_TABS),
+  migrateTabs: (conversationIds, targetBackend) => ipcRenderer.invoke(IPC.MIGRATE_TABS, { conversationIds, targetBackend }),
 
   // ─── Git operations ───
   gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),

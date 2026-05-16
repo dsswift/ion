@@ -458,6 +458,16 @@ export class EngineBridge extends EventEmitter {
     return result.data?.title || ''
   }
 
+  async migrateConversation(
+    sessionId: string,
+    targetFormat: string,
+    targetDir: string,
+    sourceDir: string,
+  ): Promise<{ ok: boolean; error?: string; data?: { newSessionId: string; outputPath: string; messageCount: number; contentHash: string } }> {
+    await this.connect()
+    return this._sendWithData({ cmd: 'migrate_conversation', key: sessionId, text: targetFormat, message: targetDir, args: sourceDir })
+  }
+
   sendReconcileState(key: string): void {
     log(`sendReconcileState: key=${key}`)
     this._send({ cmd: 'reconcile_state', key })

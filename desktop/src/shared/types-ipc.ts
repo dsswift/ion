@@ -91,6 +91,10 @@ export const IPC = {
   GET_BACKEND: 'ion:get-backend',
   SWITCH_BACKEND: 'ion:switch-backend',
 
+  // Tab migration between backends
+  LOAD_OTHER_BACKEND_TABS: 'ion:load-other-backend-tabs',
+  MIGRATE_TABS: 'ion:migrate-tabs',
+
   // Git operations
   GIT_GRAPH: 'ion:git-graph',
   GIT_CHANGES: 'ion:git-changes',
