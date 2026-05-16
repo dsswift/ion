@@ -40,6 +40,7 @@ CLAUDE.md
 # Environment
 .env
 .env.*
+.engine*.json
 
 # Logs
 *.log
