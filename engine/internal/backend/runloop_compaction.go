@@ -14,12 +14,39 @@ import (
 const maxPromptTooLongRetries = 3
 
 // compactIfNeeded performs proactive compaction when context usage exceeds
-// the threshold. Honours the session_before_compact hook (which can cancel
-// the operation) and emits CompactingEvent edges so the desktop can render
-// progress. The session_compact observer hook fires on completion.
-func (b *ApiBackend) compactIfNeeded(run *activeRun, conv *conversation.Conversation, hooks RunHooks, contextWindow, threshold int) {
+// the absolute token limit. Honours the session_before_compact hook (which
+// can cancel the operation) and emits CompactingEvent edges so the desktop
+// can render progress. The session_compact observer hook fires on completion.
+//
+// tokenLimit is the absolute token count above which compaction should fire
+// (see conversation.AutoCompactTokenLimit for how this is derived from the
+// raw context window).
+//
+// A per-run counter bounds consecutive attempts: if the conversation cannot
+// be shrunk below the limit in maxConsecutiveCompactions attempts, the run
+// emits an ErrorEvent with code compact_loop_aborted and stops trying
+// proactively. The counter resets on any successful API response.
+func (b *ApiBackend) compactIfNeeded(run *activeRun, conv *conversation.Conversation, hooks RunHooks, contextWindow, tokenLimit int) {
 	usage := conversation.GetContextUsage(conv, contextWindow)
-	if usage.Percent <= threshold {
+	if usage.Tokens <= tokenLimit {
+		return
+	}
+
+	// Circuit breaker: stop attempting if we have already compacted
+	// maxConsecutiveCompactions times without a successful API response.
+	// Without this guard the same trigger condition can fire every turn
+	// indefinitely.
+	if run.compactionsWithoutProgress >= maxConsecutiveCompactions {
+		utils.Warn("ApiBackend", fmt.Sprintf(
+			"compact_loop_aborted: %d consecutive compactions did not bring tokens (%d) below limit (%d)",
+			run.compactionsWithoutProgress, usage.Tokens, tokenLimit))
+		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
+			ErrorMessage: fmt.Sprintf(
+				"compaction loop aborted after %d attempts without progress (tokens=%d, limit=%d)",
+				run.compactionsWithoutProgress, usage.Tokens, tokenLimit),
+			IsError:   true,
+			ErrorCode: "compact_loop_aborted",
+		}})
 		return
 	}
 
@@ -28,12 +55,14 @@ func (b *ApiBackend) compactIfNeeded(run *activeRun, conv *conversation.Conversa
 		return
 	}
 
+	run.compactionsWithoutProgress++
+
 	b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
 	msgBefore := len(conv.Messages)
 
 	// Step 1: MicroCompact (tool results, then assistant text)
 	cleared := conversation.MicroCompact(conv, 10)
-	utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 1: was %d%%, micro-compact cleared %d", usage.Percent, cleared))
+	utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 1: tokens=%d limit=%d micro-compact cleared %d", usage.Tokens, tokenLimit, cleared))
 
 	// Surface compaction to the model so it knows data was lost.
 	if cleared > 0 {
@@ -42,10 +71,12 @@ func (b *ApiBackend) compactIfNeeded(run *activeRun, conv *conversation.Conversa
 				"Use the SearchHistory tool to find specific details from the compacted conversation, or re-read relevant files.", cleared))
 	}
 
-	// Step 2: if still above threshold, extract facts and hard-truncate
+	// Step 2: if still above the limit, extract facts and hard-truncate.
+	// GetContextUsage falls back to estimation here because MicroCompact
+	// invalidated the cached token count.
 	var summary string
 	usageAfterMicro := conversation.GetContextUsage(conv, contextWindow)
-	if usageAfterMicro.Percent > threshold {
+	if usageAfterMicro.Tokens > tokenLimit {
 		facts := compaction.ExtractFacts(conv.Messages)
 		conversation.Compact(conv, 10)
 		if len(facts) > 0 {

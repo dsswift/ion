@@ -615,3 +615,161 @@ func TestAddToolResults_WithImages(t *testing.T) {
 		t.Error("image block should carry image source data")
 	}
 }
+
+// --- Effective context window + auto-compact limit ---
+
+func TestEffectiveContextWindow(t *testing.T) {
+	tests := []struct {
+		name             string
+		window           int
+		maxOutputTokens  int
+		summaryReserve   int
+		want             int
+	}{
+		{"defaults applied", 200000, 0, 0, 200000 - DefaultMaxOutputTokens - DefaultCompactSummaryReserve},
+		{"explicit reserves", 200000, 8000, 5000, 200000 - 8000 - 5000},
+		{"reserves consume window returns raw", 1000, 800, 500, 1000},
+		{"zero window returns zero", 0, 0, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EffectiveContextWindow(tt.window, tt.maxOutputTokens, tt.summaryReserve)
+			if got != tt.want {
+				t.Errorf("EffectiveContextWindow(%d,%d,%d) = %d, want %d",
+					tt.window, tt.maxOutputTokens, tt.summaryReserve, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAutoCompactTokenLimit(t *testing.T) {
+	got := AutoCompactTokenLimit(200000, 0)
+	want := 200000 - DefaultMaxOutputTokens - DefaultCompactSummaryReserve
+	if got != want {
+		t.Errorf("AutoCompactTokenLimit(200000,0) = %d, want %d", got, want)
+	}
+
+	got = AutoCompactTokenLimit(200000, 32000)
+	want = 200000 - 32000 - DefaultCompactSummaryReserve
+	if got != want {
+		t.Errorf("AutoCompactTokenLimit(200000,32000) = %d, want %d", got, want)
+	}
+}
+
+// --- Cache invalidation across compaction paths ---
+
+func TestCompactResetsLastInputTokens(t *testing.T) {
+	conv := CreateConversation("reset-compact", "", "claude-3")
+	for i := 0; i < 10; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
+	}
+	conv.LastInputTokens = 165000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	Compact(conv, 3)
+
+	if conv.LastInputTokens != 0 {
+		t.Errorf("LastInputTokens = %d after Compact, want 0", conv.LastInputTokens)
+	}
+	if conv.LastInputTokensMsgCount != 0 {
+		t.Errorf("LastInputTokensMsgCount = %d after Compact, want 0", conv.LastInputTokensMsgCount)
+	}
+}
+
+func TestMicroCompactResetsLastInputTokensWhenSomethingCleared(t *testing.T) {
+	conv := CreateConversation("reset-micro", "", "claude-3")
+	// 12 user/assistant pairs so MicroCompact can drop tool results from
+	// older messages while keeping the last 10 turns.
+	for i := 0; i < 12; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{
+			Role: "user",
+			Content: []types.LlmContentBlock{{
+				Type:    "tool_result",
+				Content: strings.Repeat("x", 500),
+			}},
+		})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
+	}
+	conv.LastInputTokens = 165000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	cleared := MicroCompact(conv, 10)
+	if cleared == 0 {
+		t.Fatal("expected MicroCompact to clear something for this fixture")
+	}
+	if conv.LastInputTokens != 0 {
+		t.Errorf("LastInputTokens = %d after MicroCompact, want 0", conv.LastInputTokens)
+	}
+	if conv.LastInputTokensMsgCount != 0 {
+		t.Errorf("LastInputTokensMsgCount = %d after MicroCompact, want 0", conv.LastInputTokensMsgCount)
+	}
+}
+
+func TestMicroCompactNoClearKeepsTokenCache(t *testing.T) {
+	conv := CreateConversation("noclear-micro", "", "claude-3")
+	// Single short message — nothing to clear or truncate.
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "hi"})
+	conv.LastInputTokens = 42
+	conv.LastInputTokensMsgCount = 1
+
+	cleared := MicroCompact(conv, 10)
+	if cleared != 0 {
+		t.Fatalf("expected no clears, got %d", cleared)
+	}
+	if conv.LastInputTokens != 42 {
+		t.Errorf("LastInputTokens = %d, want 42 (no mutation should not invalidate cache)", conv.LastInputTokens)
+	}
+}
+
+func TestCompactWithSummaryResetsLastInputTokens(t *testing.T) {
+	conv := CreateConversation("reset-summary", "", "claude-3")
+	for i := 0; i < 12; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{
+			Role:    "user",
+			Content: []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("user message %d", i)}},
+		})
+		conv.Messages = append(conv.Messages, types.LlmMessage{
+			Role:    "assistant",
+			Content: []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("assistant reply %d", i)}},
+		})
+	}
+	conv.LastInputTokens = 99999
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	summarize := func(text string) (string, error) { return "summary of older turns", nil }
+	if err := CompactWithSummary(conv, summarize, 3); err != nil {
+		t.Fatalf("CompactWithSummary returned error: %v", err)
+	}
+	if conv.LastInputTokens != 0 {
+		t.Errorf("LastInputTokens = %d after CompactWithSummary, want 0", conv.LastInputTokens)
+	}
+	if conv.LastInputTokensMsgCount != 0 {
+		t.Errorf("LastInputTokensMsgCount = %d after CompactWithSummary, want 0", conv.LastInputTokensMsgCount)
+	}
+}
+
+func TestGetContextUsageFallsBackToEstimateAfterCompactReset(t *testing.T) {
+	conv := CreateConversation("fallback", "", "claude-3")
+	for i := 0; i < 10; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
+	}
+	conv.LastInputTokens = 165000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	preInfo := GetContextUsage(conv, 200000)
+	if preInfo.Estimated {
+		t.Fatal("setup: expected reported (non-estimated) tokens before compaction")
+	}
+
+	Compact(conv, 3)
+
+	postInfo := GetContextUsage(conv, 200000)
+	if !postInfo.Estimated {
+		t.Errorf("expected estimated=true after Compact reset; got reported %d tokens", postInfo.Tokens)
+	}
+	if postInfo.Tokens >= 165000 {
+		t.Errorf("post-compact estimate should be far below the stale 165000, got %d", postInfo.Tokens)
+	}
+}

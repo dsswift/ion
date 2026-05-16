@@ -13,6 +13,8 @@ import (
 const CurrentVersion = 2
 
 // DefaultContext is the default context window size in tokens.
+// Auto-compaction triggers below this — see AutoCompactTokenLimit, which
+// reserves room for the next response and for the compaction summary itself.
 const DefaultContext = 200000
 
 // SessionEntryType identifies the kind of tree entry.

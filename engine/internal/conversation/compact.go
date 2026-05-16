@@ -8,6 +8,15 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
+// DefaultMaxOutputTokens is the headroom reserved for the model's next
+// response when computing the effective context window.
+const DefaultMaxOutputTokens = 20000
+
+// DefaultCompactSummaryReserve is the headroom reserved so the compaction
+// summary itself (fact extraction + restore message) doesn't push us past
+// the window. Stays well clear of the trigger limit.
+const DefaultCompactSummaryReserve = 13000
+
 // EstimateTokens provides a heuristic token count.
 // Strings: ~4 chars/token. Structured content: ~3.5 chars/token (JSON overhead).
 func EstimateTokens(content any) int {
@@ -21,6 +30,46 @@ func EstimateTokens(content any) int {
 		}
 		return int(math.Ceil(float64(len(b)) / 3.5))
 	}
+}
+
+// EffectiveContextWindow returns the usable window after reserving room for
+// the next model response and for the compaction summary. Callers pass the
+// model's max output tokens; zero falls back to DefaultMaxOutputTokens.
+// Returns the input window unchanged when reserves would consume all of it
+// (e.g. very small custom windows in tests).
+func EffectiveContextWindow(window, maxOutputTokens, summaryReserve int) int {
+	if window <= 0 {
+		return 0
+	}
+	if maxOutputTokens <= 0 {
+		maxOutputTokens = DefaultMaxOutputTokens
+	}
+	if summaryReserve <= 0 {
+		summaryReserve = DefaultCompactSummaryReserve
+	}
+	effective := window - maxOutputTokens - summaryReserve
+	if effective <= 0 {
+		return window
+	}
+	return effective
+}
+
+// AutoCompactTokenLimit returns the absolute token count at which proactive
+// compaction should fire for a given window and per-call max output tokens.
+// This is the effective window minus the configured summary reserve.
+func AutoCompactTokenLimit(window, maxOutputTokens int) int {
+	return EffectiveContextWindow(window, maxOutputTokens, DefaultCompactSummaryReserve)
+}
+
+// invalidateTokenCache clears the cached "last input token" figure after the
+// conversation has been mutated by compaction. GetContextUsage uses this
+// figure to avoid re-estimating large message slices; once the slice changes
+// it is stale and would trigger another compaction immediately if reused.
+// Cleared values force re-estimation until the next API response updates the
+// cache.
+func invalidateTokenCache(conv *Conversation) {
+	conv.LastInputTokens = 0
+	conv.LastInputTokensMsgCount = 0
 }
 
 // GetContextUsage computes context window consumption. When LastInputTokens
@@ -68,6 +117,7 @@ func Compact(conv *Conversation, keepTurns int) {
 	}
 	if cutIdx > 0 {
 		conv.Messages = conv.Messages[cutIdx:]
+		invalidateTokenCache(conv)
 	}
 }
 
@@ -119,6 +169,7 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 		Content: []types.LlmContentBlock{textBlock("[Previous conversation summary]: " + summary)},
 	}
 	conv.Messages = append([]types.LlmMessage{summaryMsg}, conv.Messages...)
+	invalidateTokenCache(conv)
 	return nil
 }
 
@@ -165,6 +216,7 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 		}
 	}
 	if cleared > 0 {
+		invalidateTokenCache(conv)
 		return cleared
 	}
 
@@ -183,6 +235,9 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 				cleared++
 			}
 		}
+	}
+	if cleared > 0 {
+		invalidateTokenCache(conv)
 	}
 	return cleared
 }

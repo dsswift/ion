@@ -165,12 +165,16 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			break
 		}
 
-		// Context compaction cascade at threshold (config override via opts.CompactThreshold)
-		threshold := compactThreshold
+		// Proactive compaction: trigger at the effective context window
+		// (full window minus reserves for the next response and the
+		// compaction summary). A non-zero opts.CompactThreshold preserves
+		// the legacy percent-of-window override so callers that already
+		// tuned this value keep their behavior.
+		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
 		if opts.CompactThreshold > 0 {
-			threshold = int(opts.CompactThreshold)
+			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
 		}
-		b.compactIfNeeded(run, conv, hooks, contextWindow, threshold)
+		b.compactIfNeeded(run, conv, hooks, contextWindow, compactLimit)
 
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
 		streamOpts := types.LlmStreamOptions{
@@ -301,6 +305,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Stream succeeded with a valid stop reason -- reset retry counters.
 		promptTooLongRetries = 0
 		truncationRetries = 0
+		run.compactionsWithoutProgress = 0
 
 		// Track usage and cost
 		if turnUsage != nil {

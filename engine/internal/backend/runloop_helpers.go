@@ -29,9 +29,11 @@ func newConvSuffix() string {
 	return hex.EncodeToString(b[:])
 }
 
-// compactThreshold is the default context usage percentage that triggers
-// proactive compaction.
-const compactThreshold = 80
+// maxConsecutiveCompactions caps the number of proactive compactions that
+// can fire back-to-back without a successful API response in between. After
+// this many attempts the run emits compact_loop_aborted and stops trying so
+// it does not burn turns on a conversation that refuses to shrink.
+const maxConsecutiveCompactions = 3
 
 // runHookCtx runs fn on a goroutine and races it against ctx cancellation.
 // On cancel, returns ctx.Err() and discards the eventual result. The inner

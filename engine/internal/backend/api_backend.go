@@ -40,6 +40,12 @@ type activeRun struct {
 	planMode          bool                     // true when this run is in plan mode
 	planFilePath      string                   // only writable file during plan mode
 
+	// compactionsWithoutProgress counts proactive compactions that have fired
+	// without an intervening successful API response. Bounds the cascade if
+	// the conversation cannot be shrunk below the trigger limit so the run
+	// surfaces an error instead of looping.
+	compactionsWithoutProgress int
+
 	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
 }
 
