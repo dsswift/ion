@@ -109,3 +109,11 @@ jobs:
     with:
       release_report: ${{ needs.release.outputs.release_report }}
     secrets: inherit
+
+  notify:
+    needs: release
+    if: needs.release.outputs.releases_created == 'true'
+    uses: ./.github/workflows/release-summary.yml
+    with:
+      release_report: ${{ needs.release.outputs.release_report }}
+    secrets: inherit
