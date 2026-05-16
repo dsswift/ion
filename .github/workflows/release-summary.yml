@@ -174,7 +174,3 @@ jobs:
             exit 1
           fi
           echo "Discord webhook delivered (HTTP $HTTP_CODE)"
-
-      - name: Cleanup
-        if: always()
-        run: rm -rf /tmp/ion-prompt.txt /tmp/summary.md /tmp/discord-payload.json /tmp/discord-response.txt /tmp/ion-data
