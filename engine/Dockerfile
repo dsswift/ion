@@ -1,4 +1,5 @@
 FROM golang:1.26-alpine AS build
+RUN apk add --no-cache ca-certificates
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -6,6 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /ion ./cmd/ion/
 
 FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /ion /ion
 ENV HOME=/data
 VOLUME ["/data"]
