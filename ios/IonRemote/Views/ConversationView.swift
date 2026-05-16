@@ -161,7 +161,7 @@ struct ConversationView: View {
         } else if loadFailed && conversationMessages.isEmpty {
             result.append(ChatItem(id: "__loadFailed", payload: .loadFailed))
         }
-        if conversationMessages.isEmpty && !isLoading && !loadFailed {
+        if conversationMessages.isEmpty && !isLoading && !loadFailed && (viewModel.tab(for: tabId)?.permissionQueue.isEmpty ?? true) {
             result.append(ChatItem(id: "__empty", payload: .empty))
         }
         for item in groupedItems {
