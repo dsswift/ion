@@ -412,11 +412,15 @@ extension SessionViewModel {
         liveText.removeValue(forKey: tabId)
         conversationHasMore[tabId] = hasMore
         conversationCursor[tabId] = cursor
+
+        // Deduplicate by message ID, keeping last occurrence (most recent version).
+        let deduped = deduplicateMessages(newMessages)
+
         if cursor != nil {
             suppressScrollToBottom = true
-            messages[tabId] = newMessages + (messages[tabId] ?? [])
+            messages[tabId] = deduped + (messages[tabId] ?? [])
         } else {
-            messages[tabId] = newMessages
+            messages[tabId] = deduped
         }
         messageCountByTab[tabId] = messages[tabId]?.count ?? 0
     }
@@ -487,6 +491,19 @@ extension SessionViewModel {
     }
 
     // MARK: - Upload attachment result
+
+    /// Deduplicate messages by ID, keeping the last occurrence of each.
+    private func deduplicateMessages(_ msgs: [Message]) -> [Message] {
+        var seen = Set<String>()
+        var result: [Message] = []
+        for msg in msgs.reversed() {
+            if seen.insert(msg.id).inserted {
+                result.append(msg)
+            }
+        }
+        result.reverse()
+        return result
+    }
 
     @MainActor
     private func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?) {

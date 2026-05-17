@@ -172,14 +172,24 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         let isInitial = !hasAppliedInitialSnapshot && !items.isEmpty
         if isInitial { hasAppliedInitialSnapshot = true }
 
+        // UIKit requires unique identifiers — deduplicate, keeping last occurrence.
+        var seen = Set<String>()
+        var uniqueItems: [ChatItem<Payload>] = []
+        for item in items.reversed() {
+            if seen.insert(item.id).inserted {
+                uniqueItems.append(item)
+            }
+        }
+        uniqueItems.reverse()
+
         var snapshot = NSDiffableDataSourceSnapshot<ChatSection, ChatItem<Payload>>()
         snapshot.appendSections([.main])
-        snapshot.appendItems(items, toSection: .main)
+        snapshot.appendItems(uniqueItems, toSection: .main)
 
         // Always reconfigure all existing items so hosting configs rebuild
         // with fresh data (streaming content, status changes).
         let existing = dataSource.snapshot().itemIdentifiers
-        let toReconfigure = items.filter { existing.contains($0) }
+        let toReconfigure = uniqueItems.filter { existing.contains($0) }
         if !toReconfigure.isEmpty {
             snapshot.reconfigureItems(toReconfigure)
         }
