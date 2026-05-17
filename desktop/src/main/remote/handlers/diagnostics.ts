@@ -1,3 +1,6 @@
+import { writeFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import type { RemoteCommand } from '../protocol'
@@ -5,6 +8,9 @@ import type { RemoteCommand } from '../protocol'
 function log(msg: string): void {
   _log('main', msg)
 }
+
+/** Persisted log file path — readable by the engine's Read tool. */
+const LOG_FILE = join(homedir(), '.ion', 'ios-diagnostic-logs.txt')
 
 // ─── Pending log request tracking ───
 
@@ -15,6 +21,20 @@ interface PendingLogRequest {
 }
 
 const pendingRequests = new Map<string, PendingLogRequest>()
+
+/**
+ * Write logs to ~/.ion/ios-diagnostic-logs.txt so the engine can read them.
+ */
+function persistLogs(logs: string, deviceName: string): void {
+  try {
+    mkdirSync(join(homedir(), '.ion'), { recursive: true })
+    const header = `# iOS Diagnostic Logs — ${deviceName}\n# Pulled at ${new Date().toISOString()}\n\n`
+    writeFileSync(LOG_FILE, header + logs, 'utf-8')
+    log(`persisted iOS logs to ${LOG_FILE} (${logs.length} bytes)`)
+  } catch (err) {
+    log(`failed to persist iOS logs: ${(err as Error).message}`)
+  }
+}
 
 /**
  * Request diagnostic logs from a connected iOS device.
@@ -45,12 +65,15 @@ export function requestDiagnosticLogs(deviceId: string): Promise<string> {
 
 /**
  * Handle the `diagnostic_logs_response` command from an iOS device.
+ * Resolves any pending promise AND writes logs to disk for engine access.
  */
 export function handleDiagnosticLogsResponse(
   cmd: Extract<RemoteCommand, { type: 'diagnostic_logs_response' }>,
   deviceId: string,
 ): void {
   log(`received diagnostic logs from device ${deviceId} (${cmd.logs.length} bytes)`)
+
+  persistLogs(cmd.logs, cmd.deviceName)
 
   const pending = pendingRequests.get(deviceId)
   if (pending) {
@@ -70,4 +93,15 @@ export async function requestLogsFromFirstDevice(): Promise<string> {
     throw new Error('No iOS device connected')
   }
   return requestDiagnosticLogs(deviceIds[0])
+}
+
+/**
+ * Auto-pull diagnostic logs from a device. Called on sync (device connect/reconnect).
+ * Fire-and-forget — errors are logged but do not propagate.
+ */
+export function autoPullDiagnosticLogs(deviceId: string): void {
+  log(`auto-pulling diagnostic logs from device ${deviceId}`)
+  requestDiagnosticLogs(deviceId).catch((err) => {
+    log(`auto-pull diagnostic logs failed: ${(err as Error).message}`)
+  })
 }

@@ -9,6 +9,7 @@ import { readSettings, writeSettings } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
 import { discoverCommands } from '../../cli-compat/command-discovery'
 import { encodeImageAttachments } from '../attachment-encoder'
+import { autoPullDiagnosticLogs } from './diagnostics'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -17,6 +18,7 @@ function log(msg: string): void {
 
 export async function handleSync(deviceId: string): Promise<void> {
   await _sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event))
+  autoPullDiagnosticLogs(deviceId)
 }
 
 /** Broadcast sync to all connected devices (used after state-changing operations). */
