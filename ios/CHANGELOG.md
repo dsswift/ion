@@ -10,6 +10,20 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.24.0](https://github.com/dsswift/ion/compare/ios-v1.23.0...ios-v1.24.0) (2026-05-17)
+
+### Features
+
+* **ios:** add terminal snapshot buffering ([66db599](https://github.com/dsswift/ion/commit/66db59958b6695e389e9fc7094f8e49648150332))
+* **ios:** add git operations with graph visualization and commit details ([75c9fb7](https://github.com/dsswift/ion/commit/75c9fb7289c33b23ca688ed7e098e2fecaacefc0))
+* **ios:** add crash signal and exception handler to diagnostic logs ([d674e4f](https://github.com/dsswift/ion/commit/d674e4ffeb045af406dbbc832227f19799bab554))
+
+### Bug Fixes
+
+* **ios:** buffer snapshot updates before viewDidLoad to prevent crash ([8e2aa59](https://github.com/dsswift/ion/commit/8e2aa59a25cc441cac77138ab138b880c7ec2ffb))
+* **ios:** correct tab selection for conversation ([5699cf1](https://github.com/dsswift/ion/commit/5699cf1da2fa0e682b363bb2181c5c906027af3b))
+* **ios:** deduplicate messages to prevent ui crashes ([258164c](https://github.com/dsswift/ion/commit/258164c0efa490e4b04152ee8ba9cd75cffd1a6c))
+
 ## [1.23.0](https://github.com/dsswift/ion/compare/ios-v1.22.0...ios-v1.23.0) (2026-05-16)
 
 ### Features

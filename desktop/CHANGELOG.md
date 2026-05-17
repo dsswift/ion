@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.27.0](https://github.com/dsswift/ion/compare/desktop-v1.26.0...desktop-v1.27.0) (2026-05-17)
+
+### Features
+
+* **desktop:** pass deviceId to command handlers ([8d574a5](https://github.com/dsswift/ion/commit/8d574a52e07ab5e0cfaa165370ad431276b931e8))
+* **desktop:** add git operations with file system watcher ([4484df1](https://github.com/dsswift/ion/commit/4484df1e22451e285b71fd4200f4956c2b1cc8ff))
+* **ios:** add git operations with graph visualization and commit details ([75c9fb7](https://github.com/dsswift/ion/commit/75c9fb7289c33b23ca688ed7e098e2fecaacefc0))
+* **desktop:** persist ios diagnostic logs to disk ([809cbc0](https://github.com/dsswift/ion/commit/809cbc05f1ff3b143ec5f9a64c55650cf11bcc22))
+
+### Bug Fixes
+
+* **desktop:** add main-process scrollback for terminal snapshots ([69cdd4e](https://github.com/dsswift/ion/commit/69cdd4e141b6b012c249847244770ba5c3ba6b42))
+
 ## [1.26.0](https://github.com/dsswift/ion/compare/desktop-v1.25.2...desktop-v1.26.0) (2026-05-16)
 
 ### Features
