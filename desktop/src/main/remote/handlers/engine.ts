@@ -225,11 +225,11 @@ export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: '
   }
 }
 
-export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, { type: 'load_engine_conversation' }>): Promise<void> {
+export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, { type: 'load_engine_conversation' }>, deviceId: string): Promise<void> {
   try {
     log(`load_engine_conversation: tabId=${cmd.tabId}, instanceId=${cmd.instanceId || 'null'}`)
     if (!state.mainWindow) {
-      state.remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
       return
     }
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -259,14 +259,14 @@ export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, {
     `) || []
     const instanceId = compoundKey.includes(':') ? compoundKey.split(':')[1] : null
     log(`load_engine_conversation: compoundKey=${compoundKey}, found ${msgs.length} messages, instanceId=${instanceId}`)
-    state.remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
 
     // Also send current engine state so iOS has agent panel, status bar,
     // and working message even when connecting to an already-running session.
     await sendCurrentEngineState(cmd.tabId, instanceId, escapedKey)
   } catch (err) {
     log(`load_engine_conversation error: ${(err as Error).message}`)
-    state.remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
   }
 }
 

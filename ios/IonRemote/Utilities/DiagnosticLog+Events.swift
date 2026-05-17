@@ -153,6 +153,21 @@ extension DiagnosticLog {
         case .gitDiffResponse:
             log("EVENT: gitDiffResponse")
 
+        case .gitCommitResult(let result):
+            log("EVENT: gitCommitResult ok=\(result.ok) err=\(result.error ?? "nil")")
+
+        case .gitStageResult(let result):
+            log("EVENT: gitStageResult ok=\(result.ok) err=\(result.error ?? "nil")")
+
+        case .gitUnstageResult(let result):
+            log("EVENT: gitUnstageResult ok=\(result.ok) err=\(result.error ?? "nil")")
+
+        case .gitCommitFilesResponse(let response):
+            log("EVENT: gitCommitFilesResponse hash=\(response.hash.prefix(8)) files=\(response.files.count)")
+
+        case .gitCommitFileDiffResponse(let response):
+            log("EVENT: gitCommitFileDiffResponse hash=\(response.hash.prefix(8)) path=\(response.path.suffix(30))")
+
         case .fsDirListing(let dir, _):
             log("EVENT: fsDirListing dir=\(dir.suffix(30))")
 
@@ -170,6 +185,9 @@ extension DiagnosticLog {
 
         case .uploadAttachmentResult(let id, let name, _, _, let error):
             log("EVENT: uploadAttachmentResult id=\(id.prefix(8)) name=\(name) err=\(error ?? "nil")")
+
+        case .requestDiagnosticLogs:
+            log("EVENT: requestDiagnosticLogs")
         }
     }
 }

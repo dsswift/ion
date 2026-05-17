@@ -88,6 +88,7 @@ final class ChatCollectionVC<Payload, RowContent: View>:
     private var nearBottom = true
     var onNearBottomChanged: ((Bool) -> Void)?
 
+    private var pendingSnapshot: (items: [ChatItem<Payload>], isNearBottom: Bool, forceScroll: Bool)?
     private var hasAppliedInitialSnapshot = false
     private var userIsInteracting = false
     private let spacing: CGFloat
@@ -133,6 +134,11 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         ) { cv, indexPath, item in
             cv.dequeueConfiguredReusableCell(using: reg, for: indexPath, item: item)
         }
+
+        if let pending = pendingSnapshot {
+            pendingSnapshot = nil
+            applySnapshot(items: pending.items, isNearBottom: pending.isNearBottom, forceScroll: pending.forceScroll)
+        }
     }
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
@@ -158,17 +164,32 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         isNearBottom: Bool,
         forceScroll: Bool
     ) {
+        guard dataSource != nil else {
+            pendingSnapshot = (items, isNearBottom, forceScroll)
+            return
+        }
+
         let isInitial = !hasAppliedInitialSnapshot && !items.isEmpty
         if isInitial { hasAppliedInitialSnapshot = true }
 
+        // UIKit requires unique identifiers — deduplicate, keeping last occurrence.
+        var seen = Set<String>()
+        var uniqueItems: [ChatItem<Payload>] = []
+        for item in items.reversed() {
+            if seen.insert(item.id).inserted {
+                uniqueItems.append(item)
+            }
+        }
+        uniqueItems.reverse()
+
         var snapshot = NSDiffableDataSourceSnapshot<ChatSection, ChatItem<Payload>>()
         snapshot.appendSections([.main])
-        snapshot.appendItems(items, toSection: .main)
+        snapshot.appendItems(uniqueItems, toSection: .main)
 
         // Always reconfigure all existing items so hosting configs rebuild
         // with fresh data (streaming content, status changes).
         let existing = dataSource.snapshot().itemIdentifiers
-        let toReconfigure = items.filter { existing.contains($0) }
+        let toReconfigure = uniqueItems.filter { existing.contains($0) }
         if !toReconfigure.isEmpty {
             snapshot.reconfigureItems(toReconfigure)
         }

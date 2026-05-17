@@ -208,6 +208,34 @@ extension RemoteCommand {
             try container.encode(directory, forKey: .directory)
             try container.encode(message, forKey: .message)
 
+        case .gitDiscard(let directory, let paths):
+            try container.encode(TypeKey.gitDiscard, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(paths, forKey: .paths)
+
+        case .gitFetch(let directory):
+            try container.encode(TypeKey.gitFetch, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+
+        case .gitPull(let directory):
+            try container.encode(TypeKey.gitPull, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+
+        case .gitPush(let directory):
+            try container.encode(TypeKey.gitPush, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+
+        case .gitCommitFiles(let directory, let hash):
+            try container.encode(TypeKey.gitCommitFiles, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(hash, forKey: .hash)
+
+        case .gitCommitFileDiff(let directory, let hash, let path):
+            try container.encode(TypeKey.gitCommitFileDiff, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(hash, forKey: .hash)
+            try container.encode(path, forKey: .path)
+
         case .fsListDir(let directory, let includeHidden):
             try container.encode(TypeKey.fsListDir, forKey: .type)
             try container.encode(directory, forKey: .directory)
@@ -243,6 +271,12 @@ extension RemoteCommand {
             try container.encode(enabled, forKey: .enabled)
             try container.encode(mode, forKey: .mode)
             try container.encodeIfPresent(systemPrompt, forKey: .systemPrompt)
+
+        case .diagnosticLogsResponse(let logs, let deviceId, let deviceName):
+            try container.encode(TypeKey.diagnosticLogsResponse, forKey: .type)
+            try container.encode(logs, forKey: .logs)
+            try container.encode(deviceId, forKey: .deviceId)
+            try container.encode(deviceName, forKey: .deviceName)
         }
     }
 }

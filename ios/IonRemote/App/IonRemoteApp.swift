@@ -6,6 +6,10 @@ struct IonRemoteApp: App {
     @State private var viewModel = SessionViewModel()
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        CrashReporter.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

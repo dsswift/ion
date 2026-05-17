@@ -2,6 +2,7 @@ import { IPC } from '../shared/types'
 import { getCliEnv } from './cli-env'
 import { homedir } from 'os'
 import { existsSync } from 'fs'
+import { terminalScrollback } from './state'
 import type { IPty } from 'node-pty'
 
 // node-pty is a native module — require at runtime to avoid Vite bundling issues
@@ -69,6 +70,7 @@ export class TerminalManager {
     const term = this.sessions.get(key)
     if (term) {
       this.sessions.delete(key)
+      terminalScrollback.delete(key)
       try {
         term.kill()
       } catch {

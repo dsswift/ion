@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import os
 
 private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
@@ -265,6 +266,38 @@ extension SessionViewModel {
             gitDiffResult = response
             gitDiffLoading = false
 
+        case .gitCommitResult(let result):
+            if result.ok {
+                Haptic.success()
+                gitToast = GitToast(message: "Committed successfully", isError: false)
+            } else {
+                Haptic.error()
+                gitToast = GitToast(message: result.error ?? "Commit failed", isError: true)
+            }
+
+        case .gitStageResult(let result):
+            if result.ok {
+                Haptic.success()
+            } else {
+                Haptic.error()
+                gitToast = GitToast(message: result.error ?? "Stage failed", isError: true)
+            }
+
+        case .gitUnstageResult(let result):
+            if result.ok {
+                Haptic.success()
+            } else {
+                Haptic.error()
+                gitToast = GitToast(message: result.error ?? "Unstage failed", isError: true)
+            }
+
+        case .gitCommitFilesResponse(let response):
+            gitCommitFiles[response.hash] = response
+
+        case .gitCommitFileDiffResponse(let response):
+            let key = "\(response.hash):\(response.path)"
+            gitCommitFileDiff[key] = response
+
         // File explorer events
         case .fsDirListing(let directory, let response):
             fileListings[directory] = response
@@ -286,6 +319,10 @@ extension SessionViewModel {
         // Command discovery events
         case .discoverCommandsResponse(let directory, let commands):
             discoveredCommands[directory] = commands
+
+        // Diagnostic log request from desktop
+        case .requestDiagnosticLogs:
+            handleRequestDiagnosticLogs()
         }
     }
 
@@ -375,11 +412,15 @@ extension SessionViewModel {
         liveText.removeValue(forKey: tabId)
         conversationHasMore[tabId] = hasMore
         conversationCursor[tabId] = cursor
+
+        // Deduplicate by message ID, keeping last occurrence (most recent version).
+        let deduped = deduplicateMessages(newMessages)
+
         if cursor != nil {
             suppressScrollToBottom = true
-            messages[tabId] = newMessages + (messages[tabId] ?? [])
+            messages[tabId] = deduped + (messages[tabId] ?? [])
         } else {
-            messages[tabId] = newMessages
+            messages[tabId] = deduped
         }
         messageCountByTab[tabId] = messages[tabId]?.count ?? 0
     }
@@ -451,6 +492,19 @@ extension SessionViewModel {
 
     // MARK: - Upload attachment result
 
+    /// Deduplicate messages by ID, keeping the last occurrence of each.
+    private func deduplicateMessages(_ msgs: [Message]) -> [Message] {
+        var seen = Set<String>()
+        var result: [Message] = []
+        for msg in msgs.reversed() {
+            if seen.insert(msg.id).inserted {
+                result.append(msg)
+            }
+        }
+        result.reverse()
+        return result
+    }
+
     @MainActor
     private func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?) {
         if let error, !error.isEmpty {
@@ -458,6 +512,16 @@ extension SessionViewModel {
         } else {
             pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: nil))
         }
+    }
+
+    // MARK: - Diagnostic log request
+
+    @MainActor
+    private func handleRequestDiagnosticLogs() {
+        let logs = DiagnosticLog.exportAllSessions()
+        let deviceId = activeDeviceId ?? "unknown"
+        let deviceName = UIDevice.current.name
+        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName))
     }
 
 }

@@ -365,6 +365,30 @@ extension SessionViewModel {
         send(.gitCommit(directory: directory, message: message))
     }
 
+    func gitDiscard(directory: String, paths: [String]) {
+        send(.gitDiscard(directory: directory, paths: paths))
+    }
+
+    func gitFetch(directory: String) {
+        send(.gitFetch(directory: directory))
+    }
+
+    func gitPull(directory: String) {
+        send(.gitPull(directory: directory))
+    }
+
+    func gitPush(directory: String) {
+        send(.gitPush(directory: directory))
+    }
+
+    func requestGitCommitFiles(directory: String, hash: String) {
+        send(.gitCommitFiles(directory: directory, hash: hash))
+    }
+
+    func requestGitCommitFileDiff(directory: String, hash: String, path: String) {
+        send(.gitCommitFileDiff(directory: directory, hash: hash, path: path))
+    }
+
     // MARK: - File Explorer Commands
 
     /// Upload an image from the iOS device to the desktop as a temp file.

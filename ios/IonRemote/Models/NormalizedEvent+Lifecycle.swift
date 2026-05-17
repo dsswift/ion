@@ -56,6 +56,9 @@ extension RemoteEvent {
             let message = try container.decode(String.self, forKey: .message)
             return .error(tabId: tabId, message: message)
 
+        case .requestDiagnosticLogs:
+            return .requestDiagnosticLogs
+
         default:
             return nil
         }
@@ -120,6 +123,10 @@ extension RemoteEvent {
             try container.encode(TypeKey.heartbeat, forKey: .type)
             try container.encode(senderTs, forKey: .ts)
             try container.encode(buffered, forKey: .buffered)
+            return true
+
+        case .requestDiagnosticLogs:
+            try container.encode(TypeKey.requestDiagnosticLogs, forKey: .type)
             return true
 
         default:

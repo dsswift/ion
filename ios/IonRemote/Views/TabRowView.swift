@@ -7,6 +7,7 @@ struct TabRowView: View {
     var showDirectory: Bool = false
     var idleSince: Date?
     var isSpeaking: Bool = false
+    var gitChanges: GitChangesResponse? = nil
 
     @State private var pulseOpacity: Double = 1.0
 
@@ -87,8 +88,36 @@ struct TabRowView: View {
             }
 
             Spacer()
+
+            // Git status badge
+            if let git = gitChanges, git.isGitRepo {
+                gitBadge(git)
+            }
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Git Badge
+
+    @ViewBuilder
+    private func gitBadge(_ git: GitChangesResponse) -> some View {
+        let changeCount = git.effectiveStagedCount + git.effectiveUnstagedCount
+        HStack(spacing: 4) {
+            Circle()
+                .fill(changeCount > 0 ? Color.orange : Color.green)
+                .frame(width: 6, height: 6)
+            if !git.branch.isEmpty {
+                Text(git.branch)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            if changeCount > 0 {
+                Text("\(changeCount)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.orange)
+            }
+        }
     }
 
     private var directoryLabel: String {

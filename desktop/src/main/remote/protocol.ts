@@ -110,6 +110,12 @@ export type RemoteCommand =
   | { type: 'git_stage'; directory: string; paths: string[] }
   | { type: 'git_unstage'; directory: string; paths: string[] }
   | { type: 'git_commit'; directory: string; message: string }
+  | { type: 'git_discard'; directory: string; paths: string[] }
+  | { type: 'git_fetch'; directory: string }
+  | { type: 'git_pull'; directory: string }
+  | { type: 'git_push'; directory: string }
+  | { type: 'git_commit_files'; directory: string; hash: string }
+  | { type: 'git_commit_file_diff'; directory: string; hash: string; path: string }
   | { type: 'fs_list_dir'; directory: string; includeHidden?: boolean }
   | { type: 'fs_read_file'; filePath: string }
   | { type: 'fs_read_image'; filePath: string }
@@ -117,6 +123,7 @@ export type RemoteCommand =
   | { type: 'discover_commands'; directory: string }
   | { type: 'upload_attachment'; dataUrl: string; name: string; correlationId?: string }
   | { type: 'voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
+  | { type: 'diagnostic_logs_response'; logs: string; deviceId: string; deviceName: string }
 
 // ─── Ion → iOS events ───
 
@@ -164,15 +171,21 @@ export type RemoteEvent =
   | { type: 'heartbeat'; seq: number; ts: number; buffered: number }
   | { type: 'unpair' }
   | { type: 'relay_config'; relayUrl: string; relayApiKey: string }
-  | { type: 'git_changes_response'; directory: string; files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }>; branch: string; isGitRepo: boolean; ahead: number; behind: number }
-  | { type: 'git_graph_response'; directory: string; commits: Array<{ hash: string; fullHash: string; parents: string[]; authorName: string; authorDate: string; subject: string; refs: Array<{ name: string; type: string; isCurrent: boolean }> }>; isGitRepo: boolean; totalCount: number }
+  | { type: 'git_changes_response'; directory: string; files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }>; branch: string; isGitRepo: boolean; ahead: number; behind: number; stagedCount?: number; unstagedCount?: number }
+  | { type: 'git_graph_response'; directory: string; commits: Array<{ hash: string; fullHash: string; parents: string[]; authorName: string; authorDate: string; subject: string; refs: Array<{ name: string; type: string; isCurrent: boolean }> }>; isGitRepo: boolean; totalCount: number; graphLayout?: Array<{ lane: number; color: string; hasIncoming: boolean; connections: Array<{ fromLane: number; toLane: number; type: 'straight' | 'merge' | 'fork'; color: string }>; passThroughLanes: Array<{ lane: number; color: string }> }> }
   | { type: 'git_diff_response'; diff: string; fileName: string }
+  | { type: 'git_commit_result'; directory: string; ok: boolean; error?: string }
+  | { type: 'git_stage_result'; directory: string; ok: boolean; error?: string }
+  | { type: 'git_unstage_result'; directory: string; ok: boolean; error?: string }
+  | { type: 'git_commit_files_response'; directory: string; hash: string; files: Array<{ path: string; status: string; oldPath?: string }>; stats: { filesChanged: number; insertions: number; deletions: number } }
+  | { type: 'git_commit_file_diff_response'; hash: string; path: string; diff: string; fileName: string }
   | { type: 'fs_dir_listing'; directory: string; entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }>; error?: string }
   | { type: 'fs_file_content'; filePath: string; content: string | null; error?: string }
   | { type: 'fs_image_content'; filePath: string; dataUrl: string | null; error?: string }
   | { type: 'fs_write_result'; filePath: string; ok: boolean; error?: string }
   | { type: 'upload_attachment_result'; id: string; name: string; path: string; correlationId?: string; error?: string }
   | { type: 'discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
+  | { type: 'request_diagnostic_logs' }
 
 // ─── Relay control frames (injected by relay, not by Ion) ───
 

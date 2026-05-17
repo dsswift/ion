@@ -75,6 +75,8 @@
 		A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000304AA /* GitPaneView.swift */; };
 		A1B2C3D4E5F60001000307AA /* GitChangesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */; };
 		A1B2C3D4E5F60001000309AA /* GitGraphListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */; };
+		A1B2C3D4E5F60001000313AA /* GitGraphLaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000312AA /* GitGraphLaneView.swift */; };
+		A1B2C3D4E5F6000100030BAA /* GitToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100030AAA /* GitToastView.swift */; };
 		A1B2C3D4E5F60001000311AA /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000310AA /* GitDiffView.swift */; };
 		A1B2C3D4E5F60001000401AA /* FileTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000400AA /* FileTypes.swift */; };
 		A1B2C3D4E5F60001000403AA /* NormalizedEvent+Files.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */; };
@@ -101,6 +103,7 @@
 		A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */; };
 		A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */; };
 		A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */; };
+		A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001007002AA /* CrashReporter.swift */; };
 		A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */; };
 		A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */; };
 		A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */; };
@@ -202,6 +205,8 @@
 		A1B2C3D4E5F60001000304AA /* GitPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPaneView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitChangesListView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphListView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000312AA /* GitGraphLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphLaneView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100030AAA /* GitToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitToastView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000310AA /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000400AA /* FileTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Files.swift"; sourceTree = "<group>"; };
@@ -227,6 +232,7 @@
 		A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPoller.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPickerMenu.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001007002AA /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Events.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogView.swift; sourceTree = "<group>"; };
@@ -380,6 +386,8 @@
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
 				A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */,
 				A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */,
+				A1B2C3D4E5F60001000312AA /* GitGraphLaneView.swift */,
+				A1B2C3D4E5F6000100030AAA /* GitToastView.swift */,
 				A1B2C3D4E5F60001000310AA /* GitDiffView.swift */,
 				A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */,
 				A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */,
@@ -462,6 +470,7 @@
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
 				A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */,
+				A1B2C3D4E5F60001007002AA /* CrashReporter.swift */,
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
@@ -647,6 +656,8 @@
 				A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */,
 				A1B2C3D4E5F60001000307AA /* GitChangesListView.swift in Sources */,
 				A1B2C3D4E5F60001000309AA /* GitGraphListView.swift in Sources */,
+				A1B2C3D4E5F60001000313AA /* GitGraphLaneView.swift in Sources */,
+				A1B2C3D4E5F6000100030BAA /* GitToastView.swift in Sources */,
 				A1B2C3D4E5F60001000311AA /* GitDiffView.swift in Sources */,
 				A1B2C3D4E5F60001000401AA /* FileTypes.swift in Sources */,
 				A1B2C3D4E5F60001000403AA /* NormalizedEvent+Files.swift in Sources */,
@@ -683,6 +694,7 @@
 				A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */,
 				A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */,
 				A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */,
+				A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */,
 				A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */,
 				A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */,
 				A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */,

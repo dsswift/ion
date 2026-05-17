@@ -40,6 +40,9 @@ struct RemoteTerminalView: View {
         .onAppear {
             viewModel.requestTerminalSnapshot(tabId: tabId)
         }
+        .onChange(of: activeInstanceId) {
+            viewModel.requestTerminalSnapshot(tabId: tabId)
+        }
         .navigationTitle(viewModel.tab(for: tabId)?.displayTitle ?? "Terminal")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

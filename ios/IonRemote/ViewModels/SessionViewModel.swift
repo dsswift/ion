@@ -173,6 +173,9 @@ final class SessionViewModel {
     var gitGraph: [String: GitGraphResponse] = [:]          // directory -> graph
     var gitDiffResult: GitDiffResponse? = nil
     var gitDiffLoading = false
+    var gitCommitFiles: [String: GitCommitFilesResponse] = [:]  // keyed by hash
+    var gitCommitFileDiff: [String: GitCommitFileDiffResponse] = [:]  // keyed by "hash:path"
+    var gitToast: GitToast? = nil
 
     // File explorer state (per directory/path)
     var fileListings: [String: FsDirListingResponse] = [:]   // directory -> listing

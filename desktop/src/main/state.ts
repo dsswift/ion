@@ -29,6 +29,16 @@ export const activeToolInputs = new Map<string, Map<string, string>>() // tabId 
 export const lastMessagePreview = new Map<string, string>()
 export const terminalOutputAccumulator = new Map<string, string>()
 
+/**
+ * Main-process scrollback buffer per terminal key.
+ * Accumulates terminal output so that `handleRequestTerminalSnapshot` can
+ * serve buffer content even when the renderer hasn't mounted an xterm instance
+ * for the terminal (e.g. terminal tabs created remotely from iOS).
+ * Capped at MAX_SCROLLBACK_SIZE bytes per key.
+ */
+export const terminalScrollback = new Map<string, string>()
+export const MAX_SCROLLBACK_SIZE = 100_000
+
 interface MutableState {
   mainWindow: BrowserWindow | null
   tray: Tray | null

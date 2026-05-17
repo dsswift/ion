@@ -131,6 +131,24 @@ extension DiagnosticLog {
         case .gitCommit(let dir, let msg):
             log("CMD: gitCommit dir=\(dir.suffix(30)) msg=\(msg.prefix(40))")
 
+        case .gitDiscard(let dir, let paths):
+            log("CMD: gitDiscard dir=\(dir.suffix(30)) paths=\(paths.count)")
+
+        case .gitFetch(let dir):
+            log("CMD: gitFetch dir=\(dir.suffix(30))")
+
+        case .gitPull(let dir):
+            log("CMD: gitPull dir=\(dir.suffix(30))")
+
+        case .gitPush(let dir):
+            log("CMD: gitPush dir=\(dir.suffix(30))")
+
+        case .gitCommitFiles(let dir, let hash):
+            log("CMD: gitCommitFiles dir=\(dir.suffix(30)) hash=\(hash.prefix(8))")
+
+        case .gitCommitFileDiff(let dir, let hash, let path):
+            log("CMD: gitCommitFileDiff dir=\(dir.suffix(30)) hash=\(hash.prefix(8)) path=\(path.suffix(30))")
+
         case .fsListDir(let dir, let hidden):
             log("CMD: fsListDir dir=\(dir.suffix(30)) hidden=\(hidden)")
 
@@ -151,6 +169,9 @@ extension DiagnosticLog {
 
         case .voiceConfig(let enabled, let mode, _):
             log("CMD: voiceConfig enabled=\(enabled) mode=\(mode)")
+
+        case .diagnosticLogsResponse(let logs, _, _):
+            log("CMD: diagnosticLogsResponse len=\(logs.count)")
         }
     }
 }

@@ -43,6 +43,12 @@ enum RemoteCommand: Codable, Sendable {
     case gitStage(directory: String, paths: [String])
     case gitUnstage(directory: String, paths: [String])
     case gitCommit(directory: String, message: String)
+    case gitDiscard(directory: String, paths: [String])
+    case gitFetch(directory: String)
+    case gitPull(directory: String)
+    case gitPush(directory: String)
+    case gitCommitFiles(directory: String, hash: String)
+    case gitCommitFileDiff(directory: String, hash: String, path: String)
     case fsListDir(directory: String, includeHidden: Bool = false)
     case fsReadFile(filePath: String)
     case fsReadImage(filePath: String)
@@ -50,6 +56,7 @@ enum RemoteCommand: Codable, Sendable {
     case discoverCommands(directory: String)
     case uploadAttachment(dataUrl: String, name: String, correlationId: String)
     case voiceConfig(enabled: Bool, mode: String, systemPrompt: String?)
+    case diagnosticLogsResponse(logs: String, deviceId: String, deviceName: String)
 
     // MARK: - Codable
 
@@ -95,6 +102,12 @@ enum RemoteCommand: Codable, Sendable {
         case gitStage = "git_stage"
         case gitUnstage = "git_unstage"
         case gitCommit = "git_commit"
+        case gitDiscard = "git_discard"
+        case gitFetch = "git_fetch"
+        case gitPull = "git_pull"
+        case gitPush = "git_push"
+        case gitCommitFiles = "git_commit_files"
+        case gitCommitFileDiff = "git_commit_file_diff"
         case fsListDir = "fs_list_dir"
         case fsReadFile = "fs_read_file"
         case fsReadImage = "fs_read_image"
@@ -102,6 +115,7 @@ enum RemoteCommand: Codable, Sendable {
         case discoverCommands = "discover_commands"
         case uploadAttachment = "upload_attachment"
         case voiceConfig = "voice_config"
+        case diagnosticLogsResponse = "diagnostic_logs_response"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -109,9 +123,10 @@ enum RemoteCommand: Codable, Sendable {
         case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
         case instanceId, data, cols, rows, customTitle, label, messageId, clientMsgId
         case dialogId, value, profileId, model, groupId
-        case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden
+        case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden, hash
         case attachments, dataUrl, name, correlationId
         case enabled, systemPrompt
+        case logs, deviceId, deviceName
     }
 
     init(from decoder: Decoder) throws {
@@ -325,6 +340,34 @@ enum RemoteCommand: Codable, Sendable {
             let message = try container.decode(String.self, forKey: .message)
             self = .gitCommit(directory: directory, message: message)
 
+        case .gitDiscard:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let paths = try container.decode([String].self, forKey: .paths)
+            self = .gitDiscard(directory: directory, paths: paths)
+
+        case .gitFetch:
+            let directory = try container.decode(String.self, forKey: .directory)
+            self = .gitFetch(directory: directory)
+
+        case .gitPull:
+            let directory = try container.decode(String.self, forKey: .directory)
+            self = .gitPull(directory: directory)
+
+        case .gitPush:
+            let directory = try container.decode(String.self, forKey: .directory)
+            self = .gitPush(directory: directory)
+
+        case .gitCommitFiles:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let hash = try container.decode(String.self, forKey: .hash)
+            self = .gitCommitFiles(directory: directory, hash: hash)
+
+        case .gitCommitFileDiff:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let hash = try container.decode(String.self, forKey: .hash)
+            let path = try container.decode(String.self, forKey: .path)
+            self = .gitCommitFileDiff(directory: directory, hash: hash, path: path)
+
         case .fsListDir:
             let directory = try container.decode(String.self, forKey: .directory)
             let includeHidden = try container.decodeIfPresent(Bool.self, forKey: .includeHidden) ?? false
@@ -358,6 +401,12 @@ enum RemoteCommand: Codable, Sendable {
             let mode = try container.decode(String.self, forKey: .mode)
             let systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt)
             self = .voiceConfig(enabled: enabled, mode: mode, systemPrompt: systemPrompt)
+
+        case .diagnosticLogsResponse:
+            let logs = try container.decode(String.self, forKey: .logs)
+            let deviceId = try container.decode(String.self, forKey: .deviceId)
+            let deviceName = try container.decode(String.self, forKey: .deviceName)
+            self = .diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName)
         }
     }
 
