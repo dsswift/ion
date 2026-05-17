@@ -402,6 +402,11 @@ export class RemoteTransport extends EventEmitter {
     this._recomputeState()
   }
 
+  /** Return device IDs of all currently connected devices. */
+  getConnectedDeviceIds(): string[] {
+    return [...this.deviceSecrets.keys()].filter(id => this._isDeviceConnected(id))
+  }
+
   /** Send to a specific device only (e.g. unpair notification). */
   sendToDevice(deviceId: string, event: RemoteEvent, push = false): void {
     const secret = this.deviceSecrets.get(deviceId)

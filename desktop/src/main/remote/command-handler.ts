@@ -50,6 +50,10 @@ import {
   handleGitStage,
   handleGitUnstage,
   handleGitCommit,
+  handleGitDiscard,
+  handleGitFetch,
+  handleGitPull,
+  handleGitPush,
 } from './handlers/git'
 import {
   handleFsListDir,
@@ -58,6 +62,9 @@ import {
   handleFsWriteFile,
   handleUploadAttachment,
 } from './handlers/files'
+import {
+  handleDiagnosticLogsResponse,
+} from './handlers/diagnostics'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string): void {
@@ -105,6 +112,10 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'git_stage': await handleGitStage(cmd); break
     case 'git_unstage': await handleGitUnstage(cmd); break
     case 'git_commit': await handleGitCommit(cmd); break
+    case 'git_discard': await handleGitDiscard(cmd); break
+    case 'git_fetch': await handleGitFetch(cmd); break
+    case 'git_pull': await handleGitPull(cmd); break
+    case 'git_push': await handleGitPush(cmd); break
     case 'fs_list_dir': await handleFsListDir(cmd, deviceId); break
     case 'fs_read_file': await handleFsReadFile(cmd, deviceId); break
     case 'fs_read_image': await handleFsReadImage(cmd); break
@@ -116,5 +127,6 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'set_engine_default_model': await handleSetEngineDefaultModel(cmd); break
     case 'voice_config': handleVoiceConfig(cmd, deviceId); break
     case 'unpair': handleUnpair(deviceId); break
+    case 'diagnostic_logs_response': handleDiagnosticLogsResponse(cmd, deviceId); break
   }
 }

@@ -2,7 +2,9 @@ import { basename, join } from 'path'
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import { runGit } from '../../git-runner'
+import { computeGraphLayout } from '../../../shared/gitGraphLayout'
 import type { RemoteCommand } from '../protocol'
+import type { GitRef } from '../../../shared/types'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -64,10 +66,13 @@ export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'git_
       }
     }
 
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind })
+    const stagedCount = files.filter(f => f.staged).length
+    const unstagedCount = files.filter(f => !f.staged).length
+
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind, stagedCount, unstagedCount })
   } catch (err) {
     log(`git_changes error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files: [], branch: '', isGitRepo: true, ahead: 0, behind: 0 })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files: [], branch: '', isGitRepo: true, ahead: 0, behind: 0, stagedCount: 0, unstagedCount: 0 })
   }
 }
 
@@ -95,7 +100,7 @@ export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'git_gr
 
     const commits = logOutput.trim().split('\n').filter(Boolean).map((line) => {
       const [hash, fullHash, parents, authorName, authorDate, subject, decorations] = line.split('\x00')
-      const refs: Array<{ name: string; type: string; isCurrent: boolean }> = []
+      const refs: GitRef[] = []
       if (decorations && decorations.trim()) {
         for (const dec of decorations.split(',')) {
           const d = dec.trim()
@@ -122,7 +127,15 @@ export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'git_gr
       }
     })
 
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_graph_response', directory, commits, isGitRepo: true, totalCount })
+    const graphLayout = computeGraphLayout(commits).map(node => ({
+      lane: node.lane,
+      color: node.color,
+      hasIncoming: node.hasIncoming,
+      connections: node.connections,
+      passThroughLanes: node.passThroughLanes,
+    }))
+
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_graph_response', directory, commits, isGitRepo: true, totalCount, graphLayout })
   } catch (err) {
     log(`git_graph error: ${(err as Error).message}`)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'git_graph_response', directory, commits: [], isGitRepo: true, totalCount: 0 })
@@ -159,33 +172,44 @@ export async function handleGitDiff(cmd: Extract<RemoteCommand, { type: 'git_dif
 
 export async function handleGitStage(cmd: Extract<RemoteCommand, { type: 'git_stage' }>): Promise<void> {
   const { directory, paths } = cmd
+  let ok = true
   try {
     await runGit(directory, ['add', '--', ...paths])
   } catch (err) {
     log(`git_stage error: ${(err as Error).message}`)
+    ok = false
   }
+  state.remoteTransport?.send({ type: 'git_stage_result', directory, ok })
   // Auto-refresh changes and broadcast to all devices
   await broadcastGitChanges(directory)
 }
 
 export async function handleGitUnstage(cmd: Extract<RemoteCommand, { type: 'git_unstage' }>): Promise<void> {
   const { directory, paths } = cmd
+  let ok = true
   try {
     await runGit(directory, ['restore', '--staged', '--', ...paths])
   } catch (err) {
     log(`git_unstage error: ${(err as Error).message}`)
+    ok = false
   }
+  state.remoteTransport?.send({ type: 'git_unstage_result', directory, ok })
   // Auto-refresh changes and broadcast to all devices
   await broadcastGitChanges(directory)
 }
 
 export async function handleGitCommit(cmd: Extract<RemoteCommand, { type: 'git_commit' }>): Promise<void> {
   const { directory, message } = cmd
+  let ok = true
+  let error: string | undefined
   try {
     await runGit(directory, ['commit', '-m', message])
   } catch (err) {
     log(`git_commit error: ${(err as Error).message}`)
+    ok = false
+    error = (err as Error).message
   }
+  state.remoteTransport?.send({ type: 'git_commit_result', directory, ok, error })
   // Auto-refresh both changes and graph, broadcast to all devices
   await broadcastGitChanges(directory)
   await broadcastGitGraph(directory)
@@ -197,7 +221,7 @@ async function broadcastGitChanges(directory: string): Promise<void> {
     try {
       await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
     } catch {
-      state.remoteTransport?.send({ type: 'git_changes_response', directory, files: [], branch: '', isGitRepo: false, ahead: 0, behind: 0 })
+      state.remoteTransport?.send({ type: 'git_changes_response', directory, files: [], branch: '', isGitRepo: false, ahead: 0, behind: 0, stagedCount: 0, unstagedCount: 0 })
       return
     }
     let branch = ''
@@ -227,7 +251,9 @@ async function broadcastGitChanges(directory: string): Promise<void> {
         files.push({ path: filePath, status, staged: false, oldPath })
       }
     }
-    state.remoteTransport?.send({ type: 'git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind })
+    const stagedCount = files.filter(f => f.staged).length
+    const unstagedCount = files.filter(f => !f.staged).length
+    state.remoteTransport?.send({ type: 'git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind, stagedCount, unstagedCount })
   } catch (err) {
     log(`broadcastGitChanges error: ${(err as Error).message}`)
   }
@@ -248,7 +274,7 @@ async function broadcastGitGraph(directory: string): Promise<void> {
     try { totalCount = parseInt((await runGit(directory, ['rev-list', '--all', '--count'])).trim(), 10) || 0 } catch {}
     const commits = logOutput.trim().split('\n').filter(Boolean).map((line) => {
       const [hash, fullHash, parents, authorName, authorDate, subject, decorations] = line.split('\x00')
-      const refs: Array<{ name: string; type: string; isCurrent: boolean }> = []
+      const refs: GitRef[] = []
       if (decorations && decorations.trim()) {
         for (const dec of decorations.split(',')) {
           const d = dec.trim()
@@ -261,8 +287,82 @@ async function broadcastGitGraph(directory: string): Promise<void> {
       }
       return { hash, fullHash, parents: parents ? parents.split(' ') : [], authorName, authorDate, subject, refs }
     })
-    state.remoteTransport?.send({ type: 'git_graph_response', directory, commits, isGitRepo: true, totalCount })
+    const graphLayout = computeGraphLayout(commits).map(node => ({
+      lane: node.lane,
+      color: node.color,
+      hasIncoming: node.hasIncoming,
+      connections: node.connections,
+      passThroughLanes: node.passThroughLanes,
+    }))
+    state.remoteTransport?.send({ type: 'git_graph_response', directory, commits, isGitRepo: true, totalCount, graphLayout })
   } catch (err) {
     log(`broadcastGitGraph error: ${(err as Error).message}`)
   }
+}
+
+export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'git_discard' }>): Promise<void> {
+  const { directory, paths } = cmd
+  try {
+    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall', '--', ...paths])
+    const trackedPaths: string[] = []
+    const untrackedPaths: string[] = []
+    for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
+      const dm = line.match(/^(.)(.) (.+)$/)
+      if (!dm) continue
+      const x = dm[1]
+      const y = dm[2]
+      let p = dm[3]
+      if (p.includes(' -> ')) p = p.split(' -> ')[1]
+      if (x === '?' && y === '?') {
+        untrackedPaths.push(p)
+      } else {
+        trackedPaths.push(p)
+      }
+    }
+    if (trackedPaths.length > 0) {
+      await runGit(directory, ['checkout', 'HEAD', '--', ...trackedPaths])
+    }
+    if (untrackedPaths.length > 0) {
+      const { unlink } = require('fs/promises')
+      const { join } = require('path')
+      for (const p of untrackedPaths) {
+        try { await unlink(join(directory, p)) } catch {}
+      }
+    }
+  } catch (err) {
+    log(`git_discard error: ${(err as Error).message}`)
+  }
+  await broadcastGitChanges(directory)
+}
+
+export async function handleGitFetch(cmd: Extract<RemoteCommand, { type: 'git_fetch' }>): Promise<void> {
+  const { directory } = cmd
+  try {
+    await runGit(directory, ['fetch', '--all'])
+  } catch (err) {
+    log(`git_fetch error: ${(err as Error).message}`)
+  }
+  await broadcastGitChanges(directory)
+  await broadcastGitGraph(directory)
+}
+
+export async function handleGitPull(cmd: Extract<RemoteCommand, { type: 'git_pull' }>): Promise<void> {
+  const { directory } = cmd
+  try {
+    await runGit(directory, ['pull'])
+  } catch (err) {
+    log(`git_pull error: ${(err as Error).message}`)
+  }
+  await broadcastGitChanges(directory)
+  await broadcastGitGraph(directory)
+}
+
+export async function handleGitPush(cmd: Extract<RemoteCommand, { type: 'git_push' }>): Promise<void> {
+  const { directory } = cmd
+  try {
+    await runGit(directory, ['push'])
+  } catch (err) {
+    log(`git_push error: ${(err as Error).message}`)
+  }
+  await broadcastGitGraph(directory)
 }
