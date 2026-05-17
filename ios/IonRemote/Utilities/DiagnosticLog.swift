@@ -88,6 +88,12 @@ final class DiagnosticLog: @unchecked Sendable {
         shared.readAllSessions()
     }
 
+    /// Synchronously flush pending writes to disk (used by crash handlers).
+    static func flush() {
+        shared.writeQueue.sync {}
+        shared.fileHandle?.synchronizeFile()
+    }
+
     // MARK: - Internal
 
     private func append(_ message: String) {
