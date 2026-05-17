@@ -56,12 +56,14 @@ func (rb *ringBuffer) Lines() []string {
 
 // cliRun tracks an active Claude CLI process.
 type cliRun struct {
-	requestID string
-	cmd       *exec.Cmd
-	cancel    context.CancelFunc
-	stderr    *ringBuffer
-	stdinPipe io.WriteCloser
-	stdinMu   sync.Mutex
+	requestID    string
+	cmd          *exec.Cmd
+	cancel       context.CancelFunc
+	stderr       *ringBuffer
+	stdinPipe    io.WriteCloser
+	stdinMu      sync.Mutex
+	planMode     bool
+	planFilePath string
 }
 
 // CliBackend implements RunBackend by spawning the Claude Code CLI
@@ -225,6 +227,10 @@ func findClaudeBinary() (string, error) {
 
 // runProcess is the goroutine that manages the Claude CLI process lifecycle.
 func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.RunOptions) {
+	// Capture plan state so the event loop can enrich ExitPlanMode denials.
+	run.planMode = opts.PlanMode
+	run.planFilePath = opts.PlanFilePath
+
 	// Delay cleanup by 5s so callers can read diagnostics (stderr) after exit
 	defer func() {
 		time.AfterFunc(5*time.Second, func() {
@@ -254,8 +260,12 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// implementing whatever approval layer it needs via hooks.  Defaulting to
 	// "auto" would inject Claude Code's interactive prompts, which hangs
 	// headless / daemon deployments where no user is present to approve.
+	// Plan mode: delegate to the CLI's native --permission-mode plan rather
+	// than injecting our own plan prompt on top of bypassPermissions.
 	permMode := "bypassPermissions"
-	if opts.PermissionModeCli != "" {
+	if opts.PlanMode {
+		permMode = "plan"
+	} else if opts.PermissionModeCli != "" {
 		permMode = opts.PermissionModeCli
 	}
 	args = append(args, "--permission-mode", permMode)
@@ -278,11 +288,25 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	if opts.SystemPrompt != "" {
 		args = append(args, "--system-prompt", opts.SystemPrompt)
 	}
-	if opts.AppendSystemPrompt != "" {
-		args = append(args, "--append-system-prompt", opts.AppendSystemPrompt)
+
+	// Plan mode: append a supplementary directive telling the model to write
+	// the plan to our managed file path. The CLI's native plan mode handles
+	// the behavioral framework (read-only tools, phases, ExitPlanMode); we
+	// just redirect where the plan lands on disk.
+	appendSys := opts.AppendSystemPrompt
+	if opts.PlanMode && opts.PlanFilePath != "" {
+		planDirective := fmt.Sprintf("\n\n[ION PLAN FILE]\nWrite your implementation plan to this file: %s\n"+
+			"This is the only file you should create or edit. Use the Write tool to write the plan.\n"+
+			"When the plan is complete, call ExitPlanMode.", opts.PlanFilePath)
+		appendSys += planDirective
+	}
+	if appendSys != "" {
+		args = append(args, "--append-system-prompt", appendSys)
 	}
 
-	// Allowed tools: use provided list, or restrict when hook settings injected
+	// Allowed tools: use provided list, or restrict when hook settings injected.
+	// Plan mode: always include Write and Edit so the model can write the plan
+	// file (the CLI's native plan mode gates which paths are writable).
 	allowedTools := opts.AllowedTools
 	if len(allowedTools) == 0 {
 		if opts.HookSettingsPath != "" {
@@ -290,6 +314,19 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 			allowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch", "Agent", "TaskCreate", "TaskList", "TaskGet", "LSP", "NotebookEdit"}
 		} else {
 			allowedTools = []string{"Read", "Glob", "Grep", "LS", "Agent", "WebSearch", "WebFetch"}
+		}
+	}
+	if opts.PlanMode {
+		// Ensure Write/Edit are available for the plan file even if not in
+		// the base set. The CLI's plan mode restricts what can be written.
+		has := make(map[string]bool, len(allowedTools))
+		for _, t := range allowedTools {
+			has[t] = true
+		}
+		for _, need := range []string{"Write", "Edit"} {
+			if !has[need] {
+				allowedTools = append(allowedTools, need)
+			}
 		}
 	}
 	args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
@@ -303,6 +340,12 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	}
 
 	utils.Log("CliBackend", fmt.Sprintf("spawning: %s %s", claudePath, strings.Join(args, " ")))
+
+	// Signal to the desktop that plan mode is active for this run.
+	if run.planMode {
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
+		utils.Info("PlanMode", fmt.Sprintf("cli run=%s plan_file=%s", run.requestID, run.planFilePath))
+	}
 
 	cmd := exec.CommandContext(ctx, claudePath, args...)
 
@@ -408,6 +451,27 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 			case *types.TaskCompleteEvent:
 				if e.SessionID != "" {
 					sessionID = e.SessionID
+				}
+				// Plan mode enrichment: when the CLI's result contains an
+				// ExitPlanMode denial, inject our planFilePath (which the
+				// CLI's wire format doesn't carry) and emit a
+				// PlanModeChangedEvent before the TaskCompleteEvent so the
+				// desktop sets tab.planFilePath before rendering the card.
+				if run.planMode && run.planFilePath != "" {
+					for i := range e.PermissionDenials {
+						if e.PermissionDenials[i].ToolName == "ExitPlanMode" {
+							e.PermissionDenials[i].ToolInput = map[string]any{
+								"planFilePath": run.planFilePath,
+							}
+							b.emit(run.requestID, types.NormalizedEvent{
+								Data: &types.PlanModeChangedEvent{
+									Enabled:      false,
+									PlanFilePath: run.planFilePath,
+								},
+							})
+							break
+						}
+					}
 				}
 			}
 			b.emit(run.requestID, ev)

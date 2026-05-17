@@ -72,10 +72,20 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	s.cliTurnActive = false
 
 	if s.planMode && s.planFilePath == "" {
-		home, _ := os.UserHomeDir()
-		plansDir := filepath.Join(home, ".ion", "plans")
-		_ = os.MkdirAll(plansDir, 0755)
-		s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
+		// CLI backend: place the plan file inside the project working directory
+		// because the Claude CLI's native plan mode restricts writes to paths
+		// within or under the project root. API backend: use ~/.ion/plans/ since
+		// it controls its own tool execution and can write anywhere.
+		if _, isCli := m.backend.(*backend.CliBackend); isCli && s.config.WorkingDirectory != "" {
+			plansDir := filepath.Join(s.config.WorkingDirectory, ".ion", "plans")
+			_ = os.MkdirAll(plansDir, 0755)
+			s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
+		} else {
+			home, _ := os.UserHomeDir()
+			plansDir := filepath.Join(home, ".ion", "plans")
+			_ = os.MkdirAll(plansDir, 0755)
+			s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
+		}
 	}
 
 	opts := buildRunOptions(s, text, overrides)
