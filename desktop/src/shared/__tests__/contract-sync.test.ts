@@ -124,6 +124,21 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'service_tier',
   ],
   AgentStateUpdate: ['metadata', 'name', 'status'],
+  ModelEntry: [
+    'contextWindow',
+    'costPer1kInput',
+    'costPer1kOutput',
+    'id',
+    'providerId',
+    'supportsCaching',
+    'supportsImages',
+    'supportsThinking',
+  ],
+  ProviderEntry: [
+    'authSource',
+    'hasAuth',
+    'id',
+  ],
 }
 
 // ─── Tests ───

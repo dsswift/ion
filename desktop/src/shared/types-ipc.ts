@@ -219,6 +219,10 @@ export const IPC = {
   ENGINE_STOP: 'ion:engine-stop',
   ENGINE_EVENT: 'ion:engine-event',
 
+  // Model & provider management
+  LIST_MODELS: 'ion:list-models',
+  STORE_CREDENTIAL: 'ion:store-credential',
+
   // Auto-update
   INSTALL_UPDATE: 'ion:install-update',
   UPDATE_DOWNLOADED: 'ion:update-downloaded',

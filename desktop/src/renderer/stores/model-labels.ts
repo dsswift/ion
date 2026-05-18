@@ -1,5 +1,7 @@
 // ─── Known models ───
 
+import { useModelStore } from './model-store'
+
 export const AVAILABLE_MODELS = [
   { id: 'claude-opus-4-6', label: 'Opus 4.6', contextWindow: 1_000_000 },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', contextWindow: 200_000 },
@@ -36,4 +38,11 @@ export function getModelDisplayLabel(modelId: string): string {
   }
 
   return has1MContext ? `${normalizedId} (1M)` : normalizedId
+}
+
+/** Get context window for a model, checking dynamic model store first. */
+export function getDynamicContextWindow(modelId: string): number {
+  const entry = useModelStore.getState().findModel(modelId)
+  if (entry) return entry.contextWindow
+  return getModelContextWindow(modelId)
 }

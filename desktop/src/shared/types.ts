@@ -14,3 +14,6 @@ export * from './types-engine'
 export * from './types-persistence'
 export * from './types-ipc'
 export * from './types-git-events'
+
+export type { ModelEntry, ProviderEntry, ModelsListResponse } from './types-models'
+export { getProviderDisplayName, getModelDisplayLabel as getModelEntryLabel } from './types-models'

@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
-import { CaretDown, Check } from '@phosphor-icons/react'
+import { CaretDown } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
+import { useSessionStore } from '../stores/sessionStore'
+import { AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/model-labels'
+import { useModelStore } from '../stores/model-store'
+import { ModelPickerPopover } from './ModelPickerPopover'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -27,7 +29,19 @@ export function ModelPicker() {
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
+  const fetchModels = useModelStore((s) => s.fetchModels)
+  const hasModels = useModelStore((s) => s.models.length > 0)
+  const lastFetched = useModelStore((s) => s.lastFetched)
+
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
+
+  useEffect(() => {
+    if (!hasModels) fetchModels()
+  }, [hasModels, fetchModels])
+
+  useEffect(() => {
+    if (open && Date.now() - lastFetched > 60_000) fetchModels()
+  }, [open, lastFetched, fetchModels])
 
   useEffect(() => { setOpen(false) }, [activeTabId])
 
@@ -90,47 +104,13 @@ export function ModelPicker() {
       </button>
 
       {popoverLayer && open && createPortal(
-        <motion.div
-          ref={popoverRef}
-          data-ion-ui
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 4 }}
-          transition={{ duration: 0.12 }}
-          className="rounded-xl"
-          style={{
-            position: 'fixed',
-            bottom: pos.bottom,
-            left: pos.left,
-            width: 192,
-            pointerEvents: 'auto',
-            background: colors.popoverBg,
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            boxShadow: colors.popoverShadow,
-            border: `1px solid ${colors.popoverBorder}`,
-          }}
-        >
-          <div className="py-1">
-            {AVAILABLE_MODELS.map((m) => {
-              const isSelected = m.id === effectiveModel
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => { if (activeTabId) setTabModel(activeTabId, m.id); setOpen(false) }}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-                  style={{
-                    color: isSelected ? colors.textPrimary : colors.textSecondary,
-                    fontWeight: isSelected ? 600 : 400,
-                  }}
-                >
-                  {m.label}
-                  {isSelected && <Check size={12} style={{ color: colors.accent }} />}
-                </button>
-              )
-            })}
-          </div>
-        </motion.div>,
+        <ModelPickerPopover
+          popoverRef={popoverRef}
+          selectedModelId={effectiveModel}
+          onSelect={(modelId) => { if (activeTabId) setTabModel(activeTabId, modelId) }}
+          onClose={() => setOpen(false)}
+          position={pos}
+        />,
         popoverLayer,
       )}
     </>

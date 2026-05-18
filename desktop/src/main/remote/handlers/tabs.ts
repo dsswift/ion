@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { IPC } from '../../../shared/types'
 import { log as _log } from '../../logger'
-import { state, sessionPlane, engineBridge, terminalScrollback } from '../../state'
+import { state, sessionPlane, engineBridge, terminalScrollback, modelCache } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
 import { readSettings, writeSettings } from '../../settings-store'
@@ -32,7 +32,7 @@ async function _sendSync(send: (event: any) => void): Promise<void> {
   const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
   const tabGroupMode = syncSettings.tabGroupMode || 'off'
   const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
-  send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups, preferredModel: syncSettings.preferredModel || undefined, engineDefaultModel: syncSettings.engineDefaultModel || undefined })
+  send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups, preferredModel: syncSettings.preferredModel || undefined, engineDefaultModel: syncSettings.engineDefaultModel || undefined, availableModels: modelCache.models.length > 0 ? modelCache.models : undefined })
   const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
   send({ type: 'engine_profiles', profiles: engineProfiles })
   for (const tab of tabs) {

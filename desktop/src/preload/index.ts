@@ -141,6 +141,10 @@ export interface IonAPI {
   engineStop(key: string): Promise<void>
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
+  // ─── Model & provider management ───
+  listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
+  storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
+
   // ─── Remote control ───
   remoteGetState(): Promise<{ transportState: RemoteTransportState } | null>
   remoteGetMessages(tabId: string): Promise<any[]>
@@ -347,6 +351,10 @@ const api: IonAPI = {
     ipcRenderer.on(IPC.ENGINE_EVENT, handler)
     return () => ipcRenderer.removeListener(IPC.ENGINE_EVENT, handler)
   },
+
+  // ─── Model & provider management ───
+  listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
+  storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
 
   // ─── Remote control ───
   remoteGetState: () => ipcRenderer.invoke(IPC.REMOTE_GET_STATE),

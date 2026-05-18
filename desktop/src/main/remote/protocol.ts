@@ -128,7 +128,7 @@ export type RemoteCommand =
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string }
+  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }> }
   | { type: 'tab_created'; tab: RemoteTabState }
   | { type: 'tab_closed'; tabId: string }
   | { type: 'tab_status'; tabId: string; status: TabStatus }

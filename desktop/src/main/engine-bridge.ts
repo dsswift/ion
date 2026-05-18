@@ -469,6 +469,17 @@ export class EngineBridge extends EventEmitter {
     return this._sendWithData({ cmd: 'migrate_conversation', key: sessionId, text: targetFormat, message: targetDir, args: sourceDir })
   }
 
+  async listModels(): Promise<{ models: any[]; providers: any[] }> {
+    await this.connect()
+    const result = await this._sendWithData<{ models: any[]; providers: any[] }>({ cmd: 'list_models' })
+    return result.data || { models: [], providers: [] }
+  }
+
+  async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> {
+    await this.connect()
+    return this._sendWithResult({ cmd: 'store_credential', provider, credential })
+  }
+
   sendReconcileState(key: string): void {
     log(`sendReconcileState: key=${key}`)
     this._send({ cmd: 'reconcile_state', key })
