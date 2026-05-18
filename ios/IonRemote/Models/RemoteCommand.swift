@@ -33,6 +33,7 @@ enum RemoteCommand: Codable, Sendable {
     case loadEngineConversation(tabId: String, instanceId: String?)
     case setTabGroupMode(mode: String)
     case moveTabToGroup(tabId: String, groupId: String)
+    case reorderTabGroups(orderedIds: [String])
     case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
     case setTabModel(tabId: String, model: String)
     case setPreferredModel(model: String)
@@ -92,6 +93,7 @@ enum RemoteCommand: Codable, Sendable {
         case loadEngineConversation = "load_engine_conversation"
         case setTabGroupMode = "set_tab_group_mode"
         case moveTabToGroup = "move_tab_to_group"
+        case reorderTabGroups = "reorder_tab_groups"
         case engineSetModel = "engine_set_model"
         case setTabModel = "set_tab_model"
         case setPreferredModel = "set_preferred_model"
@@ -124,7 +126,7 @@ enum RemoteCommand: Codable, Sendable {
         case instanceId, data, cols, rows, customTitle, label, messageId, clientMsgId
         case dialogId, value, profileId, model, groupId
         case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden, hash
-        case attachments, dataUrl, name, correlationId
+        case attachments, dataUrl, name, correlationId, orderedIds
         case enabled, systemPrompt
         case logs, deviceId, deviceName
     }
@@ -289,6 +291,10 @@ enum RemoteCommand: Codable, Sendable {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let groupId = try container.decode(String.self, forKey: .groupId)
             self = .moveTabToGroup(tabId: tabId, groupId: groupId)
+
+        case .reorderTabGroups:
+            let orderedIds = try container.decode([String].self, forKey: .orderedIds)
+            self = .reorderTabGroups(orderedIds: orderedIds)
 
         case .engineSetModel:
             let tabId = try container.decode(String.self, forKey: .tabId)

@@ -200,6 +200,17 @@ extension SessionViewModel {
         send(.moveTabToGroup(tabId: tabId, groupId: groupId))
     }
 
+    /// Reorder tab groups. Sends the new ordering to the desktop.
+    func reorderTabGroups(orderedIds: [String]) {
+        // Optimistic local update: reorder tabGroups to match orderedIds
+        let idOrder = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($1, $0) })
+        tabGroups.sort { (idOrder[$0.id] ?? Int.max) < (idOrder[$1.id] ?? Int.max) }
+        for i in tabGroups.indices {
+            tabGroups[i].order = i
+        }
+        send(.reorderTabGroups(orderedIds: orderedIds))
+    }
+
     // MARK: - Terminal Commands
 
     func createTerminalTab(workingDirectory: String? = nil) {

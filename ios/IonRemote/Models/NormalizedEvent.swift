@@ -7,7 +7,7 @@ struct RemoteTabGroup: Codable, Identifiable, Sendable {
     let id: String
     let label: String
     let isDefault: Bool
-    let order: Int
+    var order: Int
 }
 
 enum RemoteEvent: Codable, Sendable {

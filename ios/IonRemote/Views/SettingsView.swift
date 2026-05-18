@@ -294,12 +294,18 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .onMove { source, destination in
+                    var reordered = sorted
+                    reordered.move(fromOffsets: source, toOffset: destination)
+                    let orderedIds = reordered.map(\.id)
+                    viewModel.reorderTabGroups(orderedIds: orderedIds)
+                }
             }
         } header: {
             Text("Tab Groups")
         } footer: {
             if viewModel.tabGroupMode == "manual" {
-                Text("Groups are managed on the desktop app. Create or rearrange groups from the desktop settings.")
+                Text("Drag to reorder groups. Create or delete groups from the desktop settings.")
             }
         }
     }
