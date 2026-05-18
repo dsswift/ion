@@ -130,3 +130,26 @@ Go is the source of truth. A reflection-based test (`engine/internal/types/contr
 6. Run `make check-contracts`, `npm test`, and `make ios-check` to verify.
 
 If you skip a step, CI fails with a clear message identifying the drift (e.g. `"Go-only: [newField]"`).
+
+## Logging policy
+
+Logging is a **first-class citizen** of the architecture. Every code path must be observable through logs alone.
+
+### Rules
+
+1. **Every operation must log.** Before execution, after success, and inside every failure branch. A developer reading logs must be able to reconstruct the exact code path from start to finish without attaching a debugger.
+2. **No blind spots.** When entering existing code that lacks sufficient logging, **add comprehensive logging as the first step** before attempting any fix or feature work. This is not optional prep — it is part of the implementation.
+3. **Logging is permanent.** Never treat logs as "debug scaffolding" to be removed later. Log statements ship to production. Use appropriate levels:
+   - `utils.Log` / `INFO` — state transitions, resolved decisions, operation outcomes. Always present.
+   - `utils.Debug` / `DEBUG` — per-request details, intermediate values, loop iterations. Verbose but useful for replay.
+   - `utils.Error` / `ERROR` — unexpected failures, caught panics, invariant violations.
+4. **Include context in every log.** Always log the relevant identifiers (provider ID, model ID, session key, request ID, key lengths, URL, status codes). A log line without context is useless.
+5. **Log both sides of conditionals.** If an `if/else` branch makes a decision, log which branch was taken and why. Don't log only the happy path.
+6. **Desktop main process** uses the `log()` helper from `../logger`. Renderer code uses `console.log` sparingly (performance-sensitive hot paths excepted).
+7. **Engine Go code** uses `utils.Log(tag, msg)`, `utils.Debug(tag, msg)`, and `utils.Error(tag, msg)`. Never use `log.Printf` or `fmt.Printf` for operational logging — those go to stderr which is invisible when the desktop spawns the engine. All operational logs must go through `utils.Log` so they land in `~/.ion/engine.log`.
+
+### Anti-patterns
+
+- Adding a single log line per investigation cycle and hoping it's enough. **Instrument the entire code path in one pass.**
+- Logging only the error case. **Log the success case too** — "operation X completed with result Y" is as valuable as "operation X failed with error Z".
+- Using opaque messages like "failed" or "error occurred". **Include the what, the why, and the relevant IDs.**
