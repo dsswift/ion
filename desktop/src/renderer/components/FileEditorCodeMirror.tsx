@@ -12,7 +12,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
-import { getLanguageExtension } from './FileEditorShared'
+import { getLanguageExtension, getLanguageExtensionById } from './FileEditorShared'
 import { blameExtension, dispatchBlame, clearBlame } from './git/blameGutter'
 import { FileEditorContextMenu } from './FileEditorContextMenu'
 
@@ -27,13 +27,14 @@ interface FileEditorCodeMirrorProps {
   onSave: () => void
   onCursorChange?: (pos: CursorPosition) => void
   editorViewRef?: React.MutableRefObject<EditorView | null>
+  languageOverride?: string | null
 }
 
 /**
  * The CodeMirror editing surface. Lives only when a non-preview file is
  * active; preview rendering is handled by FileEditorPreview.
  */
-export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, editorViewRef }: FileEditorCodeMirrorProps) {
+export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, editorViewRef, languageOverride }: FileEditorCodeMirrorProps) {
   console.log('[FileEditorCodeMirror] render', { dir, fileId: activeFile.id, fileName: activeFile.fileName, isReadOnly: activeFile.isReadOnly, contentLen: activeFile.content.length })
   const colors = useColors()
   const editorWordWrap = usePreferencesStore((s) => s.editorWordWrap)
@@ -160,7 +161,9 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
 
     if (editorWordWrap) exts.push(EditorView.lineWrapping)
 
-    const langExt = getLanguageExtension(file.fileName)
+    const langExt = languageOverride
+      ? getLanguageExtensionById(languageOverride)
+      : getLanguageExtension(file.fileName)
     if (langExt) exts.push(langExt)
 
     if (file.isReadOnly) {
@@ -190,7 +193,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
     }
 
     return exts
-  }, [ionTheme, dir, updateEditorContent, editorWordWrap, editorFontSize])
+  }, [ionTheme, dir, updateEditorContent, editorWordWrap, editorFontSize, languageOverride])
 
   // ---- CodeMirror lifecycle ----
   useEffect(() => {
@@ -204,7 +207,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
     }
 
     const container = editorContainerRef.current
-    const stateKey = `${activeFile.id}:${activeFile.isReadOnly}:${editorWordWrap}:${editorFontSize}`
+    const stateKey = `${activeFile.id}:${activeFile.isReadOnly}:${editorWordWrap}:${editorFontSize}:${languageOverride ?? ''}`
 
     // If same file with same config, skip recreation
     if (viewRef.current && activeFileIdRef.current === stateKey) {
@@ -236,12 +239,12 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
       // Only destroy if switching away or unmounting
       // The next effect run will handle re-creation
     }
-  }, [activeFile.id, activeFile.isReadOnly, buildExtensions, editorWordWrap, editorFontSize])
+  }, [activeFile.id, activeFile.isReadOnly, buildExtensions, editorWordWrap, editorFontSize, languageOverride])
 
   // Sync external content changes into the editor (e.g., after file load)
   useEffect(() => {
     if (!viewRef.current) return
-    const stateKey = `${activeFile.id}:${activeFile.isReadOnly}:${editorWordWrap}:${editorFontSize}`
+    const stateKey = `${activeFile.id}:${activeFile.isReadOnly}:${editorWordWrap}:${editorFontSize}:${languageOverride ?? ''}`
     if (activeFileIdRef.current !== stateKey) return
 
     const currentDoc = viewRef.current.state.doc.toString()
@@ -250,7 +253,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
         changes: { from: 0, to: currentDoc.length, insert: activeFile.content },
       })
     }
-  }, [activeFile.content, activeFile.id, activeFile.isReadOnly, editorWordWrap, editorFontSize])
+  }, [activeFile.content, activeFile.id, activeFile.isReadOnly, editorWordWrap, editorFontSize, languageOverride])
 
   // Cleanup on unmount
   useEffect(() => {

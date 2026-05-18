@@ -150,6 +150,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
               onSave={handleSave}
               onCursorChange={setCursorPos}
               editorViewRef={editorViewRef}
+              languageOverride={langOverride}
             />
           )
         ) : (
