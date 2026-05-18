@@ -100,6 +100,7 @@ export type RemoteCommand =
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'move_tab_to_group'; tabId: string; groupId: string }
+  | { type: 'reorder_tab_groups'; orderedIds: string[] }
   | { type: 'set_tab_model'; tabId: string; model: string }
   | { type: 'set_preferred_model'; model: string }
   | { type: 'set_engine_default_model'; model: string }
