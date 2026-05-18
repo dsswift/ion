@@ -12,7 +12,7 @@ extension DiagnosticLog {
         case .heartbeat:
             return // skip — fires every few seconds
 
-        case .snapshot(let tabs, let dirs, let groupMode, _, _, _):
+        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _):
             log("EVENT: snapshot tabs=\(tabs.count) dirs=\(dirs.count) groupMode=\(groupMode ?? "nil")")
 
         case .tabCreated(let tab):
