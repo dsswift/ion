@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.28.0](https://github.com/dsswift/ion/compare/desktop-v1.27.0...desktop-v1.28.0) (2026-05-18)
+
+### Features
+
+* **engine:** add plan mode support to CLI backend ([ec645fa](https://github.com/dsswift/ion/commit/ec645fa9e82470e2f21c9f8856b7e2ba8bfd6b92))
+* **desktop:** rework git system ([0337588](https://github.com/dsswift/ion/commit/033758896a23e7b63ae0e6576c80fdb9f73118bd))
+
+### Bug Fixes
+
+* **desktop:** suppress ghost plan cards in CLI auto mode ([0c150a2](https://github.com/dsswift/ion/commit/0c150a2fbf7e0235833bcc7775fc9f44fdd4370c))
+
 ## [1.27.0](https://github.com/dsswift/ion/compare/desktop-v1.26.0...desktop-v1.27.0) (2026-05-17)
 
 ### Features
