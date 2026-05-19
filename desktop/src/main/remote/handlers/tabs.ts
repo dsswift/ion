@@ -456,6 +456,41 @@ export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 
   await broadcastSync()
 }
 
+export async function handleReorderTabGroups(cmd: Extract<RemoteCommand, { type: 'reorder_tab_groups' }>): Promise<void> {
+  const ids = cmd.orderedIds
+  if (!Array.isArray(ids) || ids.length === 0) {
+    log('reorder_tab_groups: empty or invalid orderedIds')
+    return
+  }
+  try {
+    const escaped = JSON.stringify(ids).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var prefs = window.__Ion_PREFS_STORE__;
+        if (!prefs) return;
+        var orderedIds = JSON.parse('${escaped}');
+        var allGroups = prefs.getState().tabGroups;
+        var byId = {};
+        for (var i = 0; i < allGroups.length; i++) byId[allGroups[i].id] = allGroups[i];
+        var result = [];
+        for (var j = 0; j < orderedIds.length; j++) {
+          if (byId[orderedIds[j]]) result.push(byId[orderedIds[j]]);
+        }
+        // Append any groups not in the ordered list (safety net)
+        var seen = {};
+        for (var k = 0; k < orderedIds.length; k++) seen[orderedIds[k]] = true;
+        for (var m = 0; m < allGroups.length; m++) {
+          if (!seen[allGroups[m].id]) result.push(allGroups[m]);
+        }
+        prefs.getState().reorderTabGroups(result);
+      })()
+    `)
+  } catch (err) {
+    log('reorder_tab_groups error: ' + (err as Error).message)
+  }
+  await broadcastSync()
+}
+
 export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: 'move_tab_to_group' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")

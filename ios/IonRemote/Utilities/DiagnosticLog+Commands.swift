@@ -172,6 +172,9 @@ extension DiagnosticLog {
 
         case .diagnosticLogsResponse(let logs, _, _):
             log("CMD: diagnosticLogsResponse len=\(logs.count)")
+
+        case .reorderTabGroups(let orderedIds):
+            log("CMD: reorderTabGroups count=\(orderedIds.count)")
         }
     }
 }

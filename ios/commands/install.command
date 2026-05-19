@@ -69,8 +69,10 @@ for d in data.get('result', {}).get('devices', []):
         continue
     conn = d.get('connectionProperties', {})
     tunnel = conn.get('tunnelState', 'unavailable')
-    # Skip paired-but-disconnected devices
-    if tunnel == 'disconnected':
+    transport = conn.get('transportType', '')
+    # Keep devices with an active tunnel, or a known transport (wired/localNetwork).
+    # Devices with no transportType and no tunnel are stale pairings.
+    if tunnel != 'connected' and transport == '':
         continue
     props = d.get('deviceProperties', {})
     udid = d.get('identifier', '')
@@ -131,11 +133,17 @@ for r in results:
       fi
       return
     fi
+
+    # devicectl worked but no active device found — don't fall through
+    echo "✗ No connected iOS device found."
+    echo "  Paired devices exist but none have an active tunnel or USB connection."
+    echo "  Connect an iPhone or iPad via USB cable."
+    exit 1
   else
     rm -f "$tmp"
   fi
 
-  # Fallback: xctrace (older Xcode or devicectl returned nothing)
+  # Fallback: xctrace (older Xcode or devicectl failed to produce output)
   local line
   line=$(xcrun xctrace list devices 2>/dev/null \
     | grep -v "Simulator" \
@@ -172,15 +180,7 @@ if $TUNNEL_OK; then
   # CoreDevice tunnel works — build targeting the specific device
   DESTINATION="id=$DEVICE_ID"
 else
-  # Tunnel broken — build for generic iOS and install separately
-  if ! command -v ios-deploy &>/dev/null; then
-    echo
-    echo "✗ CoreDevice tunnel is unavailable and no fallback install tool found."
-    echo
-    echo "  Install ios-deploy:  brew install ios-deploy"
-    echo "  Or fix the tunnel:   unplug/replug USB, open Xcode, wait for device prep."
-    exit 1
-  fi
+  # Tunnel not fully up — build for generic iOS and install via devicectl
   DESTINATION="generic/platform=iOS"
 fi
 
@@ -245,23 +245,27 @@ echo "  App: $APP_PATH"
 install_to_device() {
   local dev_id="$1"
 
-  # Resolve legacy UDID for ios-deploy if available
+  # Prefer devicectl — it handles both USB and network installs.
+  echo "  Using devicectl (device: $dev_id)..."
+  if xcrun devicectl device install app --device "$dev_id" "$APP_PATH" 2>&1; then
+    return 0
+  fi
+
+  echo "  devicectl failed, trying ios-deploy..."
+  if ! command -v ios-deploy &>/dev/null; then
+    echo "  ✗ ios-deploy not installed. Install with: brew install ios-deploy"
+    return 1
+  fi
+
+  # Resolve legacy UDID for ios-deploy (USB only)
   local legacy_id=""
   if command -v idevice_id &>/dev/null; then
     legacy_id=$(idevice_id -l 2>/dev/null | head -1)
   fi
   local install_id="${legacy_id:-$dev_id}"
 
-  if command -v ios-deploy &>/dev/null; then
-    echo "  Using ios-deploy (device: $install_id)..."
-    ios-deploy --id "$install_id" --bundle "$APP_PATH" --no-wifi 2>&1 || {
-      echo "  ios-deploy failed, trying devicectl..."
-      xcrun devicectl device install app --device "$dev_id" "$APP_PATH" 2>&1
-    }
-  else
-    echo "  Using devicectl..."
-    xcrun devicectl device install app --device "$dev_id" "$APP_PATH" 2>&1
-  fi
+  echo "  Using ios-deploy (device: $install_id)..."
+  ios-deploy --id "$install_id" --bundle "$APP_PATH" --no-wifi 2>&1
 }
 
 if $INSTALL_ALL; then

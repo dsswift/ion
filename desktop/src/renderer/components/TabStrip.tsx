@@ -55,7 +55,6 @@ export function TabStrip() {
   const plusButtonRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-  const groupHeaderRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   // Manual drag-to-reorder for flat tab mode
   const flatReorder = useManualReorder({
@@ -63,31 +62,6 @@ export function TabStrip() {
     keyFn: (t) => t.id,
     itemRefs: tabRefs,
     onReorder: reorderTabs,
-  })
-
-  // Manual drag-to-reorder for group headers
-  const groupIds = groups.map((g) => g.groupId)
-  const groupReorder = useManualReorder({
-    items: groupIds,
-    keyFn: (id) => id,
-    itemRefs: groupHeaderRefs,
-    onReorder: (reorderedIds) => {
-      if (groupMode === 'manual') {
-        const allGroups = usePreferencesStore.getState().tabGroups
-        const reorderedTabGroups = reorderedIds.map((id) => {
-          const stored = allGroups.find((sg) => sg.id === id)
-          const view = groups.find((g) => g.groupId === id)
-          return stored || { id, label: view?.label || id, isDefault: view?.isDefault || false, order: 0, collapsed: view?.collapsed || false }
-        })
-        // Preserve empty groups that weren't visible in the strip
-        const reorderedIdSet = new Set(reorderedIds)
-        const missingGroups = allGroups.filter((g) => !reorderedIdSet.has(g.id))
-        usePreferencesStore.getState().reorderTabGroups([...reorderedTabGroups, ...missingGroups])
-      } else if (groupMode === 'auto') {
-        const dirs = reorderedIds.map((id) => id.replace('auto-', ''))
-        usePreferencesStore.getState().setAutoGroupOrder(dirs)
-      }
-    },
   })
 
   // Manual drag-to-reorder for ungrouped tabs
@@ -271,11 +245,6 @@ export function TabStrip() {
                 return (
                   <div
                     key={group.groupId}
-                    ref={(el: HTMLDivElement | null) => {
-                      if (el) groupHeaderRefs.current.set(group.groupId, el)
-                      else groupHeaderRefs.current.delete(group.groupId)
-                    }}
-                    onPointerDown={(e) => groupReorder.onItemPointerDown(group.groupId, e)}
                     style={{ flexShrink: 0 }}
                   >
                     <GroupPill
