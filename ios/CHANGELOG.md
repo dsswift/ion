@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.26.1](https://github.com/dsswift/ion/compare/ios-v1.26.0...ios-v1.26.1) (2026-05-19)
+
+### Bug Fixes
+
+* **engine:** unify context window and persist token cache ([5024b80](https://github.com/dsswift/ion/commit/5024b805f4b25dff5ea9dc9f6b5cb470d4a3a61c))
+
 ## [1.26.0](https://github.com/dsswift/ion/compare/ios-v1.25.0...ios-v1.26.0) (2026-05-19)
 
 ### Features

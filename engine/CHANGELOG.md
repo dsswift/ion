@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.22.1](https://github.com/dsswift/ion/compare/engine-v1.22.0...engine-v1.22.1) (2026-05-19)
+
+### Bug Fixes
+
+* **engine:** unify context window and persist token cache ([5024b80](https://github.com/dsswift/ion/commit/5024b805f4b25dff5ea9dc9f6b5cb470d4a3a61c))
+
 ## [1.22.0](https://github.com/dsswift/ion/compare/engine-v1.21.0...engine-v1.22.0) (2026-05-19)
 
 ### Features

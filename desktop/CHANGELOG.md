@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.31.2](https://github.com/dsswift/ion/compare/desktop-v1.31.1...desktop-v1.31.2) (2026-05-19)
+
+### Bug Fixes
+
+* **engine:** unify context window and persist token cache ([5024b80](https://github.com/dsswift/ion/commit/5024b805f4b25dff5ea9dc9f6b5cb470d4a3a61c))
+
 ## [1.31.1](https://github.com/dsswift/ion/compare/desktop-v1.31.0...desktop-v1.31.1) (2026-05-19)
 
 ## [1.31.0](https://github.com/dsswift/ion/compare/desktop-v1.30.0...desktop-v1.31.0) (2026-05-19)
