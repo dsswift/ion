@@ -8,6 +8,7 @@ import { BackendIndicator } from './StatusBarBackendIndicator'
 import { ModelPicker } from './StatusBarModelPicker'
 import { ContextIndicator } from './StatusBarContextIndicator'
 import { PermissionModePicker } from './StatusBarPermissionModePicker'
+import { AttachmentsButton } from './StatusBarAttachmentsButton'
 import { OpenWithPicker } from './StatusBarOpenWithPicker'
 import { TallViewToggle } from './StatusBarTallViewToggle'
 import { DirectoryPicker } from './StatusBarDirectoryPicker'
@@ -18,6 +19,7 @@ export { BackendIndicator } from './StatusBarBackendIndicator'
 export { ModelPicker } from './StatusBarModelPicker'
 export { ContextIndicator } from './StatusBarContextIndicator'
 export { PermissionModePicker } from './StatusBarPermissionModePicker'
+export { AttachmentsButton } from './StatusBarAttachmentsButton'
 export { OpenWithPicker } from './StatusBarOpenWithPicker'
 export { TallViewToggle } from './StatusBarTallViewToggle'
 export { DirectoryPicker } from './StatusBarDirectoryPicker'
@@ -112,6 +114,9 @@ export function StatusBar() {
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 
         <PermissionModePicker />
+
+        <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
+        <AttachmentsButton />
 
         {isEngine && (() => {
           const pane = enginePanes.get(activeTabId)
