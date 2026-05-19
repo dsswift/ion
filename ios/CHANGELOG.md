@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.25.0](https://github.com/dsswift/ion/compare/ios-v1.24.0...ios-v1.25.0) (2026-05-19)
+
+### Features
+
+* **ios:** add model list support to remote protocol ([91f2eb6](https://github.com/dsswift/ion/commit/91f2eb6442bfa0d8ea85dfd2f72dd0c9f6d14904))
+
+### Bug Fixes
+
+* **ios:** correct diagnostic log event name ([33938f5](https://github.com/dsswift/ion/commit/33938f5c04db9473b428f7d80f992a336bb38e67))
+
 ## [1.24.0](https://github.com/dsswift/ion/compare/ios-v1.23.0...ios-v1.24.0) (2026-05-17)
 
 ### Features

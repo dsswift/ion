@@ -13,6 +13,16 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.22.0](https://github.com/dsswift/ion/compare/engine-v1.21.0...engine-v1.22.0) (2026-05-19)
+
+### Features
+
+* **engine:** add provider model system with discovery ([e62f6e4](https://github.com/dsswift/ion/commit/e62f6e41c0a7da59d58a5f7478a5369bf3681608))
+
+### Bug Fixes
+
+* **engine:** add tool_call accumulation regression tests ([adae830](https://github.com/dsswift/ion/commit/adae83027881816cad3b875ea7a57806da66158f))
+
 ## [1.21.0](https://github.com/dsswift/ion/compare/engine-v1.20.1...engine-v1.21.0) (2026-05-18)
 
 ### Features

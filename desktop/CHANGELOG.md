@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.29.0](https://github.com/dsswift/ion/compare/desktop-v1.28.0...desktop-v1.29.0) (2026-05-19)
+
+### Features
+
+* **desktop:** add model management with provider config ([8fb8cf4](https://github.com/dsswift/ion/commit/8fb8cf4b3a3f2ee008a81edfe457626ab35c984b))
+* **desktop:** add oauth provider authentication ([3580b60](https://github.com/dsswift/ion/commit/3580b60af619c652d60f9704d40325172c3027ef))
+* **desktop:** add model refresh and provider filtering ([b49b671](https://github.com/dsswift/ion/commit/b49b67159c2e5a223ae4e05434dfb856da57e06d))
+* **desktop:** persist model override in tab state ([50f8790](https://github.com/dsswift/ion/commit/50f87904981ce80ab83cce8c3e845a7a91c49645))
+
+### Bug Fixes
+
+* **desktop:** move slash command output to user prompt ([dc07b70](https://github.com/dsswift/ion/commit/dc07b70fd3b659655bdaac63eea3a6b2d619da85))
+
 ## [1.28.0](https://github.com/dsswift/ion/compare/desktop-v1.27.0...desktop-v1.28.0) (2026-05-18)
 
 ### Features
