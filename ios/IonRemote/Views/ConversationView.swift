@@ -11,6 +11,7 @@ struct ConversationView: View {
     @State private var showGitPane = false
     @State private var showFileExplorer = false
     @State private var showTerminal = false
+    @State private var showAttachments = false
 
     private var tab: RemoteTabState? {
         viewModel.tab(for: tabId)
@@ -22,6 +23,10 @@ struct ConversationView: View {
 
     private var conversationMessages: [Message] {
         viewModel.messages[tabId] ?? []
+    }
+
+    private var attachmentCount: Int {
+        countConversationAttachments(conversationMessages, desktopCache: viewModel.tabAttachmentCache[tabId])
     }
 
     private var groupedItems: [ConversationItem] {
@@ -230,6 +235,7 @@ struct ConversationView: View {
                 isRunning: isRunning,
                 permissionMode: tab?.permissionMode,
                 availableModels: viewModel.availableModels,
+                attachmentCount: attachmentCount,
                 onSelectModel: { model in
                     viewModel.setTabModel(tabId: tabId, model: model)
                 },
@@ -237,6 +243,9 @@ struct ConversationView: View {
                     guard let current = tab?.permissionMode else { return }
                     let newMode: PermissionMode = current == .plan ? .auto : .plan
                     viewModel.setPermissionMode(tabId: tabId, mode: newMode)
+                },
+                onTapAttachments: {
+                    showAttachments = true
                 }
             )
 
@@ -323,6 +332,10 @@ struct ConversationView: View {
         }
         .fullScreenCover(isPresented: $showTerminal) {
             ConversationTerminalView(tabId: tabId)
+                .environment(viewModel)
+        }
+        .sheet(isPresented: $showAttachments) {
+            ConversationAttachmentsSheet(tabId: tabId)
                 .environment(viewModel)
         }
     }

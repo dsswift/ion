@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Fullscreen image preview with pinch-to-zoom, presented as a sheet.
+/// Fullscreen image preview with pinch-to-zoom, share, and save.
 struct AttachmentImagePreview: View {
     let image: UIImage
     var name: String = ""
@@ -9,6 +9,7 @@ struct AttachmentImagePreview: View {
     @State private var lastScale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
+    @State private var showShareSheet = false
 
     var body: some View {
         NavigationStack {
@@ -59,10 +60,32 @@ struct AttachmentImagePreview: View {
             .navigationTitle(name.isEmpty ? "Preview" : name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Haptic.light()
+                        showShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(items: [image])
+            }
         }
     }
+}
+
+/// UIKit share sheet wrapped for SwiftUI.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

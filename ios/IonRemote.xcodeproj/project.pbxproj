@@ -50,6 +50,7 @@
 		A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */; };
 		A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */; };
 		A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */; };
+		A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */; };
 		A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */; };
 		A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */; };
 		A1B2C3D4E5F600010000F4AA /* EngineInstanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */; };
@@ -181,6 +182,7 @@
 		A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineFooterView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTerminalView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationAttachmentsSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProfile.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUtilityBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineInstanceBar.swift; sourceTree = "<group>"; };
@@ -367,6 +369,7 @@
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F6000100001AAA /* ConversationView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
+				A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */,
 				A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */,
 				A1B2C3D4E5F6000100400CAA /* EngineView+Attachments.swift */,
 				A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */,
@@ -631,6 +634,7 @@
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */,
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
+				A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */,
 				A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */,
 				A1B2C3D4E5F6000100400DAA /* EngineView+Attachments.swift in Sources */,
 				A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */,
