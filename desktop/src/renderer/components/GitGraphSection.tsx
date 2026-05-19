@@ -4,6 +4,7 @@ import { AnimatePresence } from 'framer-motion'
 import {
   ArrowsClockwise, ArrowDown, ArrowUp, CheckCircle, X, SpinnerGap,
 } from '@phosphor-icons/react'
+import { Tooltip } from './git/Tooltip'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
@@ -148,10 +149,24 @@ export function GitGraphSection({
   const [commitFiles, setCommitFiles] = useState<GitCommitFile[]>([])
   const [commitFileDiff, setCommitFileDiff] = useState<{ diff: string; fileName: string } | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const popupHoveredRef = useRef(false)
   const activeHashRef = useRef<string | null>(null)
+
+  const dismissPopup = useCallback(() => {
+    activeHashRef.current = null
+    setHoveredCommit(null)
+    setHoverRect(null)
+    setCommitDetail(null)
+  }, [])
 
   const handleRowHover = useCallback((commit: GitCommit, rect: DOMRect) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    // Hovering a new commit: cancel any pending dismiss and clear old popup immediately
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
+    popupHoveredRef.current = false
+    dismissPopup()
     hoverTimerRef.current = setTimeout(() => {
       setHoveredCommit(commit)
       setHoverRect(rect)
@@ -161,37 +176,52 @@ export function GitGraphSection({
         if (activeHashRef.current === commit.hash) setCommitDetail(detail)
       }).catch(() => {})
     }, 300)
-  }, [directory])
+  }, [directory, dismissPopup])
 
   const handleRowLeave = useCallback(() => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = null
-    activeHashRef.current = null
-    setHoveredCommit(null)
-    setHoverRect(null)
-    setCommitDetail(null)
+    // Grace period: give user time to reach the popup
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = setTimeout(() => {
+      if (!popupHoveredRef.current) dismissPopup()
+    }, 250)
+  }, [dismissPopup])
+
+  const handlePopupEnter = useCallback(() => {
+    popupHoveredRef.current = true
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
   }, [])
+
+  const handlePopupLeave = useCallback(() => {
+    popupHoveredRef.current = false
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = setTimeout(() => {
+      if (!popupHoveredRef.current) dismissPopup()
+    }, 150)
+  }, [dismissPopup])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, commit: GitCommit) => {
     e.preventDefault()
     // Dismiss hover popup so it doesn't overlap
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = null
-    activeHashRef.current = null
-    setHoveredCommit(null)
-    setHoverRect(null)
-    setCommitDetail(null)
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
+    popupHoveredRef.current = false
+    dismissPopup()
     setContextMenu({ x: e.clientX, y: e.clientY, commit })
-  }, [])
+  }, [dismissPopup])
 
   const handleCommitClick = useCallback(async (commit: GitCommit) => {
     // Dismiss hover popup
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = null
-    activeHashRef.current = null
-    setHoveredCommit(null)
-    setHoverRect(null)
-    setCommitDetail(null)
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
+    popupHoveredRef.current = false
+    dismissPopup()
 
     if (expandedHash === commit.hash) {
       // Collapse
@@ -242,9 +272,10 @@ export function GitGraphSection({
     }
   }, [directory])
 
-  // Clean up timer on unmount
+  // Clean up timers on unmount
   useEffect(() => () => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
   }, [])
 
   const handleFetch = async () => {
@@ -321,64 +352,68 @@ export function GitGraphSection({
             </div>
           ) : (
             <>
-              <button
-                onClick={handleFetch}
-                disabled={!!fetchingAction}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary }}
-                title="Fetch"
-              >
-                {fetchingAction === 'fetch' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowsClockwise size={11} />}
-              </button>
-              <button
-                onClick={handlePull}
-                disabled={!!fetchingAction}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary }}
-                title={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}
-              >
-                {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
-              </button>
-              {worktree ? (
+              <Tooltip text="Fetch">
                 <button
-                  onClick={() => {
-                    if (!hasUncommittedChanges) {
-                      useSessionStore.getState().finishWorktreeTab(activeTabId)
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    if (!hasUncommittedChanges) {
-                      setFinishMenuAnchor({ x: e.clientX, y: e.clientY })
-                    }
-                  }}
-                  disabled={hasUncommittedChanges}
+                  onClick={handleFetch}
+                  disabled={!!fetchingAction}
                   className="p-0.5 rounded transition-colors"
-                  style={{
-                    color: hasUncommittedChanges ? colors.textTertiary : '#4ade80',
-                    opacity: hasUncommittedChanges ? 0.35 : 1,
-                    cursor: hasUncommittedChanges ? 'not-allowed' : 'pointer',
-                  }}
-                  title={hasUncommittedChanges
+                  style={{ color: colors.textTertiary }}
+                >
+                  {fetchingAction === 'fetch' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowsClockwise size={11} />}
+                </button>
+              </Tooltip>
+              <Tooltip text={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}>
+                <button
+                  onClick={handlePull}
+                  disabled={!!fetchingAction}
+                  className="p-0.5 rounded transition-colors"
+                  style={{ color: colors.textTertiary }}
+                >
+                  {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
+                </button>
+              </Tooltip>
+              {worktree ? (
+                <Tooltip text={hasUncommittedChanges
                     ? 'Commit all changes before finishing'
                     : strategy === 'merge-ff'
                       ? `Finish: fast-forward into ${worktree.sourceBranch}`
                       : strategy === 'merge'
                       ? `Finish: merge into ${worktree.sourceBranch}`
-                      : `Finish: push and create PR against ${worktree.sourceBranch}`}
-                >
-                  <CheckCircle size={11} weight="fill" />
-                </button>
+                      : `Finish: push and create PR against ${worktree.sourceBranch}`}>
+                  <button
+                    onClick={() => {
+                      if (!hasUncommittedChanges) {
+                        useSessionStore.getState().finishWorktreeTab(activeTabId)
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      if (!hasUncommittedChanges) {
+                        setFinishMenuAnchor({ x: e.clientX, y: e.clientY })
+                      }
+                    }}
+                    disabled={hasUncommittedChanges}
+                    className="p-0.5 rounded transition-colors"
+                    style={{
+                      color: hasUncommittedChanges ? colors.textTertiary : '#4ade80',
+                      opacity: hasUncommittedChanges ? 0.35 : 1,
+                      cursor: hasUncommittedChanges ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <CheckCircle size={11} weight="fill" />
+                  </button>
+                </Tooltip>
               ) : (
-                <button
-                  onClick={handlePush}
-                  disabled={!!fetchingAction}
-                  className="p-0.5 rounded transition-colors"
-                  style={{ color: colors.textTertiary }}
-                  title="Push"
-                >
-                  {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
-                </button>
+                <Tooltip text="Push">
+                  <button
+                    onClick={handlePush}
+                    disabled={!!fetchingAction}
+                    className="p-0.5 rounded transition-colors"
+                    style={{ color: colors.textTertiary }}
+                  >
+                    {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
+                  </button>
+                </Tooltip>
               )}
             </>
           )}
@@ -432,7 +467,7 @@ export function GitGraphSection({
 
       {/* Commit detail popup */}
       {popoverLayer && hoveredCommit && hoverRect && createPortal(
-        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={commitDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? hoverRect.right} />,
+        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={commitDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? hoverRect.right} onMouseEnter={handlePopupEnter} onMouseLeave={handlePopupLeave} />,
         popoverLayer,
       )}
 

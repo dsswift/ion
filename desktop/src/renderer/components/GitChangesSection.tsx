@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Plus, Minus } from '@phosphor-icons/react'
+import { Plus, Minus, Tray } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
+import { Tooltip } from './git/Tooltip'
 import type { GitChangedFile } from '../../shared/types'
 import { buildFileTree, type FileTreeNode } from './GitPanelTypes'
 import { useRepoGroups } from '../stores/git'
@@ -78,16 +79,20 @@ export function GitChangesSection({
 
   const groups = useRepoGroups(directory)
   const stagedFiles = useMemo(() => groups?.index ?? files.filter((f) => f.staged), [groups, files])
-  const unstagedFiles = useMemo(() => groups?.workingTree ?? files.filter((f) => !f.staged && f.status !== 'untracked' && f.status !== 'conflict'), [groups, files])
-  const untrackedFiles = useMemo(() => groups?.untracked ?? files.filter((f) => f.status === 'untracked'), [groups, files])
+  // Merge untracked into unstaged — untracked files already show a yellow U icon
+  const unstagedFiles = useMemo(() => {
+    const wt = groups?.workingTree ?? files.filter((f) => !f.staged && f.status !== 'untracked' && f.status !== 'conflict')
+    const ut = groups?.untracked ?? files.filter((f) => f.status === 'untracked')
+    return wt.length + ut.length > 0 ? [...wt, ...ut] : []
+  }, [groups, files])
   const mergeFiles = useMemo(() => groups?.merge ?? files.filter((f) => f.status === 'conflict'), [groups, files])
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
-    if (typeof localStorage === 'undefined') return { merge: true, staged: true, changes: true, untracked: true }
+    if (typeof localStorage === 'undefined') return { merge: true, staged: true, changes: true }
     try {
-      return JSON.parse(localStorage.getItem('ion:git-section-open') ?? '') || { merge: true, staged: true, changes: true, untracked: true }
+      return JSON.parse(localStorage.getItem('ion:git-section-open') ?? '') || { merge: true, staged: true, changes: true }
     } catch {
-      return { merge: true, staged: true, changes: true, untracked: true }
+      return { merge: true, staged: true, changes: true }
     }
   })
   const toggleSection = useCallback((k: string) => {
@@ -284,9 +289,11 @@ export function GitChangesSection({
           open={openSections.staged}
           onToggle={() => toggleSection('staged')}
           actions={(
-            <button onClick={handleUnstageAll} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }} title="Unstage all">
-              <Minus size={11} />
-            </button>
+            <Tooltip text="Unstage all">
+              <button onClick={handleUnstageAll} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                <Minus size={11} />
+              </button>
+            </Tooltip>
           )}
           directory={directory}
           treeView={treeView}
@@ -306,28 +313,17 @@ export function GitChangesSection({
           onToggle={() => toggleSection('changes')}
           actions={(
             <>
-              <button onClick={handleStashSave} className="text-[9px] px-1 py-0.5 rounded" style={{ color: colors.textTertiary }} title="Stash all">⊡</button>
-              <button onClick={handleStageAll} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }} title="Stage all"><Plus size={11} /></button>
+              <Tooltip text="Stash changes">
+                <button onClick={handleStashSave} className="text-[9px] px-1 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                  <Tray size={11} />
+                </button>
+              </Tooltip>
+              <Tooltip text="Stage all">
+                <button onClick={handleStageAll} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                  <Plus size={11} />
+                </button>
+              </Tooltip>
             </>
-          )}
-          directory={directory}
-          treeView={treeView}
-          expandedDirs={expandedDirs}
-          onToggleDirExpand={toggleDirExpand}
-          onStage={handleStage}
-          onUnstage={handleUnstage}
-          onDiscard={handleDiscard}
-          onClick={handleFileClick}
-          selectedFile={diffFile}
-        />
-
-        <SectionBlock
-          label="Untracked"
-          files={untrackedFiles}
-          open={openSections.untracked}
-          onToggle={() => toggleSection('untracked')}
-          actions={(
-            <button onClick={async () => { const paths = untrackedFiles.map((f) => f.path); if (paths.length > 0) { const r = await window.ion.gitStage(directory, paths); if (!r.ok) setError(r.error || 'Failed'); else onRefresh() } }} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }} title="Stage all untracked"><Plus size={11} /></button>
           )}
           directory={directory}
           treeView={treeView}
@@ -357,16 +353,22 @@ export function GitChangesSection({
                 <span style={{ fontSize: 8, display: 'inline-block', transform: stashExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▶</span>
                 Stashes ({stashes.length})
               </button>
-              <button onClick={handleStashSave} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }} title="Stash changes">
-                + Stash
-              </button>
+              <Tooltip text="Stash current changes">
+                <button onClick={handleStashSave} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                  + Stash
+                </button>
+              </Tooltip>
             </div>
             {stashExpanded && stashes.map((s) => (
               <div key={s.ref} className="flex items-center px-2 group" style={{ height: 22 }}>
                 <span className="text-[9px] font-mono flex-shrink-0" style={{ color: colors.textMuted, width: 50 }}>{s.ref}</span>
                 <span className="text-[10px] flex-1 truncate" style={{ color: colors.textSecondary }}>{s.message}</span>
-                <button onClick={() => handleStashPop(s.ref)} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: colors.accent }} title="Pop stash">Pop</button>
-                <button onClick={() => handleStashDrop(s.ref)} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: '#c47060' }} title="Drop stash">Drop</button>
+                <Tooltip text="Apply and remove stash">
+                  <button onClick={() => handleStashPop(s.ref)} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: colors.accent }}>Pop</button>
+                </Tooltip>
+                <Tooltip text="Delete stash">
+                  <button onClick={() => handleStashDrop(s.ref)} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: '#c47060' }}>Drop</button>
+                </Tooltip>
               </div>
             ))}
           </div>

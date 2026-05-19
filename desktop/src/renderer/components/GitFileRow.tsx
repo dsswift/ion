@@ -5,6 +5,7 @@ import {
 } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
+import { Tooltip } from './git/Tooltip'
 import type { GitChangedFile } from '../../shared/types'
 import { STATUS_COLORS, STATUS_LETTERS, type FileTreeNode } from './GitPanelTypes'
 
@@ -53,7 +54,6 @@ export function FileRow({
         }
         onClick(file)
       }}
-      title={isConflict ? `Conflict: ${file.conflictKind ?? ''}` : file.path}
     >
       {isConflict ? (
         <Warning size={11} weight="fill" color={STATUS_COLORS.conflict} style={{ width: 14, flexShrink: 0 }} />
@@ -88,32 +88,35 @@ export function FileRow({
       {/* Hover actions */}
       <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
         {file.staged ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); onUnstage(file.path) }}
-            className="px-1 py-1 rounded transition-colors"
-            style={{ color: colors.textTertiary }}
-            title="Unstage"
-          >
-            <Minus size={12} />
-          </button>
+          <Tooltip text="Unstage">
+            <button
+              onClick={(e) => { e.stopPropagation(); onUnstage(file.path) }}
+              className="px-1 py-1 rounded transition-colors"
+              style={{ color: colors.textTertiary }}
+            >
+              <Minus size={12} />
+            </button>
+          </Tooltip>
         ) : (
+          <Tooltip text="Stage">
+            <button
+              onClick={(e) => { e.stopPropagation(); onStage(file.path) }}
+              className="px-1 py-1 rounded transition-colors"
+              style={{ color: colors.textTertiary }}
+            >
+              <Plus size={12} />
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip text="Discard changes">
           <button
-            onClick={(e) => { e.stopPropagation(); onStage(file.path) }}
+            onClick={(e) => { e.stopPropagation(); onDiscard(file.path) }}
             className="px-1 py-1 rounded transition-colors"
             style={{ color: colors.textTertiary }}
-            title="Stage"
           >
-            <Plus size={12} />
+            <ArrowCounterClockwise size={12} />
           </button>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDiscard(file.path) }}
-          className="px-1 py-1 rounded transition-colors"
-          style={{ color: colors.textTertiary }}
-          title="Discard changes"
-        >
-          <ArrowCounterClockwise size={12} />
-        </button>
+        </Tooltip>
       </div>
     </div>
   )
