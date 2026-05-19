@@ -10,6 +10,9 @@ struct TabListView: View {
     @State private var enginePickerDirectory: String? = nil
     @State private var renamingTabId: String?
     @State private var renameText: String = ""
+    @State private var collapsedGroupIds: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: "collapsedGroupIds") ?? [])
+    }()
 
     // iPad: selection-based navigation
     @State private var selectedTabId: String?
@@ -205,54 +208,56 @@ struct TabListView: View {
     private func tabGroupSections(selectionStyle: TabSelectionStyle) -> some View {
         ForEach(viewModel.displayGroups, id: \.id) { group in
             Section {
-                ForEach(group.tabs) { tab in
-                    Group {
-                        switch selectionStyle {
-                        case .navigation:
-                            NavigationLink(value: tab.id) {
+                if !collapsedGroupIds.contains(group.id) {
+                    ForEach(group.tabs) { tab in
+                        Group {
+                            switch selectionStyle {
+                            case .navigation:
+                                NavigationLink(value: tab.id) {
+                                    TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
+                                }
+                            case .selection:
                                 TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
+                                    .tag(tab.id)
                             }
-                        case .selection:
-                            TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
-                                .tag(tab.id)
                         }
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button {
-                            renameText = tab.displayTitle
-                            renamingTabId = tab.id
-                        } label: {
-                            Label("Rename", systemImage: "pencil")
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button {
+                                renameText = tab.displayTitle
+                                renamingTabId = tab.id
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            .tint(.orange)
                         }
-                        .tint(.orange)
-                    }
-                    .contextMenu {
-                        Button {
-                            renameText = tab.displayTitle
-                            renamingTabId = tab.id
-                        } label: {
-                            Label("Rename", systemImage: "pencil")
-                        }
-                        if viewModel.tabGroupMode == "manual" {
-                            let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
-                            if !targets.isEmpty {
-                                Menu {
-                                    ForEach(targets) { target in
-                                        Button(target.label) {
-                                            viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
+                        .contextMenu {
+                            Button {
+                                renameText = tab.displayTitle
+                                renamingTabId = tab.id
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            if viewModel.tabGroupMode == "manual" {
+                                let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
+                                if !targets.isEmpty {
+                                    Menu {
+                                        ForEach(targets) { target in
+                                            Button(target.label) {
+                                                viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
+                                            }
                                         }
+                                    } label: {
+                                        Label("Move to Group", systemImage: "arrow.right.arrow.left")
                                     }
-                                } label: {
-                                    Label("Move to Group", systemImage: "arrow.right.arrow.left")
                                 }
                             }
                         }
                     }
-                }
-                .onDelete { offsets in
-                    let ids = offsets.map { group.tabs[$0].id }
-                    for id in ids {
-                        viewModel.closeTab(id)
+                    .onDelete { offsets in
+                        let ids = offsets.map { group.tabs[$0].id }
+                        for id in ids {
+                            viewModel.closeTab(id)
+                        }
                     }
                 }
             } header: {
@@ -262,14 +267,19 @@ struct TabListView: View {
     }
 
     private func groupHeader(_ group: (label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])) -> some View {
-        HStack {
+        let isCollapsed = collapsedGroupIds.contains(group.id)
+        return HStack {
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
             Label(group.label, systemImage: group.icon)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
             if let dir = group.directory {
                 Button {
-                    viewModel.createTab(workingDirectory: dir)
+                    showNewTab = true
                 } label: {
                     Image(systemName: "plus")
                         .font(.subheadline)
@@ -295,6 +305,12 @@ struct TabListView: View {
             }
         }
         .padding(.top, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(IonTheme.snappySpring) {
+                toggleGroupCollapsed(group.id)
+            }
+        }
     }
 
     // MARK: - Detail / Destination
@@ -423,6 +439,20 @@ struct TabListView: View {
     }
 
     // MARK: - Helpers
+
+    /// Toggle a group's collapsed state and persist to UserDefaults.
+    private func toggleGroupCollapsed(_ groupId: String) {
+        if collapsedGroupIds.contains(groupId) {
+            collapsedGroupIds.remove(groupId)
+        } else {
+            collapsedGroupIds.insert(groupId)
+        }
+        persistCollapsedGroups()
+    }
+
+    private func persistCollapsedGroups() {
+        UserDefaults.standard.set(Array(collapsedGroupIds), forKey: "collapsedGroupIds")
+    }
 
     /// Handle engine tab creation with profile selection.
     /// - 0 profiles: auto-create without a profileId (engine uses default)
