@@ -102,6 +102,7 @@ export type RemoteCommand =
   | { type: 'move_tab_to_group'; tabId: string; groupId: string }
   | { type: 'reorder_tab_groups'; orderedIds: string[] }
   | { type: 'set_tab_model'; tabId: string; model: string }
+  | { type: 'load_attachments'; tabId: string }
   | { type: 'set_preferred_model'; model: string }
   | { type: 'set_engine_default_model'; model: string }
   | { type: 'unpair' }
@@ -186,6 +187,7 @@ export type RemoteEvent =
   | { type: 'fs_write_result'; filePath: string; ok: boolean; error?: string }
   | { type: 'upload_attachment_result'; id: string; name: string; path: string; correlationId?: string; error?: string }
   | { type: 'discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
+  | { type: 'tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }
   | { type: 'request_diagnostic_logs' }
 
 // ─── Relay control frames (injected by relay, not by Ion) ───

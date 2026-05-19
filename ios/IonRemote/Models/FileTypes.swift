@@ -74,3 +74,10 @@ struct FsWriteResultResponse: Codable, Sendable, Equatable {
     let ok: Bool
     let error: String?
 }
+
+/// An attachment entry from the desktop's full message history scan.
+struct TabAttachmentEntry: Codable, Sendable {
+    let type: String   // "image", "file", or "plan"
+    let name: String
+    let path: String
+}

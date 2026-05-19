@@ -56,6 +56,7 @@ enum RemoteCommand: Codable, Sendable {
     case fsWriteFile(filePath: String, content: String)
     case discoverCommands(directory: String)
     case uploadAttachment(dataUrl: String, name: String, correlationId: String)
+    case loadAttachments(tabId: String)
     case voiceConfig(enabled: Bool, mode: String, systemPrompt: String?)
     case diagnosticLogsResponse(logs: String, deviceId: String, deviceName: String)
 
@@ -116,6 +117,7 @@ enum RemoteCommand: Codable, Sendable {
         case fsWriteFile = "fs_write_file"
         case discoverCommands = "discover_commands"
         case uploadAttachment = "upload_attachment"
+        case loadAttachments = "load_attachments"
         case voiceConfig = "voice_config"
         case diagnosticLogsResponse = "diagnostic_logs_response"
     }
@@ -401,6 +403,10 @@ enum RemoteCommand: Codable, Sendable {
             let name = try container.decode(String.self, forKey: .name)
             let correlationId = try container.decode(String.self, forKey: .correlationId)
             self = .uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
+
+        case .loadAttachments:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            self = .loadAttachments(tabId: tabId)
 
         case .voiceConfig:
             let enabled = try container.decode(Bool.self, forKey: .enabled)

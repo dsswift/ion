@@ -83,6 +83,8 @@ enum RemoteEvent: Codable, Sendable {
     case discoverCommandsResponse(directory: String, commands: [DiscoveredSlashCommand])
     // Upload attachment result
     case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?)
+    // Tab attachments response
+    case tabAttachments(tabId: String, attachments: [TabAttachmentEntry])
     // Diagnostic log request from desktop
     case requestDiagnosticLogs
 
@@ -148,6 +150,7 @@ enum RemoteEvent: Codable, Sendable {
         case fsWriteResult = "fs_write_result"
         case discoverCommandsResponse = "discover_commands_response"
         case uploadAttachmentResult = "upload_attachment_result"
+        case tabAttachments = "tab_attachments"
         case requestDiagnosticLogs = "request_diagnostic_logs"
     }
 
@@ -172,6 +175,7 @@ enum RemoteEvent: Codable, Sendable {
         case id, name, path
         case correlationId
         case dataUrl
+        case attachments
     }
 
     // MARK: - Decoder

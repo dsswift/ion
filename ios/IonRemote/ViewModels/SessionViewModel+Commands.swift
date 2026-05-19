@@ -421,6 +421,10 @@ extension SessionViewModel {
         send(.fsWriteFile(filePath: filePath, content: content))
     }
 
+    func requestLoadAttachments(tabId: String) {
+        send(.loadAttachments(tabId: tabId))
+    }
+
     // MARK: - Command Discovery
 
     func discoverCommands(directory: String) {

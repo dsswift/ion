@@ -68,6 +68,7 @@ import {
 import {
   handleDiagnosticLogsResponse,
 } from './handlers/diagnostics'
+import { handleLoadAttachments } from './handlers/attachments'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string): void {
@@ -134,5 +135,6 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'voice_config': handleVoiceConfig(cmd, deviceId); break
     case 'unpair': handleUnpair(deviceId); break
     case 'diagnostic_logs_response': handleDiagnosticLogsResponse(cmd, deviceId); break
+    case 'load_attachments': await handleLoadAttachments(cmd, deviceId); break
   }
 }

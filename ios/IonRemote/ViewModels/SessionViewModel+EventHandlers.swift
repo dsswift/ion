@@ -316,6 +316,9 @@ extension SessionViewModel {
         case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
             handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)
 
+        case .tabAttachments(let tabId, let attachments):
+            tabAttachmentCache[tabId] = attachments
+
         // Command discovery events
         case .discoverCommandsResponse(let directory, let commands):
             discoveredCommands[directory] = commands

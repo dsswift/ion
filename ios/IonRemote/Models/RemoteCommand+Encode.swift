@@ -270,6 +270,10 @@ extension RemoteCommand {
             try container.encode(name, forKey: .name)
             try container.encode(correlationId, forKey: .correlationId)
 
+        case .loadAttachments(let tabId):
+            try container.encode(TypeKey.loadAttachments, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+
         case .voiceConfig(let enabled, let mode, let systemPrompt):
             try container.encode(TypeKey.voiceConfig, forKey: .type)
             try container.encode(enabled, forKey: .enabled)

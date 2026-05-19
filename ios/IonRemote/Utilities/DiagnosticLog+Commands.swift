@@ -167,6 +167,9 @@ extension DiagnosticLog {
         case .uploadAttachment(_, let name, let corrId):
             log("CMD: uploadAttachment name=\(name) corrId=\(corrId.prefix(8))")
 
+        case .loadAttachments(let tabId):
+            log("CMD: loadAttachments tab=\(tabId.prefix(8))")
+
         case .voiceConfig(let enabled, let mode, _):
             log("CMD: voiceConfig enabled=\(enabled) mode=\(mode)")
 

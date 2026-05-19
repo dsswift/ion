@@ -186,6 +186,9 @@ extension DiagnosticLog {
         case .uploadAttachmentResult(let id, let name, _, _, let error):
             log("EVENT: uploadAttachmentResult id=\(id.prefix(8)) name=\(name) err=\(error ?? "nil")")
 
+        case .tabAttachments(let tabId, let attachments):
+            log("EVENT: tabAttachments tab=\(tabId.prefix(8)) count=\(attachments.count)")
+
         case .requestDiagnosticLogs:
             log("EVENT: requestDiagnosticLogs")
         }

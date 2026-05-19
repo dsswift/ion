@@ -194,6 +194,9 @@ final class SessionViewModel {
     var fileListingLoading: Set<String> = []
     var fileContentLoading: Set<String> = []
 
+    // Tab attachment cache (from load_attachments command)
+    var tabAttachmentCache: [String: [TabAttachmentEntry]] = [:]  // tabId -> attachments
+
     // Discovered slash commands (per working directory)
     var discoveredCommands: [String: [DiscoveredSlashCommand]] = [:]
 
