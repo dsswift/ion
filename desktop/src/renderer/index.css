@@ -111,6 +111,25 @@ input::placeholder {
   font-weight: 600;
   color: var(--ion-text-primary);
 }
+.prose-cloud h1 { font-size: 1.5em; }
+.prose-cloud h2 { font-size: 1.3em; }
+.prose-cloud h3 { font-size: 1.15em; }
+.prose-cloud h4 { font-size: 1em; }
+.prose-cloud hr {
+  border: none;
+  border-top: 1px solid var(--ion-container-border);
+  margin: 1em 0;
+}
+.prose-cloud input[type="checkbox"] {
+  margin-right: 0.4em;
+  vertical-align: middle;
+  accent-color: var(--ion-accent);
+}
+.prose-cloud img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+}
 .prose-cloud blockquote {
   border-left: 3px solid var(--ion-tool-running-border);
   padding-left: 0.75em;

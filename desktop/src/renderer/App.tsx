@@ -82,11 +82,19 @@ export default function App() {
   const explorerOpen = useSessionStore((s) => s.fileExplorerOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
   const editorOpen = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    return tab ? s.fileEditorOpenDirs.has(editorDirForTab(tab)) : false
+    if (!tab) return false
+    const dir = editorDirForTab(tab)
+    const isOpen = s.fileEditorOpenDirs.has(dir)
+    console.log('[App] editorOpen selector', { dir, isOpen, workingDir: tab.workingDirectory, worktreeRepo: tab.worktree?.repoPath, openDirs: [...s.fileEditorOpenDirs] })
+    return isOpen
   })
   const editorDirState = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    return tab ? s.fileEditorStates.get(editorDirForTab(tab)) : undefined
+    if (!tab) return undefined
+    const dir = editorDirForTab(tab)
+    const state = s.fileEditorStates.get(dir)
+    console.log('[App] editorDirState selector', { dir, hasState: !!state, fileCount: state?.files.length, activeFileId: state?.activeFileId })
+    return state
   })
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 

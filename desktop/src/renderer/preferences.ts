@@ -32,6 +32,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   closeExplorerOnFileOpen: saved.closeExplorerOnFileOpen,
   openMarkdownInPreview: saved.openMarkdownInPreview,
   editorWordWrap: saved.editorWordWrap,
+  editorFontSize: saved.editorFontSize,
   gitOpsMode: saved.gitOpsMode,
   worktreeCompletionStrategy: saved.worktreeCompletionStrategy,
   worktreeBranchDefaults: saved.worktreeBranchDefaults,
@@ -191,6 +192,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setEditorWordWrap: (enabled) => {
     set({ editorWordWrap: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setEditorFontSize: (size) => {
+    const clamped = Math.max(8, Math.min(24, Math.round(size)))
+    set({ editorFontSize: clamped })
     saveSettings(getAllSettings(get))
   },
   setGitOpsMode: (mode) => {

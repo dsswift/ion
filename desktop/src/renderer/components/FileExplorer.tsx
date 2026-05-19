@@ -98,10 +98,17 @@ export function FileExplorer() {
   }, [workingDir, explorerState.expandedPaths, dirCache, fetchDir])
 
   const handleFileClick = useCallback((entry: FsEntry) => {
-    if (!workingDir || !activeTabId) return
+    console.log('[FileExplorer] handleFileClick', { name: entry.name, path: entry.path, workingDir, activeTabId, isText: isTextFile(entry.name) })
+    if (!workingDir || !activeTabId) {
+      console.log('[FileExplorer] handleFileClick bailed: no workingDir or activeTabId')
+      return
+    }
     setFileExplorerSelected(workingDir, entry.path)
     if (isTextFile(entry.name)) {
+      console.log('[FileExplorer] calling openFileInEditor', { dir: workingDir, tabId: activeTabId, filePath: entry.path })
       openFileInEditor(workingDir, activeTabId, entry.path)
+    } else {
+      console.log('[FileExplorer] skipped: not a text file')
     }
   }, [workingDir, activeTabId])
 

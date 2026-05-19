@@ -7,14 +7,19 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
     toggleFileEditor: (tabId) => {
       set((s) => {
         const tab = s.tabs.find((t) => t.id === tabId)
-        if (!tab) return {}
+        if (!tab) {
+          console.log('[FileEditor] toggleFileEditor: tab not found', { tabId })
+          return {}
+        }
         const dir = editorDirForTab(tab)
         const next = new Set(s.fileEditorOpenDirs)
         if (next.has(dir)) {
+          console.log('[FileEditor] toggleFileEditor: closing', { dir, tabId })
           next.delete(dir)
           return { fileEditorOpenDirs: next }
         }
         next.add(dir)
+        console.log('[FileEditor] toggleFileEditor: opening', { dir, tabId })
         set({ fileEditorFocused: true })
         const current = s.fileEditorStates.get(dir)
         if (!current || current.files.length === 0) {
@@ -43,11 +48,18 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
     openFileInEditor: (dir, _tabId, filePath, opts) => {
       const { closeExplorerOnFileOpen, openMarkdownInPreview } = usePreferencesStore.getState()
       set((s) => {
+        // Resolve the canonical editor dir: if a tab's worktree repoPath
+        // differs from its workingDirectory, callers may pass either one.
+        // Normalize to editorDirForTab so the key matches what App.tsx checks.
+        const tab = s.tabs.find((t) => t.id === _tabId)
+        const resolvedDir = tab ? editorDirForTab(tab) : dir
+        console.log('[FileEditor] openFileInEditor', { callerDir: dir, resolvedDir, filePath })
         const states = new Map(s.fileEditorStates)
-        const current = states.get(dir) || { activeFileId: null, files: [] }
+        const current = states.get(resolvedDir) || { activeFileId: null, files: [] }
         const existing = current.files.find((f) => f.filePath === filePath)
         if (existing) {
-          states.set(dir, { ...current, activeFileId: existing.id })
+          console.log('[FileEditor] file already open, activating', { fileId: existing.id })
+          states.set(resolvedDir, { ...current, activeFileId: existing.id })
         } else {
           const fileName = filePath.split('/').pop() || filePath
           const ext = fileName.includes('.') ? '.' + fileName.split('.').pop()!.toLowerCase() : ''
@@ -63,28 +75,33 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
             isReadOnly: !isEditableByDefault(fileName),
             isPreview: isMd && openMarkdownInPreview,
           }
+          console.log('[FileEditor] creating new file tab', { id, fileName, isReadOnly: newFile.isReadOnly, isPreview: newFile.isPreview })
           if (opts?.insertAfterActive) {
             const activeIdx = current.files.findIndex(f => f.id === current.activeFileId)
             const files = [...current.files]
             files.splice(activeIdx + 1, 0, newFile)
-            states.set(dir, { activeFileId: id, files })
+            states.set(resolvedDir, { activeFileId: id, files })
           } else {
-            states.set(dir, { activeFileId: id, files: [...current.files, newFile] })
+            states.set(resolvedDir, { activeFileId: id, files: [...current.files, newFile] })
           }
         }
         const editorOpen = new Set(s.fileEditorOpenDirs)
-        editorOpen.add(dir)
+        editorOpen.add(resolvedDir)
+        console.log('[FileEditor] fileEditorOpenDirs after add', [...editorOpen])
         const result: Record<string, any> = { fileEditorStates: states, fileEditorOpenDirs: editorOpen }
         if (closeExplorerOnFileOpen) {
+          // Explorer uses workingDirectory as its key, so delete by caller's dir
           const explorerIds = new Set(s.fileExplorerOpenDirs)
           explorerIds.delete(dir)
           result.fileExplorerOpenDirs = explorerIds
+          console.log('[FileEditor] closing explorer for dir', dir)
         }
         return result
       })
     },
 
     closeFileEditorTab: (dir, fileId) => {
+      console.log('[FileEditor] closeFileEditorTab', { dir, fileId })
       set((s) => {
         const states = new Map(s.fileEditorStates)
         const current = states.get(dir)

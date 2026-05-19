@@ -75,7 +75,7 @@ export function GitCategory() {
             overflow: 'hidden',
           }}
         >
-          {([{ key: 'merge', label: 'Merge (--no-ff)' }, { key: 'pr', label: 'Pull Request' }] as const).map(({ key, label }) => (
+          {([{ key: 'merge-ff', label: 'Merge (ff)' }, { key: 'merge', label: 'Merge (--no-ff)' }, { key: 'pr', label: 'Pull Request' }] as const).map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setWorktreeCompletionStrategy(key as WorktreeCompletionStrategy)}

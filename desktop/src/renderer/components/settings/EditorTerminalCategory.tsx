@@ -17,6 +17,8 @@ export function EditorTerminalCategory() {
   const setHideOnExternalLaunch = usePreferencesStore((s) => s.setHideOnExternalLaunch)
   const openMarkdownInPreview = usePreferencesStore((s) => s.openMarkdownInPreview)
   const setOpenMarkdownInPreview = usePreferencesStore((s) => s.setOpenMarkdownInPreview)
+  const editorFontSize = usePreferencesStore((s) => s.editorFontSize)
+  const setEditorFontSize = usePreferencesStore((s) => s.setEditorFontSize)
   const terminalFontFamily = usePreferencesStore((s) => s.terminalFontFamily)
   const setTerminalFontFamily = usePreferencesStore((s) => s.setTerminalFontFamily)
   const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize)
@@ -27,6 +29,50 @@ export function EditorTerminalCategory() {
     if (fontCache) return
     fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) })
   }, [])
+
+  const fontSizeControl = (value: number, onChange: (v: number) => void, min = 8, max = 24) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        onClick={() => onChange(Math.max(min, value - 1))}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          border: `1px solid ${colors.inputBorder}`,
+          background: colors.surfacePrimary,
+          color: colors.textPrimary,
+          fontSize: 16,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        -
+      </button>
+      <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
+        {value}
+      </span>
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          border: `1px solid ${colors.inputBorder}`,
+          background: colors.surfacePrimary,
+          color: colors.textPrimary,
+          fontSize: 16,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        +
+      </button>
+    </div>
+  )
 
   return (
     <>
@@ -52,6 +98,12 @@ export function EditorTerminalCategory() {
         checked={openMarkdownInPreview}
         onChange={setOpenMarkdownInPreview}
       />
+
+      <SettingHeading>Editor</SettingHeading>
+
+      <SettingSection description="Editor font size in pixels.">
+        {fontSizeControl(editorFontSize, setEditorFontSize)}
+      </SettingSection>
 
       <SettingHeading>Terminal</SettingHeading>
 
@@ -85,48 +137,8 @@ export function EditorTerminalCategory() {
         </select>
       </SettingSection>
 
-      <SettingSection description="Font size in pixels.">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setTerminalFontSize(Math.max(8, terminalFontSize - 1))}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              border: `1px solid ${colors.inputBorder}`,
-              background: colors.surfacePrimary,
-              color: colors.textPrimary,
-              fontSize: 16,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            -
-          </button>
-          <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
-            {terminalFontSize}
-          </span>
-          <button
-            onClick={() => setTerminalFontSize(Math.min(24, terminalFontSize + 1))}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              border: `1px solid ${colors.inputBorder}`,
-              background: colors.surfacePrimary,
-              color: colors.textPrimary,
-              fontSize: 16,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            +
-          </button>
-        </div>
+      <SettingSection description="Terminal font size in pixels.">
+        {fontSizeControl(terminalFontSize, setTerminalFontSize)}
       </SettingSection>
     </>
   )

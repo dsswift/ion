@@ -39,7 +39,12 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
 
   const items = [
     {
-      label: `Merge into ${worktree.sourceBranch}`,
+      label: `Fast-forward into ${worktree.sourceBranch}`,
+      isDefault: strategy === 'merge-ff',
+      action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'merge-ff'),
+    },
+    {
+      label: `Merge into ${worktree.sourceBranch} (no-ff)`,
       isDefault: strategy === 'merge',
       action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'merge'),
     },
