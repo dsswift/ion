@@ -361,7 +361,7 @@ export interface GitBranchInfo {
 // ─── Worktree Types ───
 
 export type GitOpsMode = 'manual' | 'worktree'
-export type WorktreeCompletionStrategy = 'merge' | 'pr'
+export type WorktreeCompletionStrategy = 'merge-ff' | 'merge' | 'pr'
 
 export interface WorktreeInfo {
   /** Physical path on disk (~/.ion/worktrees/...) */

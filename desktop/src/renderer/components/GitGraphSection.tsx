@@ -361,7 +361,9 @@ export function GitGraphSection({
                   }}
                   title={hasUncommittedChanges
                     ? 'Commit all changes before finishing'
-                    : strategy === 'merge'
+                    : strategy === 'merge-ff'
+                      ? `Finish: fast-forward into ${worktree.sourceBranch}`
+                      : strategy === 'merge'
                       ? `Finish: merge into ${worktree.sourceBranch}`
                       : `Finish: push and create PR against ${worktree.sourceBranch}`}
                 >
