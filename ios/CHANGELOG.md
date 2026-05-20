@@ -10,6 +10,15 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.27.0](https://github.com/dsswift/ion/compare/ios-v1.26.1...ios-v1.27.0) (2026-05-20)
+
+### Features
+
+* **ios:** add collapsible tab groups with persistence ([a184b27](https://github.com/dsswift/ion/commit/a184b276a73e714fae2a151e7eea114cbceb2336))
+* **ios:** add conversation attachments sheet ([f048763](https://github.com/dsswift/ion/commit/f048763fc1dc887d4171d8bd27f8816d5e543e4a))
+* **ios:** add file loading to ios explorer ([a650629](https://github.com/dsswift/ion/commit/a6506291d67475277125b29a0f11434b1b899222))
+* **ios:** add attachment command and events ([76cc3da](https://github.com/dsswift/ion/commit/76cc3dab94a293724fc19cf500b7da7223dd3de2))
+
 ## [1.26.1](https://github.com/dsswift/ion/compare/ios-v1.26.0...ios-v1.26.1) (2026-05-19)
 
 ### Bug Fixes

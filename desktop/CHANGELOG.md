@@ -10,6 +10,22 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.32.0](https://github.com/dsswift/ion/compare/desktop-v1.31.2...desktop-v1.32.0) (2026-05-20)
+
+### Features
+
+* **desktop:** add tooltip component for git ui ([16ef2e6](https://github.com/dsswift/ion/commit/16ef2e6a106a2f4ff5ef0f52d40b4afe309a3cb2))
+* **desktop:** refresh git on window focus return ([ffd5e8d](https://github.com/dsswift/ion/commit/ffd5e8d2129a70102af56517b56b66cfcc8192fd))
+* **desktop:** add attachment loading support ([dd9bffa](https://github.com/dsswift/ion/commit/dd9bffa33c7a4a29cb05fb86a2db220e26ec632c))
+* **desktop:** enhance commit form with ai and history ([1979862](https://github.com/dsswift/ion/commit/197986230184456e4c4b4f1b3b2a4e7802b08c83))
+* **desktop:** add image viewer component ([b260026](https://github.com/dsswift/ion/commit/b260026845295fdd9e71e89e26611602904dbb61))
+* **ios:** add attachment command and events ([76cc3da](https://github.com/dsswift/ion/commit/76cc3dab94a293724fc19cf500b7da7223dd3de2))
+* **desktop:** add copy relative path to context menus ([c79e422](https://github.com/dsswift/ion/commit/c79e422c5c7c67e271fe80bc60752dc293910a87))
+
+### Bug Fixes
+
+* **desktop:** hide terminal panel on restored tabs ([f4beb9b](https://github.com/dsswift/ion/commit/f4beb9bb61134edcaa7c6e2f624478598ed88473))
+
 ## [1.31.2](https://github.com/dsswift/ion/compare/desktop-v1.31.1...desktop-v1.31.2) (2026-05-19)
 
 ### Bug Fixes
