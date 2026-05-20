@@ -11,9 +11,13 @@ import { registerFileDialogIpc } from './file-dialog'
 import { registerAttachmentsIpc } from './attachments'
 import { registerFilesIpc } from './files'
 import { registerGitIpc } from './git'
+import { registerGitExtrasIpc } from './git-extras'
 import { registerWorktreeIpc } from './worktree'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
+import { registerMigrationIpc } from './migration'
+import { registerModelsIpc } from './models'
+import { registerOAuthIpc } from './oauth'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -29,7 +33,11 @@ export function registerAllIpc(): void {
   registerAttachmentsIpc()
   registerFilesIpc()
   registerGitIpc()
+  registerGitExtrasIpc()
   registerWorktreeIpc()
   registerSettingsIpc()
   registerRemoteControlIpc()
+  registerMigrationIpc()
+  registerModelsIpc()
+  registerOAuthIpc()
 }

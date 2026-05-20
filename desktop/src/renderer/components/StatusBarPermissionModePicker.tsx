@@ -14,7 +14,6 @@ export function PermissionModePicker() {
   )
   const setPermissionMode = useSessionStore((s) => s.setPermissionMode)
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const backend = useSessionStore((s) => s.backend)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -45,19 +44,6 @@ export function PermissionModePicker() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
-
-  // CLI mode doesn't support plan mode
-  if (backend === 'cli') {
-    return (
-      <span
-        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5"
-        style={{ color: colors.textTertiary }}
-      >
-        <ShieldCheck size={11} weight="fill" />
-        Auto
-      </span>
-    )
-  }
 
   const handleToggle = () => {
     if (!open) updatePos()

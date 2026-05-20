@@ -1,12 +1,14 @@
 import SwiftUI
 
 /// Horizontal scrollable bar showing engine instance tabs within an engine tab.
-/// Modeled on `TerminalInstanceBar` with simplified behavior (no rename, no kind icons).
+/// Modeled on `TerminalInstanceBar` with simplified behavior.
 struct EngineInstanceBar: View {
     let tabId: String
     let instances: [EngineInstanceInfo]
     let activeInstanceId: String
     @Environment(SessionViewModel.self) private var viewModel
+    @State private var renamingInstance: EngineInstanceInfo? = nil
+    @State private var renameText: String = ""
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -19,6 +21,21 @@ struct EngineInstanceBar: View {
             .padding(.vertical, 4)
         }
         .background(.ultraThinMaterial)
+        .alert("Rename Instance", isPresented: Binding(
+            get: { renamingInstance != nil },
+            set: { if !$0 { renamingInstance = nil } }
+        )) {
+            TextField("Name", text: $renameText)
+            Button("Cancel", role: .cancel) { renamingInstance = nil }
+            Button("Rename") {
+                if let inst = renamingInstance, !renameText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.renameEngineInstance(tabId: tabId, instanceId: inst.id, label: renameText)
+                }
+                renamingInstance = nil
+            }
+        } message: {
+            Text("Enter a new name for this instance")
+        }
     }
 
     @ViewBuilder
@@ -53,5 +70,13 @@ struct EngineInstanceBar: View {
             .foregroundStyle(instance.id == activeInstanceId ? .primary : .secondary)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                renamingInstance = instance
+                renameText = instance.label
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+        }
     }
 }

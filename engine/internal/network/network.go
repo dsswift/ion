@@ -101,6 +101,12 @@ func InitNetwork(cfg *types.NetworkConfig) {
 	// The bare &http.Transport{} zero-values disable TCP keepalive, dial timeouts,
 	// idle connection management, and HTTP/2 — meaning a silently-dropped connection
 	// (e.g. by a NAT middlebox during a long LLM stream) hangs the read forever.
+	//
+	// ResponseHeaderTimeout caps the wait for the first byte. HTTP2.SendPingTimeout
+	// + PingTimeout force application-level PINGs on idle H2 streams so a silently
+	// half-open connection (NAT/proxy/VPN idle drop) fails fast with a real error
+	// (`http2: client connection lost`) rather than hanging until TCP keepalive
+	// notices ~60s later. Critical for long LLM SSE streams.
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -108,10 +114,15 @@ func InitNetwork(cfg *types.NetworkConfig) {
 		}).DialContext,
 		TLSClientConfig:       tlsConfig,
 		TLSHandshakeTimeout:   10 * time.Second,
-		ForceAttemptHTTP2:      true,
+		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
+		HTTP2: &http.HTTP2Config{
+			SendPingTimeout: 15 * time.Second,
+			PingTimeout:     15 * time.Second,
+		},
 	}
 	if proxyURL != nil {
 		transport.Proxy = func(req *http.Request) (*url.URL, error) {

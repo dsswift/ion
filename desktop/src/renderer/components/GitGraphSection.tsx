@@ -4,19 +4,25 @@ import { AnimatePresence } from 'framer-motion'
 import {
   ArrowsClockwise, ArrowDown, ArrowUp, CheckCircle, X, SpinnerGap,
 } from '@phosphor-icons/react'
+import { Tooltip } from './git/Tooltip'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
-import { DiffViewer } from './DiffViewer'
-import { useGitPollingStore } from '../hooks/useGitPolling'
+import { FloatingPanel } from './FloatingPanel'
+import { DiffPane } from './git/DiffPane'
+import { useRepoBranch } from '../stores/git'
 import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../shared/types'
 import { BranchPicker } from './GitBranchPicker'
 import { GraphRow, CommitFileList } from './GitGraphRow'
 import { CommitPopup } from './GitCommitPopup'
 import { CommitContextMenu } from './GitCommitContextMenu'
 import { FinishWorkContextMenu } from './GitFinishWorkMenu'
+import { CommitDetailsPane } from './git/CommitDetailsPane'
+import { VirtualCommitList } from './git/VirtualCommitList'
+import { GraphFilterBar, EMPTY_FILTERS, type GraphFilters } from './git/GraphFilterBar'
+import { RebaseEditor, type RebaseCommit } from './git/RebaseEditor'
 
 // ─── Graph Section ───
 
@@ -37,13 +43,15 @@ export function GitGraphSection({
   const [commits, setCommits] = useState<GitCommit[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(false)
-  const branch = useGitPollingStore((s) => s.branch)
+  const branch = useRepoBranch(directory)
   const [fetchingAction, setFetchingAction] = useState<string | null>(null)
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
   const [finishMenuAnchor, setFinishMenuAnchor] = useState<{ x: number; y: number } | null>(null)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
+  const [graphFilters, setGraphFilters] = useState<GraphFilters>(EMPTY_FILTERS)
+  const [rebaseTarget, setRebaseTarget] = useState<{ onto: string; commits: RebaseCommit[] } | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -54,7 +62,17 @@ export function GitGraphSection({
     setLoading(true)
     try {
       const skip = append ? commitsRef.current.length : 0
-      const result = await window.ion.gitGraph(directory, skip, 100)
+      const result = await window.ion.gitGraph(
+        directory, skip, 100,
+        graphFilters.search || undefined,
+        graphFilters.author || undefined,
+        {
+          path: graphFilters.path || undefined,
+          refKind: graphFilters.refKind && graphFilters.refKind !== 'all' ? graphFilters.refKind : undefined,
+          dateAfter: graphFilters.dateAfter || undefined,
+          dateBefore: graphFilters.dateBefore || undefined,
+        },
+      )
       if (result.isGitRepo) {
         const newCommits = append ? [...commitsRef.current, ...result.commits] : result.commits
         setCommits(newCommits)
@@ -62,12 +80,15 @@ export function GitGraphSection({
       }
     } catch {}
     setLoading(false)
-  }, [directory])
+  }, [directory, graphFilters])
 
   useEffect(() => {
-    // Reset commits when directory changes, then load fresh
+    // Reset commits when directory or filters change, then load fresh
     setCommits([])
     setTotalCount(0)
+    setExpandedHash(null)
+    setCommitFiles([])
+    setCommitFileDiff(null)
     loadGraph()
   }, [directory, loadGraph])
 
@@ -93,7 +114,29 @@ export function GitGraphSection({
     return () => observer.disconnect()
   }, [commits.length, totalCount, loading, loadGraph])
 
-  const graphNodes = useMemo(() => computeGraphLayout(commits), [commits])
+  const [stashes, setStashes] = useState<Array<{ ref: string; message: string; parentSha?: string }>>([])
+  useEffect(() => {
+    window.ion.gitStashList(directory).then((r) => setStashes(r.stashes)).catch(() => setStashes([]))
+  }, [directory, refreshKey])
+
+  const decoratedCommits = useMemo(() => {
+    if (stashes.length === 0) return commits
+    const byParent = new Map<string, typeof stashes>()
+    for (const s of stashes) {
+      if (!s.parentSha) continue
+      const arr = byParent.get(s.parentSha) ?? []
+      arr.push(s)
+      byParent.set(s.parentSha, arr)
+    }
+    return commits.map((c) => {
+      const matched = byParent.get(c.fullHash)
+      if (!matched) return c
+      const stashRefs = matched.map((s) => ({ name: s.ref, type: 'tag' as const, isCurrent: false }))
+      return { ...c, refs: [...c.refs, ...stashRefs] }
+    })
+  }, [commits, stashes])
+
+  const graphNodes = useMemo(() => computeGraphLayout(decoratedCommits), [decoratedCommits])
 
 
   // ─── Commit hover popup ───
@@ -101,55 +144,85 @@ export function GitGraphSection({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: GitCommit } | null>(null)
   const [hoveredCommit, setHoveredCommit] = useState<GitCommit | null>(null)
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null)
-  const [commitDetail, setCommitDetail] = useState<GitCommitDetail | null>(null)
+  const [hoverDetail, setHoverDetail] = useState<GitCommitDetail | null>(null)
   const [expandedHash, setExpandedHash] = useState<string | null>(null)
+  const [expandedDetail, setExpandedDetail] = useState<GitCommitDetail | null>(null)
   const [commitFiles, setCommitFiles] = useState<GitCommitFile[]>([])
   const [commitFileDiff, setCommitFileDiff] = useState<{ diff: string; fileName: string } | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const popupHoveredRef = useRef(false)
   const activeHashRef = useRef<string | null>(null)
+
+  const dismissPopup = useCallback(() => {
+    activeHashRef.current = null
+    setHoveredCommit(null)
+    setHoverRect(null)
+    setHoverDetail(null)
+  }, [])
 
   const handleRowHover = useCallback((commit: GitCommit, rect: DOMRect) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    // Hovering a new commit: cancel any pending dismiss and clear old popup immediately
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
+    popupHoveredRef.current = false
+    dismissPopup()
     hoverTimerRef.current = setTimeout(() => {
       setHoveredCommit(commit)
       setHoverRect(rect)
-      setCommitDetail(null)
+      setHoverDetail(null)
       activeHashRef.current = commit.hash
       window.ion.gitCommitDetail(directory, commit.hash).then((detail) => {
-        if (activeHashRef.current === commit.hash) setCommitDetail(detail)
+        if (activeHashRef.current === commit.hash) setHoverDetail(detail)
       }).catch(() => {})
     }, 300)
-  }, [directory])
+  }, [directory, dismissPopup])
 
   const handleRowLeave = useCallback(() => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = null
-    activeHashRef.current = null
-    setHoveredCommit(null)
-    setHoverRect(null)
-    setCommitDetail(null)
+    // Grace period: give user time to reach the popup
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = setTimeout(() => {
+      if (!popupHoveredRef.current) dismissPopup()
+    }, 250)
+  }, [dismissPopup])
+
+  const handlePopupEnter = useCallback(() => {
+    popupHoveredRef.current = true
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
   }, [])
+
+  const handlePopupLeave = useCallback(() => {
+    popupHoveredRef.current = false
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = setTimeout(() => {
+      if (!popupHoveredRef.current) dismissPopup()
+    }, 150)
+  }, [dismissPopup])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, commit: GitCommit) => {
     e.preventDefault()
     // Dismiss hover popup so it doesn't overlap
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = null
-    activeHashRef.current = null
-    setHoveredCommit(null)
-    setHoverRect(null)
-    setCommitDetail(null)
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
+    popupHoveredRef.current = false
+    dismissPopup()
     setContextMenu({ x: e.clientX, y: e.clientY, commit })
-  }, [])
+  }, [dismissPopup])
 
   const handleCommitClick = useCallback(async (commit: GitCommit) => {
     // Dismiss hover popup
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = null
-    activeHashRef.current = null
-    setHoveredCommit(null)
-    setHoverRect(null)
-    setCommitDetail(null)
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    dismissTimerRef.current = null
+    popupHoveredRef.current = false
+    dismissPopup()
 
     if (expandedHash === commit.hash) {
       // Collapse
@@ -162,11 +235,17 @@ export function GitGraphSection({
     // Expand
     setExpandedHash(commit.hash)
     setCommitFileDiff(null)
+    setExpandedDetail(null)
     try {
-      const result = await window.ion.gitCommitFiles(directory, commit.hash)
-      setCommitFiles(result.files as GitCommitFile[])
+      const [filesResult, detailResult] = await Promise.all([
+        window.ion.gitCommitFiles(directory, commit.hash),
+        window.ion.gitCommitDetail(directory, commit.hash),
+      ])
+      setCommitFiles(filesResult.files as GitCommitFile[])
+      setExpandedDetail(detailResult)
     } catch {
       setCommitFiles([])
+      setExpandedDetail(null)
     }
   }, [expandedHash, directory])
 
@@ -180,9 +259,24 @@ export function GitGraphSection({
     }
   }, [expandedHash, directory])
 
-  // Clean up timer on unmount
+  const handleRebase = useCallback(async (commit: GitCommit) => {
+    const result = await window.ion.gitRebaseTodo(directory, commit.fullHash)
+    if (result.ok && result.commits.length > 0) {
+      setRebaseTarget({
+        onto: commit.fullHash,
+        commits: result.commits.map(c => ({
+          hash: c.hash,
+          subject: c.subject,
+          action: c.action as RebaseCommit['action'],
+        })),
+      })
+    }
+  }, [directory])
+
+  // Clean up timers on unmount
   useEffect(() => () => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
   }, [])
 
   const handleFetch = async () => {
@@ -259,67 +353,75 @@ export function GitGraphSection({
             </div>
           ) : (
             <>
-              <button
-                onClick={handleFetch}
-                disabled={!!fetchingAction}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary }}
-                title="Fetch"
-              >
-                {fetchingAction === 'fetch' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowsClockwise size={11} />}
-              </button>
-              <button
-                onClick={handlePull}
-                disabled={!!fetchingAction}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary }}
-                title={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}
-              >
-                {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
-              </button>
-              {worktree ? (
+              <Tooltip text="Fetch">
                 <button
-                  onClick={() => {
-                    if (!hasUncommittedChanges) {
-                      useSessionStore.getState().finishWorktreeTab(activeTabId)
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    if (!hasUncommittedChanges) {
-                      setFinishMenuAnchor({ x: e.clientX, y: e.clientY })
-                    }
-                  }}
-                  disabled={hasUncommittedChanges}
-                  className="p-0.5 rounded transition-colors"
-                  style={{
-                    color: hasUncommittedChanges ? colors.textTertiary : '#4ade80',
-                    opacity: hasUncommittedChanges ? 0.35 : 1,
-                    cursor: hasUncommittedChanges ? 'not-allowed' : 'pointer',
-                  }}
-                  title={hasUncommittedChanges
-                    ? 'Commit all changes before finishing'
-                    : strategy === 'merge'
-                      ? `Finish: merge into ${worktree.sourceBranch}`
-                      : `Finish: push and create PR against ${worktree.sourceBranch}`}
-                >
-                  <CheckCircle size={11} weight="fill" />
-                </button>
-              ) : (
-                <button
-                  onClick={handlePush}
+                  onClick={handleFetch}
                   disabled={!!fetchingAction}
                   className="p-0.5 rounded transition-colors"
                   style={{ color: colors.textTertiary }}
-                  title="Push"
                 >
-                  {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
+                  {fetchingAction === 'fetch' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowsClockwise size={11} />}
                 </button>
+              </Tooltip>
+              <Tooltip text={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}>
+                <button
+                  onClick={handlePull}
+                  disabled={!!fetchingAction}
+                  className="p-0.5 rounded transition-colors"
+                  style={{ color: colors.textTertiary }}
+                >
+                  {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
+                </button>
+              </Tooltip>
+              {worktree ? (
+                <Tooltip text={hasUncommittedChanges
+                    ? 'Commit all changes before finishing'
+                    : strategy === 'merge-ff'
+                      ? `Finish: fast-forward into ${worktree.sourceBranch}`
+                      : strategy === 'merge'
+                      ? `Finish: merge into ${worktree.sourceBranch}`
+                      : `Finish: push and create PR against ${worktree.sourceBranch}`}>
+                  <button
+                    onClick={() => {
+                      if (!hasUncommittedChanges) {
+                        useSessionStore.getState().finishWorktreeTab(activeTabId)
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      if (!hasUncommittedChanges) {
+                        setFinishMenuAnchor({ x: e.clientX, y: e.clientY })
+                      }
+                    }}
+                    disabled={hasUncommittedChanges}
+                    className="p-0.5 rounded transition-colors"
+                    style={{
+                      color: hasUncommittedChanges ? colors.textTertiary : '#4ade80',
+                      opacity: hasUncommittedChanges ? 0.35 : 1,
+                      cursor: hasUncommittedChanges ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <CheckCircle size={11} weight="fill" />
+                  </button>
+                </Tooltip>
+              ) : (
+                <Tooltip text="Push">
+                  <button
+                    onClick={handlePush}
+                    disabled={!!fetchingAction}
+                    className="p-0.5 rounded transition-colors"
+                    style={{ color: colors.textTertiary }}
+                  >
+                    {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
+                  </button>
+                </Tooltip>
               )}
             </>
           )}
         </div>
       </div>
+
+      <GraphFilterBar filters={graphFilters} onFilterChange={setGraphFilters} />
 
       {/* Rebase error */}
       {rebaseError && (
@@ -340,26 +442,18 @@ export function GitGraphSection({
 
       {/* Commit list */}
       <div ref={scrollRef} className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
-        {graphNodes.map((node) => (
-          <React.Fragment key={node.commit.hash}>
-            <GraphRow
-              node={node}
-              onHover={handleRowHover}
-              onLeave={handleRowLeave}
-              onContextMenu={handleContextMenu}
-              onClick={() => handleCommitClick(node.commit)}
-              isExpanded={expandedHash === node.commit.hash}
-            />
-            {expandedHash === node.commit.hash && commitFiles.length > 0 && (
-              <CommitFileList
-                files={commitFiles}
-                directory={directory}
-                hash={expandedHash}
-                onFileClick={handleCommitFileClick}
-              />
-            )}
-          </React.Fragment>
-        ))}
+        <VirtualCommitList
+          graphNodes={graphNodes}
+          expandedHash={expandedHash}
+          commitDetail={expandedDetail}
+          commitFiles={commitFiles}
+          scrollRef={scrollRef}
+          onHover={handleRowHover}
+          onLeave={handleRowLeave}
+          onContextMenu={handleContextMenu}
+          onClick={handleCommitClick}
+          onFileClick={handleCommitFileClick}
+        />
         {commits.length < totalCount && (
           <div ref={sentinelRef} className="py-2 text-center text-[10px]" style={{ color: colors.textTertiary }}>
             {loading ? 'Loading...' : ''}
@@ -374,13 +468,13 @@ export function GitGraphSection({
 
       {/* Commit detail popup */}
       {popoverLayer && hoveredCommit && hoverRect && createPortal(
-        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={commitDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? hoverRect.right} />,
+        <CommitPopup commit={hoveredCommit} rect={hoverRect} detail={hoverDetail} panelRight={scrollRef.current?.getBoundingClientRect().right ?? hoverRect.right} onMouseEnter={handlePopupEnter} onMouseLeave={handlePopupLeave} />,
         popoverLayer,
       )}
 
       {/* Commit context menu */}
       {popoverLayer && contextMenu && createPortal(
-        <CommitContextMenu anchor={contextMenu} commit={contextMenu.commit} onClose={() => setContextMenu(null)} />,
+        <CommitContextMenu anchor={contextMenu} commit={contextMenu.commit} directory={directory} onRefresh={() => loadGraph()} onClose={() => setContextMenu(null)} onRebase={handleRebase} />,
         popoverLayer,
       )}
 
@@ -396,13 +490,34 @@ export function GitGraphSection({
       {/* Commit file diff viewer */}
       <AnimatePresence>
         {commitFileDiff && (
-          <DiffViewer
-            diff={commitFileDiff.diff}
-            fileName={commitFileDiff.fileName}
-            onClose={() => setCommitFileDiff(null)}
-          />
+          <FloatingPanel title={commitFileDiff.fileName} onClose={() => setCommitFileDiff(null)}>
+            <DiffPane
+              diff={commitFileDiff.diff}
+              fileName={commitFileDiff.fileName}
+              filePath={commitFileDiff.fileName}
+              staged={false}
+              directory={directory}
+              onClose={() => setCommitFileDiff(null)}
+              onRefresh={() => {}}
+            />
+          </FloatingPanel>
         )}
       </AnimatePresence>
+
+      {/* Rebase editor */}
+      {rebaseTarget && (
+        <RebaseEditor
+          directory={directory}
+          onto={rebaseTarget.onto}
+          initialCommits={rebaseTarget.commits}
+          onClose={() => setRebaseTarget(null)}
+          onComplete={() => {
+            setRebaseTarget(null)
+            loadGraph()
+            onRefresh()
+          }}
+        />
+      )}
     </>
   )
 }

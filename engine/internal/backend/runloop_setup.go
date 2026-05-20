@@ -19,15 +19,24 @@ func (b *ApiBackend) resolveProvider(model string) providers.LlmProvider {
 	b.mu.Lock()
 	authRes := b.authResolver
 	b.mu.Unlock()
-	if authRes != nil {
-		providerName := providers.ProviderNameForModel(model)
-		if providerName != "" {
-			if key, err := authRes.ResolveKey(providerName); err == nil && key != "" {
-				providers.SetProviderKey(providerName, key)
-			}
+	providerName := providers.ProviderNameForModel(model)
+	if authRes != nil && providerName != "" {
+		if key, err := authRes.ResolveKey(providerName); err == nil && key != "" {
+			providers.SetProviderKey(providerName, key)
+			utils.Log("ApiBackend", fmt.Sprintf("resolved key for provider=%s (len=%d)", providerName, len(key)))
+		} else if err != nil {
+			utils.Log("ApiBackend", fmt.Sprintf("no key for provider=%s: %v", providerName, err))
 		}
 	}
-	return providers.ResolveProvider(model)
+	p := providers.ResolveProvider(model)
+	if p != nil {
+		// Also check what key the provider will actually use at request time
+		runtimeKey := providers.GetProviderKey(p.ID())
+		utils.Log("ApiBackend", fmt.Sprintf("resolved model=%s → provider=%s (nameForModel=%s, runtimeKeyLen=%d)", model, p.ID(), providerName, len(runtimeKey)))
+	} else {
+		utils.Log("ApiBackend", fmt.Sprintf("resolved model=%s → nil (nameForModel=%s)", model, providerName))
+	}
+	return p
 }
 
 // loadOrCreateConversation returns an existing conversation when SessionID

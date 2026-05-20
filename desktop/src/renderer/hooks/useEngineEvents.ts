@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
-import { IPC, type NormalizedEvent } from '../../shared/types'
+import { IPC, type NormalizedEvent, type ImageAttachmentPayload } from '../../shared/types'
 
 /**
  * Subscribes to all ControlPlane events via IPC and routes them
@@ -94,8 +94,8 @@ export function useEngineEvents() {
 
     // Remote user messages (sent from iOS) — submit through the renderer's normal flow
     // so the tab's working directory, session ID, model, and addDirs are used automatically.
-    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number }) => {
-      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt)
+    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[] }) => {
+      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments)
     }
     window.ion.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
 
@@ -162,8 +162,8 @@ export function useEngineEvents() {
 
     // Remote engine prompt (sent from iOS) — submit through the renderer's engine flow
     // so the store adds the user message, sets status, and calls the engine bridge.
-    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string }) => {
-      useSessionStore.getState().submitEnginePrompt(data.tabId, data.text)
+    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[] }) => {
+      useSessionStore.getState().submitEnginePrompt(data.tabId, data.text, data.appendSystemPrompt, data.imageAttachments)
     }
     window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
 

@@ -1,5 +1,6 @@
 import SwiftUI
-import Combine
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct InputBar: View {
     @Environment(SessionViewModel.self) private var viewModel
@@ -10,6 +11,12 @@ struct InputBar: View {
     @State private var keyboardVisible = false
     @State private var slashFilter: String?
     @State private var placeholderIndex = 0
+    @State private var pendingAttachments: [PendingAttachment] = []
+    @State private var showAttachMenu = false
+    @State private var showFilePicker = false
+    @State private var showPhotoPicker = false
+    @State private var showDocumentPicker = false
+    @State private var photosPickerItems: [PhotosPickerItem] = []
 
     private let placeholders = [
         "Ask a question…",
@@ -39,6 +46,10 @@ struct InputBar: View {
 
     private var slashCommands: [DiscoveredSlashCommand] {
         viewModel.discoveredCommands[workingDirectory] ?? []
+    }
+
+    private var hasUploading: Bool {
+        pendingAttachments.contains { $0.isUploading }
     }
 
     var body: some View {
@@ -73,7 +84,16 @@ struct InputBar: View {
                 )
                 .frame(height: 0.5)
 
+            // Attachment chips
+            if !pendingAttachments.isEmpty {
+                AttachmentChipsView(attachments: pendingAttachments) { id in
+                    pendingAttachments.removeAll { $0.id == id }
+                }
+            }
+
             HStack(spacing: 8) {
+                attachButton
+
                 TextField("", text: $promptText, prompt: Text(placeholders[placeholderIndex]).foregroundStyle(.tertiary), axis: .vertical)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -105,7 +125,7 @@ struct InputBar: View {
                         .font(.title)
                         .foregroundStyle(sendButtonColor)
                 }
-                .disabled(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !isConnected)
+                .disabled(cannotSend)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -131,6 +151,7 @@ struct InputBar: View {
         .background(.regularMaterial)
         .animation(IonTheme.snappySpring, value: keyboardVisible)
         .animation(IonTheme.snappySpring, value: slashFilter)
+        .animation(IonTheme.snappySpring, value: pendingAttachments.count)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
         }
@@ -146,6 +167,13 @@ struct InputBar: View {
         .onChange(of: promptText) { _, newText in
             updateSlashFilter(newText)
         }
+        .onChange(of: viewModel.pendingUploadResults) { _, results in
+            consumeUploadResults(results)
+        }
+        .onChange(of: photosPickerItems) { _, items in
+            for item in items { handlePhotoSelection(item) }
+            photosPickerItems = []
+        }
         .onAppear {
             fetchCommandsIfNeeded()
         }
@@ -160,14 +188,68 @@ struct InputBar: View {
                 }
             }
         }
+        .sheet(isPresented: $showFilePicker) {
+            FilePickerSheet(initialDirectory: workingDirectory) { path, name in
+                addFileAttachment(path: path, name: name)
+            }
+            .environment(viewModel)
+        }
+        .photosPicker(
+            isPresented: $showPhotoPicker,
+            selection: $photosPickerItems,
+            maxSelectionCount: 5,
+            matching: .images
+        )
+        .fileImporter(
+            isPresented: $showDocumentPicker,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: true
+        ) { result in
+            handleDocumentPickerResult(result)
+        }
+        .confirmationDialog("Attach", isPresented: $showAttachMenu) {
+            Button("Photo Library") { showPhotoPicker = true }
+            Button("Choose File") { showDocumentPicker = true }
+            Button("Browse Desktop Files") { showFilePicker = true }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    // MARK: - Attach button
+
+    private var attachButton: some View {
+        Button {
+            showAttachMenu = true
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.title3)
+                .foregroundStyle(isConnected ? .secondary : .quaternary)
+        }
+        .disabled(!isConnected)
+    }
+
+    // MARK: - Actions
+
+    private var cannotSend: Bool {
+        let emptyText = promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let noAttachments = pendingAttachments.isEmpty
+        return (emptyText && noAttachments) || !isConnected || hasUploading
     }
 
     private func sendMessage() {
-        guard !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
+        guard !hasUploading else { return }
         Haptic.light()
-        viewModel.sendPrompt(tabId: tabId, text: promptText)
+        let attachments = pendingAttachments.map(\.commandAttachment)
+        viewModel.sendPrompt(
+            tabId: tabId,
+            text: promptText,
+            attachments: attachments.isEmpty ? nil : attachments
+        )
         isFocused = false
         promptText = ""
+        pendingAttachments = []
     }
 
     private var sendButtonColor: Color {
@@ -177,9 +259,118 @@ struct InputBar: View {
         return isQueued ? .orange : IonTheme.accent
     }
 
-    /// Detect if the user is typing a slash command prefix.
+    // MARK: - Attachments
+
+    private func addFileAttachment(path: String, name: String) {
+        let imageExts: Set = ["png", "jpg", "jpeg", "gif", "webp", "svg"]
+        let ext = (name as NSString).pathExtension.lowercased()
+        let type = imageExts.contains(ext) ? "image" : "file"
+        let att = PendingAttachment(id: UUID().uuidString, type: type, name: name, path: path, isUploading: false)
+        pendingAttachments.append(att)
+    }
+
+    private func handlePhotoSelection(_ item: PhotosPickerItem) {
+        let placeholderId = UUID().uuidString
+        let correlationId = UUID().uuidString
+        let name = "photo-\(Int(Date().timeIntervalSince1970 * 1000)).jpeg"
+        pendingAttachments.append(PendingAttachment(id: placeholderId, type: "image", name: name, path: "", isUploading: true, correlationId: correlationId))
+
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self) else {
+                await MainActor.run { pendingAttachments.removeAll { $0.id == placeholderId } }
+                return
+            }
+            // Compress to JPEG, target ~1MB max
+            let compressed = compressImage(data: data, maxBytes: 1_000_000)
+            AttachmentImageCache.shared.store(data: compressed, forKey: placeholderId)
+            let base64 = compressed.base64EncodedString()
+            let dataUrl = "data:image/jpeg;base64,\(base64)"
+            await MainActor.run {
+                viewModel.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
+            }
+        }
+    }
+
+    private func handleDocumentPickerResult(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else { return }
+        for url in urls {
+            guard url.startAccessingSecurityScopedResource() else { continue }
+            defer { url.stopAccessingSecurityScopedResource() }
+            let name = url.lastPathComponent
+            guard let data = try? Data(contentsOf: url) else { continue }
+
+            let placeholderId = UUID().uuidString
+            let correlationId = UUID().uuidString
+            let imageExts: Set = ["png", "jpg", "jpeg", "gif", "webp", "svg"]
+            let ext = url.pathExtension.lowercased()
+            let type = imageExts.contains(ext) ? "image" : "file"
+
+            if type == "image" {
+                // Upload image via data URL
+                pendingAttachments.append(PendingAttachment(id: placeholderId, type: "image", name: name, path: "", isUploading: true, correlationId: correlationId))
+                let compressed = compressImage(data: data, maxBytes: 1_000_000)
+                AttachmentImageCache.shared.store(data: compressed, forKey: placeholderId)
+                let base64 = compressed.base64EncodedString()
+                let mimeExt = (ext == "jpg" || ext == "jpeg") ? "jpeg" : ext
+                let dataUrl = "data:image/\(mimeExt);base64,\(base64)"
+                viewModel.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
+            } else {
+                // Upload non-image file via data URL so desktop can save it
+                pendingAttachments.append(PendingAttachment(id: placeholderId, type: "file", name: name, path: "", isUploading: true, correlationId: correlationId))
+                let base64 = data.base64EncodedString()
+                let dataUrl = "data:application/octet-stream;base64,\(base64)"
+                viewModel.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId)
+            }
+        }
+    }
+
+    private func compressImage(data: Data, maxBytes: Int) -> Data {
+        guard let uiImage = UIImage(data: data) else { return data }
+        var quality: CGFloat = 0.8
+        while quality > 0.1 {
+            if let jpeg = uiImage.jpegData(compressionQuality: quality), jpeg.count <= maxBytes {
+                return jpeg
+            }
+            quality -= 0.1
+        }
+        return uiImage.jpegData(compressionQuality: 0.1) ?? data
+    }
+
+    private func consumeUploadResults(_ results: [UploadAttachmentResult]) {
+        guard !results.isEmpty else { return }
+        var consumedIds = Set<String>()
+        for result in results {
+            guard let cid = result.correlationId, !cid.isEmpty else { continue }
+            if let idx = pendingAttachments.firstIndex(where: { $0.isUploading && $0.correlationId == cid }) {
+                consumedIds.insert(cid)
+                if let error = result.error, !error.isEmpty {
+                    pendingAttachments.remove(at: idx)
+                } else {
+                    AttachmentImageCache.shared.rekey(from: pendingAttachments[idx].id, to: result.id)
+                    // Also key by the desktop-side path so rehydrated messages
+                    // (which only know the path from the marker text) can find
+                    // the same image bytes for inline rendering.
+                    if pendingAttachments[idx].type == "image", !result.path.isEmpty,
+                       let bytes = AttachmentImageCache.shared.data(forKey: result.id) {
+                        AttachmentImageCache.shared.store(data: bytes, forKey: result.path)
+                    }
+                    pendingAttachments[idx] = PendingAttachment(
+                        id: result.id, type: pendingAttachments[idx].type, name: result.name, path: result.path, isUploading: false, correlationId: cid
+                    )
+                }
+            }
+        }
+        if !consumedIds.isEmpty {
+            viewModel.pendingUploadResults.removeAll { r in
+                guard let cid = r.correlationId else { return false }
+                return consumedIds.contains(cid)
+            }
+        }
+    }
+
+    // MARK: - Slash commands
+
     private func updateSlashFilter(_ text: String) {
-        // Match a lone slash-prefixed token: /foo, /e2e:setup, etc.
         let pattern = #"^\/[a-zA-Z0-9_:\-]*$"#
         if text.range(of: pattern, options: .regularExpression) != nil {
             slashFilter = text

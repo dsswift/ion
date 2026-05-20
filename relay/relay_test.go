@@ -438,14 +438,14 @@ func TestLargeMessageForwarding(t *testing.T) {
 	ion := dialWS(t, server, "chan-large", "ion", apiKey)
 	mobile := dialWS(t, server, "chan-large", "mobile", apiKey)
 
-	// Increase client-side read limit to match the server's 1MB limit.
-	mobile.SetReadLimit(1024 * 1024)
+	// Increase client-side read limit to match the server's 12MB limit.
+	mobile.SetReadLimit(12 * 1024 * 1024)
 
 	// Consume peer-reconnected on ion.
 	readExpected(t, ion, "ion-ctrl")
 
-	// Send a message larger than gorilla's old 64KB read buffer.
-	largeMsg := make([]byte, 128*1024) // 128KB
+	// Send a message larger than the old 1MB limit.
+	largeMsg := make([]byte, 2*1024*1024) // 2MB
 	for i := range largeMsg {
 		largeMsg[i] = byte(i % 256)
 	}
@@ -465,7 +465,7 @@ func TestLargeMessageForwarding(t *testing.T) {
 		t.Errorf("large message size mismatch: got %d, want %d", len(data), len(largeMsg))
 	}
 	// Spot-check a few bytes.
-	for _, idx := range []int{0, 1000, 65535, 65536, len(largeMsg) - 1} {
+	for _, idx := range []int{0, 1000, 1048575, 1048576, len(largeMsg) - 1} {
 		if data[idx] != largeMsg[idx] {
 			t.Errorf("byte mismatch at index %d: got %d, want %d", idx, data[idx], largeMsg[idx])
 		}

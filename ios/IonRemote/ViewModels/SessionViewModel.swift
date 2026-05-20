@@ -151,21 +151,41 @@ final class SessionViewModel {
     // Engine conversation messages (per compound key)
     var engineMessages: [String: [EngineMessage]] = [:]         // compoundKey -> messages
     var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history
+    var engineTurnHasText: Set<String> = []                      // compoundKeys where current LLM sub-turn produced text
     // Engine instance state (per engine tab)
     var engineInstances: [String: [EngineInstanceInfo]] = [:]   // tabId -> instances
     var activeEngineInstance: [String: String] = [:]              // tabId -> active instanceId
     /// Engine profiles synced from the desktop settings.
     var engineProfiles: [EngineProfile] = []
+    /// Preferred model default for new tabs (synced from desktop settings).
+    var preferredModel: String = "claude-sonnet-4-6"
+    /// Engine default model (synced from desktop settings).
+    var engineDefaultModel: String = ""
+    /// Available models from the desktop (dynamic list from engine).
+    /// Falls back to default Claude models until the first snapshot with model data arrives.
+    var availableModels: [RemoteModelEntry] = SessionViewModel.defaultModels
+
+    /// Default model list used before the desktop sends a dynamic list.
+    static let defaultModels: [RemoteModelEntry] = [
+        RemoteModelEntry(id: "claude-opus-4-6", providerId: "anthropic", label: "Opus 4.6", contextWindow: 1_000_000, hasAuth: true),
+        RemoteModelEntry(id: "claude-sonnet-4-6", providerId: "anthropic", label: "Sonnet 4.6", contextWindow: 200_000, hasAuth: true),
+        RemoteModelEntry(id: "claude-haiku-4-5-20251001", providerId: "anthropic", label: "Haiku 4.5", contextWindow: 200_000, hasAuth: true),
+    ]
     /// Active tool calls per tab, keyed by toolId.
     var activeTools: [String: [String: ActiveToolInfo]] = [:]
     /// Tab IDs that iOS has requested to close but hasn't received tab_closed confirmation for.
     var pendingCloseTabIds: Set<String> = []
+    /// Timestamps when tabs transitioned to an idle/completed/failed/dead state (for "idle since" display).
+    var tabIdleSince: [String: Date] = [:]
 
     // Git state (per working directory)
     var gitChanges: [String: GitChangesResponse] = [:]     // directory -> changes
     var gitGraph: [String: GitGraphResponse] = [:]          // directory -> graph
     var gitDiffResult: GitDiffResponse? = nil
     var gitDiffLoading = false
+    var gitCommitFiles: [String: GitCommitFilesResponse] = [:]  // keyed by hash
+    var gitCommitFileDiff: [String: GitCommitFileDiffResponse] = [:]  // keyed by "hash:path"
+    var gitToast: GitToast? = nil
 
     // File explorer state (per directory/path)
     var fileListings: [String: FsDirListingResponse] = [:]   // directory -> listing
@@ -174,8 +194,17 @@ final class SessionViewModel {
     var fileListingLoading: Set<String> = []
     var fileContentLoading: Set<String> = []
 
+    // Tab attachment cache (from load_attachments command)
+    var tabAttachmentCache: [String: [TabAttachmentEntry]] = [:]  // tabId -> attachments
+
     // Discovered slash commands (per working directory)
     var discoveredCommands: [String: [DiscoveredSlashCommand]] = [:]
+
+    // Upload attachment results (consumed by InputBar / EngineView)
+    var pendingUploadResults: [UploadAttachmentResult] = []
+
+    // MARK: - Toast Messages
+    var toastMessages: [ToastMessage] = []
 
     /// Tab group mode synced from the desktop: "off", "auto", or "manual".
     var tabGroupMode: String = "auto"
@@ -292,7 +321,6 @@ final class SessionViewModel {
     /// Tabs grouped by working directory basename, preserving original order within each group.
     /// Duplicate basenames are disambiguated with the parent directory name.
     var tabsByDirectory: [(directory: String, fullPath: String, tabs: [RemoteTabState])] {
-        // Build ordered groups preserving tab order
         var order: [String] = []
         var groups: [String: [RemoteTabState]] = [:]
         for tab in tabs {
@@ -303,7 +331,6 @@ final class SessionViewModel {
             groups[key, default: []].append(tab)
         }
 
-        // Count how many distinct full paths share each basename
         var basenameCounts: [String: Int] = [:]
         for path in order {
             let base = (path as NSString).lastPathComponent
@@ -356,6 +383,31 @@ final class SessionViewModel {
             let dir = gTabs.first?.workingDirectory
             return (label: g.label, id: g.id, icon: "tray.2.fill", directory: dir, tabs: gTabs)
         }
+    }
+
+    // MARK: - Voice
+
+    let voiceService = VoiceService()
+
+    // MARK: - Toast
+
+    @MainActor
+    func showToast(_ message: ToastMessage) {
+        toastMessages.append(message)
+        // Cap at 2 visible; drop oldest if exceeded.
+        if toastMessages.count > 2 {
+            toastMessages.removeFirst(toastMessages.count - 2)
+        }
+        let id = message.id
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(message.duration))
+            self?.dismissToast(id: id)
+        }
+    }
+
+    @MainActor
+    func dismissToast(id: UUID) {
+        toastMessages.removeAll { $0.id == id }
     }
 
     // MARK: - Init

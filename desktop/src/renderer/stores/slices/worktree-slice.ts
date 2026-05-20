@@ -77,8 +77,9 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       const strategy = strategyOverride || usePreferencesStore.getState().worktreeCompletionStrategy
       const { repoPath, worktreePath, branchName, sourceBranch } = tab.worktree
 
-      if (strategy === 'merge') {
-        const result = await window.ion.gitWorktreeMerge(repoPath, branchName, sourceBranch)
+      if (strategy === 'merge-ff' || strategy === 'merge') {
+        const noFf = strategy === 'merge'
+        const result = await window.ion.gitWorktreeMerge(repoPath, branchName, sourceBranch, noFf)
         if (!result.ok) {
           const msg = result.hasConflicts
             ? `Merge conflict: resolve manually in ${repoPath} then close this tab.`

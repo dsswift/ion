@@ -1,8 +1,11 @@
 package providers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // setAuthHeader sets the authentication header on a request based on the
@@ -17,6 +20,10 @@ import (
 //
 // Enterprise deployments can set any header their gateway expects.
 func setAuthHeader(req *http.Request, style string, apiKey string) {
+	utils.Log("Auth", fmt.Sprintf("setAuthHeader: style=%q keyLen=%d url=%s", style, len(apiKey), req.URL.Host))
+	if apiKey == "" {
+		utils.Log("Auth", fmt.Sprintf("WARNING: setAuthHeader called with empty API key for %s", req.URL.Host))
+	}
 	switch strings.ToLower(style) {
 	case "bearer", "":
 		req.Header.Set("Authorization", "Bearer "+apiKey)

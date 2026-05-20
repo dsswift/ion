@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, EngineInstance, EnginePaneState, AgentStateUpdate, StatusFields, Message } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, EngineInstance, EnginePaneState, AgentStateUpdate, StatusFields, Message, ImageAttachmentPayload } from '../../shared/types'
 
 export interface StaticInfo {
   version: string
@@ -57,10 +57,12 @@ export interface State {
   enginePanes: Map<string, EnginePaneState>
   engineMessages: Map<string, Message[]>
   engineModelOverrides: Map<string, string>
+  engineDraftInputs: Map<string, string>
 
   tallViewTabId: string | null
   scrollToBottomCounter: number
   settingsOpen: boolean
+  settingsInitialTab: string | null
 
   initStaticInfo: () => Promise<void>
   setPermissionMode: (mode: 'auto' | 'plan', source?: string) => void
@@ -70,12 +72,13 @@ export interface State {
   closeTab: (tabId: string) => void
   reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
+  setTabModel: (tabId: string, model: string) => void
   setTabPillColor: (tabId: string, color: string | null) => void
   setTabPillIcon: (tabId: string, icon: string | null) => void
   clearTab: () => void
   toggleExpanded: () => void
   toggleTallView: (tabId: string) => void
-  openSettings: () => void
+  openSettings: (initialTab?: string) => void
   closeSettings: () => void
   toggleGitPanel: () => void
   closeGitPanel: () => void
@@ -119,7 +122,7 @@ export interface State {
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void
   sendMessage: (prompt: string, projectPath?: string, extraAttachments?: Attachment[], appendSystemPrompt?: string) => void
-  submitRemotePrompt: (tabId: string, prompt: string) => void
+  submitRemotePrompt: (tabId: string, prompt: string, imageAttachments?: ImageAttachmentPayload[]) => void
   submitRemoteBash: (tabId: string, command: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
   addDirectory: (dir: string) => void
@@ -128,7 +131,7 @@ export interface State {
   setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
   convertToWorktree: (tabId: string) => Promise<void>
   cancelWorktreeSetup: (tabId: string) => void
-  finishWorktreeTab: (tabId: string, strategyOverride?: 'merge' | 'pr') => Promise<void>
+  finishWorktreeTab: (tabId: string, strategyOverride?: 'merge-ff' | 'merge' | 'pr') => Promise<void>
   addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
@@ -144,7 +147,7 @@ export interface State {
   setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
   createEngineTab: (dir?: string, profileId?: string) => string
   handleEngineEvent: (key: string, event: any) => void
-  submitEnginePrompt: (tabId: string, text: string) => void
+  submitEnginePrompt: (tabId: string, text: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[]) => void
   respondEngineDialog: (tabId: string, dialogId: string, value: any) => void
   addEngineInstance: (tabId: string) => string
   removeEngineInstance: (tabId: string, instanceId: string) => void
@@ -152,6 +155,8 @@ export interface State {
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
   reorderEngineInstances: (tabId: string, reordered: EngineInstance[]) => void
   setEngineModel: (tabId: string, modelId: string) => void
+  addEngineSystemMessage: (key: string, content: string) => void
+  setEngineDraftInput: (key: string, text: string) => void
 }
 
 export type StoreSet = (partial: State | Partial<State> | ((state: State) => State | Partial<State>), replace?: false) => void

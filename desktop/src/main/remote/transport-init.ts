@@ -1,6 +1,6 @@
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
-import { state } from '../state'
+import { state, modelCache } from '../state'
 import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
 import { readSettings } from '../settings-store'
 import { RemoteTransport } from './transport'
@@ -73,7 +73,18 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
       try {
         const peerSettings = readSettings()
         const peerRecentDirs: string[] = Array.isArray(peerSettings.recentBaseDirectories) ? peerSettings.recentBaseDirectories : []
-        state.remoteTransport?.send({ type: 'snapshot', tabs, recentDirectories: peerRecentDirs })
+        const tabGroupMode = peerSettings.tabGroupMode || 'off'
+        const tabGroups = Array.isArray(peerSettings.tabGroups) ? peerSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
+        state.remoteTransport?.send({
+          type: 'snapshot',
+          tabs,
+          recentDirectories: peerRecentDirs,
+          tabGroupMode,
+          tabGroups,
+          preferredModel: peerSettings.preferredModel || undefined,
+          engineDefaultModel: peerSettings.engineDefaultModel || undefined,
+          availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
+        })
         const peerRelayUrl = (peerSettings.relayUrl as string) || ''
         const peerRelayApiKey = (peerSettings.relayApiKey as string) || ''
         if (peerRelayUrl) {

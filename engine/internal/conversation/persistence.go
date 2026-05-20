@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // MigrateConversation upgrades a raw JSON map to the current schema version.
@@ -134,17 +135,18 @@ func saveJSONL(conv *Conversation, dir string) error {
 	savePath := filepath.Join(dir, conv.ID+".jsonl")
 
 	header := map[string]any{
-		"meta":              true,
-		"id":                conv.ID,
-		"version":           conv.Version,
-		"model":             conv.Model,
-		"system":            conv.System,
-		"totalInputTokens":  conv.TotalInputTokens,
-		"totalOutputTokens": conv.TotalOutputTokens,
-		"lastInputTokens":   conv.LastInputTokens,
-		"totalCost":         conv.TotalCost,
-		"createdAt":         conv.CreatedAt,
-		"leafId":            conv.LeafID,
+		"meta":                   true,
+		"id":                     conv.ID,
+		"version":                conv.Version,
+		"model":                  conv.Model,
+		"system":                 conv.System,
+		"totalInputTokens":       conv.TotalInputTokens,
+		"totalOutputTokens":      conv.TotalOutputTokens,
+		"lastInputTokens":        conv.LastInputTokens,
+		"lastInputTokensMsgCount": conv.LastInputTokensMsgCount,
+		"totalCost":              conv.TotalCost,
+		"createdAt":              conv.CreatedAt,
+		"leafId":                 conv.LeafID,
 	}
 	if conv.ParentID != "" {
 		header["parentId"] = conv.ParentID
@@ -236,7 +238,12 @@ func Load(id, dir string) (*Conversation, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	return MigrateConversation(raw)
+	conv, err := MigrateConversation(raw)
+	if err != nil {
+		return nil, err
+	}
+	utils.Log("Conversation", fmt.Sprintf("loaded JSON (migrated) id=%s entries=%d messages=%d lastInputTokens=%d", conv.ID, len(conv.Entries), len(conv.Messages), conv.LastInputTokens))
+	return conv, nil
 }
 
 func loadFromJSONL(data []byte) (*Conversation, error) {
@@ -271,18 +278,19 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 	}
 
 	conv := &Conversation{
-		ID:                jsonString(header, "id"),
-		System:            jsonString(header, "system"),
-		Model:             jsonString(header, "model"),
-		Messages:          []types.LlmMessage{},
-		TotalInputTokens:  int(jsonFloat(header, "totalInputTokens", 0)),
-		TotalOutputTokens: int(jsonFloat(header, "totalOutputTokens", 0)),
-		LastInputTokens:   int(jsonFloat(header, "lastInputTokens", 0)),
-		TotalCost:         jsonFloat(header, "totalCost", 0),
-		CreatedAt:         int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
-		Version:           int(jsonFloat(header, "version", 2)),
-		ParentID:          jsonString(header, "parentId"),
-		Entries:           entries,
+		ID:                      jsonString(header, "id"),
+		System:                  jsonString(header, "system"),
+		Model:                   jsonString(header, "model"),
+		Messages:                []types.LlmMessage{},
+		TotalInputTokens:        int(jsonFloat(header, "totalInputTokens", 0)),
+		TotalOutputTokens:       int(jsonFloat(header, "totalOutputTokens", 0)),
+		LastInputTokens:         int(jsonFloat(header, "lastInputTokens", 0)),
+		LastInputTokensMsgCount: int(jsonFloat(header, "lastInputTokensMsgCount", 0)),
+		TotalCost:               jsonFloat(header, "totalCost", 0),
+		CreatedAt:               int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
+		Version:                 int(jsonFloat(header, "version", 2)),
+		ParentID:                jsonString(header, "parentId"),
+		Entries:                 entries,
 	}
 
 	if leafID, ok := header["leafId"].(string); ok {
@@ -294,5 +302,6 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 	}
 
 	conv.Messages = BuildContextPath(conv)
+	utils.Log("Conversation", fmt.Sprintf("loaded JSONL id=%s entries=%d messages=%d lastInputTokens=%d lastInputTokensMsgCount=%d", conv.ID, len(conv.Entries), len(conv.Messages), conv.LastInputTokens, conv.LastInputTokensMsgCount))
 	return conv, nil
 }

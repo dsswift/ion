@@ -31,6 +31,7 @@ export const IPC = {
   LIST_ALL_SESSIONS: 'ion:list-all-sessions',
   LOAD_SESSION: 'ion:load-session',
   READ_PLAN: 'ion:read-plan',
+  READ_IMAGE_DATA_URL: 'ion:read-image-data-url',
 
   // One-way events (main → renderer)
   TEXT_CHUNK: 'ion:text-chunk',
@@ -90,6 +91,10 @@ export const IPC = {
   GET_BACKEND: 'ion:get-backend',
   SWITCH_BACKEND: 'ion:switch-backend',
 
+  // Tab migration between backends
+  LOAD_OTHER_BACKEND_TABS: 'ion:load-other-backend-tabs',
+  MIGRATE_TABS: 'ion:migrate-tabs',
+
   // Git operations
   GIT_GRAPH: 'ion:git-graph',
   GIT_CHANGES: 'ion:git-changes',
@@ -110,6 +115,33 @@ export const IPC = {
   GIT_COMMIT_FILES: 'ion:git-commit-files',
   GIT_COMMIT_FILE_DIFF: 'ion:git-commit-file-diff',
   GIT_IGNORED_FILES: 'ion:git-ignored-files',
+  GIT_STASH_LIST: 'git:stash-list',
+  GIT_STASH_SAVE: 'git:stash-save',
+  GIT_STASH_POP: 'git:stash-pop',
+  GIT_STASH_DROP: 'git:stash-drop',
+  GIT_CHERRY_PICK: 'git:cherry-pick',
+  GIT_REVERT: 'git:revert',
+  GIT_RESET: 'git:reset',
+  GIT_BLAME: 'ion:git-blame',
+  GIT_CONFLICTS: 'ion:git-conflicts',
+  GIT_CONFLICT_FILE: 'ion:git-conflict-file',
+  GIT_RESOLVE_CONFLICT: 'ion:git-resolve-conflict',
+  GIT_APPLY_PATCH: 'ion:git-apply-patch',
+  GIT_TAG_CREATE: 'ion:git-tag-create',
+  GIT_SHOW_FILE: 'ion:git-show-file',
+  GIT_COMMIT_SIGNATURE: 'ion:git-commit-signature',
+  GIT_RECENT_REFS: 'ion:git-recent-refs',
+  GIT_SUBSCRIBE: 'ion:git-subscribe',
+  GIT_UNSUBSCRIBE: 'ion:git-unsubscribe',
+  GIT_EVENT: 'ion:git-event',
+  GIT_SNAPSHOT: 'ion:git-snapshot',
+  GIT_REFRESH: 'ion:git-refresh',
+
+  // Git rebase operations
+  GIT_REBASE_TODO: 'ion:git-rebase-todo',
+  GIT_REBASE_EXEC: 'ion:git-rebase-exec',
+  GIT_REBASE_ABORT: 'ion:git-rebase-abort',
+  GIT_REBASE_CONTINUE: 'ion:git-rebase-continue',
 
   // Git worktree operations
   GIT_WORKTREE_ADD: 'ion:git-worktree-add',
@@ -175,6 +207,7 @@ export const IPC = {
   REMOTE_DEVICE_PAIRED: 'ion:remote-device-paired',
   REMOTE_DEVICE_REVOKED: 'ion:remote-device-revoked',
   REMOTE_GET_MESSAGES: 'ion:remote-get-messages',
+  REMOTE_REQUEST_IOS_LOGS: 'ion:remote-request-ios-logs',
 
   // Engine (native extension runtime)
   ENGINE_START: 'ion:engine-start',
@@ -185,6 +218,18 @@ export const IPC = {
   ENGINE_COMMAND: 'ion:engine-command',
   ENGINE_STOP: 'ion:engine-stop',
   ENGINE_EVENT: 'ion:engine-event',
+
+  // Model & provider management
+  LIST_MODELS: 'ion:list-models',
+  STORE_CREDENTIAL: 'ion:store-credential',
+  REFRESH_MODELS: 'ion:refresh-models',
+
+  // OAuth
+  OAUTH_START: 'ion:oauth-start',
+  OAUTH_LOGOUT: 'ion:oauth-logout',
+  OAUTH_STATUS: 'ion:oauth-status',
+  OAUTH_DEVICE_CODE: 'ion:oauth-device-code',
+  OAUTH_DEVICE_POLL: 'ion:oauth-device-poll',
 
   // Auto-update
   INSTALL_UPDATE: 'ion:install-update',

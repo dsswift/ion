@@ -144,5 +144,5 @@ export type NormalizedEvent =
   | { type: 'permission_request'; questionId: string; toolName: string; toolDescription?: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'plan_mode_changed'; enabled: boolean; planFilePath?: string }
   | { type: 'stream_reset' }
-  | { type: 'compacting'; active: boolean }
+  | { type: 'compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }

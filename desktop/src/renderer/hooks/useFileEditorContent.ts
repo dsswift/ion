@@ -22,10 +22,15 @@ export function useFileEditorContent({
 
   // ---- File loading ----
   useEffect(() => {
-    if (!activeFile) return
+    if (!activeFile) {
+      console.log('[useFileEditorContent] no active file, skipping load')
+      return
+    }
     if (activeFile.filePath && activeFile.content === '' && activeFile.savedContent === '') {
       // Initial load for newly opened files
+      console.log('[useFileEditorContent] initial load', { fileId: activeFile.id, filePath: activeFile.filePath })
       window.ion.fsReadFile(activeFile.filePath).then((result) => {
+        console.log('[useFileEditorContent] fsReadFile result', { filePath: activeFile.filePath, hasContent: result.content !== null, contentLen: result.content?.length })
         if (result.content !== null) {
           // Set both content and savedContent so isDirty starts false
           useSessionStore.setState((s) => {

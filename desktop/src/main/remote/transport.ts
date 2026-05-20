@@ -69,6 +69,7 @@ export class RemoteTransport extends EventEmitter {
     'permission_request', 'snapshot', 'tab_created', 'tab_closed',
     'conversation_history', 'heartbeat', 'terminal_snapshot',
     'engine_conversation_history',
+    'engine_agent_state', 'engine_status', 'engine_message_end', 'engine_error',
   ])
 
   constructor(config: RemoteTransportConfig) {
@@ -399,6 +400,11 @@ export class RemoteTransport extends EventEmitter {
       this.lanDeviceMap.delete(lanConnectionId)
     }
     this._recomputeState()
+  }
+
+  /** Return device IDs of all currently connected devices. */
+  getConnectedDeviceIds(): string[] {
+    return [...this.deviceSecrets.keys()].filter(id => this._isDeviceConnected(id))
   }
 
   /** Send to a specific device only (e.g. unpair notification). */

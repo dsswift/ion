@@ -629,23 +629,12 @@ func TestWireAgentToolServer_SpecResolution(t *testing.T) {
 	// Build the handler directly and test spec resolution
 	handler := mgr.buildAgentToolHandler(s, "agent-ts4")
 
-	// Test with unknown spec name
-	result, err := handler(map[string]interface{}{
-		"prompt": "test task",
-		"name":   "nonexistent",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error for unregistered agent name")
-	}
-	if !strings.Contains(result.Content, "not registered") {
-		t.Errorf("expected 'not registered' error, got %q", result.Content)
-	}
+	// Unknown agent names now fall through as unnamed agents (no error).
+	// We only verify the missing-prompt guard here since spawning a real
+	// child backend without a prompt is fast-rejected.
 
 	// Test with missing prompt
-	result, err = handler(map[string]interface{}{
+	result, err := handler(map[string]interface{}{
 		"name": "researcher",
 	})
 	if err != nil {

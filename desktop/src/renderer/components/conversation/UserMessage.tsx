@@ -8,6 +8,7 @@ import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useN
 import { TableScrollWrapper, ImageCard } from './AssistantMessage'
 import { MessageActions } from './MessageActions'
 import { MessageAttachments } from './MessageAttachments'
+import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
@@ -23,6 +24,8 @@ export function UserMessage({ message, skipMotion }: { message: Message; skipMot
     .replace(/^\[Attached (?:image|file): .+\]\n*/gm, '')
     .trim()
 
+  const inlineImages = deriveMessageImages(message.content || '', message.attachments)
+  const hasInlineImages = inlineImages.length > 0
   const hasAttachments = message.attachments && message.attachments.length > 0
 
   const userMarkdownComponents = useMemo(() => ({
@@ -44,24 +47,30 @@ export function UserMessage({ message, skipMotion }: { message: Message; skipMot
     code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, onOpenFile, onOpenUrl])
 
+  const nonImageAttachments = (message.attachments || []).filter((a) => a.type !== 'image')
+  const hasNonImageAttachments = nonImageAttachments.length > 0
+
   const content = (
     <div className="group/msg relative inline-flex flex-col items-end max-w-[85%]">
-      <div
-        className="text-[13px] leading-[1.5] px-3 py-1.5"
-        style={{
-          background: colors.userBubble,
-          color: colors.userBubbleText,
-          border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
-          borderRadius: '14px 14px 4px 14px',
-        }}
-      >
-        <div className="prose-cloud prose-cloud-user">
-          <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
-            {displayContent}
-          </Markdown>
+      {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
+      {displayContent.trim() && (
+        <div
+          className="text-[13px] leading-[1.5] px-3 py-1.5"
+          style={{
+            background: colors.userBubble,
+            color: colors.userBubbleText,
+            border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
+            borderRadius: '14px 14px 4px 14px',
+          }}
+        >
+          <div className="prose-cloud prose-cloud-user">
+            <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+              {displayContent}
+            </Markdown>
+          </div>
+          {hasNonImageAttachments && <MessageAttachments attachments={nonImageAttachments} />}
         </div>
-        {hasAttachments && <MessageAttachments attachments={message.attachments!} />}
-      </div>
+      )}
       {displayContent.trim() && (
         <div className="absolute -bottom-5 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
           <MessageActions message={message} variant="user" />

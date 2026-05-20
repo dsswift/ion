@@ -11,6 +11,7 @@ final class TerminalOutputRouter: @unchecked Sendable {
     private let lock = NSLock()
     private var dataListeners: [String: (String) -> Void] = [:]
     private var exitListeners: [String: (Int) -> Void] = [:]
+    private var pendingBuffers: [String: String] = [:]
 
     private init() {}
 
@@ -19,7 +20,12 @@ final class TerminalOutputRouter: @unchecked Sendable {
         lock.lock()
         dataListeners[key] = dataHandler
         exitListeners[key] = exitHandler
+        let pending = pendingBuffers.removeValue(forKey: key)
         lock.unlock()
+        // Flush any buffered snapshot data that arrived before the handler was registered.
+        if let pending {
+            dataHandler(pending)
+        }
     }
 
     /// Unregister handlers for a specific key.
@@ -27,6 +33,7 @@ final class TerminalOutputRouter: @unchecked Sendable {
         lock.lock()
         dataListeners.removeValue(forKey: key)
         exitListeners.removeValue(forKey: key)
+        pendingBuffers.removeValue(forKey: key)
         lock.unlock()
     }
 
@@ -49,7 +56,22 @@ final class TerminalOutputRouter: @unchecked Sendable {
     }
 
     /// Feed initial buffer data to a registered handler (for snapshot restore).
+    /// If no handler is registered yet, the data is held in a pending buffer
+    /// and flushed automatically when a handler registers for this key.
     func feedBuffer(tabId: String, instanceId: String, data: String) {
-        route(tabId: tabId, instanceId: instanceId, data: data)
+        let key = "\(tabId):\(instanceId)"
+        lock.lock()
+        if let handler = dataListeners[key] {
+            lock.unlock()
+            handler(data)
+        } else {
+            // No handler yet — buffer the data so it can be flushed on register().
+            if let existing = pendingBuffers[key] {
+                pendingBuffers[key] = existing + data
+            } else {
+                pendingBuffers[key] = data
+            }
+            lock.unlock()
+        }
     }
 }

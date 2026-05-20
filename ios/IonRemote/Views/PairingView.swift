@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PairingView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var browser = BonjourBrowser()
 
@@ -182,7 +183,7 @@ struct PairingView: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Ion Direct Pairing Sheet
@@ -218,34 +219,45 @@ struct PairingView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 
-                        HStack(spacing: 8) {
-                            ForEach(0..<6, id: \.self) { index in
-                                let char = index < pairingCodeInput.count
-                                    ? String(pairingCodeInput[pairingCodeInput.index(pairingCodeInput.startIndex, offsetBy: index)])
-                                    : ""
-                                Text(char)
-                                    .font(.system(.title, design: .monospaced))
-                                    .frame(width: 40, height: 52)
-                                    .background(Color(.tertiarySystemFill))
-                                    .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.small))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: IonTheme.Radius.small)
-                                            .stroke(index == pairingCodeInput.count ? IonTheme.accent : Color(.separator), lineWidth: index == pairingCodeInput.count ? 2 : 1)
-                                    )
-                            }
-                        }
+                        let isRegular = sizeClass == .regular
+                        let boxWidth: CGFloat = isRegular ? 52 : 40
+                        let boxHeight: CGFloat = isRegular ? 64 : 52
+                        let boxFont: Font = isRegular
+                            ? .system(.largeTitle, design: .monospaced)
+                            : .system(.title, design: .monospaced)
 
-                        // Hidden text field to capture input
-                        TextField("", text: $pairingCodeInput)
-                            .keyboardType(.numberPad)
-                            .frame(width: 1, height: 1)
-                            .opacity(0.01)
-                            .focused($codeFieldFocused)
-                            .onChange(of: pairingCodeInput) { _, newValue in
-                                // Limit to 6 digits
-                                let filtered = String(newValue.prefix(6).filter(\.isNumber))
-                                if filtered != newValue { pairingCodeInput = filtered }
+                        ZStack {
+                            HStack(spacing: 8) {
+                                ForEach(0..<6, id: \.self) { index in
+                                    let char = index < pairingCodeInput.count
+                                        ? String(pairingCodeInput[pairingCodeInput.index(pairingCodeInput.startIndex, offsetBy: index)])
+                                        : ""
+                                    Text(char)
+                                        .font(boxFont)
+                                        .frame(width: boxWidth, height: boxHeight)
+                                        .background(Color(.tertiarySystemFill))
+                                        .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.small))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: IonTheme.Radius.small)
+                                                .stroke(index == pairingCodeInput.count ? IonTheme.accent : Color(.separator), lineWidth: index == pairingCodeInput.count ? 2 : 1)
+                                        )
+                                }
                             }
+                            .allowsHitTesting(false)
+
+                            // Full-sized transparent TextField for reliable keyboard activation on iPad
+                            TextField("", text: $pairingCodeInput)
+                                .keyboardType(.numberPad)
+                                .focused($codeFieldFocused)
+                                .foregroundColor(.clear)
+                                .tint(.clear)
+                                .frame(width: boxWidth * 6 + 8 * 5, height: boxHeight)
+                                .onChange(of: pairingCodeInput) { _, newValue in
+                                    // Limit to 6 digits
+                                    let filtered = String(newValue.prefix(6).filter(\.isNumber))
+                                    if filtered != newValue { pairingCodeInput = filtered }
+                                }
+                        }
 
                         if clipboardHasCode, let clip = UIPasteboard.general.string {
                             Button {
@@ -322,7 +334,7 @@ struct PairingView: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .onAppear {
             if let clip = UIPasteboard.general.string,
                clip.count == 6, clip.allSatisfy(\.isNumber) {

@@ -220,7 +220,7 @@ export function EngineCategory() {
 
   return (
     <>
-      <SettingHeading first>Engine Profiles</SettingHeading>
+      <SettingHeading>Engine Profiles</SettingHeading>
 
       {profiles.map((profile) => {
         if (editingId === profile.id) return <React.Fragment key={profile.id}>{renderForm()}</React.Fragment>

@@ -15,6 +15,8 @@ interface FloatingPanelProps {
   initialPos?: { x: number; y: number }
   initialSize?: { w: number; h: number }
   onGeometryChange?: (geo: { x: number; y: number; w: number; h: number }) => void
+  filePath?: string
+  workingDir?: string
   children: React.ReactNode
 }
 
@@ -28,6 +30,8 @@ export function FloatingPanel({
   initialPos,
   initialSize,
   onGeometryChange,
+  filePath,
+  workingDir,
   children,
 }: FloatingPanelProps) {
   const popoverLayer = usePopoverLayer()
@@ -36,6 +40,7 @@ export function FloatingPanel({
   // Position: start offset toward the left so it doesn't cover the main conversation column
   const [pos, setPos] = useState(initialPos ?? { x: 60, y: 80 })
   const [size, setSize] = useState(initialSize ?? { w: defaultWidth, h: defaultHeight })
+  const [titleCtxMenu, setTitleCtxMenu] = useState<{ x: number; y: number } | null>(null)
 
   // Drag state
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
@@ -105,6 +110,24 @@ export function FloatingPanel({
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
+  // Close title context menu on click-outside or Escape
+  useEffect(() => {
+    if (!titleCtxMenu) return
+    const handleClickOutside = () => setTitleCtxMenu(null)
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setTitleCtxMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape, true)
+    }
+  }, [titleCtxMenu])
+
   if (!popoverLayer) return null
 
   const panel = (
@@ -154,6 +177,15 @@ export function FloatingPanel({
         <span
           className="text-[11px] truncate"
           style={{ color: colors.textSecondary, fontFamily: 'monospace' }}
+          onContextMenu={(e) => {
+            if (!filePath) return
+            e.preventDefault()
+            e.stopPropagation()
+            setTitleCtxMenu({ x: e.clientX, y: e.clientY })
+          }}
+          onMouseDown={(e) => {
+            if (e.button === 2) e.stopPropagation()
+          }}
         >
           {title}
         </span>
@@ -185,5 +217,88 @@ export function FloatingPanel({
     </motion.div>
   )
 
-  return createPortal(panel, popoverLayer)
+  const contextMenu = titleCtxMenu && filePath ? (
+    <div
+      data-ion-ui
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        left: titleCtxMenu.x,
+        top: titleCtxMenu.y,
+        background: colors.containerBg,
+        border: `1px solid ${colors.containerBorder}`,
+        borderRadius: 8,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+        padding: '4px 0',
+        zIndex: 99999,
+        fontFamily: 'system-ui',
+        fontSize: 12,
+      }}
+    >
+      <button
+        style={{
+          display: 'block',
+          width: '100%',
+          padding: '5px 12px',
+          background: 'transparent',
+          border: 'none',
+          color: colors.textSecondary,
+          textAlign: 'left',
+          cursor: 'pointer',
+          fontFamily: 'system-ui',
+          fontSize: 12,
+        }}
+        onMouseEnter={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.background = colors.surfaceHover
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.background = 'transparent'
+        }}
+        onClick={() => {
+          navigator.clipboard.writeText(filePath)
+          setTitleCtxMenu(null)
+        }}
+      >
+        Copy Path
+      </button>
+      <button
+        style={{
+          display: 'block',
+          width: '100%',
+          padding: '5px 12px',
+          background: 'transparent',
+          border: 'none',
+          color: colors.textSecondary,
+          textAlign: 'left',
+          cursor: 'pointer',
+          fontFamily: 'system-ui',
+          fontSize: 12,
+        }}
+        onMouseEnter={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.background = colors.surfaceHover
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.background = 'transparent'
+        }}
+        onClick={() => {
+          const relativePath =
+            workingDir && filePath.startsWith(workingDir + '/')
+              ? filePath.slice(workingDir!.length + 1)
+              : filePath
+          navigator.clipboard.writeText(relativePath)
+          setTitleCtxMenu(null)
+        }}
+      >
+        Copy Relative Path
+      </button>
+    </div>
+  ) : null
+
+  return createPortal(
+    <>
+      {panel}
+      {contextMenu}
+    </>,
+    popoverLayer,
+  )
 }

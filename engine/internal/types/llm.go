@@ -41,6 +41,17 @@ type ImageSource struct {
 	Data      string `json:"data"`
 }
 
+// ImageAttachment carries pre-encoded image bytes supplied alongside a user
+// prompt. The engine does not parse any client-side marker syntax; clients
+// that want the LLM to see images send them through this structured field.
+// Path is optional and used only for logging / correlation; the engine never
+// reads from disk based on it.
+type ImageAttachment struct {
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+	Path      string `json:"path,omitempty"`
+}
+
 // LlmToolDef defines a tool available to the LLM provider.
 type LlmToolDef struct {
 	Name        string         `json:"name"`
@@ -113,4 +124,29 @@ type ModelInfo struct {
 	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
 	SupportsThinking bool    `json:"supportsThinking,omitempty"`
 	SupportsImages   bool    `json:"supportsImages,omitempty"`
+	IsCustom         bool    `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
+}
+
+// ModelEntry is the wire-format model information returned by list_models.
+// Tracked by contract sync.
+type ModelEntry struct {
+	ID               string  `json:"id"`
+	ProviderID       string  `json:"providerId"`
+	ContextWindow    int     `json:"contextWindow"`
+	CostPer1kInput   float64 `json:"costPer1kInput"`
+	CostPer1kOutput  float64 `json:"costPer1kOutput"`
+	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
+	SupportsThinking bool    `json:"supportsThinking,omitempty"`
+	SupportsImages   bool    `json:"supportsImages,omitempty"`
+	IsCustom         bool    `json:"isCustom,omitempty"`
+}
+
+// ProviderEntry is the wire-format provider information returned by list_models.
+// Tracked by contract sync.
+type ProviderEntry struct {
+	ID         string `json:"id"`
+	HasAuth    bool   `json:"hasAuth"`
+	AuthSource string `json:"authSource,omitempty"`
+	BaseURL    string `json:"baseURL,omitempty"`
+	APIKeyRef  string `json:"apiKeyRef,omitempty"`
 }

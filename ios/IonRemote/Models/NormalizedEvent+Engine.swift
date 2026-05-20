@@ -309,6 +309,8 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
     let elapsed: Double?
     let cost: Double?
     let color: String?
+    let model: String?
+    let startTime: Double?   // Unix timestamp in seconds
 
     /// Whether this agent should be shown in the UI based on visibility rules.
     var isVisible: Bool {
@@ -337,6 +339,14 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         lastWork = meta["lastWork"]?.value as? String
         fullOutput = meta["fullOutput"]?.value as? String
         color = meta["color"]?.value as? String
+        model = meta["model"]?.value as? String
+        if let st = meta["startTime"]?.value as? Double {
+            startTime = st
+        } else if let st = meta["startTime"]?.value as? Int {
+            startTime = Double(st)
+        } else {
+            startTime = nil
+        }
 
         // Bool and numeric values may arrive as various types
         if let inv = meta["invited"]?.value as? Bool {
@@ -378,6 +388,8 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         if let elapsed { meta["elapsed"] = AnyCodable(elapsed) }
         if let cost { meta["cost"] = AnyCodable(cost) }
         if let color { meta["color"] = AnyCodable(color) }
+        if let model { meta["model"] = AnyCodable(model) }
+        if let startTime { meta["startTime"] = AnyCodable(startTime) }
         try container.encode(meta, forKey: .metadata)
     }
 }

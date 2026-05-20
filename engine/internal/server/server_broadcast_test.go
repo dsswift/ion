@@ -57,7 +57,7 @@ func TestBroadcastSlowClientDoesNotBlock(t *testing.T) {
 	// Slow client never reads. Fill its queue + OS socket buffer with many
 	// broadcasts, then verify the broadcast call returned quickly and the
 	// fast client kept up.
-	const events = broadcastQueueSize * 8
+	const events = streamQueueSize * 8
 	const lineSize = 512
 	payload := make([]byte, lineSize-1)
 	for i := range payload {
@@ -67,7 +67,7 @@ func TestBroadcastSlowClientDoesNotBlock(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < events; i++ {
-		srv.broadcast(line)
+		srv.broadcast(line, "engine_text_delta")
 	}
 	elapsed := time.Since(start)
 
@@ -81,13 +81,13 @@ func TestBroadcastSlowClientDoesNotBlock(t *testing.T) {
 	// deadline (>= queue capacity proves the drainer kept progressing).
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if atomic.LoadInt64(&received) >= int64(broadcastQueueSize) {
+		if atomic.LoadInt64(&received) >= int64(streamQueueSize) {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if got := atomic.LoadInt64(&received); got < int64(broadcastQueueSize) {
-		t.Fatalf("fast client received %d events; expected at least queue capacity %d -- drainer stalled", got, broadcastQueueSize)
+	if got := atomic.LoadInt64(&received); got < int64(streamQueueSize) {
+		t.Fatalf("fast client received %d events; expected at least queue capacity %d -- drainer stalled", got, streamQueueSize)
 	}
 }
 
@@ -161,10 +161,10 @@ func TestOnBroadcastListenerIsolation(t *testing.T) {
 		atomic.AddInt64(&fastCount, 1)
 	})
 
-	const events = broadcastQueueSize * 4
+	const events = streamQueueSize * 4
 	start := time.Now()
 	for i := 0; i < events; i++ {
-		srv.broadcast("event\n")
+		srv.broadcast("event\n", "engine_text_delta")
 	}
 	elapsed := time.Since(start)
 	if elapsed > 500*time.Millisecond {
@@ -173,15 +173,66 @@ func TestOnBroadcastListenerIsolation(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if atomic.LoadInt64(&fastCount) >= int64(broadcastQueueSize) {
+		if atomic.LoadInt64(&fastCount) >= int64(streamQueueSize) {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if got := atomic.LoadInt64(&fastCount); got < int64(broadcastQueueSize) {
-		t.Fatalf("fast listener processed %d events; expected at least queue capacity %d -- slow listener stalled the path", got, broadcastQueueSize)
+	if got := atomic.LoadInt64(&fastCount); got < int64(streamQueueSize) {
+		t.Fatalf("fast listener processed %d events; expected at least queue capacity %d -- slow listener stalled the path", got, streamQueueSize)
 	}
 
 	// Release the slow listener so its drain goroutine can exit at Stop.
 	close(gate)
+}
+
+// TestBroadcastStateEventsPrioritized verifies that state events (e.g.
+// engine_agent_state) are delivered even when the stream queue is saturated.
+func TestBroadcastStateEventsPrioritized(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+
+	conn, err := net.Dial("unix", srv.SocketPath())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// Wait for registration.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		srv.mu.RLock()
+		n := len(srv.clients)
+		srv.mu.RUnlock()
+		if n >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	var received int64
+	go func() {
+		scanner := bufio.NewScanner(conn)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			atomic.AddInt64(&received, 1)
+		}
+	}()
+
+	// Send a burst of state events — they should all arrive even at capacity.
+	for i := 0; i < stateQueueSize; i++ {
+		srv.broadcast("{\"type\":\"engine_agent_state\"}\n", "engine_agent_state")
+	}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt64(&received) >= int64(stateQueueSize) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	got := atomic.LoadInt64(&received)
+	if got < int64(stateQueueSize) {
+		t.Fatalf("received %d state events; expected %d", got, stateQueueSize)
+	}
 }

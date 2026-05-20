@@ -199,7 +199,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt: fullPrompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: preferredModel || undefined,
+        model: tab.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         appendSystemPrompt: effectiveSystemPrompt,
         extensions,
@@ -214,7 +214,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       })
     },
 
-    submitRemotePrompt: (tabId, prompt) => {
+    submitRemotePrompt: (tabId, prompt, imageAttachments) => {
       const { tabs, staticInfo } = get()
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
@@ -290,10 +290,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: preferredModel || undefined,
+        model: tab.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         source: 'remote',
         extensions: remoteExtensions,
+        imageAttachments,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,

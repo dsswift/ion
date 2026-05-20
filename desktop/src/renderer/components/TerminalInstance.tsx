@@ -174,7 +174,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
         scrollback: 5000,
       })
 
-      // Keyboard handling: Cmd+C, Cmd+V, Cmd+A
+      // Keyboard handling: Cmd+C, Cmd+V, Cmd+A, Alt/Cmd+Arrow navigation
       terminal.attachCustomKeyEventHandler((ev) => {
         if (ev.type !== 'keydown') return true
         const isMeta = ev.metaKey
@@ -193,6 +193,26 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
 
         if (isMeta && ev.key === 'a') {
           terminal.selectAll()
+          return false
+        }
+
+        // xterm.js v6 removed the Alt+Arrow → word-navigation hack (#4538).
+        // Translate Alt+Arrow to ESC b / ESC f (word back/forward) and
+        // Cmd+Arrow to Ctrl-A / Ctrl-E (beginning/end of line) ourselves.
+        if (ev.altKey && ev.key === 'ArrowLeft') {
+          window.ion.terminalWrite(key, '\x1bb')
+          return false
+        }
+        if (ev.altKey && ev.key === 'ArrowRight') {
+          window.ion.terminalWrite(key, '\x1bf')
+          return false
+        }
+        if (isMeta && ev.key === 'ArrowLeft') {
+          window.ion.terminalWrite(key, '\x01')
+          return false
+        }
+        if (isMeta && ev.key === 'ArrowRight') {
+          window.ion.terminalWrite(key, '\x05')
           return false
         }
 

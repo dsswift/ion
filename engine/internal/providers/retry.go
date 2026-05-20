@@ -10,16 +10,22 @@ import (
 )
 
 // RetryConfig controls retry behavior for provider streams.
+//
+// FallbackChain is walked in order after MaxOverloadedBeforeFallback overload
+// errors. Each entry is a model name (any provider resolved by ResolveProvider).
+// When the chain is exhausted, the loop falls back to normal retry/backoff
+// behavior with the last-attempted model.
 type RetryConfig struct {
 	MaxRetries                  int
 	BaseDelayMs                 int
 	MaxDelayMs                  int
-	FallbackModel               string
+	FallbackChain               []string
 	MaxOverloadedBeforeFallback int
 	Persistent                  bool
 	PersistentMaxDelayMs        int
 	PersistentMaxWaitMs         int64
 	OnRetryWait                 func(attempt, delayMs int, err *ProviderError)
+	OnFallback                  func(fromModel, toModel string, hopIndex int)
 }
 
 func (c *RetryConfig) maxRetries() int {
@@ -83,6 +89,7 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 		currentModel := opts.Model
 		overloadedCount := 0
 		attempt := 0
+		fallbackIdx := -1 // -1 = primary; 0..len(chain)-1 = chain hop
 		startTime := time.Now()
 
 		for {
@@ -152,14 +159,21 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 				overloadedCount++
 			}
 
-			// Model fallback after N overloaded errors
-			if overloadedCount >= config.maxOverloaded() && config != nil && config.FallbackModel != "" && config.FallbackModel != currentModel {
-				fallback := ResolveProvider(config.FallbackModel)
-				if fallback != nil {
-					currentProvider = fallback
-					currentModel = config.FallbackModel
-					overloadedCount = 0
-					continue // retry immediately with new model
+			// Walk fallback chain after N overload errors. Each hop resets
+			// the overload counter so the next link gets its own budget.
+			if overloadedCount >= config.maxOverloaded() && config != nil && fallbackIdx+1 < len(config.FallbackChain) {
+				next := config.FallbackChain[fallbackIdx+1]
+				if next != "" && next != currentModel {
+					if fallback := ResolveProvider(next); fallback != nil {
+						if config.OnFallback != nil {
+							config.OnFallback(currentModel, next, fallbackIdx+1)
+						}
+						currentProvider = fallback
+						currentModel = next
+						fallbackIdx++
+						overloadedCount = 0
+						continue // retry immediately with new model
+					}
 				}
 			}
 

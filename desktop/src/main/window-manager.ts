@@ -123,6 +123,7 @@ export function createWindow(): void {
 
   mainWindow.webContents.on('console-message', (_e, level, message) => {
     if (level >= 2) log(`[renderer:error] ${message}`)
+    else if (message.startsWith('[FileE') || message.startsWith('[App]') || message.startsWith('[useFile')) log(`[renderer] ${message}`)
   })
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     log(`[renderer:gone] reason=${details.reason} exitCode=${details.exitCode}`)

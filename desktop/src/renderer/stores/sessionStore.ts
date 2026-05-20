@@ -58,9 +58,11 @@ const initialState = {
   enginePanes: new Map<string, EnginePaneState>(),
   engineMessages: new Map<string, Message[]>(),
   engineModelOverrides: new Map<string, string>(),
+  engineDraftInputs: new Map<string, string>(),
   tallViewTabId: null,
   scrollToBottomCounter: 0,
   settingsOpen: false,
+  settingsInitialTab: null,
 }
 
 export const useSessionStore = create<State>((set, get) => {

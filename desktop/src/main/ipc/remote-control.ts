@@ -5,6 +5,7 @@ import { state, pairingManager, relayDiscovery } from '../state'
 import { readSettings } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
 import { revokeDeviceLocally } from '../remote/revoke'
+import { requestLogsFromFirstDevice } from '../remote/handlers/diagnostics'
 import type { DiscoveredRelay } from '../remote/discovery'
 
 function log(msg: string): void {
@@ -76,6 +77,16 @@ export function registerRemoteControlIpc(): void {
     } catch (err) {
       log(`REMOTE_GET_MESSAGES error: ${(err as Error).message}`)
       return []
+    }
+  })
+
+  ipcMain.handle(IPC.REMOTE_REQUEST_IOS_LOGS, async () => {
+    try {
+      const logs = await requestLogsFromFirstDevice()
+      return { ok: true, logs }
+    } catch (err) {
+      log(`REMOTE_REQUEST_IOS_LOGS error: ${(err as Error).message}`)
+      return { ok: false, error: (err as Error).message }
     }
   })
 

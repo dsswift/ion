@@ -30,7 +30,7 @@ type Hub struct {
 	WriteTimeout   time.Duration // forward write deadline (default 10s)
 	PingInterval   time.Duration // keepalive ping interval (default 30s)
 	PingTimeout    time.Duration // pong wait deadline (default 10s)
-	MaxMessageSize int64         // read limit in bytes (default 1MB)
+	MaxMessageSize int64         // read limit in bytes (default 12MB)
 }
 
 func NewHub() *Hub {
@@ -39,7 +39,7 @@ func NewHub() *Hub {
 		WriteTimeout:   10 * time.Second,
 		PingInterval:   30 * time.Second,
 		PingTimeout:    10 * time.Second,
-		MaxMessageSize: 1024 * 1024,
+		MaxMessageSize: 12 * 1024 * 1024,
 	}
 }
 
@@ -154,7 +154,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		return
 	}
 
-	// Allow messages up to the configured max (default 1MB).
+	// Allow messages up to the configured max (default 12MB).
 	conn.SetReadLimit(h.MaxMessageSize)
 
 	ch := h.getOrCreateChannel(channelID)

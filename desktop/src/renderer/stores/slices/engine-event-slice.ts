@@ -296,6 +296,42 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           })
           break
         }
+        case 'engine_compacting': {
+          if (event.active) {
+            set((state) => {
+              const workingMessages = new Map(state.engineWorkingMessages)
+              workingMessages.set(key, 'Compacting...')
+              return { engineWorkingMessages: workingMessages }
+            })
+          } else {
+            set((state) => {
+              const workingMessages = new Map(state.engineWorkingMessages)
+              workingMessages.set(key, '')
+              if (!event.messagesBefore && !event.summary) {
+                return { engineWorkingMessages: workingMessages }
+              }
+              const parts = ['[Compaction]']
+              if (event.strategy) parts.push(event.strategy)
+              if (event.messagesBefore && event.messagesAfter != null) {
+                parts.push(`${event.messagesBefore} → ${event.messagesAfter} messages`)
+              }
+              if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
+              let content = parts.join(' · ')
+              if (event.summary) content += '\n\n' + event.summary
+              const messages = new Map(state.engineMessages)
+              const msgs = [...(messages.get(key) || [])]
+              msgs.push({
+                id: nextMsgId(),
+                role: 'system' as const,
+                content,
+                timestamp: Date.now(),
+              })
+              messages.set(key, msgs)
+              return { engineWorkingMessages: workingMessages, engineMessages: messages }
+            })
+          }
+          break
+        }
       }
     },
   }

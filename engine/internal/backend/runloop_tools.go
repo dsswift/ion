@@ -53,6 +53,15 @@ func (b *ApiBackend) executeTools(
 		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
 	}
 
+	// Inject history searcher scoped to this run's conversation so the
+	// SearchHistory tool can find content lost to compaction.
+	if run.conv != nil {
+		conv := run.conv // capture for closure
+		gCtx = tools.WithHistorySearcher(gCtx, func(query string, maxResults int) []conversation.HistoryMatch {
+			return conversation.SearchMessages(conv, query, maxResults)
+		})
+	}
+
 	for i, block := range toolUseBlocks {
 		i, block := i, block
 		g.Go(func() error {
@@ -378,6 +387,7 @@ func (b *ApiBackend) executeTools(
 					ToolUseID: block.ID,
 					Content:   toolResult.Content,
 					IsError:   toolResult.IsError,
+					Images:    toolResult.Images,
 				}
 			}
 

@@ -60,7 +60,7 @@ These providers are registered at engine startup with their default base URLs:
 | Base URL | `https://openrouter.ai/api/v1` |
 | Env var | `OPENROUTER_API_KEY` |
 
-OpenRouter is a meta-provider that routes to many backends. Use the full model path (e.g., `anthropic/claude-3.5-sonnet`).
+OpenRouter is a meta-provider that routes to many backends. Use the full model path (e.g., `anthropic/claude-3.5-sonnet`). For a complete setup walkthrough, see the [OpenRouter guide](openrouter.md).
 
 ### Together
 

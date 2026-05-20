@@ -13,6 +13,8 @@ import (
 const CurrentVersion = 2
 
 // DefaultContext is the default context window size in tokens.
+// Auto-compaction triggers below this — see AutoCompactTokenLimit, which
+// reserves room for the next response and for the compaction summary itself.
 const DefaultContext = 200000
 
 // SessionEntryType identifies the kind of tree entry.
@@ -28,9 +30,11 @@ const (
 
 // MessageData holds a chat message entry.
 type MessageData struct {
-	Role    string          `json:"role"`
-	Content any             `json:"content"` // string or []types.LlmContentBlock
-	Usage   *types.LlmUsage `json:"usage,omitempty"`
+	Role       string          `json:"role"`
+	Content    any             `json:"content"` // string or []types.LlmContentBlock
+	Usage      *types.LlmUsage `json:"usage,omitempty"`
+	Model      string          `json:"model,omitempty"`
+	StopReason string          `json:"stopReason,omitempty"`
 }
 
 // CompactionData holds metadata about a compaction event.
@@ -83,6 +87,7 @@ type Conversation struct {
 	ParentID                string             `json:"parentId,omitempty"`
 	Entries                 []SessionEntry     `json:"entries,omitempty"`
 	LeafID                  *string            `json:"leafId"`
+	WorkingDirectory        string             `json:"workingDirectory,omitempty"`
 }
 
 // ContextUsageInfo describes current context window consumption.
@@ -95,9 +100,10 @@ type ContextUsageInfo struct {
 
 // ToolResultEntry is a tool result to add as a user message.
 type ToolResultEntry struct {
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	IsError   bool   `json:"is_error,omitempty"`
+	ToolUseID string              `json:"tool_use_id"`
+	Content   string              `json:"content"`
+	IsError   bool                `json:"is_error,omitempty"`
+	Images    []*types.ImageSource `json:"images,omitempty"` // vision images to attach alongside text
 }
 
 // ContextFile is a discovered context file on disk.
@@ -184,25 +190,60 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 }
 
 // AddToolResults appends tool results as a user message with tool_result content blocks.
+// When a result includes images, each image is emitted as a separate image block
+// immediately after the tool_result block so the LLM can see the visual content.
 func AddToolResults(conv *Conversation, results []ToolResultEntry) {
-	blocks := make([]types.LlmContentBlock, len(results))
-	for i, r := range results {
+	var blocks []types.LlmContentBlock
+	for _, r := range results {
 		isErr := r.IsError
-		blocks[i] = types.LlmContentBlock{
+		blocks = append(blocks, types.LlmContentBlock{
 			Type:      "tool_result",
 			ToolUseID: r.ToolUseID,
 			Content:   r.Content,
 			IsError:   &isErr,
+		})
+		for _, img := range r.Images {
+			blocks = append(blocks, types.LlmContentBlock{
+				Type:   "image",
+				Source: img,
+			})
 		}
 	}
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+		// Deep-copy blocks so MicroCompact mutations on conv.Messages
+		// cannot corrupt the persisted entry history.
+		entryCopy := make([]types.LlmContentBlock, len(blocks))
+		copy(entryCopy, blocks)
+		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy})
 	}
 }
 
 // UpdateCost adds to the running cost total.
 func UpdateCost(conv *Conversation, costUsd float64) {
 	conv.TotalCost += costUsd
+}
+
+// SetAssistantMeta annotates the most recent assistant entry with model and
+// stop reason metadata. This is called after AddAssistantMessage so callers
+// that don't need metadata don't have to change.
+func SetAssistantMeta(conv *Conversation, model, stopReason string) {
+	if conv.Entries == nil {
+		return
+	}
+	// Walk backwards to find the last assistant entry.
+	for i := len(conv.Entries) - 1; i >= 0; i-- {
+		if conv.Entries[i].Type != EntryMessage {
+			continue
+		}
+		md := asMessageData(conv.Entries[i].Data)
+		if md == nil || md.Role != "assistant" {
+			continue
+		}
+		md.Model = model
+		md.StopReason = stopReason
+		conv.Entries[i].Data = *md
+		return
+	}
 }

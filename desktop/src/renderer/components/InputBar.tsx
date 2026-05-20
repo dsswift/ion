@@ -9,6 +9,7 @@ import { usePreferencesStore } from '../preferences'
 import type { DiscoveredCommand } from '../../shared/types'
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
+import { UpdateButton } from './UpdateButton'
 import { executeBuiltinCommand, resolveModelSwitch } from './InputBarCommandHandlers'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
@@ -42,11 +43,13 @@ export function InputBar() {
   const submitEnginePrompt = useSessionStore((s) => s.submitEnginePrompt)
   const clearTab = useSessionStore((s) => s.clearTab)
   const addSystemMessage = useSessionStore((s) => s.addSystemMessage)
+  const addEngineSystemMessage = useSessionStore((s) => s.addEngineSystemMessage)
   const startBashCommand = useSessionStore((s) => s.startBashCommand)
   const completeBashCommand = useSessionStore((s) => s.completeBashCommand)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const removeAttachment = useSessionStore((s) => s.removeAttachment)
   const setDraftInput = useSessionStore((s) => s.setDraftInput)
+  const setEngineDraftInput = useSessionStore((s) => s.setEngineDraftInput)
   const clearPendingInput = useSessionStore((s) => s.clearPendingInput)
 
   const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
@@ -54,6 +57,11 @@ export function InputBar() {
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const activeInstanceId = useSessionStore((s) => {
+    const t = s.tabs.find((t) => t.id === s.activeTabId)
+    if (!t?.isEngine) return null
+    return s.enginePanes.get(t.id)?.activeInstanceId ?? null
+  })
   const bashExecuting = tab?.bashExecuting ?? false
   const tabsReady = useSessionStore((s) => s.tabsReady)
   const bashCommandEntry = usePreferencesStore((s) => s.bashCommandEntry)
@@ -107,6 +115,22 @@ export function InputBar() {
     textareaRef.current?.focus()
     setBashMode(false)
   }, [activeTabId])
+
+  // ─── Per-engine-instance draft input sync ───
+  // Save current input to departing instance, restore arriving instance's draft
+  const prevInstanceRef = useRef<string | null>(activeInstanceId)
+  useEffect(() => {
+    const prevInst = prevInstanceRef.current
+    if (tab?.isEngine && activeTabId && prevInst && prevInst !== activeInstanceId) {
+      setEngineDraftInput(`${activeTabId}:${prevInst}`, input)
+      const arrivingDraft = activeInstanceId
+        ? useSessionStore.getState().engineDraftInputs.get(`${activeTabId}:${activeInstanceId}`) ?? ''
+        : ''
+      setInput(arrivingDraft)
+      setSlashFilter(null)
+    }
+    prevInstanceRef.current = activeInstanceId
+  }, [activeInstanceId])
 
   // ─── Rewind: restore user message to input bar ───
   const pendingInput = tab?.pendingInput
@@ -292,15 +316,21 @@ export function InputBar() {
     // Route to engine if this is an engine tab
     const currentTab = useSessionStore.getState().tabs.find(t => t.id === useSessionStore.getState().activeTabId)
     if (currentTab?.isEngine) {
+      const enginePane = useSessionStore.getState().enginePanes.get(currentTab.id)
+      if (enginePane?.activeInstanceId) {
+        setEngineDraftInput(`${currentTab.id}:${enginePane.activeInstanceId}`, '')
+      }
       const text = prompt || ''
       // Check for slash commands (e.g. /agents-team cloudops-full)
       const slashMatch = text.match(/^\/(\S+)\s*(.*)$/)
       if (slashMatch) {
-        const pane = useSessionStore.getState().enginePanes.get(currentTab.id)
-        const instanceId = pane?.activeInstanceId
+        const instanceId = enginePane?.activeInstanceId
         if (instanceId) {
           const key = `${currentTab.id}:${instanceId}`
           window.ion.engineCommand(key, slashMatch[1], slashMatch[2])
+          if (slashMatch[1] === 'clear') {
+            addEngineSystemMessage(key, 'Conversation cleared.')
+          }
         }
       } else {
         submitEnginePrompt(currentTab.id, text)
@@ -311,7 +341,7 @@ export function InputBar() {
     sendMessage(prompt || 'See attached files')
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, sendMessage, submitEnginePrompt, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode, addSystemMessage, setPreferredModel])
+  }, [input, isBusy, sendMessage, submitEnginePrompt, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setEngineDraftInput, setBashMode, addSystemMessage, addEngineSystemMessage, setPreferredModel])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -431,6 +461,7 @@ export function InputBar() {
             />
 
             <div className="flex items-center justify-end gap-1" style={{ marginTop: 0, paddingBottom: 4 }}>
+              <UpdateButton />
               <VoiceButtons
                 voiceState={voiceState}
                 isConnecting={isConnecting}
@@ -465,6 +496,7 @@ export function InputBar() {
             />
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
+              <UpdateButton />
               <VoiceButtons
                 voiceState={voiceState}
                 isConnecting={isConnecting}

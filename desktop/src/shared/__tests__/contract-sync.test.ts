@@ -82,7 +82,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   ],
   plan_mode_changed: ['enabled', 'planFilePath'],
   stream_reset: [],
-  compacting: ['active'],
+  compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
 }
 
@@ -124,6 +124,24 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'service_tier',
   ],
   AgentStateUpdate: ['metadata', 'name', 'status'],
+  ModelEntry: [
+    'contextWindow',
+    'costPer1kInput',
+    'costPer1kOutput',
+    'id',
+    'isCustom',
+    'providerId',
+    'supportsCaching',
+    'supportsImages',
+    'supportsThinking',
+  ],
+  ProviderEntry: [
+    'apiKeyRef',
+    'authSource',
+    'baseURL',
+    'hasAuth',
+    'id',
+  ],
 }
 
 // ─── Tests ───

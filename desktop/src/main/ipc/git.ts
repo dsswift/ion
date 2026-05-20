@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron'
 import { unlink } from 'fs/promises'
+import { writeFileSync, unlinkSync } from 'fs'
 import { basename, join } from 'path'
+import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
-import { runGit } from '../git-runner'
+import { runGit, gitExec } from '../git-runner'
 import { error as _error } from '../logger'
 
 const logError = (msg: string): void => { _error('git-ipc', msg) }
@@ -17,7 +19,7 @@ export function registerGitIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.GIT_GRAPH, async (_event, { directory, skip = 0, limit = 100 }: { directory: string; skip?: number; limit?: number }) => {
+  ipcMain.handle(IPC.GIT_GRAPH, async (_event, { directory, skip = 0, limit = 100, search, author, path, refKind, dateAfter, dateBefore }: { directory: string; skip?: number; limit?: number; search?: string; author?: string; path?: string; refKind?: string; dateAfter?: string; dateBefore?: string }) => {
     try {
       await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
     } catch {
@@ -26,14 +28,43 @@ export function registerGitIpc(): void {
 
     try {
       const format = '%h%x00%H%x00%P%x00%an%x00%aI%x00%s%x00%D'
-      const logOutput = await runGit(directory, [
-        'log', '--all', `--format=${format}`, '--topo-order',
+      const refScope =
+        refKind === 'head' ? ['HEAD']
+        : refKind === 'branches' ? ['--branches']
+        : refKind === 'tags' ? ['--tags']
+        : ['--all']
+      const logArgs = [
+        'log', ...refScope, `--format=${format}`, '--topo-order',
         `--skip=${skip}`, `-n`, `${limit}`,
-      ])
+      ]
+      const countArgs = ['rev-list', ...refScope, '--count']
+
+      if (search) {
+        logArgs.push(`--grep=${search}`, '-i')
+        countArgs.push(`--grep=${search}`)
+      }
+      if (author) {
+        logArgs.push(`--author=${author}`)
+        countArgs.push(`--author=${author}`)
+      }
+      if (dateAfter) {
+        logArgs.push(`--after=${dateAfter}`)
+        countArgs.push(`--after=${dateAfter}`)
+      }
+      if (dateBefore) {
+        logArgs.push(`--before=${dateBefore}`)
+        countArgs.push(`--before=${dateBefore}`)
+      }
+      if (path) {
+        logArgs.push('--follow', '--', path)
+        countArgs.push('--', path)
+      }
+
+      const logOutput = await runGit(directory, logArgs)
 
       let totalCount = 0
       try {
-        const countOutput = await runGit(directory, ['rev-list', '--all', '--count'])
+        const countOutput = await runGit(directory, countArgs)
         totalCount = parseInt(countOutput.trim(), 10) || 0
       } catch {}
 
@@ -190,9 +221,17 @@ export function registerGitIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.GIT_COMMIT, async (_event, { directory, message }: { directory: string; message: string }) => {
+  ipcMain.handle(IPC.GIT_COMMIT, async (_event, { directory, message, amend, signoff, gpg }: { directory: string; message: string; amend?: boolean; signoff?: boolean; gpg?: boolean }) => {
     try {
-      await runGit(directory, ['commit', '-m', message])
+      const args = ['commit', '-m', message]
+      if (amend) args.unshift('commit', '--amend', '-m', message), args.splice(0, 3)
+      // rebuild cleanly:
+      const built = ['commit']
+      if (amend) built.push('--amend')
+      if (signoff) built.push('--signoff')
+      if (gpg) built.push('-S')
+      built.push('-m', message)
+      await runGit(directory, built)
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err.message }
@@ -353,4 +392,184 @@ export function registerGitIpc(): void {
       return { ok: false, error: err.message }
     }
   })
+
+  ipcMain.handle(IPC.GIT_STASH_LIST, async (_event, { directory }: { directory: string }) => {
+    try {
+      const output = await runGit(directory, ['stash', 'list', '--format=%gd%x00%s%x00%aI%x00%P'])
+      const stashes = output.trim().split('\n').filter(Boolean).map((line) => {
+        const [ref, message, date, parents] = line.split('\x00')
+        const parentSha = (parents ?? '').split(' ').filter(Boolean)[0] ?? ''
+        return { ref, message, date, parentSha }
+      })
+      return { stashes }
+    } catch { return { stashes: [] } }
+  })
+
+  ipcMain.handle(IPC.GIT_STASH_SAVE, async (_event, { directory, message }: { directory: string; message?: string }) => {
+    try {
+      const args = message ? ['stash', 'push', '-m', message] : ['stash', 'push']
+      await runGit(directory, args)
+      return { ok: true }
+    } catch (err: any) { return { ok: false, error: err.message } }
+  })
+
+  ipcMain.handle(IPC.GIT_STASH_POP, async (_event, { directory, ref }: { directory: string; ref?: string }) => {
+    try {
+      const args = ref ? ['stash', 'pop', ref] : ['stash', 'pop']
+      await runGit(directory, args)
+      return { ok: true }
+    } catch (err: any) { return { ok: false, error: err.message } }
+  })
+
+  ipcMain.handle(IPC.GIT_STASH_DROP, async (_event, { directory, ref }: { directory: string; ref: string }) => {
+    try {
+      await runGit(directory, ['stash', 'drop', ref])
+      return { ok: true }
+    } catch (err: any) { return { ok: false, error: err.message } }
+  })
+
+  ipcMain.handle(IPC.GIT_CHERRY_PICK, async (_event, { directory, hash }: { directory: string; hash: string }) => {
+    try {
+      await runGit(directory, ['cherry-pick', hash])
+      return { ok: true }
+    } catch (err: any) { return { ok: false, error: err.message } }
+  })
+
+  ipcMain.handle(IPC.GIT_REVERT, async (_event, { directory, hash }: { directory: string; hash: string }) => {
+    try {
+      await runGit(directory, ['revert', '--no-edit', hash])
+      return { ok: true }
+    } catch (err: any) { return { ok: false, error: err.message } }
+  })
+
+  ipcMain.handle(IPC.GIT_RESET, async (_event, { directory, hash, mode }: { directory: string; hash: string; mode: 'soft' | 'mixed' | 'hard' }) => {
+    try {
+      await runGit(directory, ['reset', `--${mode}`, hash])
+      return { ok: true }
+    } catch (err: any) { return { ok: false, error: err.message } }
+  })
+
+  ipcMain.handle(IPC.GIT_BLAME, async (_event, { directory, path }: { directory: string; path: string }) => {
+    try {
+      const output = await runGit(directory, ['blame', '--porcelain', path])
+      const lines: Array<{ hash: string; author: string; date: string; lineNo: number; content: string }> = []
+      const commits: Record<string, { hash: string; author: string; date: string }> = {}
+      const rawLines = output.split('\n')
+      let i = 0
+      while (i < rawLines.length) {
+        const headerMatch = rawLines[i].match(/^([0-9a-f]{40}) \d+ (\d+)/)
+        if (!headerMatch) { i++; continue }
+        const hash = headerMatch[1]
+        const lineNo = parseInt(headerMatch[2], 10)
+        i++
+        while (i < rawLines.length && !rawLines[i].startsWith('\t')) {
+          const line = rawLines[i]
+          if (line.startsWith('author ')) {
+            if (!commits[hash]) commits[hash] = { hash: hash.slice(0, 7), author: '', date: '' }
+            commits[hash].author = line.slice(7)
+          } else if (line.startsWith('author-time ')) {
+            if (!commits[hash]) commits[hash] = { hash: hash.slice(0, 7), author: '', date: '' }
+            commits[hash].date = new Date(parseInt(line.slice(12), 10) * 1000).toISOString()
+          }
+          i++
+        }
+        const content = i < rawLines.length ? rawLines[i].slice(1) : ''
+        i++
+        if (commits[hash]) {
+          lines.push({ hash: commits[hash].hash, author: commits[hash].author, date: commits[hash].date, lineNo, content })
+        }
+      }
+      return { lines, ok: true }
+    } catch (err: any) {
+      return { lines: [], ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_CONFLICTS, async (_event, { directory }: { directory: string }) => {
+    try {
+      const output = await runGit(directory, ['diff', '--name-only', '--diff-filter=U'])
+      const files = output.trim().split('\n').filter(Boolean)
+      return { files, ok: true }
+    } catch (err: any) {
+      return { files: [], ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_CONFLICT_FILE, async (_event, { directory, path }: { directory: string; path: string }) => {
+    try {
+      const { readFileSync } = require('fs')
+      const fullPath = join(directory, path)
+      const content = readFileSync(fullPath, 'utf-8')
+      return { content, ok: true }
+    } catch (err: any) {
+      return { content: '', ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_RESOLVE_CONFLICT, async (_event, { directory, path, content }: { directory: string; path: string; content: string }) => {
+    try {
+      const { writeFileSync: writeFsSync } = require('fs')
+      const fullPath = join(directory, path)
+      writeFsSync(fullPath, content, 'utf-8')
+      await runGit(directory, ['add', '--', path])
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // ─── Interactive rebase ───
+
+  ipcMain.handle(IPC.GIT_REBASE_TODO, async (_event, { directory, onto }: { directory: string; onto: string }) => {
+    try {
+      const output = await runGit(directory, ['log', '--reverse', '--format=%H%x00%s', `${onto}..HEAD`])
+      const commits = output.trim().split('\n').filter(Boolean).map(line => {
+        const [hash, subject] = line.split('\x00')
+        return { hash, subject, action: 'pick' as const }
+      })
+      return { commits, ok: true }
+    } catch (err: any) {
+      return { commits: [], ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_REBASE_EXEC, async (_event, { directory, onto, commits }: { directory: string; onto: string; commits: Array<{ hash: string; action: string }> }) => {
+    try {
+      const todoContent = commits
+        .filter(c => c.action !== 'drop')
+        .map(c => `${c.action} ${c.hash}`)
+        .join('\n') + '\n'
+
+      const todoFile = join(tmpdir(), `ion-rebase-todo-${Date.now()}`)
+      writeFileSync(todoFile, todoContent)
+
+      // Use GIT_SEQUENCE_EDITOR to supply our pre-built todo list
+      const env = { ...process.env, GIT_SEQUENCE_EDITOR: `cat "${todoFile}" >` }
+      await gitExec('git', ['rebase', '-i', onto], { cwd: directory, maxBuffer: 10 * 1024 * 1024, env })
+
+      try { unlinkSync(todoFile) } catch {}
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err.stderr?.trim() || err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_REBASE_ABORT, async (_event, { directory }: { directory: string }) => {
+    try {
+      await runGit(directory, ['rebase', '--abort'])
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_REBASE_CONTINUE, async (_event, { directory }: { directory: string }) => {
+    try {
+      await runGit(directory, ['rebase', '--continue'])
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err.message }
+    }
+  })
+
 }

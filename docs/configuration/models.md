@@ -127,6 +127,8 @@ Ollama runs locally on `http://localhost:11434/v1` by default. No API key is req
 
 ## Worked example: routing a custom name through OpenRouter
 
+For full OpenRouter setup including authentication, see [Provider Setup: OpenRouter](../providers/openrouter.md).
+
 OpenRouter exposes many backend models behind one API. Use the full OpenRouter route as the model name, then register it under the `openrouter` provider.
 
 `~/.ion/models.json`:

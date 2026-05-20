@@ -1,0 +1,221 @@
+name: Release Highlights
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 9 PM CST (UTC-6) / 10 PM CDT (UTC-5)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  highlights:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check for recent activity
+        id: check-activity
+        run: |
+          set -euo pipefail
+          COMMIT_COUNT=$(git log --since="24 hours ago" --oneline origin/main | wc -l | tr -d ' ' || true)
+          echo "commit_count=$COMMIT_COUNT"
+          if [ "$COMMIT_COUNT" -gt 0 ]; then
+            echo "has_commits=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_commits=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 24 hours — skipping highlights."
+          fi
+
+      - name: Login to GHCR
+        if: steps.check-activity.outputs.has_commits == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull ion engine image
+        if: steps.check-activity.outputs.has_commits == 'true'
+        run: docker pull ghcr.io/${{ github.repository }}/engine:latest
+
+      - name: Materialize engine config
+        if: steps.check-activity.outputs.has_commits == 'true'
+        env:
+          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ion-data/.ion
+          printf '%s' "$ION_ENGINE_CONFIG_B64" | base64 -d > /tmp/ion-data/.ion/engine.json
+          chmod 600 /tmp/ion-data/.ion/engine.json
+
+      - name: Build highlights context document
+        if: steps.check-activity.outputs.has_commits == 'true'
+        run: |
+          set -euo pipefail
+          CTX=/tmp/ion-context.md
+          : > "$CTX"
+
+          SINCE="24 hours ago"
+          TODAY=$(date -u +"%B %-d, %Y")
+
+          {
+            echo "## Daily Highlights Context — ${TODAY}"
+            echo
+          } >> "$CTX"
+
+          # --- Full commit list ---
+          {
+            echo "## All commits (last 24h)"
+            echo
+            git log --since="$SINCE" --format="- %h %s" origin/main || true
+            echo
+          } >> "$CTX"
+
+          # --- Per-component breakdown ---
+          OLDEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main | tail -1)
+          NEWEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main -1)
+
+          for component in engine desktop relay ios; do
+            case "$component" in
+              ios) dir="ios/" ;;
+              *)   dir="${component}/" ;;
+            esac
+
+            COMPONENT_COMMITS=$(git log --since="$SINCE" --format="- %h %s" origin/main -- "$dir")
+            if [ -z "$COMPONENT_COMMITS" ]; then
+              continue
+            fi
+
+            {
+              echo "## ${component}"
+              echo
+              echo "### Commits"
+              echo
+              echo "$COMPONENT_COMMITS"
+              echo
+              echo "### Diff stat"
+              echo
+              echo '```'
+              if [ -n "$OLDEST_SHA" ] && [ -n "$NEWEST_SHA" ]; then
+                git diff --stat "${OLDEST_SHA}^..${NEWEST_SHA}" -- "$dir" \
+                  ':(exclude)**/CHANGELOG.md' \
+                  ':(exclude)**/VERSION' \
+                  ':(exclude)**/package-lock.json' \
+                  ':(exclude)**/go.sum' \
+                  ':(exclude)**/Package.resolved' \
+                  || true
+              fi
+              echo '```'
+              echo
+            } >> "$CTX"
+          done
+
+          # --- CHANGELOG entries from any tags created in the last 24h ---
+          CUTOFF_EPOCH=$(date -d "24 hours ago" +%s 2>/dev/null || true)
+          RECENT_TAGS=""
+          mapfile -t ALL_TAGS < <(git tag --sort=-creatordate)
+          for tag in "${ALL_TAGS[@]}"; do
+            [ -z "$tag" ] && continue
+            TAG_DATE=$(git log -1 --format="%ai" "$tag" 2>/dev/null || true)
+            if [ -n "$TAG_DATE" ] && [ -n "$CUTOFF_EPOCH" ]; then
+              TAG_EPOCH=$(date -d "$TAG_DATE" +%s 2>/dev/null || true)
+              if [ -n "$TAG_EPOCH" ] && [ "$TAG_EPOCH" -ge "$CUTOFF_EPOCH" ]; then
+                RECENT_TAGS="${RECENT_TAGS:+${RECENT_TAGS}$'\n'}${tag}"
+              fi
+            fi
+          done
+
+          if [ -n "$RECENT_TAGS" ]; then
+            {
+              echo "## Recent releases (tags created in last 24h)"
+              echo
+            } >> "$CTX"
+
+            while read -r tag; do
+              [ -z "$tag" ] && continue
+              # Extract component and version from tag like "engine-v1.2.3"
+              component="${tag%%-v[0-9]*}"
+              version="${tag##*-v}"
+              if [ -f "${component}/CHANGELOG.md" ]; then
+                {
+                  echo "### ${tag} CHANGELOG"
+                  echo
+                  awk -v ver="${version}" '
+                    $0 ~ "^##[[:space:]]*\\[?"ver"\\]?" { p=1; print; next }
+                    p && /^##[[:space:]]/ { exit }
+                    p { print }
+                  ' "${component}/CHANGELOG.md"
+                  echo
+                } >> "$CTX"
+              fi
+            done <<< "$RECENT_TAGS"
+          fi
+
+          # --- Project architecture context ---
+          {
+            echo "## Project layered architecture (root AGENTS.md)"
+            echo
+            echo '```'
+            cat AGENTS.md
+            echo '```'
+            echo
+          } >> "$CTX"
+
+          echo "Context document size: $(wc -c < "$CTX") bytes"
+
+      - name: Compose final prompt
+        if: steps.check-activity.outputs.has_commits == 'true'
+        env:
+          ION_SYSTEM_PROMPT__RELEASE_HIGHLIGHTS_NOTIFICATION: ${{ secrets.ION_SYSTEM_PROMPT__RELEASE_HIGHLIGHTS_NOTIFICATION }}
+        run: |
+          set -euo pipefail
+          {
+            printf '%s\n\n' "$ION_SYSTEM_PROMPT__RELEASE_HIGHLIGHTS_NOTIFICATION"
+            printf '## Highlights context\n\n'
+            cat /tmp/ion-context.md
+            printf '\n## Task\n\nWrite the Discord message now. Output only the message body, no preamble, no meta-commentary.\n'
+          } > /tmp/ion-prompt.txt
+          echo "Prompt size: $(wc -c < /tmp/ion-prompt.txt) bytes"
+
+      - name: Generate summary with ion
+        if: steps.check-activity.outputs.has_commits == 'true'
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v /tmp/ion-data:/data \
+            ghcr.io/${{ github.repository }}/engine:latest \
+            prompt "$(cat /tmp/ion-prompt.txt)" \
+            --output text \
+            --no-extensions \
+            --timeout 3m \
+            --max-budget 1.00 \
+            > /tmp/summary.md
+          echo "Summary size: $(wc -c < /tmp/summary.md) bytes"
+
+      - name: Post to Discord
+        if: steps.check-activity.outputs.has_commits == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL__RELEASE_HIGHLIGHTS }}
+        run: |
+          set -euo pipefail
+          BYTES=$(wc -c < /tmp/summary.md)
+          if [ "$BYTES" -le 1900 ]; then
+            jq -Rs '{content: .}' /tmp/summary.md > /tmp/discord-payload.json
+          else
+            jq -Rs '{embeds: [{title: "Ion Daily Highlights", description: (.[0:4090] + (if (length > 4090) then "..." else "" end)), color: 5814783}]}' \
+              /tmp/summary.md > /tmp/discord-payload.json
+          fi
+          HTTP_CODE=$(curl -sS -o /tmp/discord-response.txt -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -d @/tmp/discord-payload.json "$DISCORD_WEBHOOK_URL")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Discord webhook failed: HTTP $HTTP_CODE" >&2
+            cat /tmp/discord-response.txt >&2
+            exit 1
+          fi
+          echo "Discord webhook delivered (HTTP $HTTP_CODE)"

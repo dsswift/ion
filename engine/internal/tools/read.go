@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/pdf"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -53,6 +54,14 @@ func executeRead(ctx context.Context, input map[string]any, cwd string) (*types.
 	// PDF files: validate and extract pages or encode as base64
 	if strings.EqualFold(filepath.Ext(filePath), ".pdf") {
 		return readPdf(filePath, input, info)
+	}
+
+	// Image files: return as base64-encoded vision blocks
+	if block, err := conversation.EncodeImage(filePath); err == nil {
+		return &types.ToolResult{
+			Content: fmt.Sprintf("[Image: %s, %d bytes]", filepath.Base(filePath), info.Size()),
+			Images:  []*types.ImageSource{block.Source},
+		}, nil
 	}
 
 	if err := ctx.Err(); err != nil {

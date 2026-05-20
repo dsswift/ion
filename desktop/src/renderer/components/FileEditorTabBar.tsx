@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { Reorder } from 'framer-motion'
 import { X, Plus, Eye, PencilSimple, TextAlignLeft } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { isMarkdownFile } from './FileEditorShared'
+import { FileEditorTabContextMenu } from './FileEditorTabContextMenu'
 
 interface FileEditorTabBarProps {
   dir: string
@@ -27,6 +28,23 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
   const toggleEditorReadOnly = useSessionStore((s) => s.toggleEditorReadOnly)
   const editorWordWrap = usePreferencesStore((s) => s.editorWordWrap)
   const setEditorWordWrap = usePreferencesStore((s) => s.setEditorWordWrap)
+
+  // Tab context menu state
+  const [tabCtxMenu, setTabCtxMenu] = useState<{ x: number; y: number; file: FileEditorTab } | null>(null)
+
+  const handleCloseOthers = useCallback((fileId: string) => {
+    files.forEach((f) => { if (f.id !== fileId) closeFileEditorTab(dir, f.id) })
+  }, [files, dir, closeFileEditorTab])
+
+  const handleCloseAll = useCallback(() => {
+    files.forEach((f) => closeFileEditorTab(dir, f.id))
+  }, [files, dir, closeFileEditorTab])
+
+  const handleCloseToRight = useCallback((fileId: string) => {
+    const idx = files.findIndex((f) => f.id === fileId)
+    if (idx < 0) return
+    files.slice(idx + 1).forEach((f) => closeFileEditorTab(dir, f.id))
+  }, [files, dir, closeFileEditorTab])
 
   return (
     <div
@@ -66,6 +84,11 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
               onClose={(e) => {
                 e.stopPropagation()
                 closeFileEditorTab(dir, file.id)
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setTabCtxMenu({ x: e.clientX, y: e.clientY, file })
               }}
             />
           </Reorder.Item>
@@ -125,6 +148,37 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
           <TextAlignLeft size={13} />
         </button>
       </div>
+
+      {/* Tab context menu */}
+      {tabCtxMenu && (
+        <FileEditorTabContextMenu
+          x={tabCtxMenu.x}
+          y={tabCtxMenu.y}
+          filePath={tabCtxMenu.file.filePath}
+          onClose={() => setTabCtxMenu(null)}
+          onCloseTab={() => closeFileEditorTab(dir, tabCtxMenu.file.id)}
+          onCloseOthers={() => handleCloseOthers(tabCtxMenu.file.id)}
+          onCloseAll={handleCloseAll}
+          onCloseToRight={() => handleCloseToRight(tabCtxMenu.file.id)}
+          onCopyPath={() => {
+            if (tabCtxMenu.file.filePath) navigator.clipboard.writeText(tabCtxMenu.file.filePath)
+          }}
+          onCopyRelativePath={() => {
+            if (tabCtxMenu.file.filePath) {
+              const rel = tabCtxMenu.file.filePath.startsWith(dir + '/')
+                ? tabCtxMenu.file.filePath.slice(dir.length + 1)
+                : tabCtxMenu.file.filePath
+              navigator.clipboard.writeText(rel)
+            }
+          }}
+          onRevealInFinder={() => {
+            if (tabCtxMenu.file.filePath) window.ion.fsRevealInFinder(tabCtxMenu.file.filePath)
+          }}
+          onOpenInVSCode={() => {
+            if (tabCtxMenu.file.filePath) window.ion.openExternal(`vscode://file${tabCtxMenu.file.filePath}`)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -137,9 +191,10 @@ interface FileEditorTabItemProps {
   colors: ReturnType<typeof useColors>
   onSelect: () => void
   onClose: (e: React.MouseEvent) => void
+  onContextMenu: (e: React.MouseEvent) => void
 }
 
-function FileEditorTabItem({ file, isActive, colors, onSelect, onClose }: FileEditorTabItemProps) {
+function FileEditorTabItem({ file, isActive, colors, onSelect, onClose, onContextMenu }: FileEditorTabItemProps) {
   const [confirmingClose, setConfirmingClose] = useState(false)
 
   const handleClose = (e: React.MouseEvent) => {
@@ -164,6 +219,7 @@ function FileEditorTabItem({ file, isActive, colors, onSelect, onClose }: FileEd
         whiteSpace: 'nowrap',
       }}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); handleClose(e) } }}
     >
       <span style={{ fontStyle: file.filePath === null ? 'italic' : 'normal' }}>

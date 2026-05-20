@@ -32,6 +32,7 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
         ...(t.pillColor ? { pillColor: t.pillColor } : {}),
         ...(t.pillIcon ? { pillIcon: t.pillIcon } : {}),
+        ...(t.modelOverride ? { modelOverride: t.modelOverride } : {}),
         ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
         ...(t.worktree ? { worktree: t.worktree } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),

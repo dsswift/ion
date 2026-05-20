@@ -29,9 +29,11 @@ func newConvSuffix() string {
 	return hex.EncodeToString(b[:])
 }
 
-// compactThreshold is the default context usage percentage that triggers
-// proactive compaction.
-const compactThreshold = 80
+// maxConsecutiveCompactions caps the number of proactive compactions that
+// can fire back-to-back without a successful API response in between. After
+// this many attempts the run emits compact_loop_aborted and stops trying so
+// it does not burn turns on a conversation that refuses to shrink.
+const maxConsecutiveCompactions = 3
 
 // runHookCtx runs fn on a goroutine and races it against ctx cancellation.
 // On cancel, returns ctx.Err() and discards the eventual result. The inner
@@ -96,3 +98,34 @@ func appendOrGrow(blocks []types.LlmContentBlock, idx int, block types.LlmConten
 
 func intPtr(v int) *int       { return &v }
 func strPtr(v string) *string { return &v }
+
+// buildUserContentBlocks turns a text prompt plus pre-encoded image
+// attachments into a structured content-block slice for the user message.
+// The text block is emitted first when non-empty; one image block per
+// attachment follows, in order. Empty-data attachments are dropped (they
+// would otherwise produce a malformed provider request).
+func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) []types.LlmContentBlock {
+	blocks := make([]types.LlmContentBlock, 0, len(attachments)+1)
+	if prompt != "" {
+		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: prompt})
+	}
+	for _, a := range attachments {
+		if a.Data == "" || a.MediaType == "" {
+			continue
+		}
+		blocks = append(blocks, types.LlmContentBlock{
+			Type: "image",
+			Source: &types.ImageSource{
+				Type:      "base64",
+				MediaType: a.MediaType,
+				Data:      a.Data,
+			},
+		})
+	}
+	if len(blocks) == 0 {
+		// All attachments invalid AND prompt empty: emit a single empty
+		// text block so AddUserMessage's blocks branch is well-formed.
+		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: ""})
+	}
+	return blocks
+}

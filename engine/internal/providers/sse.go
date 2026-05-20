@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"strings"
+	"sync"
 )
 
 // SSEEvent represents a single Server-Sent Event.
@@ -14,12 +15,23 @@ type SSEEvent struct {
 
 // ParseSSEStream reads an SSE stream and emits events on the returned channel.
 // The channel is closed when the reader returns EOF or an error occurs.
-// Errors during reading are silently consumed; the channel simply closes.
-func ParseSSEStream(reader io.Reader) <-chan SSEEvent {
+//
+// The returned errFn must be called after the events channel is drained to
+// retrieve any error encountered while reading. It returns nil for a clean EOF
+// and the underlying read error otherwise (e.g. io.ErrUnexpectedEOF, *net.OpError,
+// "http2: stream reset"). Callers MUST consult errFn to distinguish a clean
+// end-of-stream from a truncated/dropped connection.
+func ParseSSEStream(reader io.Reader) (<-chan SSEEvent, func() error) {
 	ch := make(chan SSEEvent, 16)
+	var (
+		mu      sync.Mutex
+		readErr error
+		done    = make(chan struct{})
+	)
 
 	go func() {
 		defer close(ch)
+		defer close(done)
 
 		scanner := bufio.NewScanner(reader)
 		// Allow lines up to 1MB for large JSON payloads
@@ -68,7 +80,20 @@ func ParseSSEStream(reader io.Reader) <-chan SSEEvent {
 				ch <- SSEEvent{Event: currentEvent, Data: data}
 			}
 		}
+
+		if err := scanner.Err(); err != nil {
+			mu.Lock()
+			readErr = err
+			mu.Unlock()
+		}
 	}()
 
-	return ch
+	errFn := func() error {
+		<-done
+		mu.Lock()
+		defer mu.Unlock()
+		return readErr
+	}
+
+	return ch, errFn
 }

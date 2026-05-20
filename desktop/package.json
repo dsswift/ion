@@ -26,9 +26,11 @@
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.2",
     "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-cpp": "^6.0.3",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-go": "^6.0.1",
     "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-java": "^6.0.2",
     "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.0",
@@ -36,23 +38,31 @@
     "@codemirror/lang-rust": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.3",
     "@codemirror/language": "^6.12.3",
+    "@codemirror/legacy-modes": "^6.5.3",
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/theme-one-dark": "^6.1.3",
-    "@codemirror/view": "^6.42.0",
+    "@codemirror/view": "^6.43.0",
+    "@parcel/watcher": "^2.5.6",
     "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-virtual": "^3.13.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/xterm": "^6.0.0",
     "bonjour-service": "^1.3.0",
     "codemirror": "^6.0.2",
+    "diff": "^9.0.0",
     "electron-updater": "^6.6.2",
-    "framer-motion": "^12.38.0",
+    "framer-motion": "^12.39.0",
+    "immer": "^11.0.0",
     "node-pty": "^1.1.0",
     "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.0",
-    "ws": "^8.20.0",
+    "shiki": "^4.1.0",
+    "ws": "^8.20.1",
     "zustand": "^5.0.13"
   },
   "build": {
@@ -78,15 +88,19 @@
     "afterPack": "scripts/afterPack.js",
     "mac": {
       "icon": "resources/icon.icns",
-      "x64ArchFiles": "**/node_modules/node-pty/prebuilds/darwin-*/*",
+      "x64ArchFiles": "**/node_modules/{node-pty/prebuilds/darwin-*/*,@parcel/watcher-darwin-*/**/*}",
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ],
       "hardenedRuntime": true,
@@ -99,7 +113,8 @@
         "NSAppleEventsUsageDescription": "Ion uses AppleScript to detect available monospace fonts on your system.",
         "NSDesktopFolderUsageDescription": "Ion needs access to your Desktop to read and edit project files.",
         "NSDocumentsFolderUsageDescription": "Ion needs access to your Documents to read and edit project files.",
-        "NSDownloadsFolderUsageDescription": "Ion needs access to your Downloads to read and edit project files."
+        "NSDownloadsFolderUsageDescription": "Ion needs access to your Downloads to read and edit project files.",
+        "NSLocalNetworkUsageDescription": "Ion needs access to your local network to connect to the engine running on a nearby Mac."
       }
     },
     "dmg": {
@@ -112,20 +127,21 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.0.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@types/ws": "^8.18.1",
-    "@vitejs/plugin-react": "^4.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.0",
     "electron": "^35.7.5",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
-    "postcss": "^8.5.14",
+    "postcss": "^8.5.15",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.2.1",
     "typescript": "^6.0.3",
     "vite": "^6.0.0",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.7"
   }
 }

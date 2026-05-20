@@ -40,6 +40,12 @@ type activeRun struct {
 	planMode          bool                     // true when this run is in plan mode
 	planFilePath      string                   // only writable file during plan mode
 
+	// compactionsWithoutProgress counts proactive compactions that have fired
+	// without an intervening successful API response. Bounds the cascade if
+	// the conversation cannot be shrunk below the trigger limit so the run
+	// surfaces an error instead of looping.
+	compactionsWithoutProgress int
+
 	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
 }
 
@@ -222,6 +228,19 @@ func (b *ApiBackend) GetContextUsage(requestID string) *conversation.ContextUsag
 	}
 	usage := conversation.GetContextUsage(run.conv, contextWindow)
 	return &usage
+}
+
+// SearchHistory searches the active run's conversation history for the given
+// query, returning up to maxResults matches. Returns nil when no matching run
+// is active or the conversation has not been initialized yet.
+func (b *ApiBackend) SearchHistory(requestID string, query string, maxResults int) []conversation.HistoryMatch {
+	b.mu.Lock()
+	run, ok := b.activeRuns[requestID]
+	b.mu.Unlock()
+	if !ok || run.conv == nil {
+		return nil
+	}
+	return conversation.SearchMessages(run.conv, query, maxResults)
 }
 
 // Steer sends a steering message to an active run's conversation.

@@ -19,14 +19,20 @@ import (
 
 // Well-known environment variable names for provider API keys.
 var providerEnvVars = map[string][]string{
-	"anthropic": {"ANTHROPIC_API_KEY"},
-	"openai":    {"OPENAI_API_KEY"},
-	"google":    {"GOOGLE_API_KEY", "GEMINI_API_KEY"},
-	"aws":       {"AWS_ACCESS_KEY_ID"},
-	"azure":     {"AZURE_OPENAI_API_KEY", "AZURE_API_KEY"},
-	"mistral":   {"MISTRAL_API_KEY"},
-	"cohere":    {"COHERE_API_KEY"},
-	"groq":      {"GROQ_API_KEY"},
+	"anthropic":  {"ANTHROPIC_API_KEY"},
+	"openai":     {"OPENAI_API_KEY"},
+	"google":     {"GOOGLE_API_KEY", "GEMINI_API_KEY"},
+	"aws":        {"AWS_ACCESS_KEY_ID"},
+	"azure":      {"AZURE_OPENAI_API_KEY", "AZURE_API_KEY"},
+	"mistral":    {"MISTRAL_API_KEY"},
+	"cohere":     {"COHERE_API_KEY"},
+	"groq":       {"GROQ_API_KEY"},
+	"openrouter": {"OPENROUTER_API_KEY"},
+	"together":   {"TOGETHER_API_KEY"},
+	"fireworks":  {"FIREWORKS_API_KEY"},
+	"cerebras":   {"CEREBRAS_API_KEY"},
+	"xai":        {"XAI_API_KEY"},
+	"deepseek":   {"DEEPSEEK_API_KEY"},
 }
 
 // oauthToken holds an OAuth access token along with its refresh token and expiry.
@@ -64,6 +70,66 @@ func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
 	r.programmatic[strings.ToLower(providerID)] = apiKey
 }
 
+// HasKey performs a lightweight check to determine if the given provider has
+// any credentials available (programmatic, env var, keychain, file store, or
+// legacy credentials.json). Unlike ResolveKey, it does not attempt an OAuth
+// refresh. Returns whether credentials exist and the auth source description
+// (e.g. "env", "filestore").
+func (r *Resolver) HasKey(provider string) (bool, string) {
+	provider = strings.ToLower(provider)
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: checking provider=%s", provider))
+
+	// Level 1: Programmatic
+	if key, ok := r.programmatic[provider]; ok && key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=programmatic", provider))
+		return true, "programmatic"
+	}
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=programmatic miss", provider))
+
+	// Level 2: Environment variables
+	if resolveFromEnv(provider) != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=env", provider))
+		return true, "env"
+	}
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=env miss", provider))
+
+	// Level 3: Keychain
+	serviceName := "ion-engine"
+	if r.config != nil && r.config.SecureStore != nil && r.config.SecureStore.ServiceName != "" {
+		serviceName = r.config.SecureStore.ServiceName
+	}
+	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=keychain (service=%s)", provider, serviceName))
+		return true, "keychain"
+	}
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=keychain miss", provider))
+
+	// Level 4a: Encrypted file store
+	fs := NewFileStore()
+	if key, err := fs.GetKey(provider); err == nil && key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=filestore", provider))
+		return true, "filestore"
+	}
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=filestore miss", provider))
+
+	// Level 4b: OAuth token in file store
+	if oauthRaw, err := fs.GetKey("oauth:" + provider); err == nil && oauthRaw != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=oauth", provider))
+		return true, "oauth"
+	}
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=oauth miss", provider))
+
+	// Level 4c: Legacy credentials.json
+	if resolveFromCredentialsFile(provider) != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=credentials.json", provider))
+		return true, "credentials.json"
+	}
+	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=credentials.json miss", provider))
+
+	utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s no credentials found at any level", provider))
+	return false, ""
+}
+
 // ResolveKey resolves an API key for the given provider using a 5-level chain:
 //  1. Programmatic (keys set via SetProgrammatic)
 //  2. Environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
@@ -72,14 +138,19 @@ func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
 //  5. OAuth token refresh (if a stored refresh_token exists for the provider)
 func (r *Resolver) ResolveKey(provider string) (string, error) {
 	provider = strings.ToLower(provider)
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: resolving provider=%s", provider))
 
 	// Level 1: Programmatic (in-process override, highest priority)
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=1 (programmatic)", provider))
 	if key, ok := r.programmatic[provider]; ok && key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via programmatic (keyLen=%d)", provider, len(key)))
 		return key, nil
 	}
 
 	// Level 2: Environment variables
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=2 (env)", provider))
 	if key := resolveFromEnv(provider); key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via env (keyLen=%d)", provider, len(key)))
 		return key, nil
 	}
 
@@ -88,18 +159,24 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 	if r.config != nil && r.config.SecureStore != nil && r.config.SecureStore.ServiceName != "" {
 		serviceName = r.config.SecureStore.ServiceName
 	}
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=3 (keychain, service=%s)", provider, serviceName))
 	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via keychain (keyLen=%d)", provider, len(key)))
 		return key, nil
 	}
 
 	// Level 4a: Encrypted file store (~/.ion/credentials.enc)
 	fs := NewFileStore()
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=4a (filestore)", provider))
 	if key, err := fs.GetKey(provider); err == nil && key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via filestore (keyLen=%d)", provider, len(key)))
 		return key, nil
 	}
 
 	// Level 4b: Plaintext config file (~/.ion/credentials.json) -- legacy fallback
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=4b (credentials.json)", provider))
 	if key := resolveFromCredentialsFile(provider); key != "" {
+		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via credentials.json (keyLen=%d)", provider, len(key)))
 		return key, nil
 	}
 
@@ -107,16 +184,19 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 	// Look for a previously stored OAuth token with a refresh_token. If found and
 	// the access token is expired (or absent), use the refresh_token to obtain a
 	// new access token via the standard grant_type=refresh_token flow.
+	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=5 (oauth)", provider))
 	if r.config != nil && r.config.OAuth != nil {
 		if oauthCfg, ok := r.config.OAuth[provider]; ok {
 			token, err := r.refreshOAuthToken(provider, oauthCfg, fs)
 			if err == nil && token != "" {
+				utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via oauth (keyLen=%d)", provider, len(token)))
 				return token, nil
 			}
 			utils.Log("auth", fmt.Sprintf("OAuth refresh failed for %s: %v", provider, err))
 		}
 	}
 
+	utils.Error("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s failed - no key found at any level", provider))
 	return "", fmt.Errorf("no API key found for provider %q", provider)
 }
 
@@ -172,6 +252,7 @@ func (r *Resolver) refreshOAuthToken(provider string, cfg types.OAuthConfig, fs 
 		}
 	}
 
+	utils.Log("AuthResolver", fmt.Sprintf("refreshOAuthToken: provider=%s refresh succeeded (newTokenLen=%d)", provider, len(newTok.AccessToken)))
 	return newTok.AccessToken, nil
 }
 

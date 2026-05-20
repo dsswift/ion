@@ -12,6 +12,7 @@ type ToolDef struct {
 
 // ToolResult is the output of a tool execution.
 type ToolResult struct {
-	Content string `json:"content"`
-	IsError bool   `json:"isError,omitempty"`
+	Content string         `json:"content"`
+	IsError bool           `json:"isError,omitempty"`
+	Images  []*ImageSource `json:"images,omitempty"` // optional vision images returned alongside text
 }

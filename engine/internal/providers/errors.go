@@ -2,7 +2,9 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -44,6 +46,50 @@ func (e *ProviderError) Error() string {
 
 func (e *ProviderError) Unwrap() error {
 	return e.Cause
+}
+
+// ClassifyTransportError detects common Go net/http/http2/io errors that
+// indicate a transport-level failure (silent drop, h2 PING miss, mid-frame
+// EOF, idle proxy reset). Returns a retryable *ProviderError tagged with
+// the closest provider error code, or nil if the error doesn't look like
+// a transport issue.
+//
+// Use this from any code path that consumes a response body (SSE readers,
+// streaming JSON parsers) so the underlying cause is preserved instead of
+// being collapsed into a generic stream_truncated.
+func ClassifyTransportError(err error) *ProviderError {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+		return &ProviderError{Code: ErrStaleConn, Message: err.Error(), Retryable: true, Cause: err}
+	}
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(msg, "ECONNRESET"),
+		strings.Contains(msg, "EPIPE"),
+		strings.Contains(lower, "connection reset"),
+		strings.Contains(lower, "broken pipe"),
+		strings.Contains(lower, "use of closed network connection"),
+		strings.Contains(lower, "client connection lost"),
+		strings.Contains(lower, "stream reset"),
+		strings.Contains(lower, "unexpected eof"),
+		strings.Contains(lower, "stream closed"),
+		strings.Contains(lower, "http2: server sent goaway"):
+		return &ProviderError{Code: ErrStaleConn, Message: msg, Retryable: true, Cause: err}
+	case strings.Contains(lower, "timeout"),
+		strings.Contains(lower, "deadline exceeded"),
+		strings.Contains(lower, "i/o timeout"):
+		return &ProviderError{Code: ErrTimeout, Message: msg, Retryable: true, Cause: err}
+	case strings.Contains(msg, "ECONNREFUSED"),
+		strings.Contains(msg, "no such host"),
+		strings.Contains(lower, "no route to host"),
+		strings.Contains(lower, "network is unreachable"),
+		strings.Contains(lower, "fetch failed"):
+		return &ProviderError{Code: ErrNetwork, Message: msg, Retryable: true, Cause: err}
+	}
+	return nil
 }
 
 // NewProviderError creates a ProviderError with the given parameters.

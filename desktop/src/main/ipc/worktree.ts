@@ -99,10 +99,13 @@ export function registerWorktreeIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.GIT_WORKTREE_MERGE, async (_event, { repoPath, worktreeBranch, sourceBranch }: { repoPath: string; worktreeBranch: string; sourceBranch: string }) => {
+  ipcMain.handle(IPC.GIT_WORKTREE_MERGE, async (_event, { repoPath, worktreeBranch, sourceBranch, noFf }: { repoPath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean }) => {
     try {
       await runGit(repoPath, ['checkout', sourceBranch])
-      await runGit(repoPath, ['merge', '--no-ff', worktreeBranch])
+      const mergeArgs = noFf
+        ? ['merge', '--no-ff', worktreeBranch]
+        : ['merge', '--ff-only', worktreeBranch]
+      await runGit(repoPath, mergeArgs)
       return { ok: true }
     } catch (err: any) {
       const msg = err.message || ''

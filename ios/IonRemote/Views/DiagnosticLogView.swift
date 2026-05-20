@@ -3,10 +3,11 @@ import SwiftUI
 /// On-device diagnostic log viewer.
 ///
 /// Shows timestamped connection lifecycle events in a scrollable list.
-/// Use the Share button to AirDrop/copy the full log to a Mac for analysis.
+/// Supports multi-session history — logs survive app restarts and crashes.
+/// Use the Share button to AirDrop/copy the full multi-session log for analysis.
 struct DiagnosticLogView: View {
     @State private var entries: [DiagnosticLog.Entry] = []
-    @State private var showShareSheet = false
+    @State private var sessionCount: Int = 1
 
     private let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -41,8 +42,11 @@ struct DiagnosticLogView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    ShareLink(item: DiagnosticLog.exportText()) {
-                        Label("Share Log", systemImage: "square.and.arrow.up")
+                    ShareLink(item: DiagnosticLog.exportAllSessions()) {
+                        Label("Share All Sessions", systemImage: "square.and.arrow.up")
+                    }
+                    ShareLink(item: DiagnosticLog.exportCurrentSession()) {
+                        Label("Share Current Session", systemImage: "doc")
                     }
                     Button(role: .destructive) {
                         DiagnosticLog.clear()
@@ -51,11 +55,21 @@ struct DiagnosticLogView: View {
                         Label("Clear Log", systemImage: "trash")
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    HStack(spacing: 4) {
+                        Text("\(sessionCount)s")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
         }
-        .onAppear { entries = DiagnosticLog.entries() }
-        .refreshable { entries = DiagnosticLog.entries() }
+        .onAppear { refresh() }
+        .refreshable { refresh() }
+    }
+
+    private func refresh() {
+        entries = DiagnosticLog.entries()
+        sessionCount = DiagnosticLog.sessionCount()
     }
 }

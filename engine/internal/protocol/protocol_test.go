@@ -603,3 +603,83 @@ func TestSerializeServerSessionList_Empty(t *testing.T) {
 		t.Errorf("expected empty sessions list, got %d", len(parsed.Sessions))
 	}
 }
+
+// --- list_models / store_credential command tests ---
+
+func TestParseClientCommand_ListModels(t *testing.T) {
+	raw := `{"cmd":"list_models","requestId":"r1"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command")
+	}
+	if cmd.Cmd != "list_models" {
+		t.Errorf("expected cmd 'list_models', got %q", cmd.Cmd)
+	}
+	if cmd.RequestID != "r1" {
+		t.Errorf("expected requestId 'r1', got %q", cmd.RequestID)
+	}
+}
+
+func TestParseClientCommand_ListModelsNoRequestId(t *testing.T) {
+	raw := `{"cmd":"list_models"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command (list_models needs no fields)")
+	}
+	if cmd.Cmd != "list_models" {
+		t.Errorf("expected cmd 'list_models', got %q", cmd.Cmd)
+	}
+}
+
+func TestParseClientCommand_StoreCredential(t *testing.T) {
+	raw := `{"cmd":"store_credential","requestId":"r2","provider":"openai","credential":"sk-test123"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command")
+	}
+	if cmd.Cmd != "store_credential" {
+		t.Errorf("expected cmd 'store_credential', got %q", cmd.Cmd)
+	}
+	if cmd.Provider != "openai" {
+		t.Errorf("expected provider 'openai', got %q", cmd.Provider)
+	}
+	if cmd.Credential != "sk-test123" {
+		t.Errorf("expected credential 'sk-test123', got %q", cmd.Credential)
+	}
+}
+
+func TestParseClientCommand_StoreCredentialMissingProvider(t *testing.T) {
+	raw := `{"cmd":"store_credential","requestId":"r3","credential":"sk-test"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Error("expected nil for store_credential without provider")
+	}
+}
+
+func TestParseClientCommand_StoreCredentialMissingCredential(t *testing.T) {
+	raw := `{"cmd":"store_credential","requestId":"r4","provider":"openai"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Error("expected nil for store_credential without credential")
+	}
+}
+
+func TestParseClientCommand_StoreCredentialEmptyProvider(t *testing.T) {
+	raw := `{"cmd":"store_credential","provider":"","credential":"sk-test"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Error("expected nil for store_credential with empty provider")
+	}
+}
+
+func TestParseClientCommand_StoreCredentialEmptyCredential(t *testing.T) {
+	// Empty credential is valid — it means "clear this provider's key"
+	raw := `{"cmd":"store_credential","provider":"openai","credential":""}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command for store_credential with empty credential (clear key)")
+	}
+	if cmd.Provider != "openai" {
+		t.Errorf("expected provider 'openai', got %q", cmd.Provider)
+	}
+}

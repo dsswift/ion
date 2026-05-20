@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, RemoteTransportState, DiscoveredCommand } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, RemoteTransportState, DiscoveredCommand, ImageAttachmentPayload, GitEvent, RepoSnapshot } from '../shared/types'
 
 export interface IonAPI {
   // ─── Request-response (renderer → main) ───
@@ -32,6 +32,7 @@ export interface IonAPI {
   listAllSessions(): Promise<SessionMeta[]>
   loadSession(sessionId: string, projectPath?: string, encodedDir?: string): Promise<SessionLoadMessage[]>
   readPlan(filePath: string): Promise<{ content: string | null; fileName: string | null }>
+  readImageDataUrl(filePath: string): Promise<{ dataUrl: string | null }>
   discoverCommands(projectPath: string): Promise<DiscoveredCommand[]>
   listFonts(): Promise<string[]>
   terminalCreate(key: string, cwd: string): Promise<void>
@@ -58,12 +59,14 @@ export interface IonAPI {
   getConversation(conversationId: string, offset?: number, limit?: number): Promise<{ messages: any[]; total: number; hasMore: boolean }>
   getBackend(): Promise<'api' | 'cli'>
   switchBackend(backend: 'api' | 'cli'): Promise<void>
+  loadOtherBackendTabs(): Promise<Array<{ conversationId: string; title: string; customTitle: string | null; workingDirectory: string; permissionMode: string }>>
+  migrateTabs(conversationIds: string[], targetBackend: 'api' | 'cli'): Promise<{ backupPaths: string[]; migrated: Array<{ conversationId: string; newConversationId: string; title: string }>; failed: Array<{ conversationId: string; title: string; error: string }> }>
 
   // ─── Git operations ───
   gitIsRepo(directory: string): Promise<{ isRepo: boolean }>
-  gitGraph(directory: string, skip?: number, limit?: number): Promise<GitGraphData>
+  gitGraph(directory: string, skip?: number, limit?: number, search?: string, author?: string, extra?: { path?: string; refKind?: string; dateAfter?: string; dateBefore?: string }): Promise<GitGraphData>
   gitChanges(directory: string): Promise<GitChangesData>
-  gitCommit(directory: string, message: string): Promise<{ ok: boolean; error?: string }>
+  gitCommit(directory: string, message: string, opts?: { amend?: boolean; signoff?: boolean; gpg?: boolean } | boolean): Promise<{ ok: boolean; error?: string }>
   gitFetch(directory: string): Promise<{ ok: boolean; error?: string }>
   gitPull(directory: string): Promise<{ ok: boolean; error?: string }>
   gitPush(directory: string): Promise<{ ok: boolean; error?: string }>
@@ -79,13 +82,37 @@ export interface IonAPI {
   gitCommitFiles(directory: string, hash: string): Promise<{ files: Array<{ path: string; status: string; oldPath?: string }> }>
   gitCommitFileDiff(directory: string, hash: string, path: string): Promise<{ diff: string; fileName: string }>
   gitIgnoredFiles(directory: string): Promise<{ paths: string[] }>
+  gitStashList(directory: string): Promise<{ stashes: Array<{ ref: string; message: string; date: string; parentSha?: string }> }>
+  gitStashSave(directory: string, message?: string): Promise<{ ok: boolean; error?: string }>
+  gitStashPop(directory: string, ref?: string): Promise<{ ok: boolean; error?: string }>
+  gitStashDrop(directory: string, ref: string): Promise<{ ok: boolean; error?: string }>
+  gitCherryPick(directory: string, hash: string): Promise<{ ok: boolean; error?: string }>
+  gitRevert(directory: string, hash: string): Promise<{ ok: boolean; error?: string }>
+  gitReset(directory: string, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<{ ok: boolean; error?: string }>
+  gitBlame(directory: string, path: string): Promise<{ lines: Array<{ hash: string; author: string; date: string; lineNo: number; content: string }>; ok: boolean; error?: string }>
+  gitConflicts(directory: string): Promise<{ files: string[]; ok: boolean; error?: string }>
+  gitConflictFile(directory: string, path: string): Promise<{ content: string; ok: boolean; error?: string }>
+  gitResolveConflict(directory: string, path: string, content: string): Promise<{ ok: boolean; error?: string }>
+  gitRebaseTodo(directory: string, onto: string): Promise<{ commits: Array<{ hash: string; subject: string; action: string }>; ok: boolean; error?: string }>
+  gitRebaseExec(directory: string, onto: string, commits: Array<{ hash: string; action: string }>): Promise<{ ok: boolean; error?: string }>
+  gitRebaseAbort(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitRebaseContinue(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitSubscribe(directory: string): Promise<{ snapshot: RepoSnapshot | null }>
+  gitUnsubscribe(directory: string): Promise<{ ok: boolean }>
+  gitRefresh(directory: string): Promise<{ ok: boolean }>
+  gitApplyPatch(directory: string, patch: string, opts?: { reverse?: boolean; cached?: boolean }): Promise<{ ok: boolean; error?: string }>
+  gitTagCreate(directory: string, name: string, ref?: string, message?: string): Promise<{ ok: boolean; error?: string }>
+  gitShowFile(directory: string, hash: string, path: string): Promise<{ ok: boolean; content: string; error?: string }>
+  gitCommitSignature(directory: string, hash: string): Promise<{ ok: boolean; status?: string; signer?: string; key?: string; error?: string }>
+  gitRecentRefs(directory: string, limit?: number): Promise<{ ok: boolean; refs: string[]; error?: string }>
+  onGitEvent(callback: (event: GitEvent) => void): () => void
 
   // ─── Git worktree operations ───
   gitWorktreeAdd(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; worktree?: WorktreeInfo; error?: string }>
   gitWorktreeRemove(repoPath: string, worktreePath: string, branchName: string, force?: boolean): Promise<{ ok: boolean; error?: string }>
   gitWorktreeList(repoPath: string): Promise<{ worktrees: Array<{ path: string; branch: string; head: string }> }>
   gitWorktreeStatus(worktreePath: string, sourceBranch: string): Promise<WorktreeStatus>
-  gitWorktreeMerge(repoPath: string, worktreeBranch: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
+  gitWorktreeMerge(repoPath: string, worktreeBranch: string, sourceBranch: string, noFf?: boolean): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
   gitWorktreePush(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; remoteBranch?: string; remoteUrl?: string }>
   gitWorktreeRebase(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
 
@@ -106,13 +133,25 @@ export interface IonAPI {
 
   // ─── Engine operations ───
   engineStart(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string }>
-  enginePrompt(key: string, text: string, model?: string): Promise<{ ok: boolean; error?: string }>
+  enginePrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[]): Promise<{ ok: boolean; error?: string }>
   engineAbort(key: string): Promise<void>
   engineAbortAgent(key: string, agentName: string, subtree: boolean): Promise<void>
   engineDialogResponse(key: string, dialogId: string, value: any): Promise<void>
   engineCommand(key: string, command: string, args: string): Promise<void>
   engineStop(key: string): Promise<void>
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
+
+  // ─── Model & provider management ───
+  listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
+  storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
+  refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }>
+
+  // ─── OAuth ───
+  startOAuth(provider: string): Promise<{ ok: boolean; error?: string }>
+  logoutOAuth(provider: string): Promise<{ ok: boolean }>
+  oauthStatus(provider: string): Promise<{ hasTokens: boolean }>
+  oauthDeviceCode(provider: string): Promise<{ ok: boolean; userCode?: string; verificationUri?: string; deviceCode?: string; interval?: number; expiresIn?: number; error?: string }>
+  oauthDevicePoll(deviceCode: string, interval: number, expiresIn: number): Promise<{ ok: boolean; error?: string }>
 
   // ─── Remote control ───
   remoteGetState(): Promise<{ transportState: RemoteTransportState } | null>
@@ -181,6 +220,7 @@ const api: IonAPI = {
   listAllSessions: () => ipcRenderer.invoke(IPC.LIST_ALL_SESSIONS),
   loadSession: (sessionId: string, projectPath?: string, encodedDir?: string) => ipcRenderer.invoke(IPC.LOAD_SESSION, { sessionId, projectPath, encodedDir }),
   readPlan: (filePath: string) => ipcRenderer.invoke(IPC.READ_PLAN, filePath),
+  readImageDataUrl: (filePath: string) => ipcRenderer.invoke(IPC.READ_IMAGE_DATA_URL, filePath),
   discoverCommands: (projectPath: string) => ipcRenderer.invoke(IPC.DISCOVER_COMMANDS, projectPath),
   listFonts: () => ipcRenderer.invoke(IPC.LIST_FONTS),
   terminalCreate: (key, cwd) => ipcRenderer.invoke(IPC.TERMINAL_CREATE, { key, cwd }),
@@ -220,12 +260,19 @@ const api: IonAPI = {
     ipcRenderer.invoke(IPC.GET_CONVERSATION, { conversationId, offset, limit }),
   getBackend: () => ipcRenderer.invoke(IPC.GET_BACKEND),
   switchBackend: (backend) => ipcRenderer.invoke(IPC.SWITCH_BACKEND, backend),
+  loadOtherBackendTabs: () => ipcRenderer.invoke(IPC.LOAD_OTHER_BACKEND_TABS),
+  migrateTabs: (conversationIds, targetBackend) => ipcRenderer.invoke(IPC.MIGRATE_TABS, { conversationIds, targetBackend }),
 
   // ─── Git operations ───
   gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),
-  gitGraph: (directory, skip, limit) => ipcRenderer.invoke(IPC.GIT_GRAPH, { directory, skip, limit }),
+  gitGraph: (directory, skip, limit, search, author, extra) => ipcRenderer.invoke(IPC.GIT_GRAPH, { directory, skip, limit, search, author, ...(extra ?? {}) }),
   gitChanges: (directory) => ipcRenderer.invoke(IPC.GIT_CHANGES, { directory }),
-  gitCommit: (directory, message) => ipcRenderer.invoke(IPC.GIT_COMMIT, { directory, message }),
+  gitCommit: (directory, message, opts) => {
+    const args = typeof opts === 'boolean'
+      ? { directory, message, amend: opts }
+      : { directory, message, amend: opts?.amend, signoff: opts?.signoff, gpg: opts?.gpg }
+    return ipcRenderer.invoke(IPC.GIT_COMMIT, args)
+  },
   gitFetch: (directory) => ipcRenderer.invoke(IPC.GIT_FETCH, { directory }),
   gitPull: (directory) => ipcRenderer.invoke(IPC.GIT_PULL, { directory }),
   gitPush: (directory) => ipcRenderer.invoke(IPC.GIT_PUSH, { directory }),
@@ -241,13 +288,41 @@ const api: IonAPI = {
   gitCommitFiles: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_FILES, { directory, hash }),
   gitCommitFileDiff: (directory, hash, path) => ipcRenderer.invoke(IPC.GIT_COMMIT_FILE_DIFF, { directory, hash, path }),
   gitIgnoredFiles: (directory) => ipcRenderer.invoke(IPC.GIT_IGNORED_FILES, directory),
+  gitStashList: (directory: string) => ipcRenderer.invoke(IPC.GIT_STASH_LIST, { directory }),
+  gitStashSave: (directory: string, message?: string) => ipcRenderer.invoke(IPC.GIT_STASH_SAVE, { directory, message }),
+  gitStashPop: (directory: string, ref?: string) => ipcRenderer.invoke(IPC.GIT_STASH_POP, { directory, ref }),
+  gitStashDrop: (directory: string, ref: string) => ipcRenderer.invoke(IPC.GIT_STASH_DROP, { directory, ref }),
+  gitCherryPick: (directory: string, hash: string) => ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, { directory, hash }),
+  gitRevert: (directory: string, hash: string) => ipcRenderer.invoke(IPC.GIT_REVERT, { directory, hash }),
+  gitReset: (directory: string, hash: string, mode: 'soft' | 'mixed' | 'hard') => ipcRenderer.invoke(IPC.GIT_RESET, { directory, hash, mode }),
+  gitBlame: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_BLAME, { directory, path }),
+  gitConflicts: (directory: string) => ipcRenderer.invoke(IPC.GIT_CONFLICTS, { directory }),
+  gitConflictFile: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_CONFLICT_FILE, { directory, path }),
+  gitResolveConflict: (directory: string, path: string, content: string) => ipcRenderer.invoke(IPC.GIT_RESOLVE_CONFLICT, { directory, path, content }),
+  gitRebaseTodo: (directory: string, onto: string) => ipcRenderer.invoke(IPC.GIT_REBASE_TODO, { directory, onto }),
+  gitRebaseExec: (directory: string, onto: string, commits: Array<{ hash: string; action: string }>) => ipcRenderer.invoke(IPC.GIT_REBASE_EXEC, { directory, onto, commits }),
+  gitRebaseAbort: (directory: string) => ipcRenderer.invoke(IPC.GIT_REBASE_ABORT, { directory }),
+  gitRebaseContinue: (directory: string) => ipcRenderer.invoke(IPC.GIT_REBASE_CONTINUE, { directory }),
+  gitSubscribe: (directory) => ipcRenderer.invoke(IPC.GIT_SUBSCRIBE, { directory }),
+  gitUnsubscribe: (directory) => ipcRenderer.invoke(IPC.GIT_UNSUBSCRIBE, { directory }),
+  gitRefresh: (directory) => ipcRenderer.invoke(IPC.GIT_REFRESH, { directory }),
+  gitApplyPatch: (directory, patch, opts) => ipcRenderer.invoke(IPC.GIT_APPLY_PATCH, { directory, patch, reverse: opts?.reverse, cached: opts?.cached }),
+  gitTagCreate: (directory, name, ref, message) => ipcRenderer.invoke(IPC.GIT_TAG_CREATE, { directory, name, ref, message }),
+  gitShowFile: (directory, hash, path) => ipcRenderer.invoke(IPC.GIT_SHOW_FILE, { directory, hash, path }),
+  gitCommitSignature: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_SIGNATURE, { directory, hash }),
+  gitRecentRefs: (directory, limit) => ipcRenderer.invoke(IPC.GIT_RECENT_REFS, { directory, limit }),
+  onGitEvent: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, event: GitEvent) => callback(event)
+    ipcRenderer.on(IPC.GIT_EVENT, handler)
+    return () => ipcRenderer.removeListener(IPC.GIT_EVENT, handler)
+  },
 
   // ─── Git worktree operations ───
   gitWorktreeAdd: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, { repoPath, sourceBranch }),
   gitWorktreeRemove: (repoPath, worktreePath, branchName, force) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, { repoPath, worktreePath, branchName, force }),
   gitWorktreeList: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST, { repoPath }),
   gitWorktreeStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_STATUS, { worktreePath, sourceBranch }),
-  gitWorktreeMerge: (repoPath, worktreeBranch, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE, { repoPath, worktreeBranch, sourceBranch }),
+  gitWorktreeMerge: (repoPath, worktreeBranch, sourceBranch, noFf) => ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE, { repoPath, worktreeBranch, sourceBranch, noFf }),
   gitWorktreePush: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_PUSH, { worktreePath, sourceBranch }),
   gitWorktreeRebase: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REBASE, { worktreePath, sourceBranch }),
 
@@ -272,7 +347,7 @@ const api: IonAPI = {
 
   // ─── Engine operations ───
   engineStart: (key, config) => ipcRenderer.invoke(IPC.ENGINE_START, { key, config }),
-  enginePrompt: (key, text, model) => ipcRenderer.invoke(IPC.ENGINE_PROMPT, { key, text, model }),
+  enginePrompt: (key, text, model, appendSystemPrompt, imageAttachments) => ipcRenderer.invoke(IPC.ENGINE_PROMPT, { key, text, model, appendSystemPrompt, imageAttachments }),
   engineAbort: (key) => ipcRenderer.invoke(IPC.ENGINE_ABORT, { key }),
   engineAbortAgent: (key, agentName, subtree) =>
     ipcRenderer.invoke(IPC.ENGINE_ABORT_AGENT, { key, agentName, subtree }),
@@ -284,6 +359,18 @@ const api: IonAPI = {
     ipcRenderer.on(IPC.ENGINE_EVENT, handler)
     return () => ipcRenderer.removeListener(IPC.ENGINE_EVENT, handler)
   },
+
+  // ─── Model & provider management ───
+  listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
+  storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
+  refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
+
+  // ─── OAuth ───
+  startOAuth: (provider) => ipcRenderer.invoke(IPC.OAUTH_START, { provider }),
+  logoutOAuth: (provider) => ipcRenderer.invoke(IPC.OAUTH_LOGOUT, { provider }),
+  oauthStatus: (provider) => ipcRenderer.invoke(IPC.OAUTH_STATUS, { provider }),
+  oauthDeviceCode: (provider) => ipcRenderer.invoke(IPC.OAUTH_DEVICE_CODE, { provider }),
+  oauthDevicePoll: (deviceCode, interval, expiresIn) => ipcRenderer.invoke(IPC.OAUTH_DEVICE_POLL, { deviceCode, interval, expiresIn }),
 
   // ─── Remote control ───
   remoteGetState: () => ipcRenderer.invoke(IPC.REMOTE_GET_STATE),

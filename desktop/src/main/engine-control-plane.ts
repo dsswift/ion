@@ -170,7 +170,7 @@ export class EngineControlPlane extends EventEmitter {
 
     this._setStatus(tabId, 'running')
 
-    let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt)
+    let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, options.imageAttachments)
 
     if (!result.ok && result.error?.includes('not found')) {
       warn(`sendPrompt session lost, re-creating: tabId=${tabId}`)

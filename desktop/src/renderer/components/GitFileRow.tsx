@@ -1,10 +1,11 @@
 import React from 'react'
 import {
   CaretDown, CaretRight, Plus, Minus, ArrowCounterClockwise,
-  Folder, FolderOpen,
+  Folder, FolderOpen, Warning, ArrowRight,
 } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
+import { Tooltip } from './git/Tooltip'
 import type { GitChangedFile } from '../../shared/types'
 import { STATUS_COLORS, STATUS_LETTERS, type FileTreeNode } from './GitPanelTypes'
 
@@ -33,6 +34,8 @@ export function FileRow({
   const cmdHeld = useCmdHeld()
   const { onOpenFile } = useNavigableText()
   const fileName = file.path.split('/').pop() || file.path
+  const oldName = file.oldPath?.split('/').pop()
+  const isConflict = file.status === 'conflict'
 
   return (
     <div
@@ -52,53 +55,68 @@ export function FileRow({
         onClick(file)
       }}
     >
+      {isConflict ? (
+        <Warning size={11} weight="fill" color={STATUS_COLORS.conflict} style={{ width: 14, flexShrink: 0 }} />
+      ) : (
+        <span
+          className="text-[10px] font-mono flex-shrink-0"
+          style={{ color: STATUS_COLORS[file.status] || colors.textTertiary, width: 14, display: 'inline-block', textAlign: 'center' }}
+        >
+          {STATUS_LETTERS[file.status] || '?'}
+        </span>
+      )}
       <span
-        className="text-[10px] font-mono flex-shrink-0"
-        style={{ color: STATUS_COLORS[file.status] || colors.textTertiary, width: 14, display: 'inline-block', textAlign: 'center' }}
-      >
-        {STATUS_LETTERS[file.status] || '?'}
-      </span>
-      <span
-        className="text-[10px] truncate flex-1"
+        className="text-[10px] truncate flex-1 flex items-center gap-1"
         style={{
           color: cmdHeld ? colors.accent : colors.textSecondary,
           textDecoration: cmdHeld ? 'underline' : undefined,
           textUnderlineOffset: 2,
           marginLeft: 6,
         }}
-        title={file.path}
       >
-        {fileName}
+        {oldName && (
+          <>
+            <span style={{ color: colors.textMuted, textDecoration: 'line-through' }}>{oldName}</span>
+            <ArrowRight size={9} color={colors.textMuted} />
+          </>
+        )}
+        <span className="truncate">{fileName}</span>
+        {isConflict && file.conflictKind && (
+          <span className="text-[8px] font-mono" style={{ color: STATUS_COLORS.conflict, marginLeft: 2 }}>{file.conflictKind}</span>
+        )}
       </span>
       {/* Hover actions */}
       <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
         {file.staged ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); onUnstage(file.path) }}
-            className="px-1 py-1 rounded transition-colors"
-            style={{ color: colors.textTertiary }}
-            title="Unstage"
-          >
-            <Minus size={12} />
-          </button>
+          <Tooltip text="Unstage">
+            <button
+              onClick={(e) => { e.stopPropagation(); onUnstage(file.path) }}
+              className="px-1 py-1 rounded transition-colors"
+              style={{ color: colors.textTertiary }}
+            >
+              <Minus size={12} />
+            </button>
+          </Tooltip>
         ) : (
+          <Tooltip text="Stage">
+            <button
+              onClick={(e) => { e.stopPropagation(); onStage(file.path) }}
+              className="px-1 py-1 rounded transition-colors"
+              style={{ color: colors.textTertiary }}
+            >
+              <Plus size={12} />
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip text="Discard changes">
           <button
-            onClick={(e) => { e.stopPropagation(); onStage(file.path) }}
+            onClick={(e) => { e.stopPropagation(); onDiscard(file.path) }}
             className="px-1 py-1 rounded transition-colors"
             style={{ color: colors.textTertiary }}
-            title="Stage"
           >
-            <Plus size={12} />
+            <ArrowCounterClockwise size={12} />
           </button>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDiscard(file.path) }}
-          className="px-1 py-1 rounded transition-colors"
-          style={{ color: colors.textTertiary }}
-          title="Discard changes"
-        >
-          <ArrowCounterClockwise size={12} />
-        </button>
+        </Tooltip>
       </div>
     </div>
   )

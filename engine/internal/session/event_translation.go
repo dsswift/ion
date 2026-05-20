@@ -75,13 +75,21 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			}
 			s.cliToolMeta[e.ToolID] = toolMeta{name: e.ToolName, index: e.Index}
 			s.cliToolIndexID[e.Index] = e.ToolID
+			s.cliLastToolID = e.ToolID
 			m.mu.Unlock()
 
 		case *types.ToolCallUpdateEvent:
-			// Accumulate partial input for tool_call hook
+			// Accumulate partial input for tool_call hook.
+			// ToolCallUpdateEvent.ToolID is always "" from the normalizer because
+			// content_block_delta events don't carry a toolID. Fall back to the
+			// last-started tool so the input accumulates under the right key.
 			m.mu.Lock()
 			if s.cliToolInputs != nil {
-				s.cliToolInputs[e.ToolID] += e.PartialInput
+				key := e.ToolID
+				if key == "" {
+					key = s.cliLastToolID
+				}
+				s.cliToolInputs[key] += e.PartialInput
 			}
 			m.mu.Unlock()
 
@@ -254,13 +262,14 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		utils.Debug("Session", fmt.Sprintf("dispatching queued prompt: key=%s", key))
 		go func() {
 			var ov *PromptOverrides
-			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions {
+			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions || len(nextPrompt.attachments) > 0 {
 				ov = &PromptOverrides{
 					Model:        nextPrompt.model,
 					MaxTurns:     nextPrompt.maxTurns,
 					MaxBudgetUsd: nextPrompt.maxBudgetUsd,
 					Extensions:   nextPrompt.extensions,
 					NoExtensions: nextPrompt.noExtensions,
+					Attachments:  nextPrompt.attachments,
 				}
 			}
 			if err := m.SendPrompt(key, nextPrompt.text, ov); err != nil {
@@ -499,7 +508,15 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_stream_reset"}
 
 	case *types.CompactingEvent:
-		return types.EngineEvent{Type: "engine_compacting", CompactingActive: e.Active}
+		return types.EngineEvent{
+			Type:                     "engine_compacting",
+			CompactingActive:         e.Active,
+			CompactingSummary:        e.Summary,
+			CompactingMessagesBefore: e.MessagesBefore,
+			CompactingMessagesAfter:  e.MessagesAfter,
+			CompactingClearedBlocks:  e.ClearedBlocks,
+			CompactingStrategy:       e.Strategy,
+		}
 
 	case *types.ToolStalledEvent:
 		return types.EngineEvent{Type: "engine_tool_stalled", ToolID: e.ToolID, ToolName: e.ToolName, ToolElapsed: e.Elapsed}

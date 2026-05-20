@@ -18,6 +18,7 @@ export interface PersistedTab {
   bashResults?: Array<{ command: string; stdout: string; stderr: string }>
   pillColor?: string | null
   pillIcon?: string | null
+  modelOverride?: string | null
   forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
   groupId?: string | null

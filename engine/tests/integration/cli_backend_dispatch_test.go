@@ -252,37 +252,10 @@ func TestWireAgentToolServer_McpRoundTrip(t *testing.T) {
 		t.Errorf("expected 'prompt is required' error, got %q", callResp.Result.Content[0].Text)
 	}
 
-	// 3. tools/call with unknown agent name → spec resolution error
-	encoder.Encode(map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      3,
-		"method":  "tools/call",
-		"params": map[string]interface{}{
-			"name": "ion_agent",
-			"arguments": map[string]interface{}{
-				"prompt": "test task",
-				"name":   "nonexistent_agent",
-			},
-		},
-	})
-
-	var specResp struct {
-		Result struct {
-			Content []struct {
-				Text string `json:"text"`
-			} `json:"content"`
-			IsError bool `json:"isError"`
-		} `json:"result"`
-	}
-	if err := decoder.Decode(&specResp); err != nil {
-		t.Fatalf("decode tools/call response (unknown agent): %v", err)
-	}
-	if !specResp.Result.IsError {
-		t.Error("expected isError=true for unknown agent name")
-	}
-	if len(specResp.Result.Content) > 0 && !strings.Contains(specResp.Result.Content[0].Text, "not registered") {
-		t.Errorf("expected 'not registered' error, got %q", specResp.Result.Content[0].Text)
-	}
+	// 3. tools/call with unknown agent name now falls through as unnamed agent.
+	// We no longer test for a "not registered" error since the engine
+	// intentionally falls back to an unnamed agent when name resolution fails.
+	// Spawning a real child agent here would require a model, so we skip it.
 }
 
 // ─── newChildBackend factory: type-correctness ───

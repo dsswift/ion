@@ -449,7 +449,7 @@ func TestSaveLoadJSONL_PreservesMetadata(t *testing.T) {
 		t.Errorf("TotalOutputTokens = %d", loaded.TotalOutputTokens)
 	}
 	if loaded.LastInputTokens != 300 {
-		t.Errorf("LastInputTokens = %d", loaded.LastInputTokens)
+		t.Errorf("LastInputTokens = %d, want 300", loaded.LastInputTokens)
 	}
 	if loaded.TotalCost < 0.049 || loaded.TotalCost > 0.051 {
 		t.Errorf("TotalCost = %f", loaded.TotalCost)
@@ -620,5 +620,147 @@ func TestSaveLoadPreservesTreeStructure(t *testing.T) {
 	leaves := GetLeaves(loaded)
 	if len(leaves) != 2 {
 		t.Errorf("expected 2 leaves after load, got %d", len(leaves))
+	}
+}
+
+// --- Token cache persistence (round-trip tests) ---
+
+func TestLoadJSONL_PreservesTokenCache(t *testing.T) {
+	dir := t.TempDir()
+
+	conv := CreateConversation("tokens-jsonl", "sys", "claude-3")
+	AddUserMessage(conv, "hello")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, types.LlmUsage{InputTokens: 500000, OutputTokens: 100})
+	savedTokens := conv.LastInputTokens
+	savedMsgCount := conv.LastInputTokensMsgCount
+	if savedTokens == 0 || savedMsgCount == 0 {
+		t.Fatal("setup: LastInputTokens and LastInputTokensMsgCount should be non-zero")
+	}
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load("tokens-jsonl", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Token cache preserved across save/load — the API-reported value is
+	// exact for this conversation state and is trusted on reload.
+	if loaded.LastInputTokens != savedTokens {
+		t.Errorf("LastInputTokens = %d, want %d", loaded.LastInputTokens, savedTokens)
+	}
+	if loaded.LastInputTokensMsgCount != savedMsgCount {
+		t.Errorf("LastInputTokensMsgCount = %d, want %d", loaded.LastInputTokensMsgCount, savedMsgCount)
+	}
+	if loaded.TotalInputTokens != conv.TotalInputTokens {
+		t.Errorf("TotalInputTokens = %d, want %d", loaded.TotalInputTokens, conv.TotalInputTokens)
+	}
+}
+
+func TestLoadJSON_PreservesLastInputTokens(t *testing.T) {
+	dir := t.TempDir()
+
+	v1 := map[string]any{
+		"id":               "tokens-json",
+		"system":           "sys",
+		"model":            "claude-2",
+		"messages":         []any{map[string]any{"role": "user", "content": "hello"}},
+		"lastInputTokens":  float64(300000),
+		"totalInputTokens": float64(300000),
+		"totalCost":        0.05,
+		"createdAt":        float64(1700000000000),
+		"version":          float64(1),
+	}
+
+	b, _ := json.MarshalIndent(v1, "", "  ")
+	os.WriteFile(filepath.Join(dir, "tokens-json.json"), b, 0o644)
+
+	loaded, err := Load("tokens-json", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// LastInputTokens survives JSON migration
+	if loaded.LastInputTokens != 300000 {
+		t.Errorf("LastInputTokens = %d, want 300000", loaded.LastInputTokens)
+	}
+	if loaded.TotalInputTokens != 300000 {
+		t.Errorf("TotalInputTokens = %d, want 300000", loaded.TotalInputTokens)
+	}
+}
+
+func TestLoadJSONL_TokenCache_WithBranching(t *testing.T) {
+	dir := t.TempDir()
+
+	conv := CreateConversation("tokens-branch", "", "claude-3")
+	AddUserMessage(conv, "root")
+	rootID := conv.Entries[0].ID
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "resp1"}}, types.LlmUsage{InputTokens: 400000, OutputTokens: 50})
+
+	Branch(conv, rootID)
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "alt-resp1"}}, types.LlmUsage{InputTokens: 400000, OutputTokens: 50})
+	savedTokens := conv.LastInputTokens
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load("tokens-branch", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Token cache preserved, branch structure intact
+	if loaded.LastInputTokens != savedTokens {
+		t.Errorf("LastInputTokens = %d, want %d", loaded.LastInputTokens, savedTokens)
+	}
+	if len(loaded.Entries) != 3 {
+		t.Errorf("expected 3 entries, got %d", len(loaded.Entries))
+	}
+	bp := GetBranchPoints(loaded)
+	if len(bp) != 1 {
+		t.Errorf("expected 1 branch point, got %d", len(bp))
+	}
+	leaves := GetLeaves(loaded)
+	if len(leaves) != 2 {
+		t.Errorf("expected 2 leaves, got %d", len(leaves))
+	}
+}
+
+func TestLoadJSONL_ContextUsageAfterLoad_UsesPersistedTokens(t *testing.T) {
+	dir := t.TempDir()
+
+	conv := CreateConversation("tokens-e2e", "sys", "claude-3")
+	for i := 0; i < 10; i++ {
+		AddUserMessage(conv, fmt.Sprintf("question %d", i))
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("answer %d with some extra text", i)}}, types.LlmUsage{InputTokens: 150000, OutputTokens: 100})
+	}
+	savedTokens := conv.LastInputTokens
+	if savedTokens != 150000 {
+		t.Fatalf("setup: LastInputTokens = %d, want 150000", savedTokens)
+	}
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load("tokens-e2e", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GetContextUsage should use the persisted API-reported tokens, not
+	// the heuristic estimator. Against a 1M window, 150K = 15%.
+	info := GetContextUsage(loaded, 1000000)
+	if info.Estimated {
+		t.Error("expected estimated=false (persisted token count should be used)")
+	}
+	if info.Tokens != savedTokens {
+		t.Errorf("tokens = %d, want %d", info.Tokens, savedTokens)
+	}
+	if info.Percent != 15 {
+		t.Errorf("percent = %d, want 15", info.Percent)
 	}
 }

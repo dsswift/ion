@@ -10,6 +10,135 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.27.0](https://github.com/dsswift/ion/compare/ios-v1.26.1...ios-v1.27.0) (2026-05-20)
+
+### Features
+
+* **ios:** add collapsible tab groups with persistence ([a184b27](https://github.com/dsswift/ion/commit/a184b276a73e714fae2a151e7eea114cbceb2336))
+* **ios:** add conversation attachments sheet ([f048763](https://github.com/dsswift/ion/commit/f048763fc1dc887d4171d8bd27f8816d5e543e4a))
+* **ios:** add file loading to ios explorer ([a650629](https://github.com/dsswift/ion/commit/a6506291d67475277125b29a0f11434b1b899222))
+* **ios:** add attachment command and events ([76cc3da](https://github.com/dsswift/ion/commit/76cc3dab94a293724fc19cf500b7da7223dd3de2))
+
+## [1.26.1](https://github.com/dsswift/ion/compare/ios-v1.26.0...ios-v1.26.1) (2026-05-19)
+
+### Bug Fixes
+
+* **engine:** unify context window and persist token cache ([5024b80](https://github.com/dsswift/ion/commit/5024b805f4b25dff5ea9dc9f6b5cb470d4a3a61c))
+
+## [1.26.0](https://github.com/dsswift/ion/compare/ios-v1.25.0...ios-v1.26.0) (2026-05-19)
+
+### Features
+
+* **ios:** add tab group reordering support ([7ea1733](https://github.com/dsswift/ion/commit/7ea1733569d5a841308814d6feea3cd4dbadd62c))
+
+### Bug Fixes
+
+* **ios:** filter stale device pairings from install detection ([999f58b](https://github.com/dsswift/ion/commit/999f58bd36140a2a6994aa5cb67402701197ac44))
+
+## [1.25.0](https://github.com/dsswift/ion/compare/ios-v1.24.0...ios-v1.25.0) (2026-05-19)
+
+### Features
+
+* **ios:** add model list support to remote protocol ([91f2eb6](https://github.com/dsswift/ion/commit/91f2eb6442bfa0d8ea85dfd2f72dd0c9f6d14904))
+
+### Bug Fixes
+
+* **ios:** correct diagnostic log event name ([33938f5](https://github.com/dsswift/ion/commit/33938f5c04db9473b428f7d80f992a336bb38e67))
+
+## [1.24.0](https://github.com/dsswift/ion/compare/ios-v1.23.0...ios-v1.24.0) (2026-05-17)
+
+### Features
+
+* **ios:** add terminal snapshot buffering ([66db599](https://github.com/dsswift/ion/commit/66db59958b6695e389e9fc7094f8e49648150332))
+* **ios:** add git operations with graph visualization and commit details ([75c9fb7](https://github.com/dsswift/ion/commit/75c9fb7289c33b23ca688ed7e098e2fecaacefc0))
+* **ios:** add crash signal and exception handler to diagnostic logs ([d674e4f](https://github.com/dsswift/ion/commit/d674e4ffeb045af406dbbc832227f19799bab554))
+
+### Bug Fixes
+
+* **ios:** buffer snapshot updates before viewDidLoad to prevent crash ([8e2aa59](https://github.com/dsswift/ion/commit/8e2aa59a25cc441cac77138ab138b880c7ec2ffb))
+* **ios:** correct tab selection for conversation ([5699cf1](https://github.com/dsswift/ion/commit/5699cf1da2fa0e682b363bb2181c5c906027af3b))
+* **ios:** deduplicate messages to prevent ui crashes ([258164c](https://github.com/dsswift/ion/commit/258164c0efa490e4b04152ee8ba9cd75cffd1a6c))
+
+## [1.23.0](https://github.com/dsswift/ion/compare/ios-v1.22.0...ios-v1.23.0) (2026-05-16)
+
+### Features
+
+* **ios:** move plan/auto toggle to status bar ([8bc21c5](https://github.com/dsswift/ion/commit/8bc21c5be0d653aef972acb588b45cbeb48c775f))
+
+### Bug Fixes
+
+* **ios:** streamline conversation toolbar layout ([0c2732f](https://github.com/dsswift/ion/commit/0c2732f0aba353f1fabbcbff7bb051101729d14a))
+* **ios:** stamp version from VERSION file at build time ([ab09672](https://github.com/dsswift/ion/commit/ab0967204b7b518ef06f3da1697f917637236abc))
+* **ios:** use copy-on-write for message mutations ([8e7c2f4](https://github.com/dsswift/ion/commit/8e7c2f4740f7f5d9e857d850ea2ba2f182f84bb3))
+
+## [1.22.0](https://github.com/dsswift/ion/compare/ios-v1.21.0...ios-v1.22.0) (2026-05-15)
+
+### Features
+
+* **ios:** add client message id to prompt commands ([0a452c9](https://github.com/dsswift/ion/commit/0a452c93f6cf247d42564555c02bceb7b4d03e1d))
+* **ios:** add persistent rolling logs and diagnostic instrumentation ([0516ecb](https://github.com/dsswift/ion/commit/0516ecb3897a669c25892f7a37486b44ee48e164))
+
+## [1.21.0](https://github.com/dsswift/ion/compare/ios-v1.20.0...ios-v1.21.0) (2026-05-15)
+
+### Features
+
+* **ios:** add toast notification system ([77d22bf](https://github.com/dsswift/ion/commit/77d22bf8417d740f440685ab184359b5a7483200))
+
+## [1.20.0](https://github.com/dsswift/ion/compare/ios-v1.19.0...ios-v1.20.0) (2026-05-15)
+
+### Features
+
+* **ios:** add image attachments to messages ([109795c](https://github.com/dsswift/ion/commit/109795c54a055d92832415528fa77bef8dce1a80))
+
+## [1.19.0](https://github.com/dsswift/ion/compare/ios-v1.18.1...ios-v1.19.0) (2026-05-15)
+
+### Features
+
+* **ios:** add correlation id to file upload flow ([6e51d30](https://github.com/dsswift/ion/commit/6e51d30d110f628f96be23198abe0cfbb0a35974))
+* **ios:** add lastActivityAt tracking to tab state ([f58b474](https://github.com/dsswift/ion/commit/f58b474739f37d56676ab94da3158cf9b3d6703e))
+* **ios:** add voice mode with TTS playback and controls ([6f05ca2](https://github.com/dsswift/ion/commit/6f05ca289bed3daf037bc817b77a2970f64bb791))
+* **ios:** reposition permission card above status bar ([99a9a74](https://github.com/dsswift/ion/commit/99a9a74fc217338fe400b1d33984ac4723b217d0))
+* **ios:** add collapsible plan approval card ([808c022](https://github.com/dsswift/ion/commit/808c02226fb6bd6dd6a0ca9f80c05e64a89a347e))
+
+## [1.18.1](https://github.com/dsswift/ion/compare/ios-v1.18.0...ios-v1.18.1) (2026-05-14)
+
+### Bug Fixes
+
+* **ios:** improve voice TTS trigger and simplify settings UI ([8d4813c](https://github.com/dsswift/ion/commit/8d4813c8ac719991f1e33593068e3d0dd2637cb2))
+
+## [1.18.0](https://github.com/dsswift/ion/compare/ios-v1.17.0...ios-v1.18.0) (2026-05-14)
+
+### Features
+
+* **ios:** add voice readback with ElevenLabs TTS on task complete ([baeb06e](https://github.com/dsswift/ion/commit/baeb06e6be66501c4f754313abb659060faa93dd))
+
+## [1.17.0](https://github.com/dsswift/ion/compare/ios-v1.16.0...ios-v1.17.0) (2026-05-14)
+
+### Features
+
+* **ios:** add KeychainHelper for secure API key storage ([d9be704](https://github.com/dsswift/ion/commit/d9be704520f873db22d5bf4a0d2a0dc8b73833ec))
+* **ios:** add VoiceService for ElevenLabs text-to-speech ([a3a5c7f](https://github.com/dsswift/ion/commit/a3a5c7f3dce59b8d4b09d4ade4595c06484b94f3))
+* **ios:** add voice section to Settings for ElevenLabs TTS ([ac1f563](https://github.com/dsswift/ion/commit/ac1f5632b93b1372b4a1a7119e51f3d0045f598b))
+* **ios:** add VoiceService and engineTurnHasText to SessionViewModel ([8c661f9](https://github.com/dsswift/ion/commit/8c661f94c243967aeb4388d53c828d8e31b43df5))
+* **ios:** speak assistant responses via VoiceService in handleEngineMessageEnd ([6b97953](https://github.com/dsswift/ion/commit/6b979531da4fa4d92886cb753d88572b380cb6e8))
+
+## [1.16.0](https://github.com/dsswift/ion/compare/ios-v1.15.1...ios-v1.16.0) (2026-05-14)
+
+### Features
+
+* **ios:** add agent status ui and dialog sheet ([da7bd9c](https://github.com/dsswift/ion/commit/da7bd9cdb4e413dc51720643fc6f2d213e47ebb3))
+* **ios:** enhance agent bar with live timer and expansion ([7b00e53](https://github.com/dsswift/ion/commit/7b00e53d4833131939b09932ba1ae656a1df44bd))
+* **ios:** add hours to duration display format ([c83599f](https://github.com/dsswift/ion/commit/c83599f059170fc17a159b4dffe075bb9bf56650))
+* **ios:** add attachment support for conversations and engine tabs ([182e1aa](https://github.com/dsswift/ion/commit/182e1aafb670f1b4d3e11b96ff82c825557124bc))
+* **ios:** add compaction row and blue activity indicator ([3c97833](https://github.com/dsswift/ion/commit/3c978330eb7567d3ea3b3b9e93e1449ebabd0aba))
+* **ios:** dismiss keyboard after sending message ([75821c9](https://github.com/dsswift/ion/commit/75821c9a0d9835605bb59c8b97712b86b64b23a2))
+* **ios:** add implement button to plan full screen ([7928f26](https://github.com/dsswift/ion/commit/7928f26e9820d677c68dcd4913a8ee476cc7be02))
+* **ios:** add native iPad support with sidebar navigation ([0260248](https://github.com/dsswift/ion/commit/026024888b1ffacbbe8c47d1ccc7342523d9f015))
+* **ios:** add multi-device install with interactive selec... ([5755dbe](https://github.com/dsswift/ion/commit/5755dbeda0b60e42f92d7ba014d89551af532284))
+* **ios:** add model selection commands and ui ([d05bbda](https://github.com/dsswift/ion/commit/d05bbda2c437e49d2765fc8522befc1ab9f539e9))
+* **ios:** add optimistic user message rendering ([0420f85](https://github.com/dsswift/ion/commit/0420f85915bd82364f58e016f3ac6726b4275575))
+* **ios:** replace LazyVStack scroll with UICollectionView ([beb41a4](https://github.com/dsswift/ion/commit/beb41a44d65adca4e51638e49c9c948972abf275))
+
 ## [1.15.1](https://github.com/dsswift/ion/compare/ios-v1.15.0...ios-v1.15.1) (2026-05-12)
 
 ### Bug Fixes

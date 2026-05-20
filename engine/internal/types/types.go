@@ -341,7 +341,12 @@ type EngineEvent struct {
 	PlanModeFilePath string `json:"planFilePath,omitempty"`
 
 	// engine_compacting
-	CompactingActive bool `json:"active,omitempty"`
+	CompactingActive         bool   `json:"active,omitempty"`
+	CompactingSummary        string `json:"summary,omitempty"`
+	CompactingMessagesBefore int    `json:"messagesBefore,omitempty"`
+	CompactingMessagesAfter  int    `json:"messagesAfter,omitempty"`
+	CompactingClearedBlocks  int    `json:"clearedBlocks,omitempty"`
+	CompactingStrategy       string `json:"strategy,omitempty"`
 
 	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent
 	ExtensionName string `json:"extensionName,omitempty"`
@@ -389,7 +394,7 @@ type RunOptions struct {
 	MaxTokens          int             `json:"maxTokens,omitempty"`
 	Thinking           *ThinkingConfig `json:"thinking,omitempty"`
 	MaxRetries         int             `json:"maxRetries,omitempty"`
-	FallbackModel      string          `json:"fallbackModel,omitempty"`
+	FallbackChain      []string        `json:"fallbackChain,omitempty"`
 	Persistent         bool            `json:"persistent,omitempty"`
 	PlanMode           bool            `json:"planMode,omitempty"`
 	PlanModeTools      []string        `json:"planModeTools,omitempty"`
@@ -403,6 +408,11 @@ type RunOptions struct {
 	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
 	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
 	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config
+
+	// Attachments are pre-encoded images supplied by the client alongside the
+	// text prompt. When non-empty the backend appends one image content block
+	// per attachment to the user message, in addition to the text block.
+	Attachments []ImageAttachment `json:"attachments,omitempty"`
 }
 
 // StoredSessionInfo is metadata for a saved conversation on disk.

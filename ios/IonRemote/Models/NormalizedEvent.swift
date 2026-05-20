@@ -7,11 +7,11 @@ struct RemoteTabGroup: Codable, Identifiable, Sendable {
     let id: String
     let label: String
     let isDefault: Bool
-    let order: Int
+    var order: Int
 }
 
 enum RemoteEvent: Codable, Sendable {
-    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?)
+    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?)
     case tabCreated(tab: RemoteTabState)
     case tabClosed(tabId: String)
     case tabStatus(tabId: String, status: TabStatus)
@@ -69,12 +69,24 @@ enum RemoteEvent: Codable, Sendable {
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
     case gitDiffResponse(response: GitDiffResponse)
+    case gitCommitResult(GitMutationResult)
+    case gitStageResult(GitMutationResult)
+    case gitUnstageResult(GitMutationResult)
+    case gitCommitFilesResponse(GitCommitFilesResponse)
+    case gitCommitFileDiffResponse(GitCommitFileDiffResponse)
     // File explorer events
     case fsDirListing(directory: String, response: FsDirListingResponse)
     case fsFileContent(filePath: String, response: FsFileContentResponse)
+    case fsImageContent(filePath: String, dataUrl: String?, error: String?)
     case fsWriteResult(filePath: String, response: FsWriteResultResponse)
     // Command discovery events
     case discoverCommandsResponse(directory: String, commands: [DiscoveredSlashCommand])
+    // Upload attachment result
+    case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?)
+    // Tab attachments response
+    case tabAttachments(tabId: String, attachments: [TabAttachmentEntry])
+    // Diagnostic log request from desktop
+    case requestDiagnosticLogs
 
     // MARK: - Codable keys
 
@@ -127,10 +139,19 @@ enum RemoteEvent: Codable, Sendable {
         case gitChangesResponse = "git_changes_response"
         case gitGraphResponse = "git_graph_response"
         case gitDiffResponse = "git_diff_response"
+        case gitCommitResult = "git_commit_result"
+        case gitStageResult = "git_stage_result"
+        case gitUnstageResult = "git_unstage_result"
+        case gitCommitFilesResponse = "git_commit_files_response"
+        case gitCommitFileDiffResponse = "git_commit_file_diff_response"
         case fsDirListing = "fs_dir_listing"
         case fsFileContent = "fs_file_content"
+        case fsImageContent = "fs_image_content"
         case fsWriteResult = "fs_write_result"
         case discoverCommandsResponse = "discover_commands_response"
+        case uploadAttachmentResult = "upload_attachment_result"
+        case tabAttachments = "tab_attachments"
+        case requestDiagnosticLogs = "request_diagnostic_logs"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -145,12 +166,16 @@ enum RemoteEvent: Codable, Sendable {
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
         case signal, stderrTail, label, profiles, elapsed, usage, model
-        case tabGroupMode, tabGroups
-        case directory, files, branch, isGitRepo, ahead, behind
-        case commits, totalCount, diff, fileName
+        case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
+        case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
+        case commits, totalCount, diff, fileName, graphLayout, hash, stats
         case entries, filePath, ok, error
         case commands
         case ts, buffered
+        case id, name, path
+        case correlationId
+        case dataUrl
+        case attachments
     }
 
     // MARK: - Decoder

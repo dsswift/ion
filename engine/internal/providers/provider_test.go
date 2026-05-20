@@ -452,7 +452,7 @@ func TestRetryModelFallback(t *testing.T) {
 		MaxRetries:                  10,
 		BaseDelayMs:                 1,
 		MaxDelayMs:                  1,
-		FallbackModel:               "fallback-model",
+		FallbackChain:               []string{"fallback-model"},
 		MaxOverloadedBeforeFallback: 2,
 	}
 
@@ -490,7 +490,7 @@ data: {"type":"message_stop"}
 
 `
 
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -526,7 +526,7 @@ func TestParseSSEStreamOpenAIDone(t *testing.T) {
 data: [DONE]
 
 `
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -541,7 +541,7 @@ data: [DONE]
 func TestParseSSEStreamNoTrailingNewline(t *testing.T) {
 	input := "data: {\"type\":\"test\"}"
 
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -1035,7 +1035,7 @@ func TestProviderErrorDefaultRetryableFalse(t *testing.T) {
 
 func TestParseSSEStreamMultiLineData(t *testing.T) {
 	input := "data: line1\ndata: line2\n\n"
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -1053,7 +1053,7 @@ func TestParseSSEStreamMultiLineData(t *testing.T) {
 func TestParseSSEStreamEmptyEvents(t *testing.T) {
 	// Two empty lines in a row should not produce events
 	input := "\n\nevent: test\ndata: {\"ok\":true}\n\n"
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -1070,7 +1070,7 @@ func TestParseSSEStreamEmptyEvents(t *testing.T) {
 
 func TestParseSSEStreamIgnoresComments(t *testing.T) {
 	input := ": this is a comment\ndata: {\"type\":\"real\"}\n\n"
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -1087,7 +1087,7 @@ func TestParseSSEStreamIgnoresComments(t *testing.T) {
 
 func TestParseSSEStreamEmptyDataField(t *testing.T) {
 	input := "data:\n\n"
-	events := ParseSSEStream(strings.NewReader(input))
+	events, _ := ParseSSEStream(strings.NewReader(input))
 
 	var collected []SSEEvent
 	for ev := range events {
@@ -1475,3 +1475,4 @@ func TestFirstNonEmpty(t *testing.T) {
 		}
 	}
 }
+

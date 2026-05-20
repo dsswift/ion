@@ -2,8 +2,10 @@ package providers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // CompatibleProviderOptions configures an OpenAI-compatible provider.
@@ -17,7 +19,9 @@ type CompatibleProviderOptions struct {
 // endpoint: Groq, Cerebras, Mistral, OpenRouter, Together, Fireworks, XAI,
 // DeepSeek, Ollama, etc.
 func NewOpenAICompatibleProvider(opts CompatibleProviderOptions) LlmProvider {
+	utils.Log("CompatProvider", fmt.Sprintf("NewOpenAICompatibleProvider: id=%s baseURL=%s", opts.ID, opts.BaseURL))
 	p := NewOpenAIProvider(&ProviderOptions{
+		ID:      opts.ID,
 		APIKey:  opts.APIKey,
 		BaseURL: opts.BaseURL,
 	})

@@ -26,6 +26,7 @@ type pendingPrompt struct {
 	maxBudgetUsd float64
 	extensions   []string
 	noExtensions bool
+	attachments  []types.ImageAttachment
 }
 
 // engineSession holds the state for a single session managed by the Manager.
@@ -62,6 +63,10 @@ type engineSession struct {
 	lastModel         string
 	lastTotalCost     float64
 
+	// Agent spawner counter – monotonically increasing across runs so
+	// agent names are globally unique within the session.
+	agentCounter int
+
 	// CLI backend turn tracking (populated by handleNormalizedEvent)
 	cliTurnNumber  int  // current turn number for CLI runs
 	cliTurnActive  bool // true between turn_start and turn_end
@@ -79,6 +84,10 @@ type engineSession struct {
 	cliToolInputs  map[string]string
 	cliToolMeta    map[string]toolMeta
 	cliToolIndexID map[int]string
+	// cliLastToolID is the ToolID from the most-recently-started tool call.
+	// ToolCallUpdateEvent carries ToolID: "" (content_block_delta has no toolID),
+	// so accumulation falls back to this field to key under the correct toolID.
+	cliLastToolID string
 }
 
 

@@ -25,7 +25,7 @@ const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.js
 /** Pill list of message attachments — files open in editor, plans open viewer. */
 export function MessageAttachments({ attachments }: { attachments: Attachment[] }) {
   const colors = useColors()
-  const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
+  const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
   const { openFileInEditor } = useSessionStore.getState()
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const workingDir = useSessionStore((s) => {
@@ -37,7 +37,7 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
     if (a.type === 'plan') {
       const result = await window.ion.readPlan(a.path)
       if (result.content && result.fileName) {
-        setPlanData({ content: result.content, fileName: result.fileName })
+        setPlanData({ content: result.content, fileName: result.fileName, filePath: a.path })
       }
       return
     }
@@ -87,6 +87,7 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
         <PlanViewer
           content={planData.content}
           fileName={planData.fileName}
+          filePath={planData.filePath}
           onClose={() => setPlanData(null)}
         />
       )}

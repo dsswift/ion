@@ -38,6 +38,10 @@ type SessionAccessor interface {
 	PermissionCheck(toolName string, input map[string]interface{}) (decision string, reason string)
 	McpConnections() []*mcp.Connection
 
+	// SearchHistory searches the active conversation's history for content
+	// that may have been compacted. Returns nil when no conversation is active.
+	SearchHistory(query string, maxResults int) []extension.HistoryMatch
+
 	// TranslateEvent converts a NormalizedEvent to an EngineEvent. The
 	// implementation lives in the session package (translateToEngineEvent)
 	// so test coverage is unchanged.
@@ -100,6 +104,10 @@ func NewExtContext(sa SessionAccessor) *extension.Context {
 		},
 		SendPrompt: func(text string, model string) error {
 			return sa.SendPrompt(text, model)
+		},
+		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {
+			matches := sa.SearchHistory(query, maxResults)
+			return matches, nil
 		},
 	}
 

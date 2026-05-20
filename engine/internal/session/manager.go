@@ -143,6 +143,28 @@ func (m *Manager) SendCommand(key, command, args string) {
 	}
 
 	switch command {
+	case "clear":
+		if s.conversationID != "" {
+			conv, err := conversation.Load(s.conversationID, "")
+			if err == nil {
+				conv.Messages = nil
+				conv.LastInputTokens = 0
+				conv.LastInputTokensMsgCount = 0
+				_ = conversation.Save(conv, "")
+				s.lastContextPct = 0
+				utils.Log("Session", fmt.Sprintf("cleared conversation for session %s", key))
+				m.emit(key, types.EngineEvent{
+					Type: "engine_status",
+					Fields: &types.StatusFields{
+						State:          m.sessionState(s),
+						ContextPercent: 0,
+						ContextWindow:  s.lastContextWindow,
+						Model:          s.lastModel,
+						TotalCostUsd:   s.lastTotalCost,
+					},
+				})
+			}
+		}
 	case "compact":
 		if s.conversationID != "" {
 			conv, err := conversation.Load(s.conversationID, "")
@@ -271,5 +293,43 @@ func (m *Manager) IsRunning(key string) bool {
 	defer m.mu.RUnlock()
 	s, ok := m.sessions[key]
 	return ok && s.requestID != ""
+}
+
+// sessionState returns "running" or "idle" for the given session.
+func (m *Manager) sessionState(s *engineSession) string {
+	if s.requestID != "" {
+		return "running"
+	}
+	return "idle"
+}
+
+// ReconcileState re-emits the current agent states and status for the given
+// session so that a freshly-connected (or reconnected) client can catch up
+// without waiting for the next organic state change.
+func (m *Manager) ReconcileState(key string) {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	// Re-emit agent states
+	snapshot := s.agents.MergedSnapshot()
+	if len(snapshot) > 0 {
+		m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	}
+
+	// Re-emit status
+	m.emit(key, types.EngineEvent{
+		Type: "engine_status",
+		Fields: &types.StatusFields{
+			State:          m.sessionState(s),
+			ContextPercent: s.lastContextPct,
+			ContextWindow:  s.lastContextWindow,
+			Model:          s.lastModel,
+			TotalCostUsd:   s.lastTotalCost,
+		},
+	})
 }
 

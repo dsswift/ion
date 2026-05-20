@@ -8,6 +8,7 @@ export type GroupedItem =
   | { kind: 'system'; message: Message }
   | { kind: 'harness'; message: Message }
   | { kind: 'tool-group'; messages: Message[] }
+  | { kind: 'compaction'; message: Message }
 
 // ─── Hidden system messages ───
 
@@ -48,6 +49,8 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
         result.push({ kind: 'assistant', message: msg })
       } else if (msg.role === 'harness') {
         result.push({ kind: 'harness', message: msg })
+      } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
+        result.push({ kind: 'compaction', message: msg })
       } else {
         result.push({ kind: 'system', message: msg })
       }
