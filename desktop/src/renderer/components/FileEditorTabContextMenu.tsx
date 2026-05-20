@@ -11,6 +11,7 @@ interface TabContextMenuProps {
   onCloseAll: () => void
   onCloseToRight: () => void
   onCopyPath: () => void
+  onCopyRelativePath: () => void
   onRevealInFinder: () => void
   onOpenInVSCode: () => void
 }
@@ -18,7 +19,7 @@ interface TabContextMenuProps {
 export function FileEditorTabContextMenu({
   x, y, filePath, onClose,
   onCloseTab, onCloseOthers, onCloseAll, onCloseToRight,
-  onCopyPath, onRevealInFinder, onOpenInVSCode,
+  onCopyPath, onCopyRelativePath, onRevealInFinder, onOpenInVSCode,
 }: TabContextMenuProps) {
   const colors = useColors()
   const menuRef = useRef<HTMLDivElement>(null)
@@ -49,6 +50,7 @@ export function FileEditorTabContextMenu({
     { label: 'Close to the Right', action: () => exec(onCloseToRight) },
     'separator',
     { label: 'Copy Path', action: () => exec(onCopyPath), disabled: !filePath },
+    { label: 'Copy Relative Path', action: () => exec(onCopyRelativePath), disabled: !filePath },
     { label: 'Reveal in Finder', action: () => exec(onRevealInFinder), disabled: !filePath },
     { label: 'Open in VS Code', action: () => exec(onOpenInVSCode), disabled: !filePath },
   ]

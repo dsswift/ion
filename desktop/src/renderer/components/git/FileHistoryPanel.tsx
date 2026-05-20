@@ -63,6 +63,8 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
       onClose={onClose}
       defaultWidth={780}
       defaultHeight={520}
+      filePath={path}
+      workingDir={directory}
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div className="flex items-center gap-2 px-2 py-1 text-[10px]" style={{ color: colors.textTertiary, borderBottom: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary }}>

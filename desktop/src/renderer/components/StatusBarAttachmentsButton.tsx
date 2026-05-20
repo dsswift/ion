@@ -107,7 +107,7 @@ export function AttachmentsButton() {
 
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
-  const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
+  const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
   const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
 
   const { messages, planFilePath, activeTabId, workingDir } = useSessionStore(
@@ -181,7 +181,7 @@ export function AttachmentsButton() {
     setOpen(false)
     const result = await window.ion.readPlan(path)
     if (result.content && result.fileName) {
-      setPlanData({ content: result.content, fileName: result.fileName })
+      setPlanData({ content: result.content, fileName: result.fileName, filePath: path })
     }
   }, [])
 
@@ -384,6 +384,7 @@ export function AttachmentsButton() {
         <PlanViewer
           content={planData.content}
           fileName={planData.fileName}
+          filePath={planData.filePath}
           onClose={() => setPlanData(null)}
         />
       )}

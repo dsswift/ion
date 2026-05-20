@@ -422,7 +422,7 @@ export function GitChangesSection({
 
       {/* Diff popup */}
       {diffFile && diffData && (
-        <FloatingPanel title={diffData.fileName} onClose={() => { setDiffFile(null); setDiffData(null) }}>
+        <FloatingPanel title={diffData.fileName} onClose={() => { setDiffFile(null); setDiffData(null) }} filePath={diffFile.path} workingDir={directory}>
           <DiffPane
             diff={diffData.diff}
             fileName={diffData.fileName}

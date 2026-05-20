@@ -163,6 +163,14 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
           onCopyPath={() => {
             if (tabCtxMenu.file.filePath) navigator.clipboard.writeText(tabCtxMenu.file.filePath)
           }}
+          onCopyRelativePath={() => {
+            if (tabCtxMenu.file.filePath) {
+              const rel = tabCtxMenu.file.filePath.startsWith(dir + '/')
+                ? tabCtxMenu.file.filePath.slice(dir.length + 1)
+                : tabCtxMenu.file.filePath
+              navigator.clipboard.writeText(rel)
+            }
+          }}
           onRevealInFinder={() => {
             if (tabCtxMenu.file.filePath) window.ion.fsRevealInFinder(tabCtxMenu.file.filePath)
           }}

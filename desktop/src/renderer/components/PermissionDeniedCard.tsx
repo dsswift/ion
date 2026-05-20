@@ -34,7 +34,7 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
   const colors = useColors()
   const showClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
-  const [planData, setPlanData] = useState<{ content: string; fileName: string } | null>(null)
+  const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
 
   // Extract planFilePath: tab state (from engine event), denial toolInput, messages
   const planFilePath = useMemo(() => {
@@ -71,7 +71,7 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
     if (!planFilePath) return
     const result = await window.ion.readPlan(planFilePath)
     if (result.content && result.fileName) {
-      setPlanData({ content: result.content, fileName: result.fileName })
+      setPlanData({ content: result.content, fileName: result.fileName, filePath: planFilePath })
     }
   }
 

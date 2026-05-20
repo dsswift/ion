@@ -44,6 +44,7 @@ export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
   const linkRef = useRef<HTMLAnchorElement>(null)
   const imageGeometry = useSessionStore((s) => s.planGeometry)
   const setImageGeometry = useSessionStore((s) => s.setPlanGeometry)
+  const workingDir = useSessionStore((s) => { const tab = s.tabs.find(t => t.id === s.activeTabId); return tab?.workingDirectory || '' })
   const handleGeometryChange = useCallback(
     (geo: { x: number; y: number; w: number; h: number }) => setImageGeometry(geo),
     [setImageGeometry],
@@ -73,6 +74,8 @@ export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
       initialPos={{ x: imageGeometry.x, y: imageGeometry.y }}
       initialSize={{ w: imageGeometry.w, h: imageGeometry.h }}
       onGeometryChange={handleGeometryChange}
+      filePath={filePath}
+      workingDir={workingDir}
     >
       {/* Hidden download anchor */}
       <a ref={linkRef} style={{ display: 'none' }} />
