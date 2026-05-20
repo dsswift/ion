@@ -13,6 +13,8 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.22.2](https://github.com/dsswift/ion/compare/engine-v1.22.1...engine-v1.22.2) (2026-05-20)
+
 ## [1.22.1](https://github.com/dsswift/ion/compare/engine-v1.22.0...engine-v1.22.1) (2026-05-19)
 
 ### Bug Fixes
