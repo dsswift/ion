@@ -22,7 +22,7 @@ jobs:
         id: check-activity
         run: |
           set -euo pipefail
-          COMMIT_COUNT=$(git log --since="24 hours ago" --oneline origin/main | wc -l | tr -d ' ')
+          COMMIT_COUNT=$(git log --since="24 hours ago" --oneline origin/main | wc -l | tr -d ' ' || true)
           echo "commit_count=$COMMIT_COUNT"
           if [ "$COMMIT_COUNT" -gt 0 ]; then
             echo "has_commits=true" >> "$GITHUB_OUTPUT"
@@ -78,7 +78,7 @@ jobs:
 
           # --- Per-component breakdown ---
           OLDEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main | tail -1)
-          NEWEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main | head -1)
+          NEWEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main -1)
 
           for component in engine desktop relay ios; do
             case "$component" in
@@ -116,16 +116,19 @@ jobs:
           done
 
           # --- CHANGELOG entries from any tags created in the last 24h ---
-          RECENT_TAGS=$(git tag --sort=-creatordate | while read -r tag; do
+          CUTOFF_EPOCH=$(date -d "24 hours ago" +%s 2>/dev/null || true)
+          RECENT_TAGS=""
+          mapfile -t ALL_TAGS < <(git tag --sort=-creatordate)
+          for tag in "${ALL_TAGS[@]}"; do
+            [ -z "$tag" ] && continue
             TAG_DATE=$(git log -1 --format="%ai" "$tag" 2>/dev/null || true)
-            if [ -n "$TAG_DATE" ]; then
+            if [ -n "$TAG_DATE" ] && [ -n "$CUTOFF_EPOCH" ]; then
               TAG_EPOCH=$(date -d "$TAG_DATE" +%s 2>/dev/null || true)
-              CUTOFF_EPOCH=$(date -d "$SINCE" +%s 2>/dev/null || true)
-              if [ -n "$TAG_EPOCH" ] && [ -n "$CUTOFF_EPOCH" ] && [ "$TAG_EPOCH" -ge "$CUTOFF_EPOCH" ]; then
-                echo "$tag"
+              if [ -n "$TAG_EPOCH" ] && [ "$TAG_EPOCH" -ge "$CUTOFF_EPOCH" ]; then
+                RECENT_TAGS="${RECENT_TAGS:+${RECENT_TAGS}$'\n'}${tag}"
               fi
             fi
-          done)
+          done
 
           if [ -n "$RECENT_TAGS" ]; then
             {
