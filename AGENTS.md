@@ -43,7 +43,7 @@ Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook 
 | Engine tests + race | `cd engine && go test -race ./...` |
 | Engine integration | `cd engine && go test -race -tags integration ./tests/integration/...` |
 | Engine vuln | `cd engine && govulncheck ./...` |
-| Engine lint | `cd engine && golangci-lint run` |
+| Engine lint | `cd engine && golangci-lint run` (PR: differential via `--new-from-merge-base`; main: full) |
 | Relay tests + race | `cd relay && go test -race ./...` |
 | Desktop typecheck | `cd desktop && npm run typecheck` |
 | Desktop tests | `cd desktop && npm test` |

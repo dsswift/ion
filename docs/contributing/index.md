@@ -32,6 +32,7 @@ ion/
 | [Development setup](development-setup.md) | Prerequisites, clone, build, run |
 | [Testing](testing.md) | Three test tiers, helpers, writing tests |
 | [Conventions](conventions.md) | Code patterns, logging, types, streaming |
+| [Branch protection](branch-protection.md) | GitHub ruleset, required checks, release bypass |
 
 ## Quick reference
 
