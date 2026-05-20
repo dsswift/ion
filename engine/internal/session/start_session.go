@@ -121,6 +121,36 @@ func (a *sessionAccessor) McpConnections() []*mcp.Connection {
 	return a.s.mcpConns
 }
 
+func (a *sessionAccessor) SearchHistory(query string, maxResults int) []extension.HistoryMatch {
+	a.m.mu.RLock()
+	requestID := a.s.requestID
+	a.m.mu.RUnlock()
+	if requestID == "" {
+		return nil
+	}
+	apiBackend, ok := a.m.backend.(*backend.ApiBackend)
+	if !ok {
+		return nil
+	}
+	convMatches := apiBackend.SearchHistory(requestID, query, maxResults)
+	if len(convMatches) == 0 {
+		return nil
+	}
+	// Convert conversation.HistoryMatch → extension.HistoryMatch
+	result := make([]extension.HistoryMatch, len(convMatches))
+	for i, m := range convMatches {
+		result[i] = extension.HistoryMatch{
+			Index:     m.Index,
+			Role:      m.Role,
+			Type:      m.Type,
+			Snippet:   m.Snippet,
+			ToolName:  m.ToolName,
+			ToolUseID: m.ToolUseID,
+		}
+	}
+	return result
+}
+
 func (a *sessionAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	return translateToEngineEvent(ev, contextWindow)
 }

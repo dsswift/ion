@@ -8,23 +8,46 @@ struct MessageBubble: View {
     var onRewind: ((String) -> Void)?
     var onFork: ((String) -> Void)?
     var copyableContent: String?
+    var isSpeaking: Bool = false
+    var hasPendingSpeech: Bool = false
+    var onSkipSpeaking: (() -> Void)?
+    var onStopAllSpeaking: (() -> Void)?
 
     @State private var isToolExpanded = false
     @State private var showRewindConfirm = false
     @State private var showCopyButton = false
     @State private var showCopiedCheck = false
+    @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
+    @State private var previewAttachmentImage: UIImage?
+    @State private var previewAttachmentName: String?
 
     var body: some View {
-        switch message.role {
-        case .user:
-            userBubble
-        case .assistant:
-            assistantBubble
-        case .tool:
-            toolBubble
-        case .system:
-            systemBubble
+        Group {
+            switch message.role {
+            case .user:
+                userBubble
+            case .assistant:
+                assistantBubble
+            case .tool:
+                toolBubble
+            case .system:
+                systemBubble
+            }
         }
+        .sheet(isPresented: Binding(
+            get: { previewAttachmentImage != nil },
+            set: { if !$0 { previewAttachmentImage = nil; previewAttachmentName = nil } }
+        )) {
+            if let img = previewAttachmentImage {
+                AttachmentImagePreview(image: img, name: previewAttachmentName ?? "")
+            }
+        }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: ContainerWidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(ContainerWidthKey.self) { containerWidth = $0 }
     }
 
     // MARK: - Timestamp helper
@@ -34,6 +57,74 @@ struct MessageBubble: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    // MARK: - Attachment views
+
+    @ViewBuilder
+    private func userBubbleContent(text: String, isBash: Bool) -> some View {
+        Text(text)
+            .textSelection(.enabled)
+            .padding(.leading, 14)
+            .padding(.trailing, 12)
+            .padding(.vertical, 8)
+            .background(
+                ZStack {
+                    Color(.tertiarySystemBackground)
+                    IonTheme.userBubbleTint
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(IonTheme.accent)
+                    .frame(width: 2.5)
+                    .padding(.vertical, 4)
+                    .padding(.leading, 1)
+            }
+            .overlay(
+                isBash
+                    ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
+                        .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
+                    : nil
+            )
+    }
+
+    @ViewBuilder
+    private func attachmentViews(_ attachments: [MessageAttachment]) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ForEach(attachments) { att in
+                // Try the upload id first, then fall back to the desktop path.
+                // The path is the only key that survives a conversation
+                // rehydration where attachment ids get re-minted.
+                let img = AttachmentImageCache.shared.image(forKey: att.id)
+                    ?? AttachmentImageCache.shared.image(forKey: att.path)
+                if att.type == .image, let img {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
+                        .onTapGesture {
+                            previewAttachmentName = att.name
+                            previewAttachmentImage = img
+                        }
+                } else {
+                    HStack(spacing: 3) {
+                        Image(systemName: att.type == .image ? "photo" : "doc")
+                            .font(.caption2)
+                        Text(att.name)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(.secondarySystemFill))
+                    .clipShape(Capsule())
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     // MARK: - User
@@ -51,30 +142,42 @@ struct MessageBubble: View {
                     }
                     .foregroundStyle(.secondary)
                 }
-                HStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(IonTheme.accent)
-                        .frame(width: 2.5)
-                    MarkdownContentView(
-                        blocks: MarkdownBlockCache.shared.blocks(for: message.content)
-                    )
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+
+                // Attachment previews (if any)
+                if let attachments = message.attachments, !attachments.isEmpty {
+                    attachmentViews(attachments)
                 }
-                .background(
-                    ZStack {
-                        Color(.tertiarySystemBackground)
-                        IonTheme.userBubbleTint
+
+                // Marker-derived inline images (rehydration path: the
+                // attachments array was lost during persistence reload but
+                // the [Attached image: PATH] marker text survives in
+                // message.content). Skip paths already shown by attachmentViews.
+                let segments = parseAttachmentSegments(message.content)
+                let attachmentPaths = Set((message.attachments ?? []).filter { $0.type == .image }.map { $0.path })
+                let extraImagePaths = segments.images.filter { !attachmentPaths.contains($0) }
+                ForEach(Array(extraImagePaths.enumerated()), id: \.offset) { _, path in
+                    InlineAttachmentImage(path: path) { img in
+                        previewAttachmentName = (path as NSString).lastPathComponent
+                        previewAttachmentImage = img
                     }
-                )
-                .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
-                .overlay(
-                    message.content.hasPrefix("! ")
-                        ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
-                            .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
-                        : nil
-                )
+                }
+
+                if !segments.text.isEmpty {
+                    let cap = UIScreen.main.bounds.width * 0.8
+                    // ViewThatFits picks the candidate that fits — short text
+                    // gets intrinsic-sized bubble, long text wraps to the cap.
+                    // Both candidates pin vertical to ideal so the bubble
+                    // never bloats above what the text needs. Accent stripe is
+                    // an overlay so it inherits the bubble's height instead of
+                    // pushing it open.
+                    ViewThatFits(in: .horizontal) {
+                        userBubbleContent(text: segments.text, isBash: message.content.hasPrefix("! "))
+                            .fixedSize(horizontal: true, vertical: true)
+                        userBubbleContent(text: segments.text, isBash: message.content.hasPrefix("! "))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: cap, alignment: .trailing)
+                }
 
                 Text(relativeTimestamp)
                     .font(.caption2)
@@ -123,25 +226,65 @@ struct MessageBubble: View {
     private var assistantBubble: some View {
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .bottomTrailing) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if !message.content.isEmpty {
-                        MarkdownContentView(
-                            blocks: MarkdownBlockCache.shared.blocks(for: message.content)
-                        )
-                        .textSelection(.enabled)
+                ZStack(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !message.content.isEmpty {
+                            MarkdownContentView(
+                                blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                            )
+                            .textSelection(.enabled)
+                        }
+
+                        // Blinking cursor for streaming
+                        if isRunning && message.isAssistant {
+                            RoundedRectangle(cornerRadius: 0.5)
+                                .fill(Color.primary)
+                                .frame(width: 2, height: 18)
+                                .modifier(BlinkingModifier())
+                        }
                     }
 
-                    // Blinking cursor for streaming
-                    if isRunning && message.isAssistant {
-                        RoundedRectangle(cornerRadius: 0.5)
-                            .fill(Color.primary)
-                            .frame(width: 2, height: 18)
-                            .modifier(BlinkingModifier())
+                    // Voice playback controls
+                    if isSpeaking {
+                        HStack(spacing: 6) {
+                            Button { onSkipSpeaking?() } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "speaker.wave.2.fill")
+                                        .font(.caption2)
+                                        .symbolEffect(.variableColor.iterative)
+                                    Image(systemName: hasPendingSpeech ? "forward.fill" : "stop.fill")
+                                        .font(.caption2)
+                                }
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                            }
+
+                            if hasPendingSpeech {
+                                Button { onStopAllSpeaking?() } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "stop.fill")
+                                            .font(.caption2)
+                                        Text("Stop All")
+                                            .font(.caption2)
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .transition(.opacity.combined(with: .scale))
+                        .padding(4)
                     }
                 }
 
                 // Copy button overlay
-                if showCopyButton {
+                if showCopyButton && !isSpeaking {
                     Button {
                         UIPasteboard.general.string = copyableContent ?? message.content
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -164,7 +307,7 @@ struct MessageBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.92, alignment: .leading)
+            .frame(maxWidth: containerWidth * 0.92, alignment: .leading)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
             .contentShape(Rectangle())
@@ -373,5 +516,14 @@ final class MarkdownBlockCache {
         let result = MarkdownFormatter.parse(content)
         cache.setObject(CacheEntry(result), forKey: key)
         return result
+    }
+}
+
+// MARK: - Container Width Preference
+
+private struct ContainerWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = UIScreen.main.bounds.width
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

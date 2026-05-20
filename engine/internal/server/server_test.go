@@ -741,9 +741,10 @@ func registerPipeClient(t *testing.T, srv *Server) (serverConn, clientConn net.C
 	t.Helper()
 	serverConn, clientConn = net.Pipe()
 	cw := &clientWriter{
-		conn:  serverConn,
-		queue: make(chan []byte, broadcastQueueSize),
-		done:  make(chan struct{}),
+		conn:        serverConn,
+		stateQueue:  make(chan []byte, stateQueueSize),
+		streamQueue: make(chan []byte, streamQueueSize),
+		done:        make(chan struct{}),
 	}
 	srv.mu.Lock()
 	srv.clients[serverConn] = cw

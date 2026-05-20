@@ -89,12 +89,12 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toContain('Analyze the following GitHub issue')
-    expect(result.systemPrompt).toContain('https://github.com/org/repo/issues/37')
-    expect(result.systemPrompt).not.toContain('$ARGUMENTS')
-    expect(result.systemPrompt).not.toContain('---')
-    expect(result.systemPrompt).not.toContain('description:')
-    expect(result.userPrompt).toBe('https://github.com/org/repo/issues/37')
+    expect(result.userPrompt).toContain('Analyze the following GitHub issue')
+    expect(result.userPrompt).toContain('https://github.com/org/repo/issues/37')
+    expect(result.userPrompt).not.toContain('$ARGUMENTS')
+    expect(result.userPrompt).not.toContain('---')
+    expect(result.userPrompt).not.toContain('description:')
+    expect(result.systemPrompt).toBe('')
   })
 
   // TC-SE-004
@@ -107,7 +107,7 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('PROJECT deploy: staging')
+    expect(result.userPrompt).toBe('PROJECT deploy: staging')
   })
 
   // TC-SE-005
@@ -119,8 +119,8 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('Setup e2e tests for: my-feature')
-    expect(result.userPrompt).toBe('my-feature')
+    expect(result.userPrompt).toBe('Setup e2e tests for: my-feature')
+    expect(result.systemPrompt).toBe('')
   })
 
   // TC-SE-006
@@ -137,9 +137,9 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toContain('You are a specialist')
-    expect(result.systemPrompt).toContain('fix the bug')
-    expect(result.systemPrompt).not.toContain('---')
+    expect(result.userPrompt).toContain('You are a specialist')
+    expect(result.userPrompt).toContain('fix the bug')
+    expect(result.userPrompt).not.toContain('---')
   })
 
   // TC-SE-007
@@ -157,9 +157,11 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('The actual command content.')
-    expect(result.systemPrompt).not.toContain('description:')
-    expect(result.systemPrompt).not.toContain('allowed-tools:')
+    // No args: content goes into userPrompt, systemPrompt is empty
+    expect(result.userPrompt).toBe('The actual command content.')
+    expect(result.systemPrompt).toBe('')
+    expect(result.userPrompt).not.toContain('description:')
+    expect(result.userPrompt).not.toContain('allowed-tools:')
   })
 
   // TC-SE-008
@@ -171,7 +173,7 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('First: hello\nSecond: hello')
+    expect(result.userPrompt).toBe('First: hello\nSecond: hello')
   })
 
   // TC-SE-009
@@ -183,9 +185,9 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('Create a spec for: ')
-    // userPrompt falls back to the original prompt when args are empty
-    expect(result.userPrompt).toBe('/spec')
+    // No args: expanded content becomes user prompt, system prompt empty
+    expect(result.systemPrompt).toBe('')
+    expect(result.userPrompt).toBe('Create a spec for: ')
   })
 
   // TC-SE-010
@@ -198,7 +200,7 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('PROJECT review template')
+    expect(result.userPrompt).toBe('PROJECT review template')
   })
 
   // TC-SE-011: built-in commands are not expanded because InputBar intercepts
@@ -219,7 +221,7 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('Global command: test')
+    expect(result.userPrompt).toBe('Global command: test')
   })
 
   it('handles .md file without frontmatter', async () => {
@@ -230,7 +232,7 @@ describe('expandSlashCommand', () => {
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.systemPrompt).toBe('Just plain content with stuff')
+    expect(result.userPrompt).toBe('Just plain content with stuff')
   })
 })
 

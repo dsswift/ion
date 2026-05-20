@@ -195,7 +195,7 @@ export function QuickToolsTray({ anchorRef, onClose }: QuickToolsTrayProps) {
         >
           <button
             onClick={() => {
-              useSessionStore.getState().openSettings()
+              useSessionStore.getState().openSettings('quicktools')
               onClose()
             }}
             style={{

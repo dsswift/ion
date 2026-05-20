@@ -18,27 +18,29 @@ import (
 func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel string, runCfg *backend.RunConfig) {
 	capturedModel := parentModel
 	capturedKey := key
-	var agentCounter int
 
 	runCfg.AgentSpawner = func(ctx context.Context, requestedName, prompt, description, cwd, model string) (string, error) {
 		// If the LLM named a specialist, resolve it. Fires capability_match
 		// when not registered so a harness extension can promote a draft
 		// (via ctx.RegisterAgentSpec) and we resolve on the same call.
+		// Falls back to an unnamed agent when the name is not registered,
+		// so the model's intent (delegate work) still succeeds.
 		var spec types.AgentSpec
 		var specMatched bool
 		if requestedName != "" {
 			if matched, ok := m.resolveAgentSpec(s, key, requestedName); ok {
 				spec = matched
 				specMatched = true
-			} else {
-				return "", fmt.Errorf("agent %q is not registered (capability_match returned no match)", requestedName)
 			}
+			// When resolution fails, continue with an unnamed agent rather
+			// than hard-failing. The model's intent was to parallelize work;
+			// the name was aspirational, not required.
 		}
 
-		agentCounter++
-		agentName := fmt.Sprintf("agent-%d", agentCounter)
+		s.agentCounter++
+		agentName := fmt.Sprintf("agent-%d", s.agentCounter)
 		if specMatched {
-			agentName = fmt.Sprintf("%s-%d", spec.Name, agentCounter)
+			agentName = fmt.Sprintf("%s-%d", spec.Name, s.agentCounter)
 		}
 		displayName := description
 		if displayName == "" {
@@ -57,6 +59,16 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			}
 		}
 
+		// Use spec model if matched, then call-site model, then parent.
+		childModel := model
+		if childModel == "" && specMatched {
+			childModel = spec.Model
+		}
+		if childModel == "" {
+			childModel = capturedModel
+		}
+
+		start := time.Now()
 		s.agents.AppendState(types.AgentStateUpdate{
 			Name:   agentName,
 			Status: "running",
@@ -66,13 +78,14 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				"visibility":  "sticky",
 				"invited":     true,
 				"task":        prompt,
+				"model":       childModel,
+				"startTime":   start.Unix(),
 			},
 		})
 		snapshot := s.agents.MergedSnapshot()
 
 		m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
-		start := time.Now()
 		child := m.newChildBackend()
 		var result string
 		var childErr error
@@ -93,14 +106,6 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			childErr = err
 		})
 
-		// Use spec model if matched, then call-site model, then parent.
-		childModel := model
-		if childModel == "" && specMatched {
-			childModel = spec.Model
-		}
-		if childModel == "" {
-			childModel = capturedModel
-		}
 		childRequestID := fmt.Sprintf("%s-%s", capturedKey, agentName)
 		runOpts := types.RunOptions{
 			Prompt:      prompt,

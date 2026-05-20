@@ -13,6 +13,76 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.22.1](https://github.com/dsswift/ion/compare/engine-v1.22.0...engine-v1.22.1) (2026-05-19)
+
+### Bug Fixes
+
+* **engine:** unify context window and persist token cache ([5024b80](https://github.com/dsswift/ion/commit/5024b805f4b25dff5ea9dc9f6b5cb470d4a3a61c))
+
+## [1.22.0](https://github.com/dsswift/ion/compare/engine-v1.21.0...engine-v1.22.0) (2026-05-19)
+
+### Features
+
+* **engine:** add provider model system with discovery ([e62f6e4](https://github.com/dsswift/ion/commit/e62f6e41c0a7da59d58a5f7478a5369bf3681608))
+
+### Bug Fixes
+
+* **engine:** add tool_call accumulation regression tests ([adae830](https://github.com/dsswift/ion/commit/adae83027881816cad3b875ea7a57806da66158f))
+
+## [1.21.0](https://github.com/dsswift/ion/compare/engine-v1.20.1...engine-v1.21.0) (2026-05-18)
+
+### Features
+
+* **engine:** add plan mode support to CLI backend ([ec645fa](https://github.com/dsswift/ion/commit/ec645fa9e82470e2f21c9f8856b7e2ba8bfd6b92))
+
+## [1.20.1](https://github.com/dsswift/ion/compare/engine-v1.20.0...engine-v1.20.1) (2026-05-18)
+
+### Bug Fixes
+
+* **engine:** fix agent tool_call accumulation for CLI backend ([6a130a2](https://github.com/dsswift/ion/commit/6a130a2d9a8aa35c107dcca66b1b1149229cd466))
+
+## [1.20.0](https://github.com/dsswift/ion/compare/engine-v1.19.2...engine-v1.20.0) (2026-05-16)
+
+### Features
+
+* **engine:** add conversation migration command ([5f81aa3](https://github.com/dsswift/ion/commit/5f81aa376993f7bc79622ed49ba7b8aed49d11b3))
+
+## [1.19.2](https://github.com/dsswift/ion/compare/engine-v1.19.1...engine-v1.19.2) (2026-05-16)
+
+### Bug Fixes
+
+* **engine:** add ca certificates to docker image ([2e2e792](https://github.com/dsswift/ion/commit/2e2e7925ec89864bc5fd44f31ab9558fe71cf312))
+
+## [1.19.1](https://github.com/dsswift/ion/compare/engine-v1.19.0...engine-v1.19.1) (2026-05-16)
+
+### Bug Fixes
+
+* **engine:** prevent auto-compaction cascade loop ([1069e49](https://github.com/dsswift/ion/commit/1069e4981bea6f46d2f858bc7999e7b23079d41e))
+
+## [1.19.0](https://github.com/dsswift/ion/compare/engine-v1.18.0...engine-v1.19.0) (2026-05-15)
+
+### Features
+
+* **engine:** add image attachments to protocol ([9d89acc](https://github.com/dsswift/ion/commit/9d89accf30cdd562df06679bb2787a0bd82abf01))
+
+## [1.18.0](https://github.com/dsswift/ion/compare/engine-v1.17.0...engine-v1.18.0) (2026-05-15)
+
+### Features
+
+* **engine:** add http2 ping timeouts for stream stability ([ac15ba1](https://github.com/dsswift/ion/commit/ac15ba1a88769bf06298a17557512d30f0c78a6b))
+* **engine:** add provider resilience with fallback chains ([1a4a68a](https://github.com/dsswift/ion/commit/1a4a68add7b83a69a284297006d3e3fff5613e96))
+
+## [1.17.0](https://github.com/dsswift/ion/compare/engine-v1.16.2...engine-v1.17.0) (2026-05-14)
+
+### Features
+
+* **engine:** add broadcast state reconciliation ([dd094e9](https://github.com/dsswift/ion/commit/dd094e93e0e0d334e0c2d93192756b5e49a99809))
+* **engine:** add SearchHistory tool for compacted context recovery ([156a8b8](https://github.com/dsswift/ion/commit/156a8b865b70b95f571936736c07fb70476bcd40))
+* **engine:** preserve vision data in micro-compact ([52cbf94](https://github.com/dsswift/ion/commit/52cbf94aa0840adbf631d09963d200c85632fbcf))
+* **engine:** add vision support to tool results ([c4d1175](https://github.com/dsswift/ion/commit/c4d11752b9a1eab29faa62a180ac9c474f66eebc))
+* **engine:** enrich compacting event with summary metadata ([88b3fe2](https://github.com/dsswift/ion/commit/88b3fe2bbfc60f872fa7f565f4f8e9a341c10a0c))
+* **engine:** forward compaction summary to engine tabs ([fdf7dde](https://github.com/dsswift/ion/commit/fdf7dde316408b9de7aaddec4c8205db2251bcaa))
+
 ## [1.16.2](https://github.com/dsswift/ion/compare/engine-v1.16.1...engine-v1.16.2) (2026-05-11)
 
 ### Bug Fixes

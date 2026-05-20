@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  CaretDown, CaretRight, ArrowsClockwise, Robot, Check, X, ListBullets, TreeStructure,
+  CaretDown, CaretRight, ArrowsClockwise, X, ListBullets, TreeStructure,
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { useGitPollingStore } from '../hooks/useGitPolling'
+import { useRepoState } from '../stores/git'
 import { useGitDragSplit } from '../hooks/useGitDragSplit'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
+import { CommitForm } from './git/CommitForm'
 
 // ─── Main GitPanel ───
 
@@ -29,26 +30,17 @@ export function GitPanel() {
   const setChangesOpen = usePreferencesStore((s) => s.setGitPanelChangesOpen)
   const graphOpen = usePreferencesStore((s) => s.gitPanelGraphOpen)
   const setGraphOpen = usePreferencesStore((s) => s.setGitPanelGraphOpen)
-  const files = useGitPollingStore((s) => s.files)
-  const refreshKey = useGitPollingStore((s) => s.refreshKey)
+  const repoState = useRepoState(directory)
+  const files = repoState?.files ?? []
+  const refreshKey = repoState?.revision ?? 0
   const splitRatio = usePreferencesStore((s) => s.gitPanelSplitRatio)
   const setSplitRatio = usePreferencesStore((s) => s.setGitPanelSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
   const commitCommand = usePreferencesStore((s) => s.commitCommand)
   const gitChangesTreeView = usePreferencesStore((s) => s.gitChangesTreeView)
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const [commitMsg, setCommitMsg] = useState('')
 
   const stagedCount = useMemo(() => files.filter((f) => f.staged).length, [files])
-
-  const handleCommit = useCallback(async () => {
-    if (!commitMsg.trim() || stagedCount === 0) return
-    const result = await window.ion.gitCommit(directory, commitMsg.trim())
-    if (result.ok) {
-      setCommitMsg('')
-      useGitPollingStore.getState().refresh()
-    }
-  }, [commitMsg, stagedCount, directory])
 
   const handleQuickCommit = useCallback(() => {
     if (commitCommand) {
@@ -59,7 +51,9 @@ export function GitPanel() {
     }
   }, [commitCommand, directory, activeTabId])
 
-  const refresh = useGitPollingStore((s) => s.refresh)
+  const refresh = useCallback(() => {
+    if (directory && directory !== '~') window.ion.gitRefresh(directory).catch(() => {})
+  }, [directory])
 
   // Track uncommitted changes for worktree tabs (used by context menus + finish button)
   useEffect(() => {
@@ -201,67 +195,23 @@ export function GitPanel() {
         </div>
         {changesOpen && (
           <div style={{ height: changesContentHeight, display: 'flex', flexDirection: 'column' }}>
-            {/* Commit input row */}
-            {files.length > 0 && (
-              <div
-                className="flex items-center gap-1 px-2.5"
-                style={{
-                  height: 28,
-                  flexShrink: 0,
-                  borderBottom: `1px solid ${colors.containerBorder}`,
-                  background: colors.surfacePrimary,
-                }}
-              >
-                <input
-                  value={commitMsg}
-                  onChange={(e) => setCommitMsg(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleCommit() }}
-                  placeholder="Commit message..."
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-[10px] bg-transparent outline-none rounded px-1.5"
-                  style={{
-                    color: colors.textPrimary,
-                    border: `1px solid ${colors.containerBorder}`,
-                    height: 20,
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                />
-                <button
-                  onClick={handleCommit}
-                  disabled={!commitMsg.trim() || stagedCount === 0}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '0 2px',
-                    cursor: (!commitMsg.trim() || stagedCount === 0) ? 'not-allowed' : 'pointer',
-                    color: (!commitMsg.trim() || stagedCount === 0) ? colors.textMuted : colors.accent,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  title="Commit staged changes"
-                >
-                  <Check size={13} weight="bold" />
-                </button>
-                <button
-                  onClick={handleQuickCommit}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '0 2px',
-                    cursor: 'pointer',
-                    color: colors.textTertiary,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  title={commitCommand ? `Run: ${commitCommand}` : 'Let Ion commit'}
-                >
-                  <Robot size={13} />
-                </button>
-              </div>
-            )}
+            <CommitForm
+              directory={directory}
+              branch={repoState?.branch ?? ''}
+              stagedCount={stagedCount}
+              onCommit={async (message, amend, opts) => {
+                const result = await window.ion.gitCommit(directory, message, { amend, signoff: opts?.signoff, gpg: opts?.gpg })
+                if (result.ok) { refresh(); return true }
+                return false
+              }}
+              onQuickCommit={handleQuickCommit}
+              onPush={async () => {
+                await window.ion.gitPush(directory)
+                refresh()
+              }}
+            />
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-              <GitChangesSection directory={directory} files={files} onRefresh={refresh} commitMsg={commitMsg} setCommitMsg={setCommitMsg} treeView={gitChangesTreeView} />
+              <GitChangesSection directory={directory} files={files} onRefresh={refresh} treeView={gitChangesTreeView} />
             </div>
           </div>
         )}

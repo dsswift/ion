@@ -24,7 +24,6 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     },
 
     setPermissionMode: (mode, source) => {
-      if (mode === 'plan' && get().backend === 'cli') return
       const { activeTabId } = get()
       set((s) => ({
         tabs: s.tabs.map((t) =>
@@ -235,6 +234,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const engineUsage = new Map(get().engineUsage)
         const engineConversationIds = new Map(get().engineConversationIds)
         const engineMessages = new Map(get().engineMessages)
+        const engineDraftInputs = new Map(get().engineDraftInputs)
         const enginePanes = new Map(get().enginePanes)
         for (const k of engineAgentStates.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineAgentStates.delete(k)
         for (const k of engineStatusFields.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineStatusFields.delete(k)
@@ -245,8 +245,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         for (const k of engineUsage.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineUsage.delete(k)
         for (const k of engineConversationIds.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineConversationIds.delete(k)
         for (const k of engineMessages.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineMessages.delete(k)
+        for (const k of engineDraftInputs.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineDraftInputs.delete(k)
         enginePanes.delete(tabId)
-        set({ engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineConversationIds, engineMessages, enginePanes })
+        set({ engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineConversationIds, engineMessages, engineDraftInputs, enginePanes })
       }
       if (closingTab) {
         const dir = closingTab.workingDirectory
@@ -316,6 +317,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (tab?.conversationId) {
         void window.ion.saveSessionLabel(tab.conversationId, customTitle)
       }
+    },
+
+    setTabModel: (tabId, model) => {
+      set((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === tabId ? { ...t, modelOverride: model } : t
+        ),
+      }))
     },
 
     setTabPillColor: (tabId, color) => {

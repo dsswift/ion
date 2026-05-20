@@ -1,0 +1,176 @@
+name: Release Summary
+
+on:
+  workflow_call:
+    inputs:
+      release_report:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_report:
+        description: 'Release report JSON (paste from a prior release run for manual re-send)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull ion engine image
+        run: docker pull ghcr.io/${{ github.repository }}/engine:latest
+
+      - name: Materialize engine config
+        env:
+          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ion-data/.ion
+          printf '%s' "$ION_ENGINE_CONFIG_B64" | base64 -d > /tmp/ion-data/.ion/engine.json
+          chmod 600 /tmp/ion-data/.ion/engine.json
+
+      - name: Build release context document
+        env:
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          set -euo pipefail
+          CTX=/tmp/ion-context.md
+          : > "$CTX"
+
+          {
+            echo "## Released components"
+            echo
+            echo "$RELEASE_REPORT" | jq -r '.releases[] | "- \(.component) -> v\(.new_version)"'
+            echo
+          } >> "$CTX"
+
+          {
+            echo "## Project layered architecture (root AGENTS.md)"
+            echo
+            echo '```'
+            cat AGENTS.md
+            echo '```'
+            echo
+          } >> "$CTX"
+
+          while IFS=$'\t' read -r component new_version; do
+            [ -z "$component" ] && continue
+            new_tag="${component}-v${new_version}"
+            prior_tag=$(git tag --list "${component}-v*" --sort=-v:refname \
+              | grep -v "^${new_tag}$" | head -1 || true)
+
+            {
+              echo "## ${component} v${new_version}"
+              echo
+              if [ -f "${component}/CHANGELOG.md" ]; then
+                echo "### CHANGELOG entry"
+                echo
+                awk -v ver="${new_version}" '
+                  $0 ~ "^##[[:space:]]*\\[?"ver"\\]?" { p=1; print; next }
+                  p && /^##[[:space:]]/ { exit }
+                  p { print }
+                ' "${component}/CHANGELOG.md"
+                echo
+              fi
+              if [ -f "${component}/AGENTS.md" ]; then
+                echo "### Subsystem rules (${component}/AGENTS.md)"
+                echo
+                echo '```'
+                cat "${component}/AGENTS.md"
+                echo '```'
+                echo
+              fi
+              if [ -n "$prior_tag" ]; then
+                echo "### Changed files (${prior_tag} -> ${new_tag})"
+                echo
+                echo '```'
+                git diff --name-status "${prior_tag}..${new_tag}" -- "${component}/" \
+                  | grep -Ev '/(CHANGELOG\.md|VERSION|package-lock\.json|go\.sum|Package\.resolved)$' \
+                  || true
+                echo '```'
+                echo
+                echo "### Diff stat"
+                echo
+                echo '```'
+                git diff --stat "${prior_tag}..${new_tag}" -- "${component}/" \
+                  ':(exclude)**/CHANGELOG.md' \
+                  ':(exclude)**/VERSION' \
+                  ':(exclude)**/package-lock.json' \
+                  ':(exclude)**/go.sum' \
+                  ':(exclude)**/Package.resolved' \
+                  || true
+                echo '```'
+                echo
+              else
+                echo "(no prior tag found for ${component} — first release of this component in tag history)"
+                echo
+              fi
+            } >> "$CTX"
+          done < <(echo "$RELEASE_REPORT" | jq -r '.releases[] | "\(.component)\t\(.new_version)"')
+
+          echo "Context document size: $(wc -c < "$CTX") bytes"
+
+      - name: Compose final prompt
+        env:
+          ION_SYSTEM_PROMPT__STAKEHOLDER_RELEASE_NOTIFICATION: ${{ secrets.ION_SYSTEM_PROMPT__STAKEHOLDER_RELEASE_NOTIFICATION }}
+        run: |
+          set -euo pipefail
+          {
+            printf '%s\n\n' "$ION_SYSTEM_PROMPT__STAKEHOLDER_RELEASE_NOTIFICATION"
+            printf '## Release context\n\n'
+            cat /tmp/ion-context.md
+            printf '\n## Task\n\nWrite the Discord message now. Output only the message body, no preamble, no meta-commentary.\n'
+          } > /tmp/ion-prompt.txt
+          echo "Prompt size: $(wc -c < /tmp/ion-prompt.txt) bytes"
+
+      - name: Generate summary with ion
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v /tmp/ion-data:/data \
+            ghcr.io/${{ github.repository }}/engine:latest \
+            prompt "$(cat /tmp/ion-prompt.txt)" \
+            --output text \
+            --no-extensions \
+            --timeout 3m \
+            --max-budget 1.00 \
+            > /tmp/summary.md
+          echo "Summary size: $(wc -c < /tmp/summary.md) bytes"
+
+      - name: Post to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          BYTES=$(wc -c < /tmp/summary.md)
+          if [ "$BYTES" -le 1900 ]; then
+            jq -Rs '{content: .}' /tmp/summary.md > /tmp/discord-payload.json
+          else
+            jq -Rs '{embeds: [{title: "Ion release", description: (.[0:4090] + (if (length > 4090) then "..." else "" end)), color: 5814783}]}' \
+              /tmp/summary.md > /tmp/discord-payload.json
+          fi
+          HTTP_CODE=$(curl -sS -o /tmp/discord-response.txt -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -d @/tmp/discord-payload.json "$DISCORD_WEBHOOK_URL")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Discord webhook failed: HTTP $HTTP_CODE" >&2
+            cat /tmp/discord-response.txt >&2
+            exit 1
+          fi
+          echo "Discord webhook delivered (HTTP $HTTP_CODE)"

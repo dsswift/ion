@@ -8,7 +8,10 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
+import { ImageViewer } from './ImageViewer'
 import type { FsEntry } from '../../shared/types'
+
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
 
 export function FileExplorer() {
   const colors = useColors()
@@ -39,6 +42,7 @@ export function FileExplorer() {
   const [ignoredPaths, setIgnoredPaths] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [inlineInput, setInlineInput] = useState<{ type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
+  const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
   const refreshCounter = useRef(0)
 
   const fetchDir = useCallback(async (dirPath: string) => {
@@ -98,10 +102,21 @@ export function FileExplorer() {
   }, [workingDir, explorerState.expandedPaths, dirCache, fetchDir])
 
   const handleFileClick = useCallback((entry: FsEntry) => {
-    if (!workingDir || !activeTabId) return
+    console.log('[FileExplorer] handleFileClick', { name: entry.name, path: entry.path, workingDir, activeTabId, isText: isTextFile(entry.name) })
+    if (!workingDir || !activeTabId) {
+      console.log('[FileExplorer] handleFileClick bailed: no workingDir or activeTabId')
+      return
+    }
     setFileExplorerSelected(workingDir, entry.path)
-    if (isTextFile(entry.name)) {
+    const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop()!.toLowerCase() : ''
+    if (IMAGE_EXTS.has(ext)) {
+      console.log('[FileExplorer] opening image preview', { path: entry.path })
+      setImagePreview({ path: entry.path, name: entry.name })
+    } else if (isTextFile(entry.name)) {
+      console.log('[FileExplorer] calling openFileInEditor', { dir: workingDir, tabId: activeTabId, filePath: entry.path })
       openFileInEditor(workingDir, activeTabId, entry.path)
+    } else {
+      console.log('[FileExplorer] skipped: not a text or image file')
     }
   }, [workingDir, activeTabId])
 
@@ -322,6 +337,15 @@ export function FileExplorer() {
           workingDir={workingDir}
           onClose={() => setContextMenu(null)}
           portalTarget={popoverLayer}
+        />
+      )}
+
+      {/* Image preview */}
+      {imagePreview && (
+        <ImageViewer
+          filePath={imagePreview.path}
+          fileName={imagePreview.name}
+          onClose={() => setImagePreview(null)}
         />
       )}
     </div>

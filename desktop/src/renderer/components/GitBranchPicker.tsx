@@ -1,10 +1,28 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { CaretDown, Plus, GitBranch, Trash, Check } from '@phosphor-icons/react'
+import { CaretDown, Plus, GitBranch, Trash, Check, MagnifyingGlass, Clock } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import type { GitBranchInfo } from '../../shared/types'
+
+function rank(name: string, query: string): number {
+  if (!query) return 0
+  const q = query.toLowerCase()
+  const n = name.toLowerCase()
+  if (n === q) return 1000
+  if (n.startsWith(q)) return 500
+  const idx = n.indexOf(q)
+  if (idx >= 0) return 300 - idx
+  let score = 0, last = -1
+  for (const ch of q) {
+    const i = n.indexOf(ch, last + 1)
+    if (i < 0) return -1
+    score += 10 - Math.min(i - last - 1, 10)
+    last = i
+  }
+  return score
+}
 
 export function BranchPicker({
   directory,
@@ -24,6 +42,8 @@ export function BranchPicker({
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [query, setQuery] = useState('')
+  const [recent, setRecent] = useState<string[]>([])
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
@@ -37,8 +57,11 @@ export function BranchPicker({
   }, [directory])
 
   useEffect(() => {
-    if (open) loadBranches()
-  }, [open, loadBranches])
+    if (open) {
+      loadBranches()
+      window.ion.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch(() => {})
+    }
+  }, [open, directory, loadBranches])
 
   useEffect(() => {
     if (!open) return
@@ -95,8 +118,17 @@ export function BranchPicker({
     }
   }
 
-  const localBranches = branches.filter((b) => !b.isRemote)
-  const remoteBranches = branches.filter((b) => b.isRemote)
+  const filterAndSort = useCallback((list: GitBranchInfo[]) => {
+    if (!query) return list
+    return list.map((b) => ({ b, score: rank(b.name, query) })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).map((x) => x.b)
+  }, [query])
+
+  const localBranches = useMemo(() => filterAndSort(branches.filter((b) => !b.isRemote)), [branches, filterAndSort])
+  const remoteBranches = useMemo(() => filterAndSort(branches.filter((b) => b.isRemote)), [branches, filterAndSort])
+  const recentBranches = useMemo(() => {
+    const localNames = new Set(branches.filter((b) => !b.isRemote).map((b) => b.name))
+    return recent.filter((r) => r !== currentBranch && localNames.has(r))
+  }, [recent, branches, currentBranch])
 
   return (
     <>
@@ -140,7 +172,31 @@ export function BranchPicker({
             flexDirection: 'column',
           }}
         >
+          <div className="flex items-center gap-1 px-2 py-1" style={{ borderBottom: `1px solid ${colors.popoverBorder}` }}>
+            <MagnifyingGlass size={10} style={{ color: colors.textTertiary }} />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search branches…"
+              className="text-[10px] bg-transparent outline-none flex-1"
+              style={{ color: colors.textPrimary }}
+            />
+          </div>
           <div className="overflow-y-auto py-1" style={{ flex: 1 }}>
+            {recentBranches.length > 0 && !query && (
+              <>
+                <div className="px-2 py-0.5 text-[9px] uppercase tracking-wider flex items-center gap-1" style={{ color: colors.textTertiary }}>
+                  <Clock size={9} /> Recent
+                </div>
+                {recentBranches.map((name) => (
+                  <button key={`r-${name}`} onClick={() => handleCheckout(name)} className="w-full text-left px-2 py-1 text-[11px] truncate" style={{ color: colors.textSecondary }}>
+                    {name}
+                  </button>
+                ))}
+                <div className="mx-2 my-1" style={{ height: 1, background: colors.popoverBorder }} />
+              </>
+            )}
             {/* Local branches */}
             {localBranches.map((b) => (
               <div

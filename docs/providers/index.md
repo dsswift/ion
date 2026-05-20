@@ -63,7 +63,7 @@ A single factory implementation handles any endpoint that speaks the OpenAI API 
 | Groq | `groq` | `https://api.groq.com/openai/v1` |
 | Cerebras | `cerebras` | `https://api.cerebras.ai/v1` |
 | Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
+| [OpenRouter](openrouter.md) | `openrouter` | `https://openrouter.ai/api/v1` |
 | Together | `together` | `https://api.together.xyz/v1` |
 | Fireworks | `fireworks` | `https://api.fireworks.ai/inference/v1` |
 | xAI (Grok) | `xai` | `https://api.x.ai/v1` |

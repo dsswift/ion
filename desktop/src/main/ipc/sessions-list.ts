@@ -281,6 +281,28 @@ export function registerSessionsListIpc(): void {
     }
   })
 
+  ipcMain.handle(IPC.READ_IMAGE_DATA_URL, async (_e, filePath: string) => {
+    try {
+      if (!filePath || !existsSync(filePath)) return { dataUrl: null }
+      const ext = filePath.toLowerCase()
+      const mime =
+        ext.endsWith('.png') ? 'image/png' :
+        ext.endsWith('.webp') ? 'image/webp' :
+        ext.endsWith('.gif') ? 'image/gif' :
+        (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) ? 'image/jpeg' :
+        null
+      if (!mime) return { dataUrl: null }
+      const buf = readFileSync(filePath)
+      // 30 MB cap on what we'll embed in a data URL — anything larger is a
+      // bug somewhere upstream and would freeze the renderer if shipped.
+      if (buf.length > 30 * 1024 * 1024) return { dataUrl: null }
+      return { dataUrl: `data:${mime};base64,${buf.toString('base64')}` }
+    } catch (err) {
+      log(`READ_IMAGE_DATA_URL error: ${err}`)
+      return { dataUrl: null }
+    }
+  })
+
   ipcMain.handle(IPC.GET_CONVERSATION, async (_e, { conversationId, offset, limit }: { conversationId: string; offset: number; limit: number }) => {
     try {
       return await sessionPlane.getConversation(conversationId, offset, limit)

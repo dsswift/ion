@@ -58,23 +58,43 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
-      # `--new-from-merge-base=origin/main` filters issues to lines changed
-      # since the branch diverged. We pass it as a direct CLI flag instead
-      # of `only-new-issues: true` because the latter relies on the GitHub
+
+      # PR: differential lint — only issues on lines changed since the
+      # branch diverged from main. Fast feedback, good DX.
+      # We pass --new-from-merge-base as a direct CLI flag instead of
+      # `only-new-issues: true` because the latter relies on the GitHub
       # PR-diff REST endpoint, which 422s above 20K lines and trips the
       # action's "report everything" fallback.
-      - name: golangci-lint (engine)
+      - name: golangci-lint engine (changed lines)
+        if: github.event_name == 'pull_request'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: engine
           args: --new-from-merge-base=origin/main
-      - name: golangci-lint (relay)
+      - name: golangci-lint relay (changed lines)
+        if: github.event_name == 'pull_request'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: relay
           args: --new-from-merge-base=origin/main
+
+      # Main: full lint — catches cross-PR regressions that slip through
+      # differential checks (e.g. PR A adds a function, PR B removes its
+      # only caller → unused error only visible after both merge).
+      - name: golangci-lint engine (full)
+        if: github.event_name == 'push'
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.3
+          working-directory: engine
+      - name: golangci-lint relay (full)
+        if: github.event_name == 'push'
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.3
+          working-directory: relay
 
   engine-vuln:
     runs-on: ubuntu-latest

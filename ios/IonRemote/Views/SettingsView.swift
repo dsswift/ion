@@ -4,12 +4,21 @@ struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showPairingSheet = false
+    @State private var elevenLabsKey: String = ""
+    @State private var keySaved = false
+    @State private var voiceTestInProgress = false
+    @State private var voiceTestResult: VoiceService.TestResult?
+    @State private var showVoiceTestAlert = false
+    @State private var voicePromptText: String = ""
+
     var body: some View {
         NavigationStack {
             List {
                 connectionSection
+                voiceSection
                 diagnosticsSection
                 newTabSection
+                modelsSection
                 tabGroupsSection
                 pairedDevicesSection
                 aboutSection
@@ -47,6 +56,126 @@ struct SettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var voiceSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { viewModel.voiceService.isEnabled },
+                set: {
+                    viewModel.voiceService.isEnabled = $0
+                    viewModel.sendVoiceConfig()
+                }
+            )) {
+                Label("Voice Responses", systemImage: "waveform")
+            }
+            SecureField("ElevenLabs API Key", text: $elevenLabsKey)
+                .textContentType(.password)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Button {
+                if elevenLabsKey.trimmingCharacters(in: .whitespaces).isEmpty {
+                    KeychainHelper.delete("com.ion.remote.elevenlabs")
+                } else {
+                    KeychainHelper.set(elevenLabsKey, service: "com.ion.remote.elevenlabs")
+                }
+                withAnimation { keySaved = true }
+                Haptic.success()
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    withAnimation { keySaved = false }
+                }
+            } label: {
+                HStack {
+                    Text(keySaved ? "Key Saved ✓" : "Save Key")
+                    if keySaved {
+                        Spacer()
+                    }
+                }
+                .foregroundStyle(keySaved ? .green : IonTheme.accent)
+            }
+            Button {
+                voiceTestInProgress = true
+                Task {
+                    let result = await viewModel.voiceService.testVoice()
+                    voiceTestInProgress = false
+                    voiceTestResult = result
+                    showVoiceTestAlert = true
+                    if result.isSuccess { Haptic.success() } else { Haptic.error() }
+                }
+            } label: {
+                HStack {
+                    Text("Test Voice")
+                    if voiceTestInProgress {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(voiceTestInProgress)
+            Picker(selection: Binding(
+                get: { viewModel.voiceService.voiceMode },
+                set: {
+                    viewModel.voiceService.voiceMode = $0
+                    viewModel.sendVoiceConfig()
+                }
+            )) {
+                Text("Client-Only").tag(VoiceService.VoiceMode.clientOnly)
+                Text("Desktop-Assisted").tag(VoiceService.VoiceMode.desktopAssisted)
+            } label: {
+                Label("Processing", systemImage: "cpu")
+            }
+            if viewModel.voiceService.voiceMode == .desktopAssisted {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Voice System Prompt")
+                        .font(.subheadline.weight(.medium))
+                    TextEditor(text: $voicePromptText)
+                        .font(.caption)
+                        .frame(minHeight: 120, maxHeight: 200)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    HStack {
+                        Button("Save Prompt") {
+                            viewModel.voiceService.voiceSystemPrompt = voicePromptText
+                            viewModel.sendVoiceConfig()
+                            Haptic.success()
+                        }
+                        .font(.subheadline)
+                        Spacer()
+                        Button("Reset to Default") {
+                            voicePromptText = VoiceService.defaultVoicePrompt
+                            viewModel.voiceService.voiceSystemPrompt = voicePromptText
+                            viewModel.sendVoiceConfig()
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } header: {
+            Text("Voice")
+        } footer: {
+            if !viewModel.voiceService.isEnabled {
+                Text("Voice is off.")
+            } else if viewModel.voiceService.voiceMode == .desktopAssisted {
+                Text("Desktop shapes LLM output for voice before iOS speaks it.")
+            } else {
+                Text("iOS speaks assistant responses with client-side filtering.")
+            }
+        }
+        .onAppear {
+            elevenLabsKey = KeychainHelper.get("com.ion.remote.elevenlabs") ?? ""
+            voicePromptText = viewModel.voiceService.voiceSystemPrompt
+        }
+        .alert(
+            voiceTestResult?.isSuccess == true ? "Voice Test Passed" : "Voice Test Failed",
+            isPresented: $showVoiceTestAlert
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(voiceTestResult?.message ?? "")
+        }
+    }
 
     @ViewBuilder
     private var connectionSection: some View {
@@ -119,6 +248,29 @@ struct SettingsView: View {
         }
     }
 
+    private var modelsSection: some View {
+        let models = viewModel.availableModels
+        return Section("Models") {
+            Picker("Conversation", selection: Binding<String>(
+                get: { viewModel.preferredModel },
+                set: { newValue in viewModel.setPreferredModelDefault(newValue) }
+            )) {
+                ForEach(models) { model in
+                    Text(model.label).tag(model.id)
+                }
+            }
+            Picker("Engine", selection: Binding<String>(
+                get: { viewModel.engineDefaultModel },
+                set: { newValue in viewModel.setEngineDefaultModelDefault(newValue) }
+            )) {
+                Text("Same as Conversation").tag("")
+                ForEach(models) { model in
+                    Text(model.label).tag(model.id)
+                }
+            }
+        }
+    }
+
     private var tabGroupsSection: some View {
         Section {
             Picker("Grouping", selection: Binding<String>(
@@ -142,12 +294,18 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .onMove { source, destination in
+                    var reordered = sorted
+                    reordered.move(fromOffsets: source, toOffset: destination)
+                    let orderedIds = reordered.map(\.id)
+                    viewModel.reorderTabGroups(orderedIds: orderedIds)
+                }
             }
         } header: {
             Text("Tab Groups")
         } footer: {
             if viewModel.tabGroupMode == "manual" {
-                Text("Groups are managed on the desktop app. Create or rearrange groups from the desktop settings.")
+                Text("Drag to reorder groups. Create or delete groups from the desktop settings.")
             }
         }
     }
@@ -218,6 +376,14 @@ struct SettingsView: View {
         }
     }
 
+    private var appVersionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        let hash = info?["IonBuildHash"] as? String ?? "?"
+        return "v\(version) (\(build).\(hash))"
+    }
+
     private var aboutSection: some View {
         Section("About") {
             HStack {
@@ -228,7 +394,7 @@ struct SettingsView: View {
                         .foregroundStyle(IonTheme.accent)
                     Text("Ion Remote")
                         .font(.headline)
-                    Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                    Text(appVersionString)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

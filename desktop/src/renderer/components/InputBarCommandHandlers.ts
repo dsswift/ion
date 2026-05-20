@@ -1,5 +1,7 @@
 import type { TabState, DiscoveredCommand } from '../../shared/types'
-import { AVAILABLE_MODELS } from '../stores/sessionStore'
+import { AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/model-labels'
+import { useModelStore } from '../stores/model-store'
+import { getProviderDisplayName } from '../../shared/types-models'
 
 export interface ExecuteCommandDeps {
   tab: TabState | undefined
@@ -43,12 +45,29 @@ export function executeBuiltinCommand(commandName: string, deps: ExecuteCommandD
       const model = tab?.sessionModel || null
       const version = tab?.sessionVersion || staticInfo?.version || null
       const current = preferredModel || model || 'default'
-      const lines = AVAILABLE_MODELS.map((m) => {
-        const active = m.id === current || (!preferredModel && m.id === model)
-        return `  ${active ? '●' : '○'} ${m.label} (${m.id})`
-      })
-      const header = version ? `Ion Engine ${version}` : 'Ion Engine'
-      addSystemMessage(`${header}\n\n${lines.join('\n')}\n\nSwitch model: type /model <name>\n  e.g. /model sonnet`)
+
+      // Use dynamic models if available, fall back to AVAILABLE_MODELS
+      const dynamicModels = useModelStore.getState().models
+      if (dynamicModels.length > 0) {
+        const grouped = useModelStore.getState().getModelsByProvider()
+        const lines: string[] = []
+        for (const [providerId, models] of grouped) {
+          lines.push(`\n  ${getProviderDisplayName(providerId)}:`)
+          for (const m of models) {
+            const active = m.id === current
+            lines.push(`    ${active ? '●' : '○'} ${getModelDisplayLabel(m.id)} (${m.id})`)
+          }
+        }
+        const header = version ? `Ion Engine ${version}` : 'Ion Engine'
+        addSystemMessage(`${header}\n${lines.join('\n')}\n\nSwitch model: type /model <name>\n  e.g. /model sonnet`)
+      } else {
+        const lines = AVAILABLE_MODELS.map((m) => {
+          const active = m.id === current || (!preferredModel && m.id === model)
+          return `  ${active ? '●' : '○'} ${m.label} (${m.id})`
+        })
+        const header = version ? `Ion Engine ${version}` : 'Ion Engine'
+        addSystemMessage(`${header}\n\n${lines.join('\n')}\n\nSwitch model: type /model <name>\n  e.g. /model sonnet`)
+      }
       return
     }
     case '/mcp': {
@@ -107,12 +126,24 @@ export interface ResolveModelSwitchResult {
 }
 
 /**
- * Match a `/model <query>` arg against AVAILABLE_MODELS. Returns the model
+ * Match a `/model <query>` arg against available models. Checks dynamic
+ * model store first, then falls back to AVAILABLE_MODELS. Returns the model
  * id+label on a hit, or {ok:false, query} for the caller to render a
  * helpful error message.
  */
 export function resolveModelSwitch(query: string): ResolveModelSwitchResult {
   const lowered = query.toLowerCase()
+
+  // Check dynamic models first
+  const dynamicModels = useModelStore.getState().models
+  if (dynamicModels.length > 0) {
+    const match = dynamicModels.find((m) =>
+      m.id.toLowerCase().includes(lowered) || getModelDisplayLabel(m.id).toLowerCase().includes(lowered),
+    )
+    if (match) return { ok: true, modelId: match.id, modelLabel: getModelDisplayLabel(match.id), query }
+  }
+
+  // Fall back to static models
   const match = AVAILABLE_MODELS.find((m: { id: string; label: string }) =>
     m.id.toLowerCase().includes(lowered) || m.label.toLowerCase().includes(lowered),
   )

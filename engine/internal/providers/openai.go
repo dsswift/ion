@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 type openaiProvider struct {
@@ -28,6 +29,7 @@ type openaiProvider struct {
 func NewOpenAIProvider(opts *ProviderOptions) LlmProvider {
 	apiKey := ""
 	baseURL := "https://api.openai.com"
+	id := "openai"
 	if opts != nil {
 		if opts.APIKey != "" {
 			apiKey = opts.APIKey
@@ -35,8 +37,11 @@ func NewOpenAIProvider(opts *ProviderOptions) LlmProvider {
 		if opts.BaseURL != "" {
 			baseURL = opts.BaseURL
 		}
+		if opts.ID != "" {
+			id = opts.ID
+		}
 	}
-	if apiKey == "" {
+	if apiKey == "" && id == "openai" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
 
@@ -45,13 +50,15 @@ func NewOpenAIProvider(opts *ProviderOptions) LlmProvider {
 		authHeader = opts.AuthHeader
 	}
 
-	return &openaiProvider{
-		id:         "openai",
+	result := &openaiProvider{
+		id:         id,
 		apiKey:     apiKey,
 		baseURL:    baseURL,
 		authHeader: authHeader,
 		client:  &http.Client{Transport: network.GetHTTPTransport()},
 	}
+	utils.Log("OpenAI", fmt.Sprintf("NewOpenAIProvider: id=%s baseURL=%s apiKeyLen=%d authHeader=%s", id, baseURL, len(apiKey), authHeader))
+	return result
 }
 
 func (p *openaiProvider) ID() string { return p.id }
@@ -73,10 +80,12 @@ func (p *openaiProvider) Stream(ctx context.Context, opts types.LlmStreamOptions
 }
 
 func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptions, events chan<- types.LlmStreamEvent) error {
+	utils.Log("OpenAI", fmt.Sprintf("doStream: id=%s model=%s baseURL=%s", p.id, opts.Model, p.baseURL))
 	body := p.buildRequestBody(opts)
 
 	raw, err := json.Marshal(body)
 	if err != nil {
+		utils.Error("OpenAI", fmt.Sprintf("doStream: marshal error: %v", err))
 		return FromOpenAIError(fmt.Errorf("marshal request: %w", err), 0, "")
 	}
 
@@ -85,17 +94,22 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	if strings.HasSuffix(p.baseURL, "/v1") || strings.Contains(p.baseURL, "/v1/") {
 		endpoint = strings.TrimRight(p.baseURL, "/") + "/chat/completions"
 	}
+	utils.Log("OpenAI", fmt.Sprintf("doStream: endpoint=%s", endpoint))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
 	if err != nil {
+		utils.Error("OpenAI", fmt.Sprintf("doStream: create request error: %v", err))
 		return FromOpenAIError(fmt.Errorf("create request: %w", err), 0, "")
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	apiKey := p.apiKey
+	keySource := "constructor"
 	if apiKey == "" {
 		apiKey = GetProviderKey(p.id)
+		keySource = "registry:" + p.id
 	}
+	utils.Log("OpenAI", fmt.Sprintf("doStream: auth id=%s keySource=%s keyLen=%d authStyle=%s", p.id, keySource, len(apiKey), p.authHeader))
 	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
@@ -104,9 +118,11 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		return FromOpenAIError(err, 0, "")
 	}
 	defer resp.Body.Close()
+	utils.Debug("OpenAI", fmt.Sprintf("doStream: HTTP response status=%d", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		utils.Error("OpenAI", fmt.Sprintf("doStream: HTTP %d error for %s: %s", resp.StatusCode, endpoint, string(respBody)))
 		return FromOpenAIError(
 			fmt.Errorf("openai API error: %s", string(respBody)),
 			resp.StatusCode,
@@ -137,7 +153,8 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		totalOutputToks int
 	)
 
-	for sse := range ParseSSEStream(resp.Body) {
+	sseCh, sseErr := ParseSSEStream(resp.Body)
+	for sse := range sseCh {
 		if sse.Data == "" {
 			continue
 		}
@@ -259,6 +276,15 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 				return err
 			}
 		}
+	}
+
+	// Surface mid-stream read failures as real errors instead of silently
+	// closing the turn with a synthetic message_stop on a partial response.
+	if err := sseErr(); err != nil {
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
+		return FromOpenAIError(fmt.Errorf("sse read: %w", err), 0, "")
 	}
 
 	// message_stop

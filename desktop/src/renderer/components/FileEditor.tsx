@@ -1,7 +1,9 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
+import { EditorView } from '@codemirror/view'
+import { gotoLine } from '@codemirror/search'
 // Editor portals to document.body (not PopoverLayer) so z-index can go behind main UI
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
@@ -10,7 +12,8 @@ import { useFileEditorContent } from '../hooks/useFileEditorContent'
 import { isMarkdownFile } from './FileEditorShared'
 import { FileEditorTabBar } from './FileEditorTabBar'
 import { FileEditorPreview } from './FileEditorPreview'
-import { FileEditorCodeMirror } from './FileEditorCodeMirror'
+import { FileEditorCodeMirror, CursorPosition } from './FileEditorCodeMirror'
+import { FileEditorStatusBar } from './FileEditorStatusBar'
 
 interface FileEditorProps {
   dir: string
@@ -18,6 +21,7 @@ interface FileEditorProps {
 }
 
 export function FileEditor({ dir, tabId }: FileEditorProps) {
+  console.log('[FileEditor] render', { dir, tabId })
   const colors = useColors()
 
   // Panel position and size — managed via refs + direct DOM mutation during
@@ -38,6 +42,18 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   // File loading, watcher, and save handler.
   const { handleSave } = useFileEditorContent({ dir, activeFile })
 
+  // Cursor position for the status bar
+  const [cursorPos, setCursorPos] = useState<CursorPosition>({ line: 1, col: 1 })
+
+  // Language override (null = auto-detect)
+  const [langOverride, setLangOverride] = useState<string | null>(null)
+
+  // Ref to the CodeMirror EditorView for status bar actions
+  const editorViewRef = useRef<EditorView | null>(null)
+  const handleGoToLine = useCallback(() => {
+    if (editorViewRef.current) gotoLine(editorViewRef.current)
+  }, [])
+
   if (typeof document === 'undefined') return null
 
   const tabTitle = useSessionStore((s) => {
@@ -53,6 +69,8 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
     tabTitle,
     activeFile?.fileName,
   ].filter(Boolean).join(' - ') || 'File Editor'
+
+  const isPreview = activeFile?.isPreview && isMarkdownFile(activeFile.fileName)
 
   const panel = (
     <motion.div
@@ -123,10 +141,17 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
       {/* Editor / Preview area */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {activeFile ? (
-          activeFile.isPreview && isMarkdownFile(activeFile.fileName) ? (
+          isPreview ? (
             <FileEditorPreview dir={dir} tabId={tabId} activeFile={activeFile} />
           ) : (
-            <FileEditorCodeMirror dir={dir} activeFile={activeFile} onSave={handleSave} />
+            <FileEditorCodeMirror
+              dir={dir}
+              activeFile={activeFile}
+              onSave={handleSave}
+              onCursorChange={setCursorPos}
+              editorViewRef={editorViewRef}
+              languageOverride={langOverride}
+            />
           )
         ) : (
           /* No file open */
@@ -138,6 +163,17 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
           </div>
         )}
       </div>
+
+      {/* Status bar */}
+      {activeFile && !isPreview && (
+        <FileEditorStatusBar
+          fileName={activeFile.fileName}
+          cursorPos={cursorPos}
+          languageOverride={langOverride}
+          onLanguageChange={setLangOverride}
+          onGoToLine={handleGoToLine}
+        />
+      )}
 
       {/* Resize handle */}
       <div

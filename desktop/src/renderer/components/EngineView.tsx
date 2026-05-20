@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
@@ -6,10 +6,11 @@ import { EngineDialog } from './EngineDialog'
 import { EngineStatusBar } from './EngineStatusBar'
 import { AgentPanel } from './AgentPanel'
 import { EngineFooter } from './EngineFooter'
+import { ArrowDown } from '@phosphor-icons/react'
 import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, HarnessMessage, MessageBubble,
-  CopyButton, InterruptButton,
+  CopyButton, InterruptButton, CompactionRow,
 } from './conversation'
 
 // Stable empty refs to avoid creating new array/object references on every render.
@@ -72,7 +73,19 @@ export function EngineView({ tabId }: EngineViewProps) {
   })
   const isRunning = tabStatus === 'running' || tabStatus === 'connecting'
   const hasRunningChildren = agentStates.some(a => a.status === 'running')
+  const [agentPanelFullscreen, setAgentPanelFullscreen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const isNearBottomRef = useRef(true)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return
+    const el = scrollRef.current
+    const threshold = 80
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    isNearBottomRef.current = nearBottom
+    setShowScrollBtn(!nearBottom)
+  }, [])
 
   // Include all messages (user messages shown inline, plus pinned prompt header)
   const visibleMessages = messages
@@ -81,9 +94,9 @@ export function EngineView({ tabId }: EngineViewProps) {
   const hasContent = visibleMessages.some(m => m.role === 'assistant' && (m.content || '').length > 0)
   const showThinking = isRunning && !hasContent && agentStates.filter(a => a.status === 'running').length === 0
 
-  // Auto-scroll
+  // Auto-scroll (only when user is near bottom)
   useEffect(() => {
-    if (scrollRef.current) {
+    if (isNearBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages.length, visibleMessages.length, agentStates.length, workingMessage, isRunning])
@@ -181,8 +194,8 @@ export function EngineView({ tabId }: EngineViewProps) {
       )}
 
       {/* Scrollable conversation area */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <div ref={scrollRef} style={{ height: '100%', overflowY: 'auto', padding: '8px 12px' }}>
+      <div style={{ flex: agentPanelFullscreen ? 0 : 1, maxHeight: agentPanelFullscreen ? 100 : undefined, position: 'relative', overflow: 'hidden' }}>
+        <div ref={scrollRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'auto', padding: '8px 12px' }}>
           {/* Thinking indicator */}
           <AnimatePresence>
             {showThinking && (
@@ -227,6 +240,8 @@ export function EngineView({ tabId }: EngineViewProps) {
                     return <HarnessMessage key={item.message.id} message={item.message} skipMotion />
                   case 'system':
                     return <SystemMessage key={item.message.id} message={item.message} skipMotion />
+                  case 'compaction':
+                    return <CompactionRow key={item.message.id} message={item.message} skipMotion />
                   default:
                     return null
                 }
@@ -258,6 +273,40 @@ export function EngineView({ tabId }: EngineViewProps) {
           )}
         </div>
 
+        {/* Scroll-to-bottom FAB */}
+        {showScrollBtn && (
+          <button
+            onClick={() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+                isNearBottomRef.current = true
+                setShowScrollBtn(false)
+              }
+            }}
+            style={{
+              position: 'absolute',
+              bottom: 8,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 3,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: colors.popoverBg,
+              border: `1px solid ${colors.containerBorder}`,
+              color: colors.textSecondary,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            }}
+            title="Scroll to bottom"
+          >
+            <ArrowDown size={14} />
+          </button>
+        )}
+
         {/* Interrupt button — visible while the parent run is active OR
             while dispatched children are still running so the user can
             always reap a runaway dispatch even if the parent has died. */}
@@ -275,7 +324,13 @@ export function EngineView({ tabId }: EngineViewProps) {
       </div>
 
       {/* Agent bars */}
-      <AgentPanel agents={agentStates} />
+      <div style={{ flex: agentPanelFullscreen ? 1 : undefined, overflow: agentPanelFullscreen ? 'auto' : undefined, minHeight: 0 }}>
+        <AgentPanel
+          agents={agentStates}
+          isFullscreen={agentPanelFullscreen}
+          onToggleFullscreen={() => setAgentPanelFullscreen(!agentPanelFullscreen)}
+        />
+      </div>
 
       {/* Status footer */}
       <EngineFooter

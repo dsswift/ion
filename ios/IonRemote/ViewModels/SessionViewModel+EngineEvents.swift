@@ -6,6 +6,7 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String) {
+        DiagnosticLog.log("ENGINE: tool-start tabId=\(tabId.prefix(8)) tool=\(toolName) toolId=\(toolId.prefix(8))")
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
         activeTools[key, default: [:]][toolId] = info
@@ -17,6 +18,7 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool) {
+        DiagnosticLog.log("ENGINE: tool-end tabId=\(tabId.prefix(8)) toolId=\(toolId.prefix(8)) isError=\(isError)")
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         activeTools[key]?[toolId] = nil
         if activeTools[key]?.isEmpty == true {
@@ -35,6 +37,7 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineError(tabId: String, instanceId: String?, message: String) {
+        DiagnosticLog.log("ENGINE: error tabId=\(tabId.prefix(8)) msg=\(message.prefix(80))")
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         // Add error as system message in conversation
         var msgs = engineMessages[key] ?? []
@@ -49,6 +52,7 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineNotify(tabId: String, instanceId: String?, message: String, level: String?) {
+        DiagnosticLog.log("ENGINE: notify tabId=\(tabId.prefix(8)) level=\(level ?? "info") msg=\(message.prefix(60))")
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         // Surface notifications as system messages in the conversation
         var msgs = engineMessages[key] ?? []
@@ -67,6 +71,7 @@ extension SessionViewModel {
             msgs.append(EngineMessage(id: UUID().uuidString, role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
         }
         engineMessages[key] = msgs
+        engineTurnHasText.insert(key)
         // Set tab running if this is the active instance
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
         if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -88,10 +93,13 @@ extension SessionViewModel {
             tabs[idx].contextTokens = inputTokens
             tabs[idx].contextPercent = contextPercent
         }
+
+        engineTurnHasText.remove(key)
     }
 
     @MainActor
     func handleEngineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String]) {
+        DiagnosticLog.log("ENGINE: dead tabId=\(tabId.prefix(8)) exitCode=\(exitCode ?? -1) signal=\(signal ?? "nil")")
         // exitCode 0/nil = normal exit or idle cleanup, not a real death
         guard let exitCode, exitCode != 0 else { return }
         // Only mark tab dead if no other instances are running
@@ -128,5 +136,6 @@ extension SessionViewModel {
         activeTools.removeValue(forKey: removedKey)
         engineMessages.removeValue(forKey: removedKey)
         engineConversationLoaded.remove(removedKey)
+        engineTurnHasText.remove(removedKey)
     }
 }

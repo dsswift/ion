@@ -95,6 +95,88 @@ func TestResolveTier_ConfigChangesWithoutRestart(t *testing.T) {
 	}
 }
 
+// TestResolveTierChain_StringShape: a bare-string tier value returns model
+// with empty fallbacks (back-compat with existing configs).
+func TestResolveTierChain_StringShape(t *testing.T) {
+	dir := t.TempDir()
+	ionDir := filepath.Join(dir, ".ion")
+	os.MkdirAll(ionDir, 0o700)
+	t.Setenv("HOME", dir)
+
+	cfg := map[string]any{
+		"tiers": map[string]any{"fast": "claude-haiku-4-5"},
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o644)
+
+	model, fallbacks := ResolveTierChain("fast")
+	if model != "claude-haiku-4-5" {
+		t.Errorf("model = %q, want claude-haiku-4-5", model)
+	}
+	if len(fallbacks) != 0 {
+		t.Errorf("fallbacks = %v, want empty", fallbacks)
+	}
+}
+
+// TestResolveTierChain_ObjectShape: an object tier with fallbacks returns the
+// full chain in declared order.
+func TestResolveTierChain_ObjectShape(t *testing.T) {
+	dir := t.TempDir()
+	ionDir := filepath.Join(dir, ".ion")
+	os.MkdirAll(ionDir, 0o700)
+	t.Setenv("HOME", dir)
+
+	cfg := map[string]any{
+		"tiers": map[string]any{
+			"chiefs": map[string]any{
+				"model":     "claude-opus-4-7",
+				"fallbacks": []any{"claude-opus-4-6", "claude-sonnet-4-6"},
+			},
+		},
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o644)
+
+	model, fallbacks := ResolveTierChain("chiefs")
+	if model != "claude-opus-4-7" {
+		t.Errorf("model = %q, want claude-opus-4-7", model)
+	}
+	want := []string{"claude-opus-4-6", "claude-sonnet-4-6"}
+	if len(fallbacks) != len(want) {
+		t.Fatalf("fallbacks len = %d, want %d", len(fallbacks), len(want))
+	}
+	for i, m := range want {
+		if fallbacks[i] != m {
+			t.Errorf("fallbacks[%d] = %q, want %q", i, fallbacks[i], m)
+		}
+	}
+}
+
+// TestResolveTierChain_ObjectMalformed: object without a "model" key falls
+// through to passthrough rather than panicking or returning a phantom model.
+func TestResolveTierChain_ObjectMalformed(t *testing.T) {
+	dir := t.TempDir()
+	ionDir := filepath.Join(dir, ".ion")
+	os.MkdirAll(ionDir, 0o700)
+	t.Setenv("HOME", dir)
+
+	cfg := map[string]any{
+		"tiers": map[string]any{
+			"weird": map[string]any{"fallbacks": []any{"x"}}, // no model
+		},
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o644)
+
+	model, fallbacks := ResolveTierChain("weird")
+	if model != "weird" {
+		t.Errorf("malformed tier should passthrough, got %q", model)
+	}
+	if len(fallbacks) != 0 {
+		t.Errorf("fallbacks should be empty for malformed tier, got %v", fallbacks)
+	}
+}
+
 func TestAvailableProviders_EnvOnly(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("OPENAI_API_KEY", "")

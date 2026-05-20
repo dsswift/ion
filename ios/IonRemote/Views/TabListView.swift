@@ -2,130 +2,122 @@ import SwiftUI
 
 struct TabListView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
     @State private var showSettings = false
     @State private var showNewTab = false
     @State private var showPairingSheet = false
-    @State private var navigationPath = NavigationPath()
     @State private var enginePickerDirectory: String? = nil
     @State private var renamingTabId: String?
     @State private var renameText: String = ""
+    @State private var collapsedGroupIds: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: "collapsedGroupIds") ?? [])
+    }()
+
+    // iPad: selection-based navigation
+    @State private var selectedTabId: String?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    // iPhone: path-based navigation
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            List {
-                ForEach(viewModel.displayGroups, id: \.id) { group in
-                    Section {
-                        ForEach(group.tabs) { tab in
-                            NavigationLink(value: tab.id) {
-                                TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual")
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                Button {
-                                    renameText = tab.displayTitle
-                                    renamingTabId = tab.id
-                                } label: {
-                                    Label("Rename", systemImage: "pencil")
-                                }
-                                .tint(.orange)
-                            }
-                            .contextMenu {
-                                Button {
-                                    renameText = tab.displayTitle
-                                    renamingTabId = tab.id
-                                } label: {
-                                    Label("Rename", systemImage: "pencil")
-                                }
-                                if viewModel.tabGroupMode == "manual" {
-                                    let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
-                                    if !targets.isEmpty {
-                                        Menu {
-                                            ForEach(targets) { target in
-                                                Button(target.label) {
-                                                    viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
-                                                }
-                                            }
-                                        } label: {
-                                            Label("Move to Group", systemImage: "arrow.right.arrow.left")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .onDelete { offsets in
-                            let ids = offsets.map { group.tabs[$0].id }
-                            for id in ids {
-                                viewModel.closeTab(id)
-                            }
-                        }
-                    } header: {
-                        HStack {
-                            Label(group.label, systemImage: group.icon)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if let dir = group.directory {
+        Group {
+            if sizeClass == .regular {
+                iPadLayout
+            } else {
+                iPhoneLayout
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .sheet(isPresented: $showPairingSheet) {
+            PairingView()
+        }
+        .sheet(isPresented: $showNewTab) {
+            newTabSheet
+        }
+        .confirmationDialog(
+            "Select Engine Profile",
+            isPresented: Binding(
+                get: { enginePickerDirectory != nil },
+                set: { if !$0 { enginePickerDirectory = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            ForEach(viewModel.engineProfiles) { profile in
+                Button(profile.name) {
+                    let dir = enginePickerDirectory
+                    enginePickerDirectory = nil
+                    viewModel.createEngineTab(workingDirectory: dir, profileId: profile.id)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                enginePickerDirectory = nil
+            }
+        }
+        .alert("Rename Tab", isPresented: .init(
+            get: { renamingTabId != nil },
+            set: { if !$0 { renamingTabId = nil } }
+        )) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                if let id = renamingTabId {
+                    let title = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    viewModel.renameTab(tabId: id, customTitle: title.isEmpty ? nil : title)
+                }
+                renamingTabId = nil
+            }
+            Button("Cancel", role: .cancel) {
+                renamingTabId = nil
+            }
+        } message: {
+            Text("Enter a new name for this tab.")
+        }
+    }
 
-                                Button {
-                                    viewModel.createTab(workingDirectory: dir)
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .contextMenu {
-                                    Button {
-                                        viewModel.createTab(workingDirectory: dir)
-                                    } label: {
-                                        Label("New Tab", systemImage: "plus")
-                                    }
-                                    Button {
-                                        viewModel.createTerminalTab(workingDirectory: dir)
-                                    } label: {
-                                        Label("New Terminal", systemImage: "terminal")
-                                    }
-                                    Button {
-                                        requestEngineTab(directory: dir)
-                                    } label: {
-                                        Label("New Engine", systemImage: "bolt.fill")
-                                    }
-                                }
-                            }
+    // MARK: - iPad Layout (NavigationSplitView)
+
+    private var iPadLayout: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            sidebarContent
+                .navigationTitle("")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
                         }
-                        .padding(.top, 4)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        newTabButton
                     }
                 }
+        } detail: {
+            detailView
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
+            if let tabId {
+                selectedTabId = tabId
+                viewModel.pendingNavigationTabId = nil
+            }
+        }
+    }
+
+    // MARK: - iPhone Layout (NavigationStack)
+
+    private var iPhoneLayout: some View {
+        NavigationStack(path: $navigationPath) {
+            List {
+                tabGroupSections(selectionStyle: .navigation)
             }
             .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     DesktopPickerMenu(showPairingSheet: $showPairingSheet)
-                }
-            }
-            .alert("Rename Tab", isPresented: .init(
-                get: { renamingTabId != nil },
-                set: { if !$0 { renamingTabId = nil } }
-            )) {
-                TextField("Name", text: $renameText)
-                Button("Rename") {
-                    if let id = renamingTabId {
-                        let title = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        viewModel.renameTab(tabId: id, customTitle: title.isEmpty ? nil : title)
-                    }
-                    renamingTabId = nil
-                }
-                Button("Cancel", role: .cancel) {
-                    renamingTabId = nil
-                }
-            } message: {
-                Text("Enter a new name for this tab.")
-            }
-            .navigationDestination(for: String.self) { tabId in
-                if viewModel.tab(for: tabId)?.isEngine == true {
-                    EngineView(tabId: tabId)
-                } else if viewModel.tab(for: tabId)?.isTerminalOnly == true {
-                    RemoteTerminalView(tabId: tabId)
-                } else {
-                    ConversationView(tabId: tabId)
                 }
             }
             .toolbar {
@@ -140,29 +132,11 @@ struct TabListView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        if allDirectories.isEmpty {
-                            viewModel.createTab()
-                        } else {
-                            showNewTab = true
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .contextMenu {
-                        if let defaultDir = allDirectories.first {
-                            Button { viewModel.createTab(workingDirectory: defaultDir.fullPath) } label: {
-                                Label("New Tab", systemImage: "plus")
-                            }
-                            Button { viewModel.createTerminalTab(workingDirectory: defaultDir.fullPath) } label: {
-                                Label("New Terminal", systemImage: "terminal")
-                            }
-                            Button { requestEngineTab(directory: defaultDir.fullPath) } label: {
-                                Label("New Engine", systemImage: "bolt.fill")
-                            }
-                        }
-                    }
+                    newTabButton
                 }
+            }
+            .navigationDestination(for: String.self) { tabId in
+                destinationView(for: tabId)
             }
             .refreshable {
                 Haptic.light()
@@ -174,98 +148,311 @@ struct TabListView: View {
                     viewModel.pendingNavigationTabId = nil
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-            }
-            .sheet(isPresented: $showPairingSheet) {
-                PairingView()
-            }
-            .sheet(isPresented: $showNewTab) {
-                NavigationStack {
-                    List {
-                        ForEach(allDirectories, id: \.fullPath) { dir in
-                            HStack {
-                                Text(dir.label)
-                                    .lineLimit(1)
-                                Spacer()
-                                Button {
-                                    showNewTab = false
-                                    viewModel.createTab(workingDirectory: dir.fullPath)
-                                } label: {
-                                    Image(systemName: "plus")
-                                }
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.circle)
-                                Button {
-                                    showNewTab = false
-                                    viewModel.createTerminalTab(workingDirectory: dir.fullPath)
-                                } label: {
-                                    Image(systemName: "terminal")
-                                }
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.circle)
-                                Button {
-                                    showNewTab = false
-                                    requestEngineTab(directory: dir.fullPath)
-                                } label: {
-                                    Image(systemName: "bolt")
-                                }
-                                .buttonStyle(.bordered)
-                                .buttonBorderShape(.circle)
-                                .tint(.orange)
-                            }
-                        }
-                    }
-                    .navigationTitle("New Tab")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { showNewTab = false }
-                        }
-                    }
-                }
-                .presentationDetents([.medium])
-            }
-            .confirmationDialog(
-                "Select Engine Profile",
-                isPresented: Binding(
-                    get: { enginePickerDirectory != nil },
-                    set: { if !$0 { enginePickerDirectory = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                ForEach(viewModel.engineProfiles) { profile in
-                    Button(profile.name) {
-                        let dir = enginePickerDirectory
-                        enginePickerDirectory = nil
-                        viewModel.createEngineTab(workingDirectory: dir, profileId: profile.id)
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    enginePickerDirectory = nil
-                }
-            }
             .overlay {
-                if viewModel.tabs.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "terminal")
-                            .font(.system(size: 40))
-                            .foregroundStyle(IonTheme.accent)
-                        Text("No Tabs")
-                            .font(.title3.weight(.semibold))
-                        Text("Tap + to create a new tab or pull to refresh.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding()
+                emptyStateOverlay
+            }
+            .overlay(alignment: .top) {
+                if viewModel.voiceService.isSpeaking {
+                    VoicePlaybackBar(
+                        onSkip: { viewModel.voiceService.skip() },
+                        onStopAll: { viewModel.voiceService.stop() },
+                        hasPending: viewModel.voiceService.hasPending
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
                 }
             }
         }
     }
 
-    // MARK: - Reconnecting Indicator
+    // MARK: - Sidebar Content
 
+    private var sidebarContent: some View {
+        VStack(spacing: 0) {
+            // Device picker + connection quality always visible in sidebar
+            HStack(spacing: 8) {
+                DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+                Spacer()
+                ConnectionQualityView(compact: true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            List(selection: $selectedTabId) {
+                tabGroupSections(selectionStyle: .selection)
+            }
+            .refreshable {
+                Haptic.light()
+                viewModel.sync()
+            }
+            .overlay {
+                emptyStateOverlay
+            }
+            .overlay(alignment: .top) {
+                if viewModel.voiceService.isSpeaking {
+                    VoicePlaybackBar(
+                        onSkip: { viewModel.voiceService.skip() },
+                        onStopAll: { viewModel.voiceService.stop() },
+                        hasPending: viewModel.voiceService.hasPending
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
+                }
+            }
+        }
+    }
+
+    // MARK: - Tab Group Sections
+
+    @ViewBuilder
+    private func tabGroupSections(selectionStyle: TabSelectionStyle) -> some View {
+        ForEach(viewModel.displayGroups, id: \.id) { group in
+            Section {
+                if !collapsedGroupIds.contains(group.id) {
+                    ForEach(group.tabs) { tab in
+                        Group {
+                            switch selectionStyle {
+                            case .navigation:
+                                NavigationLink(value: tab.id) {
+                                    TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
+                                }
+                            case .selection:
+                                TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
+                                    .tag(tab.id)
+                            }
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button {
+                                renameText = tab.displayTitle
+                                renamingTabId = tab.id
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            .tint(.orange)
+                        }
+                        .contextMenu {
+                            Button {
+                                renameText = tab.displayTitle
+                                renamingTabId = tab.id
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            if viewModel.tabGroupMode == "manual" {
+                                let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
+                                if !targets.isEmpty {
+                                    Menu {
+                                        ForEach(targets) { target in
+                                            Button(target.label) {
+                                                viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Move to Group", systemImage: "arrow.right.arrow.left")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .onDelete { offsets in
+                        let ids = offsets.map { group.tabs[$0].id }
+                        for id in ids {
+                            viewModel.closeTab(id)
+                        }
+                    }
+                }
+            } header: {
+                groupHeader(group)
+            }
+        }
+    }
+
+    private func groupHeader(_ group: (label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])) -> some View {
+        let isCollapsed = collapsedGroupIds.contains(group.id)
+        return HStack {
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+            Label(group.label, systemImage: group.icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if let dir = group.directory {
+                Button {
+                    showNewTab = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .contextMenu {
+                    Button {
+                        viewModel.createTab(workingDirectory: dir)
+                    } label: {
+                        Label("New Tab", systemImage: "plus")
+                    }
+                    Button {
+                        viewModel.createTerminalTab(workingDirectory: dir)
+                    } label: {
+                        Label("New Terminal", systemImage: "terminal")
+                    }
+                    Button {
+                        requestEngineTab(directory: dir)
+                    } label: {
+                        Label("New Engine", systemImage: "bolt.fill")
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(IonTheme.snappySpring) {
+                toggleGroupCollapsed(group.id)
+            }
+        }
+    }
+
+    // MARK: - Detail / Destination
+
+    @ViewBuilder
+    private func destinationView(for tabId: String) -> some View {
+        if viewModel.tab(for: tabId)?.isEngine == true {
+            EngineView(tabId: tabId)
+        } else if viewModel.tab(for: tabId)?.isTerminalOnly == true {
+            RemoteTerminalView(tabId: tabId)
+        } else {
+            ConversationView(tabId: tabId)
+        }
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        if let tabId = selectedTabId, viewModel.tab(for: tabId) != nil {
+            destinationView(for: tabId)
+                .id(tabId)
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: "sidebar.leading")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.tertiary)
+                Text("Select a tab")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Choose a conversation from the sidebar.")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    // MARK: - Shared Components
+
+    private var newTabButton: some View {
+        Button {
+            if allDirectories.isEmpty {
+                viewModel.createTab()
+            } else {
+                showNewTab = true
+            }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .contextMenu {
+            if let defaultDir = allDirectories.first {
+                Button { viewModel.createTab(workingDirectory: defaultDir.fullPath) } label: {
+                    Label("New Tab", systemImage: "plus")
+                }
+                Button { viewModel.createTerminalTab(workingDirectory: defaultDir.fullPath) } label: {
+                    Label("New Terminal", systemImage: "terminal")
+                }
+                Button { requestEngineTab(directory: defaultDir.fullPath) } label: {
+                    Label("New Engine", systemImage: "bolt.fill")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyStateOverlay: some View {
+        if viewModel.tabs.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "terminal")
+                    .font(.system(size: 40))
+                    .foregroundStyle(IonTheme.accent)
+                Text("No Tabs")
+                    .font(.title3.weight(.semibold))
+                Text("Tap + to create a new tab or pull to refresh.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+        }
+    }
+
+    private var newTabSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(allDirectories, id: \.fullPath) { dir in
+                    HStack {
+                        Text(dir.label)
+                            .lineLimit(1)
+                        Spacer()
+                        Button {
+                            showNewTab = false
+                            viewModel.createTab(workingDirectory: dir.fullPath)
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.circle)
+                        Button {
+                            showNewTab = false
+                            viewModel.createTerminalTab(workingDirectory: dir.fullPath)
+                        } label: {
+                            Image(systemName: "terminal")
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.circle)
+                        Button {
+                            showNewTab = false
+                            requestEngineTab(directory: dir.fullPath)
+                        } label: {
+                            Image(systemName: "bolt")
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.circle)
+                        .tint(.orange)
+                    }
+                }
+            }
+            .navigationTitle("New Tab")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showNewTab = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    // MARK: - Helpers
+
+    /// Toggle a group's collapsed state and persist to UserDefaults.
+    private func toggleGroupCollapsed(_ groupId: String) {
+        if collapsedGroupIds.contains(groupId) {
+            collapsedGroupIds.remove(groupId)
+        } else {
+            collapsedGroupIds.insert(groupId)
+        }
+        persistCollapsedGroups()
+    }
+
+    private func persistCollapsedGroups() {
+        UserDefaults.standard.set(Array(collapsedGroupIds), forKey: "collapsedGroupIds")
+    }
 
     /// Handle engine tab creation with profile selection.
     /// - 0 profiles: auto-create without a profileId (engine uses default)
@@ -310,120 +497,9 @@ struct TabListView: View {
     }
 }
 
-// MARK: - TabRowView
+// MARK: - Tab Selection Style
 
-private struct TabRowView: View {
-    let tab: RemoteTabState
-    var showDirectory: Bool = false
-
-    @State private var pulseOpacity: Double = 1.0
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(statusInfo.color)
-                .frame(width: 8, height: 8)
-                .opacity(statusInfo.pulse ? pulseOpacity : 1.0)
-                .shadow(color: statusInfo.pulse ? statusInfo.color.opacity(0.6) : .clear, radius: 3)
-                .onChange(of: statusInfo.pulse) { _, shouldPulse in
-                    if shouldPulse {
-                        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                            pulseOpacity = 0.3
-                        }
-                    } else {
-                        withAnimation(.default) {
-                            pulseOpacity = 1.0
-                        }
-                    }
-                }
-                .onAppear {
-                    if statusInfo.pulse {
-                        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                            pulseOpacity = 0.3
-                        }
-                    }
-                }
-
-            if tab.isEngine == true {
-                Image(systemName: "bolt.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if tab.isTerminalOnly == true {
-                Image(systemName: "terminal")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(tab.displayTitle)
-                    .font(.headline)
-
-                if showDirectory {
-                    Text(directoryLabel)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                if tab.status == .running || tab.status == .connecting {
-                    Text("Running…")
-                        .font(.caption2)
-                        .foregroundStyle(IonTheme.statusRunning)
-                        .lineLimit(1)
-                }
-
-                if let message = tab.lastMessage {
-                    Text(message)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var directoryLabel: String {
-        let path = tab.workingDirectory
-        let base = (path as NSString).lastPathComponent
-        if base.isEmpty || path == "/" || path == "~" { return "Home" }
-        return base
-    }
-
-    /// Status color and pulse state matching desktop TabStrip priority order.
-    private var statusInfo: (color: Color, pulse: Bool) {
-        // 1. Dead/Failed -> Red (no pulse)
-        if tab.status == .dead || tab.status == .failed {
-            return (Color(hex: 0xC47060), false)
-        }
-
-        // 2. Check permission queue for special tool states
-        let hasGenericPermission = tab.permissionQueue.contains {
-            $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
-        }
-        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
-        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
-
-        // 3. Generic permission -> Orange (steady)
-        if hasGenericPermission {
-            return (Color(hex: 0xE8854A), false)
-        }
-        // 4. Running/Connecting -> Orange + pulse (before plan/question so active streaming always wins)
-        if tab.status == .running || tab.status == .connecting {
-            return (Color(hex: 0xE8854A), true)
-        }
-        // 5. Plan ready -> Green (idle or completed -- run finishes after auto-allow)
-        if hasPlanReady && (tab.status == .idle || tab.status == .completed) {
-            return (.green, false)
-        }
-        // 6. Question pending -> Blue (idle or completed)
-        if hasQuestion && (tab.status == .idle || tab.status == .completed) {
-            return (Color(hex: 0x4A9EF5), false)
-        }
-        // 7. Default -> Gray
-        return (Color(hex: 0x8A8A80), false)
-    }
-
+private enum TabSelectionStyle {
+    case navigation  // iPhone: NavigationLink(value:)
+    case selection   // iPad: List(selection:) with .tag()
 }

@@ -51,7 +51,28 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             }
 
             case 'compacting':
-              updated.currentActivity = event.active ? 'Compacting...' : 'Thinking...'
+              if (event.active) {
+                updated.currentActivity = 'Compacting...'
+                updated.isCompacting = true
+              } else {
+                updated.currentActivity = 'Thinking...'
+                updated.isCompacting = false
+                // Insert a compaction marker message so the user can see when compaction happened.
+                if (event.messagesBefore || event.summary) {
+                  const parts = ['[Compaction]']
+                  if (event.strategy) parts.push(event.strategy)
+                  if (event.messagesBefore && event.messagesAfter != null) {
+                    parts.push(`${event.messagesBefore} → ${event.messagesAfter} messages`)
+                  }
+                  if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
+                  let content = parts.join(' · ')
+                  if (event.summary) content += '\n\n' + event.summary
+                  updated.messages = [
+                    ...updated.messages,
+                    { id: nextMsgId(), role: 'system' as const, content, timestamp: Date.now() },
+                  ]
+                }
+              }
               break
 
             case 'tool_stalled':
@@ -250,7 +271,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   if (updated.permissionMode !== 'plan' || exitPlanIsStale) {
                     const nonPlanDenials = event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
                     updated.permissionDenied = nonPlanDenials.length > 0 ? { tools: nonPlanDenials } : null
-                    if (updated.permissionMode !== 'plan') {
+                    if (updated.permissionMode !== 'plan' && s.backend !== 'cli') {
                       setTimeout(() => {
                         get().sendMessage('Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.')
                       }, 100)

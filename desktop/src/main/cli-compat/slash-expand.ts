@@ -58,12 +58,16 @@ export async function expandSlashCommand(
     if (content === null) continue
 
     const body = stripFrontmatter(content)
-    const systemPrompt = body.replace(/\$ARGUMENTS/g, args)
+    const resolved = body.replace(/\$ARGUMENTS/g, args)
 
+    // Following Claude Code's behavior: the expanded command content
+    // becomes the user message directly. When args are present and the
+    // template contains $ARGUMENTS, the substituted content is the full
+    // instruction. When no args, the raw content is the instruction.
     return {
       expanded: true,
-      systemPrompt,
-      userPrompt: args || prompt,
+      systemPrompt: '',
+      userPrompt: resolved,
     }
   }
 

@@ -15,7 +15,10 @@ extension RemoteEvent {
             let recentDirs = try container.decodeIfPresent([String].self, forKey: .recentDirectories) ?? []
             let tabGroupMode = try container.decodeIfPresent(String.self, forKey: .tabGroupMode)
             let tabGroups = try container.decodeIfPresent([RemoteTabGroup].self, forKey: .tabGroups)
-            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups)
+            let preferredModel = try container.decodeIfPresent(String.self, forKey: .preferredModel)
+            let engineDefaultModel = try container.decodeIfPresent(String.self, forKey: .engineDefaultModel)
+            let availableModels = try container.decodeIfPresent([RemoteModelEntry].self, forKey: .availableModels)
+            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels)
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
@@ -54,6 +57,9 @@ extension RemoteEvent {
             let message = try container.decode(String.self, forKey: .message)
             return .error(tabId: tabId, message: message)
 
+        case .requestDiagnosticLogs:
+            return .requestDiagnosticLogs
+
         default:
             return nil
         }
@@ -62,7 +68,7 @@ extension RemoteEvent {
     /// Encode lifecycle events. Returns `true` if the receiver was a lifecycle event.
     func encodeLifecycle(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups):
+        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels):
             try container.encode(TypeKey.snapshot, forKey: .type)
             try container.encode(tabs, forKey: .tabs)
             if !recentDirectories.isEmpty {
@@ -70,6 +76,9 @@ extension RemoteEvent {
             }
             try container.encodeIfPresent(tabGroupMode, forKey: .tabGroupMode)
             try container.encodeIfPresent(tabGroups, forKey: .tabGroups)
+            try container.encodeIfPresent(preferredModel, forKey: .preferredModel)
+            try container.encodeIfPresent(engineDefaultModel, forKey: .engineDefaultModel)
+            try container.encodeIfPresent(availableModels, forKey: .availableModels)
             return true
 
         case .tabCreated(let tab):
@@ -116,6 +125,10 @@ extension RemoteEvent {
             try container.encode(TypeKey.heartbeat, forKey: .type)
             try container.encode(senderTs, forKey: .ts)
             try container.encode(buffered, forKey: .buffered)
+            return true
+
+        case .requestDiagnosticLogs:
+            try container.encode(TypeKey.requestDiagnosticLogs, forKey: .type)
             return true
 
         default:

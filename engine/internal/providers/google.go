@@ -144,7 +144,8 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		totalOutputToks int
 	)
 
-	for sse := range ParseSSEStream(resp.Body) {
+	sseCh, sseErr := ParseSSEStream(resp.Body)
+	for sse := range sseCh {
 		if sse.Data == "" {
 			continue
 		}
@@ -248,6 +249,13 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 				return err
 			}
 		}
+	}
+
+	if err := sseErr(); err != nil {
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
+		return classifyGeminiError(0, err.Error())
 	}
 
 	return sendEvent(ctx, events, types.LlmStreamEvent{Type: "message_stop"})

@@ -1,0 +1,192 @@
+[
+  {
+    "id": "claude-opus-4-6",
+    "providerId": "anthropic",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.015,
+    "costPer1kOutput": 0.075,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "claude-opus-4-7",
+    "providerId": "anthropic",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.015,
+    "costPer1kOutput": 0.075,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "claude-sonnet-4-6",
+    "providerId": "anthropic",
+    "contextWindow": 200000,
+    "costPer1kInput": 0.003,
+    "costPer1kOutput": 0.015,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "claude-haiku-4-5-20251001",
+    "providerId": "anthropic",
+    "contextWindow": 200000,
+    "costPer1kInput": 0.0008,
+    "costPer1kOutput": 0.004,
+    "supportsCaching": true,
+    "supportsImages": true
+  },
+  {
+    "id": "gpt-4.1",
+    "providerId": "openai",
+    "contextWindow": 1047576,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.008,
+    "supportsImages": true
+  },
+  {
+    "id": "gpt-4.1-mini",
+    "providerId": "openai",
+    "contextWindow": 1047576,
+    "costPer1kInput": 0.0004,
+    "costPer1kOutput": 0.0016,
+    "supportsImages": true
+  },
+  {
+    "id": "o4-mini",
+    "providerId": "openai",
+    "contextWindow": 200000,
+    "costPer1kInput": 0.0011,
+    "costPer1kOutput": 0.0044,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "o3",
+    "providerId": "openai",
+    "contextWindow": 200000,
+    "costPer1kInput": 0.01,
+    "costPer1kOutput": 0.04,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "gemini-2.5-pro",
+    "providerId": "google",
+    "contextWindow": 1048576,
+    "costPer1kInput": 0.00125,
+    "costPer1kOutput": 0.01,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "gemini-2.5-flash",
+    "providerId": "google",
+    "contextWindow": 1048576,
+    "costPer1kInput": 0.00015,
+    "costPer1kOutput": 0.0006,
+    "supportsThinking": true,
+    "supportsImages": true
+  },
+  {
+    "id": "grok-3",
+    "providerId": "xai",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.003,
+    "costPer1kOutput": 0.015,
+    "supportsImages": true
+  },
+  {
+    "id": "grok-3-fast",
+    "providerId": "xai",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.005,
+    "costPer1kOutput": 0.025,
+    "supportsImages": true
+  },
+  {
+    "id": "grok-3-mini",
+    "providerId": "xai",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.0003,
+    "costPer1kOutput": 0.0005,
+    "supportsThinking": true
+  },
+  {
+    "id": "grok-3-mini-fast",
+    "providerId": "xai",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.0006,
+    "costPer1kOutput": 0.004,
+    "supportsThinking": true
+  },
+  {
+    "id": "grok-2",
+    "providerId": "xai",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.01,
+    "supportsImages": true
+  },
+  {
+    "id": "deepseek-chat",
+    "providerId": "deepseek",
+    "contextWindow": 65536,
+    "costPer1kInput": 0.00014,
+    "costPer1kOutput": 0.00028
+  },
+  {
+    "id": "deepseek-reasoner",
+    "providerId": "deepseek",
+    "contextWindow": 65536,
+    "costPer1kInput": 0.00055,
+    "costPer1kOutput": 0.0022,
+    "supportsThinking": true
+  },
+  {
+    "id": "llama-3.3-70b-versatile",
+    "providerId": "groq",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.00059,
+    "costPer1kOutput": 0.00079
+  },
+  {
+    "id": "llama-3.1-8b-instant",
+    "providerId": "groq",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.00005,
+    "costPer1kOutput": 0.00008
+  },
+  {
+    "id": "mistral-large-latest",
+    "providerId": "mistral",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.006,
+    "supportsImages": true
+  },
+  {
+    "id": "mistral-small-latest",
+    "providerId": "mistral",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.0001,
+    "costPer1kOutput": 0.0003,
+    "supportsImages": true
+  },
+  {
+    "id": "llama-3.3-70b",
+    "providerId": "cerebras",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.00085,
+    "costPer1kOutput": 0.0012
+  },
+  {
+    "id": "llama-3.1-8b",
+    "providerId": "cerebras",
+    "contextWindow": 131072,
+    "costPer1kInput": 0.0001,
+    "costPer1kOutput": 0.0001
+  }
+]

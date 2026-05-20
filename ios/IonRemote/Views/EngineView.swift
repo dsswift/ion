@@ -1,39 +1,206 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct EngineView: View {
     let tabId: String
-    @Environment(SessionViewModel.self) private var viewModel
+    @Environment(SessionViewModel.self) var viewModel
     @State private var promptText = ""
     @FocusState private var isInputFocused: Bool
     @State private var agentsPanelExpanded = true
+    @State private var agentPanelFullscreen = false
+    @State private var isNearBottom = true
+    @State private var forceScrollCounter = 0
+    @State private var showFileExplorer = false
+    @State private var showGitPane = false
+    @State var pendingAttachments: [PendingAttachment] = []
+    @State private var showAttachMenu = false
+    @State private var showFilePicker = false
+    @State private var showPhotoPicker = false
+    @State private var showDocumentPicker = false
+    @State private var photosPickerItems: [PhotosPickerItem] = []
 
     private var instances: [EngineInstanceInfo] {
         viewModel.engineInstances[tabId] ?? []
     }
-
     private var activeInstanceId: String {
         viewModel.activeEngineInstance[tabId] ?? instances.first?.id ?? ""
     }
-
     private var compoundKey: String {
         viewModel.engineCompoundKey(tabId: tabId)
     }
 
     private var visibleAgents: [AgentStateUpdate] {
-        (viewModel.engineAgentStates[compoundKey] ?? []).filter(\.isVisible)
+        (viewModel.engineAgentStates[compoundKey] ?? [])
+            .filter(\.isVisible)
+            .sorted { a, b in
+                let statusOrder: [String: Int] = ["running": 0, "done": 1, "error": 1, "cancelled": 1, "idle": 2]
+                let visOrder: [String: Int] = ["always": 0, "sticky": 1, "ephemeral": 2]
+                let sa = statusOrder[a.status] ?? 2
+                let sb = statusOrder[b.status] ?? 2
+                if sa != sb { return sa < sb }
+                let va = visOrder[a.visibility] ?? 9
+                let vb = visOrder[b.visibility] ?? 9
+                if va != vb { return va < vb }
+                return a.displayName.localizedCompare(b.displayName) == .orderedAscending
+            }
     }
 
     private var activeToolsList: [ActiveToolInfo] {
         (viewModel.activeTools[compoundKey] ?? [:]).values.sorted { $0.startTime < $1.startTime }
     }
-
     private var engineMsgs: [EngineMessage] {
         viewModel.engineMessages[compoundKey] ?? []
     }
 
-    var body: some View {
+    private enum GroupedItem: Identifiable {
+        case single(EngineMessage)
+        case toolGroup([EngineMessage])
+        var id: String {
+            switch self {
+            case .single(let msg): return msg.id
+            case .toolGroup(let msgs): return "tg-\(msgs.first?.id ?? "")"
+            }
+        }
+    }
+
+    private var groupedMessages: [GroupedItem] {
+        var result: [GroupedItem] = []
+        var toolBuf: [EngineMessage] = []
+        for msg in engineMsgs {
+            if msg.role == "tool" {
+                toolBuf.append(msg)
+            } else {
+                if !toolBuf.isEmpty {
+                    result.append(.toolGroup(toolBuf))
+                    toolBuf = []
+                }
+                result.append(.single(msg))
+            }
+        }
+        if !toolBuf.isEmpty {
+            result.append(.toolGroup(toolBuf))
+        }
+        return result
+    }
+
+    private var workingDirectory: String {
+        viewModel.tab(for: tabId)?.workingDirectory ?? ""
+    }
+    private var hasUploading: Bool {
+        pendingAttachments.contains { $0.isUploading }
+    }
+    private var isRunning: Bool {
+        let tab = viewModel.tab(for: tabId)
+        return tab?.status == .running || tab?.status == .connecting
+    }
+
+    // MARK: - Extracted sub-views
+
+    private var chatItems: [ChatItem<GroupedItem>] {
+        groupedMessages.map { ChatItem(id: $0.id, payload: $0) }
+    }
+
+    private var conversationScroll: some View {
+        ZStack(alignment: .bottom) {
+            ChatCollectionView(
+                items: chatItems,
+                isNearBottom: $isNearBottom,
+                forceScrollCounter: forceScrollCounter,
+                spacing: 8,
+                horizontalInset: 12
+            ) { item in
+                Group {
+                    switch item {
+                    case .single(let msg):
+                        EngineMessageRow(message: msg)
+                    case .toolGroup(let tools):
+                        EngineToolGroupRow(tools: tools)
+                    }
+                }
+            }
+
+            if !isNearBottom {
+                Button {
+                    isNearBottom = true
+                    forceScrollCounter += 1
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 40)
+                        .background(.regularMaterial)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                }
+                .padding(.bottom, 12)
+                .transition(.opacity.combined(with: .scale))
+            }
+        }
+        .animation(IonTheme.snappySpring, value: isNearBottom)
+    }
+
+    private var agentSection: some View {
         VStack(spacing: 0) {
-            // Context usage bar
+            HStack(spacing: 4) {
+                Button {
+                    withAnimation(IonTheme.snappySpring) {
+                        agentsPanelExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: agentsPanelExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                        Text("Agents")
+                            .font(.caption.weight(.semibold))
+                        Text("(\(visibleAgents.count))")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button {
+                    withAnimation(IonTheme.snappySpring) {
+                        agentPanelFullscreen.toggle()
+                    }
+                } label: {
+                    Image(systemName: agentPanelFullscreen
+                          ? "arrow.down.right.and.arrow.up.left"
+                          : "arrow.up.left.and.arrow.down.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+
+            if agentsPanelExpanded {
+                let agentList = ScrollView {
+                    VStack(spacing: 4) {
+                        ForEach(visibleAgents) { agent in
+                            AgentBarRow(agent: agent)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                }
+
+                if agentPanelFullscreen {
+                    agentList
+                } else {
+                    agentList.frame(maxHeight: 132)
+                }
+            }
+        }
+    }
+
+    private var headerSection: some View {
+        VStack(spacing: 0) {
             if let fields = viewModel.engineStatusFields[compoundKey] {
                 GeometryReader { geo in
                     Rectangle()
@@ -44,7 +211,6 @@ struct EngineView: View {
                 .background(Color(.tertiarySystemFill))
             }
 
-            // Engine instance bar (shown when multiple instances exist)
             if instances.count > 1 {
                 EngineInstanceBar(
                     tabId: tabId,
@@ -53,7 +219,6 @@ struct EngineView: View {
                 )
             }
 
-            // Working message header
             if let working = viewModel.engineWorkingMessages[compoundKey], !working.isEmpty {
                 HStack {
                     ProgressView()
@@ -72,7 +237,6 @@ struct EngineView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Pinned prompt header
             if let prompt = viewModel.enginePinnedPrompt[compoundKey], !prompt.isEmpty {
                 HStack {
                     Text("> ")
@@ -88,29 +252,42 @@ struct EngineView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.secondarySystemFill).opacity(0.7))
             }
+        }
+    }
 
-            // Conversation messages area
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(engineMsgs) { msg in
-                            EngineMessageRow(message: msg)
-                                .id(msg.id)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
-                .onChange(of: engineMsgs.count) {
-                    if let last = engineMsgs.last {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
+    private var footerSection: some View {
+        VStack(spacing: 0) {
+            Divider()
+            if let fields = viewModel.engineStatusFields[compoundKey] {
+                EngineFooterView(
+                    fields: fields,
+                    onSelectModel: { model in
+                        viewModel.setEngineModel(tabId: tabId, model: model)
+                    },
+                    availableModels: viewModel.availableModels,
+                    selectedModel: viewModel.engineModelOverrides[compoundKey] ?? ""
+                )
+            }
+            Divider()
+            if !pendingAttachments.isEmpty {
+                AttachmentChipsView(attachments: pendingAttachments) { id in
+                    pendingAttachments.removeAll { $0.id == id }
                 }
             }
+            engineInputBar
+        }
+    }
 
-            // Active tool cards (above agent bars)
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            headerSection
+            if !agentPanelFullscreen {
+                conversationScroll
+            } else {
+                conversationScroll
+                    .frame(height: 100)
+            }
+
             if !activeToolsList.isEmpty {
                 VStack(spacing: 4) {
                     ForEach(activeToolsList) { tool in
@@ -121,391 +298,156 @@ struct EngineView: View {
                 .padding(.vertical, 6)
             }
 
-            // Agent bars with collapsible header
             if !visibleAgents.isEmpty {
-                VStack(spacing: 0) {
-                    // Collapsible header
-                    Button {
-                        withAnimation(IonTheme.snappySpring) {
-                            agentsPanelExpanded.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: agentsPanelExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption2)
-                            Text("Agents")
-                                .font(.caption.weight(.semibold))
-                            Text("(\(visibleAgents.count))")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                            Spacer()
-                        }
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.plain)
-
-                    if agentsPanelExpanded {
-                        ScrollView {
-                            VStack(spacing: 4) {
-                                ForEach(visibleAgents) { agent in
-                                    AgentBarRow(agent: agent)
-                                }
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                        }
-                        .frame(maxHeight: 132)
-                    }
-                }
+                agentSection
             }
 
-            Divider()
-
-            // Status footer
-            if let fields = viewModel.engineStatusFields[compoundKey] {
-                EngineFooterView(
-                    fields: fields,
-                    onSelectModel: { model in
-                        viewModel.setEngineModel(tabId: tabId, model: model)
-                    },
-                    selectedModel: viewModel.engineModelOverrides[compoundKey] ?? ""
-                )
-            }
-
-            Divider()
-
-            // Input bar
-            HStack(spacing: 8) {
-                TextField("Send a prompt...", text: $promptText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
-                    .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(Color(.separator), lineWidth: 1))
-                    .focused($isInputFocused)
-                    .onSubmit { submitPrompt() }
-
-                Button {
-                    submitPrompt()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(.orange)
-                }
-                .disabled(promptText.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            footerSection
         }
+    }
+
+    private var toolbarButtons: some View {
+        HStack(spacing: 12) {
+            Button { showFileExplorer = true } label: {
+                Image(systemName: "folder")
+                    .font(.subheadline)
+            }
+            Button { showGitPane = true } label: {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.subheadline)
+            }
+            Button { viewModel.addEngineInstance(tabId: tabId) } label: {
+                Image(systemName: "plus.rectangle")
+            }
+        }
+    }
+
+    var body: some View {
+        mainContent
         .navigationTitle(viewModel.tab(for: tabId)?.displayTitle ?? "Engine")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    viewModel.addEngineInstance(tabId: tabId)
-                } label: {
-                    Image(systemName: "plus.rectangle")
-                }
-            }
+            ToolbarItem(placement: .topBarTrailing) { toolbarButtons }
         }
-        .onAppear {
+        .task {
             viewModel.loadEngineConversation(tabId: tabId)
         }
         .task(id: compoundKey) {
-            // Retry loading if no messages arrived within 2 seconds
-            // (handles relay latency / dropped responses)
             try? await Task.sleep(for: .seconds(2))
             if !Task.isCancelled && engineMsgs.isEmpty {
                 viewModel.loadEngineConversation(tabId: tabId)
             }
         }
-        // Dialog sheet
         .sheet(item: Binding(
             get: { viewModel.engineDialogs[compoundKey] ?? nil },
             set: { _ in }
         )) { dialog in
             EngineDialogSheet(tabId: tabId, dialog: dialog)
         }
+        .fullScreenCover(isPresented: $showGitPane) {
+            GitPaneView(tabId: tabId)
+                .environment(viewModel)
+        }
+        .fullScreenCover(isPresented: $showFileExplorer) {
+            FileExplorerView(tabId: tabId)
+                .environment(viewModel)
+        }
+        .sheet(isPresented: $showFilePicker) {
+            FilePickerSheet(initialDirectory: workingDirectory) { path, name in
+                addFileAttachment(path: path, name: name)
+            }
+            .environment(viewModel)
+        }
+        .onChange(of: viewModel.pendingUploadResults) { _, results in
+            consumeUploadResults(results)
+        }
+        .onChange(of: photosPickerItems) { _, items in
+            for item in items { handlePhotoSelection(item) }
+            photosPickerItems = []
+        }
+        .photosPicker(
+            isPresented: $showPhotoPicker,
+            selection: $photosPickerItems,
+            maxSelectionCount: 5,
+            matching: .images
+        )
+        .fileImporter(
+            isPresented: $showDocumentPicker,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: true
+        ) { result in
+            handleDocumentPickerResult(result)
+        }
+        .confirmationDialog("Attach", isPresented: $showAttachMenu) {
+            Button("Photo Library") { showPhotoPicker = true }
+            Button("Choose File") { showDocumentPicker = true }
+            Button("Browse Desktop Files") { showFilePicker = true }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    // MARK: - Engine input bar
+
+    private var engineInputBar: some View {
+        HStack(spacing: 8) {
+            attachButton
+            TextField("Send a prompt...", text: $promptText)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
+                .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(Color(.separator), lineWidth: 1))
+                .focused($isInputFocused)
+                .onSubmit { submitPrompt() }
+            Button { submitPrompt() } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(.orange)
+            }
+            .disabled(cannotSend)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var attachButton: some View {
+        Button {
+            showAttachMenu = true
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Actions
+
+    private var cannotSend: Bool {
+        let empty = promptText.trimmingCharacters(in: .whitespaces).isEmpty
+        return (empty && pendingAttachments.isEmpty) || hasUploading
     }
 
     private func submitPrompt() {
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
+        guard !hasUploading else { return }
+        isNearBottom = true
+        forceScrollCounter += 1
         Haptic.light()
-        viewModel.submitEnginePrompt(tabId: tabId, text: promptText)
+        let attachments = pendingAttachments.map(\.commandAttachment)
+        viewModel.submitEnginePrompt(
+            tabId: tabId,
+            text: promptText,
+            attachments: attachments.isEmpty ? nil : attachments
+        )
+        isInputFocused = false
         promptText = ""
+        pendingAttachments = []
     }
 
     private func contextBarColor(_ percent: Double) -> Color {
-        if percent < 50 { return .green }
+        if percent < 60 { return .green }
         if percent < 80 { return .orange }
         return .red
-    }
-}
-
-// MARK: - EngineMessageRow
-
-/// Renders a single engine conversation message based on role.
-struct EngineMessageRow: View {
-    let message: EngineMessage
-
-    var body: some View {
-        switch message.role {
-        case "user":
-            userMessage
-        case "assistant":
-            assistantMessage
-        case "harness":
-            harnessMessage
-        case "tool":
-            toolMessage
-        default:
-            systemMessage
-        }
-    }
-
-    private var userMessage: some View {
-        HStack {
-            Spacer()
-            Text(message.content)
-                .font(.callout)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.orange.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.primary)
-        }
-    }
-
-    private var assistantMessage: some View {
-        HStack {
-            Text(message.content)
-                .font(.callout)
-                .textSelection(.enabled)
-            Spacer()
-        }
-    }
-
-    private var harnessMessage: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "gearshape.fill")
-                .font(.caption2)
-                .foregroundStyle(.orange.opacity(0.7))
-            Text(message.content)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .italic()
-            Spacer()
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var toolMessage: some View {
-        HStack(spacing: 6) {
-            toolStatusIcon
-            Text(message.toolName ?? "tool")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    @ViewBuilder
-    private var toolStatusIcon: some View {
-        switch message.toolStatus {
-        case "running":
-            ProgressView()
-                .scaleEffect(0.6)
-        case "completed":
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.green)
-        case "error":
-            Image(systemName: "xmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.red)
-        default:
-            Image(systemName: "wrench")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var systemMessage: some View {
-        HStack {
-            Spacer()
-            Text(message.content)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            Spacer()
-        }
-    }
-}
-
-// MARK: - ActiveToolRow
-
-/// Displays an in-progress tool call with elapsed time and an abort button
-/// when the tool appears stalled (> 30s or marked stalled by the engine).
-struct ActiveToolRow: View {
-    let tabId: String
-    let tool: ActiveToolInfo
-    @Environment(SessionViewModel.self) private var viewModel
-    @State private var now = Date()
-    @State private var showAbortConfirm = false
-
-    private var elapsed: TimeInterval {
-        now.timeIntervalSince(tool.startTime)
-    }
-
-    private var isLikelyStalled: Bool {
-        tool.isStalled || elapsed > 30
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            // Tool name capsule
-            Text(tool.toolName)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(isLikelyStalled ? Color.red.opacity(0.85) : Color.orange.opacity(0.85))
-                .clipShape(Capsule())
-
-            // Elapsed time
-            Text(formatElapsed(elapsed))
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(isLikelyStalled ? .red : .secondary)
-
-            if isLikelyStalled {
-                Text("may be stuck")
-                    .font(.caption2)
-                    .foregroundStyle(.red.opacity(0.8))
-            }
-
-            Spacer()
-
-            // Status indicator or abort button
-            if isLikelyStalled {
-                Button {
-                    showAbortConfirm = true
-                } label: {
-                    Text("Abort")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.red)
-                        .clipShape(Capsule())
-                }
-            } else {
-                // Pulsing activity dot
-                Circle()
-                    .fill(.orange)
-                    .frame(width: 6, height: 6)
-                    .opacity(pulseOpacity)
-                    .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: now)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            (isLikelyStalled ? Color.red : Color.orange)
-                .opacity(0.08)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
-            now = time
-        }
-        .alert("Abort Run?", isPresented: $showAbortConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Abort", role: .destructive) {
-                viewModel.abortEngine(tabId: tabId)
-            }
-        } message: {
-            Text("\(tool.toolName) has been running for \(Int(elapsed))s. This may be waiting for a macOS permission dialog. Aborting will stop the entire run.")
-        }
-    }
-
-    private var pulseOpacity: Double {
-        // Alternate between 0.3 and 1.0 based on time
-        let phase = now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2)
-        return phase < 1 ? 0.3 : 1.0
-    }
-
-    private func formatElapsed(_ interval: TimeInterval) -> String {
-        let seconds = Int(interval)
-        if seconds < 60 {
-            return "\(seconds)s"
-        }
-        let minutes = seconds / 60
-        let secs = seconds % 60
-        return "\(minutes)m \(secs)s"
-    }
-}
-
-// MARK: - EngineDialogSheet
-
-struct EngineDialogSheet: View {
-    let tabId: String
-    let dialog: EngineDialogInfo
-    @Environment(SessionViewModel.self) private var viewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var inputText = ""
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Text(dialog.title)
-                    .font(.headline)
-
-                if dialog.method == "select", let options = dialog.options {
-                    ForEach(options, id: \.self) { option in
-                        Button(option) {
-                            viewModel.respondEngineDialog(tabId: tabId, dialogId: dialog.id, value: option)
-                            dismiss()
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                } else if dialog.method == "confirm" {
-                    HStack(spacing: 16) {
-                        Button("No") {
-                            viewModel.respondEngineDialog(tabId: tabId, dialogId: dialog.id, value: "false")
-                            dismiss()
-                        }
-                        .buttonStyle(.bordered)
-                        Button("Yes") {
-                            viewModel.respondEngineDialog(tabId: tabId, dialogId: dialog.id, value: "true")
-                            dismiss()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-                    }
-                } else if dialog.method == "input" {
-                    TextField(dialog.defaultValue ?? "Enter value", text: $inputText)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Submit") {
-                        viewModel.respondEngineDialog(tabId: tabId, dialogId: dialog.id, value: inputText)
-                        dismiss()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                }
-
-                Spacer()
-            }
-            .padding()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
     }
 }

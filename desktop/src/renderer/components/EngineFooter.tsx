@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
-import { ArrowsOutSimple, ArrowsInSimple, CaretDown, Check } from '@phosphor-icons/react'
+import { ArrowsOutSimple, ArrowsInSimple, CaretDown } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
-import { useSessionStore, AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/sessionStore'
+import { useSessionStore } from '../stores/sessionStore'
+import { AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/model-labels'
+import { useModelStore } from '../stores/model-store'
+import { ModelPickerPopover } from './ModelPickerPopover'
 import { usePreferencesStore } from '../preferences'
 import type { StatusFields } from '../../shared/types'
 
@@ -44,10 +46,22 @@ export function EngineFooter({ status, isTall, onToggleTall, activeTabId, engine
   const [modelPos, setModelPos] = useState({ bottom: 0, left: 0 })
 
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const selectedModel = engineModelOverride || engineDefaultModel || preferredModel || AVAILABLE_MODELS[1].id
+  const selectedModel = engineModelOverride || engineDefaultModel || preferredModel || AVAILABLE_MODELS[0].id
   const selectedLabel = getModelDisplayLabel(selectedModel)
 
   const isBusy = status?.state === 'running'
+
+  const fetchModels = useModelStore((s) => s.fetchModels)
+  const hasModels = useModelStore((s) => s.models.length > 0)
+  const lastFetched = useModelStore((s) => s.lastFetched)
+
+  useEffect(() => {
+    if (!hasModels) fetchModels()
+  }, [hasModels, fetchModels])
+
+  useEffect(() => {
+    if (modelOpen && Date.now() - lastFetched > 60_000) fetchModels()
+  }, [modelOpen, lastFetched, fetchModels])
 
   const updateModelPos = useCallback(() => {
     if (!modelTriggerRef.current) return
@@ -213,50 +227,13 @@ export function EngineFooter({ status, isTall, onToggleTall, activeTabId, engine
 
       {/* Model picker popover */}
       {popoverLayer && modelOpen && createPortal(
-        <motion.div
-          ref={modelPopoverRef}
-          data-ion-ui
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 4 }}
-          transition={{ duration: 0.12 }}
-          className="rounded-xl"
-          style={{
-            position: 'fixed',
-            bottom: modelPos.bottom,
-            left: modelPos.left,
-            width: 192,
-            pointerEvents: 'auto',
-            background: colors.popoverBg,
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            boxShadow: colors.popoverShadow,
-            border: `1px solid ${colors.popoverBorder}`,
-          }}
-        >
-          <div className="py-1">
-            {AVAILABLE_MODELS.map((m) => {
-              const isSelected = selectedModel === m.id
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => { setEngineModel(activeTabId, m.id); setModelOpen(false) }}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-                  style={{
-                    color: isSelected ? colors.textPrimary : colors.textSecondary,
-                    fontWeight: isSelected ? 600 : 400,
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {m.label}
-                  {isSelected && <Check size={12} style={{ color: colors.accent }} />}
-                </button>
-              )
-            })}
-          </div>
-        </motion.div>,
+        <ModelPickerPopover
+          popoverRef={modelPopoverRef}
+          selectedModelId={selectedModel}
+          onSelect={(modelId) => { setEngineModel(activeTabId, modelId); setModelOpen(false) }}
+          onClose={() => setModelOpen(false)}
+          position={modelPos}
+        />,
         popoverLayer,
       )}
     </div>

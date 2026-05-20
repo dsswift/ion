@@ -180,7 +180,8 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 	contentIndex := 0
 	var totalInputToks, totalOutputToks int
 
-	for sse := range ParseSSEStream(reader) {
+	sseCh, sseErr := ParseSSEStream(reader)
+	for sse := range sseCh {
 		if sse.Data == "" {
 			continue
 		}
@@ -287,6 +288,13 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 				return err
 			}
 		}
+	}
+
+	if err := sseErr(); err != nil {
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
+		return classifyBedrockError(0, err.Error())
 	}
 
 	return sendEvent(ctx, events, types.LlmStreamEvent{Type: "message_stop"})

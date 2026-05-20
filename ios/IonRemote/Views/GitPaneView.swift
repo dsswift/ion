@@ -32,6 +32,7 @@ struct GitPaneView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     branchHeader
+                    summaryBar
 
                     // Changes section
                     collapsibleSection(
@@ -54,6 +55,7 @@ struct GitPaneView: View {
                     }
                 }
             }
+            .refreshable { await refreshAsync() }
             .navigationTitle("Git")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -61,11 +63,28 @@ struct GitPaneView: View {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         refresh()
+                        Haptic.light()
                     } label: {
                         Image(systemName: "arrow.clockwise")
+                    }
+                    Menu {
+                        Button {
+                            viewModel.gitPull(directory: directory)
+                            Haptic.medium()
+                        } label: {
+                            Label("Pull", systemImage: "arrow.down")
+                        }
+                        Button {
+                            viewModel.gitPush(directory: directory)
+                            Haptic.medium()
+                        } label: {
+                            Label("Push", systemImage: "arrow.up")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
@@ -73,6 +92,15 @@ struct GitPaneView: View {
                 guard !loaded else { return }
                 loaded = true
                 refresh()
+            }
+            .overlay(alignment: .top) {
+                if let toast = viewModel.gitToast {
+                    GitToastView(toast: toast) {
+                        viewModel.gitToast = nil
+                    }
+                    .onAppearAnimate()
+                    .padding(.top, 8)
+                }
             }
         }
     }
@@ -111,6 +139,34 @@ struct GitPaneView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(.secondarySystemGroupedBackground))
+    }
+
+    // MARK: - Summary bar
+
+    private var summaryBar: some View {
+        let changes = viewModel.gitChanges[directory]
+        let staged = changes?.effectiveStagedCount ?? 0
+        let unstaged = changes?.effectiveUnstagedCount ?? 0
+
+        return Group {
+            if staged > 0 || unstaged > 0 {
+                HStack(spacing: 12) {
+                    if staged > 0 {
+                        Label("\(staged) staged", systemImage: "plus.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                    if unstaged > 0 {
+                        Label("\(unstaged) changed", systemImage: "pencil.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+        }
     }
 
     // MARK: - Collapsible section
@@ -157,5 +213,13 @@ struct GitPaneView: View {
         guard !directory.isEmpty else { return }
         viewModel.requestGitChanges(directory: directory)
         viewModel.requestGitGraph(directory: directory)
+    }
+
+    private func refreshAsync() async {
+        guard !directory.isEmpty else { return }
+        viewModel.requestGitChanges(directory: directory)
+        viewModel.requestGitGraph(directory: directory)
+        Haptic.light()
+        try? await Task.sleep(for: .milliseconds(500))
     }
 }

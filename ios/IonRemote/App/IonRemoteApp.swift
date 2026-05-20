@@ -6,6 +6,10 @@ struct IonRemoteApp: App {
     @State private var viewModel = SessionViewModel()
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        CrashReporter.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -52,6 +56,12 @@ struct ContentView: View {
                 // A reconnecting banner handles transient disconnects.
                 TabListView()
             }
+        }
+        .overlay(alignment: .top) {
+            ToastOverlay(
+                messages: viewModel.toastMessages,
+                onDismiss: { viewModel.dismissToast(id: $0) }
+            )
         }
         .onChange(of: viewModel.connectionState) { _, newState in
             if newState == .authFailed {

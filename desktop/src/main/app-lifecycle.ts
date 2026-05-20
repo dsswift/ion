@@ -1,4 +1,4 @@
-import { app, globalShortcut, Menu, screen } from 'electron'
+import { app, BrowserWindow, globalShortcut, Menu, screen } from 'electron'
 import { rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { log as _log, flushLogs } from './logger'
@@ -8,6 +8,7 @@ import { stopTabSnapshotPolling } from './remote/snapshot-polling'
 import { createTray, createWindow, installContentSecurityPolicy, snapshotWindowState, showWindow, toggleWindow } from './window-manager'
 import { requestPermissions } from './permissions-preflight'
 import { cleanOrphanedWorktrees } from './git-runner'
+import { focusState } from './git/focus-state'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -59,6 +60,11 @@ export function setupAppLifecycle(): void {
         ],
       },
     ]))
+
+    app.on('browser-window-focus', () => focusState.setFocused(true))
+    app.on('browser-window-blur', () => {
+      focusState.setFocused(BrowserWindow.getAllWindows().some((w) => w.isFocused()))
+    })
 
     if (SPACES_DEBUG) {
       state.mainWindow?.on('show', () => snapshotWindowState('event window show'))

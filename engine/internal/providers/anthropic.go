@@ -123,8 +123,22 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 
 	// Parse SSE stream. Anthropic events are already canonical format.
 	gotMessageStop := false
-	for sse := range ParseSSEStream(resp.Body) {
+	var streamErrEvent *anthropicStreamError
+	sseCh, sseErr := ParseSSEStream(resp.Body)
+	for sse := range sseCh {
 		if sse.Data == "" {
+			continue
+		}
+
+		// Anthropic emits an `event: error` mid-stream when the upstream model
+		// returns overloaded_error, rate-limit, or other inflight failures.
+		// Capture the typed payload so we can classify it correctly instead of
+		// falling through to a generic stream_truncated.
+		if sse.Event == "error" {
+			var se anthropicStreamError
+			if err := json.Unmarshal([]byte(sse.Data), &se); err == nil && se.Error.Type != "" {
+				streamErrEvent = &se
+			}
 			continue
 		}
 
@@ -147,6 +161,24 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+
+	// A streaming error event from Anthropic is the actual cause — surface it
+	// with the right code so retries back off appropriately and the user sees
+	// what's wrong.
+	if streamErrEvent != nil {
+		return streamErrEvent.toProviderError()
+	}
+
+	// Surface the real underlying read error (TCP RST, h2 GOAWAY,
+	// ErrUnexpectedEOF, etc) instead of synthesizing a generic
+	// stream_truncated. ClassifyTransportError tags it so WithRetry can
+	// recover and so logs show the actual cause.
+	if err := sseErr(); err != nil {
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
+		return FromAnthropicError(fmt.Errorf("sse read: %w", err), 0, "")
 	}
 
 	if !gotMessageStop {
@@ -334,5 +366,41 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 			m["text"] = b.Text
 		}
 		return m
+	}
+}
+
+// anthropicStreamError is the payload of an SSE `event: error` emitted by
+// Anthropic mid-stream (overloaded_error, api_error, rate_limit_error, etc).
+// See https://docs.anthropic.com/en/api/messages-streaming#error-events
+type anthropicStreamError struct {
+	Type  string `json:"type"`
+	Error struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
+	RequestID string `json:"request_id,omitempty"`
+}
+
+func (e *anthropicStreamError) toProviderError() *ProviderError {
+	msg := e.Error.Message
+	if msg == "" {
+		msg = e.Error.Type
+	}
+	if e.RequestID != "" {
+		msg = fmt.Sprintf("%s (request_id=%s)", msg, e.RequestID)
+	}
+	switch e.Error.Type {
+	case "overloaded_error":
+		return &ProviderError{Code: ErrOverloaded, Message: msg, Retryable: true}
+	case "rate_limit_error":
+		return &ProviderError{Code: ErrRateLimit, Message: msg, Retryable: true}
+	case "api_error", "timeout_error":
+		return &ProviderError{Code: ErrOverloaded, Message: msg, Retryable: true}
+	case "authentication_error", "permission_error":
+		return &ProviderError{Code: ErrAuth, Message: msg, Retryable: false}
+	case "invalid_request_error":
+		return &ProviderError{Code: ErrInvalidReq, Message: msg, Retryable: false}
+	default:
+		return &ProviderError{Code: ErrUnknown, Message: msg, Retryable: true}
 	}
 }

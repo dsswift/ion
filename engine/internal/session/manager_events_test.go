@@ -3,9 +3,11 @@ package session
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -795,5 +797,200 @@ func TestIsDescendant_DeepChain(t *testing.T) {
 	}
 	if r.IsDescendant("n0", "n5") {
 		t.Error("n0 should not be descendant of n5")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tool call accumulation tests (PR #109 regression coverage)
+// ---------------------------------------------------------------------------
+
+// toolCallRecorder captures FireToolCall invocations for assertion.
+type toolCallRecorder struct {
+	mu    sync.Mutex
+	calls []extension.ToolCallInfo
+}
+
+func (r *toolCallRecorder) getCalls() []extension.ToolCallInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]extension.ToolCallInfo, len(r.calls))
+	copy(out, r.calls)
+	return out
+}
+
+// newToolCallGroup builds an ExtensionGroup whose tool_call hook records
+// into the returned toolCallRecorder.
+func newToolCallGroup(rec *toolCallRecorder) *extension.ExtensionGroup {
+	host := extension.NewHost()
+	host.SDK().On(extension.HookToolCall, func(ctx *extension.Context, payload interface{}) (interface{}, error) {
+		info := payload.(extension.ToolCallInfo)
+		rec.mu.Lock()
+		rec.calls = append(rec.calls, info)
+		rec.mu.Unlock()
+		return nil, nil
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+	return group
+}
+
+func TestToolCallAccumulation_EmptyToolID(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	_, _ = mgr.StartSession("tca1", defaultConfig())
+	_ = mgr.SendPrompt("tca1", "go", nil)
+
+	rec := &toolCallRecorder{}
+	mgr.TestSetExtGroup("tca1", newToolCallGroup(rec))
+
+	keys := mb.startedKeys()
+	// ToolCallEvent carries the real ToolID
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallEvent{ToolName: "Agent", ToolID: "toolu_123", Index: 0},
+	})
+	// ToolCallUpdateEvent from CLI normalizer always has ToolID: ""
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "", PartialInput: `{"agent_name":`},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "", PartialInput: `"sub-agent"}`},
+	})
+	// ToolCallCompleteEvent triggers FireToolCall
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 0},
+	})
+
+	calls := rec.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 FireToolCall, got %d", len(calls))
+	}
+	if calls[0].ToolName != "Agent" {
+		t.Errorf("expected ToolName 'Agent', got %q", calls[0].ToolName)
+	}
+	if calls[0].ToolID != "toolu_123" {
+		t.Errorf("expected ToolID 'toolu_123', got %q", calls[0].ToolID)
+	}
+	agentName, ok := calls[0].Input["agent_name"]
+	if !ok || agentName != "sub-agent" {
+		t.Errorf("expected Input[agent_name]='sub-agent', got %v", calls[0].Input)
+	}
+}
+
+func TestToolCallAccumulation_WithToolID(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	_, _ = mgr.StartSession("tca2", defaultConfig())
+	_ = mgr.SendPrompt("tca2", "go", nil)
+
+	rec := &toolCallRecorder{}
+	mgr.TestSetExtGroup("tca2", newToolCallGroup(rec))
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallEvent{ToolName: "Agent", ToolID: "toolu_456", Index: 0},
+	})
+	// Non-CLI path: ToolCallUpdateEvent carries the real ToolID
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "toolu_456", PartialInput: `{"agent_name":"other"}`},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 0},
+	})
+
+	calls := rec.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 FireToolCall, got %d", len(calls))
+	}
+	if calls[0].ToolID != "toolu_456" {
+		t.Errorf("expected ToolID 'toolu_456', got %q", calls[0].ToolID)
+	}
+	agentName, ok := calls[0].Input["agent_name"]
+	if !ok || agentName != "other" {
+		t.Errorf("expected Input[agent_name]='other', got %v", calls[0].Input)
+	}
+}
+
+func TestToolCallAccumulation_NonAgentTool(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	_, _ = mgr.StartSession("tca3", defaultConfig())
+	_ = mgr.SendPrompt("tca3", "go", nil)
+
+	rec := &toolCallRecorder{}
+	mgr.TestSetExtGroup("tca3", newToolCallGroup(rec))
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallEvent{ToolName: "Read", ToolID: "toolu_789", Index: 1},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "", PartialInput: `{"path":"/tmp/x"}`},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 1},
+	})
+
+	calls := rec.getCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected 0 FireToolCall for non-Agent tool, got %d", len(calls))
+	}
+}
+
+func TestToolCallAccumulation_SequentialTools(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	_, _ = mgr.StartSession("tca4", defaultConfig())
+	_ = mgr.SendPrompt("tca4", "go", nil)
+
+	rec := &toolCallRecorder{}
+	mgr.TestSetExtGroup("tca4", newToolCallGroup(rec))
+
+	keys := mb.startedKeys()
+
+	// First Agent tool call (index 0)
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallEvent{ToolName: "Agent", ToolID: "toolu_A", Index: 0},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "", PartialInput: `{"agent_name":"alpha"}`},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 0},
+	})
+
+	// Second Agent tool call (index 1)
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallEvent{ToolName: "Agent", ToolID: "toolu_B", Index: 1},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallUpdateEvent{ToolID: "", PartialInput: `{"agent_name":"beta"}`},
+	})
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ToolCallCompleteEvent{Index: 1},
+	})
+
+	calls := rec.getCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 FireToolCall calls, got %d", len(calls))
+	}
+
+	if calls[0].ToolID != "toolu_A" {
+		t.Errorf("first call: expected ToolID 'toolu_A', got %q", calls[0].ToolID)
+	}
+	nameA, ok := calls[0].Input["agent_name"]
+	if !ok || nameA != "alpha" {
+		t.Errorf("first call: expected agent_name='alpha', got %v", calls[0].Input)
+	}
+
+	if calls[1].ToolID != "toolu_B" {
+		t.Errorf("second call: expected ToolID 'toolu_B', got %q", calls[1].ToolID)
+	}
+	nameB, ok := calls[1].Input["agent_name"]
+	if !ok || nameB != "beta" {
+		t.Errorf("second call: expected agent_name='beta', got %v", calls[1].Input)
 	}
 }

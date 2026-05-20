@@ -42,6 +42,7 @@ func TestRegistryGetTool(t *testing.T) {
 		{"Skill", true},
 		{"ListMcpResources", true},
 		{"ReadMcpResource", true},
+		{"SearchHistory", true},
 		{"NonExistent", false},
 	}
 
@@ -60,15 +61,15 @@ func TestRegistryGetTool(t *testing.T) {
 
 func TestGetAllTools(t *testing.T) {
 	all := GetAllTools()
-	if len(all) != 18 {
-		t.Errorf("expected 18 tools, got %d", len(all))
+	if len(all) != 19 {
+		t.Errorf("expected 19 tools, got %d", len(all))
 	}
 }
 
 func TestGetToolDefs(t *testing.T) {
 	defs := GetToolDefs()
-	if len(defs) != 18 {
-		t.Errorf("expected 18 tool defs, got %d", len(defs))
+	if len(defs) != 19 {
+		t.Errorf("expected 19 tool defs, got %d", len(defs))
 	}
 	for _, d := range defs {
 		if d.Name == "" {

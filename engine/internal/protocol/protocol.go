@@ -43,11 +43,20 @@ type ClientCommand struct {
 	Offset             int                 `json:"offset,omitempty"`
 	AppendSystemPrompt string              `json:"appendSystemPrompt,omitempty"`
 	Source             string              `json:"source,omitempty"`
+	Provider           string              `json:"provider,omitempty"`
+	Credential         string              `json:"credential,omitempty"`
 
 	// elicitation_response: client reply to an engine_elicitation_request event.
 	ElicitRequestID string                 `json:"elicitRequestId,omitempty"`
 	ElicitResponse  map[string]interface{} `json:"elicitResponse,omitempty"`
 	ElicitCancelled bool                   `json:"elicitCancelled,omitempty"`
+
+	// send_prompt: pre-encoded image attachments to attach to the user
+	// message as native image content blocks. The engine has no opinion on
+	// any client-side marker syntax inside Text — clients pass image bytes
+	// here and the backend forwards them to the provider via its multimodal
+	// content format.
+	Attachments []types.ImageAttachment `json:"attachments,omitempty"`
 }
 
 var validCommands = map[string]bool{
@@ -75,6 +84,11 @@ var validCommands = map[string]bool{
 	"generate_title":        true,
 	"elicitation_response":  true,
 	"health":                true,
+	"reconcile_state":       true,
+	"migrate_conversation":  true,
+	"list_models":           true,
+	"store_credential":      true,
+	"refresh_models":        true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -233,6 +247,16 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasString(raw, "text")
 	case "elicitation_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "elicitRequestId")
+	case "reconcile_state":
+		return hasNonEmptyString(raw, "key")
+	case "migrate_conversation":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")
+	case "list_models":
+		return true
+	case "store_credential":
+		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
+	case "refresh_models":
+		return true // optional: provider field to refresh a single provider
 	}
 	return false
 }

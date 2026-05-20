@@ -11,14 +11,16 @@ const REMARK_PLUGINS = [remarkGfm]
 interface PlanViewerProps {
   content: string
   fileName: string
+  filePath?: string
   onClose: () => void
 }
 
-export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
+export function PlanViewer({ content, fileName, filePath, onClose }: PlanViewerProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
   const planGeometry = useSessionStore((s) => s.planGeometry)
   const setPlanGeometry = useSessionStore((s) => s.setPlanGeometry)
+  const workingDir = useSessionStore((s) => { const tab = s.tabs.find(t => t.id === s.activeTabId); return tab?.workingDirectory || '' })
   const handleGeometryChange = useCallback(
     (geo: { x: number; y: number; w: number; h: number }) => setPlanGeometry(geo),
     [setPlanGeometry],
@@ -44,6 +46,8 @@ export function PlanViewer({ content, fileName, onClose }: PlanViewerProps) {
   return (
     <FloatingPanel
       title={fileName}
+      filePath={filePath}
+      workingDir={workingDir}
       onClose={onClose}
       defaultWidth={720}
       defaultHeight={420}

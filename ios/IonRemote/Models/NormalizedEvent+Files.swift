@@ -24,6 +24,12 @@ extension RemoteEvent {
             let response = FsFileContentResponse(filePath: filePath, content: content, error: error)
             return .fsFileContent(filePath: filePath, response: response)
 
+        case .fsImageContent:
+            let filePath = try container.decode(String.self, forKey: .filePath)
+            let dataUrl = try container.decodeIfPresent(String.self, forKey: .dataUrl)
+            let error = try container.decodeIfPresent(String.self, forKey: .error)
+            return .fsImageContent(filePath: filePath, dataUrl: dataUrl, error: error)
+
         case .fsWriteResult:
             let filePath = try container.decode(String.self, forKey: .filePath)
             let ok = try container.decode(Bool.self, forKey: .ok)
@@ -35,6 +41,19 @@ extension RemoteEvent {
             let directory = try container.decode(String.self, forKey: .directory)
             let commands = try container.decode([DiscoveredSlashCommand].self, forKey: .commands)
             return .discoverCommandsResponse(directory: directory, commands: commands)
+
+        case .uploadAttachmentResult:
+            let id = try container.decode(String.self, forKey: .id)
+            let name = try container.decode(String.self, forKey: .name)
+            let path = try container.decode(String.self, forKey: .path)
+            let correlationId = try container.decodeIfPresent(String.self, forKey: .correlationId)
+            let error = try container.decodeIfPresent(String.self, forKey: .error)
+            return .uploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)
+
+        case .tabAttachments:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let attachments = try container.decode([TabAttachmentEntry].self, forKey: .attachments)
+            return .tabAttachments(tabId: tabId, attachments: attachments)
 
         default:
             return nil
@@ -58,6 +77,13 @@ extension RemoteEvent {
             try container.encodeIfPresent(response.error, forKey: .error)
             return true
 
+        case .fsImageContent(let filePath, let dataUrl, let error):
+            try container.encode(TypeKey.fsImageContent, forKey: .type)
+            try container.encode(filePath, forKey: .filePath)
+            try container.encodeIfPresent(dataUrl, forKey: .dataUrl)
+            try container.encodeIfPresent(error, forKey: .error)
+            return true
+
         case .fsWriteResult(_, let response):
             try container.encode(TypeKey.fsWriteResult, forKey: .type)
             try container.encode(response.filePath, forKey: .filePath)
@@ -69,6 +95,21 @@ extension RemoteEvent {
             try container.encode(TypeKey.discoverCommandsResponse, forKey: .type)
             try container.encode(directory, forKey: .directory)
             try container.encode(commands, forKey: .commands)
+            return true
+
+        case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
+            try container.encode(TypeKey.uploadAttachmentResult, forKey: .type)
+            try container.encode(id, forKey: .id)
+            try container.encode(name, forKey: .name)
+            try container.encode(path, forKey: .path)
+            try container.encodeIfPresent(correlationId, forKey: .correlationId)
+            try container.encodeIfPresent(error, forKey: .error)
+            return true
+
+        case .tabAttachments(let tabId, let attachments):
+            try container.encode(TypeKey.tabAttachments, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(attachments, forKey: .attachments)
             return true
 
         default:

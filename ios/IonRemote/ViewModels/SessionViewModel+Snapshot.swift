@@ -8,8 +8,10 @@ private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engi
 extension SessionViewModel {
 
     @MainActor
-    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?) {
+    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil) {
+        DiagnosticLog.log("SNAP: received tabs=\(snapshotTabs.count) dirs=\(recentDirs.count) groupMode=\(groupMode ?? "nil") models=\(availableModels?.count ?? 0)")
         if connectionState != .connected {
+            DiagnosticLog.log("SNAP: connected (was \(connectionState))")
             connectionState = .connected
             cancelReconnectSafetyTimer()
         }
@@ -23,6 +25,15 @@ extension SessionViewModel {
         }
         if let grps = groups {
             tabGroups = grps
+        }
+        if let pm = preferredModel {
+            self.preferredModel = pm
+        }
+        if let edm = engineDefaultModel {
+            self.engineDefaultModel = edm
+        }
+        if let models = availableModels, !models.isEmpty {
+            self.availableModels = models
         }
         // Filter out tabs that iOS requested to close but hasn't received
         // tab_closed confirmation for yet. Without this, the snapshot
@@ -84,6 +95,24 @@ extension SessionViewModel {
         }
         tabs = merged
         tabIds = Set(merged.map(\.id))
+        // Reconcile idle-since timestamps with snapshot state
+        let mergedIds = Set(merged.map(\.id))
+        for tab in merged {
+            if tab.status == .running || tab.status == .connecting {
+                tabIdleSince.removeValue(forKey: tab.id)
+            } else if tabIdleSince[tab.id] == nil {
+                // Prefer the desktop-provided activity timestamp over local Date()
+                if let ms = tab.lastActivityAt, ms > 0 {
+                    tabIdleSince[tab.id] = Date(timeIntervalSince1970: ms / 1000.0)
+                } else {
+                    tabIdleSince[tab.id] = Date()
+                }
+            }
+        }
+        // Clean up idle-since entries for tabs no longer present
+        for tabId in tabIdleSince.keys where !mergedIds.contains(tabId) {
+            tabIdleSince.removeValue(forKey: tabId)
+        }
         // Populate terminal state from snapshot tab data
         for tab in merged {
             if tab.isTerminalOnly == true, let instances = tab.terminalInstances {
@@ -118,5 +147,8 @@ extension SessionViewModel {
                 recentDirectories: recentDirectories
             )
         }
+
+        // Send voice configuration so the desktop knows current voice settings.
+        sendVoiceConfig()
     }
 }

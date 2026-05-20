@@ -6,11 +6,12 @@ struct ConversationView: View {
     let tabId: String
 
     @State private var cachedRestoredCard: PermissionRequest?
-    @State private var scrollTask: Task<Void, Never>?
-    @State private var scrollProxy: ScrollViewProxy?
     @State private var isNearBottom: Bool = true
+    @State private var forceScrollCounter: Int = 0
     @State private var showGitPane = false
     @State private var showFileExplorer = false
+    @State private var showTerminal = false
+    @State private var showAttachments = false
 
     private var tab: RemoteTabState? {
         viewModel.tab(for: tabId)
@@ -22,6 +23,10 @@ struct ConversationView: View {
 
     private var conversationMessages: [Message] {
         viewModel.messages[tabId] ?? []
+    }
+
+    private var attachmentCount: Int {
+        countConversationAttachments(conversationMessages, desktopCache: viewModel.tabAttachmentCache[tabId])
     }
 
     private var groupedItems: [ConversationItem] {
@@ -51,6 +56,13 @@ struct ConversationView: View {
         }
         // 3. Default
         return "Thinking…"
+    }
+
+    /// True when the engine is actively compacting context.
+    /// Detected from the last system message being a compacting marker,
+    /// or from a snapshot that included compacting status.
+    private var isCompacting: Bool {
+        currentActivity.hasPrefix("Compacting")
     }
 
     private var pendingPermission: PermissionRequest? {
@@ -112,6 +124,61 @@ struct ConversationView: View {
         )
     }
 
+    // MARK: - Row items for the collection view
+
+    /// Unified row enum that wraps both state indicators and conversation items.
+    /// Hashable by a stable string id for the diffable data source.
+    private enum RowItem: Hashable {
+        case loadMore
+        case loading
+        case loadFailed
+        case empty
+        case conversation(ConversationItem)
+        case liveText(String)
+
+        var stableId: String {
+            switch self {
+            case .loadMore: return "__loadMore"
+            case .loading: return "__loading"
+            case .loadFailed: return "__loadFailed"
+            case .empty: return "__empty"
+            case .conversation(let item): return item.id
+            case .liveText: return "__liveText"
+            }
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.stableId == rhs.stableId
+        }
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(stableId)
+        }
+    }
+
+    private var rowItems: [ChatItem<RowItem>] {
+        var result: [ChatItem<RowItem>] = []
+
+        if viewModel.conversationHasMore[tabId] == true {
+            result.append(ChatItem(id: "__loadMore", payload: .loadMore))
+        }
+        if isLoading && conversationMessages.isEmpty {
+            result.append(ChatItem(id: "__loading", payload: .loading))
+        } else if loadFailed && conversationMessages.isEmpty {
+            result.append(ChatItem(id: "__loadFailed", payload: .loadFailed))
+        }
+        if conversationMessages.isEmpty && !isLoading && !loadFailed && (viewModel.tab(for: tabId)?.permissionQueue.isEmpty ?? true) {
+            result.append(ChatItem(id: "__empty", payload: .empty))
+        }
+        for item in groupedItems {
+            result.append(ChatItem(id: item.id, payload: .conversation(item)))
+        }
+        if conversationMessages.isEmpty,
+           let text = viewModel.liveText[tabId], !text.isEmpty {
+            result.append(ChatItem(id: "__liveText", payload: .liveText(text)))
+        }
+        return result
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .bottom) {
@@ -119,11 +186,7 @@ struct ConversationView: View {
                 if !isNearBottom {
                     Button {
                         isNearBottom = true
-                        if let proxy = scrollProxy {
-                            withAnimation {
-                                proxy.scrollTo("bottom", anchor: .bottom)
-                            }
-                        }
+                        forceScrollCounter += 1
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 14, weight: .semibold))
@@ -139,9 +202,22 @@ struct ConversationView: View {
             }
             .animation(IonTheme.snappySpring, value: isNearBottom)
 
-            // Activity indicator — pinned above input, always visible
+            // Activity indicator — pinned above status bar, always visible
             if isRunning {
-                ActivityIndicatorView(text: currentActivity)
+                ActivityIndicatorView(
+                    text: currentActivity,
+                    dotColorOverride: isCompacting ? .blue : nil
+                )
+            }
+
+            // Voice playback bar — always visible when speaking
+            if viewModel.voiceService.isSpeaking {
+                VoicePlaybackBar(
+                    onSkip: { viewModel.voiceService.skip() },
+                    onStopAll: { viewModel.voiceService.stop() },
+                    hasPending: viewModel.voiceService.hasPending
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if let request = pendingPermission {
@@ -150,6 +226,28 @@ struct ConversationView: View {
                     .padding(.bottom, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            ConversationStatusBar(
+                modelOverride: tab?.modelOverride,
+                preferredModel: viewModel.preferredModel,
+                contextPercent: tab?.contextPercent,
+                contextTokens: tab?.contextTokens,
+                isRunning: isRunning,
+                permissionMode: tab?.permissionMode,
+                availableModels: viewModel.availableModels,
+                attachmentCount: attachmentCount,
+                onSelectModel: { model in
+                    viewModel.setTabModel(tabId: tabId, model: model)
+                },
+                onToggleMode: {
+                    guard let current = tab?.permissionMode else { return }
+                    let newMode: PermissionMode = current == .plan ? .auto : .plan
+                    viewModel.setPermissionMode(tabId: tabId, mode: newMode)
+                },
+                onTapAttachments: {
+                    showAttachments = true
+                }
+            )
 
             // Queued prompts indicator
             if let queued = tab?.queuedPrompts, !queued.isEmpty {
@@ -172,66 +270,34 @@ struct ConversationView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text(tab?.displayTitle ?? "Tab")
-                        .font(.headline)
-                    if let dir = tab?.workingDirectory {
-                        Text((dir as NSString).lastPathComponent)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    if let status = tab?.status {
-                        Text(status.rawValue.capitalized)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text(tab?.displayTitle ?? "Tab")
+                    .font(.headline)
+                    .lineLimit(1)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 12) {
-                    Button {
-                        showFileExplorer = true
-                    } label: {
-                        Image(systemName: "folder")
-                            .font(.subheadline)
+                Menu {
+                    Button { showFileExplorer = true } label: {
+                        Label("File Explorer", systemImage: "folder")
                     }
-
-                    Button {
-                        showGitPane = true
-                    } label: {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.subheadline)
+                    Button { showGitPane = true } label: {
+                        Label("Git", systemImage: "arrow.triangle.branch")
                     }
-
-                    Button {
-                        guard let current = tab?.permissionMode else { return }
-                        let newMode: PermissionMode = current == .plan ? .auto : .plan
-                        viewModel.setPermissionMode(tabId: tabId, mode: newMode)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: tab?.permissionMode == .plan ? "doc.text" : "bolt.fill")
-                                .font(.caption)
-                            Text(tab?.permissionMode == .plan ? "Plan" : "Auto")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundStyle(tab?.permissionMode == .plan ? IonTheme.accent : .secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
+                    Button { showTerminal = true } label: {
+                        Label("Terminal", systemImage: "terminal")
                     }
+                } label: {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.subheadline)
                 }
             }
         }
-        .onAppear {
+        .task {
             viewModel.loadConversation(tabId: tabId)
             cachedRestoredCard = computeRestoredSpecialCard()
         }
-        .onDisappear {
-            scrollTask?.cancel()
-            viewModel.clearConversation(tabId: tabId)
-        }
         .onChange(of: viewModel.messageCountByTab[tabId]) {
             cachedRestoredCard = computeRestoredSpecialCard()
+
             guard !viewModel.suppressScrollToBottom else {
                 viewModel.suppressScrollToBottom = false
                 return
@@ -241,37 +307,12 @@ struct ConversationView: View {
             let userSent = conversationMessages.last?.role == .user
             if userSent {
                 isNearBottom = true
-            }
-            guard isNearBottom else { return }
-            // Defer scroll to let LazyVStack finish layout
-            scrollTask?.cancel()
-            scrollTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(50))
-                guard !Task.isCancelled else { return }
-                if let proxy = scrollProxy {
-                    withAnimation {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                }
+                forceScrollCounter += 1
             }
         }
         .onChange(of: viewModel.connectionState) { _, newState in
             if newState == .disconnected {
                 dismiss()
-            }
-        }
-        .onChange(of: isNearBottom) { _, newValue in
-            if newValue, isRunning {
-                scrollTask?.cancel()
-                scrollTask = Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(50))
-                    guard !Task.isCancelled else { return }
-                    if let proxy = scrollProxy {
-                        withAnimation {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        }
-                    }
-                }
             }
         }
         .onChange(of: viewModel.tabIds) { _, newIds in
@@ -289,93 +330,95 @@ struct ConversationView: View {
             FileExplorerView(tabId: tabId)
                 .environment(viewModel)
         }
+        .fullScreenCover(isPresented: $showTerminal) {
+            ConversationTerminalView(tabId: tabId)
+                .environment(viewModel)
+        }
+        .sheet(isPresented: $showAttachments) {
+            ConversationAttachmentsSheet(tabId: tabId)
+                .environment(viewModel)
+        }
     }
 
     // MARK: - Message List
 
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    // "Load more" button at the top
-                    if viewModel.conversationHasMore[tabId] == true {
-                        Button {
-                            viewModel.loadMoreMessages(tabId: tabId)
-                        } label: {
-                            if isLoading {
-                                ProgressView()
-                            } else {
-                                Text("Load earlier messages")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    }
-
-                    // Loading indicator for initial load
-                    if isLoading && conversationMessages.isEmpty {
-                        ProgressView("Loading conversation...")
-                            .padding(.top, 40)
-                    } else if loadFailed && conversationMessages.isEmpty {
-                        Button {
-                            viewModel.loadConversation(tabId: tabId)
-                        } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.title2)
-                                Text("Couldn't load conversation.\nTap to retry.")
-                                    .font(.subheadline)
-                                    .multilineTextAlignment(.center)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 40)
-                    }
-
-                    // Empty conversation welcome state
-                    if conversationMessages.isEmpty && !isLoading && !loadFailed {
-                        VStack(spacing: 12) {
-                            Image("IonIcon")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 48, height: 48)
-                                .foregroundStyle(.tertiary)
-                            Text("Send a message to get started")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 80)
-                    }
-
-                    // Messages (grouped)
-                    ForEach(groupedItems) { item in
-                        conversationItemView(item)
-                    }
-
-                    // Fallback: legacy liveText when no structured messages
-                    if conversationMessages.isEmpty, let text = viewModel.liveText[tabId], !text.isEmpty {
-                        Text(text)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .padding(.horizontal)
-                    }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
-                }
-                .padding(.vertical)
-                .background(ScrollOffsetReader(isNearBottom: $isNearBottom))
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onAppear { scrollProxy = proxy }
+        ChatCollectionView(
+            items: rowItems,
+            isNearBottom: $isNearBottom,
+            forceScrollCounter: forceScrollCounter,
+            spacing: 6,
+            horizontalInset: 0
+        ) { [self] rowItem in
+            rowView(rowItem)
         }
     }
 
-    // MARK: - Item dispatch
+    // MARK: - Row dispatch
+
+    @ViewBuilder
+    private func rowView(_ rowItem: RowItem) -> some View {
+        switch rowItem {
+        case .loadMore:
+            Button {
+                viewModel.loadMoreMessages(tabId: tabId)
+            } label: {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    Text("Load earlier messages")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 8)
+
+        case .loading:
+            ProgressView("Loading conversation...")
+                .padding(.top, 40)
+
+        case .loadFailed:
+            Button {
+                viewModel.loadConversation(tabId: tabId)
+            } label: {
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title2)
+                    Text("Couldn't load conversation.\nTap to retry.")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 40)
+
+        case .empty:
+            VStack(spacing: 12) {
+                Image("IonIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .foregroundStyle(.tertiary)
+                Text("Send a message to get started")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 80)
+
+        case .conversation(let item):
+            conversationItemView(item)
+
+        case .liveText(let text):
+            Text(text)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(.horizontal)
+        }
+    }
+
+    // MARK: - Conversation item dispatch
 
     @ViewBuilder
     private func conversationItemView(_ item: ConversationItem) -> some View {
@@ -391,93 +434,31 @@ struct ConversationView: View {
                     viewModel.forkFromMessage(tabId: tabId, messageId: messageId)
                 }
             )
-            .id(message.id)
 
         case .assistant(let message):
             let isLast = message.id == conversationMessages.last?.id
             let combined = consecutiveAssistantContent(
                 for: message.id, in: conversationMessages
             )
+            let voiceSvc = viewModel.voiceService
             MessageBubble(
                 message: message,
                 isRunning: isRunning && isLast,
-                copyableContent: combined
+                copyableContent: combined,
+                isSpeaking: voiceSvc.speakingMessageId == message.id && voiceSvc.isSpeaking,
+                hasPendingSpeech: voiceSvc.hasPending,
+                onSkipSpeaking: { voiceSvc.skip() },
+                onStopAllSpeaking: { voiceSvc.stop() }
             )
-            .id(message.id)
 
         case .system(let message):
             MessageBubble(message: message)
-                .id(message.id)
 
         case .toolGroup(let tools):
             ToolGroupView(tools: tools, isTabRunning: isRunning)
-                .id(item.id)
-        }
-    }
-}
 
-// MARK: - UIKit Scroll Offset Reader
-
-/// Finds the parent UIScrollView and observes contentOffset via KVO
-/// to reliably determine whether the user is near the bottom.
-private struct ScrollOffsetReader: UIViewRepresentable {
-    @Binding var isNearBottom: Bool
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.isHidden = true
-        view.isUserInteractionEnabled = false
-        // Defer scroll view lookup to next layout pass
-        DispatchQueue.main.async {
-            guard let scrollView = findScrollView(in: view) else { return }
-            context.coordinator.observe(scrollView: scrollView)
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(isNearBottom: $isNearBottom)
-    }
-
-    private func findScrollView(in view: UIView) -> UIScrollView? {
-        var current: UIView? = view
-        while let parent = current?.superview {
-            if let scrollView = parent as? UIScrollView {
-                return scrollView
-            }
-            current = parent
-        }
-        return nil
-    }
-
-    final class Coordinator: NSObject {
-        private var isNearBottom: Binding<Bool>
-        private var observation: NSKeyValueObservation?
-
-        init(isNearBottom: Binding<Bool>) {
-            self.isNearBottom = isNearBottom
-        }
-
-        func observe(scrollView: UIScrollView) {
-            observation = scrollView.observe(
-                \.contentOffset, options: [.new]
-            ) { [weak self] sv, _ in
-                let distanceFromBottom =
-                    sv.contentSize.height - sv.contentOffset.y - sv.bounds.height
-                    + sv.adjustedContentInset.bottom
-                let nearBottom = distanceFromBottom < 100
-                if self?.isNearBottom.wrappedValue != nearBottom {
-                    DispatchQueue.main.async {
-                        self?.isNearBottom.wrappedValue = nearBottom
-                    }
-                }
-            }
-        }
-
-        deinit {
-            observation = nil
+        case .compaction(let message):
+            CompactionRowView(message: message)
         }
     }
 }

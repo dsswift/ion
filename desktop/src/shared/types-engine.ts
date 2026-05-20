@@ -74,7 +74,7 @@ export type EngineEvent =
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string }
   | { type: 'engine_stream_reset' }
-  | { type: 'engine_compacting'; active: boolean }
+  | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string }
   | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }
   | { type: 'engine_extension_died'; extensionName: string; exitCode: number | null; signal: string | null }
   | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }

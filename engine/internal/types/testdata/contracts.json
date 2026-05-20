@@ -1,7 +1,12 @@
 {
   "normalizedEvents": {
     "compacting": [
-      "active"
+      "active",
+      "clearedBlocks",
+      "messagesAfter",
+      "messagesBefore",
+      "strategy",
+      "summary"
     ],
     "error": [
       "errorCode",
@@ -89,6 +94,7 @@
     "agents",
     "attemptNumber",
     "cancelled",
+    "clearedBlocks",
     "defaultValue",
     "dialogId",
     "elicitMode",
@@ -102,6 +108,8 @@
     "isError",
     "level",
     "message",
+    "messagesAfter",
+    "messagesBefore",
     "method",
     "options",
     "partialInput",
@@ -121,6 +129,8 @@
     "signal",
     "source",
     "stderrTail",
+    "strategy",
+    "summary",
     "text",
     "title",
     "toolElapsed",
@@ -156,10 +166,28 @@
       "inputTokens",
       "outputTokens"
     ],
+    "ModelEntry": [
+      "contextWindow",
+      "costPer1kInput",
+      "costPer1kOutput",
+      "id",
+      "isCustom",
+      "providerId",
+      "supportsCaching",
+      "supportsImages",
+      "supportsThinking"
+    ],
     "PermissionOpt": [
       "id",
       "kind",
       "label"
+    ],
+    "ProviderEntry": [
+      "apiKeyRef",
+      "authSource",
+      "baseURL",
+      "hasAuth",
+      "id"
     ],
     "StatusFields": [
       "contextPercent",

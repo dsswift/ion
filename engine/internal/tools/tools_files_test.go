@@ -172,6 +172,71 @@ func TestReadToolBinaryFile(t *testing.T) {
 	}
 }
 
+func TestReadToolImage_PNG(t *testing.T) {
+	dir := t.TempDir()
+	pngPath := filepath.Join(dir, "screenshot.png")
+	// Minimal PNG header bytes
+	pngData := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+	}
+	os.WriteFile(pngPath, pngData, 0o644)
+
+	result, err := ExecuteTool(context.Background(), "Read", map[string]any{"file_path": pngPath}, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %s", result.Content)
+	}
+	// Should return image metadata in Content text
+	if !strings.Contains(result.Content, "screenshot.png") {
+		t.Errorf("expected filename in content, got %q", result.Content)
+	}
+	// Should carry base64 image data
+	if len(result.Images) != 1 {
+		t.Fatalf("expected 1 image, got %d", len(result.Images))
+	}
+	if result.Images[0].MediaType != "image/png" {
+		t.Errorf("expected image/png, got %q", result.Images[0].MediaType)
+	}
+	if result.Images[0].Data == "" {
+		t.Error("expected non-empty base64 data")
+	}
+}
+
+func TestReadToolImage_JPEG(t *testing.T) {
+	dir := t.TempDir()
+	jpgPath := filepath.Join(dir, "photo.jpg")
+	os.WriteFile(jpgPath, []byte{0xFF, 0xD8, 0xFF, 0xE0}, 0o644)
+
+	result, _ := ExecuteTool(context.Background(), "Read", map[string]any{"file_path": jpgPath}, dir)
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if len(result.Images) != 1 {
+		t.Fatalf("expected 1 image, got %d", len(result.Images))
+	}
+	if result.Images[0].MediaType != "image/jpeg" {
+		t.Errorf("expected image/jpeg, got %q", result.Images[0].MediaType)
+	}
+}
+
+func TestReadToolImage_UnsupportedFormat(t *testing.T) {
+	dir := t.TempDir()
+	bmpPath := filepath.Join(dir, "image.bmp")
+	os.WriteFile(bmpPath, []byte("BM"), 0o644)
+
+	result, _ := ExecuteTool(context.Background(), "Read", map[string]any{"file_path": bmpPath}, dir)
+	// .bmp is not a supported image format, should fall through to text read
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if len(result.Images) != 0 {
+		t.Error("expected no images for unsupported format")
+	}
+}
+
 func TestReadToolRelativePath(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "rel.txt")

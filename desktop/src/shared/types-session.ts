@@ -75,6 +75,7 @@ export interface TabState {
   lastResult: RunResult | null
   /** Session metadata from init event */
   sessionModel: string | null
+  modelOverride: string | null
   sessionTools: string[]
   sessionMcpServers: Array<{ name: string; status: string }>
   sessionSkills: string[]
@@ -115,6 +116,8 @@ export interface TabState {
   contextTokens: number | null
   /** Engine-computed context usage percentage (accounts for model-specific context window) */
   contextPercent: number | null
+  /** True while the engine is actively compacting context */
+  isCompacting: boolean
   /** Terminal-focused tab with no conversation */
   isTerminalOnly: boolean
   /** Whether this tab runs an engine session instead of CLI backend */
@@ -168,6 +171,23 @@ export interface RunOptions {
   thinking?: { enabled: boolean; budgetTokens?: number }
   /** Extension entry points for engine tabs (resolved from engine profile) */
   extensions?: string[]
+  /**
+   * Pre-encoded image attachments for the user message. The engine forwards
+   * each as a native multimodal content block. Desktop is responsible for
+   * reading the file, base64-encoding the bytes, and dropping unreadable
+   * entries before they reach the engine.
+   */
+  imageAttachments?: ImageAttachmentPayload[]
+}
+
+/** Pre-encoded image bytes that ride alongside a user prompt. */
+export interface ImageAttachmentPayload {
+  /** MIME type, e.g. "image/jpeg", "image/png", "image/webp", "image/gif". */
+  mediaType: string
+  /** Base64-encoded image bytes (no data URL prefix). */
+  data: string
+  /** Source path on disk; carried for logging only. */
+  path?: string
 }
 
 // ─── Control Plane Types ───
@@ -312,11 +332,15 @@ export interface GitGraphData {
   totalCount: number
 }
 
+export type GitConflictKind = 'UU' | 'AA' | 'DD' | 'AU' | 'UA' | 'DU' | 'UD'
+
 export interface GitChangedFile {
   path: string
-  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflict'
   staged: boolean
   oldPath?: string
+  conflictKind?: GitConflictKind
+  isSubmodule?: boolean
 }
 
 export interface GitChangesData {
@@ -337,7 +361,7 @@ export interface GitBranchInfo {
 // ─── Worktree Types ───
 
 export type GitOpsMode = 'manual' | 'worktree'
-export type WorktreeCompletionStrategy = 'merge' | 'pr'
+export type WorktreeCompletionStrategy = 'merge-ff' | 'merge' | 'pr'
 
 export interface WorktreeInfo {
   /** Physical path on disk (~/.ion/worktrees/...) */

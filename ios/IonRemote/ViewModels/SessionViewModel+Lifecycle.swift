@@ -185,8 +185,10 @@ extension SessionViewModel {
     /// Switch to a different paired desktop.
     func switchToDevice(id: String) {
         guard id != activeDevice?.id else { return }
+        let fromName = activeDevice?.name ?? "nil"
+        let toName = pairedDevices.first(where: { $0.id == id })?.name ?? "unknown"
         ionLog.info("switchToDevice: \(id)")
-        DiagnosticLog.log("SWITCH: \(activeDevice?.id.prefix(8) ?? "nil") → \(id.prefix(8))")
+        DiagnosticLog.log("USER: switch-device from=\(fromName) to=\(toName) id=\(id.prefix(8))")
         disconnect()
         activeDeviceId = id
         restoreCachedLayout(for: id)

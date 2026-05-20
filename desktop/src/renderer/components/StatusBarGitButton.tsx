@@ -2,19 +2,20 @@ import React from 'react'
 import { GitBranch } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
-import { useGitPollingStore } from '../hooks/useGitPolling'
+import { useRepoState } from '../stores/git'
 
 /* ─── Git Branch Button (right side of StatusBar) ─── */
 
-export function GitButton() {
+export function GitButton({ directory }: { directory: string }) {
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const toggleGitPanel = useSessionStore((s) => s.toggleGitPanel)
   const colors = useColors()
 
-  const gitBranch = useGitPollingStore((s) => s.branch)
-  const gitFileCount = useGitPollingStore((s) => s.files.length)
-  const gitAhead = useGitPollingStore((s) => s.ahead)
-  const gitBehind = useGitPollingStore((s) => s.behind)
+  const repo = useRepoState(directory)
+  const gitBranch = repo?.branch ?? ''
+  const gitFileCount = repo?.files.length ?? 0
+  const gitAhead = repo?.ahead ?? 0
+  const gitBehind = repo?.behind ?? 0
 
   return (
     <button

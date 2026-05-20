@@ -7,11 +7,13 @@ import { relativeDate } from './GitPanelTypes'
 
 // ─── Commit detail popup ───
 
-export function CommitPopup({ commit, rect, detail, panelRight }: {
+export function CommitPopup({ commit, rect, detail, panelRight, onMouseEnter, onMouseLeave }: {
   commit: GitCommit
   rect: DOMRect
   detail: GitCommitDetail | null
   panelRight: number
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }) {
   const colors = useColors()
   const POPUP_WIDTH = 300
@@ -33,12 +35,14 @@ export function CommitPopup({ commit, rect, detail, panelRight }: {
       initial={{ opacity: 0, x: spaceRight >= 0 ? -4 : 4 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.12 }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         position: 'fixed',
         left,
         top,
         width: POPUP_WIDTH,
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
         background: colors.popoverBg,
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',

@@ -2,13 +2,31 @@ import { IPC } from '../../../shared/types'
 import { log as _log } from '../../logger'
 import { state, engineBridge } from '../../state'
 import { broadcast } from '../../broadcast'
+import { encodeImageAttachments } from '../attachment-encoder'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
   _log('main', msg)
 }
 
-export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'engine_prompt' }>): Promise<void> {
+/** Per-device voice configuration (sent by iOS). */
+const deviceVoiceConfig = new Map<string, { enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }>()
+
+export function handleVoiceConfig(
+  cmd: Extract<RemoteCommand, { type: 'voice_config' }>,
+  deviceId: string,
+): void {
+  log(`voice_config: device=${deviceId} enabled=${cmd.enabled} mode=${cmd.mode} hasPrompt=${!!cmd.systemPrompt}`)
+  deviceVoiceConfig.set(deviceId, { enabled: cmd.enabled, mode: cmd.mode, systemPrompt: cmd.systemPrompt })
+}
+
+export function getVoiceSystemPrompt(deviceId: string): string | undefined {
+  const cfg = deviceVoiceConfig.get(deviceId)
+  if (!cfg || !cfg.enabled || cfg.mode !== 'desktop') return undefined
+  return cfg.systemPrompt
+}
+
+export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'engine_prompt' }>, deviceId: string): Promise<void> {
   try {
     if (!state.mainWindow) {
       log('engine_prompt: no mainWindow, ignoring')
@@ -77,7 +95,24 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
 
     // Route through the renderer's submitEnginePrompt so it adds the user
     // message, sets tab status, and calls the engine bridge properly.
-    broadcast(IPC.REMOTE_ENGINE_PROMPT, { tabId: cmd.tabId, text: cmd.text })
+    // Prepend attachment context lines (same format as desktop send-slice)
+    // for client-side display, then encode each image to base64 so the
+    // engine can ship native multimodal content blocks to the LLM.
+    let fullText = cmd.text
+    const attachments = cmd.attachments || []
+    if (attachments.length > 0) {
+      const ctx = attachments.map((a: { type: string; name: string; path: string }) => `[Attached ${a.type}: ${a.path}]`).join('\n')
+      fullText = `${ctx}\n\n${fullText}`
+    }
+    const { encoded, rewrittenText } = encodeImageAttachments(fullText, attachments)
+
+    const voicePrompt = getVoiceSystemPrompt(deviceId)
+    broadcast(IPC.REMOTE_ENGINE_PROMPT, {
+      tabId: cmd.tabId,
+      text: rewrittenText,
+      appendSystemPrompt: voicePrompt,
+      imageAttachments: encoded.length > 0 ? encoded : undefined,
+    })
   } catch (err) {
     log(`engine_prompt error: ${(err as Error).message}`)
   }
@@ -190,11 +225,11 @@ export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: '
   }
 }
 
-export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, { type: 'load_engine_conversation' }>): Promise<void> {
+export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, { type: 'load_engine_conversation' }>, deviceId: string): Promise<void> {
   try {
     log(`load_engine_conversation: tabId=${cmd.tabId}, instanceId=${cmd.instanceId || 'null'}`)
     if (!state.mainWindow) {
-      state.remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
       return
     }
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -224,14 +259,14 @@ export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, {
     `) || []
     const instanceId = compoundKey.includes(':') ? compoundKey.split(':')[1] : null
     log(`load_engine_conversation: compoundKey=${compoundKey}, found ${msgs.length} messages, instanceId=${instanceId}`)
-    state.remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
 
     // Also send current engine state so iOS has agent panel, status bar,
     // and working message even when connecting to an already-running session.
     await sendCurrentEngineState(cmd.tabId, instanceId, escapedKey)
   } catch (err) {
     log(`load_engine_conversation error: ${(err as Error).message}`)
-    state.remoteTransport?.send({ type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
   }
 }
 

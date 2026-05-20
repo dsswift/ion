@@ -16,7 +16,7 @@ import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
-import { UpdateBanner } from './components/UpdateBanner'
+import { UpdateDialog } from './components/UpdateDialog'
 import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
 import { useThemeSync } from './hooks/useThemeSync'
@@ -28,6 +28,8 @@ import { useWindowHeight, useInputRowHeight } from './hooks/useWindowGeometry'
 import { useSessionStore, editorDirForTab } from './stores/sessionStore'
 import { useColors, spacing } from './theme'
 import { usePreferencesStore } from './preferences'
+import { useUpdateStore } from './stores/update-store'
+import { setupModelSync } from './stores/model-store'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -39,10 +41,23 @@ export default function App() {
   useTabRestoration()
   useClickThrough()
 
+  // Listen for auto-update download notifications from the main process
+  useEffect(() => {
+    return window.ion.onUpdateDownloaded((info) => {
+      useUpdateStore.getState().setAvailable(info.version)
+    })
+  }, [])
+
+  // Set up background model sync (initial fetch, periodic refresh, IPC listener)
+  useEffect(() => {
+    setupModelSync()
+  }, [])
+
   const [closeConfirmTab, setCloseConfirmTab] = useState<{ id: string; title: string; directory: string } | null>(null)
   useKeyboardShortcuts(setCloseConfirmTab)
 
   const settingsOpen = useSessionStore((s) => s.settingsOpen)
+  const settingsInitialTab = useSessionStore((s) => s.settingsInitialTab)
   const activeTabStatus = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.status)
   const addAttachments = useSessionStore((s) => s.addAttachments)
   const colors = useColors()
@@ -67,11 +82,19 @@ export default function App() {
   const explorerOpen = useSessionStore((s) => s.fileExplorerOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
   const editorOpen = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    return tab ? s.fileEditorOpenDirs.has(editorDirForTab(tab)) : false
+    if (!tab) return false
+    const dir = editorDirForTab(tab)
+    const isOpen = s.fileEditorOpenDirs.has(dir)
+    console.log('[App] editorOpen selector', { dir, isOpen, workingDir: tab.workingDirectory, worktreeRepo: tab.worktree?.repoPath, openDirs: [...s.fileEditorOpenDirs] })
+    return isOpen
   })
   const editorDirState = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    return tab ? s.fileEditorStates.get(editorDirForTab(tab)) : undefined
+    if (!tab) return undefined
+    const dir = editorDirForTab(tab)
+    const state = s.fileEditorStates.get(dir)
+    console.log('[App] editorDirState selector', { dir, hasState: !!state, fileCount: state?.files.length, activeFileId: state?.activeFileId })
+    return state
   })
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 
@@ -134,7 +157,7 @@ export default function App() {
 
           <AnimatePresence initial={false}>
             {settingsOpen && (
-              <SettingsDialog onClose={() => useSessionStore.getState().closeSettings()} />
+              <SettingsDialog initialTab={settingsInitialTab} onClose={() => useSessionStore.getState().closeSettings()} />
             )}
           </AnimatePresence>
 
@@ -251,7 +274,7 @@ export default function App() {
                 </div>
               </motion.div>
             )}
-            {/* StatusBar must always mount so useGitPolling runs for terminal-only/tall/engine tabs */}
+            {/* StatusBar must always mount so useGitRepo subscribes for terminal-only/tall/engine tabs */}
             {(isTerminalOnly || isTerminalTall || isEngine) && (
               <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }}>
                 <StatusBar />
@@ -372,8 +395,8 @@ export default function App() {
           <TerminalBigScreen tabId={activeTabId} />
         )}
 
-        {/* Auto-update notification */}
-        <UpdateBanner />
+        {/* Auto-update install dialog */}
+        <UpdateDialog />
       </div>
     </PopoverLayerProvider>
   )

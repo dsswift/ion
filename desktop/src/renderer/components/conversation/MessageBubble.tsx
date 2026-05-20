@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { CopyButton } from './CopyButton'
+import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message, Attachment } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
@@ -24,7 +25,8 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
     .replace(/^\[Attached (?:image|file): .+\]\n*/gm, '')
     .trim()
 
-  const hasAttachments = message.attachments && message.attachments.length > 0
+  const inlineImages = deriveMessageImages(message.content || '', message.attachments)
+  const hasInlineImages = inlineImages.length > 0
 
   const userMarkdownComponents = useMemo(() => ({
     table: ({ children }: any) => <div className="overflow-x-auto max-w-full">{children}</div>,
@@ -46,21 +48,24 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
 
   const content = (
     <div className="group/msg relative inline-flex flex-col items-end max-w-[85%]">
-      <div
-        className="text-[13px] leading-[1.5] px-3 py-1.5"
-        style={{
-          background: colors.userBubble,
-          color: colors.userBubbleText,
-          border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
-          borderRadius: '14px 14px 4px 14px',
-        }}
-      >
-        <div className="prose-cloud prose-cloud-user">
-          <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
-            {displayContent}
-          </Markdown>
+      {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
+      {displayContent.trim() && (
+        <div
+          className="text-[13px] leading-[1.5] px-3 py-1.5"
+          style={{
+            background: colors.userBubble,
+            color: colors.userBubbleText,
+            border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
+            borderRadius: '14px 14px 4px 14px',
+          }}
+        >
+          <div className="prose-cloud prose-cloud-user">
+            <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+              {displayContent}
+            </Markdown>
+          </div>
         </div>
-      </div>
+      )}
       {displayContent.trim() && (
         <div className="absolute -bottom-5 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
           {actions || defaultActions}

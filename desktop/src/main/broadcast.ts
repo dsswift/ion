@@ -1,5 +1,5 @@
 import { IPC } from '../shared/types'
-import { state, terminalOutputAccumulator } from './state'
+import { state, terminalOutputAccumulator, terminalScrollback, MAX_SCROLLBACK_SIZE } from './state'
 
 export function broadcast(channel: string, ...args: unknown[]): void {
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
@@ -9,6 +9,12 @@ export function broadcast(channel: string, ...args: unknown[]): void {
     const key = args[0] as string
     const data = args[1] as string
     terminalOutputAccumulator.set(key, (terminalOutputAccumulator.get(key) || '') + data)
+    // Accumulate into main-process scrollback for snapshot fallback.
+    const prev = terminalScrollback.get(key) || ''
+    const combined = prev + data
+    terminalScrollback.set(key, combined.length > MAX_SCROLLBACK_SIZE
+      ? combined.slice(combined.length - MAX_SCROLLBACK_SIZE)
+      : combined)
   } else if (channel === IPC.TERMINAL_EXIT && state.remoteTransport) {
     const key = args[0] as string
     const exitCode = args[1] as number

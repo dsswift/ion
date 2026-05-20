@@ -268,8 +268,15 @@ func (StreamResetEvent) eventType() string { return EventStreamReset }
 
 // CompactingEvent signals that context compaction is starting or finishing.
 // The desktop uses this to update the activity indicator ("Compacting...").
+// When Active is false the optional fields carry a summary of what was compacted
+// so clients can render an inline compaction marker in the conversation.
 type CompactingEvent struct {
-	Active bool `json:"active"`
+	Active         bool   `json:"active"`
+	Summary        string `json:"summary,omitempty"`
+	MessagesBefore int    `json:"messagesBefore,omitempty"`
+	MessagesAfter  int    `json:"messagesAfter,omitempty"`
+	ClearedBlocks  int    `json:"clearedBlocks,omitempty"`
+	Strategy       string `json:"strategy,omitempty"`
 }
 
 func (CompactingEvent) eventType() string { return EventCompacting }

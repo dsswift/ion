@@ -21,8 +21,8 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
       }))
     },
 
-    openSettings: () => set({ settingsOpen: true }),
-    closeSettings: () => set({ settingsOpen: false }),
+    openSettings: (tab?: string) => set({ settingsOpen: true, settingsInitialTab: tab ?? null }),
+    closeSettings: () => set({ settingsOpen: false, settingsInitialTab: null }),
 
     toggleGitPanel: () => {
       set((s) => ({ gitPanelOpen: !s.gitPanelOpen }))

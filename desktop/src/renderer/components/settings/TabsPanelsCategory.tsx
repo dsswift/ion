@@ -1,11 +1,12 @@
-import React, { useCallback, useState } from 'react'
-import { Trash, PencilSimple, Star, Plus, Lightning, CheckCircle, Notepad } from '@phosphor-icons/react'
+import React, { useCallback, useRef, useState } from 'react'
+import { Trash, PencilSimple, Star, Plus, Lightning, CheckCircle, Notepad, DotsSixVertical } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { usePreferencesStore, getEffectiveTabGroups } from '../../preferences'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
+import { useManualReorder } from '../../hooks/useManualReorder'
 import type { TabGroupMode, TabGroup } from '../../../shared/types'
 
 export function TabsPanelsCategory() {
@@ -33,6 +34,7 @@ export function TabsPanelsCategory() {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
+  const groupRowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const handleTabGroupModeChange = useCallback((newMode: TabGroupMode, oldMode: TabGroupMode) => {
     if (newMode === oldMode) return
@@ -120,6 +122,23 @@ export function TabsPanelsCategory() {
     return groups
   }, [])
 
+  const displayGroups = tabGroupMode === 'manual' ? getEffectiveTabGroups(tabGroups) : []
+  const groupReorder = useManualReorder({
+    items: displayGroups,
+    keyFn: (g) => g.id,
+    itemRefs: groupRowRefs,
+    axis: 'y',
+    onReorder: (reordered) => {
+      materializeDefaults()
+      const groups = usePreferencesStore.getState().tabGroups
+      const reorderedGroups = reordered.map((g) => {
+        const stored = groups.find((sg) => sg.id === g.id || sg.label === g.label)
+        return stored || { id: g.id, label: g.label, isDefault: g.isDefault, order: 0, collapsed: false }
+      })
+      usePreferencesStore.getState().reorderTabGroups(reorderedGroups)
+    },
+  })
+
   return (
     <>
       <SettingHeading first>Tabs</SettingHeading>
@@ -167,7 +186,6 @@ export function TabsPanelsCategory() {
       </SettingSection>
 
       {tabGroupMode === 'manual' && (() => {
-        const displayGroups = getEffectiveTabGroups(tabGroups)
         return (
           <div style={{
             marginTop: 4,
@@ -180,6 +198,10 @@ export function TabsPanelsCategory() {
             {displayGroups.map((group) => (
               <div
                 key={group.id}
+                ref={(el: HTMLDivElement | null) => {
+                  if (el) groupRowRefs.current.set(group.id, el)
+                  else groupRowRefs.current.delete(group.id)
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -188,6 +210,19 @@ export function TabsPanelsCategory() {
                   borderBottom: `1px solid ${colors.containerBorder}`,
                 }}
               >
+                <div
+                  onPointerDown={(e) => groupReorder.onItemPointerDown(group.id, e)}
+                  style={{
+                    cursor: 'grab',
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: colors.textTertiary,
+                    flexShrink: 0,
+                  }}
+                  title="Drag to reorder"
+                >
+                  <DotsSixVertical size={14} />
+                </div>
                 <button
                   onClick={() => {
                     const groups = materializeDefaults()

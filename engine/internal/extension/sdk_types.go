@@ -111,6 +111,12 @@ type Context struct {
 	// observe or respond. The first non-nil reply wins. Returns the response
 	// map and a cancelled flag. The harness owns the schema/url shape.
 	Elicit func(info ElicitationRequestInfo) (map[string]interface{}, bool, error)
+
+	// SearchHistory searches the conversation history for content that may
+	// have been compacted or cleared from the active context window. Returns
+	// matching snippets with metadata. Useful for extensions that need to
+	// recover details from earlier in the conversation.
+	SearchHistory func(query string, maxResults int) ([]HistoryMatch, error)
 }
 
 // DispatchAgentOpts configures an engine-native agent dispatch.
@@ -192,6 +198,17 @@ type DiscoverAgentsResult struct {
 type ModelRef struct {
 	ID            string
 	ContextWindow int
+}
+
+// HistoryMatch represents a single search result from conversation history.
+// Mirrors conversation.HistoryMatch for the extension SDK boundary.
+type HistoryMatch struct {
+	Index     int    `json:"index"`
+	Role      string `json:"role"`
+	Type      string `json:"type"`
+	Snippet   string `json:"snippet"`
+	ToolName  string `json:"toolName,omitempty"`
+	ToolUseID string `json:"toolUseId,omitempty"`
 }
 
 // ContextUsage reports current context window utilization.

@@ -22,6 +22,9 @@ type PromptOverrides struct {
 	Extensions         []string
 	NoExtensions       bool
 	AppendSystemPrompt string
+	// Attachments are pre-encoded images supplied by the client to be sent
+	// to the LLM as native image content blocks alongside the text prompt.
+	Attachments []types.ImageAttachment
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -69,10 +72,20 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	s.cliTurnActive = false
 
 	if s.planMode && s.planFilePath == "" {
-		home, _ := os.UserHomeDir()
-		plansDir := filepath.Join(home, ".ion", "plans")
-		_ = os.MkdirAll(plansDir, 0755)
-		s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
+		// CLI backend: place the plan file inside the project working directory
+		// because the Claude CLI's native plan mode restricts writes to paths
+		// within or under the project root. API backend: use ~/.ion/plans/ since
+		// it controls its own tool execution and can write anywhere.
+		if _, isCli := m.backend.(*backend.CliBackend); isCli && s.config.WorkingDirectory != "" {
+			plansDir := filepath.Join(s.config.WorkingDirectory, ".ion", "plans")
+			_ = os.MkdirAll(plansDir, 0755)
+			s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
+		} else {
+			home, _ := os.UserHomeDir()
+			plansDir := filepath.Join(home, ".ion", "plans")
+			_ = os.MkdirAll(plansDir, 0755)
+			s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
+		}
 	}
 
 	opts := buildRunOptions(s, text, overrides)
@@ -187,6 +200,7 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 		pp.maxBudgetUsd = overrides.MaxBudgetUsd
 		pp.extensions = overrides.Extensions
 		pp.noExtensions = overrides.NoExtensions
+		pp.attachments = overrides.Attachments
 	}
 	s.promptQueue = append(s.promptQueue, pp)
 	utils.Log("Session", fmt.Sprintf("prompt queued for %s (%d in queue)", key, len(s.promptQueue)))

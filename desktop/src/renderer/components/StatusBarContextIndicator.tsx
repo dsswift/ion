@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
-import { getModelContextWindow } from '../stores/model-labels'
+import { getDynamicContextWindow } from '../stores/model-labels'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -13,10 +13,15 @@ export function ContextIndicator() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const { contextTokens, contextPercent } = useSessionStore(
+  const { contextTokens, contextPercent, modelOverride, sessionModel } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      return { contextTokens: tab?.contextTokens ?? null, contextPercent: tab?.contextPercent ?? null }
+      return {
+        contextTokens: tab?.contextTokens ?? null,
+        contextPercent: tab?.contextPercent ?? null,
+        modelOverride: tab?.modelOverride ?? null,
+        sessionModel: tab?.sessionModel ?? null,
+      }
     }),
   )
 
@@ -24,14 +29,16 @@ export function ContextIndicator() {
   const ref = useRef<HTMLSpanElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
-  const windowSize = getModelContextWindow(preferredModel)
+  // Resolve effective model: per-tab override > session model > global preferred
+  const effectiveModel = modelOverride || sessionModel || preferredModel
+  const windowSize = getDynamicContextWindow(effectiveModel)
 
-  // Use engine-computed percent when available, otherwise calculate locally
-  const pct = contextPercent != null
-    ? contextPercent
-    : contextTokens != null
-      ? Math.round((contextTokens / windowSize) * 100)
-      : null
+  // Always calculate locally when tokens are available (ensures model switch
+  // immediately updates the percentage). Fall back to engine-computed percent
+  // only when contextTokens is null.
+  const pct = contextTokens != null
+    ? Math.min(100, Math.round((contextTokens / windowSize) * 100))
+    : contextPercent
 
   if (pct === null) return null
 
@@ -40,8 +47,8 @@ export function ContextIndicator() {
   const tooltip = `${formatTokens(tokens)} / ${formatTokens(windowSize)} tokens`
 
   let color = colors.textTertiary
-  if (pct >= 70) color = '#e06040'
-  else if (pct >= 50) color = '#d4a017'
+  if (pct >= 80) color = '#e06040'
+  else if (pct >= 60) color = '#d4a017'
 
   const handleEnter = () => {
     if (ref.current) {

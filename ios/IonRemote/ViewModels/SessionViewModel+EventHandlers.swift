@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import os
 
 private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
@@ -56,9 +57,7 @@ extension SessionViewModel {
 
     @MainActor
     func handleEvent(_ event: RemoteEvent) {
-        if case .heartbeat = event { /* skip noisy log */ } else {
-            print("[Ion] handleEvent: \(event)")
-        }
+        DiagnosticLog.logEvent(event)
         switch event {
         case .unpair:
             handleUnpair()
@@ -67,7 +66,6 @@ extension SessionViewModel {
             handleRelayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey)
 
         case .transportReconnecting:
-            DiagnosticLog.log("EVENT: transportReconnecting was=\(connectionState)")
             if connectionState == .connected {
                 connectionState = .reconnecting
             }
@@ -78,7 +76,6 @@ extension SessionViewModel {
             connectionQuality.recordHeartbeat(senderTs: senderTs, buffered: buffered)
 
         case .peerDisconnected:
-            DiagnosticLog.log("EVENT: peerDisconnected was=\(connectionState)")
             // Don't tear down the transport — the relay auto-reconnects and
             // startRelayStateObservation re-sends sync when the peer returns.
             if connectionState == .connected || connectionState == .connecting {
@@ -87,8 +84,8 @@ extension SessionViewModel {
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
-        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups):
-            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups)
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels):
+            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels)
 
         case .tabCreated(let tab):
             if !tabs.contains(where: { $0.id == tab.id }) {
@@ -107,14 +104,14 @@ extension SessionViewModel {
             handleTabStatus(tabId: tabId, status: status)
 
         case .textChunk(let tabId, let text):
-            liveText[tabId, default: ""] += text
             // Update tab preview for the tab list (shows most recent text)
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-                let preview = liveText[tabId, default: ""]
+                let preview = (liveText[tabId] ?? "") + text
                 tabs[idx].lastMessage = String(preview.suffix(64))
                     .replacingOccurrences(of: "\n", with: " ")
             }
             guard !conversationLoaded.contains(tabId) else { break }
+            liveText[tabId, default: ""] += text
 
         case .toolCall(let tabId, let toolName, _):
             guard !conversationLoaded.contains(tabId) else { break }
@@ -269,6 +266,38 @@ extension SessionViewModel {
             gitDiffResult = response
             gitDiffLoading = false
 
+        case .gitCommitResult(let result):
+            if result.ok {
+                Haptic.success()
+                gitToast = GitToast(message: "Committed successfully", isError: false)
+            } else {
+                Haptic.error()
+                gitToast = GitToast(message: result.error ?? "Commit failed", isError: true)
+            }
+
+        case .gitStageResult(let result):
+            if result.ok {
+                Haptic.success()
+            } else {
+                Haptic.error()
+                gitToast = GitToast(message: result.error ?? "Stage failed", isError: true)
+            }
+
+        case .gitUnstageResult(let result):
+            if result.ok {
+                Haptic.success()
+            } else {
+                Haptic.error()
+                gitToast = GitToast(message: result.error ?? "Unstage failed", isError: true)
+            }
+
+        case .gitCommitFilesResponse(let response):
+            gitCommitFiles[response.hash] = response
+
+        case .gitCommitFileDiffResponse(let response):
+            let key = "\(response.hash):\(response.path)"
+            gitCommitFileDiff[key] = response
+
         // File explorer events
         case .fsDirListing(let directory, let response):
             fileListings[directory] = response
@@ -278,12 +307,25 @@ extension SessionViewModel {
             fileContent[filePath] = response
             fileContentLoading.remove(filePath)
 
+        case .fsImageContent(let filePath, let dataUrl, _):
+            RemoteImageFetcher.shared.deliver(path: filePath, dataUrl: dataUrl)
+
         case .fsWriteResult(_, let response):
             fileWriteResult = response
+
+        case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
+            handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)
+
+        case .tabAttachments(let tabId, let attachments):
+            tabAttachmentCache[tabId] = attachments
 
         // Command discovery events
         case .discoverCommandsResponse(let directory, let commands):
             discoveredCommands[directory] = commands
+
+        // Diagnostic log request from desktop
+        case .requestDiagnosticLogs:
+            handleRequestDiagnosticLogs()
         }
     }
 
@@ -296,6 +338,7 @@ extension SessionViewModel {
             pairedDevices.removeAll { $0.id == device.id }
             LayoutCache.delete(deviceId: device.id)
         }
+        AttachmentImageCache.shared.clearAll()
         savePairedDevices()
         if pairedDevices.isEmpty {
             try? KeychainStore.deleteAll()
@@ -337,95 +380,6 @@ extension SessionViewModel {
         }
     }
 
-    // MARK: - Tab events
-
-    @MainActor
-    private func handleTabClosed(tabId: String) {
-        pendingCloseTabIds.remove(tabId)
-        tabs.removeAll { $0.id == tabId }
-        tabIds.remove(tabId)
-        liveText.removeValue(forKey: tabId)
-        // Clean up all engine state for this tab
-        engineInstances.removeValue(forKey: tabId)
-        activeEngineInstance.removeValue(forKey: tabId)
-        for key in engineAgentStates.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineAgentStates.removeValue(forKey: key)
-        }
-        for key in engineStatusFields.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineStatusFields.removeValue(forKey: key)
-        }
-        for key in engineWorkingMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineWorkingMessages.removeValue(forKey: key)
-        }
-        for key in engineDialogs.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineDialogs.removeValue(forKey: key)
-        }
-        for key in enginePinnedPrompt.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            enginePinnedPrompt.removeValue(forKey: key)
-        }
-        for key in engineMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineMessages.removeValue(forKey: key)
-        }
-        for key in activeTools.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            activeTools.removeValue(forKey: key)
-        }
-        engineConversationLoaded = engineConversationLoaded.filter { $0 != tabId && !$0.hasPrefix("\(tabId):") }
-    }
-
-    @MainActor
-    private func handleTabStatus(tabId: String, status: TabStatus) {
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].status = status
-            if status == .running {
-                // A new task started — any previous ExitPlanMode/AskUserQuestion
-                // entries are stale (plan was implemented or user moved on).
-                tabs[idx].permissionQueue.removeAll {
-                    $0.toolName == "ExitPlanMode" || $0.toolName == "AskUserQuestion"
-                }
-            }
-            if status == .idle || status == .completed || status == .failed || status == .dead {
-                // Capture preview from liveText before clearing — if tabStatus
-                // arrives before taskComplete, this preserves the lastMessage.
-                if let text = liveText[tabId], !text.isEmpty {
-                    tabs[idx].lastMessage = String(text.suffix(64))
-                        .replacingOccurrences(of: "\n", with: " ")
-                }
-                liveText.removeValue(forKey: tabId)
-                // Preserve ExitPlanMode/AskUserQuestion entries -- desktop auto-allows
-                // these but iOS needs them for plan card UI and status indicators
-                tabs[idx].permissionQueue.removeAll {
-                    $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
-                }
-                // Clear active tools for this tab (both bare tabId and compound keys)
-                activeTools.removeValue(forKey: tabId)
-                for key in activeTools.keys where key.hasPrefix("\(tabId):") {
-                    activeTools.removeValue(forKey: key)
-                }
-            }
-        }
-    }
-
-    @MainActor
-    private func handleTaskComplete(tabId: String) {
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].status = .completed
-            // Preserve ExitPlanMode/AskUserQuestion entries for plan card UI
-            tabs[idx].permissionQueue.removeAll {
-                $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
-            }
-            // Capture final preview from accumulated live text before it's cleared
-            if let text = liveText[tabId], !text.isEmpty {
-                tabs[idx].lastMessage = String(text.suffix(64))
-                    .replacingOccurrences(of: "\n", with: " ")
-            }
-        }
-        liveText.removeValue(forKey: tabId)
-        activeTools.removeValue(forKey: tabId)
-        for key in activeTools.keys where key.hasPrefix("\(tabId):") {
-            activeTools.removeValue(forKey: key)
-        }
-    }
-
     // MARK: - Permission/message events
 
     @MainActor
@@ -458,13 +412,18 @@ extension SessionViewModel {
         conversationLoadFailed.remove(tabId)
         loadingConversation.remove(tabId)
         conversationLoaded.insert(tabId)
+        liveText.removeValue(forKey: tabId)
         conversationHasMore[tabId] = hasMore
         conversationCursor[tabId] = cursor
+
+        // Deduplicate by message ID, keeping last occurrence (most recent version).
+        let deduped = deduplicateMessages(newMessages)
+
         if cursor != nil {
             suppressScrollToBottom = true
-            messages[tabId] = newMessages + (messages[tabId] ?? [])
+            messages[tabId] = deduped + (messages[tabId] ?? [])
         } else {
-            messages[tabId] = newMessages
+            messages[tabId] = deduped
         }
         messageCountByTab[tabId] = messages[tabId]?.count ?? 0
     }
@@ -479,9 +438,15 @@ extension SessionViewModel {
             }
         }
         guard conversationLoaded.contains(tabId) else { return }
-        if messages[tabId] != nil {
-            if messages[tabId]!.contains(where: { $0.id == message.id }) { return }
-            messages[tabId]!.append(message)
+        if var existing = messages[tabId] {
+            // ID-based reconciliation: if a message with this ID already exists
+            // (optimistic insert), replace it with the canonical version from desktop.
+            if let existingIdx = existing.firstIndex(where: { $0.id == message.id }) {
+                existing[existingIdx] = message
+            } else {
+                existing.append(message)
+            }
+            messages[tabId] = existing
         } else {
             messages[tabId] = [message]
         }
@@ -490,24 +455,27 @@ extension SessionViewModel {
 
     @MainActor
     private func handleMessageUpdated(tabId: String, messageId: String, content: String?, toolStatus: ToolStatus?, toolInput: String?) {
-        guard conversationLoaded.contains(tabId) else { return }
-        if let idx = messages[tabId]?.firstIndex(where: { $0.id == messageId }) {
-            if let content {
-                messages[tabId]![idx].content = content
-            }
-            if let toolStatus {
-                // Meta-tools report as errors but should show as completed (not error, not stuck running)
-                let toolName = messages[tabId]![idx].toolName
-                if toolName == "ExitPlanMode" || toolName == "AskUserQuestion" {
-                    messages[tabId]![idx].toolStatus = .completed
-                } else {
-                    messages[tabId]![idx].toolStatus = toolStatus
-                }
-            }
-            if let toolInput {
-                messages[tabId]![idx].toolInput = toolInput
+        guard conversationLoaded.contains(tabId),
+              var msgs = messages[tabId],
+              let idx = msgs.firstIndex(where: { $0.id == messageId })
+        else { return }
+
+        if let content {
+            msgs[idx].content = content
+        }
+        if let toolStatus {
+            // Meta-tools report as errors but should show as completed (not error, not stuck running)
+            let toolName = msgs[idx].toolName
+            if toolName == "ExitPlanMode" || toolName == "AskUserQuestion" {
+                msgs[idx].toolStatus = .completed
+            } else {
+                msgs[idx].toolStatus = toolStatus
             }
         }
+        if let toolInput {
+            msgs[idx].toolInput = toolInput
+        }
+        messages[tabId] = msgs
     }
 
     @MainActor
@@ -523,6 +491,40 @@ extension SessionViewModel {
             conversationLoadFailed.remove(tabId)
             loadConversation(tabId: tabId)
         }
+    }
+
+    // MARK: - Upload attachment result
+
+    /// Deduplicate messages by ID, keeping the last occurrence of each.
+    private func deduplicateMessages(_ msgs: [Message]) -> [Message] {
+        var seen = Set<String>()
+        var result: [Message] = []
+        for msg in msgs.reversed() {
+            if seen.insert(msg.id).inserted {
+                result.append(msg)
+            }
+        }
+        result.reverse()
+        return result
+    }
+
+    @MainActor
+    private func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?) {
+        if let error, !error.isEmpty {
+            pendingUploadResults.append(UploadAttachmentResult(id: "", name: name, path: "", correlationId: correlationId, error: error))
+        } else {
+            pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: nil))
+        }
+    }
+
+    // MARK: - Diagnostic log request
+
+    @MainActor
+    private func handleRequestDiagnosticLogs() {
+        let logs = DiagnosticLog.exportAllSessions()
+        let deviceId = activeDeviceId ?? "unknown"
+        let deviceName = UIDevice.current.name
+        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName))
     }
 
 }

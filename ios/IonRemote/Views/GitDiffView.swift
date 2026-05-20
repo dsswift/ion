@@ -27,9 +27,31 @@ struct GitDiffView: View {
                     }
                 }
             }
-            .navigationTitle(fileName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text(fileName)
+                            .font(.subheadline.weight(.semibold))
+                        if stats.insertions > 0 || stats.deletions > 0 {
+                            HStack(spacing: 4) {
+                                Text("+\(stats.insertions)")
+                                    .foregroundStyle(.green)
+                                Text("−\(stats.deletions)")
+                                    .foregroundStyle(.red)
+                            }
+                            .font(.caption2)
+                        }
+                    }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIPasteboard.general.string = diff
+                        Haptic.success()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
@@ -104,6 +126,13 @@ struct GitDiffView: View {
 
     private var diffLines: [DiffLine] {
         Self.parseDiff(diff)
+    }
+
+    private var stats: (insertions: Int, deletions: Int) {
+        let lines = diffLines
+        let ins = lines.filter { $0.type == .add }.count
+        let del = lines.filter { $0.type == .remove }.count
+        return (ins, del)
     }
 
     fileprivate static func parseDiff(_ raw: String) -> [DiffLine] {

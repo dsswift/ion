@@ -90,6 +90,8 @@ func buildManifest() contractManifest {
 		"McpServerInfo":   reflect.TypeOf(McpServerInfo{}),
 		"UsageData":       reflect.TypeOf(UsageData{}),
 		"AgentStateUpdate": reflect.TypeOf(AgentStateUpdate{}),
+		"ModelEntry":       reflect.TypeOf(ModelEntry{}),
+		"ProviderEntry":    reflect.TypeOf(ProviderEntry{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

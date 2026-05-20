@@ -22,10 +22,14 @@ async function applySlashExpansion(tabId: string, options: RunOptions): Promise<
     const s = readSettings()
     claudeCompat = s.enableClaudeCompat ?? claudeCompat
   } catch { /* use default */ }
-  if (!claudeCompat) return
+  if (!claudeCompat) {
+    log(`slashExpand: claudeCompat disabled, skipping`)
+    return
+  }
 
   const expansion = await expandSlashCommand(options.prompt, options.projectPath)
   if (expansion.expanded) {
+    log(`slashExpand: expanded "${options.prompt.substring(0, 50)}" → systemPrompt=${expansion.systemPrompt.length}chars userPrompt="${expansion.userPrompt.substring(0, 50)}"`)
     options.prompt = expansion.userPrompt
     options.appendSystemPrompt = options.appendSystemPrompt
       ? options.appendSystemPrompt + '\n\n' + expansion.systemPrompt
@@ -33,6 +37,8 @@ async function applySlashExpansion(tabId: string, options: RunOptions): Promise<
     // Auto-switch plan → auto so expanded commands execute immediately
     sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
     broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
+  } else {
+    log(`slashExpand: no expansion for "${options.prompt.substring(0, 50)}"`)
   }
 }
 

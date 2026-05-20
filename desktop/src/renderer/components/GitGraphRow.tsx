@@ -3,6 +3,7 @@ import { useColors } from '../theme'
 import type { GitCommit, GitCommitFile } from '../../shared/types'
 import type { GitGraphNode } from '../utils/gitGraphLayout'
 import { relativeDate } from './GitPanelTypes'
+import { forkOrMergePath } from './git/laneGeometry'
 
 // ─── Graph layout constants ───
 export const LANE_SPACING = 12
@@ -10,13 +11,14 @@ export const LANE_OFFSET = 8
 export const MAX_GRAPH_WIDTH = 60
 export const ROW_HEIGHT = 32
 
-export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExpanded }: {
+export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExpanded, selectedHash }: {
   node: GitGraphNode
   onHover: (commit: GitCommit, rect: DOMRect) => void
   onLeave: () => void
   onContextMenu: (e: React.MouseEvent, commit: GitCommit) => void
   onClick: () => void
   isExpanded: boolean
+  selectedHash?: string | null
 }) {
   const colors = useColors()
   const commit = node.commit
@@ -48,48 +50,46 @@ export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExp
         height={ROW_HEIGHT}
         style={{ flexShrink: 0 }}
       >
-        {/* Pass-through lanes: other active branches that run through this row */}
-        {node.passThroughLanes.map((pt, i) => {
-          const px = pt.lane * LANE_SPACING + LANE_OFFSET
+        {(() => {
+          const selected = selectedHash != null
+          const isSel = selected && selectedHash === commit.fullHash
+          const dim = (lineColor: string) => (selected && !isSel ? 0.25 : 0.6)
           return (
-            <line key={`pt-${i}`} x1={px} y1={0} x2={px} y2={ROW_HEIGHT}
-              stroke={pt.color} strokeWidth={1.5} opacity={0.4} />
+            <>
+              {node.passThroughLanes.map((pt, i) => {
+                const px = pt.lane * LANE_SPACING + LANE_OFFSET
+                return (
+                  <line key={`pt-${i}`} x1={px} y1={0} x2={px} y2={ROW_HEIGHT}
+                    stroke={pt.color} strokeWidth={1.5} opacity={selected ? 0.18 : 0.4} />
+                )
+              })}
+
+              {node.connections.map((conn, i) => {
+                const x1 = conn.fromLane * LANE_SPACING + LANE_OFFSET
+                const x2 = conn.toLane * LANE_SPACING + LANE_OFFSET
+
+                if (conn.type === 'straight') {
+                  return (
+                    <line key={i} x1={x1} y1={cy} x2={x2} y2={ROW_HEIGHT}
+                      stroke={conn.color} strokeWidth={1.5} opacity={dim(conn.color)} />
+                  )
+                }
+                return (
+                  <path key={i}
+                    d={forkOrMergePath(x1, x2, cy, ROW_HEIGHT)}
+                    stroke={conn.color} strokeWidth={1.5} fill="none" opacity={dim(conn.color)} />
+                )
+              })}
+
+              {node.hasIncoming && (
+                <line x1={cx} y1={0} x2={cx} y2={cy}
+                  stroke={node.color} strokeWidth={1.5} opacity={dim(node.color)} />
+              )}
+
+              <circle cx={cx} cy={cy} r={isSel ? 5 : 4} fill={node.color} opacity={selected && !isSel ? 0.4 : 1} />
+            </>
           )
-        })}
-
-        {/* Connections from this commit to its parents */}
-        {node.connections.map((conn, i) => {
-          const x1 = conn.fromLane * LANE_SPACING + LANE_OFFSET
-          const x2 = conn.toLane * LANE_SPACING + LANE_OFFSET
-
-          if (conn.type === 'straight') {
-            return (
-              <line key={i} x1={x1} y1={cy} x2={x2} y2={ROW_HEIGHT}
-                stroke={conn.color} strokeWidth={1.5} opacity={0.6} />
-            )
-          }
-          if (conn.type === 'fork') {
-            return (
-              <path key={i}
-                d={`M ${x1} ${cy} C ${x1} ${ROW_HEIGHT}, ${x2} ${cy}, ${x2} ${ROW_HEIGHT}`}
-                stroke={conn.color} strokeWidth={1.5} fill="none" opacity={0.5} />
-            )
-          }
-          return (
-            <path key={i}
-              d={`M ${x1} ${cy} C ${x1} ${ROW_HEIGHT}, ${x2} ${cy}, ${x2} ${ROW_HEIGHT}`}
-              stroke={conn.color} strokeWidth={1.5} fill="none" opacity={0.5} />
-          )
-        })}
-
-        {/* Incoming line */}
-        {node.hasIncoming && (
-          <line x1={cx} y1={0} x2={cx} y2={cy}
-            stroke={node.color} strokeWidth={1.5} opacity={0.6} />
-        )}
-
-        {/* Commit dot */}
-        <circle cx={cx} cy={cy} r={4} fill={node.color} />
+        })()}
       </svg>
 
       {/* Info column */}

@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/titling"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -34,35 +36,10 @@ func DefaultSocketPath() string {
 	return filepath.Join(home, ".ion", "engine.sock")
 }
 
-// broadcastQueueSize bounds per-client and per-listener event queues. A slow
-// consumer may lag this many events before the server starts dropping for it.
-const broadcastQueueSize = 256
-
 // broadcastWriteDeadline is how long a single per-client write may take before
 // the drainer treats the connection as dead and evicts it. Configurable via
 // TimeoutsConfig.BroadcastWrite().
 var broadcastWriteDeadline = 5 * time.Second
-
-// clientWriter owns a connected client's outbound queue. A drain goroutine
-// reads from queue and writes to conn under a per-write deadline. Slow or
-// stalled consumers drop events at the enqueue site (non-blocking send) and,
-// once the write deadline trips, are evicted entirely.
-type clientWriter struct {
-	conn    net.Conn
-	queue   chan []byte
-	done    chan struct{}
-	dropped int64
-}
-
-// listenerHandle wraps a registered broadcast listener with its own queue and
-// drain goroutine so a slow listener (e.g. a backed-up relay) cannot stall
-// delivery to socket clients or to other listeners.
-type listenerHandle struct {
-	fn      func(line string)
-	queue   chan string
-	done    chan struct{}
-	dropped int64
-}
 
 // Server listens on a Unix domain socket (or TCP on Windows), accepts NDJSON
 // commands from clients, and broadcasts session events back to all connected clients.
@@ -73,6 +50,7 @@ type Server struct {
 	mu                 sync.RWMutex
 	manager            *session.Manager
 	config             *types.EngineRuntimeConfig
+	authResolver       *auth.Resolver
 	broadcastListeners []*listenerHandle
 	done               chan struct{}
 	stopOnce           sync.Once
@@ -92,6 +70,11 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 // SetVersion stores the engine binary version for the health command.
 func (s *Server) SetVersion(v string) {
 	s.version = v
+}
+
+// SetAuthResolver stores the auth resolver for credential operations.
+func (s *Server) SetAuthResolver(r *auth.Resolver) {
+	s.authResolver = r
 }
 
 // NewServer creates a Server backed by the given RunBackend.
@@ -115,7 +98,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 			return
 		}
 		line := protocol.SerializeServerEvent(key, json.RawMessage(raw))
-		s.broadcast(line)
+		s.broadcast(line, event.Type)
 	})
 
 	return s
@@ -251,9 +234,10 @@ func (s *Server) acceptLoop() {
 		}
 
 		cw := &clientWriter{
-			conn:  conn,
-			queue: make(chan []byte, broadcastQueueSize),
-			done:  make(chan struct{}),
+			conn:        conn,
+			stateQueue:  make(chan []byte, stateQueueSize),
+			streamQueue: make(chan []byte, streamQueueSize),
+			done:        make(chan struct{}),
 		}
 		s.mu.Lock()
 		s.clients[conn] = cw
@@ -261,29 +245,6 @@ func (s *Server) acceptLoop() {
 
 		go s.drainClient(cw)
 		go s.handleClient(conn)
-	}
-}
-
-// drainClient reads from cw.queue and writes to the underlying conn under a
-// per-write deadline. A failed write evicts the client.
-func (s *Server) drainClient(cw *clientWriter) {
-	for {
-		select {
-		case line, ok := <-cw.queue:
-			if !ok {
-				return
-			}
-			if err := cw.conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline)); err != nil {
-				utils.Log("Server", "set write deadline failed: "+err.Error())
-			}
-			if _, err := cw.conn.Write(line); err != nil {
-				utils.Log("Server", fmt.Sprintf("broadcast write error (evicting client, %d events dropped): %s", atomic.LoadInt64(&cw.dropped), err.Error()))
-				s.evictClient(cw.conn)
-				return
-			}
-		case <-cw.done:
-			return
-		}
 	}
 }
 
@@ -306,21 +267,6 @@ func (s *Server) evictClient(conn net.Conn) {
 	}
 }
 
-// drainListener calls the listener fn for each queued line until done is closed.
-func (s *Server) drainListener(lh *listenerHandle) {
-	for {
-		select {
-		case line, ok := <-lh.queue:
-			if !ok {
-				return
-			}
-			lh.fn(line)
-		case <-lh.done:
-			return
-		}
-	}
-}
-
 func (s *Server) handleClient(conn net.Conn) {
 	defer s.evictClient(conn)
 	defer func() {
@@ -332,8 +278,13 @@ func (s *Server) handleClient(conn net.Conn) {
 	}()
 
 	scanner := bufio.NewScanner(conn)
-	// Allow large messages (1MB)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// 8 MB per NDJSON line. Generous enough for an image-bearing prompt
+	// (Anthropic caps inputs at ~5 MB raw per image; base64 inflates by
+	// 4/3, so ~7 MB worst case + envelope) without inviting clients to
+	// spray multi-megabyte payloads. Old cap of 1 MB caused mid-stream
+	// EPIPE on the client write whenever an image attachment landed on
+	// the wire.
+	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -377,7 +328,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 {
 			overrides = &session.PromptOverrides{
 				Model:              cmd.Model,
 				MaxTurns:           cmd.MaxTurns,
@@ -385,6 +336,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				Extensions:         resolvedExts,
 				NoExtensions:       cmd.NoExtensions,
 				AppendSystemPrompt: cmd.AppendSystemPrompt,
+				Attachments:        cmd.Attachments,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
@@ -534,6 +486,178 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 			s.sendResult(c, command, nil, map[string]string{"title": title})
 		}(conn, cmd)
 
+	case "reconcile_state":
+		s.manager.ReconcileState(cmd.Key)
+		s.sendResult(conn, cmd, nil, nil)
+
+	case "migrate_conversation":
+		go func(c net.Conn, command *protocol.ClientCommand) {
+			defer func() {
+				if r := recover(); r != nil {
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					utils.Error("Server", fmt.Sprintf("panic in migrate_conversation: %v\n%s", r, buf[:n]))
+					s.sendResult(c, command, fmt.Errorf("internal error"), nil)
+				}
+			}()
+
+			sourceID := command.Key
+			targetFormat := command.Text
+			targetDir := command.Message
+			newSessionID := conversation.GenEntryID() + "-" + conversation.GenEntryID()
+
+			var result *conversation.MigrateResult
+			var sourceMsgs []conversation.ValidationMsg
+			var err error
+
+			switch targetFormat {
+			case "claude_code":
+				var conv *conversation.Conversation
+				conv, err = conversation.Load(sourceID, "")
+				if err != nil {
+					s.sendResult(c, command, fmt.Errorf("load source conversation: %w", err), nil)
+					return
+				}
+				sourceMsgs = conversation.ExtractValidationMsgs(conv)
+				result, err = conversation.ConvertIonToClaudeCode(conv, newSessionID, targetDir)
+			case "ion":
+				// For Claude Code → Ion, key is the source session ID and
+				// args contains the source directory for the Claude Code JSONL.
+				sourceDir := command.Args
+				if sourceDir == "" {
+					s.sendResult(c, command, fmt.Errorf("args (source dir) required for ion conversion"), nil)
+					return
+				}
+				sourcePath := filepath.Join(sourceDir, sourceID+".jsonl")
+				sourceMsgs, err = conversation.ExtractValidationMsgsFromClaudeCode(sourcePath)
+				if err != nil {
+					s.sendResult(c, command, fmt.Errorf("load source messages: %w", err), nil)
+					return
+				}
+				result, err = conversation.ConvertClaudeCodeToIon(sourcePath, newSessionID, targetDir)
+			default:
+				s.sendResult(c, command, fmt.Errorf("unknown target format: %s", targetFormat), nil)
+				return
+			}
+
+			if err != nil {
+				s.sendResult(c, command, err, nil)
+				return
+			}
+
+			if err := conversation.ValidateConversion(sourceMsgs, result.OutputPath, targetFormat); err != nil {
+				s.sendResult(c, command, fmt.Errorf("validation failed: %w", err), nil)
+				return
+			}
+
+			s.sendResult(c, command, nil, result)
+		}(conn, cmd)
+
+	case "list_models":
+		models := providers.ListModels()
+		providerIDs := providers.ListProviderIDs()
+		providerEntries := make([]types.ProviderEntry, len(providerIDs))
+		for i, pid := range providerIDs {
+			entry := types.ProviderEntry{ID: pid}
+			if s.authResolver != nil {
+				entry.HasAuth, entry.AuthSource = s.authResolver.HasKey(pid)
+			}
+			// Special case: ollama doesn't need auth
+			if pid == "ollama" {
+				entry.HasAuth = true
+				entry.AuthSource = "none"
+			}
+			// Populate config details (gateway URL, API key reference)
+			if s.config != nil {
+				if pc, ok := s.config.Providers[pid]; ok {
+					entry.BaseURL = pc.BaseURL
+					// Show the API key reference if it looks like an env var
+					// (starts with $), otherwise just indicate it's set.
+					if pc.APIKey != "" {
+						if len(pc.APIKey) > 0 && pc.APIKey[0] == '$' {
+							entry.APIKeyRef = pc.APIKey
+						} else {
+							entry.APIKeyRef = "configured"
+						}
+					}
+				}
+			}
+			providerEntries[i] = entry
+		}
+		// For providers with a custom gateway (baseURL), only show
+		// user-configured models or live-discovered models — the hardcoded
+		// catalog doesn't apply to private gateways.
+		customGatewayProviders := make(map[string]bool)
+		if s.config != nil {
+			for pid, pc := range s.config.Providers {
+				if pc.BaseURL != "" {
+					customGatewayProviders[pid] = true
+				}
+			}
+		}
+		if len(customGatewayProviders) > 0 {
+			// Build set of discovered model IDs so we don't filter them out
+			discoveredIDs := make(map[string]bool)
+			for pid := range customGatewayProviders {
+				for _, dm := range providers.GetDiscoveredModels(pid) {
+					discoveredIDs[dm.ID] = true
+				}
+			}
+			filtered := make([]types.ModelEntry, 0, len(models))
+			for _, m := range models {
+				if customGatewayProviders[m.ProviderID] && !m.IsCustom && !discoveredIDs[m.ID] {
+					continue // skip hardcoded catalog models for custom gateway providers
+				}
+				filtered = append(filtered, m)
+			}
+			models = filtered
+		}
+		s.sendResult(conn, cmd, nil, map[string]interface{}{
+			"models":    models,
+			"providers": providerEntries,
+		})
+
+	case "store_credential":
+		if s.authResolver == nil {
+			s.sendResult(conn, cmd, fmt.Errorf("auth resolver not configured"), nil)
+			break
+		}
+		fs := auth.NewFileStore()
+		if cmd.Credential == "" {
+			// Empty credential means "clear this key"
+			_ = fs.DeleteKey(cmd.Provider)
+			providers.SetProviderKey(cmd.Provider, "")
+		} else {
+			if err := fs.SetKey(cmd.Provider, cmd.Credential); err != nil {
+				s.sendResult(conn, cmd, err, nil)
+				break
+			}
+			providers.SetProviderKey(cmd.Provider, cmd.Credential)
+			// Trigger model discovery for the newly-authed provider so its
+			// models appear in the picker without requiring an engine restart.
+			providerConfigs := make(map[string]types.ProviderConfig)
+			if s.config != nil {
+				providerConfigs = s.config.Providers
+			}
+			providers.DiscoverProvider(cmd.Provider, cmd.Credential, providerConfigs)
+		}
+		s.sendResult(conn, cmd, nil, nil)
+
+	case "refresh_models":
+		providerConfigs := make(map[string]types.ProviderConfig)
+		if s.config != nil {
+			providerConfigs = s.config.Providers
+		}
+		var resolveKey func(string) (string, error)
+		if s.authResolver != nil {
+			resolveKey = s.authResolver.ResolveKey
+		} else {
+			resolveKey = func(string) (string, error) { return "", nil }
+		}
+		// Provider field is optional: empty = refresh all
+		providers.RefreshModels(cmd.Provider, true, resolveKey, providerConfigs)
+		s.sendResult(conn, cmd, nil, nil)
+
 	case "shutdown":
 		_ = s.Stop()
 
@@ -614,84 +738,10 @@ func (s *Server) healthSnapshot() map[string]interface{} {
 	}
 }
 
-// OnBroadcast registers a listener that receives every broadcast line.
-// Used by relay transport to forward engine events to mobile peers. Each
-// listener gets its own bounded queue + drain goroutine so a slow listener
-// cannot stall delivery to socket clients or other listeners.
-func (s *Server) OnBroadcast(fn func(line string)) {
-	lh := &listenerHandle{
-		fn:    fn,
-		queue: make(chan string, broadcastQueueSize),
-		done:  make(chan struct{}),
-	}
-	s.mu.Lock()
-	s.broadcastListeners = append(s.broadcastListeners, lh)
-	s.mu.Unlock()
-	go s.drainListener(lh)
-}
-
-// broadcast delivers line to every connected client and registered listener.
-// Per-client and per-listener delivery is non-blocking: each side has its own
-// bounded queue, drained by a dedicated goroutine. The Server lock is held
-// only for the snapshot read; no I/O happens under lock.
-func (s *Server) broadcast(line string) {
-	payload := []byte(line)
-	s.mu.RLock()
-	clients := make([]*clientWriter, 0, len(s.clients))
-	for _, cw := range s.clients {
-		clients = append(clients, cw)
-	}
-	listeners := make([]*listenerHandle, len(s.broadcastListeners))
-	copy(listeners, s.broadcastListeners)
-	s.mu.RUnlock()
-
-	for _, cw := range clients {
-		select {
-		case cw.queue <- payload:
-			// If events were previously dropped, notify the client now that the queue has room.
-			if n := atomic.LoadInt64(&cw.dropped); n > 0 {
-				select {
-				case cw.queue <- eventsDroppedLine(n):
-					atomic.StoreInt64(&cw.dropped, 0)
-				default:
-					// Queue full again — notification will be retried on the next successful send.
-				}
-			}
-		default:
-			n := atomic.AddInt64(&cw.dropped, 1)
-			if n == 1 || n%256 == 0 {
-				utils.Log("Server", fmt.Sprintf("broadcast queue full; dropped %d events for slow client", n))
-			}
-		}
-	}
-
-	for _, lh := range listeners {
-		select {
-		case lh.queue <- line:
-			if n := atomic.LoadInt64(&lh.dropped); n > 0 {
-				select {
-				case lh.queue <- string(eventsDroppedLine(n)):
-					atomic.StoreInt64(&lh.dropped, 0)
-				default:
-				}
-			}
-		default:
-			n := atomic.AddInt64(&lh.dropped, 1)
-			if n == 1 || n%256 == 0 {
-				utils.Log("Server", fmt.Sprintf("broadcast listener queue full; dropped %d events", n))
-			}
-		}
-	}
-}
-
-// eventsDroppedLine returns a JSON line notifying the client that events were dropped.
-func eventsDroppedLine(count int64) []byte {
-	return []byte(fmt.Sprintf("{\"type\":\"engine_events_dropped\",\"count\":%d}\n", count))
-}
-
-// writeToClient routes a single line to the given conn through its queue, so
-// it is serialized with broadcast traffic on the same connection. A nil conn
-// is a relay-dispatched command with no socket reply (results go via
+// writeToClient routes a single line to the given conn through its state
+// queue, so it is serialized with broadcast traffic on the same connection.
+// Results are critical control messages and always use the state queue. A nil
+// conn is a relay-dispatched command with no socket reply (results go via
 // broadcast listeners).
 func (s *Server) writeToClient(conn net.Conn, line string) {
 	if conn == nil {
@@ -711,11 +761,11 @@ func (s *Server) writeToClient(conn net.Conn, line string) {
 	}
 	payload := []byte(line)
 	select {
-	case cw.queue <- payload:
+	case cw.stateQueue <- payload: // Results always go to state queue
 	default:
-		n := atomic.AddInt64(&cw.dropped, 1)
+		n := atomic.AddInt64(&cw.stateDropped, 1)
 		if n == 1 || n%256 == 0 {
-			utils.Log("Server", fmt.Sprintf("client queue full; dropped %d events", n))
+			utils.Log("Server", fmt.Sprintf("client state queue full; dropped %d events", n))
 		}
 	}
 }

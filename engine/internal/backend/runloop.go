@@ -56,11 +56,25 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	conv := loadOrCreateConversation(opts, model)
 	run.conv = conv
 
+	// Persist the working directory so migrated conversations carry the project context.
+	if opts.ProjectPath != "" && conv.WorkingDirectory == "" {
+		conv.WorkingDirectory = opts.ProjectPath
+	}
+
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID)
 
-	// Add user message (using potentially-rewritten prompt)
-	conversation.AddUserMessage(conv, opts.Prompt)
+	// Add user message (using potentially-rewritten prompt). When the client
+	// supplied pre-encoded image attachments, build a structured content
+	// block list so the provider sends them as native multimodal content
+	// (Anthropic image blocks, OpenAI image_url, Gemini inlineData, Bedrock
+	// image content). Engine has no opinion on any client-side marker
+	// syntax inside opts.Prompt — bytes ride in opts.Attachments.
+	if len(opts.Attachments) > 0 {
+		conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
+	} else {
+		conversation.AddUserMessage(conv, opts.Prompt)
+	}
 	// Persist immediately: if the engine dies mid-stream, the user prompt
 	// must survive so the user does not lose what they just typed.
 	if err := conversation.Save(conv, ""); err != nil {
@@ -81,6 +95,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	contextWindow := conversation.DefaultContext
 	if info := providers.GetModelInfo(model); info != nil {
 		contextWindow = info.ContextWindow
+		utils.Log("ApiBackend", fmt.Sprintf("context window: model=%s window=%d (from registry)", model, contextWindow))
+	} else {
+		utils.Warn("ApiBackend", fmt.Sprintf("context window: model=%s window=%d (fallback, model not in registry)", model, contextWindow))
 	}
 
 	// Track consecutive prompt_too_long compaction failures to prevent infinite loops
@@ -156,12 +173,16 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			break
 		}
 
-		// Context compaction cascade at threshold (config override via opts.CompactThreshold)
-		threshold := compactThreshold
+		// Proactive compaction: trigger at the effective context window
+		// (full window minus reserves for the next response and the
+		// compaction summary). A non-zero opts.CompactThreshold preserves
+		// the legacy percent-of-window override so callers that already
+		// tuned this value keep their behavior.
+		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
 		if opts.CompactThreshold > 0 {
-			threshold = int(opts.CompactThreshold)
+			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
 		}
-		b.compactIfNeeded(run, conv, hooks, contextWindow, threshold)
+		b.compactIfNeeded(run, conv, hooks, contextWindow, compactLimit)
 
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
 		streamOpts := types.LlmStreamOptions{
@@ -179,10 +200,31 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		// Call provider with retry (with telemetry span)
+		runIDCopy, turnCopy := run.requestID, turn
 		retryConfig := &providers.RetryConfig{
 			MaxRetries:    opts.MaxRetries,
-			FallbackModel: opts.FallbackModel,
+			FallbackChain: opts.FallbackChain,
 			Persistent:    opts.Persistent,
+			OnRetryWait: func(attempt, delayMs int, pe *providers.ProviderError) {
+				cause := ""
+				if pe != nil && pe.Cause != nil {
+					cause = fmt.Sprintf(" cause=%v", pe.Cause)
+				}
+				code := ""
+				if pe != nil {
+					code = pe.Code
+				}
+				utils.Warn("ApiBackend", fmt.Sprintf(
+					"provider retry: runID=%s turn=%d attempt=%d delay=%dms code=%s err=%q%s",
+					runIDCopy, turnCopy, attempt, delayMs, code, fmt.Sprint(pe), cause,
+				))
+			},
+			OnFallback: func(fromModel, toModel string, hop int) {
+				utils.Warn("ApiBackend", fmt.Sprintf(
+					"model fallback: runID=%s turn=%d hop=%d %s -> %s",
+					runIDCopy, turnCopy, hop, fromModel, toModel,
+				))
+			},
 		}
 
 		var telem TelemetryCollector
@@ -235,7 +277,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				b.compactReactive(run, conv, hooks, promptTooLongRetries)
 				continue // retry the turn after compaction
 			}
-			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s", run.requestID, turn, streamErr.Error()))
+			cause := ""
+			if pe, ok := streamErr.(*providers.ProviderError); ok && pe.Cause != nil {
+				cause = fmt.Sprintf(" cause=%v", pe.Cause)
+			}
+			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s%s", run.requestID, turn, streamErr.Error(), cause))
 			b.emitError(run, streamErr)
 			b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 			return
@@ -267,6 +313,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Stream succeeded with a valid stop reason -- reset retry counters.
 		promptTooLongRetries = 0
 		truncationRetries = 0
+		run.compactionsWithoutProgress = 0
 
 		// Track usage and cost
 		if turnUsage != nil {
@@ -297,6 +344,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				llmUsage = *turnUsage
 			}
 			conversation.AddAssistantMessage(conv, assistantBlocks, llmUsage)
+			conversation.SetAssistantMeta(conv, model, stopReason)
 			// Persist immediately so the assistant turn survives mid-loop crashes.
 			// The end-of-turn Save() below remains as the canonical write that
 			// also captures stop-reason transitions.

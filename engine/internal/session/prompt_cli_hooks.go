@@ -168,12 +168,10 @@ func (m *Manager) buildAgentToolHandler(s *engineSession, key string) backend.To
 			if matched, ok := m.resolveAgentSpec(s, key, name); ok {
 				spec = matched
 				specMatched = true
-			} else {
-				return &types.ToolResult{
-					Content: fmt.Sprintf("agent %q is not registered (capability_match returned no match)", name),
-					IsError: true,
-				}, nil
 			}
+			// When resolution fails, continue with an unnamed agent rather
+			// than hard-failing. The model's intent was to parallelize work;
+			// the name was aspirational, not required.
 		}
 
 		// Determine model: explicit > spec > parent config default.

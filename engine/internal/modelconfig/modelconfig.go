@@ -106,23 +106,56 @@ func InitializeProviders(providerConfigs map[string]types.ProviderConfig) map[st
 // ResolveTier maps a tier name to a concrete model identifier.
 // If tierName is not a recognized tier, it is returned as-is (assumed to be
 // a model name already).
+//
+// Tier values in models.json may be either a bare string or an object of
+// the shape {"model": "...", "fallbacks": [...]}. This function returns only
+// the primary model. Use ResolveTierChain to also retrieve the fallback list.
 func ResolveTier(tierName string) string {
+	model, _ := ResolveTierChain(tierName)
+	return model
+}
+
+// ResolveTierChain returns the primary model for a tier plus the configured
+// fallback chain. Tier values in models.json may be a bare string (no
+// fallbacks) or an object {"model": "...", "fallbacks": ["...", "..."]}.
+// If tierName is not a recognized tier, it is returned as-is and fallbacks
+// is nil — the input is assumed to be a model name already.
+func ResolveTierChain(tierName string) (string, []string) {
 	lower := strings.ToLower(tierName)
 
-	// Check custom tiers from models.json.
 	config := LoadModelsConfig()
-	if tiers, ok := config["tiers"].(map[string]interface{}); ok {
-		if model, ok := tiers[lower].(string); ok {
-			return model
+	tiers, ok := config["tiers"].(map[string]interface{})
+	if !ok {
+		if model, ok := defaultTiers[lower]; ok {
+			return model, nil
 		}
+		return tierName, nil
 	}
 
-	// Fall back to defaults.
+	switch v := tiers[lower].(type) {
+	case string:
+		return v, nil
+	case map[string]interface{}:
+		model, _ := v["model"].(string)
+		if model == "" {
+			break
+		}
+		var fallbacks []string
+		if arr, ok := v["fallbacks"].([]interface{}); ok {
+			fallbacks = make([]string, 0, len(arr))
+			for _, item := range arr {
+				if s, ok := item.(string); ok && s != "" {
+					fallbacks = append(fallbacks, s)
+				}
+			}
+		}
+		return model, fallbacks
+	}
+
 	if model, ok := defaultTiers[lower]; ok {
-		return model
+		return model, nil
 	}
-
-	return tierName
+	return tierName, nil
 }
 
 // UserModels extracts user-defined model entries from the models.json config.

@@ -144,6 +144,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const engineDialogs = new Map(get().engineDialogs)
       const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
       const engineUsage = new Map(get().engineUsage)
+      const engineDraftInputs = new Map(get().engineDraftInputs)
       engineMessages.delete(key)
       engineAgentStates.delete(key)
       engineStatusFields.delete(key)
@@ -152,9 +153,10 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       engineDialogs.delete(key)
       enginePinnedPrompt.delete(key)
       engineUsage.delete(key)
+      engineDraftInputs.delete(key)
       const engineModelOverrides = new Map(get().engineModelOverrides)
       engineModelOverrides.delete(key)
-      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineModelOverrides })
+      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineDraftInputs, engineModelOverrides })
     },
 
     selectEngineInstance: (tabId, instanceId) => {
@@ -194,24 +196,43 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       set({ engineModelOverrides: overrides })
     },
 
-    submitEnginePrompt: (tabId, text) => {
+    submitEnginePrompt: (tabId, text, appendSystemPrompt, imageAttachments) => {
       const pane = get().enginePanes.get(tabId)
       const instanceId = pane?.activeInstanceId
       if (!instanceId) return
       const key = `${tabId}:${instanceId}`
+      // Build a FileAttachment list from the encoded image attachments so
+      // the user-message bubble can render images inline. The path is the
+      // only field needed at render time; main-side READ_IMAGE_DATA_URL
+      // turns it into a data URL for <img>.
+      const userAttachments = (imageAttachments || [])
+        .filter((a) => !!a.path)
+        .map((a) => ({
+          id: crypto.randomUUID(),
+          type: 'image' as const,
+          name: (a.path?.split('/').pop() || 'image'),
+          path: a.path!,
+          mimeType: a.mediaType,
+        }))
       set((state) => {
         const pinnedPrompt = new Map(state.enginePinnedPrompt)
         pinnedPrompt.set(key, text)
         const messages = new Map(state.engineMessages)
         const msgs = [...(messages.get(key) || [])]
-        msgs.push({ id: nextMsgId(), role: 'user' as const, content: text, timestamp: Date.now() })
+        msgs.push({
+          id: nextMsgId(),
+          role: 'user' as const,
+          content: text,
+          timestamp: Date.now(),
+          ...(userAttachments.length > 0 ? { attachments: userAttachments } : {}),
+        })
         messages.set(key, msgs)
         const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'running' as const } : t)
         return { enginePinnedPrompt: pinnedPrompt, engineMessages: messages, tabs }
       })
       const prefs = usePreferencesStore.getState()
       const modelOverride = get().engineModelOverrides.get(key) || prefs.engineDefaultModel || prefs.preferredModel || undefined
-      window.ion.enginePrompt(key, text, modelOverride).then((result) => {
+      window.ion.enginePrompt(key, text, modelOverride, appendSystemPrompt, imageAttachments).then((result) => {
         if (result && !result.ok) {
           set((state) => {
             const messages = new Map(state.engineMessages)
@@ -245,6 +266,22 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         return { engineDialogs: dialogs }
       })
       window.ion.engineDialogResponse(key, dialogId, value)
+    },
+
+    addEngineSystemMessage: (key, content) => {
+      set((state) => {
+        const messages = new Map(state.engineMessages)
+        const msgs = [...(messages.get(key) || [])]
+        msgs.push({ id: nextMsgId(), role: 'system' as const, content, timestamp: Date.now() })
+        messages.set(key, msgs)
+        return { engineMessages: messages }
+      })
+    },
+
+    setEngineDraftInput: (key, text) => {
+      const engineDraftInputs = new Map(get().engineDraftInputs)
+      engineDraftInputs.set(key, text)
+      set({ engineDraftInputs })
     },
   }
 }

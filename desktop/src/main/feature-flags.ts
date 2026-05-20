@@ -28,6 +28,8 @@ const FLAG_DEFINITIONS: FlagDefinition[] = [
   { name: 'enhancedHooks', description: 'Enable extended hook event types (PostToolUse, SubagentStart, etc.)', defaultValue: false },
   { name: 'backgroundTasks', description: 'Enable background task framework', defaultValue: false },
   { name: 'multiAgent', description: 'Enable multi-agent tab communication', defaultValue: false },
+  { name: 'gitWatcher', description: 'Enable @parcel/watcher file system watcher for git (replaces polling)', defaultValue: false },
+  { name: 'gitRebase', description: 'Enable interactive rebase editor in the git panel', defaultValue: false },
 ]
 
 class FeatureFlags {

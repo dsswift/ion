@@ -55,6 +55,7 @@ desktop/src/
 
 - `useColors()` for all color references. Never hardcode color values (breaks theming).
 - Phosphor icons (`@phosphor-icons/react`). Don't add other icon libraries.
+- Use `<Tooltip text="...">` (from `components/git/Tooltip.tsx`) instead of the HTML `title` attribute. Native tooltips render behind the Electron overlay. The Tooltip component portals through PopoverLayer.
 - Framer Motion for animations.
 - Narrow Zustand selectors with custom equality functions; avoid whole-store subscriptions.
 
