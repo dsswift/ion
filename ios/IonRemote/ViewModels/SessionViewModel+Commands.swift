@@ -37,6 +37,16 @@ extension SessionViewModel {
             }
             messageCountByTab[tabId] = messages[tabId]?.count ?? 0
         }
+        // Optimistic status: show activity indicator immediately so the user
+        // sees "Thinking…" rather than staring at their sent message while the
+        // prompt travels over the relay to the desktop engine.
+        // Mirrors desktop send-slice.ts which sets 'connecting' on send.
+        // Guard against downgrading from .running (queued-prompt case).
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            if tabs[idx].status != .running {
+                tabs[idx].status = .connecting
+            }
+        }
     }
 
     func cancel(tabId: String) {
