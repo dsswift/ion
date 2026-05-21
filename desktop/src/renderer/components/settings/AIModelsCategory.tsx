@@ -3,6 +3,7 @@ import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
+import { SettingToggle } from './SettingToggle'
 import { EngineCategory } from './EngineCategory'
 import { ProvidersCategory } from './ProvidersCategory'
 import { AVAILABLE_MODELS, getModelDisplayLabel } from '../../stores/model-labels'
@@ -15,6 +16,12 @@ export function AIModelsCategory() {
   const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
   const engineDefaultModel = usePreferencesStore((s) => s.engineDefaultModel)
   const setEngineDefaultModel = usePreferencesStore((s) => s.setEngineDefaultModel)
+  const planModelSplitEnabled = usePreferencesStore((s) => s.planModelSplitEnabled)
+  const setPlanModelSplitEnabled = usePreferencesStore((s) => s.setPlanModelSplitEnabled)
+  const planModeModel = usePreferencesStore((s) => s.planModeModel)
+  const setPlanModeModel = usePreferencesStore((s) => s.setPlanModeModel)
+  const implementModeModel = usePreferencesStore((s) => s.implementModeModel)
+  const setImplementModeModel = usePreferencesStore((s) => s.setImplementModeModel)
 
   const fetchModels = useModelStore((s) => s.fetchModels)
   const dynamicModels = useModelStore((s) => s.models)
@@ -149,6 +156,99 @@ export function AIModelsCategory() {
           </div>
         )}
       </SettingSection>
+
+      <SettingHeading>Plan & Implement Models</SettingHeading>
+
+      <SettingToggle
+        label="Model Splitting"
+        description="Automatically switch models at the plan/implement boundary. Use a powerful model for planning and a faster one for implementation."
+        checked={planModelSplitEnabled}
+        onChange={setPlanModelSplitEnabled}
+      />
+
+      {planModelSplitEnabled && (
+        <>
+          <SettingSection
+            label="Planning Model"
+            description="Model to use when a tab is in plan mode. Overrides the default conversation model."
+          >
+            {grouped && grouped.size > 0 ? (
+              <select
+                value={planModeModel || ''}
+                onChange={(e) => setPlanModeModel(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Default (use conversation model)</option>
+                {Array.from(grouped.entries()).map(([providerId, models]) => (
+                  <optgroup key={providerId} label={getProviderDisplayName(providerId)}>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            ) : (
+              <div style={segmentContainer}>
+                <button
+                  onClick={() => setPlanModeModel('')}
+                  style={segmentStyle(planModeModel === '')}
+                >
+                  Default
+                </button>
+                {AVAILABLE_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setPlanModeModel(m.id)}
+                    style={segmentStyle(planModeModel === m.id)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </SettingSection>
+
+          <SettingSection
+            label="Implementation Model"
+            description="Model to use when implementing a plan. Automatically applied when you click Implement."
+          >
+            {grouped && grouped.size > 0 ? (
+              <select
+                value={implementModeModel || ''}
+                onChange={(e) => setImplementModeModel(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Default (use conversation model)</option>
+                {Array.from(grouped.entries()).map(([providerId, models]) => (
+                  <optgroup key={providerId} label={getProviderDisplayName(providerId)}>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            ) : (
+              <div style={segmentContainer}>
+                <button
+                  onClick={() => setImplementModeModel('')}
+                  style={segmentStyle(implementModeModel === '')}
+                >
+                  Default
+                </button>
+                {AVAILABLE_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setImplementModeModel(m.id)}
+                    style={segmentStyle(implementModeModel === m.id)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </SettingSection>
+        </>
+      )}
 
       <ProvidersCategory />
 

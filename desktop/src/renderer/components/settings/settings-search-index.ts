@@ -19,6 +19,7 @@ const SEARCH_INDEX: SearchEntry[] = [
   // AI & Models
   { categoryId: 'ai', label: 'Default Conversation Model', keywords: 'model conversation default opus sonnet haiku' },
   { categoryId: 'ai', label: 'Default Engine Model', keywords: 'model engine default opus sonnet haiku' },
+  { categoryId: 'ai', label: 'Plan & Implement Models', keywords: 'plan implement model split planning opus sonnet switch auto' },
   { categoryId: 'ai', label: 'Backend Mode', keywords: 'backend mode api cli anthropic claude switch restart' },
   { categoryId: 'ai', label: 'Engine Profiles', keywords: 'engine profiles extensions configuration' },
 

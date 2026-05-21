@@ -54,6 +54,12 @@ export function buildPermissionDeniedHandlers(
     // Switch to auto mode for implementation
     useSessionStore.getState().setPermissionMode('auto', 'plan_approved')
 
+    // Auto-switch to the implementation model if the split feature is enabled
+    const { planModelSplitEnabled, implementModeModel } = usePreferencesStore.getState()
+    if (planModelSplitEnabled && implementModeModel) {
+      useSessionStore.getState().setTabModel(tab.id, implementModeModel)
+    }
+
     // Auto-move tab to in-progress group if designated
     const { inProgressGroupId, tabGroupMode, autoGroupMovement } = usePreferencesStore.getState()
     if (autoGroupMovement && inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {

@@ -31,6 +31,11 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         ),
       }))
       window.ion.setPermissionMode(activeTabId, mode, source)
+      // Auto-switch to the plan model when entering plan mode
+      const { planModelSplitEnabled, planModeModel } = usePreferencesStore.getState()
+      if (planModelSplitEnabled && mode === 'plan' && planModeModel) {
+        get().setTabModel(activeTabId, planModeModel)
+      }
     },
 
     createTab: async (useWorktree) => {
