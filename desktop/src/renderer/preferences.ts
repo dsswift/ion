@@ -71,6 +71,9 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultTallEngine: saved.defaultTallEngine,
   tabRecoveryEnabled: saved.tabRecoveryEnabled,
   tabRecoveryTimeoutSec: saved.tabRecoveryTimeoutSec,
+  planModelSplitEnabled: saved.planModelSplitEnabled,
+  planModeModel: saved.planModeModel,
+  implementModeModel: saved.implementModeModel,
   _systemIsDark: true,
   setDefaultTallConversation: (enabled) => {
     set({ defaultTallConversation: enabled })
@@ -405,6 +408,18 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   removeEngineProfile: (id) => {
     set({ engineProfiles: get().engineProfiles.filter((p) => p.id !== id) })
+    saveSettings(getAllSettings(get))
+  },
+  setPlanModelSplitEnabled: (enabled) => {
+    set({ planModelSplitEnabled: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setPlanModeModel: (model) => {
+    set({ planModeModel: model })
+    saveSettings(getAllSettings(get))
+  },
+  setImplementModeModel: (model) => {
+    set({ implementModeModel: model })
     saveSettings(getAllSettings(get))
   },
   setSystemTheme: (isDark) => {

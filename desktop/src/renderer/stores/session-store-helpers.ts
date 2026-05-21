@@ -62,6 +62,13 @@ export async function playNotificationIfHidden(): Promise<void> {
 }
 
 export function makeLocalTab(): TabState {
+  const prefs = usePreferencesStore.getState()
+  const permissionMode = prefs.defaultPermissionMode
+  // Auto-set planning model override when split is enabled and tab starts in plan mode
+  const modelOverride =
+    prefs.planModelSplitEnabled && prefs.planModeModel && permissionMode === 'plan'
+      ? prefs.planModeModel
+      : null
   return {
     id: crypto.randomUUID(),
     conversationId: null,
@@ -81,7 +88,7 @@ export function makeLocalTab(): TabState {
     customTitle: null,
     lastResult: null,
     sessionModel: null,
-    modelOverride: null,
+    modelOverride,
     sessionTools: [],
     sessionMcpServers: [],
     sessionSkills: [],
@@ -90,7 +97,7 @@ export function makeLocalTab(): TabState {
     workingDirectory: '~',
     hasChosenDirectory: false,
     additionalDirs: [],
-    permissionMode: usePreferencesStore.getState().defaultPermissionMode,
+    permissionMode,
     planFilePath: null,
     bashResults: [],
     bashExecuting: false,
