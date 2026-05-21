@@ -24,6 +24,7 @@ import {
   handleEngineDialogResponse,
   handleEngineAddInstance,
   handleEngineRemoveInstance,
+  handleEngineMoveInstance,
   handleEngineSelectInstance,
   handleLoadEngineConversation,
   handleEngineSetModel,
@@ -95,6 +96,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'engine_dialog_response': handleEngineDialogResponse(cmd); break
     case 'engine_add_instance': await handleEngineAddInstance(cmd); break
     case 'engine_remove_instance': await handleEngineRemoveInstance(cmd); break
+    case 'engine_move_instance': await handleEngineMoveInstance(cmd); break
     case 'engine_select_instance': await handleEngineSelectInstance(cmd); break
     case 'engine_set_model': await handleEngineSetModel(cmd); break
     case 'load_engine_conversation': await handleLoadEngineConversation(cmd, deviceId); break

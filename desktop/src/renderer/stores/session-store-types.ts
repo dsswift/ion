@@ -154,6 +154,7 @@ export interface State {
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
   reorderEngineInstances: (tabId: string, reordered: EngineInstance[]) => void
+  moveEngineInstance: (sourceTabId: string, instanceId: string, targetTabId: string) => void
   setEngineModel: (tabId: string, modelId: string) => void
   addEngineSystemMessage: (key: string, content: string) => void
   setEngineDraftInput: (key: string, text: string) => void

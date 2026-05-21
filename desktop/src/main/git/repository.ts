@@ -85,6 +85,7 @@ export class GitRepository extends EventEmitter {
   private _snapshot: RepoSnapshot | null = null
   private _refreshing = false
   private _refreshAgain = false
+  private _initialRefresh: Promise<void> | null = null
 
   constructor(path: string, watcher?: GitWatcher) {
     super()
@@ -104,7 +105,9 @@ export class GitRepository extends EventEmitter {
       this._watcher.start(this.path, (event) => this.handleWatchEvent(event))
       this._watcher.setSuspended(!focusState.focused)
       focusState.on('change', this._onFocusChange)
-      this.refreshSnapshot().catch((err: Error) => log(`Initial snapshot failed for ${this.path}: ${err.message}`))
+      this._initialRefresh = this.refreshSnapshot().catch((err: Error) => {
+        log(`Initial snapshot failed for ${this.path}: ${err.message}`)
+      })
     }
   }
 
@@ -125,12 +128,17 @@ export class GitRepository extends EventEmitter {
     this.graphCache.clear()
   }
 
+  /** Resolves once the initial retain() snapshot has completed (or immediately if already done). */
+  async waitForReady(): Promise<void> {
+    if (this._initialRefresh) await this._initialRefresh
+  }
+
   invalidatePath(p: string): void {
     this.diffCache.invalidate((key) => key.startsWith(p + ':'))
   }
 
   private handleWatchEvent(event: GitWatchEvent): void {
-    log(`Watch event ${event.kind} for ${this.path}`)
+    log(`Watch event ${event.kind} for ${this.path} (revision=${this._revision} refreshing=${this._refreshing})`)
     switch (event.kind) {
       case 'head:changed':
         this.bumpRevision()
@@ -149,6 +157,7 @@ export class GitRepository extends EventEmitter {
         break
       case 'config:dirty':
         this.branchCache.clear()
+        this._revision++
         this.refreshSnapshot().catch(() => {})
         break
     }
@@ -160,6 +169,7 @@ export class GitRepository extends EventEmitter {
   async refreshSnapshot(): Promise<void> {
     if (this._refreshing) { this._refreshAgain = true; return }
     this._refreshing = true
+    log(`refreshSnapshot: starting for ${this.path} at revision ${this._revision}`)
     try {
       do {
         this._refreshAgain = false
@@ -168,6 +178,8 @@ export class GitRepository extends EventEmitter {
         this._snapshot = next
 
         if (!prev) {
+          const totalFiles = next.groups.index.length + next.groups.workingTree.length + next.groups.untracked.length + next.groups.merge.length
+          log(`refreshSnapshot: first snapshot revision=${next.revision} files=${totalFiles} head=${next.head.sha?.slice(0, 8) ?? 'null'} for ${this.path}`)
           this.emitEvent({ kind: 'status:changed', repoPath: this.path, revision: next.revision, added: next.groups.index.concat(next.groups.workingTree, next.groups.untracked, next.groups.merge), removed: [], modified: [] })
           this.emitEvent({ kind: 'head:changed', repoPath: this.path, revision: next.revision, head: next.head })
           this.emitEvent({ kind: 'upstream:changed', repoPath: this.path, revision: next.revision, ahead: next.upstream.ahead, behind: next.upstream.behind })
@@ -178,8 +190,11 @@ export class GitRepository extends EventEmitter {
           const prevAll = [...prev.groups.index, ...prev.groups.workingTree, ...prev.groups.untracked, ...prev.groups.merge]
           const nextAll = [...next.groups.index, ...next.groups.workingTree, ...next.groups.untracked, ...next.groups.merge]
           const { added, removed, modified } = diffFiles(prevAll, nextAll)
+          log(`refreshSnapshot: delta revision=${next.revision} prevFiles=${prevAll.length} nextFiles=${nextAll.length} added=${added.length} removed=${removed.length} modified=${modified.length} head=${prev.head.sha?.slice(0, 8) ?? 'null'}->${next.head.sha?.slice(0, 8) ?? 'null'} for ${this.path}`)
           if (added.length || removed.length || modified.length) {
             this.emitEvent({ kind: 'status:changed', repoPath: this.path, revision: next.revision, added, removed, modified })
+          } else {
+            log(`refreshSnapshot: no status delta at revision ${next.revision} for ${this.path}`)
           }
           if (prev.head.sha !== next.head.sha || prev.head.branch !== next.head.branch || prev.head.detached !== next.head.detached) {
             this.emitEvent({ kind: 'head:changed', repoPath: this.path, revision: next.revision, head: next.head })
@@ -194,6 +209,7 @@ export class GitRepository extends EventEmitter {
       } while (this._refreshAgain)
     } finally {
       this._refreshing = false
+      log(`refreshSnapshot: done for ${this.path} at revision ${this._revision}`)
     }
   }
 

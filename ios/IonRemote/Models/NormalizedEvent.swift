@@ -61,6 +61,7 @@ enum RemoteEvent: Codable, Sendable {
     case engineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String])
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
+    case engineInstanceMoved(sourceTabId: String, instanceId: String, targetTabId: String)
     case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?)
     case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
     case engineModelOverride(tabId: String, instanceId: String?, model: String)
@@ -132,6 +133,7 @@ enum RemoteEvent: Codable, Sendable {
         case engineDead = "engine_dead"
         case engineInstanceAdded = "engine_instance_added"
         case engineInstanceRemoved = "engine_instance_removed"
+        case engineInstanceMoved = "engine_instance_moved"
         case engineHarnessMessage = "engine_harness_message"
         case engineConversationHistory = "engine_conversation_history"
         case engineModelOverride = "engine_model_override"
@@ -176,6 +178,7 @@ enum RemoteEvent: Codable, Sendable {
         case correlationId
         case dataUrl
         case attachments
+        case sourceTabId, targetTabId
     }
 
     // MARK: - Decoder

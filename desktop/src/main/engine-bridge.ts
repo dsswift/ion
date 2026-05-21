@@ -43,6 +43,8 @@ export class EngineBridge extends EventEmitter {
   private connectPromise: Promise<void> | null = null
   private reconnectDisabled = false
   private activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
+  /** Client-side key aliases: oldKey → newKey. Rewrites incoming event keys. */
+  private keyAliases = new Map<string, string>()
 
   constructor() {
     super()
@@ -249,6 +251,31 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
+  /**
+   * Remap a session key client-side.
+   * Moves the activeSessions entry from oldKey to newKey and registers an alias
+   * so incoming engine events keyed by oldKey are transparently rewritten.
+   */
+  remapSession(oldKey: string, newKey: string): void {
+    log(`remapSession: ${oldKey} -> ${newKey}`)
+    const entry = this.activeSessions.get(oldKey)
+    if (entry) {
+      this.activeSessions.set(newKey, entry)
+      this.activeSessions.delete(oldKey)
+      log(`remapSession: activeSessions entry moved: ${oldKey} -> ${newKey}`)
+    } else {
+      log(`remapSession: no activeSessions entry for ${oldKey} (session may not have started yet)`)
+    }
+    this.keyAliases.set(oldKey, newKey)
+    // Remove any prior alias that pointed to oldKey to avoid stale chains
+    for (const [k, v] of this.keyAliases) {
+      if (v === oldKey && k !== oldKey) {
+        this.keyAliases.set(k, newKey)
+        log(`remapSession: updated transitive alias ${k} -> ${newKey}`)
+      }
+    }
+  }
+
   private _handleMessage(line: string): void {
     let msg: any
     try {
@@ -276,8 +303,10 @@ export class EngineBridge extends EventEmitter {
 
     // Session event -- forward to IPC layer
     if (msg.key && msg.event) {
-      debug(`event: key=${msg.key} type=${msg.event.type}`)
-      this.emit('event', msg.key, msg.event as EngineEvent)
+      // Rewrite key if it has been remapped (client-side alias)
+      const routedKey = this.keyAliases.get(msg.key) ?? msg.key
+      debug(`event: key=${msg.key}${routedKey !== msg.key ? ` (aliased->${routedKey})` : ''} type=${msg.event.type}`)
+      this.emit('event', routedKey, msg.event as EngineEvent)
     }
   }
 

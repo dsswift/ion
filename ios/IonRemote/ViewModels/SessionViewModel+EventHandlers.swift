@@ -248,6 +248,25 @@ extension SessionViewModel {
         case .engineInstanceRemoved(let tabId, let instanceId):
             handleEngineInstanceRemoved(tabId: tabId, instanceId: instanceId)
 
+        case .engineInstanceMoved(let sourceTabId, let instanceId, let targetTabId):
+            // Server-confirmed move: reconcile local state
+            if var srcInstances = engineInstances[sourceTabId],
+               let idx = srcInstances.firstIndex(where: { $0.id == instanceId }) {
+                let inst = srcInstances.remove(at: idx)
+                engineInstances[sourceTabId] = srcInstances.isEmpty ? nil : srcInstances
+                if srcInstances.isEmpty {
+                    activeEngineInstance.removeValue(forKey: sourceTabId)
+                } else if activeEngineInstance[sourceTabId] == instanceId {
+                    activeEngineInstance[sourceTabId] = srcInstances.last?.id
+                }
+                var tgtInstances = engineInstances[targetTabId] ?? []
+                if !tgtInstances.contains(where: { $0.id == instanceId }) {
+                    tgtInstances.append(inst)
+                    engineInstances[targetTabId] = tgtInstances
+                }
+                activeEngineInstance[targetTabId] = instanceId
+            }
+
         case .engineModelOverride(let tabId, let instanceId, let model):
             let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
             engineModelOverrides[key] = model.isEmpty ? nil : model

@@ -218,6 +218,7 @@ export const IPC = {
   ENGINE_COMMAND: 'ion:engine-command',
   ENGINE_STOP: 'ion:engine-stop',
   ENGINE_EVENT: 'ion:engine-event',
+  ENGINE_REMAP_SESSION: 'ion:engine-remap-session',
 
   // Model & provider management
   LIST_MODELS: 'ion:list-models',

@@ -14,6 +14,9 @@ export function EngineStatusBar({ tabId }: Props) {
   const pane = useSessionStore((s) => s.enginePanes.get(tabId))
   const instances = pane?.instances || []
   const activeId = pane?.activeInstanceId || null
+  const tabs = useSessionStore((s) => s.tabs)
+  // Other engine tabs this instance can be moved to
+  const engineTargetTabs = tabs.filter((t) => t.isEngine && t.id !== tabId)
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -31,6 +34,7 @@ export function EngineStatusBar({ tabId }: Props) {
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
+  const [contextMenu, setContextMenu] = useState<{ instId: string; x: number; y: number } | null>(null)
 
   const startRename = (inst: EngineInstance) => {
     setEditingId(inst.id)
@@ -43,6 +47,15 @@ export function EngineStatusBar({ tabId }: Props) {
     }
     setEditingId(null)
   }
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, inst: EngineInstance) => {
+    if (engineTargetTabs.length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ instId: inst.id, x: e.clientX, y: e.clientY })
+  }, [engineTargetTabs])
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
 
   const renderTab = (inst: EngineInstance) => {
     const isActive = inst.id === activeId
@@ -57,6 +70,7 @@ export function EngineStatusBar({ tabId }: Props) {
         data-engine-tab-id={inst.id}
         onClick={() => useSessionStore.getState().selectEngineInstance(tabId, inst.id)}
         onDoubleClick={() => startRename(inst)}
+        onContextMenu={(e) => handleContextMenu(e, inst)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -118,63 +132,113 @@ export function EngineStatusBar({ tabId }: Props) {
   }
 
   return (
-    <div
-      data-ion-ui
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: 28,
-        padding: '0 8px',
-        borderBottom: `1px solid ${colors.containerBorder}`,
-        background: colors.containerBg,
-        gap: 2,
-        flexShrink: 0,
-      }}
-    >
-      <div style={{ position: 'relative', minWidth: 0, flex: 1 }}>
-        <Reorder.Group
-          as="div"
-          axis="x"
-          values={instances}
-          onReorder={(reordered) => useSessionStore.getState().reorderEngineInstances(tabId, reordered)}
-          ref={scrollRef}
-          onWheel={onWheel}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            overflowX: 'auto',
-            minWidth: 0,
-            scrollbarWidth: 'none',
-            maskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
-            WebkitMaskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
-            listStyle: 'none',
-            padding: 0,
-            margin: 0,
-          }}
-        >
-          {instances.map(renderTab)}
-          {/* Add instance button */}
-          <button
-            data-ion-ui
-            onClick={() => useSessionStore.getState().addEngineInstance(tabId)}
-            title="New engine instance"
+    <>
+      <div
+        data-ion-ui
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          height: 28,
+          padding: '0 8px',
+          borderBottom: `1px solid ${colors.containerBorder}`,
+          background: colors.containerBg,
+          gap: 2,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ position: 'relative', minWidth: 0, flex: 1 }}>
+          <Reorder.Group
+            as="div"
+            axis="x"
+            values={instances}
+            onReorder={(reordered) => useSessionStore.getState().reorderEngineInstances(tabId, reordered)}
+            ref={scrollRef}
+            onWheel={onWheel}
             style={{
-              background: 'none',
-              border: 'none',
-              padding: '2px 4px',
-              cursor: 'pointer',
-              color: colors.textTertiary,
               display: 'flex',
               alignItems: 'center',
-              borderRadius: 4,
-              flexShrink: 0,
+              gap: 2,
+              overflowX: 'auto',
+              minWidth: 0,
+              scrollbarWidth: 'none',
+              maskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%)',
+              listStyle: 'none',
+              padding: 0,
+              margin: 0,
             }}
           >
-            <Plus size={12} />
-          </button>
-        </Reorder.Group>
+            {instances.map(renderTab)}
+            {/* Add instance button */}
+            <button
+              data-ion-ui
+              onClick={() => useSessionStore.getState().addEngineInstance(tabId)}
+              title="New engine instance"
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: '2px 4px',
+                cursor: 'pointer',
+                color: colors.textTertiary,
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: 4,
+                flexShrink: 0,
+              }}
+            >
+              <Plus size={12} />
+            </button>
+          </Reorder.Group>
+        </div>
       </div>
-    </div>
+      {/* Context menu: Move to another engine tab */}
+      {contextMenu && (
+        <div
+          data-ion-ui
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            background: colors.containerBg,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 6,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            zIndex: 9999,
+            minWidth: 140,
+            padding: '4px 0',
+          }}
+          onMouseLeave={closeContextMenu}
+        >
+          <div style={{ padding: '2px 12px 4px', fontSize: 10, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Move to
+          </div>
+          {engineTargetTabs.map((t) => (
+            <button
+              key={t.id}
+              data-ion-ui
+              onClick={() => {
+                useSessionStore.getState().moveEngineInstance(tabId, contextMenu.instId, t.id)
+                closeContextMenu()
+              }}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                background: 'none',
+                border: 'none',
+                padding: '5px 12px',
+                cursor: 'pointer',
+                fontSize: 12,
+                color: colors.textPrimary,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = colors.accent + '20' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+            >
+              {t.customTitle || t.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   )
 }

@@ -48,9 +48,17 @@ export async function subscribe(webContents: WebContents, repoPath: string): Pro
   subscriptions.set(key, { repo, webContents, listener, destroyListener })
   log(`Git subscribed wc=${webContents.id} repo=${repoPath}`)
 
+  // Wait for the initial retain() refresh to complete so we return a real
+  // snapshot rather than null. If retain() was already done this resolves
+  // immediately. The fallback refreshSnapshot() below handles the edge case
+  // where retain() itself failed.
+  await repo.waitForReady()
+
   if (!repo.snapshot) {
+    log(`Git subscribe: no snapshot after waitForReady for ${repoPath}, forcing refresh`)
     await repo.refreshSnapshot().catch((err: Error) => log(`refreshSnapshot failed: ${err.message}`))
   }
+  log(`Git subscribe: returning snapshot revision=${repo.snapshot?.revision ?? 'null'} for ${repoPath}`)
   return repo.snapshot
 }
 

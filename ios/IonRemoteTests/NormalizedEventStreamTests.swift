@@ -146,7 +146,7 @@ final class NormalizedEventStreamTests: XCTestCase {
         let original = RemoteCommand.prompt(tabId: "tab-1", text: "explain this code")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .prompt(let tabId, let text, _) = decoded {
+        if case .prompt(let tabId, let text, _, _, _) = decoded {
             XCTAssertEqual(tabId, "tab-1")
             XCTAssertEqual(text, "explain this code")
         } else {

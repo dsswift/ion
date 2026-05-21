@@ -46,6 +46,11 @@ export function registerEngineIpc(): void {
     engineBridge.stopSession(key)
   })
 
+  ipcMain.handle(IPC.ENGINE_REMAP_SESSION, (_event, { oldKey, newKey }: { oldKey: string; newKey: string }) => {
+    log(`IPC ENGINE_REMAP_SESSION: ${oldKey} -> ${newKey}`)
+    engineBridge.remapSession(oldKey, newKey)
+  })
+
   ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string; source?: string }) => {
     const { tabId, mode, source } = payload
     if (mode !== 'auto' && mode !== 'plan') {

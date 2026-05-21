@@ -37,6 +37,16 @@ extension SessionViewModel {
             }
             messageCountByTab[tabId] = messages[tabId]?.count ?? 0
         }
+        // Optimistic status: show activity indicator immediately so the user
+        // sees "Thinking…" rather than staring at their sent message while the
+        // prompt travels over the relay to the desktop engine.
+        // Mirrors desktop send-slice.ts which sets 'connecting' on send.
+        // Guard against downgrading from .running (queued-prompt case).
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            if tabs[idx].status != .running {
+                tabs[idx].status = .connecting
+            }
+        }
     }
 
     func cancel(tabId: String) {
@@ -282,6 +292,28 @@ extension SessionViewModel {
 
     func removeEngineInstance(tabId: String, instanceId: String) {
         send(.engineRemoveInstance(tabId: tabId, instanceId: instanceId))
+    }
+
+    func moveEngineInstance(sourceTabId: String, instanceId: String, targetTabId: String) {
+        ionLog.info("moveEngineInstance: \(sourceTabId):\(instanceId) -> \(targetTabId)")
+        // Optimistic local update: move instance between engineInstances dictionaries
+        if var srcInstances = engineInstances[sourceTabId],
+           let idx = srcInstances.firstIndex(where: { $0.id == instanceId }) {
+            let inst = srcInstances.remove(at: idx)
+            engineInstances[sourceTabId] = srcInstances.isEmpty ? nil : srcInstances
+            var tgtInstances = engineInstances[targetTabId] ?? []
+            tgtInstances.append(inst)
+            engineInstances[targetTabId] = tgtInstances
+            // Update active instance on target
+            activeEngineInstance[targetTabId] = instanceId
+            // Update active instance on source (last remaining or nil)
+            if srcInstances.isEmpty {
+                activeEngineInstance.removeValue(forKey: sourceTabId)
+            } else if activeEngineInstance[sourceTabId] == instanceId {
+                activeEngineInstance[sourceTabId] = srcInstances.last?.id
+            }
+        }
+        send(.engineMoveInstance(sourceTabId: sourceTabId, instanceId: instanceId, targetTabId: targetTabId))
     }
 
     func selectEngineInstance(tabId: String, instanceId: String) {

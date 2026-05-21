@@ -139,6 +139,7 @@ export interface IonAPI {
   engineDialogResponse(key: string, dialogId: string, value: any): Promise<void>
   engineCommand(key: string, command: string, args: string): Promise<void>
   engineStop(key: string): Promise<void>
+  engineRemapSession(oldKey: string, newKey: string): Promise<void>
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
   // ─── Model & provider management ───
@@ -354,6 +355,7 @@ const api: IonAPI = {
   engineDialogResponse: (key, dialogId, value) => ipcRenderer.invoke(IPC.ENGINE_DIALOG_RESPONSE, { key, dialogId, value }),
   engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
   engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),
+  engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
   onEngineEvent: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, key: string, event: any) => callback(key, event)
     ipcRenderer.on(IPC.ENGINE_EVENT, handler)

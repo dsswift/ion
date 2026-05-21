@@ -11,10 +11,11 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
 import { runGit } from '../git-runner'
-import { error as _error } from '../logger'
+import { log as _log, error as _error } from '../logger'
 import { subscribe as gitSubscribe, unsubscribe as gitUnsubscribe } from '../git/subscriptions'
 import { repositoryManager } from '../git/repositoryManager'
 
+const log = (msg: string): void => { _log('git-extras', msg) }
 const logError = (msg: string): void => { _error('git-extras', msg) }
 
 export function registerGitExtrasIpc(): void {
@@ -29,8 +30,15 @@ export function registerGitExtrasIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_REFRESH, async (_event, { directory }: { directory: string }) => {
-    if (!repositoryManager.has(directory)) return { ok: false }
-    await repositoryManager.get(directory).refreshSnapshot()
+    if (!repositoryManager.has(directory)) {
+      logError(`GIT_REFRESH: no retained repo for ${directory}`)
+      return { ok: false }
+    }
+    const repo = repositoryManager.get(directory)
+    log(`GIT_REFRESH: bumping revision and refreshing snapshot for ${directory} (revision was ${repo.revision})`)
+    repo.bumpRevision()
+    await repo.refreshSnapshot()
+    log(`GIT_REFRESH: done for ${directory} (revision now ${repo.revision})`)
     return { ok: true }
   })
 

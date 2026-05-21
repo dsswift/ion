@@ -193,6 +193,30 @@ export async function handleEngineRemoveInstance(cmd: Extract<RemoteCommand, { t
   }
 }
 
+export async function handleEngineMoveInstance(cmd: Extract<RemoteCommand, { type: 'engine_move_instance' }>): Promise<void> {
+  try {
+    log(`engine_move_instance: ${cmd.sourceTabId}:${cmd.instanceId} -> ${cmd.targetTabId}`)
+    const escapedSrc = cmd.sourceTabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedTgt = cmd.targetTabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().moveEngineInstance('${escapedSrc}', '${escapedInst}', '${escapedTgt}');
+      })()
+    `)
+    state.remoteTransport?.send({
+      type: 'engine_instance_moved',
+      sourceTabId: cmd.sourceTabId,
+      instanceId: cmd.instanceId,
+      targetTabId: cmd.targetTabId,
+    })
+  } catch (err) {
+    log(`engine_move_instance error: ${(err as Error).message}`)
+  }
+}
+
 export async function handleEngineSelectInstance(cmd: Extract<RemoteCommand, { type: 'engine_select_instance' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")

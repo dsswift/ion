@@ -111,6 +111,12 @@ extension RemoteEvent {
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             return .engineInstanceRemoved(tabId: tabId, instanceId: instanceId)
 
+        case .engineInstanceMoved:
+            let sourceTabId = try container.decode(String.self, forKey: .sourceTabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            let targetTabId = try container.decode(String.self, forKey: .targetTabId)
+            return .engineInstanceMoved(sourceTabId: sourceTabId, instanceId: instanceId, targetTabId: targetTabId)
+
         case .engineHarnessMessage:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -255,6 +261,13 @@ extension RemoteEvent {
             try container.encode(TypeKey.engineInstanceRemoved, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
+            return true
+
+        case .engineInstanceMoved(let sourceTabId, let instanceId, let targetTabId):
+            try container.encode(TypeKey.engineInstanceMoved, forKey: .type)
+            try container.encode(sourceTabId, forKey: .sourceTabId)
+            try container.encode(instanceId, forKey: .instanceId)
+            try container.encode(targetTabId, forKey: .targetTabId)
             return true
 
         case .engineHarnessMessage(let tabId, let instanceId, let message, let source):

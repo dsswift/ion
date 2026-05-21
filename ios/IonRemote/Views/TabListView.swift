@@ -13,6 +13,7 @@ struct TabListView: View {
     @State private var collapsedGroupIds: Set<String> = {
         Set(UserDefaults.standard.stringArray(forKey: "collapsedGroupIds") ?? [])
     }()
+    @State private var searchText: String = ""
 
     // iPad: selection-based navigation
     @State private var selectedTabId: String?
@@ -82,6 +83,7 @@ struct TabListView: View {
     private var iPadLayout: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarContent
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
                 .navigationTitle("")
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -114,6 +116,7 @@ struct TabListView: View {
             List {
                 tabGroupSections(selectionStyle: .navigation)
             }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
             .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -150,6 +153,9 @@ struct TabListView: View {
             }
             .overlay {
                 emptyStateOverlay
+            }
+            .overlay {
+                searchEmptyStateOverlay
             }
             .overlay(alignment: .top) {
                 if viewModel.voiceService.isSpeaking {
@@ -188,6 +194,9 @@ struct TabListView: View {
             .overlay {
                 emptyStateOverlay
             }
+            .overlay {
+                searchEmptyStateOverlay
+            }
             .overlay(alignment: .top) {
                 if viewModel.voiceService.isSpeaking {
                     VoicePlaybackBar(
@@ -206,9 +215,10 @@ struct TabListView: View {
 
     @ViewBuilder
     private func tabGroupSections(selectionStyle: TabSelectionStyle) -> some View {
-        ForEach(viewModel.displayGroups, id: \.id) { group in
+        let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ForEach(filteredDisplayGroups, id: \.id) { group in
             Section {
-                if !collapsedGroupIds.contains(group.id) {
+                if isSearching || !collapsedGroupIds.contains(group.id) {
                     ForEach(group.tabs) { tab in
                         Group {
                             switch selectionStyle {
@@ -388,6 +398,51 @@ struct TabListView: View {
                     .multilineTextAlignment(.center)
             }
             .padding()
+        }
+    }
+
+    @ViewBuilder
+    private var searchEmptyStateOverlay: some View {
+        let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if isSearching && filteredDisplayGroups.isEmpty && !viewModel.tabs.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.tertiary)
+                Text("No Results")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("No tabs match \"\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\".")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+        }
+    }
+
+    // MARK: - Filtered Display Groups
+
+    /// Returns `viewModel.displayGroups` filtered by `searchText`.
+    /// When search is empty, returns the full list unchanged (zero cost).
+    /// Groups with zero matching tabs are dropped entirely.
+    private var filteredDisplayGroups: [(label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return viewModel.displayGroups }
+
+        return viewModel.displayGroups.compactMap { group in
+            let matchingTabs = group.tabs.filter { tab in
+                let compoundKey = viewModel.engineCompoundKey(tabId: tab.id)
+                return TabSearchHelper.matches(
+                    tab: tab,
+                    query: query,
+                    messages: viewModel.messages[tab.id],
+                    engineMessages: viewModel.engineMessages[compoundKey],
+                    attachments: viewModel.tabAttachmentCache[tab.id]
+                )
+            }
+            guard !matchingTabs.isEmpty else { return nil }
+            return (label: group.label, id: group.id, icon: group.icon, directory: group.directory, tabs: matchingTabs)
         }
     }
 

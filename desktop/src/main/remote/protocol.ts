@@ -96,6 +96,7 @@ export type RemoteCommand =
   | { type: 'engine_add_instance'; tabId: string }
   | { type: 'engine_remove_instance'; tabId: string; instanceId: string }
   | { type: 'engine_select_instance'; tabId: string; instanceId: string }
+  | { type: 'engine_move_instance'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_set_model'; tabId: string; instanceId?: string; model: string }
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
@@ -167,6 +168,7 @@ export type RemoteEvent =
   | { type: 'engine_error'; tabId: string; instanceId?: string | null; message: string }
   | { type: 'engine_instance_added'; tabId: string; instance: { id: string; label: string } }
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
+  | { type: 'engine_instance_moved'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
