@@ -34,6 +34,15 @@ export function wireEngineBridgeEvents(): void {
     if (state.remoteTransport) {
       const tabId = key.split(':')[0]
       const instanceId = key.split(':')[1] || null
+      // Trace agent_state forwarding so we can correlate engine→desktop→iOS
+      // flow when diagnosing stuck-row or stale-snapshot reports. Pairs
+      // with the iOS-side `ENGINE: agent_state` DiagnosticLog line and the
+      // engine's `agent_snapshot_emitted` utils.Log.
+      if (event.type === 'engine_agent_state') {
+        const agents = Array.isArray(event.agents) ? event.agents : []
+        const statuses = agents.map((a: any) => `${a.name}:${a.status}`).join(',')
+        log(`engineBridge: agent_state forwarded key=${key} count=${agents.length} statuses=[${statuses}]`)
+      }
       state.remoteTransport.send({ type: `engine_${event.type.replace('engine_', '')}`, tabId, instanceId, ...event })
     }
     // Auto-reconcile on event drops so state self-heals
