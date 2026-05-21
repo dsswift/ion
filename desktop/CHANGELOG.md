@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.33.0](https://github.com/dsswift/ion/compare/desktop-v1.32.3...desktop-v1.33.0) (2026-05-21)
+
+### Features
+
+* **desktop:** add plan/implement model splitting ([a659209](https://github.com/dsswift/ion/commit/a6592095ac937b58e794088ffcd60626d9090ab2))
+
 ## [1.32.3](https://github.com/dsswift/ion/compare/desktop-v1.32.2...desktop-v1.32.3) (2026-05-20)
 
 ## [1.32.2](https://github.com/dsswift/ion/compare/desktop-v1.32.1...desktop-v1.32.2) (2026-05-20)
