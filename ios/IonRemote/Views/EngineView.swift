@@ -333,8 +333,11 @@ struct EngineView: View {
             viewModel.loadEngineConversation(tabId: tabId)
         }
         .task(id: compoundKey) {
-            try? await Task.sleep(for: .seconds(2))
-            if !Task.isCancelled && engineMsgs.isEmpty {
+            // Load immediately when switching to an instance that has no cached
+            // messages (e.g. after moveEngineInstance changes the active instance
+            // on the source tab). The isEmpty guard prevents a redundant fetch
+            // when the engine is about to push engineConversationHistory itself.
+            if engineMsgs.isEmpty {
                 viewModel.loadEngineConversation(tabId: tabId)
             }
         }
