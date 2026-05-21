@@ -210,6 +210,11 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// Clear engine-managed agent panel (Agent tool sub-agents).
 	// Only emit if the session had built-in agent states; extension-managed
 	// agents are owned by the extension and must not be wiped on run exit.
+	//
+	// Engine contract: `engine_agent_state` is a complete snapshot. After
+	// ClearStates() above, the registry has no engine-managed states left,
+	// so we emit the empty array as the authoritative "no engine-managed
+	// agents are live" signal. See docs/architecture/agent-state.md.
 	m.mu.RLock()
 	hasExtGroup := false
 	if s, ok := m.sessions[key]; ok {
@@ -217,10 +222,13 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	}
 	m.mu.RUnlock()
 	if !hasExtGroup {
+		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=0 reason=run_exit", key))
 		m.emit(key, types.EngineEvent{
 			Type:   "engine_agent_state",
 			Agents: []types.AgentStateUpdate{},
 		})
+	} else {
+		utils.Debug("Session", fmt.Sprintf("handleRunExit: skipping engine agent_state — extension owns panel key=%s", key))
 	}
 
 	// Clear any stale working message before transitioning to idle

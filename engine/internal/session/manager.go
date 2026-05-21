@@ -306,19 +306,28 @@ func (m *Manager) sessionState(s *engineSession) string {
 // ReconcileState re-emits the current agent states and status for the given
 // session so that a freshly-connected (or reconnected) client can catch up
 // without waiting for the next organic state change.
+//
+// Engine contract: `engine_agent_state` is a complete snapshot. We emit
+// unconditionally — even an empty `agents: []` snapshot is meaningful
+// because consumers must replace their view with whatever the engine
+// considers authoritative. Skipping the emission would leave reconnecting
+// clients showing stale agent rows from a previous session. See
+// docs/architecture/agent-state.md.
 func (m *Manager) ReconcileState(key string) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
+		utils.Warn("Session", fmt.Sprintf("ReconcileState: session not found key=%s", key))
 		return
 	}
 
-	// Re-emit agent states
+	// Re-emit agent states. Always emit, including the empty snapshot:
+	// reconnecting clients need the authoritative "no agents" signal as
+	// much as they need the "here are the agents" signal.
 	snapshot := s.agents.MergedSnapshot()
-	if len(snapshot) > 0 {
-		m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
-	}
+	utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=reconcile", key, len(snapshot)))
+	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
 	// Re-emit status
 	m.emit(key, types.EngineEvent{

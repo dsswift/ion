@@ -194,7 +194,9 @@ function buildPersona(orchestratorBody: string): string {
     '\n' +
     '`ctx.sendPrompt(text, opts?)` queues a fresh prompt on the session. Use from a slash command to drive an LLM turn (e.g. `/cloud <msg>` forcing a remote model), or from `session_start` to prime the agent. Recursion hazard: calling from `before_prompt` triggers `before_prompt` again — guard with a per-session in-flight flag keyed on `ctx.sessionKey`.\n' +
     '\n' +
-    '`ctx.emit(event)` accepts the five engine-recognised types (`engine_agent_state`, `engine_status`, `engine_working_message`, `engine_notify`, `engine_harness_message`) plus any custom `{ type: string, ...fields }` shape. Custom types pass through the engine and desktop bridge verbatim; pick a unique prefix (e.g. `myharness_*`) to avoid collisions.'
+    '`ctx.emit(event)` accepts the five engine-recognised types (`engine_agent_state`, `engine_status`, `engine_working_message`, `engine_notify`, `engine_harness_message`) plus any custom `{ type: string, ...fields }` shape. Custom types pass through the engine and desktop bridge verbatim; pick a unique prefix (e.g. `myharness_*`) to avoid collisions.\n' +
+    '\n' +
+    '`engine_agent_state` is always a complete snapshot — include every agent you want visible in every emission. The engine does not merge across events; consumers replace their view. To wipe the panel, emit `agents: []`. See docs/architecture/agent-state.md.'
   const catalog =
     'Canonical hook catalog (do not rename or invent):\n' +
     Object.entries(hookCatalog)

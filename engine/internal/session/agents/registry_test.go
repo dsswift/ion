@@ -125,6 +125,76 @@ func TestRegistry_ClearStates(t *testing.T) {
 	}
 }
 
+// TestRegistry_NoStaleRunningAfterTerminalUpdate covers the engine
+// invariant from docs/architecture/agent-state.md: every termination
+// path must transition the state to a terminal status (done/error/
+// cancelled) before the next snapshot is read. After UpdateState with
+// any terminal status, MergedSnapshot must not report the agent as
+// "running".
+func TestRegistry_NoStaleRunningAfterTerminalUpdate(t *testing.T) {
+	terminalStatuses := []string{"done", "error", "cancelled"}
+	for _, terminal := range terminalStatuses {
+		t.Run(terminal, func(t *testing.T) {
+			r := NewRegistry()
+			r.AppendState(types.AgentStateUpdate{Name: "a", Status: "running"})
+			r.UpdateState("a", func(s *types.AgentStateUpdate) {
+				s.Status = terminal
+			})
+			merged := r.MergedSnapshot()
+			if len(merged) != 1 {
+				t.Fatalf("expected 1 merged, got %d", len(merged))
+			}
+			if merged[0].Status == "running" {
+				t.Errorf("expected non-running terminal status, got %q", merged[0].Status)
+			}
+			if merged[0].Status != terminal {
+				t.Errorf("expected status %q, got %q", terminal, merged[0].Status)
+			}
+		})
+	}
+}
+
+// TestRegistry_CacheExtStatesNilDrops mirrors the host-death recovery
+// behavior in handleHostDeath: when an extension dies the engine drops
+// its cached extension states by passing nil. The subsequent snapshot
+// must contain only engine-managed states (or nothing).
+func TestRegistry_CacheExtStatesNilDrops(t *testing.T) {
+	r := NewRegistry()
+	r.CacheExtStates([]types.AgentStateUpdate{
+		{Name: "ext-a", Status: "running"},
+		{Name: "ext-b", Status: "running"},
+	})
+	if len(r.MergedSnapshot()) != 2 {
+		t.Fatalf("setup expected 2, got %d", len(r.MergedSnapshot()))
+	}
+
+	r.CacheExtStates(nil)
+	merged := r.MergedSnapshot()
+	if len(merged) != 0 {
+		t.Errorf("expected empty after CacheExtStates(nil), got %d entries: %v", len(merged), merged)
+	}
+}
+
+// TestRegistry_CacheExtStatesNilPreservesEngineStates ensures dropping
+// the extension cache does not also wipe engine-managed states. The
+// host-death recovery only clears the extension's authority; engine-
+// managed sub-agents from the Agent tool are still live.
+func TestRegistry_CacheExtStatesNilPreservesEngineStates(t *testing.T) {
+	r := NewRegistry()
+	r.CacheExtStates([]types.AgentStateUpdate{{Name: "ext-1", Status: "running"}})
+	r.AppendState(types.AgentStateUpdate{Name: "engine-1", Status: "running"})
+
+	r.CacheExtStates(nil)
+
+	merged := r.MergedSnapshot()
+	if len(merged) != 1 {
+		t.Fatalf("expected only engine-managed state, got %d entries", len(merged))
+	}
+	if merged[0].Name != "engine-1" {
+		t.Errorf("expected engine-1, got %q", merged[0].Name)
+	}
+}
+
 func TestRegistry_IsDescendant(t *testing.T) {
 	r := NewRegistry()
 	r.RegisterHandle("root", types.AgentHandle{PID: 1})
