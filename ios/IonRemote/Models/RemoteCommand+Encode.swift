@@ -144,6 +144,12 @@ extension RemoteCommand {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
 
+        case .engineMoveInstance(let sourceTabId, let instanceId, let targetTabId):
+            try container.encode(TypeKey.engineMoveInstance, forKey: .type)
+            try container.encode(sourceTabId, forKey: .sourceTabId)
+            try container.encode(instanceId, forKey: .instanceId)
+            try container.encode(targetTabId, forKey: .targetTabId)
+
         case .loadEngineConversation(let tabId, let instanceId):
             try container.encode(TypeKey.loadEngineConversation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

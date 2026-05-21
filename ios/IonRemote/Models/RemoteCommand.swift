@@ -30,6 +30,7 @@ enum RemoteCommand: Codable, Sendable {
     case engineRemoveInstance(tabId: String, instanceId: String)
     case engineRenameInstance(tabId: String, instanceId: String, label: String)
     case engineSelectInstance(tabId: String, instanceId: String)
+    case engineMoveInstance(sourceTabId: String, instanceId: String, targetTabId: String)
     case loadEngineConversation(tabId: String, instanceId: String?)
     case setTabGroupMode(mode: String)
     case moveTabToGroup(tabId: String, groupId: String)
@@ -91,6 +92,7 @@ enum RemoteCommand: Codable, Sendable {
         case engineRemoveInstance = "engine_remove_instance"
         case engineRenameInstance = "engine_rename_instance"
         case engineSelectInstance = "engine_select_instance"
+        case engineMoveInstance = "engine_move_instance"
         case loadEngineConversation = "load_engine_conversation"
         case setTabGroupMode = "set_tab_group_mode"
         case moveTabToGroup = "move_tab_to_group"
@@ -131,6 +133,7 @@ enum RemoteCommand: Codable, Sendable {
         case attachments, dataUrl, name, correlationId, orderedIds
         case enabled, systemPrompt
         case logs, deviceId, deviceName
+        case sourceTabId, targetTabId
     }
 
     init(from decoder: Decoder) throws {
@@ -279,6 +282,12 @@ enum RemoteCommand: Codable, Sendable {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             self = .engineSelectInstance(tabId: tabId, instanceId: instanceId)
+
+        case .engineMoveInstance:
+            let sourceTabId = try container.decode(String.self, forKey: .sourceTabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            let targetTabId = try container.decode(String.self, forKey: .targetTabId)
+            self = .engineMoveInstance(sourceTabId: sourceTabId, instanceId: instanceId, targetTabId: targetTabId)
 
         case .loadEngineConversation:
             let tabId = try container.decode(String.self, forKey: .tabId)

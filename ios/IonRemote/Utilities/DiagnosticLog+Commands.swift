@@ -92,6 +92,9 @@ extension DiagnosticLog {
         case .engineSelectInstance(let tabId, let instId):
             log("CMD: engineSelectInstance tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8))")
 
+        case .engineMoveInstance(let srcTabId, let instId, let tgtTabId):
+            log("CMD: engineMoveInstance src=\(srcTabId.prefix(8)) inst=\(instId.prefix(8)) tgt=\(tgtTabId.prefix(8))")
+
         case .loadEngineConversation(let tabId, let instId):
             log("CMD: loadEngineConversation tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
 
