@@ -10,6 +10,11 @@ struct EngineInstanceBar: View {
     @State private var renamingInstance: EngineInstanceInfo? = nil
     @State private var renameText: String = ""
 
+    /// Other engine tabs the active instance can be moved to.
+    private var moveTargets: [RemoteTabState] {
+        viewModel.tabs.filter { $0.isEngine == true && $0.id != tabId }
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
@@ -76,6 +81,23 @@ struct EngineInstanceBar: View {
                 renameText = instance.label
             } label: {
                 Label("Rename", systemImage: "pencil")
+            }
+            if !moveTargets.isEmpty {
+                Menu {
+                    ForEach(moveTargets) { target in
+                        Button {
+                            viewModel.moveEngineInstance(
+                                sourceTabId: tabId,
+                                instanceId: instance.id,
+                                targetTabId: target.id
+                            )
+                        } label: {
+                            Label(target.customTitle ?? target.title, systemImage: "arrow.right.square")
+                        }
+                    }
+                } label: {
+                    Label("Move to", systemImage: "arrow.right.square")
+                }
             }
         }
     }
