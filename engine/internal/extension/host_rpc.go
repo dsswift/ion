@@ -343,17 +343,29 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "prompt text required"})
 			return
 		}
-		if ctx == nil || ctx.SendPrompt == nil {
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "sendPrompt not available outside an active session"})
+		if ctx != nil && ctx.SendPrompt != nil {
+			// Active hook context: use hook-aware path (supports model override, recursion guard).
+			go func() {
+				if err := ctx.SendPrompt(req.Params.Text, req.Params.Model); err != nil {
+					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+					return
+				}
+				h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+			}()
 			return
 		}
-		go func() {
-			if err := ctx.SendPrompt(req.Params.Text, req.Params.Model); err != nil {
-				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
-				return
-			}
-			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
-		}()
+		// No active hook context (e.g. called from a timer/scheduler): fall back to
+		// the session-level SendPrompt wired by the session manager via onSendMessage.
+		// Model override is not supported on this path.
+		h.notifMu.RLock()
+		fn := h.onSendMessage
+		h.notifMu.RUnlock()
+		if fn == nil {
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "sendPrompt not available: no active session"})
+			return
+		}
+		fn(req.Params.Text)
+		h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 
 	case "ext/call_tool":
 		var req struct {
