@@ -63,6 +63,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   relayApiKey: saved.relayApiKey,
   lanServerPort: saved.lanServerPort,
   pairedDevices: saved.pairedDevices,
+  remoteDisplay: saved.remoteDisplay,
   engineDefaultModel: saved.engineDefaultModel,
   engineProfiles: saved.engineProfiles,
   preferredModel: saved.preferredModel,
@@ -388,6 +389,15 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   removePairedDevice: (deviceId) => {
     set({ pairedDevices: get().pairedDevices.filter((d) => d.id !== deviceId) })
+    saveSettings(getAllSettings(get))
+  },
+  setRemoteDisplay: (customName, customIcon) => {
+    // Optimistically update the store; the main process is the source of
+    // truth and will broadcast the canonical value back via the
+    // 'ion:remote-display-changed' event listener (see RemoteCategory).
+    const updatedAt = Date.now()
+    const next = { customName, customIcon, updatedAt }
+    set({ remoteDisplay: next })
     saveSettings(getAllSettings(get))
   },
   setEngineDefaultModel: (model) => {

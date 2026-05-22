@@ -70,6 +70,7 @@ import {
   handleDiagnosticLogsResponse,
 } from './handlers/diagnostics'
 import { handleLoadAttachments } from './handlers/attachments'
+import { handleSetRemoteDisplay } from './handlers/display'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string): void {
@@ -138,5 +139,6 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'unpair': handleUnpair(deviceId); break
     case 'diagnostic_logs_response': handleDiagnosticLogsResponse(cmd, deviceId); break
     case 'load_attachments': await handleLoadAttachments(cmd, deviceId); break
+    case 'set_remote_display': await handleSetRemoteDisplay(cmd, deviceId); break
   }
 }
