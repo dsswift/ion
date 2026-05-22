@@ -129,7 +129,9 @@ func (s *Server) Start() error {
 		// TCP mode — cross-platform (LAN / Windows / remote desktop).
 		conn, dialErr := net.Dial("tcp4", s.socketPath)
 		if dialErr == nil {
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				utils.Log("Server", fmt.Sprintf("Start: probe-conn close failed: %v", err))
+			}
 			return fmt.Errorf("engine already listening on %s", s.socketPath)
 		}
 		ln, err = net.Listen("tcp4", s.socketPath)
@@ -142,9 +144,13 @@ func (s *Server) Start() error {
 			conn, dialErr := net.Dial("unix", s.socketPath)
 			if dialErr != nil {
 				utils.Log("Server", "removing stale socket: "+s.socketPath)
-				os.Remove(s.socketPath)
+				if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
+					utils.Log("Server", fmt.Sprintf("Start: remove stale socket %s failed: %v", s.socketPath, err))
+				}
 			} else {
-				conn.Close()
+				if err := conn.Close(); err != nil {
+					utils.Log("Server", fmt.Sprintf("Start: probe-conn close failed: %v", err))
+				}
 				return fmt.Errorf("socket already in use: %s", s.socketPath)
 			}
 		}
@@ -173,7 +179,9 @@ func (s *Server) Stop() error {
 		s.mu.Lock()
 		for conn, cw := range s.clients {
 			close(cw.done)
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				utils.Log("Server", fmt.Sprintf("Stop: client conn close failed: %v", err))
+			}
 		}
 		s.clients = make(map[net.Conn]*clientWriter)
 		for _, lh := range s.broadcastListeners {
@@ -183,13 +191,17 @@ func (s *Server) Stop() error {
 		s.mu.Unlock()
 
 		if s.listener != nil {
-			s.listener.Close()
+			if err := s.listener.Close(); err != nil {
+				utils.Log("Server", fmt.Sprintf("Stop: listener close failed: %v", err))
+			}
 		}
 
 		// Only remove socket file for Unix domain sockets; TCP listeners
 		// have no file to clean up.
 		if !looksLikeHostPort(s.socketPath) {
-			os.Remove(s.socketPath)
+			if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
+				utils.Log("Server", fmt.Sprintf("Stop: socket file %s remove failed: %v", s.socketPath, err))
+			}
 		}
 		utils.Log("Server", "stopped")
 	})
@@ -263,7 +275,9 @@ func (s *Server) evictClient(conn net.Conn) {
 		default:
 			close(cw.done)
 		}
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			utils.Log("Server", fmt.Sprintf("removeClient: conn close failed: %v", err))
+		}
 	}
 }
 

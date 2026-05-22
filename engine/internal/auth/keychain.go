@@ -28,12 +28,14 @@ func GetKeychainPassword(service, account string) (string, error) {
 // SetKeychainPassword stores a password in the macOS Keychain
 // using the `security` CLI.
 func SetKeychainPassword(service, account, password string) error {
-	// Delete existing entry (ignore errors if not found)
+	// Delete existing entry (ignore errors if not found — set is the
+	// authoritative operation, and the entry may legitimately not exist
+	// yet). Use _ to make the intent explicit and silence errcheck.
 	del := exec.Command("security", "delete-generic-password",
 		"-s", service,
 		"-a", account,
 	)
-	del.Run()
+	_ = del.Run()
 
 	cmd := exec.Command("security", "add-generic-password",
 		"-s", service,

@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // DeviceFlowResult contains the parameters from a device authorization request.
@@ -39,7 +41,11 @@ func InitiateDeviceFlow(clientID, tokenURL string) (*DeviceFlowResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("device flow request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("auth", fmt.Sprintf("InitiateDeviceFlow: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -73,7 +79,11 @@ func ExchangeDeviceCode(clientID, deviceCode, tokenURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("token exchange request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("auth", fmt.Sprintf("ExchangeDeviceCode: response body close failed: %v", err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -149,7 +159,9 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 	// Build authorization URL.
 	authURL, err := buildAuthorizationURL(cfg, redirectURI, challenge, state)
 	if err != nil {
-		listener.Close()
+		if closeErr := listener.Close(); closeErr != nil {
+			utils.Log("auth", fmt.Sprintf("pkce: listener close after auth-url build failure: %v", closeErr))
+		}
 		return nil, fmt.Errorf("pkce: build auth url: %w", err)
 	}
 
@@ -168,15 +180,17 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 			desc := q.Get("error_description")
 			errCh <- fmt.Errorf("authorization error: %s: %s", errParam, desc)
 			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprintf(w, "<html><body><p>Authorization failed. You can close this tab.</p></body></html>")
-			go server.Shutdown(context.Background())
+			if _, err := fmt.Fprintf(w, "<html><body><p>Authorization failed. You can close this tab.</p></body></html>"); err != nil {
+				utils.Log("auth", fmt.Sprintf("pkce: write failure page: %v", err))
+			}
+			go shutdownAndLog(server, "auth-error")
 			return
 		}
 
 		if q.Get("state") != state {
 			errCh <- fmt.Errorf("state mismatch")
 			http.Error(w, "state mismatch", http.StatusBadRequest)
-			go server.Shutdown(context.Background())
+			go shutdownAndLog(server, "state-mismatch")
 			return
 		}
 
@@ -184,7 +198,7 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		if code == "" {
 			errCh <- fmt.Errorf("no authorization code in callback")
 			http.Error(w, "missing code", http.StatusBadRequest)
-			go server.Shutdown(context.Background())
+			go shutdownAndLog(server, "missing-code")
 			return
 		}
 
@@ -192,15 +206,19 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		if exchangeErr != nil {
 			errCh <- exchangeErr
 			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprintf(w, "<html><body><p>Token exchange failed. You can close this tab.</p></body></html>")
-			go server.Shutdown(context.Background())
+			if _, err := fmt.Fprintf(w, "<html><body><p>Token exchange failed. You can close this tab.</p></body></html>"); err != nil {
+				utils.Log("auth", fmt.Sprintf("pkce: write exchange-failure page: %v", err))
+			}
+			go shutdownAndLog(server, "exchange-error")
 			return
 		}
 
 		tokenCh <- token
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, "<html><body><p>Authorization complete. You can close this tab.</p></body></html>")
-		go server.Shutdown(context.Background())
+		if _, err := fmt.Fprintf(w, "<html><body><p>Authorization complete. You can close this tab.</p></body></html>"); err != nil {
+			utils.Log("auth", fmt.Sprintf("pkce: write success page: %v", err))
+		}
+		go shutdownAndLog(server, "success")
 	})
 
 	// Run server in background; shut down on context cancellation.
@@ -215,7 +233,7 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		if ctx.Err() == context.DeadlineExceeded {
 			errCh <- fmt.Errorf("pkce: flow timed out after 5 minutes")
 		}
-		server.Shutdown(context.Background())
+		shutdownAndLog(server, "ctx-done")
 	}()
 
 	return &PKCEFlowResult{
@@ -224,9 +242,21 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		Err:              errCh,
 		Cancel: func() {
 			cancel()
-			server.Shutdown(context.Background())
+			shutdownAndLog(server, "cancel")
 		},
 	}, nil
+}
+
+// shutdownAndLog wraps server.Shutdown so the error is observable in
+// logs rather than silently discarded. Used from every place the OAuth
+// callback server needs to wind down — error branches, success, the
+// context-cancel watcher, and the public Cancel hook. The shutdown
+// path is best-effort: if it fails, the process is exiting anyway, so
+// we log rather than escalate.
+func shutdownAndLog(server *http.Server, reason string) {
+	if err := server.Shutdown(context.Background()); err != nil {
+		utils.Log("auth", fmt.Sprintf("pkce: server shutdown (%s) failed: %v", reason, err))
+	}
 }
 
 // generateCodeVerifier creates a 32-byte random verifier encoded as base64url.
@@ -288,7 +318,11 @@ func exchangeCodeForToken(cfg PKCEFlowConfig, code, verifier, redirectURI string
 	if err != nil {
 		return "", fmt.Errorf("pkce token exchange request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("auth", fmt.Sprintf("exchangeCodeForToken: response body close failed: %v", err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

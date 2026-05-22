@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ValidatePdf checks if a file is a valid PDF by reading its magic bytes.
@@ -17,7 +19,11 @@ func ValidatePdf(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open PDF: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			utils.Log("pdf", fmt.Sprintf("ValidatePdf: close %s failed: %v", path, err))
+		}
+	}()
 
 	header := make([]byte, 5)
 	n, err := f.Read(header)
@@ -81,7 +87,11 @@ func ExtractPdfPages(path string, pageRange string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			utils.Log("pdf", fmt.Sprintf("ExtractPdfPages: cleanup %s failed: %v", tmpDir, err))
+		}
+	}()
 
 	outPrefix := filepath.Join(tmpDir, "page")
 

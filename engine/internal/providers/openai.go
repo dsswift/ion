@@ -117,7 +117,11 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	if err != nil {
 		return FromOpenAIError(err, 0, "")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("OpenAI", fmt.Sprintf("doStream: response body close failed: %v", err))
+		}
+	}()
 	utils.Debug("OpenAI", fmt.Sprintf("doStream: HTTP response status=%d", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusOK {

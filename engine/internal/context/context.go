@@ -52,10 +52,12 @@ func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 		dir := absRoot
 		level := 0
 
-		for {
-			if config.MaxDepth > 0 && level > config.MaxDepth {
-				break
-			}
+		// Stop walking either when we hit MaxDepth (if configured) or
+		// when filesystem traversal exits via the inner `break`/`continue`
+		// logic. MaxDepth==0 means "unlimited" — common for repo-wide
+		// scans — so we keep the unconditional `for` shape behind a
+		// helper expression rather than restructuring the loop.
+		for config.MaxDepth == 0 || level <= config.MaxDepth {
 
 			for _, pattern := range patterns {
 				fp := filepath.Join(dir, pattern)

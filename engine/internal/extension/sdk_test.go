@@ -119,8 +119,11 @@ func TestSDK_Handlers_ReturnsCopy(t *testing.T) {
 		t.Fatalf("expected 1 handler, got %d", len(handlers))
 	}
 
-	// Modifying returned slice should not affect SDK
-	handlers = append(handlers, func(ctx *Context, payload interface{}) (interface{}, error) {
+	// Modifying returned slice should not affect SDK. We don't reuse the
+	// appended slice — the point is to exercise whether append-with-extra-cap
+	// can mutate the SDK's internal storage. The SDK should defensively
+	// copy, so a fresh Handlers() call must still return exactly 1.
+	_ = append(handlers, func(ctx *Context, payload interface{}) (interface{}, error) {
 		return nil, nil
 	})
 	if len(sdk.Handlers(HookSessionStart)) != 1 {

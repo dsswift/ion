@@ -150,7 +150,12 @@ func initLogFile() {
 // Must be called with logMu held.
 func rotate() {
 	if logFile != nil {
-		logFile.Close()
+		// Best-effort close. We can't call Log() to report a close failure
+		// because we're inside the rotation path that owns the log file —
+		// re-entering would deadlock on logMu and recurse on the missing
+		// handle. A failed close here only leaks one fd until process exit;
+		// the rotation itself still proceeds.
+		_ = logFile.Close()
 		logFile = nil
 	}
 

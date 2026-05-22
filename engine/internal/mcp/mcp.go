@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ToolDef describes a tool exposed by an MCP server.
@@ -210,14 +211,18 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 
 	// Initialize the connection.
 	if err := conn.initialize(); err != nil {
-		transport.Close()
+		if closeErr := transport.Close(); closeErr != nil {
+			utils.Log("mcp", fmt.Sprintf("connect %s: transport close after initialize failure: %v", name, closeErr))
+		}
 		return nil, fmt.Errorf("mcp initialize %s: %w", name, err)
 	}
 
 	// Discover tools.
 	tools, err := conn.listTools()
 	if err != nil {
-		transport.Close()
+		if closeErr := transport.Close(); closeErr != nil {
+			utils.Log("mcp", fmt.Sprintf("connect %s: transport close after listTools failure: %v", name, closeErr))
+		}
 		return nil, fmt.Errorf("mcp list tools %s: %w", name, err)
 	}
 	conn.tools = tools

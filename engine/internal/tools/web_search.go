@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // SearchResult is a single web search result.
@@ -45,10 +46,14 @@ func (b *BraveSearchBackend) Search(ctx context.Context, query string, maxResult
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("web_search", fmt.Sprintf("brave: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Brave Search API error: %d", resp.StatusCode)
+		return nil, fmt.Errorf("brave search API error: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -101,10 +106,14 @@ func (t *TavilyBackend) Search(ctx context.Context, query string, maxResults int
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("web_search", fmt.Sprintf("tavily: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Tavily API error: %d", resp.StatusCode)
+		return nil, fmt.Errorf("tavily API error: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -151,7 +160,11 @@ func (s *SearXNGBackend) Search(ctx context.Context, query string, maxResults in
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("web_search", fmt.Sprintf("searxng: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("SearXNG error: %d", resp.StatusCode)

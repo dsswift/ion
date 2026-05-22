@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ListStored returns metadata for saved conversations on disk, sorted by
@@ -79,7 +80,11 @@ func scanSessionFile(path string) (types.StoredSessionInfo, error) {
 	if err != nil {
 		return types.StoredSessionInfo{}, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			utils.Log("conv-list", fmt.Sprintf("scanSessionFile: close %s failed: %v", path, err))
+		}
+	}()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

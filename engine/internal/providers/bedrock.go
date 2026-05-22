@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // BedrockOptions configures the AWS Bedrock provider.
@@ -146,7 +147,11 @@ func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOpti
 	if err != nil {
 		return NewProviderError(ErrNetwork, err.Error(), 0, true)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("bedrock", fmt.Sprintf("Stream: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)

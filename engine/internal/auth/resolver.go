@@ -270,7 +270,11 @@ func doRefreshTokenGrant(clientID, refreshToken, tokenURL string) (*oauthToken, 
 	if err != nil {
 		return nil, fmt.Errorf("refresh token request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("AuthResolver", fmt.Sprintf("refreshOAuthToken: response body close failed: %v", err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

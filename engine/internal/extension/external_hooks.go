@@ -222,7 +222,9 @@ func (m *ExternalHookManager) runAwaited(ctx context.Context, cfg ExternalHookCo
 		return nil
 	case <-ctx.Done():
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			if err := cmd.Process.Kill(); err != nil {
+				utils.Log("hooks", fmt.Sprintf("awaited hook %s kill on timeout failed: %v", event, err))
+			}
 		}
 		utils.Log("hooks", fmt.Sprintf("awaited hook %s timed out after %v", event, cfg.Timeout))
 		return fmt.Errorf("hook %s timed out after %v", event, cfg.Timeout)
@@ -240,7 +242,9 @@ func (m *ExternalHookManager) runFireAndForget(cfg ExternalHookConfig, event str
 	// Set a kill timer so zombie processes don't linger.
 	timer := time.AfterFunc(cfg.Timeout, func() {
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			if err := cmd.Process.Kill(); err != nil {
+				utils.Log("hooks", fmt.Sprintf("fire-and-forget hook %s kill on timeout failed: %v", event, err))
+			}
 			utils.Log("hooks", fmt.Sprintf("fire-and-forget hook %s killed after timeout %v", event, cfg.Timeout))
 		}
 	})

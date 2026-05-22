@@ -11,6 +11,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ProviderOptions configures API key and base URL for a provider.
@@ -110,7 +111,11 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	if err != nil {
 		return FromAnthropicError(err, 0, "")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("anthropic", fmt.Sprintf("Stream: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)

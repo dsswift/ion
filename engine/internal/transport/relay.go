@@ -233,7 +233,9 @@ func (r *RelayTransport) Close() error {
 		r.closed = true
 		close(r.done)
 		if r.conn != nil {
-			r.conn.Close(websocket.StatusNormalClosure, "engine shutdown")
+			if err := r.conn.Close(websocket.StatusNormalClosure, "engine shutdown"); err != nil {
+				utils.Log("RelayTransport", fmt.Sprintf("Close: websocket close failed: %v", err))
+			}
 		}
 	}
 	return nil

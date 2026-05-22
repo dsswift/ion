@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Transport accepts connections and broadcasts data to all of them.
@@ -83,7 +85,9 @@ func (u *UnixTransport) Close() error {
 
 	u.mu.Lock()
 	for c := range u.conns {
-		c.Close()
+		if err := c.Close(); err != nil {
+			utils.Log("transport", fmt.Sprintf("Close: client conn close failed: %v", err))
+		}
 	}
 	u.conns = make(map[net.Conn]struct{})
 	u.mu.Unlock()
@@ -117,7 +121,9 @@ func (u *UnixTransport) removeConn(c net.Conn) {
 	u.mu.Lock()
 	delete(u.conns, c)
 	u.mu.Unlock()
-	c.Close()
+	if err := c.Close(); err != nil {
+		utils.Log("transport", fmt.Sprintf("removeConn: close failed: %v", err))
+	}
 }
 
 // Path returns the socket path.

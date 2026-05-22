@@ -25,9 +25,16 @@ type ProcessRegistry struct {
 }
 
 // NewProcessRegistry creates a registry backed by the given directory.
-func NewProcessRegistry(dir string) *ProcessRegistry {
-	os.MkdirAll(dir, 0o700)
-	return &ProcessRegistry{dir: dir}
+// Returns an error if the directory cannot be created — callers must
+// surface this rather than letting every later Register call silently
+// fail.
+func NewProcessRegistry(dir string) (*ProcessRegistry, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		utils.Log("procregistry", fmt.Sprintf("NewProcessRegistry: mkdir %s failed: %v", dir, err))
+		return nil, fmt.Errorf("procregistry: mkdir %s: %w", dir, err)
+	}
+	utils.Log("procregistry", fmt.Sprintf("NewProcessRegistry: ready dir=%s", dir))
+	return &ProcessRegistry{dir: dir}, nil
 }
 
 // Register records a process.
@@ -49,7 +56,9 @@ func (r *ProcessRegistry) Register(name string, pid int, task string) error {
 // Deregister removes a process registration.
 func (r *ProcessRegistry) Deregister(name string) {
 	path := filepath.Join(r.dir, name+".pid")
-	os.Remove(path)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		utils.Log("procregistry", fmt.Sprintf("Deregister %s: remove %s failed: %v", name, path, err))
+	}
 }
 
 // List returns all registered processes.
@@ -110,12 +119,16 @@ func (r *ProcessRegistry) Terminate(name string) error {
 		return err
 	}
 	// SIGTERM
-	proc.Signal(syscall.SIGTERM)
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		utils.Log("procregistry", fmt.Sprintf("Terminate %s: SIGTERM to pid %d failed: %v", name, info.PID, err))
+	}
 	// Wait up to 5s, then SIGKILL
 	go func() {
 		time.Sleep(5 * time.Second)
 		if isProcessAlive(info.PID) {
-			proc.Signal(syscall.SIGKILL)
+			if err := proc.Signal(syscall.SIGKILL); err != nil {
+				utils.Log("procregistry", fmt.Sprintf("Terminate %s: SIGKILL to pid %d failed: %v", name, info.PID, err))
+			}
 			utils.Log("procregistry", fmt.Sprintf("killed %s (pid %d) after SIGTERM timeout", name, info.PID))
 		}
 		r.Deregister(name)
@@ -143,7 +156,11 @@ func (r *ProcessRegistry) CleanStale() int {
 			continue
 		}
 		if !isProcessAlive(info.PID) {
-			os.Remove(filepath.Join(r.dir, entry.Name()))
+			pidPath := filepath.Join(r.dir, entry.Name())
+			if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
+				utils.Log("procregistry", fmt.Sprintf("CleanStale: remove %s failed: %v", pidPath, err))
+				continue
+			}
 			cleaned++
 		}
 	}

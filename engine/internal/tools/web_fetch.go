@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Blocked IP ranges for SSRF protection: RFC1918, link-local, loopback.
@@ -164,7 +165,11 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 		}
 		return &types.ToolResult{Content: fmt.Sprintf("Fetch error: %s", err), IsError: true}, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("web_fetch", fmt.Sprintf("response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &types.ToolResult{

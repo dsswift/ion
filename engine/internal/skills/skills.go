@@ -88,7 +88,7 @@ func LoadSkill(path string) (*Skill, error) {
 	var content string
 
 	if strings.HasPrefix(strings.TrimSpace(text), "---") {
-		lines := strings.SplitN(text, "\n", -1)
+		lines := strings.Split(text, "\n")
 		inFrontmatter := false
 		fmEnd := 0
 

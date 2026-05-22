@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Lock represents an acquired advisory file lock.
@@ -34,8 +36,11 @@ func Acquire(path string) (*Lock, error) {
 				return nil, fmt.Errorf("filelock: locked by PID %d", lockPid)
 			}
 		}
-		// Stale lock, remove it
-		os.Remove(lockPath)
+		// Stale lock, remove it. Best-effort; if the remove fails the
+		// O_EXCL open below will catch the conflict.
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+			utils.Log("filelock", fmt.Sprintf("Acquire %s: stale lock remove failed: %v", lockPath, err))
+		}
 	}
 
 	// Write our PID with O_CREATE|O_EXCL for atomicity
@@ -47,8 +52,12 @@ func Acquire(path string) (*Lock, error) {
 		}
 		return nil, fmt.Errorf("filelock: create: %w", err)
 	}
-	fmt.Fprintf(f, "%d", pid)
-	f.Close()
+	if _, err := fmt.Fprintf(f, "%d", pid); err != nil {
+		utils.Log("filelock", fmt.Sprintf("Acquire %s: write pid %d failed: %v", lockPath, pid, err))
+	}
+	if err := f.Close(); err != nil {
+		utils.Log("filelock", fmt.Sprintf("Acquire %s: close failed: %v", lockPath, err))
+	}
 
 	return &Lock{
 		Path:     filepath.Clean(path),
@@ -83,7 +92,11 @@ func WithLock(path string, fn func() error) error {
 	if err != nil {
 		return err
 	}
-	defer lock.Release()
+	defer func() {
+		if err := lock.Release(); err != nil {
+			utils.Log("filelock", fmt.Sprintf("WithLock %s: release failed: %v", path, err))
+		}
+	}()
 	return fn()
 }
 
