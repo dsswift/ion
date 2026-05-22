@@ -55,8 +55,8 @@ func exportMarkdown(conv *conversation.Conversation, redact bool) string {
 	sb.WriteString("# Session: " + conv.ID + "\n\n")
 	sb.WriteString("- **Model**: " + conv.Model + "\n")
 	sb.WriteString("- **Created**: " + time.UnixMilli(conv.CreatedAt).Format(time.RFC3339) + "\n")
-	sb.WriteString(fmt.Sprintf("- **Cost**: $%.4f\n", conv.TotalCost))
-	sb.WriteString(fmt.Sprintf("- **Tokens**: %d in / %d out\n", conv.TotalInputTokens, conv.TotalOutputTokens))
+	fmt.Fprintf(&sb, "- **Cost**: $%.4f\n", conv.TotalCost)
+	fmt.Fprintf(&sb, "- **Tokens**: %d in / %d out\n", conv.TotalInputTokens, conv.TotalOutputTokens)
 	sb.WriteString("\n---\n\n")
 
 	for _, msg := range conv.Messages {
@@ -101,8 +101,8 @@ pre { white-space: pre-wrap; word-break: break-word; }
 	sb.WriteString("<div class=\"meta\">\n")
 	sb.WriteString("<p>Model: " + html.EscapeString(conv.Model) + "</p>\n")
 	sb.WriteString("<p>Created: " + time.UnixMilli(conv.CreatedAt).Format(time.RFC3339) + "</p>\n")
-	sb.WriteString(fmt.Sprintf("<p>Cost: $%.4f | Tokens: %d in / %d out</p>\n",
-		conv.TotalCost, conv.TotalInputTokens, conv.TotalOutputTokens))
+	fmt.Fprintf(&sb, "<p>Cost: $%.4f | Tokens: %d in / %d out</p>\n",
+		conv.TotalCost, conv.TotalInputTokens, conv.TotalOutputTokens)
 	sb.WriteString("</div>\n")
 
 	for _, msg := range conv.Messages {

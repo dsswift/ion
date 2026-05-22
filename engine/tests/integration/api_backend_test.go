@@ -426,6 +426,12 @@ func TestApiBackendPlanMode(t *testing.T) {
 	allowedSet := map[string]bool{
 		"Read": true, "Grep": true, "Glob": true,
 		"Write": true, "Edit": true, "ExitPlanMode": true,
+		// AskUserQuestion is injected unconditionally by runloop_setup.go
+		// (see engine/internal/backend/runloop_setup.go:144) so the LLM can
+		// pause to ask a clarifying question from any run, including plan
+		// mode. Mirrors the unit-test expectation in
+		// engine/internal/backend/runloop_setup_test.go.
+		"AskUserQuestion": true,
 	}
 	for _, tool := range firstCall.Tools {
 		if !allowedSet[tool.Name] {
@@ -478,10 +484,12 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 	}
 
 	// Default set: Read, Grep, Glob, Agent, WebFetch, WebSearch + Write, Edit + ExitPlanMode
+	// AskUserQuestion is also injected universally (see runloop_setup.go:144).
 	expectedTools := map[string]bool{
 		"Read": true, "Grep": true, "Glob": true,
 		"Agent": true, "WebFetch": true, "WebSearch": true,
 		"Write": true, "Edit": true, "ExitPlanMode": true,
+		"AskUserQuestion": true,
 	}
 	for _, tool := range calls[0].Tools {
 		if !expectedTools[tool.Name] {

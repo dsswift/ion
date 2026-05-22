@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 type googleProvider struct {
@@ -117,7 +118,11 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	if err != nil {
 		return NewProviderError(ErrNetwork, err.Error(), 0, true)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("google", fmt.Sprintf("Stream: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -264,7 +269,7 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 func (p *googleProvider) buildRequestBody(opts types.LlmStreamOptions) map[string]any {
 	maxTokens := opts.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 8192
+		maxTokens = 16384
 	}
 
 	body := map[string]any{

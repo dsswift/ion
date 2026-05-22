@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // httpTransport implements mcpTransport for StreamableHTTP MCP servers.
@@ -55,7 +57,11 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("http send: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("mcp-http", fmt.Sprintf("send: response body close failed: %v", err))
+		}
+	}()
 
 	// Capture session ID from response.
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {

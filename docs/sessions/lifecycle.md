@@ -76,9 +76,9 @@ After a run completes (`handleRunExit`), the manager dequeues the next prompt an
 When a backend run exits:
 
 1. Clear the session's active request ID.
-2. Clear agent state (all sub-agents are done).
+2. Mark all sub-agents terminal (done/error/cancelled) in the registry — see [Agent State Contract](../architecture/agent-state.md).
 3. Store the conversation/session ID returned by the backend.
-4. Emit `engine_agent_state` with an empty list (clear agent panel).
+4. Emit `engine_agent_state` with the final snapshot. When no agents remain live, the snapshot is `agents: []`. Consumers replace their local view with whatever the engine reports.
 5. Emit `engine_status` with state `idle`.
 6. If the exit code is non-zero or a signal was received, emit `engine_dead`.
 7. Dequeue and dispatch the next pending prompt if one exists.

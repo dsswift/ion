@@ -34,7 +34,9 @@ Extensions can dispatch agents programmatically via `DispatchAgent` on the exten
 
 ## Agent state tracking
 
-The engine tracks agent lifecycle through `engine_agent_state` events. Each agent gets a name, status (`running`, `done`, `error`), and metadata including elapsed time and a summary of its output. Clients use these events to render agent panels.
+The engine tracks agent lifecycle through `engine_agent_state` events. Each agent gets a name, status (`running`, `done`, `error`, `cancelled`, `idle`), and metadata including elapsed time and a summary of its output. Clients use these events to render agent panels.
+
+Each event is a **complete snapshot** — consumers replace their local view rather than merging incremental updates. See [Agent State Contract](../architecture/agent-state.md) for the normative semantics.
 
 ## Key files
 

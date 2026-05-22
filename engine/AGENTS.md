@@ -2,6 +2,8 @@
 
 Single static binary. Communicates over `~/.ion/engine.sock` (NDJSON).
 
+> **Read [`../docs/engine-grounding.md`](../docs/engine-grounding.md) before touching engine code.** It is the canonical framing: engine is a headless library, contracts are additive only, event semantics count, modifying the engine is a restricted operation. This file covers mechanics; the grounding doc covers principles. Both apply.
+
 ## Commands
 
 ```bash
@@ -94,6 +96,13 @@ Client --[Unix socket, NDJSON]--> Server
 ## Core principle
 
 Engine executes, harness decides. Engine never blocks for user input, never persists memory, never decides policy. Engine is UI-agnostic — emits typed data events; clients interpret.
+
+## Event contracts
+
+The engine's typed events are part of the public contract. Two invariants matter most often:
+
+- **`engine_agent_state` is a complete snapshot.** Every emission contains every agent the engine considers live at that instant. Consumers replace their local view with the payload — they do not merge incremental updates and they do not invent retention rules. Every code path that ends an agent's run must transition the registry to a terminal status (done/error/cancelled) and emit a follow-up snapshot. Tests in `internal/session/manager_agent_lifecycle_test.go` enforce this per-path. See [docs/architecture/agent-state.md](../docs/architecture/agent-state.md).
+- **No UI assumptions.** Events are typed data. Do not encode renderer-flavored language ("clear the panel", "show as cancelled") in engine code or engine docs. If a consumer wants to derive UI state from an event, that is the consumer's problem.
 
 ## Contract manifest (cross-language sync)
 

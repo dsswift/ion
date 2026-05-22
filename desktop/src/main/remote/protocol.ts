@@ -31,6 +31,8 @@ export interface RemoteTabState {
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
   groupId?: string | null
+  /** When true, auto-group movement is suppressed for this tab. */
+  groupPinned?: boolean
   /** Unix ms timestamp of the last status-changing activity (message, status change). */
   lastActivityAt?: number
 }
@@ -101,6 +103,7 @@ export type RemoteCommand =
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'move_tab_to_group'; tabId: string; groupId: string }
+  | { type: 'toggle_tab_group_pin'; tabId: string }
   | { type: 'reorder_tab_groups'; orderedIds: string[] }
   | { type: 'set_tab_model'; tabId: string; model: string }
   | { type: 'load_attachments'; tabId: string }
@@ -127,11 +130,12 @@ export type RemoteCommand =
   | { type: 'upload_attachment'; dataUrl: string; name: string; correlationId?: string }
   | { type: 'voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
   | { type: 'diagnostic_logs_response'; logs: string; deviceId: string; deviceName: string }
+  | { type: 'set_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
 
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }> }
+  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number }
   | { type: 'tab_created'; tab: RemoteTabState }
   | { type: 'tab_closed'; tabId: string }
   | { type: 'tab_status'; tabId: string; status: TabStatus }
@@ -175,6 +179,7 @@ export type RemoteEvent =
   | { type: 'heartbeat'; seq: number; ts: number; buffered: number }
   | { type: 'unpair' }
   | { type: 'relay_config'; relayUrl: string; relayApiKey: string }
+  | { type: 'remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
   | { type: 'git_changes_response'; directory: string; files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }>; branch: string; isGitRepo: boolean; ahead: number; behind: number; stagedCount?: number; unstagedCount?: number }
   | { type: 'git_graph_response'; directory: string; commits: Array<{ hash: string; fullHash: string; parents: string[]; authorName: string; authorDate: string; subject: string; refs: Array<{ name: string; type: string; isCurrent: boolean }> }>; isGitRepo: boolean; totalCount: number; graphLayout?: Array<{ lane: number; color: string; hasIncoming: boolean; connections: Array<{ fromLane: number; toLane: number; type: 'straight' | 'merge' | 'fork'; color: string }>; passThroughLanes: Array<{ lane: number; color: string }> }> }
   | { type: 'git_diff_response'; diff: string; fileName: string }
@@ -245,6 +250,16 @@ export interface PairedDevice {
   sharedSecret: string
   /** APNs device token for push notifications */
   apnsToken?: string
+  /**
+   * Per-desktop display override cached on the iOS side. Not authoritative —
+   * the desktop owns the value via the top-level `remoteDisplay` settings
+   * record. Present here only to mirror the iOS PairedDevice struct.
+   * Identifier from the curated icon set: "desktop", "laptop", "macmini",
+   * "macpro", "display", "server", "terminal", "briefcase", "house",
+   * "gamepad". Unknown values render as the default desktop glyph.
+   */
+  customName?: string | null
+  customIcon?: string | null
 }
 
 // ─── Transport state ───

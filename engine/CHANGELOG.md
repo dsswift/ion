@@ -13,6 +13,27 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.23.1](https://github.com/dsswift/ion/compare/engine-v1.23.0...engine-v1.23.1) (2026-05-22)
+
+### Bug Fixes
+
+* **engine:** handle previously-ignored errors ([02f94ca](https://github.com/dsswift/ion/commit/02f94ca09de7658eba2d2fe943de0671b4aeb206))
+* **engine:** widen flaky host_race_test bound to 15s ([b62b474](https://github.com/dsswift/ion/commit/b62b47435dab7841ffb22fdb396904a2c64b1bf6))
+
+## [1.23.0](https://github.com/dsswift/ion/compare/engine-v1.22.2...engine-v1.23.0) (2026-05-22)
+
+### Features
+
+* **engine:** add ask user question tool ([ee3caa8](https://github.com/dsswift/ion/commit/ee3caa89d5a105ed8dbd2c8521d1c211eb3638e0))
+* **engine:** enhance plan mode with amend and edit guidance ([ffab66b](https://github.com/dsswift/ion/commit/ffab66be5c0ec1dac930be359ecf9ebb93a0b332))
+* **engine:** add plan mode abort capability ([b700e54](https://github.com/dsswift/ion/commit/b700e54582f4832f0d3dbb0058db3616262eb6f1))
+* **engine:** make ask user question available in all modes ([f8688fd](https://github.com/dsswift/ion/commit/f8688fd5f51555bce2331bcefd0b481585562df5))
+* **engine:** guarantee terminal snapshot on every agent termination path ([2ec0466](https://github.com/dsswift/ion/commit/2ec046605c400ddb4f54bdabff6efea1eb92982a))
+
+### Bug Fixes
+
+* **engine:** allow AskUserQuestion in plan mode tests ([659aa63](https://github.com/dsswift/ion/commit/659aa636a13cbd27308957f7b57b8932a32f46f1))
+
 ## [1.22.2](https://github.com/dsswift/ion/compare/engine-v1.22.1...engine-v1.22.2) (2026-05-20)
 
 ## [1.22.1](https://github.com/dsswift/ion/compare/engine-v1.22.0...engine-v1.22.1) (2026-05-19)

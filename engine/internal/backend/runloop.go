@@ -463,10 +463,30 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}
 
 		case "max_tokens":
-			utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, turn))
-			b.injectSystemMessage(run, conv, hooks, opts, "max_token_continue",
-				"Continue from where you left off.",
-				turn, maxTurns)
+			// Detect whether a tool_use block was truncated. When the stream
+			// is cut mid-tool-call the input JSON is unparseable and gets
+			// coerced to {} in processStream. Tell the model what happened
+			// so it can retry with a smaller payload or split the work,
+			// rather than blindly repeating the same too-large call.
+			truncatedTool := ""
+			for _, block := range assistantBlocks {
+				if block.Type == "tool_use" && len(block.Input) == 0 && block.Name != "" {
+					truncatedTool = block.Name
+					break
+				}
+			}
+
+			if truncatedTool != "" {
+				utils.Warn("ApiBackend", fmt.Sprintf("max_tokens truncated tool_use (tool=%s): runID=%s turn=%d", truncatedTool, run.requestID, turn))
+				b.injectSystemMessage(run, conv, hooks, opts, "max_token_continue",
+					fmt.Sprintf("Your previous response was cut off by the output token limit while generating the input for tool '%s'. The tool call was NOT executed. Break the work into smaller pieces — for example, write the file in multiple parts using Bash with heredocs or sequential Write calls.", truncatedTool),
+					turn, maxTurns)
+			} else {
+				utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, turn))
+				b.injectSystemMessage(run, conv, hooks, opts, "max_token_continue",
+					"Continue from where you left off.",
+					turn, maxTurns)
+			}
 
 		default:
 			// Unknown stop reason; break the loop

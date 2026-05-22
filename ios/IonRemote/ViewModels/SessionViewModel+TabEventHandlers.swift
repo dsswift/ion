@@ -36,6 +36,10 @@ extension SessionViewModel {
             activeTools.removeValue(forKey: key)
         }
         engineConversationLoaded = engineConversationLoaded.filter { $0 != tabId && !$0.hasPrefix("\(tabId):") }
+        // Drafts are local-only state — clean them up when the tab is closed
+        // (don't survive tab close; do survive disconnect / restart).
+        clearTabDraft(tabId)
+        clearEngineDrafts(forTab: tabId)
     }
 
     @MainActor

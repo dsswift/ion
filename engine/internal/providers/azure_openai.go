@@ -34,7 +34,11 @@ func NewAzureOpenAIProvider(opts *AzureOptions) LlmProvider {
 		apiVersion = "2024-02-01"
 	}
 
-	baseURL := fmt.Sprintf("%s/openai/deployments/%s", opts.Endpoint, opts.DeploymentName)
+	// Azure OpenAI requires the api-version query parameter on every
+	// request. The previous code computed apiVersion but never appended
+	// it to baseURL — ineffassign caught the dead store. Embed it now so
+	// requests hit the right endpoint version.
+	baseURL := fmt.Sprintf("%s/openai/deployments/%s?api-version=%s", opts.Endpoint, opts.DeploymentName, apiVersion)
 
 	inner := NewOpenAIProvider(&ProviderOptions{
 		APIKey:  apiKey,

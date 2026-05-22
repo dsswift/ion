@@ -9,6 +9,7 @@ import { handlePairRequest } from './pairing-handler'
 import { revokeDeviceLocally } from './revoke'
 import { startTabSnapshotPolling, stopTabSnapshotPolling } from './snapshot-polling'
 import { getRemoteTabStates } from './snapshot'
+import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -19,6 +20,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   if (state.remoteTransport) {
     stopTabSnapshotPolling()
+    stopGitWatcherBridge()
     state.remoteTransport.stop()
     state.remoteTransport = null
   }
@@ -93,6 +95,10 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const profiles = Array.isArray(peerSettings.engineProfiles) ? peerSettings.engineProfiles : []
         state.remoteTransport?.send({ type: 'engine_profiles', profiles })
       } catch {}
+
+      // Start the git watcher bridge so tab directories get push-driven freshness
+      const directories = new Set(tabs.map(t => t.workingDirectory).filter(Boolean))
+      startGitWatcherBridge(directories)
     }, 300)
   })
 

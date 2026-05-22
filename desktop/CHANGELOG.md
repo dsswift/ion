@@ -10,6 +10,27 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.35.0](https://github.com/dsswift/ion/compare/desktop-v1.34.0...desktop-v1.35.0) (2026-05-22)
+
+### Features
+
+* **desktop:** add ask user question card ([75e1796](https://github.com/dsswift/ion/commit/75e179679c8e61f28330b1d21dc24addc52b3b44))
+* **desktop:** add collapsed count badge to harness messages ([a4a8b50](https://github.com/dsswift/ion/commit/a4a8b5069368391e89a728bb78d059c40351ff28))
+* **desktop:** add conversation search with keyboard shortcuts ([a0fdfec](https://github.com/dsswift/ion/commit/a0fdfec4ca159a2c0c07f72ed7ca5288f0dc2a98))
+* **desktop:** persist and restore draft input in tabs ([9499063](https://github.com/dsswift/ion/commit/94990637582b07fc2a1e2c8535bce9b5d006b734))
+* **desktop:** add remote display customization ([1bb6c35](https://github.com/dsswift/ion/commit/1bb6c359088e1d44fad21e50bda3e3162d8599d2))
+* **desktop:** handle tab list commands in remote ([1e50e41](https://github.com/dsswift/ion/commit/1e50e41698439ca5cfae8bc58b4ce7abb2ad9759))
+* **desktop:** add git watcher bridge with broadcast ([f51643d](https://github.com/dsswift/ion/commit/f51643d3ddbce40f4fb6314a14a9b687ccccf148))
+* **desktop:** add copy session id to conversation menu ([87edcc5](https://github.com/dsswift/ion/commit/87edcc52c995d13d5373e3d01f7bdd3822721da6))
+* **desktop:** add move all tabs confirmation dialog ([5e27f49](https://github.com/dsswift/ion/commit/5e27f492f76aa1c31d8e9658b3e2984ff57ddffa))
+* **desktop:** add tab group pinning functionality ([b617c7b](https://github.com/dsswift/ion/commit/b617c7bac29f286544c26fa5559d60a907d0ff3a))
+
+### Bug Fixes
+
+* **desktop:** replace agent state with engine snapshot, never preserve historical ([5d8db30](https://github.com/dsswift/ion/commit/5d8db305a36f0bdc6b389827f17a68d4c7a82d80))
+* **desktop:** always forward engine_agent_state on resync, including empty ([6868de5](https://github.com/dsswift/ion/commit/6868de5b4f48ad61d550781d5f29a8691b74a697))
+* **desktop:** persist permission denials immediately ([aa9289d](https://github.com/dsswift/ion/commit/aa9289dd9e867178345668085eb72a75258d9cc6))
+
 ## [1.34.0](https://github.com/dsswift/ion/compare/desktop-v1.33.0...desktop-v1.34.0) (2026-05-21)
 
 ### Features

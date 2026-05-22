@@ -164,6 +164,10 @@ export interface IonAPI {
   remoteStopDiscovery(): void
   remoteTestRelay(relayUrl: string, relayApiKey: string): Promise<{ success: boolean; error?: string }>
   remoteSetLanDisabled(disabled: boolean): Promise<void>
+  /** Set the per-desktop display name/icon override. Returns the value now stored. */
+  remoteSetDisplay(customName: string | null, customIcon: string | null): Promise<{ customName: string | null; customIcon: string | null; updatedAt: number }>
+  /** Read the current per-desktop display override (null when unset). */
+  remoteGetDisplay(): Promise<{ customName: string | null; customIcon: string | null; updatedAt: number } | null>
   on(channel: string, callback: (...args: any[]) => void): void
   off(channel: string, callback: (...args: any[]) => void): void
 
@@ -384,6 +388,8 @@ const api: IonAPI = {
   remoteStopDiscovery: () => ipcRenderer.send(IPC.REMOTE_STOP_DISCOVERY),
   remoteTestRelay: (url, key) => ipcRenderer.invoke(IPC.REMOTE_TEST_RELAY, url, key),
   remoteSetLanDisabled: (disabled) => ipcRenderer.invoke(IPC.REMOTE_SET_LAN_DISABLED, disabled),
+  remoteSetDisplay: (customName, customIcon) => ipcRenderer.invoke(IPC.REMOTE_SET_DISPLAY, customName, customIcon),
+  remoteGetDisplay: () => ipcRenderer.invoke('ion:remote-get-display'),
 
   // ─── Auto-update ───
   installUpdate: () => ipcRenderer.send(IPC.INSTALL_UPDATE),

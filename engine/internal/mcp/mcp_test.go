@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +29,10 @@ func (m *mockTransport) Send(msg json.RawMessage) error {
 
 func (m *mockTransport) Receive() (json.RawMessage, error) {
 	if m.recvIdx >= len(m.recvMsgs) {
-		return nil, json.Unmarshal([]byte("{}"), nil) // Force error
+		// Synthesize an error without calling Unmarshal with an invalid
+		// pointer (govet flags that as an InvalidUnmarshalError-prone
+		// pattern even though we're using it intentionally).
+		return nil, errors.New("mockTransport: no more messages")
 	}
 	msg := m.recvMsgs[m.recvIdx]
 	m.recvIdx++

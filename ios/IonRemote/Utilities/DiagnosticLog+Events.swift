@@ -12,7 +12,7 @@ extension DiagnosticLog {
         case .heartbeat:
             return // skip — fires every few seconds
 
-        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _):
+        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _, _, _, _):
             log("EVENT: snapshot tabs=\(tabs.count) dirs=\(dirs.count) groupMode=\(groupMode ?? "nil")")
 
         case .tabCreated(let tab):
@@ -62,6 +62,10 @@ extension DiagnosticLog {
 
         case .relayConfig:
             log("EVENT: relayConfig")
+
+        case .remoteDisplay(let customName, let customIcon, let updatedAt):
+            let ms = Int(updatedAt.timeIntervalSince1970 * 1000)
+            log("EVENT: remoteDisplay name=\(customName == nil ? "cleared" : "set") icon=\(customIcon ?? "cleared") ts=\(ms)")
 
         case .peerDisconnected:
             log("EVENT: peerDisconnected")

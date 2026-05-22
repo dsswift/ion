@@ -261,3 +261,17 @@ input::placeholder {
 .btn-stack:hover .stack-btn-1 { right: 0; }
 .btn-stack:hover .stack-btn-2 { right: 56px; }
 .btn-stack:hover .stack-btn-3 { right: 112px; }
+
+/* ─── Conversation search highlights ─── */
+mark[data-ion-search-match] {
+  background: var(--ion-accent-light);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  /* Reset browser default mark styling */
+  font: inherit;
+}
+mark[data-ion-search-match].ion-search-active {
+  background: var(--ion-accent);
+  color: #fff;
+}

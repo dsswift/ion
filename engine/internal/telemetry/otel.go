@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // OtelConfig configures the OpenTelemetry bridge.
@@ -218,7 +220,9 @@ func (b *OtelBridge) Flush() error {
 	if err != nil {
 		return fmt.Errorf("otel export: %w", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		utils.Log("otel", fmt.Sprintf("export: response body close failed: %v", err))
+	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("otel export returned status %d", resp.StatusCode)
 	}

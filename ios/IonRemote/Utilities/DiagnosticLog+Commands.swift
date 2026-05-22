@@ -104,6 +104,9 @@ extension DiagnosticLog {
         case .moveTabToGroup(let tabId, let gId):
             log("CMD: moveTabToGroup tabId=\(tabId.prefix(8)) group=\(gId.prefix(8))")
 
+        case .toggleTabGroupPin(let tabId):
+            log("CMD: toggleTabGroupPin tabId=\(tabId.prefix(8))")
+
         case .engineSetModel(let tabId, let model, let instId):
             log("CMD: engineSetModel tabId=\(tabId.prefix(8)) model=\(model) inst=\(instId?.prefix(8) ?? "nil")")
 
@@ -181,6 +184,10 @@ extension DiagnosticLog {
 
         case .reorderTabGroups(let orderedIds):
             log("CMD: reorderTabGroups count=\(orderedIds.count)")
+
+        case .setRemoteDisplay(let customName, let customIcon, let updatedAt):
+            let ms = Int(updatedAt.timeIntervalSince1970 * 1000)
+            log("CMD: setRemoteDisplay name=\(customName == nil ? "cleared" : "set") icon=\(customIcon ?? "cleared") ts=\(ms)")
         }
     }
 }

@@ -5,9 +5,11 @@ import SwiftUI
 struct TabRowView: View {
     let tab: RemoteTabState
     var showDirectory: Bool = false
+    var showGitInfo: Bool = false
     var idleSince: Date?
     var isSpeaking: Bool = false
     var gitChanges: GitChangesResponse? = nil
+    var onOpenGit: (() -> Void)? = nil
 
     @State private var pulseOpacity: Double = 1.0
 
@@ -58,11 +60,8 @@ struct TabRowView: View {
                 Text(tab.displayTitle)
                     .font(.headline)
 
-                if showDirectory {
-                    Text(directoryLabel)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                if showDirectory || (showGitInfo && gitChanges?.isGitRepo == true) {
+                    secondaryRow
                 }
 
                 if tab.status == .running || tab.status == .connecting {
@@ -89,33 +88,98 @@ struct TabRowView: View {
 
             Spacer()
 
-            // Git status badge
-            if let git = gitChanges, git.isGitRepo {
-                gitBadge(git)
+            if tab.groupPinned == true {
+                Image(systemName: "pin.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 4)
     }
 
-    // MARK: - Git Badge
+    // MARK: - Secondary Row (directory • branch)
 
     @ViewBuilder
-    private func gitBadge(_ git: GitChangesResponse) -> some View {
-        let changeCount = git.effectiveStagedCount + git.effectiveUnstagedCount
+    private var secondaryRow: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(changeCount > 0 ? Color.orange : Color.green)
-                .frame(width: 6, height: 6)
+            // Directory segment
+            if showDirectory {
+                Image(systemName: "folder")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(directoryLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            // Separator between dir and git segment
+            if showDirectory && showGitInfo, let git = gitChanges, git.isGitRepo {
+                Text("•")
+                    .font(.caption2)
+                    .foregroundStyle(.quaternary)
+            }
+
+            // Git / branch segment — wrapped in a Button for tap-to-open-git
+            if showGitInfo, let git = gitChanges, git.isGitRepo {
+                Button {
+                    onOpenGit?()
+                } label: {
+                    gitSegment(git)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func gitSegment(_ git: GitChangesResponse) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             if !git.branch.isEmpty {
                 Text(git.branch)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
+
+            if git.ahead > 0 {
+                HStack(spacing: 1) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text("\(git.ahead)")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            }
+
+            if git.behind > 0 {
+                HStack(spacing: 1) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text("\(git.behind)")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            }
+
+            let changeCount = git.effectiveStagedCount + git.effectiveUnstagedCount
             if changeCount > 0 {
-                Text("\(changeCount)")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.orange)
+                HStack(spacing: 1) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 5, height: 5)
+                    Text("\(changeCount)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
+                .fixedSize()
             }
         }
     }

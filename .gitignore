@@ -55,7 +55,11 @@ logs/
 .temp/
 
 # Specs (untracked)
+specs/
 desktop/specs/
+engine/specs
+ios/specs
+relay/specs
 
 # iOS build artifacts
 ios/DerivedData/

@@ -400,6 +400,7 @@ type RunOptions struct {
 	PlanModeTools      []string        `json:"planModeTools,omitempty"`
 	PlanFilePath       string          `json:"planFilePath,omitempty"`
 	PlanModePrompt     string          `json:"planModePrompt,omitempty"`
+	PlanModeReentry    bool            `json:"planModeReentry,omitempty"`
 	CompactThreshold        float64      `json:"compactThreshold,omitempty"`
 	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
 	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`

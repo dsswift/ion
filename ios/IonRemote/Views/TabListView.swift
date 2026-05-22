@@ -33,6 +33,12 @@ struct TabListView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
+        .onAppear {
+            if viewModel.showGitInfoInTabList { viewModel.requestMissingGitChanges() }
+        }
+        .onChange(of: viewModel.showGitInfoInTabList) { _, enabled in
+            if enabled { viewModel.requestMissingGitChanges() }
+        }
         .sheet(isPresented: $showPairingSheet) {
             PairingView()
         }
@@ -224,11 +230,33 @@ struct TabListView: View {
                             switch selectionStyle {
                             case .navigation:
                                 NavigationLink(value: tab.id) {
-                                    TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
+                                    TabRowView(
+                                        tab: tab,
+                                        showDirectory: viewModel.tabGroupMode == "manual",
+                                        showGitInfo: viewModel.showGitInfoInTabList,
+                                        idleSince: viewModel.tabIdleSince[tab.id],
+                                        isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking,
+                                        gitChanges: viewModel.gitChanges[tab.workingDirectory],
+                                        onOpenGit: {
+                                            viewModel.pendingGitPaneTabId = tab.id
+                                            viewModel.pendingNavigationTabId = tab.id
+                                        }
+                                    )
                                 }
                             case .selection:
-                                TabRowView(tab: tab, showDirectory: viewModel.tabGroupMode == "manual", idleSince: viewModel.tabIdleSince[tab.id], isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking, gitChanges: viewModel.gitChanges[tab.workingDirectory])
-                                    .tag(tab.id)
+                                TabRowView(
+                                    tab: tab,
+                                    showDirectory: viewModel.tabGroupMode == "manual",
+                                    showGitInfo: viewModel.showGitInfoInTabList,
+                                    idleSince: viewModel.tabIdleSince[tab.id],
+                                    isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking,
+                                    gitChanges: viewModel.gitChanges[tab.workingDirectory],
+                                    onOpenGit: {
+                                        viewModel.pendingGitPaneTabId = tab.id
+                                        viewModel.pendingNavigationTabId = tab.id
+                                    }
+                                )
+                                .tag(tab.id)
                             }
                         }
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -248,6 +276,14 @@ struct TabListView: View {
                                 Label("Rename", systemImage: "pencil")
                             }
                             if viewModel.tabGroupMode == "manual" {
+                                Button {
+                                    viewModel.toggleTabGroupPin(tabId: tab.id)
+                                } label: {
+                                    Label(
+                                        tab.groupPinned == true ? "Unpin from Group" : "Pin to Group",
+                                        systemImage: tab.groupPinned == true ? "pin.slash" : "pin"
+                                    )
+                                }
                                 let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
                                 if !targets.isEmpty {
                                     Menu {

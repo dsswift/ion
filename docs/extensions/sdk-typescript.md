@@ -155,6 +155,8 @@ ctx.emit({ type: 'engine_working_message', message: 'Processing...' })
 ctx.emit({ type: 'engine_agent_state', agents: [{ name: 'worker', status: 'running' }] })
 ```
 
+> **Note: `engine_agent_state` emissions are interpreted as complete snapshots.** Include every agent you want visible in every emission — consumers do not merge across events. Sticky and always-visible agents that you stop emitting will disappear from client views. To wipe the panel, emit `agents: []`. See the [Agent State Contract](../architecture/agent-state.md) for the full semantics.
+
 **`sendMessage(text: string)`** -- send text as assistant content. The engine queues this as a follow-up prompt.
 
 ```typescript
@@ -298,13 +300,15 @@ Discriminated union of event types the extension can emit. The five named varian
 
 ```typescript
 type EngineEvent =
-  | { type: 'engine_agent_state'; agents: any[] }
+  | { type: 'engine_agent_state'; agents: any[] }     // complete snapshot — see note below
   | { type: 'engine_status'; fields: any }
   | { type: 'engine_working_message'; message: string }
   | { type: 'engine_notify'; message: string; level: string }
   | { type: 'engine_harness_message'; message: string; source?: string }
   | { type: string; [key: string]: unknown }   // open variant — custom harness events
 ```
+
+> **`engine_agent_state` is always a complete snapshot.** Every emission replaces the consumer's local view. Include every agent you want visible; consumers do not merge across events. See the [Agent State Contract](../architecture/agent-state.md).
 
 **Custom event types.** Pick a `type` value that won't collide with current or future engine-emitted events. Convention: prefix with the extension or harness name (`jarvis_inbox_update`, `ion-meta_persona_loaded`). The engine validates only `engine_agent_state` payloads; every other type is forwarded to all connected socket clients unchanged. The desktop bridge passes events through without type-based dispatch, so any custom payload your renderers know how to handle is fair game.
 

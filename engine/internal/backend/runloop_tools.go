@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -222,6 +223,10 @@ func (b *ApiBackend) executeTools(
 			}
 
 			// Plan mode write gate: only the plan file is writable.
+			// When the target IS the plan file but the tool is Write (full
+			// replacement), check if the file already has content and record
+			// that fact so we can append a warning after execution.
+			var planWriteOverwrite bool
 			if run.planMode && (block.Name == "Write" || block.Name == "Edit") {
 				if targetPath, ok := block.Input["file_path"].(string); ok {
 					if targetPath != run.planFilePath {
@@ -238,6 +243,12 @@ func (b *ApiBackend) executeTools(
 							IsError: true,
 						}})
 						return nil
+					}
+					// Track whether Write is overwriting existing plan content.
+					if block.Name == "Write" {
+						if info, err := os.Stat(run.planFilePath); err == nil && info.Size() > 50 {
+							planWriteOverwrite = true
+						}
 					}
 				}
 			}
@@ -265,6 +276,33 @@ func (b *ApiBackend) executeTools(
 				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 					ToolID:  block.ID,
 					Content: "Plan mode exited.",
+					IsError: false,
+				}})
+				return nil
+			}
+
+			// Intercept AskUserQuestion sentinel — available in all runs, not
+			// just plan mode. Record a PermissionDenial so the desktop surfaces
+			// the question, then terminate the run. The user's answer arrives
+			// as the next prompt in the same session.
+			if block.Name == tools.AskUserQuestionName {
+				utils.Info("ApiBackend", fmt.Sprintf("run=%s ask_user question=%v", run.requestID, block.Input["question"]))
+				run.mu.Lock()
+				run.exitPlanMode = true
+				run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
+					ToolName:  block.Name,
+					ToolUseID: block.ID,
+					ToolInput: block.Input,
+				})
+				run.mu.Unlock()
+				results[i] = conversation.ToolResultEntry{
+					ToolUseID: block.ID,
+					Content:   "Question sent to user. Awaiting response.",
+					IsError:   false,
+				}
+				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
+					ToolID:  block.ID,
+					Content: "Question sent to user. Awaiting response.",
 					IsError: false,
 				}})
 				return nil
@@ -389,6 +427,16 @@ func (b *ApiBackend) executeTools(
 					IsError:   toolResult.IsError,
 					Images:    toolResult.Images,
 				}
+			}
+
+			// Append a warning when Write replaced existing plan content.
+			// This nudges the LLM to use Edit for future modifications.
+			if planWriteOverwrite && !results[i].IsError {
+				results[i].Content += "\n\nWARNING: You used Write to replace the entire plan file. " +
+					"Previous plan content was overwritten. If you intended to modify specific sections, " +
+					"use the Edit tool next time. If you unintentionally removed existing deliverables, " +
+					"re-read the conversation history to recover them."
+				utils.Info("PlanMode", fmt.Sprintf("run=%s plan_file_overwritten plan_file=%s", run.requestID, run.planFilePath))
 			}
 
 			// Fire file_changed hook for write/edit tools

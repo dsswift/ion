@@ -208,6 +208,8 @@ export const IPC = {
   REMOTE_DEVICE_REVOKED: 'ion:remote-device-revoked',
   REMOTE_GET_MESSAGES: 'ion:remote-get-messages',
   REMOTE_REQUEST_IOS_LOGS: 'ion:remote-request-ios-logs',
+  REMOTE_SET_DISPLAY: 'ion:remote-set-display',
+  REMOTE_DISPLAY_CHANGED: 'ion:remote-display-changed',
 
   // Engine (native extension runtime)
   ENGINE_START: 'ion:engine-start',

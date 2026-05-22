@@ -11,7 +11,7 @@ struct RemoteTabGroup: Codable, Identifiable, Sendable {
 }
 
 enum RemoteEvent: Codable, Sendable {
-    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?)
+    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?)
     case tabCreated(tab: RemoteTabState)
     case tabClosed(tabId: String)
     case tabStatus(tabId: String, status: TabStatus)
@@ -30,6 +30,11 @@ enum RemoteEvent: Codable, Sendable {
     case unpair
     /// Desktop pushed updated relay configuration.
     case relayConfig(relayUrl: String, relayApiKey: String)
+    /// Desktop pushed the per-desktop display override. Sent live to all
+    /// connected paired phones when any phone (or the desktop UI) writes
+    /// a new value; also delivered in the `snapshot` event on reconnect.
+    /// LWW: clients apply this only if `updatedAt > local cached value`.
+    case remoteDisplay(customName: String?, customIcon: String?, updatedAt: Date)
     /// Synthesized by TransportManager when the desktop peer disconnects.
     case peerDisconnected
     /// Synthesized by TransportManager during the disconnect grace period
@@ -108,6 +113,7 @@ enum RemoteEvent: Codable, Sendable {
         case queueUpdate = "queue_update"
         case unpair
         case relayConfig = "relay_config"
+        case remoteDisplay = "remote_display"
         case peerDisconnected = "peer_disconnected"
         case transportReconnecting = "transport_reconnecting"
         case heartbeat
@@ -179,6 +185,7 @@ enum RemoteEvent: Codable, Sendable {
         case dataUrl
         case attachments
         case sourceTabId, targetTabId
+        case customName, customIcon, updatedAt, remoteDisplayUpdatedAt
     }
 
     // MARK: - Decoder

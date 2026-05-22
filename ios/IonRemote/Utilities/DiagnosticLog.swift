@@ -128,6 +128,16 @@ final class DiagnosticLog: @unchecked Sendable {
         let size = attrs?[.size] as? Int ?? 0
         guard size > 0 else { return }
 
+        // Append a closing banner so the boundary is visible in the flat
+        // concatenated stream that the desktop writes to ios-diagnostic-logs.txt.
+        let endBanner = "\n\n================ SESSION END ================\n\n"
+        if let data = endBanner.data(using: .utf8),
+           let fh = try? FileHandle(forWritingTo: currentLogURL) {
+            fh.seekToEndOfFile()
+            fh.write(data)
+            try? fh.close()
+        }
+
         let ts = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
         let rotatedName = "session-\(ts).log"
@@ -199,10 +209,11 @@ final class DiagnosticLog: @unchecked Sendable {
     private func readAllSessions() -> String {
         var parts: [String] = []
 
-        // Read rotated sessions (oldest first)
+        // Read rotated sessions (oldest first), each prefixed with a banner.
         for name in allLogFiles() {
             let url = logDirectory.appendingPathComponent(name)
             if let content = try? String(contentsOf: url, encoding: .utf8), !content.isEmpty {
+                parts.append("================ SESSION FILE: \(name) ================\n")
                 parts.append(content)
             }
         }
@@ -211,6 +222,7 @@ final class DiagnosticLog: @unchecked Sendable {
         // Flush any pending writes first
         writeQueue.sync {}
         if let current = try? String(contentsOf: currentLogURL, encoding: .utf8), !current.isEmpty {
+            parts.append("================ SESSION FILE: current.log ================\n")
             parts.append(current)
         }
 

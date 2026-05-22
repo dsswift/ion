@@ -172,7 +172,7 @@ func readPdf(filePath string, input map[string]any, info os.FileInfo) (*types.To
 			if i > 0 {
 				sb.WriteString("\n---\n")
 			}
-			sb.WriteString(fmt.Sprintf("[Page %d image (base64 PNG)]\n%s", i+1, page))
+			fmt.Fprintf(&sb, "[Page %d image (base64 PNG)]\n%s", i+1, page)
 		}
 		return &types.ToolResult{Content: sb.String()}, nil
 	}

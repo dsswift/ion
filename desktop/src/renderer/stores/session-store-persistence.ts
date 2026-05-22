@@ -36,7 +36,9 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
         ...(t.worktree ? { worktree: t.worktree } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),
+        ...(t.groupPinned ? { groupPinned: true } : {}),
         ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
+        ...(t.draftInput ? { draftInput: t.draftInput } : {}),
         ...(t.contextTokens ? { contextTokens: t.contextTokens } : {}),
         ...(t.permissionDenied ? { permissionDenied: t.permissionDenied } : {}),
         ...(t.planFilePath ? { planFilePath: t.planFilePath } : {}),
@@ -70,6 +72,13 @@ function persistTabs(useSessionStore: Store): void {
             }
           }
           if (Object.keys(agentStates).length > 0) result.engineAgentStates = agentStates
+          const { engineDraftInputs: eDrafts } = useSessionStore.getState()
+          const drafts: Record<string, string> = {}
+          for (const inst of hPane.instances) {
+            const d = eDrafts.get(`${t.id}:${inst.id}`)
+            if (d && d.length > 0) drafts[inst.id] = d
+          }
+          if (Object.keys(drafts).length > 0) result.engineDrafts = drafts
           return result
         })() : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),
@@ -173,7 +182,20 @@ function scanForStuckTabs(useSessionStore: Store): void {
 export function setupPersistence(useSessionStore: Store): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
-    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes) {
+    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes || state.engineDraftInputs !== prev.engineDraftInputs) {
+      // Flush immediately when permissionDenied changes on any tab — this
+      // state must survive a crash or force-quit (e.g. the desktop is killed
+      // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
+      // denial is never written to the conversation file).
+      const permissionDeniedChanged = state.tabs !== prev.tabs && state.tabs.some((t, i) => {
+        const p = prev.tabs[i]
+        return p && t.id === p.id && t.permissionDenied !== p.permissionDenied
+      })
+      if (permissionDeniedChanged) {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+        persistTabs(useSessionStore)
+        return
+      }
       if (saveTimer) clearTimeout(saveTimer)
       saveTimer = setTimeout(() => persistTabs(useSessionStore), 100)
     }

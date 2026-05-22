@@ -70,12 +70,15 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       // Auto group movement: move tab based on effective permission mode
       const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId } = usePreferencesStore.getState()
-      if (autoGroupMovement && tabGroupMode === 'manual') {
+      if (autoGroupMovement && tabGroupMode === 'manual' && !tab.groupPinned) {
         if (effectiveMode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
           get().moveTabToGroup(tab.id, planningGroupId)
         } else if (effectiveMode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
           get().moveTabToGroup(tab.id, inProgressGroupId)
         }
+      } else if (autoGroupMovement && tabGroupMode === 'manual' && tab.groupPinned) {
+        const wouldMoveTo = effectiveMode === 'plan' ? planningGroupId : inProgressGroupId
+        console.log(`[auto-move] suppressed: tab=${tab.id.slice(0, 8)} pinned=true currentGroup=${tab.groupId ?? 'none'} wouldMoveTo=${wouldMoveTo ?? 'none'}`)
       }
 
       const isBusy = tab.status === 'running'
@@ -223,12 +226,15 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       // Auto group movement for remote prompts
       const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId: ipGroupId } = usePreferencesStore.getState()
-      if (autoGroupMovement && tabGroupMode === 'manual') {
+      if (autoGroupMovement && tabGroupMode === 'manual' && !tab.groupPinned) {
         if (tab.permissionMode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
           get().moveTabToGroup(tab.id, planningGroupId)
         } else if (tab.permissionMode === 'auto' && ipGroupId && tab.groupId !== ipGroupId) {
           get().moveTabToGroup(tab.id, ipGroupId)
         }
+      } else if (autoGroupMovement && tabGroupMode === 'manual' && tab.groupPinned) {
+        const wouldMoveTo = tab.permissionMode === 'plan' ? planningGroupId : ipGroupId
+        console.log(`[auto-move] suppressed: tab=${tab.id.slice(0, 8)} pinned=true currentGroup=${tab.groupId ?? 'none'} wouldMoveTo=${wouldMoveTo ?? 'none'}`)
       }
 
       const resolvedPath = tab.hasChosenDirectory

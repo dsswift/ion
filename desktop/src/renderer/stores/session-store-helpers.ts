@@ -109,6 +109,7 @@ export function makeLocalTab(): TabState {
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,
+    groupPinned: false,
     contextTokens: null,
     contextPercent: null,
     isCompacting: false,

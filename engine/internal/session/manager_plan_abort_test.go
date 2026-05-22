@@ -443,3 +443,121 @@ func TestIsRunning_FalseForUnknownSession(t *testing.T) {
 		t.Error("expected IsRunning=false for unknown session")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Plan mode reentry tests
+// ---------------------------------------------------------------------------
+
+func TestMarkPlanModeExited_SetsFlag(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("reentry", defaultConfig())
+
+	mgr.MarkPlanModeExited("reentry")
+
+	mgr.mu.RLock()
+	s := mgr.sessions["reentry"]
+	got := s.hasExitedPlanMode
+	mgr.mu.RUnlock()
+
+	if !got {
+		t.Error("expected hasExitedPlanMode=true after MarkPlanModeExited")
+	}
+}
+
+func TestMarkPlanModeExited_UnknownSessionNoPanic(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	// Should not panic
+	mgr.MarkPlanModeExited("ghost")
+}
+
+func TestSetPlanMode_PreservesPlanFilePathAfterExit(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("preserve", defaultConfig())
+
+	// Enable plan mode and send a prompt to generate a plan file path
+	mgr.SetPlanMode("preserve", true, []string{"Read"}, "test")
+	_ = mgr.SendPrompt("preserve", "plan it", nil)
+
+	// Capture the plan file path
+	mgr.mu.RLock()
+	s := mgr.sessions["preserve"]
+	planFile := s.planFilePath
+	mgr.mu.RUnlock()
+
+	if planFile == "" {
+		t.Fatal("expected planFilePath to be set after SendPrompt in plan mode")
+	}
+
+	// Mark as exited (simulates ExitPlanMode firing)
+	mgr.MarkPlanModeExited("preserve")
+
+	// Disable plan mode — planFilePath should be preserved because hasExitedPlanMode is true
+	mgr.SetPlanMode("preserve", false, nil, "test")
+
+	mgr.mu.RLock()
+	s = mgr.sessions["preserve"]
+	afterDisable := s.planFilePath
+	mgr.mu.RUnlock()
+
+	if afterDisable != planFile {
+		t.Errorf("expected planFilePath to be preserved after disable with hasExitedPlanMode, got %q (was %q)", afterDisable, planFile)
+	}
+}
+
+func TestSetPlanMode_ClearsPlanFilePathWithoutExit(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("clear", defaultConfig())
+
+	// Enable plan mode and send a prompt to generate a plan file path
+	mgr.SetPlanMode("clear", true, []string{"Read"}, "test")
+	_ = mgr.SendPrompt("clear", "plan it", nil)
+
+	// Disable plan mode WITHOUT marking as exited — planFilePath should clear
+	mgr.SetPlanMode("clear", false, nil, "test")
+
+	mgr.mu.RLock()
+	s := mgr.sessions["clear"]
+	after := s.planFilePath
+	mgr.mu.RUnlock()
+
+	if after != "" {
+		t.Errorf("expected planFilePath to be cleared when hasExitedPlanMode is false, got %q", after)
+	}
+}
+
+func TestPlanModeReentry_SetOnRunOptions(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("reentry-opts", defaultConfig())
+
+	// Enable plan mode and send first prompt to generate plan file path
+	mgr.SetPlanMode("reentry-opts", true, []string{"Read"}, "test")
+	_ = mgr.SendPrompt("reentry-opts", "plan it", nil)
+
+	// Mark as exited and disable plan mode
+	mgr.MarkPlanModeExited("reentry-opts")
+	mgr.SetPlanMode("reentry-opts", false, nil, "test")
+
+	// Simulate run exit so requestID is cleared
+	keys := mb.startedKeys()
+	code := 0
+	mb.emitExit(keys[0], &code, nil, "sess-abc")
+
+	// Re-enable plan mode — should be detected as reentry
+	mgr.SetPlanMode("reentry-opts", true, []string{"Read"}, "test")
+	_ = mgr.SendPrompt("reentry-opts", "add a deliverable", nil)
+
+	allKeys := mb.startedKeys()
+	if len(allKeys) < 2 {
+		t.Fatal("expected 2 started runs")
+	}
+	opts, _ := mb.getStarted(allKeys[1])
+	if !opts.PlanModeReentry {
+		t.Error("expected PlanModeReentry=true on second plan mode run")
+	}
+}

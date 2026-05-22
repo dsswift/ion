@@ -119,7 +119,10 @@ export function useEngineEvents() {
       if (autoGroupMovement && tabGroupMode === 'manual') {
         const tab = useSessionStore.getState().tabs.find((t) => t.id === data.tabId)
         if (tab) {
-          if (data.mode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
+          if (tab.groupPinned) {
+            const wouldMoveTo = data.mode === 'plan' ? planningGroupId : inProgressGroupId
+            console.log(`[auto-move] suppressed: tab=${data.tabId.slice(0, 8)} pinned=true currentGroup=${tab.groupId ?? 'none'} wouldMoveTo=${wouldMoveTo ?? 'none'}`)
+          } else if (data.mode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
             useSessionStore.getState().moveTabToGroup(data.tabId, planningGroupId)
           } else if (data.mode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
             useSessionStore.getState().moveTabToGroup(data.tabId, inProgressGroupId)

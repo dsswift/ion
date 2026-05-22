@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Event name constants.
@@ -172,7 +173,11 @@ func flushToFile(events []Event, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			utils.Log("telemetry", fmt.Sprintf("appendToFile: close %s failed: %v", path, err))
+		}
+	}()
 
 	enc := json.NewEncoder(f)
 	for _, e := range events {
@@ -213,7 +218,9 @@ func flushToHTTP(events []Event, endpoint string, headers map[string]string) err
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		utils.Log("telemetry", fmt.Sprintf("HTTP POST: response body close failed: %v", err))
+	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("telemetry HTTP POST returned status %d", resp.StatusCode)
 	}

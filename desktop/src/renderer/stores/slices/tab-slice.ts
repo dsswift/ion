@@ -399,6 +399,20 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       })
     },
 
+    toggleTabGroupPin: (tabId) => {
+      set((s) => {
+        const tab = s.tabs.find((t) => t.id === tabId)
+        if (!tab) return s
+        const newPinned = !tab.groupPinned
+        console.log(`[tab-pin] tab=${tabId.slice(0, 8)} groupPinned: ${tab.groupPinned} → ${newPinned} currentGroup=${tab.groupId ?? 'none'}`)
+        return {
+          tabs: s.tabs.map((t) =>
+            t.id === tabId ? { ...t, groupPinned: newPinned } : t
+          ),
+        }
+      })
+    },
+
     setWorktreeUncommitted: (tabId, hasChanges) => {
       const map = new Map(get().worktreeUncommittedMap)
       map.set(tabId, hasChanges)

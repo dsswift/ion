@@ -112,6 +112,12 @@ export interface TabState {
   pendingWorktreeSetup: boolean
   /** Tab group assignment (null = ungrouped / auto-computed) */
   groupId: string | null
+  /**
+   * When true, suppresses autoGroupMovement for this tab.
+   * Manual moves preserve the pin — the new group becomes the sticky anchor.
+   * Toggle via right-click → "Pin to group" / "Unpin from group".
+   */
+  groupPinned: boolean
   /** Latest input_tokens from API response (total context sent to model) */
   contextTokens: number | null
   /** Engine-computed context usage percentage (accounts for model-specific context window) */

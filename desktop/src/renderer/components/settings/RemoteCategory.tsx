@@ -5,6 +5,7 @@ import { SettingToggle } from './SettingToggle'
 import { SettingHeading } from './SettingHeading'
 import { RemoteCategoryDevices } from './RemoteCategoryDevices'
 import { RemoteCategoryRelay, type DiscoveredRelay } from './RemoteCategoryRelay'
+import { RemoteDisplayPanel } from './RemoteDisplayPanel'
 import type { RemotePairedDevice, RemoteTransportState } from '../../../shared/types'
 
 export function RemoteCategory() {
@@ -139,6 +140,9 @@ export function RemoteCategory() {
               {statusLabel(transportState)}
             </span>
           </div>
+
+          {/* ── This Desktop (display override broadcast to all paired phones) ── */}
+          <RemoteDisplayPanel />
 
           {/* ── Paired Devices (moved above relay) ── */}
           <SettingHeading>Paired Devices</SettingHeading>

@@ -16,6 +16,7 @@ interface CloseConfirmTab {
  * Cmd+H/L prev/next tab · Cmd+J/K collapse/expand · Cmd+Y tall toggle
  * Cmd+, settings · Cmd+R recent dirs · Cmd+N scratch file
  * Cmd+= zoom in · Cmd+- zoom out · Cmd+0 reset zoom
+ * Cmd+F find in conversation · Cmd+G next match · Cmd+Shift+G prev match
  * Shift+Tab toggle plan/auto · Ctrl+` toggle terminal · Ctrl+Shift+` add shell
  *
  * The Cmd+W flow asks the host App to render a confirmation dialog by
@@ -169,6 +170,18 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
         const s = useSessionStore.getState()
         if (s.settingsOpen) s.closeSettings()
         else s.openSettings()
+      }
+      if (e.metaKey && !e.shiftKey && e.key === 'f') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('ion:open-conversation-search'))
+      }
+      if (e.metaKey && !e.shiftKey && e.key === 'g') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('ion:search-next'))
+      }
+      if (e.metaKey && e.shiftKey && e.key === 'g') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('ion:search-prev'))
       }
     }
     document.addEventListener('keydown', handler)

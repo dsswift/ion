@@ -10,6 +10,12 @@ extension SessionViewModel {
     @MainActor
     func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil) {
         DiagnosticLog.log("SNAP: received tabs=\(snapshotTabs.count) dirs=\(recentDirs.count) groupMode=\(groupMode ?? "nil") models=\(availableModels?.count ?? 0)")
+        // Log any tabs that arrive with a non-empty permission queue so we can
+        // confirm the blue dot has the data it needs at relaunch.
+        for t in snapshotTabs where !t.permissionQueue.isEmpty {
+            let tools = t.permissionQueue.map { "\($0.toolName)(id=\($0.questionId.prefix(12)))" }.joined(separator: ", ")
+            DiagnosticLog.log("SNAP: tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=[\(tools)]")
+        }
         if connectionState != .connected {
             DiagnosticLog.log("SNAP: connected (was \(connectionState))")
             connectionState = .connected
@@ -112,6 +118,22 @@ extension SessionViewModel {
         // Clean up idle-since entries for tabs no longer present
         for tabId in tabIdleSince.keys where !mergedIds.contains(tabId) {
             tabIdleSince.removeValue(forKey: tabId)
+        }
+        // Clean up drafts for tabs no longer present in the snapshot
+        // (tab was closed remotely; drafts are scoped to live tabs).
+        for tabId in draftInputByTab.keys where !mergedIds.contains(tabId) {
+            clearTabDraft(tabId)
+            clearEngineDrafts(forTab: tabId)
+        }
+        // Also catch engine-only draft keys whose tabId is no longer present
+        // (in case the tab had no plain `draftInput` but did have engine drafts).
+        let orphanEngineTabIds = Set(engineDraftInputByKey.keys.compactMap { key -> String? in
+            guard let sep = key.firstIndex(of: ":") else { return nil }
+            let tid = String(key[..<sep])
+            return mergedIds.contains(tid) ? nil : tid
+        })
+        for tabId in orphanEngineTabIds {
+            clearEngineDrafts(forTab: tabId)
         }
         // Populate terminal state from snapshot tab data
         for tab in merged {

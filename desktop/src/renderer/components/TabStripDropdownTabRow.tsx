@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { X, PencilSimple } from '@phosphor-icons/react'
+import { X, PencilSimple, PushPin } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import type { TabState } from '../../shared/types'
 import { PILL_ICON_MAP, getTabStatusColor, getWaitingState } from './TabStripShared'
@@ -203,6 +203,10 @@ export function DropdownTabRow({
         >
           {displayTitle}
         </span>
+      )}
+
+      {tab.groupPinned && (
+        <PushPin size={10} color={colors.textTertiary} className="flex-shrink-0" style={{ opacity: 0.7 }} />
       )}
 
       <button

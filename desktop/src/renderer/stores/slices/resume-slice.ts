@@ -3,6 +3,12 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 
+/** Parse a JSON toolInput string into a Record, or undefined on failure. */
+function parseToolInput(raw?: string): Record<string, unknown> | undefined {
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
 export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     forkTab: async (sourceTabId) => {
@@ -18,7 +24,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
         const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
         const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
           : null
 
         const sourceDisplay = source.customTitle || source.title
@@ -72,7 +78,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const rewoundMessages = tab.messages.slice(0, idx)
       const lastToolMsg = [...rewoundMessages].reverse().find((m) => m.toolName)
       const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
         : null
 
       window.ion.resetTabSession(tabId)
@@ -114,7 +120,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
         const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
         const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
           : null
 
         const sourceDisplay = source.customTitle || source.title
@@ -187,7 +193,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
         const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
         const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
           : null
 
         const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
@@ -279,7 +285,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
         const lastToolMsg = [...allMessages].reverse().find((m) => m.toolName)
         const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored' }] }
+          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
           : null
 
         const { tabGroupMode, tabGroups } = usePreferencesStore.getState()

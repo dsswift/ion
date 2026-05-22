@@ -10,6 +10,25 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.29.0](https://github.com/dsswift/ion/compare/ios-v1.28.0...ios-v1.29.0) (2026-05-22)
+
+### Features
+
+* **ios:** add ask user question card ([bad41e9](https://github.com/dsswift/ion/commit/bad41e9cc5fa9f8ec14119686f6ee29f4d3c924a))
+* **ios:** add collapsed count badge to harness messages ([b96e9b1](https://github.com/dsswift/ion/commit/b96e9b11bc1b1379aa05150d5e523ffc539b096a))
+* **ios:** persist and restore draft input in tabs ([3e5f026](https://github.com/dsswift/ion/commit/3e5f026fb577af34d343112c755bd40c542c9083))
+* **ios:** show running agent count in engine view ([05c9e10](https://github.com/dsswift/ion/commit/05c9e109645b63674f333a3e96b11d42980b20ea))
+* **ios:** add remote display customization ([6920b86](https://github.com/dsswift/ion/commit/6920b86a1e0d1b1fb5d4c168a0dd52aec335f555))
+* **ios:** enhance tab views with git status display ([1e1178d](https://github.com/dsswift/ion/commit/1e1178de2a709a51c60a25b419cfbe2c004a0f72))
+* **ios:** add voice-to-text input ([da105eb](https://github.com/dsswift/ion/commit/da105ebf43eb5a18826ceafef9ae33d3165c18e9))
+* **ios:** add tab group pinning functionality ([13f81f4](https://github.com/dsswift/ion/commit/13f81f41f444c0e69524532a60b18a7d0cce70fc))
+
+### Bug Fixes
+
+* **ios:** resolve nil instanceId and rekey state on instance move ([3430ffd](https://github.com/dsswift/ion/commit/3430ffd41dfb61f0ebec15608d149b7078a9b8e9))
+* **ios:** reload conversation on reconnect ([5dfc5c7](https://github.com/dsswift/ion/commit/5dfc5c7ff6b5004b924fa4b9fe40db83eccc4862))
+* **ios:** fix speech engine transcript accumulation ([03f5a2f](https://github.com/dsswift/ion/commit/03f5a2ff637036fb52e462d961deb14055807cd7))
+
 ## [1.28.0](https://github.com/dsswift/ion/compare/ios-v1.27.0...ios-v1.28.0) (2026-05-21)
 
 ### Features

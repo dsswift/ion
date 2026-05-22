@@ -192,10 +192,19 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		maxQueueDepth:  32,
 	}
 
-	// Initialize process registry for extension-spawned subprocesses
+	// Initialize process registry for extension-spawned subprocesses.
+	// If the PID-file directory cannot be created, log and continue with a
+	// nil registry — downstream call sites (extcontext.go) already guard
+	// with `if reg := sa.ProcRegistry(); reg != nil`, so extensions that
+	// would have used it degrade to no-op instead of silently failing.
 	home, _ := os.UserHomeDir()
 	pidsDir := filepath.Join(home, ".ion", "agent-pids")
-	s.procRegistry = extension.NewProcessRegistry(pidsDir)
+	if reg, err := extension.NewProcessRegistry(pidsDir); err != nil {
+		utils.Log("session", fmt.Sprintf("StartSession key=%s: process registry unavailable: %v", key, err))
+		s.procRegistry = nil
+	} else {
+		s.procRegistry = reg
+	}
 
 	// Wire permissions from config (default allow-all when no policy configured)
 	if m.config != nil && m.config.Permissions != nil {

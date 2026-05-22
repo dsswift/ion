@@ -99,6 +99,10 @@ The `ApiBackend` implements a standard agent loop:
 
 The loop runs inside a `context.Context` for cancellation. Abort signals from any client cancel the loop immediately.
 
+### Event contracts
+
+The engine emits several typed events that consumers must handle with specific semantics. The most important of these is `engine_agent_state`, which is always a **complete snapshot** — consumers replace their local view with the payload rather than merging incremental updates. See [Agent State Contract](agent-state.md) for the normative spec.
+
 ## Socket protocol
 
 The engine listens on `~/.ion/engine.sock` (Unix) or `127.0.0.1:21017` (Windows/TCP).

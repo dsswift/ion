@@ -43,6 +43,7 @@ type engineSession struct {
 	planModeTools      []string
 	planFilePath       string
 	planModePromptSent bool
+	hasExitedPlanMode  bool // set when ExitPlanMode fires; enables reentry detection
 	promptQueue   []pendingPrompt
 	maxQueueDepth int // default 32
 

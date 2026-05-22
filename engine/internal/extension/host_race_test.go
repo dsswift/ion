@@ -172,8 +172,15 @@ func TestHostLoad_FailsFastWhenSubprocessExitsImmediately(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected Load() to error when subprocess exits before init")
 		}
-		if elapsed > 5*time.Second {
-			t.Fatalf("Load took %v — race fix regressed (was 30s)", elapsed)
+		// Regression bound: without the deadCh fast-path, Load would
+		// block the full defaultRPCTimeout (30s). 15s sits clearly
+		// inside the "fast-path activated" regime while leaving slack
+		// for CI scheduling jitter, Node startup, GC pauses, and the
+		// race detector's overhead — all of which can stretch wall-
+		// clock far beyond the few-millisecond happy path on a shared
+		// runner. A previous 5s bound flaked at 5.21s on ubuntu-latest.
+		if elapsed > 15*time.Second {
+			t.Fatalf("Load took %v — race fix regressed (was 30s, fast-path expected ≪15s)", elapsed)
 		}
 	case <-time.After(35 * time.Second):
 		t.Fatal("Load() did not return within 35s — completely hung")

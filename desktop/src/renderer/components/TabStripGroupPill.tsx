@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { X, CaretDown, PencilSimple } from '@phosphor-icons/react'
+import { X, CaretDown, PencilSimple, PushPin } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -160,6 +160,9 @@ export function GroupPill({
               {displayTitle}
             </span>
           )
+        )}
+        {isActive && selectedTab?.groupPinned && (
+          <PushPin size={10} color={colors.textTertiary} className="flex-shrink-0" style={{ opacity: 0.7 }} />
         )}
         {isActive && (
           <button

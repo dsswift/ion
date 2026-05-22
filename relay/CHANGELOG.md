@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.3.3](https://github.com/dsswift/ion/compare/relay-v1.3.2...relay-v1.3.3) (2026-05-22)
+
+### Bug Fixes
+
+* **relay:** bump x/net to v0.55.0 for idna CVE ([eb85d10](https://github.com/dsswift/ion/commit/eb85d103d909f771f1ba69c60cd513696dcb7c38))
+
 ## [1.3.2](https://github.com/dsswift/ion/compare/relay-v1.3.1...relay-v1.3.2) (2026-05-20)
 
 ## [1.3.1](https://github.com/dsswift/ion/compare/relay-v1.3.0...relay-v1.3.1) (2026-05-15)

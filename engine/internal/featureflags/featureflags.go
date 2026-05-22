@@ -2,6 +2,7 @@ package featureflags
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -161,7 +162,11 @@ func (f *FeatureFlags) fetchHTTP() error {
 		utils.Log("FeatureFlags", "failed to fetch flags: "+err.Error())
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("featureflags", fmt.Sprintf("fetchHTTP: response body close failed: %v", err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -193,7 +198,9 @@ func (f *FeatureFlags) pollLoop(interval time.Duration) {
 		case <-f.done:
 			return
 		case <-ticker.C:
-			f.fetchHTTP()
+			if err := f.fetchHTTP(); err != nil {
+				utils.Log("featureflags", fmt.Sprintf("periodic fetchHTTP failed: %v", err))
+			}
 		}
 	}
 }
@@ -227,8 +234,13 @@ func (f *FeatureFlags) saveCache() {
 		return
 	}
 	dir := filepath.Dir(f.cfg.CachePath)
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(f.cfg.CachePath, data, 0o644)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		utils.Log("featureflags", fmt.Sprintf("saveCache: mkdir %s failed: %v", dir, err))
+		return
+	}
+	if err := os.WriteFile(f.cfg.CachePath, data, 0o644); err != nil {
+		utils.Log("featureflags", fmt.Sprintf("saveCache: write %s failed: %v", f.cfg.CachePath, err))
+	}
 }
 
 func isTruthy(v interface{}) bool {

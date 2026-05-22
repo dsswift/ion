@@ -6,7 +6,7 @@ export type GroupedItem =
   | { kind: 'user'; message: Message }
   | { kind: 'assistant'; message: Message }
   | { kind: 'system'; message: Message }
-  | { kind: 'harness'; message: Message }
+  | { kind: 'harness'; message: Message; bootstrapCollapsedCount?: number }
   | { kind: 'tool-group'; messages: Message[] }
   | { kind: 'compaction'; message: Message }
 
@@ -15,6 +15,8 @@ export type GroupedItem =
 const HIDDEN_MESSAGES = [
   'Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.',
 ]
+
+const BOOTSTRAP_PREFIX = 'Session bootstrapped'
 
 // ─── groupMessages ───
 
@@ -27,8 +29,13 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   const includeUser = opts?.includeUser ?? true
   const hidden = opts?.hiddenMessages ?? HIDDEN_MESSAGES
 
+  console.log(`[ENGINE-BOOTSTRAP] groupMessages entry total=${messages.length}`)
+
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
+  let bootstrapBuf: Message[] = []
+  let totalRunsFlushed = 0
+  let totalSuppressed = 0
 
   const flushTools = () => {
     if (toolBuf.length > 0) {
@@ -37,26 +44,60 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
     }
   }
 
+  const flushBootstrap = () => {
+    if (bootstrapBuf.length === 0) return
+    const suppressed = bootstrapBuf.length - 1
+    const representative = bootstrapBuf[bootstrapBuf.length - 1]
+    const item: GroupedItem = {
+      kind: 'harness',
+      message: representative,
+      bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
+    }
+    console.log(
+      `[ENGINE-BOOTSTRAP] flush run count=${bootstrapBuf.length} kept=${representative.id} suppressed=${suppressed}`
+    )
+    result.push(item)
+    totalRunsFlushed++
+    totalSuppressed += suppressed
+    bootstrapBuf = []
+  }
+
   for (const msg of messages) {
     if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
     if (msg.role === 'tool') {
+      flushBootstrap()
       toolBuf.push(msg)
     } else {
       flushTools()
       if (msg.role === 'user') {
+        flushBootstrap()
         if (includeUser) result.push({ kind: 'user', message: msg })
       } else if (msg.role === 'assistant') {
+        flushBootstrap()
         result.push({ kind: 'assistant', message: msg })
       } else if (msg.role === 'harness') {
-        result.push({ kind: 'harness', message: msg })
+        if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
+          console.log(`[ENGINE-BOOTSTRAP] enqueue id=${msg.id} buf=${bootstrapBuf.length + 1}`)
+          bootstrapBuf.push(msg)
+        } else {
+          flushBootstrap()
+          result.push({ kind: 'harness', message: msg })
+        }
       } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
+        flushBootstrap()
         result.push({ kind: 'compaction', message: msg })
       } else {
+        flushBootstrap()
         result.push({ kind: 'system', message: msg })
       }
     }
   }
   flushTools()
+  flushBootstrap()
+
+  console.log(
+    `[ENGINE-BOOTSTRAP] groupMessages done runs=${totalRunsFlushed} suppressed=${totalSuppressed} output=${result.length}`
+  )
   return result
 }
 

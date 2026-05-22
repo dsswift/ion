@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // OAuthToken holds an OAuth 2.0 access token and optional refresh token.
@@ -108,7 +110,11 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	if err != nil {
 		return nil, fmt.Errorf("refresh token request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			utils.Log("mcp-oauth", fmt.Sprintf("refresh: response body close failed: %v", err))
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("refresh token failed with status %d", resp.StatusCode)
@@ -169,8 +175,13 @@ func (s *OAuthStore) save() {
 		return
 	}
 	dir := filepath.Dir(s.path)
-	os.MkdirAll(dir, 0700)
-	os.WriteFile(s.path, data, 0600)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		utils.Log("mcp-oauth", fmt.Sprintf("save: mkdir %s failed: %v", dir, err))
+		return
+	}
+	if err := os.WriteFile(s.path, data, 0600); err != nil {
+		utils.Log("mcp-oauth", fmt.Sprintf("save: write %s failed: %v", s.path, err))
+	}
 }
 
 func (s *OAuthStore) load() {
