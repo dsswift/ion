@@ -112,10 +112,9 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
     // Log any tabs carrying a non-empty permissionQueue so we can confirm
     // the blue-dot data survives iOS relaunch.
     for (const t of rendererTabs) {
-      if (t.permissionQueue?.length > 0 || t.permissionDenied?.tools?.length > 0) {
-        const qIds = (t.permissionQueue || []).map((p: any) => `${p.toolTitle}(${p.questionId?.slice(-8)})`).join(', ')
-        const dIds = (t.permissionDenied?.tools || []).map((d: any) => `${d.toolName}(${d.toolUseId?.slice(-8)})`).join(', ')
-        log('snapshot', `tab=${t.id?.slice(0, 8)} status=${t.status} permQueue=[${qIds}] permDenied=[${dIds}]`)
+      if (t.permissionQueue?.length > 0) {
+        const qIds = (t.permissionQueue || []).map((p: any) => `${p.toolTitle || p.toolName}(${p.questionId?.slice(-8)})`).join(', ')
+        log('snapshot', `tab=${t.id?.slice(0, 8)} status=${t.status} permQueue=[${qIds}]`)
       }
     }
     const mapped = rendererTabs

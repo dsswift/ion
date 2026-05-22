@@ -182,6 +182,19 @@ export function setupPersistence(useSessionStore: Store): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
     if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes || state.engineDraftInputs !== prev.engineDraftInputs) {
+      // Flush immediately when permissionDenied changes on any tab — this
+      // state must survive a crash or force-quit (e.g. the desktop is killed
+      // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
+      // denial is never written to the conversation file).
+      const permissionDeniedChanged = state.tabs !== prev.tabs && state.tabs.some((t, i) => {
+        const p = prev.tabs[i]
+        return p && t.id === p.id && t.permissionDenied !== p.permissionDenied
+      })
+      if (permissionDeniedChanged) {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+        persistTabs(useSessionStore)
+        return
+      }
       if (saveTimer) clearTimeout(saveTimer)
       saveTimer = setTimeout(() => persistTabs(useSessionStore), 100)
     }
