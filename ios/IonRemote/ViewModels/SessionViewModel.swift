@@ -403,6 +403,7 @@ final class SessionViewModel {
     // MARK: - Voice
 
     let voiceService = VoiceService()
+    let speechService = SpeechRecognitionService()
 
     // MARK: - Toast
 

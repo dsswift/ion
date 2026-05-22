@@ -122,6 +122,12 @@
 		A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001006001AA /* ToastView.swift */; };
 		A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */; };
 		A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005101AA /* VoiceService.swift */; };
+		A1B2C3D4E5F60001005110AA /* SpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005111AA /* SpeechEngine.swift */; };
+		A1B2C3D4E5F60001005112AA /* LegacySpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005113AA /* LegacySpeechEngine.swift */; };
+		A1B2C3D4E5F60001005114AA /* ModernSpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005115AA /* ModernSpeechEngine.swift */; };
+		A1B2C3D4E5F60001005116AA /* SpeechPermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005117AA /* SpeechPermissionManager.swift */; };
+		A1B2C3D4E5F60001005118AA /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */; };
+		A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */; };
 		A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */; };
 		A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */; };
 		A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */; };
@@ -257,6 +263,12 @@
 		A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePickerSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineMessageRow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005101AA /* VoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005111AA /* SpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechEngine.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005113AA /* LegacySpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacySpeechEngine.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005115AA /* ModernSpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernSpeechEngine.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005117AA /* SpeechPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPermissionManager.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOverlay.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImagePreview.swift; sourceTree = "<group>"; };
@@ -415,6 +427,7 @@
 				A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */,
 				A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */,
 				A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */,
+				A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */,
 				A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */,
 				A1B2C3D4E5F60001009102AA /* DeviceCustomizationSheet.swift */,
 					A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */,
@@ -505,6 +518,11 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001005101AA /* VoiceService.swift */,
+				A1B2C3D4E5F60001005111AA /* SpeechEngine.swift */,
+				A1B2C3D4E5F60001005113AA /* LegacySpeechEngine.swift */,
+				A1B2C3D4E5F60001005115AA /* ModernSpeechEngine.swift */,
+				A1B2C3D4E5F60001005117AA /* SpeechPermissionManager.swift */,
+				A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -737,6 +755,12 @@
 				A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */,
 				A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */,
 				A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */,
+				A1B2C3D4E5F60001005110AA /* SpeechEngine.swift in Sources */,
+				A1B2C3D4E5F60001005112AA /* LegacySpeechEngine.swift in Sources */,
+				A1B2C3D4E5F60001005114AA /* ModernSpeechEngine.swift in Sources */,
+				A1B2C3D4E5F60001005116AA /* SpeechPermissionManager.swift in Sources */,
+				A1B2C3D4E5F60001005118AA /* SpeechRecognitionService.swift in Sources */,
+				A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */,
 				A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */,
 				A1B2C3D4E5F60001009000AA /* TabSearchHelper.swift in Sources */,
 			);

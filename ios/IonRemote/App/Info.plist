@@ -36,6 +36,10 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Ion Remote discovers your Mac running Ion on the local network for direct, low-latency communication.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Ion Remote uses the microphone to transcribe your voice into text for sending messages.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Ion Remote uses on-device speech recognition to convert your voice to text. Audio is processed entirely on your device.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>JetBrainsMonoNLNerdFontMono-Regular.ttf</string>
