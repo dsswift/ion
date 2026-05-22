@@ -6,7 +6,6 @@ struct InputBar: View {
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
 
-    @State private var promptText = ""
     @FocusState private var isFocused: Bool
     @State private var keyboardVisible = false
     @State private var slashFilter: String?
@@ -17,6 +16,16 @@ struct InputBar: View {
     @State private var showPhotoPicker = false
     @State private var showDocumentPicker = false
     @State private var photosPickerItems: [PhotosPickerItem] = []
+
+    /// Two-way binding to the per-tab draft text owned by SessionViewModel.
+    /// Writes propagate synchronously to UserDefaults via `setTabDraft`.
+    private var promptTextBinding: Binding<String> {
+        Binding(
+            get: { viewModel.tabDraft(tabId) },
+            set: { viewModel.setTabDraft(tabId, $0) }
+        )
+    }
+    private var promptText: String { viewModel.tabDraft(tabId) }
 
     private let placeholders = [
         "Ask a question…",
@@ -59,7 +68,7 @@ struct InputBar: View {
                     filter: filter,
                     commands: slashCommands,
                     onSelect: { cmd in
-                        promptText = "/\(cmd.name) "
+                        viewModel.setTabDraft(tabId, "/\(cmd.name) ")
                         slashFilter = nil
                     }
                 )
@@ -69,7 +78,7 @@ struct InputBar: View {
             if keyboardVisible {
                 KeyboardUtilityBar(
                     onDismiss: { isFocused = false },
-                    promptText: $promptText
+                    promptText: promptTextBinding
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -94,7 +103,7 @@ struct InputBar: View {
             HStack(spacing: 8) {
                 attachButton
 
-                TextField("", text: $promptText, prompt: Text(placeholders[placeholderIndex]).foregroundStyle(.tertiary), axis: .vertical)
+                TextField("", text: promptTextBinding, prompt: Text(placeholders[placeholderIndex]).foregroundStyle(.tertiary), axis: .vertical)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color(.tertiarySystemBackground))
@@ -160,7 +169,7 @@ struct InputBar: View {
         }
         .onChange(of: viewModel.pendingInputByTab[tabId]) { _, newValue in
             if let text = newValue {
-                promptText = text
+                viewModel.setTabDraft(tabId, text)
                 viewModel.pendingInputByTab.removeValue(forKey: tabId)
             }
         }
@@ -248,7 +257,7 @@ struct InputBar: View {
             attachments: attachments.isEmpty ? nil : attachments
         )
         isFocused = false
-        promptText = ""
+        viewModel.clearTabDraft(tabId)
         pendingAttachments = []
     }
 

@@ -247,6 +247,12 @@ final class SessionViewModel {
     var awaitingLocalTabCreation = false
     /// Text to prefill into the input bar (set by rewind/fork responses).
     var pendingInputByTab: [String: String] = [:]
+    /// Per-tab unsent input text. Persisted to UserDefaults across launches.
+    /// Keyed by `tabId`. Updated on every keystroke via the InputBar binding.
+    var draftInputByTab: [String: String] = [:]
+    /// Per-engine-instance unsent input text. Persisted to UserDefaults.
+    /// Key format: `"\(tabId):\(instanceId)"` (matches desktop's engineDraftInputs).
+    var engineDraftInputByKey: [String: String] = [:]
     /// Default directory for new tabs on iOS (independent of desktop setting).
     var defaultBaseDirectory: String? {
         get { UserDefaults.standard.string(forKey: "defaultBaseDirectory") }
@@ -410,11 +416,99 @@ final class SessionViewModel {
         toastMessages.removeAll { $0.id == id }
     }
 
+    // MARK: - Input Drafts
+
+    /// UserDefaults keys for draft persistence.
+    private static let draftInputByTabKey = "draftInputByTab"
+    private static let engineDraftInputByKeyKey = "engineDraftInputByKey"
+
+    /// Returns the persisted draft for a tab, or "" if none.
+    func tabDraft(_ tabId: String) -> String {
+        draftInputByTab[tabId] ?? ""
+    }
+
+    /// Writes (or clears) a per-tab draft and persists to UserDefaults.
+    /// Empty strings remove the key to avoid bloating storage.
+    func setTabDraft(_ tabId: String, _ text: String) {
+        if text.isEmpty {
+            if draftInputByTab.removeValue(forKey: tabId) != nil {
+                DiagnosticLog.log("DRAFT: tab \(tabId.prefix(8)) cleared")
+                persistDrafts()
+            }
+        } else {
+            let prev = draftInputByTab[tabId]
+            draftInputByTab[tabId] = text
+            if prev != text {
+                DiagnosticLog.log("DRAFT: tab \(tabId.prefix(8)) updated len=\(text.count)")
+                persistDrafts()
+            }
+        }
+    }
+
+    /// Removes a per-tab draft (used when tab is closed on the desktop).
+    func clearTabDraft(_ tabId: String) {
+        if draftInputByTab.removeValue(forKey: tabId) != nil {
+            DiagnosticLog.log("DRAFT: tab \(tabId.prefix(8)) removed (tab closed)")
+            persistDrafts()
+        }
+    }
+
+    /// Returns the persisted draft for a tab+instance, or "" if none.
+    func engineDraft(tabId: String, instanceId: String) -> String {
+        engineDraftInputByKey["\(tabId):\(instanceId)"] ?? ""
+    }
+
+    /// Writes (or clears) a per-engine-instance draft and persists.
+    func setEngineDraft(tabId: String, instanceId: String, _ text: String) {
+        let key = "\(tabId):\(instanceId)"
+        if text.isEmpty {
+            if engineDraftInputByKey.removeValue(forKey: key) != nil {
+                DiagnosticLog.log("DRAFT: engine \(tabId.prefix(8)):\(instanceId.prefix(8)) cleared")
+                persistDrafts()
+            }
+        } else {
+            let prev = engineDraftInputByKey[key]
+            engineDraftInputByKey[key] = text
+            if prev != text {
+                DiagnosticLog.log("DRAFT: engine \(tabId.prefix(8)):\(instanceId.prefix(8)) updated len=\(text.count)")
+                persistDrafts()
+            }
+        }
+    }
+
+    /// Removes all engine-instance drafts for a tab (used when tab is closed).
+    func clearEngineDrafts(forTab tabId: String) {
+        let prefix = "\(tabId):"
+        let removed = engineDraftInputByKey.keys.filter { $0.hasPrefix(prefix) }
+        guard !removed.isEmpty else { return }
+        for k in removed { engineDraftInputByKey.removeValue(forKey: k) }
+        DiagnosticLog.log("DRAFT: engine drafts removed for tab \(tabId.prefix(8)) count=\(removed.count)")
+        persistDrafts()
+    }
+
+    /// Writes both draft dictionaries to UserDefaults.
+    private func persistDrafts() {
+        UserDefaults.standard.set(draftInputByTab, forKey: Self.draftInputByTabKey)
+        UserDefaults.standard.set(engineDraftInputByKey, forKey: Self.engineDraftInputByKeyKey)
+    }
+
+    /// Hydrates draft dictionaries from UserDefaults. Called once in `init`.
+    private func hydrateDrafts() {
+        if let tabMap = UserDefaults.standard.dictionary(forKey: Self.draftInputByTabKey) as? [String: String] {
+            draftInputByTab = tabMap
+        }
+        if let engineMap = UserDefaults.standard.dictionary(forKey: Self.engineDraftInputByKeyKey) as? [String: String] {
+            engineDraftInputByKey = engineMap
+        }
+        DiagnosticLog.log("DRAFT: hydrated tabDrafts=\(draftInputByTab.count) engineDrafts=\(engineDraftInputByKey.count)")
+    }
+
     // MARK: - Init
 
     init() {
         loadPairedDevices()
         // Restore hasConnectedBefore from UserDefaults
         hasConnectedBefore = UserDefaults.standard.bool(forKey: "hasConnectedBefore")
+        hydrateDrafts()
     }
 }

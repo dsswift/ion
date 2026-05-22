@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 struct EngineView: View {
     let tabId: String
     @Environment(SessionViewModel.self) var viewModel
-    @State private var promptText = ""
     @FocusState private var isInputFocused: Bool
     @State private var agentsPanelExpanded = true
     @State private var agentPanelFullscreen = false
@@ -29,6 +28,16 @@ struct EngineView: View {
     private var activeInstanceId: String {
         viewModel.activeEngineInstance[tabId] ?? instances.first?.id ?? ""
     }
+    /// Two-way binding to the per-engine-instance draft owned by SessionViewModel.
+    /// Re-evaluates `activeInstanceId` on every access, so switching instances
+    /// transparently surfaces that instance's draft — no manual save/restore.
+    private var promptTextBinding: Binding<String> {
+        Binding(
+            get: { viewModel.engineDraft(tabId: tabId, instanceId: activeInstanceId) },
+            set: { viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, $0) }
+        )
+    }
+    private var promptText: String { viewModel.engineDraft(tabId: tabId, instanceId: activeInstanceId) }
     private var compoundKey: String {
         viewModel.engineCompoundKey(tabId: tabId)
     }
@@ -437,7 +446,7 @@ struct EngineView: View {
     private var engineInputBar: some View {
         HStack(spacing: 8) {
             attachButton
-            TextField("Send a prompt...", text: $promptText, axis: .vertical)
+            TextField("Send a prompt...", text: promptTextBinding, axis: .vertical)
                 .lineLimit(1...5)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -513,7 +522,7 @@ struct EngineView: View {
             attachments: attachments.isEmpty ? nil : attachments
         )
         isInputFocused = false
-        promptText = ""
+        viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "")
         pendingAttachments = []
     }
 

@@ -119,6 +119,22 @@ extension SessionViewModel {
         for tabId in tabIdleSince.keys where !mergedIds.contains(tabId) {
             tabIdleSince.removeValue(forKey: tabId)
         }
+        // Clean up drafts for tabs no longer present in the snapshot
+        // (tab was closed remotely; drafts are scoped to live tabs).
+        for tabId in draftInputByTab.keys where !mergedIds.contains(tabId) {
+            clearTabDraft(tabId)
+            clearEngineDrafts(forTab: tabId)
+        }
+        // Also catch engine-only draft keys whose tabId is no longer present
+        // (in case the tab had no plain `draftInput` but did have engine drafts).
+        let orphanEngineTabIds = Set(engineDraftInputByKey.keys.compactMap { key -> String? in
+            guard let sep = key.firstIndex(of: ":") else { return nil }
+            let tid = String(key[..<sep])
+            return mergedIds.contains(tid) ? nil : tid
+        })
+        for tabId in orphanEngineTabIds {
+            clearEngineDrafts(forTab: tabId)
+        }
         // Populate terminal state from snapshot tab data
         for tab in merged {
             if tab.isTerminalOnly == true, let instances = tab.terminalInstances {
