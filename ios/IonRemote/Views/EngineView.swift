@@ -58,6 +58,10 @@ struct EngineView: View {
             }
     }
 
+    private var runningAgentCount: Int {
+        visibleAgents.filter { $0.status == "running" }.count
+    }
+
     private var activeToolsList: [ActiveToolInfo] {
         (viewModel.activeTools[compoundKey] ?? [:]).values.sorted { $0.startTime < $1.startTime }
     }
@@ -202,6 +206,11 @@ struct EngineView: View {
                         Text("(\(visibleAgents.count))")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
+                        if runningAgentCount > 0 {
+                            Text("\(runningAgentCount) active")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(IonTheme.accent)
+                        }
                     }
                     .foregroundStyle(.secondary)
                 }
