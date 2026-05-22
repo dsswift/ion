@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { DotsThree, Gear, ListChecks, ClipboardText, Bug, FolderOpen } from '@phosphor-icons/react'
+import { DotsThree, Gear, ListChecks, ClipboardText, Bug, FolderOpen, Hash } from '@phosphor-icons/react'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
@@ -197,6 +197,39 @@ export function SettingsPopover() {
     setOpen(false)
   }
 
+  const handleCopySessionId = () => {
+    const {
+      activeTabId,
+      tabs,
+      enginePanes,
+      engineStatusFields,
+      engineConversationIds,
+    } = useSessionStore.getState()
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+
+    let payload: string
+
+    if (tab.isEngine) {
+      const pane = enginePanes.get(tab.id)
+      const key = pane?.activeInstanceId ? `${tab.id}:${pane.activeInstanceId}` : ''
+      if (!key) return
+      const ids = engineConversationIds.get(key) ?? []
+      const current = engineStatusFields.get(key)?.sessionId
+      const allIds = current && !ids.includes(current) ? [...ids, current] : ids
+      if (allIds.length === 0) return
+      console.debug('[SettingsPopover] copySessionId: engine tab, copying', allIds.length, 'id(s)')
+      payload = allIds.join('\n')
+    } else {
+      if (!tab.conversationId) return
+      console.debug('[SettingsPopover] copySessionId: non-engine tab, copying single id')
+      payload = tab.conversationId
+    }
+
+    navigator.clipboard.writeText(payload)
+    setOpen(false)
+  }
+
   const handleRevealConversationsFolder = () => {
     const { staticInfo } = useSessionStore.getState()
     const homeDir = staticInfo?.homePath
@@ -314,6 +347,26 @@ export function SettingsPopover() {
               <Bug size={14} style={{ color: colors.textTertiary }} />
               <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
                 Copy log path
+              </span>
+            </button>
+
+            {/* Copy session id */}
+            <button
+              onClick={handleCopySessionId}
+              disabled={!hasDebugInfo}
+              className="flex items-center gap-2 w-full"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: hasDebugInfo ? 'pointer' : 'default',
+                padding: '2px 0',
+                opacity: hasDebugInfo ? 1 : 0.4,
+              }}
+              title="Copies the session id(s) for this conversation. Multiple ids are newline-separated."
+            >
+              <Hash size={14} style={{ color: colors.textTertiary }} />
+              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+                Copy session id
               </span>
             </button>
 
