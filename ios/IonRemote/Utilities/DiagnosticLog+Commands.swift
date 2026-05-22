@@ -104,6 +104,9 @@ extension DiagnosticLog {
         case .moveTabToGroup(let tabId, let gId):
             log("CMD: moveTabToGroup tabId=\(tabId.prefix(8)) group=\(gId.prefix(8))")
 
+        case .toggleTabGroupPin(let tabId):
+            log("CMD: toggleTabGroupPin tabId=\(tabId.prefix(8))")
+
         case .engineSetModel(let tabId, let model, let instId):
             log("CMD: engineSetModel tabId=\(tabId.prefix(8)) model=\(model) inst=\(instId?.prefix(8) ?? "nil")")
 

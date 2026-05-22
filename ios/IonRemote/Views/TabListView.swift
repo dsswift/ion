@@ -270,6 +270,14 @@ struct TabListView: View {
                                 Label("Rename", systemImage: "pencil")
                             }
                             if viewModel.tabGroupMode == "manual" {
+                                Button {
+                                    viewModel.toggleTabGroupPin(tabId: tab.id)
+                                } label: {
+                                    Label(
+                                        tab.groupPinned == true ? "Unpin from Group" : "Pin to Group",
+                                        systemImage: tab.groupPinned == true ? "pin.slash" : "pin"
+                                    )
+                                }
                                 let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
                                 if !targets.isEmpty {
                                     Menu {

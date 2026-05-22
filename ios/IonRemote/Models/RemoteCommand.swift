@@ -34,6 +34,7 @@ enum RemoteCommand: Codable, Sendable {
     case loadEngineConversation(tabId: String, instanceId: String?)
     case setTabGroupMode(mode: String)
     case moveTabToGroup(tabId: String, groupId: String)
+    case toggleTabGroupPin(tabId: String)
     case reorderTabGroups(orderedIds: [String])
     case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
     case setTabModel(tabId: String, model: String)
@@ -100,6 +101,7 @@ enum RemoteCommand: Codable, Sendable {
         case loadEngineConversation = "load_engine_conversation"
         case setTabGroupMode = "set_tab_group_mode"
         case moveTabToGroup = "move_tab_to_group"
+        case toggleTabGroupPin = "toggle_tab_group_pin"
         case reorderTabGroups = "reorder_tab_groups"
         case engineSetModel = "engine_set_model"
         case setTabModel = "set_tab_model"
@@ -308,6 +310,10 @@ enum RemoteCommand: Codable, Sendable {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let groupId = try container.decode(String.self, forKey: .groupId)
             self = .moveTabToGroup(tabId: tabId, groupId: groupId)
+
+        case .toggleTabGroupPin:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            self = .toggleTabGroupPin(tabId: tabId)
 
         case .reorderTabGroups:
             let orderedIds = try container.decode([String].self, forKey: .orderedIds)

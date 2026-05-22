@@ -164,6 +164,10 @@ extension RemoteCommand {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(groupId, forKey: .groupId)
 
+        case .toggleTabGroupPin(let tabId):
+            try container.encode(TypeKey.toggleTabGroupPin, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+
         case .reorderTabGroups(let orderedIds):
             try container.encode(TypeKey.reorderTabGroups, forKey: .type)
             try container.encode(orderedIds, forKey: .orderedIds)

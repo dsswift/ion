@@ -210,6 +210,15 @@ extension SessionViewModel {
         send(.moveTabToGroup(tabId: tabId, groupId: groupId))
     }
 
+    /// Toggle the group-pin state for a tab on the desktop.
+    func toggleTabGroupPin(tabId: String) {
+        // Optimistic local update for responsive UI
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].groupPinned = !(tabs[idx].groupPinned ?? false)
+        }
+        send(.toggleTabGroupPin(tabId: tabId))
+    }
+
     /// Reorder tab groups. Sends the new ordering to the desktop.
     func reorderTabGroups(orderedIds: [String]) {
         // Optimistic local update: reorder tabGroups to match orderedIds
