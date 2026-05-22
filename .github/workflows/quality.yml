@@ -172,7 +172,15 @@ jobs:
           tags: ion-engine:ci
 
   ios-build:
-    runs-on: macos-15
+    # macos-26 ships Xcode 26 / the iOS 26 SDK. The iOS app contains
+    # ios/IonRemote/Services/ModernSpeechEngine.swift, which is gated
+    # @available(iOS 26, *) and references iOS-26-only symbols
+    # (SpeechAnalyzer, SpeechTranscriber, AnalyzerInput) at file scope.
+    # Those symbols do not exist in the iOS 17-18 SDK that Xcode 16 (the
+    # default on macos-15) ships, so building on macos-15 fails with
+    # exit 65 even though every use site is gated. Xcode 26 is also
+    # what our Xcode Cloud iOS job uses.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
       - name: Build iOS app
