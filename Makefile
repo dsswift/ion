@@ -1,4 +1,4 @@
-.PHONY: default desktop engine relay relay-local ios ios-check test clean check-file-sizes check-contracts claude-symlinks hooks
+.PHONY: default desktop engine relay relay-local ios ios-check ios-test desktop-test engine-test test test-all clean check-file-sizes check-contracts claude-symlinks hooks
 
 default: engine
 
@@ -21,9 +21,30 @@ ios-check:
 	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
 		-destination 'generic/platform=iOS' build 2>&1 | grep -E "error:|BUILD"
 
+# Run the IonRemoteTests unit-test bundle on a real iOS Simulator. Picks the
+# newest available simulator automatically; override with the
+# IOS_TEST_DESTINATION env var (see scripts/run-ios-tests.sh for format).
+ios-test:
+	@bash scripts/run-ios-tests.sh
+
+# Per-component test convenience wrappers. The CI workflows already exercise
+# each surface in isolation; these mirror what they do so contributors can
+# run a focused check locally without remembering each toolchain's command.
+engine-test:
+	@cd engine && go test -race ./...
+
+desktop-test:
+	@cd desktop && npm test
+
 test:
 	@cd engine && go test ./...
 	@cd desktop && npm test 2>/dev/null || true
+
+# Run every test surface end-to-end before merging. Stops at the first
+# failure so you don't waste minutes on a downstream failure that's really
+# caused by an earlier component.
+test-all: check-file-sizes check-contracts engine-test desktop-test ios-test
+	@echo "✅ test-all: all surfaces green"
 
 clean:
 	@cd engine && rm -rf bin/ dist/
