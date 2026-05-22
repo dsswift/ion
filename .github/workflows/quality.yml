@@ -49,48 +49,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          # Need full history so golangci-lint can compute a local diff
-          # against origin/main without touching the GitHub PR-diff API
-          # (20K-line cap; large PRs fall back to all-issues mode).
-          fetch-depth: 0
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version-file: engine/go.mod
 
-      # PR: differential lint — only issues on lines changed since the
-      # branch diverged from main. Fast feedback, good DX.
-      # We pass --new-from-merge-base as a direct CLI flag instead of
-      # `only-new-issues: true` because the latter relies on the GitHub
-      # PR-diff REST endpoint, which 422s above 20K lines and trips the
-      # action's "report everything" fallback.
-      - name: golangci-lint engine (changed lines)
-        if: github.event_name == 'pull_request'
+      # Full lint on every event (PR and push). We previously ran
+      # --new-from-merge-base=origin/main on PRs and full on push, but:
+      #
+      #  1. Differential mode does not speed up CI — golangci-lint still
+      #     analyses the entire module; the flag only post-filters the
+      #     report. In practice the two modes ran within ~1s of each
+      #     other in this repo.
+      #
+      #  2. Differential mode let lint debt accumulate invisibly: a PR
+      #     would land green, then the immediate push-to-main full run
+      #     would surface dozens of pre-existing findings nobody had
+      #     incentive to fix. That is exactly what happened to PR #131
+      #     (44 errcheck/staticcheck/ineffassign findings, none in the
+      #     PR's diff, all surfaced only on merge).
+      #
+      # Running full lint on PRs means the author may occasionally see
+      # findings from elsewhere in the codebase. The cure is a small
+      # cleanup commit, not hiding the findings. The module is small
+      # enough that a full lint sweep is cheap.
+      - name: golangci-lint engine
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: engine
-          args: --new-from-merge-base=origin/main
-      - name: golangci-lint relay (changed lines)
-        if: github.event_name == 'pull_request'
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.11.3
-          working-directory: relay
-          args: --new-from-merge-base=origin/main
-
-      # Main: full lint — catches cross-PR regressions that slip through
-      # differential checks (e.g. PR A adds a function, PR B removes its
-      # only caller → unused error only visible after both merge).
-      - name: golangci-lint engine (full)
-        if: github.event_name == 'push'
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.11.3
-          working-directory: engine
-      - name: golangci-lint relay (full)
-        if: github.event_name == 'push'
+      - name: golangci-lint relay
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
