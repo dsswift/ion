@@ -22,6 +22,10 @@ Each component has its own `AGENTS.md` with subsystem-specific rules.
 
 Override: `// @file-size-exception: <reason>` (`#` for shell/yaml/python) on line 1. Existing god files allowlisted in `.file-size-allowlist.yml` — do not extend them; extract new code to a new file.
 
+### When a file exceeds the cap
+
+Split the file — find the natural seams (logical groupings, hook boundaries, helper clusters) and extract to a new file. **Never** remove or collapse comments, collapse whitespace, or shorten code to hit the line limit. Comments are load-bearing documentation. If the choice is between a well-commented file that is 10 lines over cap and a stripped file that is under cap, the stripped version is worse. Split instead.
+
 Cohesion of change: a feature lives in one folder. Full reference: `docs/architecture/file-organization.md`.
 
 ## Context files
