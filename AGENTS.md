@@ -57,6 +57,16 @@ Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook 
 
 CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (per-PR).
 
+## Branch workflow
+
+- `main` is protected. All changes merge via pull request — never push directly to `main`.
+- The current working branch can be any named feature branch (e.g. `josh`, `feat/foo`, `fix/bar`). Never hardcode a branch name; always use `git branch --show-current` to determine the active branch.
+- **Standard flow:**
+  1. Do work on the current feature branch, commit locally.
+  2. When an external PR lands on `main` that your branch depends on or should incorporate: merge it on GitHub (`gh pr merge <number> --merge`), then `git checkout main && git pull` to sync local `main`, then `git checkout <feature-branch> && git rebase main` to rebase the feature branch onto the updated `main`.
+  3. Open a PR from the feature branch into `main` (`gh pr create`). Never push directly to `main`.
+- CI must pass on the PR before merge. Run quality gates locally first (see table below).
+
 ## Commits
 
 - Conventional Commits with **required scope**: `type(scope): subject`.

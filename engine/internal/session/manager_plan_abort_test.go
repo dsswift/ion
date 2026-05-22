@@ -544,19 +544,19 @@ func TestPlanModeReentry_SetOnRunOptions(t *testing.T) {
 	mgr.SetPlanMode("reentry-opts", false, nil, "test")
 
 	// Simulate run exit so requestID is cleared
-	keys := mb.startedKeys()
+	ordered := mb.startedInOrder()
 	code := 0
-	mb.emitExit(keys[0], &code, nil, "sess-abc")
+	mb.emitExit(ordered[0], &code, nil, "sess-abc")
 
 	// Re-enable plan mode — should be detected as reentry
 	mgr.SetPlanMode("reentry-opts", true, []string{"Read"}, "test")
 	_ = mgr.SendPrompt("reentry-opts", "add a deliverable", nil)
 
-	allKeys := mb.startedKeys()
-	if len(allKeys) < 2 {
+	allOrdered := mb.startedInOrder()
+	if len(allOrdered) < 2 {
 		t.Fatal("expected 2 started runs")
 	}
-	opts, _ := mb.getStarted(allKeys[1])
+	opts, _ := mb.getStarted(allOrdered[1])
 	if !opts.PlanModeReentry {
 		t.Error("expected PlanModeReentry=true on second plan mode run")
 	}

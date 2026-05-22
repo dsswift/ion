@@ -13,6 +13,7 @@ import (
 type mockBackend struct {
 	mu           sync.Mutex
 	started      map[string]types.RunOptions
+	startOrder   []string // insertion order for started runs
 	cancelled    []string
 	onNorm       func(string, types.NormalizedEvent)
 	onExitF      func(string, *int, *string, string)
@@ -26,6 +27,7 @@ func newMockBackend() *mockBackend {
 func (m *mockBackend) StartRun(requestID string, opts types.RunOptions) {
 	m.mu.Lock()
 	m.started[requestID] = opts
+	m.startOrder = append(m.startOrder, requestID)
 	m.mu.Unlock()
 }
 
@@ -103,6 +105,15 @@ func (m *mockBackend) startedKeys() []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// startedInOrder returns run request IDs in the order StartRun was called.
+func (m *mockBackend) startedInOrder() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, len(m.startOrder))
+	copy(out, m.startOrder)
+	return out
 }
 
 func (m *mockBackend) getStarted(requestID string) (types.RunOptions, bool) {

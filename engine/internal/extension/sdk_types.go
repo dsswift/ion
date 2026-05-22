@@ -99,6 +99,11 @@ type Context struct {
 	// recursion is checked only by the engine's prompt queue depth -- the
 	// extension is responsible for guarding its own loops (e.g. with a
 	// per-session "in-flight" flag stored on a sessionKey-keyed Map).
+	//
+	// When invoked outside an active hook dispatch (e.g. from a timer or
+	// scheduler callback), the per-call `model` override is ignored; the
+	// session default is used. This is a fallback path used by the host RPC
+	// handler only — direct in-process callers always honor `model`.
 	SendPrompt func(text string, model string) error
 
 	// Engine-native agent dispatch. Creates a child session within the engine

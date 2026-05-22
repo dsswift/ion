@@ -345,6 +345,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 		if ctx != nil && ctx.SendPrompt != nil {
 			// Active hook context: use hook-aware path (supports model override, recursion guard).
+			utils.Debug("extension", fmt.Sprintf("ext/send_prompt: hook ctx path model=%q", req.Params.Model))
 			go func() {
 				if err := ctx.SendPrompt(req.Params.Text, req.Params.Model); err != nil {
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
@@ -361,11 +362,18 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		fn := h.onSendMessage
 		h.notifMu.RUnlock()
 		if fn == nil {
+			utils.Debug("extension", "ext/send_prompt: no hook ctx and no onSendMessage; rejecting")
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "sendPrompt not available: no active session"})
 			return
 		}
-		fn(req.Params.Text)
-		h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+		if req.Params.Model != "" {
+			utils.Debug("extension", fmt.Sprintf("ext/send_prompt: fallback path, dropping model override %q", req.Params.Model))
+		}
+		utils.Debug("extension", "ext/send_prompt: fallback path via onSendMessage")
+		go func() {
+			fn(req.Params.Text)
+			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+		}()
 
 	case "ext/call_tool":
 		var req struct {
