@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.23.2](https://github.com/dsswift/ion/compare/engine-v1.23.1...engine-v1.23.2) (2026-05-22)
+
+### Bug Fixes
+
+* **extension:** allow ext/send_prompt from non-hook contexts ([fe4e74b](https://github.com/dsswift/ion/commit/fe4e74b64c12ea1902153b896a9418179439d9a1))
+
 ## [1.23.1](https://github.com/dsswift/ion/compare/engine-v1.23.0...engine-v1.23.1) (2026-05-22)
 
 ### Bug Fixes
