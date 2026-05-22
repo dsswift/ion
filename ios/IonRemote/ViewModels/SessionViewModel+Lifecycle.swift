@@ -334,6 +334,88 @@ extension SessionViewModel {
         }
     }
 
+    /// Push a customization (name / icon override) to the given desktop.
+    ///
+    /// - For the **active** desktop: reuse the existing live transport and
+    ///   `send(.setRemoteDisplay(...))`. The desktop's broadcast comes back
+    ///   on the same transport and is reconciled by `handleRemoteDisplay`.
+    /// - For an **inactive** desktop: open a transient sidecar transport via
+    ///   `OneShotDisplayCommand.send`, await the ack, then tear it down.
+    ///   The active session is untouched. If the inactive desktop is
+    ///   unreachable the call throws and the caller (the customization
+    ///   sheet) reverts the optimistic local update.
+    ///
+    /// Both paths optimistically write the new values into `pairedDevices`
+    /// before sending so the UI updates immediately; LWW reconciliation
+    /// happens automatically when the server ack arrives.
+    @MainActor
+    func updateRemoteDisplay(device: PairedDevice, customName: String?, customIcon: String?) async throws {
+        let updatedAt = Date()
+        let updatedAtMs = Int(updatedAt.timeIntervalSince1970 * 1000)
+        let isActive = device.id == activeDevice?.id
+        DiagnosticLog.log("DISPLAY-SEND: device=\(device.id.prefix(8)) active=\(isActive) name=\(customName == nil ? "cleared" : "set") icon=\(customIcon ?? "cleared") ts=\(updatedAtMs)")
+
+        // Optimistic local write — gives the UI an instant response while
+        // the round-trip is in flight. Reconciliation overrides this on ack
+        // if the desktop applies LWW differently.
+        let prevName: String?
+        let prevIcon: String?
+        let prevTs: Date?
+        if let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
+            prevName = pairedDevices[idx].customName
+            prevIcon = pairedDevices[idx].customIcon
+            prevTs = pairedDevices[idx].remoteDisplayUpdatedAt
+            pairedDevices[idx].customName = customName
+            pairedDevices[idx].customIcon = customIcon
+            pairedDevices[idx].remoteDisplayUpdatedAt = updatedAt
+            savePairedDevices()
+        } else {
+            prevName = nil
+            prevIcon = nil
+            prevTs = nil
+            DiagnosticLog.log("DISPLAY-SEND: device=\(device.id.prefix(8)) not in pairedDevices — skipping optimistic write")
+        }
+
+        do {
+            if isActive, let transport {
+                DiagnosticLog.log("DISPLAY-SEND: using active transport")
+                try await transport.send(.setRemoteDisplay(customName: customName, customIcon: customIcon, updatedAt: updatedAt))
+                // Active transport: the desktop broadcasts back on this same
+                // pipe, picked up by handleRemoteDisplay via the snapshot/
+                // .remoteDisplay routing in EventHandlers.swift. Nothing
+                // more to do here.
+                return
+            }
+
+            DiagnosticLog.log("DISPLAY-SEND: using one-shot transport (inactive device)")
+            let ack = try await OneShotDisplayCommand.send(
+                device: device,
+                customName: customName,
+                customIcon: customIcon,
+                updatedAt: updatedAt,
+            )
+            // Reconcile by applying the server's authoritative value.
+            await MainActor.run {
+                self.handleRemoteDisplay(
+                    deviceId: device.id,
+                    customName: ack.customName,
+                    customIcon: ack.customIcon,
+                    updatedAt: ack.updatedAt,
+                )
+            }
+        } catch {
+            // Rollback optimistic write on failure.
+            DiagnosticLog.log("DISPLAY-SEND: failed device=\(device.id.prefix(8)) err=\(error.localizedDescription) — rolling back")
+            if let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
+                pairedDevices[idx].customName = prevName
+                pairedDevices[idx].customIcon = prevIcon
+                pairedDevices[idx].remoteDisplayUpdatedAt = prevTs
+                savePairedDevices()
+            }
+            throw error
+        }
+    }
+
     func resetAll() {
         Task {
             try? await transport?.send(.unpair)

@@ -60,6 +60,10 @@ enum RemoteCommand: Codable, Sendable {
     case loadAttachments(tabId: String)
     case voiceConfig(enabled: Bool, mode: String, systemPrompt: String?)
     case diagnosticLogsResponse(logs: String, deviceId: String, deviceName: String)
+    /// Set the per-desktop display override. `updatedAt` is ms since epoch
+    /// (`Date().timeIntervalSince1970 * 1000`). The desktop applies LWW and
+    /// broadcasts the canonical value back via `.remoteDisplay`.
+    case setRemoteDisplay(customName: String?, customIcon: String?, updatedAt: Date)
 
     // MARK: - Codable
 
@@ -122,6 +126,7 @@ enum RemoteCommand: Codable, Sendable {
         case loadAttachments = "load_attachments"
         case voiceConfig = "voice_config"
         case diagnosticLogsResponse = "diagnostic_logs_response"
+        case setRemoteDisplay = "set_remote_display"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -134,6 +139,7 @@ enum RemoteCommand: Codable, Sendable {
         case enabled, systemPrompt
         case logs, deviceId, deviceName
         case sourceTabId, targetTabId
+        case customName, customIcon, updatedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -428,6 +434,18 @@ enum RemoteCommand: Codable, Sendable {
             let deviceId = try container.decode(String.self, forKey: .deviceId)
             let deviceName = try container.decode(String.self, forKey: .deviceName)
             self = .diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName)
+
+        case .setRemoteDisplay:
+            // Both fields are nullable on the wire; treat absent OR explicit
+            // null identically so old desktops can omit them.
+            let customName = try container.decodeIfPresent(String.self, forKey: .customName)
+            let customIcon = try container.decodeIfPresent(String.self, forKey: .customIcon)
+            let updatedAtMs = try container.decode(Double.self, forKey: .updatedAt)
+            self = .setRemoteDisplay(
+                customName: customName,
+                customIcon: customIcon,
+                updatedAt: Date(timeIntervalSince1970: updatedAtMs / 1000.0),
+            )
         }
     }
 

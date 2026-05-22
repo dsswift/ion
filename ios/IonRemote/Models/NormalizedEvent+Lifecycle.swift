@@ -18,7 +18,13 @@ extension RemoteEvent {
             let preferredModel = try container.decodeIfPresent(String.self, forKey: .preferredModel)
             let engineDefaultModel = try container.decodeIfPresent(String.self, forKey: .engineDefaultModel)
             let availableModels = try container.decodeIfPresent([RemoteModelEntry].self, forKey: .availableModels)
-            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels)
+            // Per-desktop display override fields (added 2025). All optional;
+            // legacy desktops omit them and we treat that as "no override".
+            let customName = try container.decodeIfPresent(String.self, forKey: .customName)
+            let customIcon = try container.decodeIfPresent(String.self, forKey: .customIcon)
+            let updatedAtMs = try container.decodeIfPresent(Double.self, forKey: .remoteDisplayUpdatedAt)
+            let updatedAt = updatedAtMs.map { Date(timeIntervalSince1970: $0 / 1000.0) }
+            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt)
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
@@ -40,6 +46,18 @@ extension RemoteEvent {
             let relayUrl = try container.decode(String.self, forKey: .relayUrl)
             let relayApiKey = try container.decode(String.self, forKey: .relayApiKey)
             return .relayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey)
+
+        case .remoteDisplay:
+            // Both fields are nullable on the wire — server normalizes empty
+            // strings and unknown icons to `null` before broadcasting.
+            let customName = try container.decodeIfPresent(String.self, forKey: .customName)
+            let customIcon = try container.decodeIfPresent(String.self, forKey: .customIcon)
+            let updatedAtMs = try container.decode(Double.self, forKey: .updatedAt)
+            return .remoteDisplay(
+                customName: customName,
+                customIcon: customIcon,
+                updatedAt: Date(timeIntervalSince1970: updatedAtMs / 1000.0),
+            )
 
         case .peerDisconnected:
             return .peerDisconnected
@@ -68,7 +86,7 @@ extension RemoteEvent {
     /// Encode lifecycle events. Returns `true` if the receiver was a lifecycle event.
     func encodeLifecycle(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels):
+        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt):
             try container.encode(TypeKey.snapshot, forKey: .type)
             try container.encode(tabs, forKey: .tabs)
             if !recentDirectories.isEmpty {
@@ -79,6 +97,11 @@ extension RemoteEvent {
             try container.encodeIfPresent(preferredModel, forKey: .preferredModel)
             try container.encodeIfPresent(engineDefaultModel, forKey: .engineDefaultModel)
             try container.encodeIfPresent(availableModels, forKey: .availableModels)
+            try container.encodeIfPresent(customName, forKey: .customName)
+            try container.encodeIfPresent(customIcon, forKey: .customIcon)
+            if let remoteDisplayUpdatedAt {
+                try container.encode(remoteDisplayUpdatedAt.timeIntervalSince1970 * 1000.0, forKey: .remoteDisplayUpdatedAt)
+            }
             return true
 
         case .tabCreated(let tab):
@@ -111,6 +134,21 @@ extension RemoteEvent {
             try container.encode(TypeKey.relayConfig, forKey: .type)
             try container.encode(relayUrl, forKey: .relayUrl)
             try container.encode(relayApiKey, forKey: .relayApiKey)
+            return true
+
+        case .remoteDisplay(let customName, let customIcon, let updatedAt):
+            try container.encode(TypeKey.remoteDisplay, forKey: .type)
+            if let customName {
+                try container.encode(customName, forKey: .customName)
+            } else {
+                try container.encodeNil(forKey: .customName)
+            }
+            if let customIcon {
+                try container.encode(customIcon, forKey: .customIcon)
+            } else {
+                try container.encodeNil(forKey: .customIcon)
+            }
+            try container.encode(updatedAt.timeIntervalSince1970 * 1000.0, forKey: .updatedAt)
             return true
 
         case .peerDisconnected:

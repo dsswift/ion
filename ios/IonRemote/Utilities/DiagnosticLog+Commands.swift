@@ -181,6 +181,10 @@ extension DiagnosticLog {
 
         case .reorderTabGroups(let orderedIds):
             log("CMD: reorderTabGroups count=\(orderedIds.count)")
+
+        case .setRemoteDisplay(let customName, let customIcon, let updatedAt):
+            let ms = Int(updatedAt.timeIntervalSince1970 * 1000)
+            log("CMD: setRemoteDisplay name=\(customName == nil ? "cleared" : "set") icon=\(customIcon ?? "cleared") ts=\(ms)")
         }
     }
 }

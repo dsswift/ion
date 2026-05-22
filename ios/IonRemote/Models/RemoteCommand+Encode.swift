@@ -291,6 +291,23 @@ extension RemoteCommand {
             try container.encode(logs, forKey: .logs)
             try container.encode(deviceId, forKey: .deviceId)
             try container.encode(deviceName, forKey: .deviceName)
+
+        case .setRemoteDisplay(let customName, let customIcon, let updatedAt):
+            try container.encode(TypeKey.setRemoteDisplay, forKey: .type)
+            // Encode `null` explicitly (not "absent") so the desktop can
+            // distinguish "clear the override" from "no field provided".
+            if let customName {
+                try container.encode(customName, forKey: .customName)
+            } else {
+                try container.encodeNil(forKey: .customName)
+            }
+            if let customIcon {
+                try container.encode(customIcon, forKey: .customIcon)
+            } else {
+                try container.encodeNil(forKey: .customIcon)
+            }
+            let updatedAtMs = updatedAt.timeIntervalSince1970 * 1000.0
+            try container.encode(updatedAtMs, forKey: .updatedAt)
         }
     }
 }

@@ -84,8 +84,12 @@ extension SessionViewModel {
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
-        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels):
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt):
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels)
+            applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
+
+        case .remoteDisplay(let customName, let customIcon, let updatedAt):
+            applyLiveRemoteDisplay(customName: customName, customIcon: customIcon, updatedAt: updatedAt)
 
         case .tabCreated(let tab):
             if !tabs.contains(where: { $0.id == tab.id }) {

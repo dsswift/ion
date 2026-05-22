@@ -59,6 +59,7 @@
 		A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */; };
 		A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */; };
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
+		A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */; };
@@ -104,6 +105,8 @@
 		A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000901AA /* AppDelegate.swift */; };
 		A1B2C3D4E5F60001001000AA /* LayoutCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001001AA /* LayoutCache.swift */; };
 		A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */; };
+		A1B2C3D4E5F60001009101AA /* OneShotDisplayCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009100AA /* OneShotDisplayCommand.swift */; };
+		A1B2C3D4E5F60001009103AA /* DeviceCustomizationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009102AA /* DeviceCustomizationSheet.swift */; };
 		A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */; };
 		A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */; };
 		A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001007002AA /* CrashReporter.swift */; };
@@ -193,6 +196,7 @@
 		A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Lifecycle.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+RemoteDisplay.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabEventHandlers.swift"; sourceTree = "<group>"; };
@@ -237,6 +241,8 @@
 		A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactionRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001001AA /* LayoutCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPoller.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009100AA /* OneShotDisplayCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneShotDisplayCommand.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009102AA /* DeviceCustomizationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCustomizationSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPickerMenu.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001007002AA /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
@@ -353,6 +359,7 @@
 				A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */,
 				A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */,
 				A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */,
+				A1B2C3D4E5F60001009100AA /* OneShotDisplayCommand.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -409,6 +416,7 @@
 				A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */,
 				A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */,
 				A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */,
+				A1B2C3D4E5F60001009102AA /* DeviceCustomizationSheet.swift */,
 					A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */,
 					A1B2C3D4E5F60001002001AA /* IonTheme.swift */,
 					A1B2C3D4E5F60001003001AA /* EngineToolGroupRow.swift */,
@@ -430,6 +438,7 @@
 				A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */,
 				A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */,
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
+				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */,
@@ -652,6 +661,7 @@
 				A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */,
 				A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */,
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
+				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */,
@@ -707,6 +717,8 @@
 				A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */,
 				A1B2C3D4E5F60001001000AA /* LayoutCache.swift in Sources */,
 				A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */,
+				A1B2C3D4E5F60001009101AA /* OneShotDisplayCommand.swift in Sources */,
+				A1B2C3D4E5F60001009103AA /* DeviceCustomizationSheet.swift in Sources */,
 				A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */,
 				A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */,
 				A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */,
