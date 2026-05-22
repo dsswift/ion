@@ -33,9 +33,13 @@ final class ModernSpeechEngine: SpeechEngine {
     // Throttle level updates to ~20fps to avoid flooding the main queue
     private var lastLevelUpdate: CFAbsoluteTime = 0
 
-    // Utterance accumulation — see applySegment() for the full explanation
-    private var finalizedPrefix = ""
-    private var lastSegmentText = ""
+    // Transcript accumulation — see applyResult() for the full explanation.
+    // SpeechTranscriber.results emits a mix of:
+    //   - finalized chunks (result.isFinal == true): must be APPENDED to finalizedTranscript
+    //   - volatile partials (result.isFinal == false): must REPLACE volatileTranscript
+    // The public `transcript` is always finalizedTranscript + volatileTranscript.
+    private var finalizedTranscript = ""
+    private var volatileTranscript = ""
 
     init() {
         DiagnosticLog.log("SPEECH-MODERN: init (iOS 26+ SpeechAnalyzer)")
@@ -98,11 +102,12 @@ final class ModernSpeechEngine: SpeechEngine {
         }
 
         // Reset accumulation state for this session
-        finalizedPrefix = ""
-        lastSegmentText = ""
+        finalizedTranscript = ""
+        volatileTranscript = ""
         transcript = ""
         errorMessage = nil
         isRecording = true
+        DiagnosticLog.log("SPEECH-MODERN: transcript state reset on startRecording")
 
         // Build async stream to feed audio buffers into the analyzer
         let (inputStream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
@@ -163,17 +168,19 @@ final class ModernSpeechEngine: SpeechEngine {
     }
 
     func stopRecording() -> String {
-        DiagnosticLog.log("SPEECH-MODERN: stopRecording — final transcript=\(transcript.prefix(80))")
-        let final = transcript
+        // Trim only on extraction — the running transcript may carry leading whitespace
+        // from the finalized chunks, which is fine internally but ugly when surfaced.
+        let final = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        DiagnosticLog.log("SPEECH-MODERN: stopRecording — final transcript=\(final.prefix(80))")
         finishInputAndTeardown()
         return final
     }
 
     func cancelRecording() {
-        DiagnosticLog.log("SPEECH-MODERN: cancelRecording")
+        DiagnosticLog.log("SPEECH-MODERN: cancelRecording — discarding finalized=\(finalizedTranscript.prefix(40)) volatile=\(volatileTranscript.prefix(40))")
         finishInputAndTeardown()
-        finalizedPrefix = ""
-        lastSegmentText = ""
+        finalizedTranscript = ""
+        volatileTranscript = ""
         transcript = ""
     }
 
@@ -200,8 +207,9 @@ final class ModernSpeechEngine: SpeechEngine {
                     do {
                         for try await result in transcriber.results {
                             let segmentText = String(result.text.characters)
-                            DiagnosticLog.log("SPEECH-MODERN: result segment=\(segmentText.prefix(60))")
-                            await MainActor.run { self.applySegment(segmentText) }
+                            let isFinal = result.isFinal
+                            DiagnosticLog.log("SPEECH-MODERN: result isFinal=\(isFinal) segment=\(segmentText.prefix(60))")
+                            await MainActor.run { self.applyResult(segmentText, isFinal: isFinal) }
                         }
                     } catch {
                         DiagnosticLog.log("SPEECH-MODERN: transcriber.results error: \(error.localizedDescription)")
@@ -225,31 +233,38 @@ final class ModernSpeechEngine: SpeechEngine {
         }
     }
 
-    /// Apply a new segment result, accumulating across utterance boundaries.
+    /// Apply a new result from SpeechTranscriber, dispatching on isFinal.
     ///
-    /// SpeechTranscriber with progressiveTranscription delivers each utterance window
-    /// as a series of replaceable partials. When a new utterance begins after a pause
-    /// the result arrives with a leading space (e.g. " Okay" after "...read ").
-    /// That leading space is the reliable reset signal — not a length comparison,
-    /// which breaks whenever the new utterance happens to be shorter than the last.
+    /// Per Apple's official SpeechAnalyzer/SpeechTranscriber guidance (WWDC25 session 277),
+    /// the results stream emits two kinds of results in any interleaved order:
     ///
-    /// On reset: commit lastSegmentText to finalizedPrefix, then start fresh.
-    /// transcript = finalizedPrefix + trimmed currentSegment at all times.
-    private func applySegment(_ rawSegment: String) {
-        let isNewUtterance = rawSegment.hasPrefix(" ") && !lastSegmentText.isEmpty
-        let segmentText = rawSegment.trimmingCharacters(in: .whitespaces)
-
-        if isNewUtterance {
-            if !lastSegmentText.isEmpty {
-                let sep = finalizedPrefix.isEmpty ? "" : " "
-                finalizedPrefix += sep + lastSegmentText
-                DiagnosticLog.log("SPEECH-MODERN: committed utterance prefix=\(finalizedPrefix.prefix(60))")
-            }
+    ///   - Volatile (isFinal == false): a speculative best-guess for the audio that has not
+    ///     yet been committed. The receiver must REPLACE the previous volatile value with
+    ///     this one. Multiple volatile results in a row supersede each other.
+    ///
+    ///   - Finalized (isFinal == true): a confirmed chunk of audio that will not change.
+    ///     The receiver must APPEND this to the finalized transcript and CLEAR the
+    ///     volatile buffer (otherwise the volatile guess and the final chunk overlap and
+    ///     produce duplicates).
+    ///
+    /// The previous implementation tried to detect utterance boundaries via a leading
+    /// space heuristic on the raw string. That heuristic misfires on virtually every
+    /// progressive chunk and was the cause of the "I I' I'm I'm not …" duplication bug.
+    /// The fix is to trust the explicit isFinal flag the API already provides.
+    private func applyResult(_ segmentText: String, isFinal: Bool) {
+        if isFinal {
+            // Commit this chunk to the finalized portion and drop the volatile guess.
+            // The chunk already carries its leading whitespace (Apple's API contract),
+            // so we concatenate directly without adding our own separator.
+            finalizedTranscript += segmentText
+            volatileTranscript = ""
+            DiagnosticLog.log("SPEECH-MODERN: committed final chunk, finalized=\(finalizedTranscript.prefix(80))")
+        } else {
+            // Replace the in-flight volatile guess.
+            volatileTranscript = segmentText
+            DiagnosticLog.log("SPEECH-MODERN: replaced volatile, volatile=\(segmentText.prefix(60))")
         }
-
-        lastSegmentText = segmentText
-        let sep = (finalizedPrefix.isEmpty || segmentText.isEmpty) ? "" : " "
-        transcript = finalizedPrefix + sep + segmentText
+        transcript = finalizedTranscript + volatileTranscript
     }
 
     // MARK: - Teardown

@@ -25,11 +25,13 @@ final class LegacySpeechEngine: SpeechEngine {
     // Throttle audio level updates: timestamp of last MainActor dispatch
     private var lastLevelUpdate: CFAbsoluteTime = 0
 
-    // Utterance accumulation — same model as ModernSpeechEngine.
-    // SFSpeechRecognizer resets formattedString at each new utterance window.
-    // We detect the boundary via a leading space and commit the previous segment.
-    private var finalizedPrefix = ""
-    private var lastSegmentText = ""
+    // SFSpeechRecognizer's result.bestTranscription.formattedString is already the
+    // FULL running transcript for the recognition task — it does not reset at
+    // utterance boundaries the way SpeechTranscriber's progressive results do.
+    // So this engine needs no utterance accumulation: each result simply replaces
+    // the current transcript wholesale. (The leading-space heuristic the modern
+    // engine used to use was wrong there too and is gone — see applyResult in
+    // ModernSpeechEngine for the full explanation.)
 
     init() {
         recognizer = SFSpeechRecognizer(locale: .current)
@@ -69,9 +71,10 @@ final class LegacySpeechEngine: SpeechEngine {
         request.shouldReportPartialResults = true
         recognitionRequest = request
 
-        // Reset accumulation state for this session
-        finalizedPrefix = ""
-        lastSegmentText = ""
+        // Reset transcript for this session — see comment above the engine type
+        // for why no separate accumulation state is needed.
+        transcript = ""
+        DiagnosticLog.log("SPEECH-LEGACY: transcript reset on startRecording")
 
         // Install audio tap — callback runs on an AVAudioEngine internal thread
         let inputNode = audioEngine.inputNode
@@ -92,7 +95,7 @@ final class LegacySpeechEngine: SpeechEngine {
         try audioEngine.start()
         DiagnosticLog.log("SPEECH-LEGACY: audio engine started")
 
-        transcript = ""
+        // transcript was already cleared above; just flip the live state flags here.
         errorMessage = nil
         isRecording = true
 
@@ -103,10 +106,11 @@ final class LegacySpeechEngine: SpeechEngine {
             guard let self else { return }
             if let result {
                 let rawSegment = result.bestTranscription.formattedString
+                let isFinal = result.isFinal
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    DiagnosticLog.log("SPEECH-LEGACY: result segment=\(rawSegment.prefix(60))")
-                    self.applySegment(rawSegment)
+                    DiagnosticLog.log("SPEECH-LEGACY: result isFinal=\(isFinal) segment=\(rawSegment.prefix(60))")
+                    self.applyResult(rawSegment)
                 }
             }
             if let error {
@@ -144,36 +148,19 @@ final class LegacySpeechEngine: SpeechEngine {
     }
 
     func cancelRecording() {
-        DiagnosticLog.log("SPEECH-LEGACY: cancelRecording")
+        DiagnosticLog.log("SPEECH-LEGACY: cancelRecording — discarding transcript=\(transcript.prefix(40))")
         teardown(deactivateSession: true)
-        finalizedPrefix = ""
-        lastSegmentText = ""
         transcript = ""
     }
 
-    // MARK: - Accumulation
+    // MARK: - Result application
 
-    /// Apply a new segment result, accumulating across utterance boundaries.
-    ///
-    /// SFSpeechRecognizer delivers each utterance as a series of replaceable partials.
-    /// When a new utterance starts after a pause the formattedString begins with a
-    /// leading space (same convention as SpeechTranscriber). That space is the boundary
-    /// signal — commit the previous segment to finalizedPrefix, then start fresh.
-    private func applySegment(_ rawSegment: String) {
-        let isNewUtterance = rawSegment.hasPrefix(" ") && !lastSegmentText.isEmpty
-        let segmentText = rawSegment.trimmingCharacters(in: .whitespaces)
-
-        if isNewUtterance {
-            if !lastSegmentText.isEmpty {
-                let sep = finalizedPrefix.isEmpty ? "" : " "
-                finalizedPrefix += sep + lastSegmentText
-                DiagnosticLog.log("SPEECH-LEGACY: committed utterance prefix=\(finalizedPrefix.prefix(60))")
-            }
-        }
-
-        lastSegmentText = segmentText
-        let sep = (finalizedPrefix.isEmpty || segmentText.isEmpty) ? "" : " "
-        transcript = finalizedPrefix + sep + segmentText
+    /// SFSpeechRecognizer's bestTranscription.formattedString is always the COMPLETE
+    /// running transcript for the recognition task, not a delta — so each result simply
+    /// replaces the current transcript wholesale. No utterance-boundary detection,
+    /// no leading-space heuristics, no accumulation buffers required.
+    private func applyResult(_ rawSegment: String) {
+        transcript = rawSegment
     }
 
     // MARK: - Teardown

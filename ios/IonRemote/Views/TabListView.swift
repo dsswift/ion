@@ -33,6 +33,12 @@ struct TabListView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
+        .onAppear {
+            if viewModel.showGitInfoInTabList { viewModel.requestMissingGitChanges() }
+        }
+        .onChange(of: viewModel.showGitInfoInTabList) { _, enabled in
+            if enabled { viewModel.requestMissingGitChanges() }
+        }
         .sheet(isPresented: $showPairingSheet) {
             PairingView()
         }

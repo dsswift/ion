@@ -396,6 +396,16 @@ extension SessionViewModel {
         send(.gitChanges(directory: directory))
     }
 
+    /// Request git changes for every unique tab working directory that doesn't
+    /// already have cached data. Called when the "Show Git Info" toggle is
+    /// enabled so rows populate without waiting for the next watcher event.
+    func requestMissingGitChanges() {
+        let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
+        for dir in dirs where gitChanges[dir] == nil {
+            requestGitChanges(directory: dir)
+        }
+    }
+
     func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {
         send(.gitGraph(directory: directory, skip: skip, limit: limit))
     }
