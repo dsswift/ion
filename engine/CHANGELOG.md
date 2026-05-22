@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.23.3](https://github.com/dsswift/ion/compare/engine-v1.23.2...engine-v1.23.3) (2026-05-22)
+
+### Bug Fixes
+
+* **engine:** tighten ext/send_prompt fallback path ([62be161](https://github.com/dsswift/ion/commit/62be161303b3017684e1541a5959f85f892cd39c))
+
 ## [1.23.2](https://github.com/dsswift/ion/compare/engine-v1.23.1...engine-v1.23.2) (2026-05-22)
 
 ### Bug Fixes
