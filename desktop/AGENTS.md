@@ -74,6 +74,24 @@ desktop/src/
 - Use `main/logger.ts`. No `console.log` in shipped code.
 - No silent `catch {}`. Either log at debug (intentional fallback), increment a counter (parse-loop tolerance), or escalate to `error`.
 
+## Debugging the packaged app
+
+**DevTools is not accessible in the packaged build.** `Cmd+Option+I` only opens DevTools in `npm run dev`. Never tell the user to open DevTools or read the renderer console in a `make desktop` build — the shortcut does nothing and there is no menu entry.
+
+To diagnose renderer-side state in a packaged build, use one of these instead:
+
+1. **Forward to the main logger.** The main process already pipes `[renderer]` lines to `~/.ion/desktop.log` (see entries like `[main] [renderer] ...`). For new diagnostics, add a `window.ion.log(...)` call (or equivalent IPC) so renderer state lands in `desktop.log` where it can be grepped.
+2. **Promote `console.log` to a logged IPC.** A temporary `console.log` in the renderer is invisible in packaged builds. Convert it to an IPC that writes via `main/logger.ts` before asking the user to reproduce.
+3. **Inspect via the main-process snapshot.** `main/remote/snapshot.ts` polls renderer state through `executeJavaScript` and logs to `desktop.log`. Adding fields to that projection is the most reliable way to observe renderer store state from a packaged build.
+4. **Build and run in dev mode** (`cd desktop && npm run dev`) if you genuinely need live DevTools. This is the only way to use them.
+
+**The `console-message` allowlist.** `main/window-manager.ts` listens to renderer `console-message` events but only forwards messages whose text starts with one of a known set of prefixes (e.g. `[task_complete]`, `[App]`, `[FileE`, `[useFile`, `[event-slice]`, `[store]`). Errors (`level >= 2`) are always forwarded. **A `console.log('foo')` with no prefix lands nowhere in a packaged build.** When adding diagnostics:
+
+- Prefix the message with one of the allowlisted tags (or extend the allowlist).
+- Verify the prefix appears in the allowlist before relying on the log line.
+
+When investigating a renderer bug in a packaged build, **add the instrumentation first** (option 1, 2, or 3 above), ship a new build, then ask the user to reproduce. Asking the user to "check the console" is a wasted round-trip.
+
 ## Secrets
 
 - Paired-device shared secrets and relay API key go through `safeStorage.encryptString` (OS keychain).

@@ -460,6 +460,11 @@ struct EngineMessage: Identifiable, Sendable {
     var toolStatus: String?
     var timestamp: Double?
     var isInternal: Bool?
+    /// View-only: number of consecutive bootstrap messages that were collapsed
+    /// into this one (not encoded/decoded — excluded from CodingKeys). Nil when
+    /// this message is displayed individually. When > 0 the harness row renders
+    /// a count badge showing the total occurrences (collapsed + 1).
+    var bootstrapCollapsedCount: Int?
 }
 
 extension EngineMessage: Codable {

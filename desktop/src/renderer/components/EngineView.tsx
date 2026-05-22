@@ -237,7 +237,7 @@ export function EngineView({ tabId }: EngineViewProps) {
                   case 'tool-group':
                     return <ToolGroup key={`tg-${idx}`} tools={item.messages} skipMotion />
                   case 'harness':
-                    return <HarnessMessage key={item.message.id} message={item.message} skipMotion />
+                    return <HarnessMessage key={item.message.id} message={item.message} skipMotion bootstrapCollapsedCount={item.bootstrapCollapsedCount} />
                   case 'system':
                     return <SystemMessage key={item.message.id} message={item.message} skipMotion />
                   case 'compaction':

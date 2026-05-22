@@ -257,20 +257,44 @@ Engine events are produced by the engine itself (not the LLM provider). They sha
 
 #### engine_agent_state
 
-Reports the current state of all agents in the session.
+Complete snapshot of every agent the engine considers live at this instant. Consumers **must replace** their local agent view with this payload — do not merge, do not preserve entries not present here. An empty `agents: []` array means no agents are live and consumers must drop all entries. The engine guarantees a follow-up event with terminal status (or absence) for every agent that ends.
+
+See [Agent State Contract](../architecture/agent-state.md) for the normative semantics, including extension-death recovery and reconnect handling.
 
 | Field    | Type               | Description               |
 |----------|--------------------|---------------------------|
 | `type`   | `"engine_agent_state"` | Event type            |
-| `agents` | AgentStateUpdate[] | Current agent states      |
+| `agents` | AgentStateUpdate[] | Complete snapshot of live agents |
 
 **AgentStateUpdate:**
 
 | Field      | Type   | Description                    |
 |------------|--------|--------------------------------|
-| `name`     | string | Agent name                     |
-| `status`   | string | Agent status                   |
-| `metadata` | object | Additional metadata            |
+| `name`     | string | Stable agent identifier (engine-assigned or harness-defined). |
+| `status`   | string | One of `idle`, `running`, `done`, `error`, `cancelled`. `running` is the only non-terminal value. |
+| `metadata` | object | Open-ended map of well-known and harness-defined keys (see below). |
+
+**Well-known metadata keys** (advisory — clients render what they understand, ignore the rest):
+
+| Key | Type | Purpose |
+|---|---|---|
+| `displayName` | string | Human-friendly name for UI. |
+| `type` | string | `chief`, `specialist`, `staff`, `consultant`, or `agent` (engine default). |
+| `visibility` | string | `always`, `sticky`, or `ephemeral`. |
+| `invited` | bool | True after the agent has been dispatched at least once. |
+| `color` | string | CSS color for the agent's badge. |
+| `model` | string | Provider model id. |
+| `task` | string | The prompt handed to this agent. |
+| `lastWork` | string | Short summary (≤100 chars). |
+| `fullOutput` | string | Full agent output. |
+| `elapsed` | number | Wall-clock seconds since `startTime`. |
+| `startTime` | number | Unix timestamp (seconds) when this run began. |
+| `cost` | number | Cumulative USD cost for this session. |
+| `conversationId` | string | Backend session id for rewind features. |
+| `parentAgent` | string | Dispatching agent name (for tree views). |
+| `depth` | number | Nesting depth from the root run. |
+
+Extensions may add their own metadata keys; pick a unique prefix.
 
 #### engine_status
 

@@ -6,6 +6,7 @@ import { readSettings } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
 import { revokeDeviceLocally } from '../remote/revoke'
 import { requestLogsFromFirstDevice } from '../remote/handlers/diagnostics'
+import { setRemoteDisplay, readRemoteDisplay } from '../remote/handlers/display'
 import type { DiscoveredRelay } from '../remote/discovery'
 
 function log(msg: string): void {
@@ -88,6 +89,18 @@ export function registerRemoteControlIpc(): void {
       log(`REMOTE_REQUEST_IOS_LOGS error: ${(err as Error).message}`)
       return { ok: false, error: (err as Error).message }
     }
+  })
+
+  ipcMain.handle(IPC.REMOTE_SET_DISPLAY, (_event, customName: string | null, customIcon: string | null) => {
+    log(`IPC.REMOTE_SET_DISPLAY: name=${customName === null ? 'null' : 'set'} icon=${customIcon ?? 'null'}`)
+    const result = setRemoteDisplay(customName, customIcon, Date.now(), 'desktop')
+    return result.value
+  })
+
+  ipcMain.handle('ion:remote-get-display', () => {
+    const value = readRemoteDisplay()
+    log(`IPC.remote-get-display: ${value ? `name=${value.customName === null ? 'null' : 'set'} icon=${value.customIcon ?? 'null'} ts=${value.updatedAt}` : 'unset'}`)
+    return value
   })
 
   relayDiscovery.on('relays-changed', (relays: DiscoveredRelay[]) => {

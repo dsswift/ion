@@ -11,14 +11,26 @@ import (
 
 // handleHostDeath is invoked from a goroutine after the Host's reader loop
 // detects the subprocess has died. It records whether a turn was in flight
-// at the moment of death (so turn_aborted can fire on the new instance) and
-// emits the typed engine_extension_died wire event. The actual respawn is
-// deferred to handleRunExit when the active run finishes — never mid-turn.
+// at the moment of death (so turn_aborted can fire on the new instance),
+// emits the typed engine_extension_died wire event, and emits a corrective
+// `engine_agent_state` snapshot drawn from the engine's own registry so
+// stale "running" rows the extension last published do not linger across
+// the death/respawn window.
+//
+// Engine contract: `engine_agent_state` is a complete snapshot. When the
+// authoritative emitter (the extension) goes away, the engine must publish
+// a replacement snapshot reflecting reality from its own registry — the
+// extension's last cache cannot be trusted to represent the live world.
+// See docs/architecture/agent-state.md.
+//
+// The actual respawn is deferred to handleRunExit when the active run
+// finishes — never mid-turn.
 func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
+		utils.Warn("Session", fmt.Sprintf("handleHostDeath: session not found key=%s ext=%s", key, h.Name()))
 		return
 	}
 	turnActive := s.requestID != ""
@@ -37,6 +49,24 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 		Signal:        &signal,
 	})
 
+	// Emit a corrective agent_state snapshot. The dead extension's cached
+	// state (lastExtStates) typically contains agents in "running" — those
+	// rows are now stale because the process that was driving them is gone.
+	// Drop the cached extension states and emit whatever the engine's own
+	// registry holds (engine-managed Agent tool sub-agents only). Consumers
+	// must replace their view per the snapshot contract.
+	//
+	// When the extension respawns, its session_start hook will re-emit a
+	// fresh snapshot and the cache will be repopulated naturally.
+	prevExtCount := len(s.agents.LastExtStates())
+	s.agents.CacheExtStates(nil)
+	snapshot := s.agents.MergedSnapshot()
+	utils.Log("Session", fmt.Sprintf("agent_recovery_snapshot key=%s reason=extension_died ext=%s dropped_ext_states=%d snapshot_count=%d", key, h.Name(), prevExtCount, len(snapshot)))
+	m.emit(key, types.EngineEvent{
+		Type:   "engine_agent_state",
+		Agents: snapshot,
+	})
+
 	// Notify peers in the same session that a sibling died. Observational
 	// only — peers can't prevent the death, but they can degrade
 	// gracefully (mark dependent state as stale, etc.).
@@ -45,7 +75,10 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	// If no run is active, respawn immediately. Otherwise the manager's
 	// handleRunExit will call respawnDeadExtensions after the run ends.
 	if !turnActive {
+		utils.Debug("Session", fmt.Sprintf("handleHostDeath: no active turn — respawning immediately key=%s ext=%s", key, h.Name()))
 		m.respawnDeadExtensions(key)
+	} else {
+		utils.Debug("Session", fmt.Sprintf("handleHostDeath: deferring respawn until run exits key=%s ext=%s", key, h.Name()))
 	}
 }
 

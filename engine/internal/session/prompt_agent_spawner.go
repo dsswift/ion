@@ -9,6 +9,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // wireAgentSpawner installs the AgentSpawner closure on runCfg. The spawner
@@ -84,6 +85,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		})
 		snapshot := s.agents.MergedSnapshot()
 
+		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=agent_start name=%s", capturedKey, len(snapshot), agentName))
 		m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
 		child := m.newChildBackend()
@@ -140,6 +142,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 
 		elapsed := time.Since(start).Seconds()
 
+		var terminalStatus string
 		s.agents.UpdateState(agentName, func(state *types.AgentStateUpdate) {
 			if state.Metadata == nil {
 				state.Metadata = map[string]interface{}{}
@@ -157,6 +160,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 					state.Metadata["lastWork"] = result
 				}
 			}
+			terminalStatus = state.Status
 			state.Metadata["elapsed"] = elapsed
 			if childConvID != "" {
 				state.Metadata["conversationId"] = childConvID
@@ -164,6 +168,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		})
 		snapshot2 := s.agents.MergedSnapshot()
 
+		utils.Log("Session", fmt.Sprintf("agent_terminated name=%s status=%s reason=spawner_exit key=%s elapsed=%.2fs", agentName, terminalStatus, capturedKey, elapsed))
+		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=agent_end name=%s", capturedKey, len(snapshot2), agentName))
 		m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot2})
 
 		if cancelled {

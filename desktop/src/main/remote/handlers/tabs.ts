@@ -10,6 +10,7 @@ import { getRemoteTabStates } from '../snapshot'
 import { discoverCommands } from '../../cli-compat/command-discovery'
 import { encodeImageAttachments } from '../attachment-encoder'
 import { autoPullDiagnosticLogs } from './diagnostics'
+import { readRemoteDisplay } from './display'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -32,7 +33,21 @@ async function _sendSync(send: (event: any) => void): Promise<void> {
   const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
   const tabGroupMode = syncSettings.tabGroupMode || 'off'
   const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
-  send({ type: 'snapshot', tabs, recentDirectories, tabGroupMode, tabGroups, preferredModel: syncSettings.preferredModel || undefined, engineDefaultModel: syncSettings.engineDefaultModel || undefined, availableModels: modelCache.models.length > 0 ? modelCache.models : undefined })
+  const remoteDisplay = readRemoteDisplay()
+  log(`SNAP-SEND: tabs=${tabs.length} dirs=${recentDirectories.length} remoteDisplay=${remoteDisplay ? `name=${remoteDisplay.customName === null ? 'null' : 'set'} icon=${remoteDisplay.customIcon ?? 'null'} ts=${remoteDisplay.updatedAt}` : 'unset'}`)
+  send({
+    type: 'snapshot',
+    tabs,
+    recentDirectories,
+    tabGroupMode,
+    tabGroups,
+    preferredModel: syncSettings.preferredModel || undefined,
+    engineDefaultModel: syncSettings.engineDefaultModel || undefined,
+    availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
+    customName: remoteDisplay?.customName ?? undefined,
+    customIcon: remoteDisplay?.customIcon ?? undefined,
+    remoteDisplayUpdatedAt: remoteDisplay?.updatedAt ?? undefined,
+  })
   const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
   send({ type: 'engine_profiles', profiles: engineProfiles })
   for (const tab of tabs) {
@@ -504,6 +519,22 @@ export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: '
     `)
   } catch (err) {
     log('move_tab_to_group error: ' + (err as Error).message)
+  }
+  await broadcastSync()
+}
+
+export async function handleToggleTabGroupPin(cmd: Extract<RemoteCommand, { type: 'toggle_tab_group_pin' }>): Promise<void> {
+  try {
+    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().toggleTabGroupPin('${escapedTab}');
+      })()
+    `)
+  } catch (err) {
+    log('toggle_tab_group_pin error: ' + (err as Error).message)
   }
   await broadcastSync()
 }

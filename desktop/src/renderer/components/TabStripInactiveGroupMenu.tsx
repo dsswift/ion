@@ -8,6 +8,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
 import { zoomRect, zoomViewport } from './TabStripShared'
+import { ConfirmDialog } from './git/ConfirmDialog'
 
 interface InactiveGroupMenuProps {
   anchor: { x: number; y: number }
@@ -33,6 +34,7 @@ export function InactiveGroupMenu({
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -62,11 +64,10 @@ export function InactiveGroupMenu({
 
   const menuItemStyle = { fontSize: 12, color: colors.textPrimary, background: 'transparent' as string, border: 'none' as const, cursor: 'pointer' as const }
 
-  const moveAllToGroup = (targetGroupId: string) => {
-    for (const tab of group.tabs) {
-      moveTabToGroup(tab.id, targetGroupId)
-    }
-    onClose()
+  const requestMoveAll = (targetGroupId: string, targetLabel: string) => {
+    console.log('[InactiveGroupMenu] move-all confirmation requested', { tabCount: group.tabs.length, targetGroupId, targetLabel })
+    setMoveSubmenu(null)
+    setPendingMoveAll({ groupId: targetGroupId, label: targetLabel })
   }
 
   // Build available targets
@@ -76,26 +77,27 @@ export function InactiveGroupMenu({
     .map((g) => ({ id: g.id, label: g.label }))
 
   return createPortal(
-    <motion.div
-      ref={ref}
-      data-ion-ui
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.12 }}
-      style={{
-        position: 'fixed',
-        left,
-        top,
-        pointerEvents: 'auto',
-        background: colors.popoverBg,
-        border: `1px solid ${colors.popoverBorder}`,
-        borderRadius: 8,
-        padding: 4,
-        zIndex: 10000,
-        minWidth: 160,
-      }}
-    >
+    <>
+      <motion.div
+        ref={ref}
+        data-ion-ui
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.12 }}
+        style={{
+          position: 'fixed',
+          left,
+          top,
+          pointerEvents: 'auto',
+          background: colors.popoverBg,
+          border: `1px solid ${colors.popoverBorder}`,
+          borderRadius: 8,
+          padding: 4,
+          zIndex: 10000,
+          minWidth: 160,
+        }}
+      >
       <button
         ref={moveItemRef}
         className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
@@ -150,7 +152,7 @@ export function InactiveGroupMenu({
               style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-              onClick={() => moveAllToGroup(t.id)}
+              onClick={() => requestMoveAll(t.id, t.label)}
             >
               <ArrowRight size={12} color={colors.textTertiary} />
               <span>{t.label}</span>
@@ -167,8 +169,9 @@ export function InactiveGroupMenu({
                     onChange={(e) => setNewGroupName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newGroupName.trim()) {
-                        const id = usePreferencesStore.getState().createTabGroup(newGroupName.trim())
-                        moveAllToGroup(id)
+                        const trimmed = newGroupName.trim()
+                        const id = usePreferencesStore.getState().createTabGroup(trimmed)
+                        requestMoveAll(id, trimmed)
                       }
                       if (e.key === 'Escape') setShowNewGroupInput(false)
                     }}
@@ -196,7 +199,28 @@ export function InactiveGroupMenu({
         </motion.div>,
         popoverLayer,
       )}
-    </motion.div>,
+    </motion.div>
+      {pendingMoveAll && (
+        <ConfirmDialog
+          title="Move all tabs?"
+          message={`Move all ${group.tabs.length} tab${group.tabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
+          confirmLabel="Move all"
+          cancelLabel="Cancel"
+          danger={false}
+          onConfirm={() => {
+            console.log('[InactiveGroupMenu] move-all confirmed', { tabCount: group.tabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+            for (const tab of group.tabs) moveTabToGroup(tab.id, pendingMoveAll.groupId)
+            setPendingMoveAll(null)
+            onClose()
+          }}
+          onCancel={() => {
+            console.log('[InactiveGroupMenu] move-all cancelled', { tabCount: group.tabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+            setPendingMoveAll(null)
+            onClose()
+          }}
+        />
+      )}
+    </>,
     popoverLayer,
   )
 }

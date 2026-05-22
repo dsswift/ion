@@ -84,8 +84,12 @@ extension SessionViewModel {
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
-        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels):
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt):
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels)
+            applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
+
+        case .remoteDisplay(let customName, let customIcon, let updatedAt):
+            applyLiveRemoteDisplay(customName: customName, customIcon: customIcon, updatedAt: updatedAt)
 
         case .tabCreated(let tab):
             if !tabs.contains(where: { $0.id == tab.id }) {
@@ -183,15 +187,28 @@ extension SessionViewModel {
 
         // Engine events (structured)
         case .engineAgentState(let tabId, let instanceId, let agents):
-            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            // Engine contract: `engine_agent_state` is a complete snapshot
+            // of every agent the engine considers live. Replace local
+            // state with the payload, full stop — no merging, no historical
+            // preservation. See docs/architecture/agent-state.md.
+            //
+            // Compound-key resolution: when the engine omits instanceId we
+            // resolve to the active engine instance so the event lands
+            // under the same key the EngineView reads. The desktop bridge
+            // always sends an instanceId today, but this guards against a
+            // future emitter (or test harness) that sends nil and matches
+            // how engineCompoundKey(tabId:) builds keys for view lookup.
+            let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
+            let statuses = agents.map { "\($0.name):\($0.status)" }.joined(separator: ",")
+            DiagnosticLog.log("ENGINE: agent_state key=\(key) count=\(agents.count) statuses=[\(statuses)]")
             engineAgentStates[key] = agents
 
         case .engineStatus(let tabId, let instanceId, let fields):
-            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
             engineStatusFields[key] = fields
 
         case .engineWorkingMessage(let tabId, let instanceId, let message):
-            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+            let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
             engineWorkingMessages[key] = message
 
         case .engineToolStart(let tabId, let instanceId, let toolName, let toolId):
@@ -249,7 +266,13 @@ extension SessionViewModel {
             handleEngineInstanceRemoved(tabId: tabId, instanceId: instanceId)
 
         case .engineInstanceMoved(let sourceTabId, let instanceId, let targetTabId):
-            // Server-confirmed move: reconcile local state
+            // Server-confirmed move: reconcile local state.
+            // Mirrors desktop's engine-slice.ts:200-230 which rekeys every
+            // compound-keyed Map when an instance moves between tabs.
+            // Without this, agent state, status, working message, dialogs,
+            // and tool state are orphaned under the old compound key and
+            // silently disappear from the view when the user switches to
+            // the target tab.
             if var srcInstances = engineInstances[sourceTabId],
                let idx = srcInstances.firstIndex(where: { $0.id == instanceId }) {
                 let inst = srcInstances.remove(at: idx)
@@ -265,6 +288,15 @@ extension SessionViewModel {
                     engineInstances[targetTabId] = tgtInstances
                 }
                 activeEngineInstance[targetTabId] = instanceId
+
+                // Rekey every compound-keyed map so the agent panel,
+                // status bar, working banner, and active tools follow
+                // the instance to its new tab.
+                let oldKey = "\(sourceTabId):\(instanceId)"
+                let newKey = "\(targetTabId):\(instanceId)"
+                rekeyEngineMaps(oldKey: oldKey, newKey: newKey)
+            } else {
+                DiagnosticLog.log("ENGINE: instance_moved: src not found sourceTabId=\(sourceTabId.prefix(8)) instanceId=\(instanceId.prefix(8))")
             }
 
         case .engineModelOverride(let tabId, let instanceId, let model):
@@ -403,6 +435,10 @@ extension SessionViewModel {
 
     @MainActor
     private func handlePermissionRequest(tabId: String, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption]) {
+        let inputKeys = toolInput?.keys.sorted() ?? []
+        let inputSummary = toolInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
+        DiagnosticLog.log("PERM: handlePermissionRequest: tabId=\(tabId.prefix(8)) questionId=\(questionId.prefix(16)) toolName=\(toolName) inputKeys=\(inputKeys) inputTypes=[\(inputSummary)] options=\(options.map(\.label))")
+
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             // Normalize AnyCodable toolInput to Foundation types so the
             // card views can parse with simple `as?` casts. The Codable
@@ -414,6 +450,10 @@ extension SessionViewModel {
                let data = try? JSONEncoder().encode(input),
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 normalizedInput = dict.mapValues { AnyCodable($0) }
+                let normalizedSummary = normalizedInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
+                DiagnosticLog.log("PERM: handlePermissionRequest: normalized toolInput types=[\(normalizedSummary)]")
+            } else {
+                DiagnosticLog.log("PERM: handlePermissionRequest: normalization failed or skipped, using raw toolInput")
             }
             let request = PermissionRequest(
                 questionId: questionId,
@@ -421,7 +461,10 @@ extension SessionViewModel {
                 toolInput: normalizedInput,
                 options: options
             )
+            DiagnosticLog.log("PERM: handlePermissionRequest: queued request for tabId=\(tabId.prefix(8)) queueSize=\(self.tabs[idx].permissionQueue.count + 1)")
             tabs[idx].permissionQueue.append(request)
+        } else {
+            DiagnosticLog.log("PERM: handlePermissionRequest: tab \(tabId.prefix(8)) not found, dropping permission request")
         }
     }
 
@@ -445,6 +488,12 @@ extension SessionViewModel {
             messages[tabId] = deduped
         }
         messageCountByTab[tabId] = messages[tabId]?.count ?? 0
+
+        // Log the last 3 messages for diagnostics (permission card restoration depends on message content).
+        let allMsgs = messages[tabId] ?? []
+        let tail = allMsgs.suffix(3)
+        let tailSummary = tail.map { "role=\($0.role.rawValue) toolName=\($0.toolName ?? "nil") isTool=\($0.isTool) toolInput=\($0.toolInput?.prefix(60) ?? "nil")" }.joined(separator: " | ")
+        DiagnosticLog.log("CONV-HIST: tabId=\(tabId.prefix(8)) total=\(allMsgs.count) hasMore=\(hasMore) cursor=\(cursor?.prefix(8) ?? "nil") tail=[\(tailSummary)]")
     }
 
     @MainActor

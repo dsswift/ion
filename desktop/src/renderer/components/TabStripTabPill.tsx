@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { X, GitBranch, GitFork, FolderSimple } from '@phosphor-icons/react'
+import { X, GitBranch, GitFork, FolderSimple, PushPin } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { TabState } from '../../shared/types'
@@ -54,6 +54,7 @@ export function TabPill({
 }: TabPillProps) {
   const colors = useColors()
   const gitOpsMode = usePreferencesStore((s) => s.gitOpsMode)
+  const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
 
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const displayTitle = tab.customTitle || tab.title
@@ -118,6 +119,9 @@ export function TabPill({
       >
         <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} />
       </span>
+      {tab.groupPinned && tabGroupMode === 'manual' && (
+        <PushPin size={10} color={colors.textTertiary} className="flex-shrink-0" style={{ opacity: 0.7 }} />
+      )}
       {tab.forkedFromSessionId && !tab.worktree ? (
         <GitFork size={11} color={colors.textTertiary} className="flex-shrink-0" />
       ) : tab.worktree ? (

@@ -12,6 +12,7 @@ import {
   handleLoadConversation,
   handleSetTabGroupMode,
   handleMoveTabToGroup,
+  handleToggleTabGroupPin,
   handleReorderTabGroups,
   handleDiscoverCommands,
   handleSetTabModel,
@@ -70,6 +71,7 @@ import {
   handleDiagnosticLogsResponse,
 } from './handlers/diagnostics'
 import { handleLoadAttachments } from './handlers/attachments'
+import { handleSetRemoteDisplay } from './handlers/display'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string): void {
@@ -112,6 +114,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'fork_from_message': await handleForkFromMessage(cmd); break
     case 'set_tab_group_mode': await handleSetTabGroupMode(cmd); break
     case 'move_tab_to_group': await handleMoveTabToGroup(cmd); break
+    case 'toggle_tab_group_pin': await handleToggleTabGroupPin(cmd); break
     case 'reorder_tab_groups': await handleReorderTabGroups(cmd); break
     case 'git_changes': await handleGitChanges(cmd, deviceId); break
     case 'git_graph': await handleGitGraph(cmd, deviceId); break
@@ -138,5 +141,6 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'unpair': handleUnpair(deviceId); break
     case 'diagnostic_logs_response': handleDiagnosticLogsResponse(cmd, deviceId); break
     case 'load_attachments': await handleLoadAttachments(cmd, deviceId); break
+    case 'set_remote_display': await handleSetRemoteDisplay(cmd, deviceId); break
   }
 }

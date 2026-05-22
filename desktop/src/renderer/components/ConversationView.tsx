@@ -6,6 +6,8 @@ import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { useColors } from '../theme'
 import { TodoListPanel } from './TodoListPanel'
+import { ConversationSearch } from './ConversationSearch'
+import { useConversationSearch } from '../hooks/useConversationSearch'
 import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, InterruptButton,
@@ -93,6 +95,26 @@ export function ConversationView() {
     setRenderOffset((o) => o + 1)
   }, [])
 
+  // Load all older messages (used by ConversationSearch "Load all" button)
+  const handleLoadAllOlder = useCallback(() => {
+    setRenderOffset(Math.ceil(totalCount / INITIAL_RENDER_CAP))
+  }, [totalCount])
+
+  // Conversation search — scoped to scrollRef
+  const [searchState, searchActions] = useConversationSearch(scrollRef, scrollTrigger)
+
+  // When search scrolls to a match, prevent auto-scroll-to-bottom from fighting it
+  useEffect(() => {
+    const handler = () => { isNearBottomRef.current = false }
+    window.addEventListener('ion:search-scrolled', handler)
+    return () => window.removeEventListener('ion:search-scrolled', handler)
+  }, [])
+
+  // Close search when switching tabs
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('ion:search-close'))
+  }, [activeTabId])
+
   if (!tab) return null
 
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
@@ -126,8 +148,14 @@ export function ConversationView() {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Scroll area wrapper — relative so activity row can overlay */}
+      {/* Scroll area wrapper — relative so activity row and search bar can overlay */}
       <div className="relative flex-1 min-h-0 min-w-0 flex flex-col">
+        <ConversationSearch
+          state={searchState}
+          actions={searchActions}
+          hiddenCount={hiddenCount}
+          onLoadAllOlder={handleLoadAllOlder}
+        />
         {/* Scrollable messages area */}
         <div
           ref={scrollRef}
@@ -191,10 +219,12 @@ export function ConversationView() {
               projectPath={staticInfo?.projectPath || process.cwd()}
               messages={tab.messages}
               tabPlanFilePath={tab.planFilePath}
+              tabGroupPinned={tab.groupPinned}
               onDismiss={permissionDeniedHandlers.onDismiss}
               onAnswer={permissionDeniedHandlers.onAnswer}
               onApprove={permissionDeniedHandlers.onApprove}
               onImplement={permissionDeniedHandlers.onImplement}
+              onImplementAndUnpin={permissionDeniedHandlers.onImplementAndUnpin}
             />
           )}
         </AnimatePresence>

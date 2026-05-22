@@ -12,26 +12,26 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
       }))
       switch (event.type) {
         case 'engine_agent_state': {
+          // Engine contract: `engine_agent_state` is a COMPLETE SNAPSHOT
+          // of every agent the engine considers live. Replace local state
+          // with the payload — do not merge, do not retain prior entries.
+          // The engine guarantees a follow-up snapshot for every
+          // terminating agent, so any agent missing from this payload is
+          // genuinely no longer live. See docs/architecture/agent-state.md.
+          //
+          // Historically this slice retained "historical" agents (status
+          // != running with a conversationId) when the engine sent an
+          // empty array. That preservation rule was the bug behind the
+          // iOS "stale agent" reports — the desktop renderer would hold
+          // onto rows the engine had already retired, and on reconnect
+          // sendCurrentEngineState would forward those stale rows to iOS.
+          // Removed: the engine is authoritative.
           const agents = event.agents || []
-          const nonIdle = agents.filter((a: any) => a.status !== 'idle')
-          console.log('[store] agent_state:', key, nonIdle.map((a: any) => `${a.name}:${a.status}:${a.lastWork?.substring(0,30)||'(empty)'}`))
+          const statusSummary = agents.map((a: any) => `${a.name}:${a.status}`).join(',')
+          console.log(`[store] agent_state: key=${key} count=${agents.length} replaced [${statusSummary}]`)
           set((state) => {
             const agentStates = new Map(state.engineAgentStates)
-            if (agents.length === 0) {
-              const existing = agentStates.get(key)
-              if (existing) {
-                const historical = existing.filter((a) =>
-                  a.status !== 'running' && a.metadata?.conversationId
-                )
-                if (historical.length > 0) {
-                  agentStates.set(key, historical)
-                } else {
-                  agentStates.delete(key)
-                }
-              }
-            } else {
-              agentStates.set(key, agents)
-            }
+            agentStates.set(key, agents)
             return { engineAgentStates: agentStates }
           })
           break

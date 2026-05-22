@@ -210,6 +210,15 @@ extension SessionViewModel {
         send(.moveTabToGroup(tabId: tabId, groupId: groupId))
     }
 
+    /// Toggle the group-pin state for a tab on the desktop.
+    func toggleTabGroupPin(tabId: String) {
+        // Optimistic local update for responsive UI
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].groupPinned = !(tabs[idx].groupPinned ?? false)
+        }
+        send(.toggleTabGroupPin(tabId: tabId))
+    }
+
     /// Reorder tab groups. Sends the new ordering to the desktop.
     func reorderTabGroups(orderedIds: [String]) {
         // Optimistic local update: reorder tabGroups to match orderedIds
@@ -385,6 +394,16 @@ extension SessionViewModel {
 
     func requestGitChanges(directory: String) {
         send(.gitChanges(directory: directory))
+    }
+
+    /// Request git changes for every unique tab working directory that doesn't
+    /// already have cached data. Called when the "Show Git Info" toggle is
+    /// enabled so rows populate without waiting for the next watcher event.
+    func requestMissingGitChanges() {
+        let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
+        for dir in dirs where gitChanges[dir] == nil {
+            requestGitChanges(directory: dir)
+        }
     }
 
     func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {

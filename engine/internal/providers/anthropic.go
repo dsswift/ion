@@ -195,7 +195,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[string]any {
 	maxTokens := opts.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 8192
+		maxTokens = 16384
 	}
 
 	body := map[string]any{

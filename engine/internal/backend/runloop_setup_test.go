@@ -252,3 +252,153 @@ func TestWebSearchMode_DefaultsToAuto(t *testing.T) {
 		t.Error("expected server tools for default (empty) mode + anthropic + no client key")
 	}
 }
+
+// --- plan mode prompt tests ---
+
+func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", true)
+
+	checks := []struct {
+		label    string
+		contains string
+	}{
+		{"read first", "MUST Read it first"},
+		{"edit tool", "Edit tool"},
+		{"no write", "Do NOT use Write"},
+		{"amend section", "Amending an Existing Plan"},
+		{"amend rule", "amend the existing plan"},
+		{"preserve deliverables", "existing deliverables"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(prompt, c.contains) {
+			t.Errorf("%s: expected prompt to contain %q", c.label, c.contains)
+		}
+	}
+}
+
+func TestBuildPlanModePrompt_NewFile(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false)
+
+	if !strings.Contains(prompt, "Create your plan at") {
+		t.Error("expected 'Create your plan at' for new file")
+	}
+	if !strings.Contains(prompt, "Write tool") {
+		t.Error("expected 'Write tool' guidance for new file")
+	}
+	if strings.Contains(prompt, "Amending an Existing Plan") {
+		t.Error("amend section should not appear for new file")
+	}
+}
+
+func TestBuildPlanModeReentryPrompt(t *testing.T) {
+	prompt := buildPlanModeReentryPrompt("/tmp/plan.md")
+
+	checks := []struct {
+		label    string
+		contains string
+	}{
+		{"reentry header", "Re-entering Plan Mode"},
+		{"read existing", "Read the existing plan file"},
+		{"different task", "Different task"},
+		{"same task", "Same task, continuing"},
+		{"adding requirements", "Adding requirements"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(prompt, c.contains) {
+			t.Errorf("%s: expected prompt to contain %q", c.label, c.contains)
+		}
+	}
+}
+
+func TestBuildPlanModeSparseReminder_ExistingFile(t *testing.T) {
+	// Create a temp file so os.Stat succeeds
+	f, err := os.CreateTemp("", "plan-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString("# Existing Plan\n## Deliverable 1\n")
+	f.Close()
+
+	reminder := buildPlanModeSparseReminder(f.Name())
+	if !strings.Contains(reminder, "Amend existing plan with Edit") {
+		t.Error("expected amendment hint in sparse reminder for existing file")
+	}
+}
+
+func TestBuildPlanModeSparseReminder_NoFile(t *testing.T) {
+	reminder := buildPlanModeSparseReminder("/tmp/nonexistent-plan-file-xxxxx.md")
+	if strings.Contains(reminder, "Amend existing plan") {
+		t.Error("amendment hint should not appear when plan file doesn't exist")
+	}
+}
+
+// --- plan mode tool injection tests ---
+
+func TestBuildToolDefs_PlanModeInjectsExitAndAsk(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "test", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+
+	hasExit := false
+	hasAsk := false
+	for _, td := range toolDefs {
+		if td.Name == "ExitPlanMode" {
+			hasExit = true
+		}
+		if td.Name == "AskUserQuestion" {
+			hasAsk = true
+		}
+	}
+	if !hasExit {
+		t.Error("expected ExitPlanMode tool in plan mode")
+	}
+	if !hasAsk {
+		t.Error("expected AskUserQuestion tool in plan mode")
+	}
+}
+
+func TestBuildToolDefs_NoPlanModeHasAskButNoExit(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "test"}
+	opts := types.RunOptions{} // not plan mode
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+
+	hasAsk := false
+	for _, td := range toolDefs {
+		if td.Name == "ExitPlanMode" {
+			t.Error("ExitPlanMode sentinel should not appear outside plan mode")
+		}
+		if td.Name == "AskUserQuestion" {
+			hasAsk = true
+		}
+	}
+	if !hasAsk {
+		t.Error("expected AskUserQuestion tool to be available outside plan mode")
+	}
+}
+
+func TestBuildSystemPrompt_PlanModeReentryPrepended(t *testing.T) {
+	conv := &conversation.Conversation{}
+	opts := &types.RunOptions{
+		PlanMode:        true,
+		PlanFilePath:    "/tmp/plan.md",
+		PlanModeReentry: true,
+	}
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-7")
+
+	if !strings.Contains(result, "Re-entering Plan Mode") {
+		t.Error("expected reentry prompt in system prompt")
+	}
+	// Reentry should come before the standard plan mode prompt
+	reentryIdx := strings.Index(result, "Re-entering Plan Mode")
+	planModeIdx := strings.Index(result, "[PLAN MODE]")
+	if reentryIdx > planModeIdx {
+		t.Error("reentry prompt should appear before standard plan mode prompt")
+	}
+}

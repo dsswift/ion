@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldWarning, ShieldCheck, Terminal, RocketLaunch, ListChecks, Eye, Question } from '@phosphor-icons/react'
+import { ShieldWarning, ShieldCheck, Terminal, RocketLaunch, ListChecks, Eye, Question, PushPinSlash } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { PlanViewer } from './PlanViewer'
+import { AskQuestionCard } from './AskQuestionCard'
+import type { AskData, AskOption } from './AskQuestionCard'
 import type { Message } from '../../shared/types'
 
 interface Props {
@@ -13,24 +15,17 @@ interface Props {
   projectPath: string
   messages: Message[]
   tabPlanFilePath?: string | null
+  /** When true, shows the "Implement and unpin" button on the Plan Ready card. */
+  tabGroupPinned?: boolean
   onDismiss: () => void
   onImplement?: (clearContext: boolean) => void
+  /** Called when the user clicks "Implement and unpin" — unpins the tab then implements. */
+  onImplementAndUnpin?: (clearContext: boolean) => void
   onAnswer?: (answer: string) => void
   onApprove?: (toolNames: string[]) => void
 }
 
-interface AskOption {
-  label: string
-  description?: string
-}
-
-interface AskData {
-  question: string
-  header?: string
-  options: AskOption[]
-}
-
-export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, tabPlanFilePath, onDismiss, onImplement, onAnswer, onApprove }: Props) {
+export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
   const colors = useColors()
   const showClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
@@ -79,18 +74,34 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
   const isPlanExit = toolNames.includes('ExitPlanMode')
   const isAskQuestion = !isPlanExit && toolNames.includes('AskUserQuestion')
 
-  // Extract question data from the last AskUserQuestion message
+  // Extract question data from the AskUserQuestion denial.
+  // Primary source: tools[].toolInput (always present — set directly from the
+  // engine's PermissionDenial which carries block.Input). The message-scan
+  // fallback is kept for safety but will almost never fire because the engine
+  // intercepts AskUserQuestion before emitting engine_tool_start, so no
+  // role:'tool' message ever lands in tab.messages for this tool.
   const askData = useMemo<AskData | null>(() => {
     if (!isAskQuestion) return null
-    const askMsg = [...messages].reverse().find((m) => m.toolName === 'AskUserQuestion' && m.toolInput)
-    if (!askMsg?.toolInput) return null
-    try {
-      const input = JSON.parse(askMsg.toolInput)
-      const q = input.questions?.[0]
-      if (!q?.question || !q?.options?.length) return null
-      return { question: q.question, header: q.header, options: q.options }
-    } catch { return null }
-  }, [messages, isAskQuestion])
+
+    // Primary: read from the denial record itself
+    const denial = tools.find((t) => t.toolName === 'AskUserQuestion' && t.toolInput)
+    const rawInput: Record<string, unknown> | null = denial?.toolInput ?? null
+
+    // Fallback: scan messages (handles old persisted sessions)
+    const fallbackInput: Record<string, unknown> | null = (() => {
+      const askMsg = [...messages].reverse().find((m) => m.toolName === 'AskUserQuestion' && m.toolInput)
+      if (!askMsg?.toolInput) return null
+      try { return JSON.parse(askMsg.toolInput) } catch { return null }
+    })()
+
+    const input = rawInput ?? fallbackInput
+    if (!input?.question) return null
+
+    const opts: AskOption[] = Array.isArray(input.options)
+      ? (input.options as (string | AskOption)[]).map((o) => typeof o === 'string' ? { label: o } : o)
+      : []
+    return { question: input.question as string, header: input.header as string | undefined, options: opts }
+  }, [tools, messages, isAskQuestion])
 
   // Extract context about what was denied (file path, command, etc.)
   const deniedContext = useMemo(() => {
@@ -153,24 +164,22 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
 
             {/* Actions */}
             <div className="flex gap-1.5 flex-wrap">
-              {showClearContext && <button
-                onClick={() => onImplement(true)}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                style={{
-                  background: colors.permissionAllowBg,
-                  color: 'rgba(34, 197, 94, 0.85)',
-                  border: `1px solid ${colors.permissionAllowBorder}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.permissionAllowHoverBg
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.permissionAllowBg
-                }}
-              >
-                <RocketLaunch size={12} />
-                Implement, clear context
-              </button>}
+              {tabGroupPinned && onImplementAndUnpin && (
+                <button
+                  onClick={() => onImplementAndUnpin(false)}
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                  style={{
+                    background: colors.permissionAllowBg,
+                    color: 'rgba(34, 197, 94, 0.85)',
+                    border: `1px solid ${colors.permissionAllowBorder}`,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.permissionAllowHoverBg }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = colors.permissionAllowBg }}
+                >
+                  <PushPinSlash size={12} />
+                  Implement and unpin
+                </button>
+              )}
               <button
                 onClick={() => onImplement(false)}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
@@ -179,15 +188,27 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
                   color: 'rgba(34, 197, 94, 0.85)',
                   border: `1px solid ${colors.permissionAllowBorder}`,
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.permissionAllowHoverBg
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.permissionAllowBg
-                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = colors.permissionAllowHoverBg }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = colors.permissionAllowBg }}
               >
                 Implement
               </button>
+              {showClearContext && (
+                <button
+                  onClick={() => onImplement(true)}
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                  style={{
+                    background: colors.permissionAllowBg,
+                    color: 'rgba(34, 197, 94, 0.85)',
+                    border: `1px solid ${colors.permissionAllowBorder}`,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.permissionAllowHoverBg }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = colors.permissionAllowBg }}
+                >
+                  <RocketLaunch size={12} />
+                  Implement, clear context
+                </button>
+              )}
               {planFilePath && <button
                 onClick={handleViewPlan}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
@@ -196,12 +217,8 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
                   color: colors.textTertiary,
                   border: `1px solid ${colors.surfaceSecondary}`,
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.surfaceActive
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.surfaceHover
-                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = colors.surfaceActive }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = colors.surfaceHover }}
               >
                 <Eye size={12} />
                 View Plan
@@ -226,86 +243,12 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
 
   if (isAskQuestion && askData && onAnswer) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 8, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -4, scale: 0.97 }}
-        transition={{ duration: 0.2 }}
-        className="mx-4 mb-2"
-      >
-        <div
-          style={{
-            background: colors.containerBg,
-            border: `1px solid ${colors.infoBorder}`,
-            borderRadius: 14,
-            boxShadow: `0 2px 12px ${colors.infoShadow}`,
-          }}
-          className="overflow-hidden"
-        >
-          {/* Header */}
-          <div
-            className="flex items-center gap-2 px-3 py-2"
-            style={{
-              background: colors.infoBg,
-              borderBottom: `1px solid ${colors.infoBorder}`,
-            }}
-          >
-            <Question size={14} style={{ color: colors.infoText }} />
-            <span className="text-[12px] font-semibold" style={{ color: colors.infoText }}>
-              {askData.header || 'Input Required'}
-            </span>
-          </div>
-
-          {/* Body */}
-          <div className="px-3 py-2">
-            <p className="text-[11px] leading-[1.5] mb-2" style={{ color: colors.textSecondary }}>
-              {askData.question}
-            </p>
-
-            {/* Option buttons */}
-            <div className="flex gap-1.5 flex-wrap">
-              {askData.options.map((opt) => (
-                <button
-                  key={opt.label}
-                  onClick={() => onAnswer(opt.label)}
-                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
-                  style={{
-                    background: colors.infoBg,
-                    color: colors.infoText,
-                    border: `1px solid ${colors.infoBorder}`,
-                  }}
-                  title={opt.description || undefined}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = colors.infoHoverBg
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = colors.infoBg
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <button
-                onClick={onDismiss}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
-                style={{
-                  background: colors.surfaceHover,
-                  color: colors.textTertiary,
-                  border: `1px solid ${colors.surfaceSecondary}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.surfaceActive
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.surfaceHover
-                }}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      </motion.div>
+      <AskQuestionCard
+        askData={askData}
+        onAnswer={onAnswer}
+        onDismiss={onDismiss}
+        colors={colors}
+      />
     )
   }
 
@@ -496,3 +439,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
     </motion.div>
   )
 }
+
+// AskQuestionCard is in ./AskQuestionCard.tsx — extracted to stay under the
+// 600-line file-size cap. It owns the AskData/AskOption types too.

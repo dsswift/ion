@@ -98,7 +98,7 @@ func (p *bedrockProvider) Stream(ctx context.Context, opts types.LlmStreamOption
 func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOptions, events chan<- types.LlmStreamEvent) error {
 	maxTokens := opts.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 8192
+		maxTokens = 16384
 	}
 
 	body := map[string]any{

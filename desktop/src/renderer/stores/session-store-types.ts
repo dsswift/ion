@@ -144,6 +144,7 @@ export interface State {
   forceRecoverTab: (tabId: string, reason: string) => void
   moveTabToGroup: (tabId: string, groupId: string) => void
   setTabGroupId: (tabId: string, groupId: string | null) => void
+  toggleTabGroupPin: (tabId: string) => void
   setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
   createEngineTab: (dir?: string, profileId?: string) => string
   handleEngineEvent: (key: string, event: any) => void

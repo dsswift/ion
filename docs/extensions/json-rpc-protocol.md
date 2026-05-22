@@ -224,7 +224,7 @@ The `params` object is an `EngineEvent`. Five engine-recognised types, plus an o
 
 | Type | Fields | Purpose |
 |------|--------|---------|
-| `engine_agent_state` | `agents` | Update agent state display |
+| `engine_agent_state` | `agents` | Complete snapshot of live agents — see note below |
 | `engine_status` | `fields` | Update status bar |
 | `engine_working_message` | `message` | Show transient working indicator |
 | `engine_notify` | `message`, `level` | User notification |
@@ -232,6 +232,8 @@ The `params` object is an `EngineEvent`. Five engine-recognised types, plus an o
 | (any other string) | (anything) | Custom harness event — passed through verbatim to every connected socket client |
 
 The engine validates payload shape **only** for `engine_agent_state`. All other types are forwarded as-is. Use a unique prefix (`jarvis_*`, `ion-meta_*`, etc.) to avoid colliding with current or future engine events. The desktop bridge has no type-based dispatch, so custom events surface in clients that explicitly subscribe to them and are silently dropped by clients that don't.
+
+**`engine_agent_state` is a complete snapshot.** Each emission replaces the consumer's view; the engine does not merge across events. Include every agent you want visible in every emission. See the [Agent State Contract](../architecture/agent-state.md) for the normative semantics.
 
 ### `ext/send_message`
 

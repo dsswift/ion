@@ -222,6 +222,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             }
 
             case 'task_complete':
+              console.log(`[task_complete] tab=${tabId.slice(0, 8)} prevStatus=${tab.status} prevPermMode=${tab.permissionMode} prevPermDenied=${tab.permissionDenied ? JSON.stringify(tab.permissionDenied.tools.map((t) => t.toolName)) : 'null'} denials=${event.permissionDenials ? JSON.stringify(event.permissionDenials.map((d) => ({ name: d.toolName, hasInput: !!d.toolInput, inputKeys: d.toolInput ? Object.keys(d.toolInput) : [] }))) : 'none'}`)
               updated.status = 'completed'
               updated.activeRequestId = null
               updated.currentActivity = ''
@@ -259,6 +260,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               }
               if (event.permissionDenials && event.permissionDenials.length > 0) {
                 const hadPlanExit = event.permissionDenials.some((d) => d.toolName === 'ExitPlanMode')
+                console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch: hasDenials=true hadPlanExit=${hadPlanExit} permMode=${updated.permissionMode}`)
                 if (hadPlanExit) {
                   let exitPlanIsStale = false
                   if (updated.permissionMode === 'plan') {
@@ -271,6 +273,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   if (updated.permissionMode !== 'plan' || exitPlanIsStale) {
                     const nonPlanDenials = event.permissionDenials.filter((d) => d.toolName !== 'ExitPlanMode')
                     updated.permissionDenied = nonPlanDenials.length > 0 ? { tools: nonPlanDenials } : null
+                    console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=planExit-stale-or-nonplan permDenied=${updated.permissionDenied ? JSON.stringify(updated.permissionDenied.tools.map((t) => t.toolName)) : 'null'}`)
                     if (updated.permissionMode !== 'plan' && s.backend !== 'cli') {
                       setTimeout(() => {
                         get().sendMessage('Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.')
@@ -278,11 +281,14 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                     }
                   } else {
                     updated.permissionDenied = { tools: event.permissionDenials }
+                    console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=planExit-fresh permDenied set to ${JSON.stringify(updated.permissionDenied.tools.map((t) => t.toolName))}`)
                   }
                 } else {
                   updated.permissionDenied = { tools: event.permissionDenials }
+                  console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=noPlanExit permDenied set to ${JSON.stringify(updated.permissionDenied.tools.map((t) => t.toolName))} firstToolInputKeys=${updated.permissionDenied.tools[0]?.toolInput ? Object.keys(updated.permissionDenied.tools[0].toolInput).join(',') : 'no-input'}`)
                 }
               } else {
+                console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=noDenials permDenied=null`)
                 updated.permissionDenied = null
               }
               playNotificationIfHidden()
@@ -296,7 +302,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   if (autoGroupMovement && tabGroupMode === 'manual' && doneGroupId) {
                     const currentTab = get().tabs.find(t => t.id === capturedTabId2)
                     if (currentTab && currentTab.groupId !== doneGroupId) {
-                      get().moveTabToGroup(capturedTabId2, doneGroupId)
+                      if (currentTab.groupPinned) {
+                        console.log(`[auto-move] suppressed: tab=${capturedTabId2.slice(0, 8)} pinned=true currentGroup=${currentTab.groupId ?? 'none'} wouldMoveTo=${doneGroupId}`)
+                      } else {
+                        get().moveTabToGroup(capturedTabId2, doneGroupId)
+                      }
                     }
                   }
                 }, 0)

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import {
   Plus, GitFork, FolderOpen, GitBranch, CheckCircle, CaretDown, Rows,
-  PencilSimple, ArrowRight, ArrowsInSimple,
+  PencilSimple, ArrowRight, ArrowsInSimple, PushPin, PushPinSlash,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
@@ -12,6 +12,7 @@ import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabState } from '../../shared/types'
 import { zoomRect, zoomViewport } from './TabStripShared'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
+import { ConfirmDialog } from './git/ConfirmDialog'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -43,6 +44,7 @@ export function TabContextMenu({
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
+  const toggleTabGroupPin = useSessionStore((s) => s.toggleTabGroupPin)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
   const moveItemRef = useRef<HTMLButtonElement>(null)
   const submenuRef = useRef<HTMLDivElement>(null)
@@ -52,6 +54,7 @@ export function TabContextMenu({
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const newGroupInputRef = useRef<HTMLInputElement>(null)
+  const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
 
   const showMoveAll = groupTabs && groupTabs.length > 1
   const [isGitRepo, setIsGitRepo] = useState(false)
@@ -94,26 +97,27 @@ export function TabContextMenu({
   }
 
   return createPortal(
-    <motion.div
-      ref={ref}
-      data-ion-ui
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.12 }}
-      style={{
-        position: 'fixed',
-        left: anchor.x,
-        top: anchor.y + 8,
-        pointerEvents: 'auto',
-        background: colors.popoverBg,
-        border: `1px solid ${colors.popoverBorder}`,
-        borderRadius: 8,
-        padding: 4,
-        zIndex: 10000,
-        minWidth: 160,
-      }}
-    >
+    <>
+      <motion.div
+        ref={ref}
+        data-ion-ui
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.12 }}
+        style={{
+          position: 'fixed',
+          left: anchor.x,
+          top: anchor.y + 8,
+          pointerEvents: 'auto',
+          background: colors.popoverBg,
+          border: `1px solid ${colors.popoverBorder}`,
+          borderRadius: 8,
+          padding: 4,
+          zIndex: 10000,
+          minWidth: 160,
+        }}
+      >
       {onRename && (
         <button
           onClick={() => { onRename(); onClose() }}
@@ -184,6 +188,19 @@ export function TabContextMenu({
         <>
           <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
           <button
+            onClick={() => { toggleTabGroupPin(tab.id); onClose() }}
+            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
+            style={menuItemStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            {tab.groupPinned
+              ? <PushPinSlash size={14} color={colors.textSecondary} />
+              : <PushPin size={14} color={colors.textSecondary} />
+            }
+            <span>{tab.groupPinned ? 'Unpin from group' : 'Pin to group'}</span>
+          </button>
+          <button
             ref={moveItemRef}
             className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
             style={menuItemStyle}
@@ -250,9 +267,10 @@ export function TabContextMenu({
         const targets = effectiveGroups
           .filter((g) => g.id !== currentGroupId)
           .map((g) => ({ id: g.id, label: g.label }))
-        const moveAllToGroup = (targetGroupId: string) => {
-          for (const t of groupTabs) moveTabToGroup(t.id, targetGroupId)
-          onClose()
+        const requestMoveAll = (targetGroupId: string, targetLabel: string) => {
+          console.log('[TabContextMenu] move-all confirmation requested', { tabCount: groupTabs.length, targetGroupId, targetLabel })
+          setMoveAllSubmenu(null)
+          setPendingMoveAll({ groupId: targetGroupId, label: targetLabel })
         }
         return createPortal(
           <motion.div
@@ -285,7 +303,7 @@ export function TabContextMenu({
                 style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                onClick={() => moveAllToGroup(t.id)}
+                onClick={() => requestMoveAll(t.id, t.label)}
               >
                 <ArrowRight size={12} color={colors.textTertiary} />
                 <span>{t.label}</span>
@@ -300,8 +318,9 @@ export function TabContextMenu({
                   onChange={(e) => setNewGroupName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && newGroupName.trim()) {
-                      const id = usePreferencesStore.getState().createTabGroup(newGroupName.trim())
-                      moveAllToGroup(id)
+                      const trimmed = newGroupName.trim()
+                      const id = usePreferencesStore.getState().createTabGroup(trimmed)
+                      requestMoveAll(id, trimmed)
                     }
                     if (e.key === 'Escape') setShowNewGroupInput(false)
                   }}
@@ -328,7 +347,28 @@ export function TabContextMenu({
           popoverLayer,
         )
       })()}
-    </motion.div>,
+    </motion.div>
+    {pendingMoveAll && groupTabs && (
+      <ConfirmDialog
+        title="Move all tabs?"
+        message={`Move all ${groupTabs.length} tab${groupTabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
+        confirmLabel="Move all"
+        cancelLabel="Cancel"
+        danger={false}
+        onConfirm={() => {
+          console.log('[TabContextMenu] move-all confirmed', { tabCount: groupTabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+          for (const t of groupTabs) moveTabToGroup(t.id, pendingMoveAll.groupId)
+          setPendingMoveAll(null)
+          onClose()
+        }}
+        onCancel={() => {
+          console.log('[TabContextMenu] move-all cancelled', { tabCount: groupTabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+          setPendingMoveAll(null)
+          onClose()
+        }}
+      />
+    )}
+    </>,
     popoverLayer,
   )
 }

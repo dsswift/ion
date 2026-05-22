@@ -12,6 +12,10 @@ struct ConversationView: View {
     @State private var showFileExplorer = false
     @State private var showTerminal = false
     @State private var showAttachments = false
+    /// Set to true when a reconnect-triggered reload is in flight so the next
+    /// `messageCountByTab` change force-scrolls to the bottom regardless of
+    /// whether the last message is from the user.
+    @State private var pendingScrollAfterReload = false
 
     private var tab: RemoteTabState? {
         viewModel.tab(for: tabId)
@@ -76,21 +80,67 @@ struct ConversationView: View {
                     if request.toolInput?["planContent"]?.value as? String == nil,
                        let restored = cachedRestoredCard,
                        restored.toolInput?["planContent"]?.value as? String != nil {
+                        DiagnosticLog.log("PERM-CARD: pendingPermission: using restored ExitPlanMode card (queue entry lacks planContent)")
                         return restored
                     }
                 }
+                // AskUserQuestion from the queue is always live — the run stopped
+                // specifically to wait for this answer. Status is 'completed' in
+                // plan-mode because task_complete fired when the question was posed,
+                // not when the user actually answered. Never skip it here.
+                // Snapshot queue entries for AskUserQuestion may lack toolInput
+                // (stale restored denials from older desktop builds). Prefer the
+                // restored card synthesized from conversation history which has
+                // the actual question text.
+                if request.toolName == "AskUserQuestion" {
+                    if request.toolInput == nil || request.toolInput?.isEmpty == true {
+                        if let restored = cachedRestoredCard,
+                           restored.toolName == "AskUserQuestion",
+                           restored.toolInput?["question"]?.value as? String != nil {
+                            DiagnosticLog.log("PERM-CARD: pendingPermission: using restored AskUserQuestion card (queue entry lacks toolInput)")
+                            return restored
+                        }
+                    }
+                }
+                let inputKeys = request.toolInput?.keys.sorted() ?? []
+                DiagnosticLog.log("PERM-CARD: pendingPermission: from queue — toolName=\(request.toolName) questionId=\(request.questionId) inputKeys=\(inputKeys)")
                 return request
             }
         }
         // Synthesize a card from conversation history when the permission queue
-        // is empty (e.g. reopening a previous conversation). Also allow completed
-        // status so the card survives the task_complete → permission_request gap.
-        if let status = tab?.status, (status == .idle || status == .completed),
+        // is empty (e.g. reopening a previous conversation, or the live
+        // permission_request arrived before task_complete set status=completed).
+        // Allow idle, completed, and running (stuck-running recovery).
+        //
+        // Staleness rule for AskUserQuestion: only skip if a user message
+        // appears AFTER the AskUserQuestion in the conversation — meaning the
+        // user already answered it. status==completed is NOT sufficient to
+        // declare it stale because task_complete fires when the question is
+        // first posed (the run ends to await the answer).
+        //
+        // ExitPlanMode follows the same staleness rule; additionally it should
+        // not surface while the tab is actively running (the card appears after
+        // task_complete, not during).
+        let currentStatus = tab?.status
+        let queueEmpty = (tab?.permissionQueue ?? []).isEmpty
+        let messagesLoaded = !conversationMessages.isEmpty
+
+        if let status = currentStatus,
+           (status == .idle || status == .completed || (status == .running && queueEmpty && messagesLoaded)),
            !viewModel.dismissedLiveSpecialTabs.contains(tabId),
            let restored = cachedRestoredCard,
            !viewModel.dismissedRestoredCards.contains(restored.questionId) {
-            return restored
+            // ExitPlanMode: suppress while genuinely running — the plan card
+            // should only appear once the run has stopped.
+            if restored.toolName == "ExitPlanMode" && status == .running {
+                DiagnosticLog.log("PERM-CARD: pendingPermission: suppressing ExitPlanMode while running")
+            } else {
+                let inputKeys = restored.toolInput?.keys.sorted() ?? []
+                DiagnosticLog.log("PERM-CARD: pendingPermission: from restored card — toolName=\(restored.toolName) questionId=\(restored.questionId) inputKeys=\(inputKeys) status=\(status.rawValue)")
+                return restored
+            }
         }
+        DiagnosticLog.log("PERM-CARD: pendingPermission: nil (queueSize=\(tab?.permissionQueue.count ?? -1) status=\(tab?.status.rawValue ?? "nil"))")
         return nil
     }
 
@@ -101,27 +151,43 @@ struct ConversationView: View {
     private func computeRestoredSpecialCard() -> PermissionRequest? {
         guard let lastTool = conversationMessages.last(where: { $0.isTool }),
               lastTool.toolName == "ExitPlanMode" || lastTool.toolName == "AskUserQuestion"
-        else { return nil }
+        else {
+            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: no ExitPlanMode/AskUserQuestion as last tool (totalMessages=\(conversationMessages.count))")
+            return nil
+        }
+
+        DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: found lastTool=\(lastTool.toolName ?? "nil") id=\(lastTool.id) toolInput=\(lastTool.toolInput?.prefix(200) ?? "nil")")
 
         // Stale detection: walk backwards from the end of the conversation.
         // If a user message appears before we hit the tool, the conversation
         // continued past this plan/question — don't resurface the card.
         for message in conversationMessages.reversed() {
             if message.id == lastTool.id { break } // hit the tool first — genuine
-            if message.role == .user { return nil } // user spoke after — stale
+            if message.role == .user {
+                DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: stale — user message after tool")
+                return nil
+            }
         }
 
         var toolInput: [String: AnyCodable]?
         if let inputStr = lastTool.toolInput, let data = inputStr.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             toolInput = dict.mapValues { AnyCodable($0) }
+            let keys = dict.keys.sorted()
+            let typeSummary = dict.map { "\($0.key): \(type(of: $0.value))" }.joined(separator: ", ")
+            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: parsed toolInput keys=\(keys) types=[\(typeSummary)]")
+        } else {
+            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: failed to parse toolInput string=\(lastTool.toolInput?.prefix(200) ?? "nil")")
         }
-        return PermissionRequest(
+
+        let request = PermissionRequest(
             questionId: "restored-\(lastTool.id)",
             toolName: lastTool.toolName ?? "",
             toolInput: toolInput,
             options: []
         )
+        DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: synthesized request questionId=\(request.questionId) toolName=\(request.toolName) inputKeys=\(toolInput?.keys.sorted() ?? [])")
+        return request
     }
 
     // MARK: - Row items for the collection view
@@ -302,6 +368,16 @@ struct ConversationView: View {
                 viewModel.suppressScrollToBottom = false
                 return
             }
+            // If a reconnect-triggered reload just delivered fresh history,
+            // force-scroll to the new bottom regardless of who sent the last
+            // message. The user backgrounded the app; on return they expect
+            // to see the latest state of the conversation.
+            if pendingScrollAfterReload {
+                pendingScrollAfterReload = false
+                isNearBottom = true
+                forceScrollCounter += 1
+                return
+            }
             // Always scroll to bottom when the user sends a message,
             // even if they were scrolled up — matches desktop behavior.
             let userSent = conversationMessages.last?.role == .user
@@ -310,9 +386,20 @@ struct ConversationView: View {
                 forceScrollCounter += 1
             }
         }
-        .onChange(of: viewModel.connectionState) { _, newState in
+        .onChange(of: viewModel.connectionState) { oldState, newState in
             if newState == .disconnected {
                 dismiss()
+            }
+            // Re-sync the conversation when we recover from a transient
+            // disconnect (e.g. the phone was locked while the conversation
+            // continued on the desktop). The snapshot updates tab status,
+            // but message_added/message_updated events emitted during the
+            // disconnect window are lost — only an explicit reload pulls
+            // the desktop's current truth (completed tools, new messages).
+            if oldState == .reconnecting && newState == .connected {
+                DiagnosticLog.log("RESUME-SYNC: ConversationView reloading tabId=\(tabId.prefix(8))")
+                pendingScrollAfterReload = true
+                viewModel.loadConversation(tabId: tabId)
             }
         }
         .onChange(of: viewModel.tabIds) { _, newIds in
@@ -322,6 +409,19 @@ struct ConversationView: View {
             }
         }
         .animation(.default, value: pendingPermission?.id)
+        .task {
+            // Present git pane if navigated here via the branch badge tap
+            if viewModel.pendingGitPaneTabId == tabId {
+                viewModel.pendingGitPaneTabId = nil
+                showGitPane = true
+            }
+        }
+        .onChange(of: viewModel.pendingGitPaneTabId) { _, newId in
+            if newId == tabId {
+                viewModel.pendingGitPaneTabId = nil
+                showGitPane = true
+            }
+        }
         .fullScreenCover(isPresented: $showGitPane) {
             GitPaneView(tabId: tabId)
                 .environment(viewModel)

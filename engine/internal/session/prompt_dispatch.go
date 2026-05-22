@@ -88,7 +88,16 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		}
 	}
 
+	// Detect plan mode reentry: plan mode is active, we already have a plan
+	// file path (preserved from a previous exit), and the session previously
+	// exited plan mode via ExitPlanMode.
+	planModeReentry := s.planMode && s.planFilePath != "" && s.hasExitedPlanMode
+
 	opts := buildRunOptions(s, text, overrides)
+	if planModeReentry {
+		opts.PlanModeReentry = true
+		utils.Info("PlanMode", fmt.Sprintf("key=%s reentry detected, planFile=%s", key, s.planFilePath))
+	}
 	m.applyConfigDefaults(&opts)
 	resolveModelTier(&opts)
 	injectContextFiles(s, &opts)

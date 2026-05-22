@@ -6,7 +6,6 @@ struct InputBar: View {
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
 
-    @State private var promptText = ""
     @FocusState private var isFocused: Bool
     @State private var keyboardVisible = false
     @State private var slashFilter: String?
@@ -17,6 +16,20 @@ struct InputBar: View {
     @State private var showPhotoPicker = false
     @State private var showDocumentPicker = false
     @State private var photosPickerItems: [PhotosPickerItem] = []
+    @State private var isRecordingVoice = false
+    @State private var showPermissionDeniedAlert = false
+    /// Draft text snapshot taken when recording starts, used to restore on cancel.
+    @State private var draftBeforeRecording = ""
+
+    /// Two-way binding to the per-tab draft text owned by SessionViewModel.
+    /// Writes propagate synchronously to UserDefaults via `setTabDraft`.
+    private var promptTextBinding: Binding<String> {
+        Binding(
+            get: { viewModel.tabDraft(tabId) },
+            set: { viewModel.setTabDraft(tabId, $0) }
+        )
+    }
+    private var promptText: String { viewModel.tabDraft(tabId) }
 
     private let placeholders = [
         "Ask a question…",
@@ -59,7 +72,7 @@ struct InputBar: View {
                     filter: filter,
                     commands: slashCommands,
                     onSelect: { cmd in
-                        promptText = "/\(cmd.name) "
+                        viewModel.setTabDraft(tabId, "/\(cmd.name) ")
                         slashFilter = nil
                     }
                 )
@@ -69,7 +82,7 @@ struct InputBar: View {
             if keyboardVisible {
                 KeyboardUtilityBar(
                     onDismiss: { isFocused = false },
-                    promptText: $promptText
+                    promptText: promptTextBinding
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -94,12 +107,15 @@ struct InputBar: View {
             HStack(spacing: 8) {
                 attachButton
 
-                TextField("", text: $promptText, prompt: Text(placeholders[placeholderIndex]).foregroundStyle(.tertiary), axis: .vertical)
+                TextField("", text: promptTextBinding, prompt: Text(placeholders[placeholderIndex]).foregroundStyle(.tertiary), axis: .vertical)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color(.tertiarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
-                    .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(Color(.separator), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(
+                        isRecordingVoice ? IonTheme.accent.opacity(0.5) : Color(.separator),
+                        lineWidth: isRecordingVoice ? 1.5 : 1
+                    ))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .lineLimit(1...5)
@@ -116,6 +132,18 @@ struct InputBar: View {
                             .foregroundStyle(.red)
                             .shadow(color: .red.opacity(0.3), radius: 6)
                     }
+                }
+
+                // Mic area: inline recording strip while active, mic button when idle
+                if isRecordingVoice {
+                    VoiceRecordingStrip(
+                        audioLevel: viewModel.speechService.audioLevel,
+                        onStop: { stopVoiceRecording() },
+                        onCancel: { cancelVoiceRecording() }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                } else {
+                    micButton
                 }
 
                 Button {
@@ -152,6 +180,17 @@ struct InputBar: View {
         .animation(IonTheme.snappySpring, value: keyboardVisible)
         .animation(IonTheme.snappySpring, value: slashFilter)
         .animation(IonTheme.snappySpring, value: pendingAttachments.count)
+        .animation(IonTheme.snappySpring, value: isRecordingVoice)
+        .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Ion Remote needs microphone and speech recognition access to transcribe your voice. Enable both in Settings > Privacy.")
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
         }
@@ -160,12 +199,22 @@ struct InputBar: View {
         }
         .onChange(of: viewModel.pendingInputByTab[tabId]) { _, newValue in
             if let text = newValue {
-                promptText = text
+                viewModel.setTabDraft(tabId, text)
                 viewModel.pendingInputByTab.removeValue(forKey: tabId)
             }
         }
         .onChange(of: promptText) { _, newText in
             updateSlashFilter(newText)
+        }
+        .onChange(of: viewModel.speechService.transcript) { _, newTranscript in
+            // Stream live transcript directly into the draft field while recording.
+            // The engine accumulates across utterance pauses, so this is always the
+            // full running text — not just the latest segment.
+            guard isRecordingVoice else { return }
+            let base = draftBeforeRecording
+            if newTranscript.isEmpty { return }
+            let separator = base.isEmpty ? "" : " "
+            viewModel.setTabDraft(tabId, base + separator + newTranscript)
         }
         .onChange(of: viewModel.pendingUploadResults) { _, results in
             consumeUploadResults(results)
@@ -228,6 +277,72 @@ struct InputBar: View {
         .disabled(!isConnected)
     }
 
+    // MARK: - Mic button
+
+    private var micButton: some View {
+        Button {
+            startVoiceRecording()
+        } label: {
+            Image(systemName: "mic.fill")
+                .font(.title3)
+                .foregroundStyle(micButtonColor)
+        }
+        .disabled(!isConnected)
+        .accessibilityLabel("Record voice input")
+    }
+
+    private var micButtonColor: Color {
+        guard isConnected else { return Color(.quaternaryLabel) }
+        return viewModel.speechService.permissionState == .denied ? Color(.quaternaryLabel) : .secondary
+    }
+
+    private func startVoiceRecording() {
+        DiagnosticLog.log("INPUTBAR: startVoiceRecording tapped")
+        Haptic.light()
+        Task {
+            viewModel.speechService.refreshPermissions()
+            if viewModel.speechService.permissionState == .denied {
+                DiagnosticLog.log("INPUTBAR: permission denied — showing alert")
+                showPermissionDeniedAlert = true
+                return
+            }
+            let granted = await viewModel.speechService.requestPermission()
+            guard granted else {
+                DiagnosticLog.log("INPUTBAR: permission request denied")
+                showPermissionDeniedAlert = true
+                return
+            }
+            // Snapshot draft so cancel can restore it exactly
+            draftBeforeRecording = promptText
+            isFocused = false
+            do {
+                try await viewModel.speechService.startRecording(stoppingVoiceService: viewModel.voiceService)
+                isRecordingVoice = true
+                DiagnosticLog.log("INPUTBAR: recording started draftSnapshot=\(draftBeforeRecording.prefix(40))")
+            } catch {
+                DiagnosticLog.log("INPUTBAR: startRecording error: \(error.localizedDescription)")
+                isRecordingVoice = false
+            }
+        }
+    }
+
+    private func stopVoiceRecording() {
+        DiagnosticLog.log("INPUTBAR: stopVoiceRecording — text already in field")
+        // Text is already live in the draft — just stop the engine
+        viewModel.speechService.cancelRecording()
+        isRecordingVoice = false
+        Haptic.light()
+    }
+
+    private func cancelVoiceRecording() {
+        DiagnosticLog.log("INPUTBAR: cancelVoiceRecording — restoring draft snapshot")
+        viewModel.speechService.cancelRecording()
+        isRecordingVoice = false
+        // Restore the draft to exactly what it was before recording started
+        viewModel.setTabDraft(tabId, draftBeforeRecording)
+        Haptic.light()
+    }
+
     // MARK: - Actions
 
     private var cannotSend: Bool {
@@ -248,7 +363,7 @@ struct InputBar: View {
             attachments: attachments.isEmpty ? nil : attachments
         )
         isFocused = false
-        promptText = ""
+        viewModel.clearTabDraft(tabId)
         pendingAttachments = []
     }
 

@@ -294,7 +294,19 @@ export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, {
   }
 }
 
-/** Push the latest agent state, status fields, and working message for a compound key. */
+/**
+ * Push the latest agent state, status fields, and working message for a
+ * compound key to the remote transport. Called on iOS reconnect /
+ * conversation load so the mobile client overwrites any stale local state.
+ *
+ * Engine contract: `engine_agent_state` is a complete snapshot. The
+ * authoritative truth is "what the renderer holds right now" — including
+ * the empty case. We forward unconditionally: an empty `agents: []`
+ * payload is just as important to send as a populated one, because it
+ * tells the mobile client "drop your stale rows from a previous session."
+ * Without this, iOS reconnects show ghost agents from connections ago.
+ * See docs/architecture/agent-state.md.
+ */
 async function sendCurrentEngineState(tabId: string, instanceId: string | null, escapedKey: string): Promise<void> {
   if (!state.mainWindow || !state.remoteTransport) return
   try {
@@ -311,23 +323,28 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
         return { agents: agents, status: status, working: working, modelOverride: modelOverride };
       })()
     `)
-    if (!snapshot) return
-
-    if (snapshot.agents && snapshot.agents.length > 0) {
-      state.remoteTransport.send({
-        type: 'engine_agent_state', tabId, instanceId, agents: snapshot.agents,
-      })
+    if (!snapshot) {
+      log(`sendCurrentEngineState: no snapshot available key=${escapedKey}`)
+      return
     }
+
+    const agents = snapshot.agents || []
+    log(`sendCurrentEngineState: key=${escapedKey} agents=${agents.length} status=${!!snapshot.status} working=${snapshot.working ? 'present' : 'empty'} modelOverride=${snapshot.modelOverride ? 'present' : 'none'}`)
+
+    // Always send the authoritative agent snapshot — including empty.
+    state.remoteTransport.send({
+      type: 'engine_agent_state', tabId, instanceId, agents,
+    })
+
     if (snapshot.status) {
       state.remoteTransport.send({
         type: 'engine_status', tabId, instanceId, fields: snapshot.status,
       })
     }
-    if (snapshot.working) {
-      state.remoteTransport.send({
-        type: 'engine_working_message', tabId, instanceId, message: snapshot.working,
-      })
-    }
+    // Always forward working message (use '' to clear stale banner on resync).
+    state.remoteTransport.send({
+      type: 'engine_working_message', tabId, instanceId, message: snapshot.working || '',
+    })
     if (snapshot.modelOverride) {
       state.remoteTransport.send({
         type: 'engine_model_override', tabId, instanceId, model: snapshot.modelOverride,

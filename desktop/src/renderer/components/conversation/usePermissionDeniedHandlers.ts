@@ -8,6 +8,7 @@ interface Handlers {
   onAnswer: (answer: string) => void
   onApprove: (toolNames: string[]) => void
   onImplement: (clearContext: boolean) => Promise<void>
+  onImplementAndUnpin: (clearContext: boolean) => Promise<void>
 }
 
 /**
@@ -63,7 +64,11 @@ export function buildPermissionDeniedHandlers(
     // Auto-move tab to in-progress group if designated
     const { inProgressGroupId, tabGroupMode, autoGroupMovement } = usePreferencesStore.getState()
     if (autoGroupMovement && inProgressGroupId && tabGroupMode === 'manual' && tab.groupId !== inProgressGroupId) {
-      useSessionStore.getState().moveTabToGroup(tab.id, inProgressGroupId)
+      if (tab.groupPinned) {
+        console.log(`[auto-move] suppressed: tab=${tab.id.slice(0, 8)} pinned=true currentGroup=${tab.groupId ?? 'none'} wouldMoveTo=${inProgressGroupId}`)
+      } else {
+        useSessionStore.getState().moveTabToGroup(tab.id, inProgressGroupId)
+      }
     }
 
     let implementPrompt = 'Implement the plan'
@@ -166,5 +171,13 @@ export function buildPermissionDeniedHandlers(
     sendMessage(implementPrompt, tab.workingDirectory, planAttachment, appendSys)
   }
 
-  return { onDismiss, onAnswer, onApprove, onImplement }
+  const onImplementAndUnpin = async (clearContext: boolean): Promise<void> => {
+    // Unpin first so the auto-move guard fires when onImplement switches
+    // the tab to auto mode — tab will then move to in-progress as expected.
+    useSessionStore.getState().toggleTabGroupPin(tab.id)
+    console.log(`[tab-pin] implement-and-unpin: tab=${tab.id.slice(0, 8)} — pin cleared, handing off to onImplement`)
+    await onImplement(clearContext)
+  }
+
+  return { onDismiss, onAnswer, onApprove, onImplement, onImplementAndUnpin }
 }

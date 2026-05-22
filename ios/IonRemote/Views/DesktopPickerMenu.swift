@@ -20,7 +20,7 @@ struct DesktopPickerMenu: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Label(device.name, systemImage: "desktopcomputer")
+                            Label(device.displayName, systemImage: device.displayIcon)
                             if isActive {
                                 Text(connectionStateLabel)
                                     .font(.caption2)
@@ -56,6 +56,11 @@ struct DesktopPickerMenu: View {
             .tint(IonTheme.accent)
         } label: {
             HStack(spacing: 6) {
+                if let device = viewModel.activeDevice {
+                    Image(systemName: device.displayIcon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text(activeDeviceName)
                     .font(.headline)
                 Image(systemName: "chevron.down")
@@ -73,7 +78,7 @@ struct DesktopPickerMenu: View {
     // MARK: - Helpers
 
     private var activeDeviceName: String {
-        viewModel.activeDevice?.name ?? "Ion"
+        viewModel.activeDevice?.displayName ?? "Ion"
     }
 
     @ViewBuilder

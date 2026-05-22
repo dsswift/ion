@@ -216,8 +216,19 @@ function handleStatusEvent(
     } as NormalizedEvent)
 
     tab.activeRequestId = null
-    const hasExitPlan = event.fields.permissionDenials?.some((d: any) => d.toolName === 'ExitPlanMode')
-    ctx.setStatus(tabId, hasExitPlan ? 'completed' : 'idle')
+    // Preserve 'completed' status whenever the engine reported denials that
+    // require a user response. Otherwise a subsequent engine_status state=idle
+    // (e.g. a cost-only update fired ~1ms later) will fail the guard at the
+    // top of this branch (`tab.status === 'completed'`), synthesize a second
+    // task_complete with empty permissionDenials, and clobber the renderer's
+    // permissionDenied state — making the AskUserQuestion / ExitPlanMode card
+    // never appear. ExitPlanMode was already handled; AskUserQuestion was the
+    // missed case.
+    const needsUserResponse = event.fields.permissionDenials?.some(
+      (d: any) => d.toolName === 'ExitPlanMode' || d.toolName === 'AskUserQuestion',
+    )
+    log(`engine_status: tabId=${tabId} task_complete synthesized denials=${event.fields.permissionDenials?.length ?? 0} needsUserResponse=${needsUserResponse}`)
+    ctx.setStatus(tabId, needsUserResponse ? 'completed' : 'idle')
     ctx.checkDrain()
   } else if (event.fields.state === 'running') {
     if (tab.status !== 'running') {

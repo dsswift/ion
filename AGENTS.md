@@ -22,6 +22,10 @@ Each component has its own `AGENTS.md` with subsystem-specific rules.
 
 Override: `// @file-size-exception: <reason>` (`#` for shell/yaml/python) on line 1. Existing god files allowlisted in `.file-size-allowlist.yml` — do not extend them; extract new code to a new file.
 
+### When a file exceeds the cap
+
+Split the file — find the natural seams (logical groupings, hook boundaries, helper clusters) and extract to a new file. **Never** remove or collapse comments, collapse whitespace, or shorten code to hit the line limit. Comments are load-bearing documentation. If the choice is between a well-commented file that is 10 lines over cap and a stripped file that is under cap, the stripped version is worse. Split instead.
+
 Cohesion of change: a feature lives in one folder. Full reference: `docs/architecture/file-organization.md`.
 
 ## Context files
@@ -29,6 +33,7 @@ Cohesion of change: a feature lives in one folder. Full reference: `docs/archite
 - `AGENTS.md` is canonical and committed.
 - `CLAUDE.md` is a local-only symlink to sibling `AGENTS.md`. Gitignored. Run `make claude-symlinks` (or `npm install` in `desktop/`) to create.
 - Do not seed per-bounded-context `AGENTS.md`. Defer until traces show confusion.
+- **Before any work that touches `engine/`, read [`docs/engine-grounding.md`](docs/engine-grounding.md).** It is the non-negotiable framing for engine changes — contract stability, snapshot semantics, engine-vs-harness boundaries, and the "modifying the engine is restricted" default. Engine work without this grounding is a defect.
 
 ## Local hooks
 
@@ -89,6 +94,8 @@ When labeling work: engine, harness, or client. If a harness gap is caused by mi
 ## Contract stability (never break the client)
 
 The client is the consumer of the Ion engine — desktop, iOS, and harness extensions all depend on published contracts. **Never ship a breaking change to a published contract.**
+
+Event-shape contracts are not just about field names. Event **semantics** (snapshot vs. incremental, replace vs. merge, idempotency) are also part of the contract. See [docs/architecture/agent-state.md](docs/architecture/agent-state.md) for the canonical example: `engine_agent_state` is always a complete snapshot, and consumers replace local state with the payload.
 
 ### What counts as a contract
 

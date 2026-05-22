@@ -96,6 +96,12 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 			_, err := os.Stat(opts.PlanFilePath)
 			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil)
 		}
+		// Prepend reentry guidance when returning to plan mode after a
+		// previous exit. This tells the LLM to read the existing plan and
+		// decide whether to amend, replace, or extend it.
+		if opts.PlanModeReentry {
+			planPrompt = buildPlanModeReentryPrompt(opts.PlanFilePath) + "\n\n" + planPrompt
+		}
 		systemPrompt += "\n\n" + planPrompt
 	}
 	// Fire before_prompt hook (before finalizing system prompt)
@@ -135,6 +141,18 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		toolDefs = append(toolDefs, opts.CapabilityTools...)
 	}
 
+	// Always inject AskUserQuestion so the LLM can pause the run to ask a
+	// clarifying question in any mode. The engine intercepts calls to this tool
+	// unconditionally (see runloop_tools.go), records a PermissionDenial with
+	// the question payload, and terminates the run so the client can surface
+	// the question and feed the user's answer back as the next prompt.
+	askDef := tools.AskUserQuestionTool()
+	toolDefs = append(toolDefs, types.LlmToolDef{
+		Name:        askDef.Name,
+		Description: askDef.Description,
+		InputSchema: askDef.InputSchema,
+	})
+
 	// Filter tools if plan mode and inject ExitPlanMode
 	if opts.PlanMode {
 		planTools := opts.PlanModeTools
@@ -149,6 +167,9 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// (plan-file-only gate in executeTools enforces the target restriction)
 		allowed["Write"] = true
 		allowed["Edit"] = true
+		// AskUserQuestion is injected unconditionally above; keep it through
+		// the plan-mode filter so it is still available during plan mode.
+		allowed[tools.AskUserQuestionName] = true
 		var filtered []types.LlmToolDef
 		for _, td := range toolDefs {
 			if allowed[td.Name] {
