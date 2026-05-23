@@ -8,14 +8,20 @@ import { getRemoteTabStates } from '../remote/snapshot'
 import { expandSlashCommand } from '../cli-compat/slash-expand'
 import { readSettings, SETTINGS_DEFAULTS } from '../settings-store'
 import { broadcast } from '../broadcast'
+import { processIncomingPrompt } from '../prompt-pipeline'
 
 function log(msg: string): void {
   _log('main', msg)
 }
 
 /** Expand slash commands in-place on RunOptions when claudeCompat is enabled.
- *  When a command file is found, auto-switches the tab from plan → auto so the
- *  expanded command executes immediately instead of being planned about. */
+ *  Used ONLY by the RETRY path now — fresh prompts route through
+ *  processIncomingPrompt which has its own (richer) slash-routing logic.
+ *  Retried prompts skip the full pipeline because the user has already made
+ *  the routing decision once (the slash-or-not classification doesn't change
+ *  on retry); we only need the .md expansion behaviour preserved here.
+ *  When a command file is found, auto-switches the tab from plan → auto so
+ *  the expanded command executes immediately instead of being planned about. */
 async function applySlashExpansion(tabId: string, options: RunOptions): Promise<void> {
   let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
   try {
@@ -84,6 +90,9 @@ export function registerSessionIpc(): void {
       sessionPlane.ensureTab(tabId)
     }
 
+    // Echo the user's typed text to iOS so a desktop-initiated prompt is
+    // visible there too. Skip for remote-source because iOS already inserted
+    // the optimistic entry locally and the pipeline will echo back to it.
     if (state.remoteTransport && options.source !== 'remote') {
       state.remoteTransport.send({
         type: 'message_added',
@@ -99,8 +108,30 @@ export function registerSessionIpc(): void {
     }
 
     try {
-      await applySlashExpansion(tabId, options)
-      await sessionPlane.submitPrompt(tabId, requestId, options)
+      // Hand off to the unified prompt pipeline. The pipeline decides:
+      //   - bash shortcut (! prefix, remote-source only)
+      //   - slash → extension command → .md expansion → unknown-command
+      //   - normal prompt → sessionPlane.submitPrompt(...)
+      // Slash routing is no longer duplicated in the renderer or remote
+      // handler — both now hand raw text here.
+      //
+      // Source is always 'desktop' here: IPC.PROMPT is the sink for the
+      // remote→broadcast→renderer→IPC roundtrip. The renderer has already
+      // done the optimistic insert and set status='connecting'. If we
+      // forwarded options.source='remote' to the pipeline, submitAsPrompt
+      // would re-broadcast REMOTE_USER_MESSAGE, the renderer would bail on
+      // the connecting status, and sessionPlane.submitPrompt would never
+      // run — the tab would sit idle until the watchdog reaps it. The
+      // echo-skip above keeps using options.source so iOS isn't double-echoed.
+      await processIncomingPrompt({
+        tabId,
+        text: options.prompt,
+        reqId: requestId,
+        source: 'desktop',
+        isEngineTab: false,
+        projectPath: options.projectPath,
+        runOptions: options,
+      })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       log(`PROMPT error: ${msg}`)

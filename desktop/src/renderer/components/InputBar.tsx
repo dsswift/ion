@@ -10,7 +10,6 @@ import type { DiscoveredCommand } from '../../shared/types'
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
-import { executeBuiltinCommand, resolveModelSwitch } from './InputBarCommandHandlers'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
@@ -41,9 +40,10 @@ export function InputBar() {
 
   const sendMessage = useSessionStore((s) => s.sendMessage)
   const submitEnginePrompt = useSessionStore((s) => s.submitEnginePrompt)
-  const clearTab = useSessionStore((s) => s.clearTab)
-  const addSystemMessage = useSessionStore((s) => s.addSystemMessage)
-  const addEngineSystemMessage = useSessionStore((s) => s.addEngineSystemMessage)
+  // (clearTab/addSystemMessage/addEngineSystemMessage were used by the
+  // pre-pipeline renderer slash dispatch; they remain available on the
+  // store and are now driven by engine_command_result subscribers in
+  // engine-event-slice.ts.)
   const startBashCommand = useSessionStore((s) => s.startBashCommand)
   const completeBashCommand = useSessionStore((s) => s.completeBashCommand)
   const addAttachments = useSessionStore((s) => s.addAttachments)
@@ -52,9 +52,6 @@ export function InputBar() {
   const setEngineDraftInput = useSessionStore((s) => s.setEngineDraftInput)
   const clearPendingInput = useSessionStore((s) => s.clearPendingInput)
 
-  const setPreferredModel = usePreferencesStore((s) => s.setPreferredModel)
-  const staticInfo = useSessionStore((s) => s.staticInfo)
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const activeInstanceId = useSessionStore((s) => {
@@ -241,17 +238,14 @@ export function InputBar() {
     }
   }, [])
 
-  // ─── Handle slash commands ───
-  const executeCommand = useCallback((cmd: SlashCommand) => {
-    executeBuiltinCommand(cmd.command, {
-      tab,
-      staticInfo,
-      preferredModel,
-      discoveredCommands,
-      clearTab,
-      addSystemMessage,
-    })
-  }, [tab, clearTab, addSystemMessage, staticInfo, preferredModel, discoveredCommands])
+  // ─── Slash commands ───
+  // The slash menu only sets the input text; the real dispatch happens
+  // inside handleSend below, which hands the raw text (including any leading
+  // "/") to the main process via window.ion.prompt / window.ion.enginePrompt.
+  // The unified prompt pipeline (desktop/src/main/prompt-pipeline.ts) owns
+  // all slash routing: extension-command dispatch, .md template expansion,
+  // and the /clear short-circuit for sessions that haven't started yet.
+  // Slash commands are never sent to the LLM as a literal prompt.
 
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     setInput(`${cmd.command} `)
@@ -292,19 +286,6 @@ export function InputBar() {
       return
     }
     const prompt = input.trim()
-    const modelMatch = prompt.match(/^\/model\s+(\S+)/i)
-    if (modelMatch) {
-      const result = resolveModelSwitch(modelMatch[1])
-      setInput('')
-      setSlashFilter(null)
-      if (result.ok && result.modelId && result.modelLabel) {
-        setPreferredModel(result.modelId)
-        addSystemMessage(`Model switched to ${result.modelLabel} (${result.modelId})`)
-      } else {
-        addSystemMessage(`Unknown model "${result.query}". Available: opus, sonnet, haiku`)
-      }
-      return
-    }
     if (!prompt && attachments.length === 0) return
     if (isConnecting) return
     setInput('')
@@ -313,35 +294,35 @@ export function InputBar() {
     if (textareaRef.current) {
       textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
     }
-    // Route to engine if this is an engine tab
+    // Route to engine if this is an engine tab.
+    //
+    // Slash-command routing is NOT done here any more. After the unified
+    // prompt pipeline (desktop/src/main/prompt-pipeline.ts) the renderer is
+    // a dumb pipe: it hands raw text — including any leading "/" — to the
+    // main process via window.ion.prompt / window.ion.enginePrompt, and the
+    // main-process pipeline decides between extension command dispatch,
+    // .md template expansion, and normal LLM prompt submission. This makes
+    // desktop and remote (iOS) paths behaviourally identical and removes
+    // the four-way regex drift that motivated the refactor.
+    //
+    // The `/clear` divider is no longer drawn locally either; it is now
+    // emitted by the engine via engine_command_result events and inserted
+    // by the engine-event-slice subscriber, so the same trigger works for
+    // both desktop-initiated and iOS-initiated /clear.
     const currentTab = useSessionStore.getState().tabs.find(t => t.id === useSessionStore.getState().activeTabId)
     if (currentTab?.isEngine) {
       const enginePane = useSessionStore.getState().enginePanes.get(currentTab.id)
       if (enginePane?.activeInstanceId) {
         setEngineDraftInput(`${currentTab.id}:${enginePane.activeInstanceId}`, '')
       }
-      const text = prompt || ''
-      // Check for slash commands (e.g. /agents-team cloudops-full)
-      const slashMatch = text.match(/^\/(\S+)\s*(.*)$/)
-      if (slashMatch) {
-        const instanceId = enginePane?.activeInstanceId
-        if (instanceId) {
-          const key = `${currentTab.id}:${instanceId}`
-          window.ion.engineCommand(key, slashMatch[1], slashMatch[2])
-          if (slashMatch[1] === 'clear') {
-            addEngineSystemMessage(key, 'Conversation cleared.')
-          }
-        }
-      } else {
-        submitEnginePrompt(currentTab.id, text)
-      }
+      submitEnginePrompt(currentTab.id, prompt || '')
       requestAnimationFrame(() => textareaRef.current?.focus())
       return
     }
     sendMessage(prompt || 'See attached files')
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, sendMessage, submitEnginePrompt, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setEngineDraftInput, setBashMode, addSystemMessage, addEngineSystemMessage, setPreferredModel])
+  }, [input, isBusy, sendMessage, submitEnginePrompt, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setEngineDraftInput, setBashMode])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {

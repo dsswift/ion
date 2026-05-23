@@ -200,6 +200,8 @@ ion.on('session_start', async (ctx) => {
 })
 ```
 
+`session_start` fires both on session creation and again after `/clear`. The latter is a checkpoint, not a session restart: the session, extension subprocesses, and MCP connections stay alive — only the LLM-visible conversation history is wiped. The hook fires again so the harness can re-prime the now-empty conversation with whatever bootstrap context it normally injects for a fresh session. If your hook should run only once per session lifetime (and not on subsequent clears), gate it on a per-session in-memory flag keyed on `ctx.sessionKey`.
+
 **Recursion hazard.** Calling `sendPrompt` from inside `before_prompt` (or any pre-prompt hook) triggers a new run, which fires the same hook again. The engine's prompt queue depth is the only outer bound. Use a per-session in-flight flag (keyed on `ctx.sessionKey`) to avoid runaway loops:
 
 ```typescript

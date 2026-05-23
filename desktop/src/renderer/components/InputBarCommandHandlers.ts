@@ -1,152 +1,79 @@
-import type { TabState, DiscoveredCommand } from '../../shared/types'
-import { AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/model-labels'
-import { useModelStore } from '../stores/model-store'
-import { getProviderDisplayName } from '../../shared/types-models'
+/**
+ * Builtin slash-command dispatcher for the CLI-tab InputBar.
+ *
+ * Historically this file handled six builtins (/clear, /cost, /model, /mcp,
+ * /skills, /help). The other five were audited and removed because each one
+ * was strictly worse than the dedicated UI already present:
+ *   - /cost     — duplicated by the always-visible status-bar cost/token
+ *                 indicator (see ConversationStatusBar / EngineFooter).
+ *   - /model    — duplicated (and worse than) StatusBarModelPicker /
+ *                 ModelPickerPopover and the AIModelsCategory settings page.
+ *   - /mcp      — was the only MCP surface but mostly emitted "No MCP data
+ *                 yet"; a proper status-bar indicator is the right fix if
+ *                 we ever want this back.
+ *   - /skills   — duplicated the slash menu itself, which already lists
+ *                 every discovered project/user command under its own
+ *                 groups (see SlashCommandMenu.getFilteredCommandsWithExtras).
+ *   - /help     — self-referential; the slash menu shows a description
+ *                 next to each entry, so the menu *is* the help.
+ *
+ * Only /clear survives as a renderer-side builtin. Its semantics are
+ * **checkpoint**, not "reset to a blank tab":
+ *
+ *   - The on-screen conversation scrollback is preserved. /clear inserts
+ *     a divider system message so the user can scroll back to reference
+ *     anything that happened before the checkpoint.
+ *   - The LLM's view of history is wiped. The dispatcher forwards to the
+ *     engine's `clear` command via window.ion.engineCommand, which nulls
+ *     conv.Messages on disk so the next prompt is sent with no prior
+ *     turns.
+ *   - The harness re-bootstraps. The engine re-fires session_start after
+ *     the wipe so any priming the harness would do for a fresh session
+ *     happens again. The session, extension subprocesses, and MCP
+ *     connections stay alive — only the LLM-visible history changes.
+ *
+ * If a user wants a truly empty tab they close-and-reopen the tab.
+ *
+ * The divider format is centralized in `formatClearDivider`; both this
+ * dispatcher (for CLI tabs via addSystemMessage) and InputBar.tsx (for
+ * engine tabs via addEngineSystemMessage) call it so the wording stays
+ * consistent. SystemMessage.tsx detects the leading `── Cleared` sentinel
+ * and renders the message as a horizontal rule instead of the default
+ * system-message bubble.
+ */
+
+import type { TabState } from '../../shared/types'
+import { formatClearDivider } from '../../shared/clear-divider'
+
+export { formatClearDivider }
 
 export interface ExecuteCommandDeps {
   tab: TabState | undefined
-  staticInfo: { version: string } | null | undefined
-  preferredModel: string | null
-  discoveredCommands: DiscoveredCommand[]
   clearTab: () => void
   addSystemMessage: (msg: string) => void
 }
 
 /**
- * Run a builtin slash command (e.g. /clear, /cost, /help). Pure dispatcher
- * over store actions so InputBar stays focused on the input UI.
+ * Run a builtin slash command. Currently only `/clear` is recognised.
+ * Unknown commands are a no-op (the caller decides whether to fall through
+ * to the normal prompt-send path).
+ *
+ * For /clear we do NOT call `clearTab()` — scrollback is intentionally
+ * preserved. We forward to the engine command path (which wipes
+ * conv.Messages on disk and re-fires session_start) and insert a divider
+ * system message client-side. `clearTab` is left on the deps interface
+ * for now, dead at the call site, to avoid widening the diff into the
+ * tab-slice; it can be cleaned up in a follow-up.
  */
 export function executeBuiltinCommand(commandName: string, deps: ExecuteCommandDeps): void {
-  const { tab, staticInfo, preferredModel, discoveredCommands, clearTab, addSystemMessage } = deps
+  const { tab, addSystemMessage } = deps
 
   switch (commandName) {
     case '/clear':
-      clearTab()
-      addSystemMessage('Conversation cleared.')
-      return
-    case '/cost': {
-      if (tab?.lastResult) {
-        const r = tab.lastResult
-        const parts = [
-          `$${r.totalCostUsd.toFixed(4)}`,
-          `${(r.durationMs / 1000).toFixed(1)}s`,
-          `${r.numTurns} turn${r.numTurns !== 1 ? 's' : ''}`,
-        ]
-        if (r.usage.input_tokens) {
-          parts.push(`${r.usage.input_tokens.toLocaleString()} in / ${(r.usage.output_tokens || 0).toLocaleString()} out`)
-        }
-        addSystemMessage(parts.join(' · '))
-      } else {
-        addSystemMessage('No cost data yet — send a message first.')
+      if (tab) {
+        window.ion.engineCommand(tab.id, 'clear', '')
       }
+      addSystemMessage(formatClearDivider(new Date()))
       return
-    }
-    case '/model': {
-      const model = tab?.sessionModel || null
-      const version = tab?.sessionVersion || staticInfo?.version || null
-      const current = preferredModel || model || 'default'
-
-      // Use dynamic models if available, fall back to AVAILABLE_MODELS
-      const dynamicModels = useModelStore.getState().models
-      if (dynamicModels.length > 0) {
-        const grouped = useModelStore.getState().getModelsByProvider()
-        const lines: string[] = []
-        for (const [providerId, models] of grouped) {
-          lines.push(`\n  ${getProviderDisplayName(providerId)}:`)
-          for (const m of models) {
-            const active = m.id === current
-            lines.push(`    ${active ? '●' : '○'} ${getModelDisplayLabel(m.id)} (${m.id})`)
-          }
-        }
-        const header = version ? `Ion Engine ${version}` : 'Ion Engine'
-        addSystemMessage(`${header}\n${lines.join('\n')}\n\nSwitch model: type /model <name>\n  e.g. /model sonnet`)
-      } else {
-        const lines = AVAILABLE_MODELS.map((m) => {
-          const active = m.id === current || (!preferredModel && m.id === model)
-          return `  ${active ? '●' : '○'} ${m.label} (${m.id})`
-        })
-        const header = version ? `Ion Engine ${version}` : 'Ion Engine'
-        addSystemMessage(`${header}\n\n${lines.join('\n')}\n\nSwitch model: type /model <name>\n  e.g. /model sonnet`)
-      }
-      return
-    }
-    case '/mcp': {
-      if (tab?.sessionMcpServers && tab.sessionMcpServers.length > 0) {
-        const lines = tab.sessionMcpServers.map((s) => {
-          const icon = s.status === 'connected' ? '✓' : s.status === 'failed' ? '✗' : '○'
-          return `  ${icon} ${s.name} — ${s.status}`
-        })
-        addSystemMessage(`MCP Servers (${tab.sessionMcpServers.length}):\n${lines.join('\n')}`)
-      } else if (tab?.conversationId) {
-        addSystemMessage('No MCP servers connected in this session.')
-      } else {
-        addSystemMessage('No MCP data yet — send a message to start a session.')
-      }
-      return
-    }
-    case '/skills': {
-      if (discoveredCommands.length > 0) {
-        const projectCmds = discoveredCommands.filter((c) => c.scope === 'project')
-        const userCmds = discoveredCommands.filter((c) => c.scope === 'user')
-        const lines: string[] = []
-        if (projectCmds.length > 0) {
-          lines.push('Project:')
-          projectCmds.forEach((c) => lines.push(`  /${c.name}`))
-        }
-        if (userCmds.length > 0) {
-          lines.push('User:')
-          userCmds.forEach((c) => lines.push(`  /${c.name}`))
-        }
-        addSystemMessage(`Available commands (${discoveredCommands.length}):\n${lines.join('\n')}`)
-      } else {
-        addSystemMessage('No commands found in ~/.ion/commands/ or .ion/commands/')
-      }
-      return
-    }
-    case '/help': {
-      const lines = [
-        '/clear — Clear conversation history',
-        '/cost — Show token usage and cost',
-        '/model — Show model info & switch models',
-        '/mcp — Show MCP server status',
-        '/skills — Show available skills',
-        '/help — Show this list',
-      ]
-      addSystemMessage(lines.join('\n'))
-      return
-    }
   }
-}
-
-export interface ResolveModelSwitchResult {
-  ok: boolean
-  modelId?: string
-  modelLabel?: string
-  query: string
-}
-
-/**
- * Match a `/model <query>` arg against available models. Checks dynamic
- * model store first, then falls back to AVAILABLE_MODELS. Returns the model
- * id+label on a hit, or {ok:false, query} for the caller to render a
- * helpful error message.
- */
-export function resolveModelSwitch(query: string): ResolveModelSwitchResult {
-  const lowered = query.toLowerCase()
-
-  // Check dynamic models first
-  const dynamicModels = useModelStore.getState().models
-  if (dynamicModels.length > 0) {
-    const match = dynamicModels.find((m) =>
-      m.id.toLowerCase().includes(lowered) || getModelDisplayLabel(m.id).toLowerCase().includes(lowered),
-    )
-    if (match) return { ok: true, modelId: match.id, modelLabel: getModelDisplayLabel(match.id), query }
-  }
-
-  // Fall back to static models
-  const match = AVAILABLE_MODELS.find((m: { id: string; label: string }) =>
-    m.id.toLowerCase().includes(lowered) || m.label.toLowerCase().includes(lowered),
-  )
-  if (match) return { ok: true, modelId: match.id, modelLabel: match.label, query }
-  return { ok: false, query }
 }

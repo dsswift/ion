@@ -2,15 +2,15 @@ import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { IPC } from '../../../shared/types'
 import { log as _log } from '../../logger'
-import { state, sessionPlane, engineBridge, terminalScrollback, modelCache } from '../../state'
+import { state, sessionPlane, engineBridge } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
-import { readSettings, writeSettings } from '../../settings-store'
+import { readSettings } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
 import { discoverCommands } from '../../cli-compat/command-discovery'
-import { encodeImageAttachments } from '../attachment-encoder'
 import { autoPullDiagnosticLogs } from './diagnostics'
-import { readRemoteDisplay } from './display'
+import { broadcastSync, sendSync } from './tabs-sync'
+import { processIncomingPrompt } from '../../prompt-pipeline'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -18,76 +18,8 @@ function log(msg: string): void {
 }
 
 export async function handleSync(deviceId: string): Promise<void> {
-  await _sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event))
+  await sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event))
   autoPullDiagnosticLogs(deviceId)
-}
-
-/** Broadcast sync to all connected devices (used after state-changing operations). */
-async function broadcastSync(): Promise<void> {
-  await _sendSync((event) => state.remoteTransport?.send(event))
-}
-
-async function _sendSync(send: (event: any) => void): Promise<void> {
-  const tabs = await getRemoteTabStates()
-  const syncSettings = readSettings()
-  const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
-  const tabGroupMode = syncSettings.tabGroupMode || 'off'
-  const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
-  const remoteDisplay = readRemoteDisplay()
-  log(`SNAP-SEND: tabs=${tabs.length} dirs=${recentDirectories.length} remoteDisplay=${remoteDisplay ? `name=${remoteDisplay.customName === null ? 'null' : 'set'} icon=${remoteDisplay.customIcon ?? 'null'} ts=${remoteDisplay.updatedAt}` : 'unset'}`)
-  send({
-    type: 'snapshot',
-    tabs,
-    recentDirectories,
-    tabGroupMode,
-    tabGroups,
-    preferredModel: syncSettings.preferredModel || undefined,
-    engineDefaultModel: syncSettings.engineDefaultModel || undefined,
-    availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
-    customName: remoteDisplay?.customName ?? undefined,
-    customIcon: remoteDisplay?.customIcon ?? undefined,
-    remoteDisplayUpdatedAt: remoteDisplay?.updatedAt ?? undefined,
-  })
-  const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
-  send({ type: 'engine_profiles', profiles: engineProfiles })
-  for (const tab of tabs) {
-    if (tab.isTerminalOnly && tab.terminalInstances && tab.terminalInstances.length > 0) {
-      try {
-        const escapedTabId = tab.id.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const buffers: Record<string, string> = await state.mainWindow?.webContents.executeJavaScript(`
-          (function() {
-            try {
-              var store = window.__Ion_SESSION_STORE__;
-              if (!store) return {};
-              var pane = store.getState().terminalPanes.get('${escapedTabId}');
-              if (!pane) return {};
-              var result = {};
-              for (var i = 0; i < pane.instances.length; i++) {
-                var key = '${escapedTabId}:' + pane.instances[i].id;
-                var buf = window.__serializeTerminalBuffer ? window.__serializeTerminalBuffer(key) : null;
-                if (buf) result[pane.instances[i].id] = buf;
-              }
-              return result;
-            } catch(e) { return {}; }
-          })()
-        `) || {}
-        // Fall back to main-process scrollback for instances without renderer xterm
-        for (const inst of tab.terminalInstances!) {
-          if (!buffers[inst.id]) {
-            const scrollback = terminalScrollback.get(`${tab.id}:${inst.id}`)
-            if (scrollback) buffers[inst.id] = scrollback
-          }
-        }
-        send({
-          type: 'terminal_snapshot',
-          tabId: tab.id,
-          instances: tab.terminalInstances,
-          activeInstanceId: tab.activeTerminalInstanceId || null,
-          buffers: Object.keys(buffers).length > 0 ? buffers : undefined,
-        })
-      } catch {}
-    }
-  }
 }
 
 async function createTabFromCommand(
@@ -204,60 +136,75 @@ export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'close_tab' }
   state.remoteTransport?.send({ type: 'tab_closed', tabId: cmd.tabId })
 }
 
-export function handlePrompt(cmd: Extract<RemoteCommand, { type: 'prompt' }>): void {
+/**
+ * Resolve the working directory the renderer has stored for a given tab.
+ * Used by handlePrompt to feed the unified prompt pipeline a projectPath
+ * for `.md` template expansion — without it, `.md` lookup would only
+ * search `~/.claude/commands/` and miss project-scoped commands at
+ * `${cwd}/.claude/commands/`. Returns undefined when the tab isn't found
+ * or mainWindow isn't ready (defensive — in that case the pipeline still
+ * runs, just without project-scoped `.md` discovery).
+ */
+async function resolveTabProjectPath(tabId: string): Promise<string | undefined> {
+  if (!state.mainWindow) return undefined
+  try {
+    const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const cwd = await state.mainWindow.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return null;
+        var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTab}'; });
+        return tab && tab.workingDirectory ? tab.workingDirectory : null;
+      })()
+    `)
+    return cwd || undefined
+  } catch (err) {
+    log(`resolveTabProjectPath: error tab=${tabId}: ${(err as Error).message}`)
+    return undefined
+  }
+}
+
+export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'prompt' }>): Promise<void> {
   const reqId = cmd.clientMsgId || `remote-${Date.now()}`
-  const promptText = cmd.text.trim()
-    .replace(/—/g, '--')
-    .replace(/–/g, '-')
-    .replace(/['']/g, "'")
-    .replace(/[""]/g, '"')
-
-  if (promptText.startsWith('!') && promptText.length > 1) {
-    const bashCmd = promptText.substring(1).trim()
-    if (!bashCmd) return
-
-    state.remoteTransport?.send({
-      type: 'message_added',
-      tabId: cmd.tabId,
-      message: { id: reqId, role: 'user', content: `! ${bashCmd}`, timestamp: Date.now(), source: 'remote' },
-    })
-    broadcast(IPC.REMOTE_BASH_COMMAND, { tabId: cmd.tabId, command: bashCmd })
-    return
-  }
-
-  // Prepend attachment context lines (same format as desktop send-slice)
-  // for client-side display, then encode each image so the engine can ship
-  // native multimodal content blocks to the LLM.
-  let fullPrompt = promptText
-  const attachments = cmd.attachments || []
-  if (attachments.length > 0) {
-    const ctx = attachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
-    fullPrompt = `${ctx}\n\n${fullPrompt}`
-  }
-  const { encoded, rewrittenText } = encodeImageAttachments(fullPrompt, attachments)
-
-  const remoteAttachments = attachments.map((a) => ({
-    id: crypto.randomUUID(),
-    type: a.type,
-    name: a.name,
-    path: a.path,
-  }))
-
-  const now = Date.now()
+  // Echo the user's typed text back to iOS with a canonical ms timestamp so
+  // iOS replaces its optimistic entry by id (fixing the "56 years ago"
+  // symptom that motivated the pipeline refactor). For non-slash text the
+  // pipeline still goes through this echo before broadcasting to the
+  // renderer; for slash text the pipeline handles the echo itself in
+  // handleSlash().
+  //
+  // We do the echo here UNCONDITIONALLY for normal prompts because the
+  // pipeline only echoes from handleSlash() (and from clearConnectingStatus
+  // for terminal command outcomes). The redundancy is intentional: a normal
+  // remote prompt has no "command outcome" event to anchor an echo on, so
+  // we echo at the entry point. Slash echoes inside the pipeline are extra
+  // confirmations, not the only ones — but for the non-slash path this
+  // echo is the only one.
   state.remoteTransport?.send({
     type: 'message_added',
     tabId: cmd.tabId,
-    message: {
-      id: reqId, role: 'user', content: promptText, timestamp: now, source: 'remote',
-      attachments: remoteAttachments.length > 0 ? remoteAttachments : undefined,
-    },
+    message: { id: reqId, role: 'user', content: cmd.text, timestamp: Date.now(), source: 'remote' },
   })
-  broadcast(IPC.REMOTE_USER_MESSAGE, {
+  // Resolve the tab's working directory from the renderer store so the
+  // pipeline can find project-scoped `.md` templates (e.g.
+  // ${cwd}/.claude/commands/ion--review-changes.md). The renderer is the
+  // authoritative source for per-tab cwd; sessionPlane only stores it
+  // implicitly via the most recent submitPrompt. Awaiting this query is
+  // cheap (single executeJavaScript round-trip) and the work-in-flight
+  // overlap with the engine dispatch is unavoidable anyway.
+  const projectPath = await resolveTabProjectPath(cmd.tabId)
+  // Fire-and-forget the unified pipeline. Errors are logged inside the
+  // pipeline; we never want a thrown error here to crash the transport.
+  void processIncomingPrompt({
     tabId: cmd.tabId,
-    requestId: reqId,
-    prompt: rewrittenText,
-    timestamp: now,
-    imageAttachments: encoded.length > 0 ? encoded : undefined,
+    text: cmd.text,
+    attachments: cmd.attachments,
+    reqId,
+    source: 'remote',
+    isEngineTab: false,
+    projectPath,
+  }).catch((err: unknown) => {
+    log(`handlePrompt: pipeline error: ${(err as Error).message}`)
   })
 }
 
@@ -401,142 +348,6 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     log(`load_conversation error: ${(err as Error).message}`)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
   }
-}
-
-export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 'set_tab_group_mode' }>): Promise<void> {
-  const mode = cmd.mode
-  if (mode !== 'auto' && mode !== 'manual' && mode !== 'off') {
-    log(`Remote set_tab_group_mode: invalid mode "${mode}"`)
-    return
-  }
-  log(`Remote set_tab_group_mode: mode=${mode}`)
-  const escaped = mode.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-  // Drive mode change through renderer to trigger stash/restore logic
-  try {
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var prefs = window.__Ion_PREFS_STORE__;
-        var session = window.__Ion_SESSION_STORE__;
-        if (!prefs || !session) return;
-        var oldMode = prefs.getState().tabGroupMode;
-        var newMode = '${escaped}';
-        if (oldMode === newMode) return;
-        if (oldMode === 'manual') {
-          var cg = prefs.getState().tabGroups;
-          var tabs = session.getState().tabs;
-          var asgn = {};
-          for (var i = 0; i < tabs.length; i++) {
-            if (tabs[i].groupId) asgn[tabs[i].id] = tabs[i].groupId;
-          }
-          prefs.getState().setStashedManualGroups(cg, asgn);
-        }
-        if (newMode === 'manual' && (oldMode === 'off' || oldMode === 'auto')) {
-          var sg = prefs.getState().stashedManualGroups;
-          if (sg.length > 0) {
-            var sa = prefs.getState().stashedManualTabAssignments;
-            prefs.getState().setTabGroups(sg);
-            var dg = sg.find(function(g) { return g.isDefault; }) || sg[0];
-            var gids = {};
-            for (var j = 0; j < sg.length; j++) gids[sg[j].id] = true;
-            session.setState(function(s) {
-              return { tabs: s.tabs.map(function(t) {
-                var g = sa[t.id];
-                if (g && gids[g]) return Object.assign({}, t, { groupId: g });
-                return Object.assign({}, t, { groupId: dg.id });
-              })};
-            });
-          } else {
-            prefs.getState().setTabGroups([]);
-            session.setState(function(s) {
-              return { tabs: s.tabs.map(function(t) {
-                return Object.assign({}, t, { groupId: null });
-              })};
-            });
-          }
-        } else if (newMode === 'auto' && oldMode === 'manual') {
-          session.setState(function(s) {
-            return { tabs: s.tabs.map(function(t) {
-              return Object.assign({}, t, { groupId: null });
-            })};
-          });
-        }
-        prefs.getState().setTabGroupMode(newMode);
-      })()
-    `)
-  } catch {}
-  // Also persist to settings file directly for consistency
-  const settings = readSettings()
-  settings.tabGroupMode = mode
-  writeSettings(settings)
-  await broadcastSync()
-}
-
-export async function handleReorderTabGroups(cmd: Extract<RemoteCommand, { type: 'reorder_tab_groups' }>): Promise<void> {
-  const ids = cmd.orderedIds
-  if (!Array.isArray(ids) || ids.length === 0) {
-    log('reorder_tab_groups: empty or invalid orderedIds')
-    return
-  }
-  try {
-    const escaped = JSON.stringify(ids).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var prefs = window.__Ion_PREFS_STORE__;
-        if (!prefs) return;
-        var orderedIds = JSON.parse('${escaped}');
-        var allGroups = prefs.getState().tabGroups;
-        var byId = {};
-        for (var i = 0; i < allGroups.length; i++) byId[allGroups[i].id] = allGroups[i];
-        var result = [];
-        for (var j = 0; j < orderedIds.length; j++) {
-          if (byId[orderedIds[j]]) result.push(byId[orderedIds[j]]);
-        }
-        // Append any groups not in the ordered list (safety net)
-        var seen = {};
-        for (var k = 0; k < orderedIds.length; k++) seen[orderedIds[k]] = true;
-        for (var m = 0; m < allGroups.length; m++) {
-          if (!seen[allGroups[m].id]) result.push(allGroups[m]);
-        }
-        prefs.getState().reorderTabGroups(result);
-      })()
-    `)
-  } catch (err) {
-    log('reorder_tab_groups error: ' + (err as Error).message)
-  }
-  await broadcastSync()
-}
-
-export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: 'move_tab_to_group' }>): Promise<void> {
-  try {
-    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const escapedGroup = cmd.groupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return;
-        store.getState().moveTabToGroup('${escapedTab}', '${escapedGroup}');
-      })()
-    `)
-  } catch (err) {
-    log('move_tab_to_group error: ' + (err as Error).message)
-  }
-  await broadcastSync()
-}
-
-export async function handleToggleTabGroupPin(cmd: Extract<RemoteCommand, { type: 'toggle_tab_group_pin' }>): Promise<void> {
-  try {
-    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return;
-        store.getState().toggleTabGroupPin('${escapedTab}');
-      })()
-    `)
-  } catch (err) {
-    log('toggle_tab_group_pin error: ' + (err as Error).message)
-  }
-  await broadcastSync()
 }
 
 export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type: 'discover_commands' }>, deviceId: string): Promise<void> {

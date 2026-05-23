@@ -142,6 +142,10 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'hasAuth',
     'id',
   ],
+  // Slash-command listing carried inside engine_command_registry snapshots.
+  // The desktop's prompt pipeline reads this off the wire to populate a
+  // routing-hint cache keyed by session — see desktop/src/main/prompt-pipeline.ts.
+  EngineCommandListing: ['description', 'name'],
 }
 
 // ─── Tests ───

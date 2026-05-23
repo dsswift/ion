@@ -1,9 +1,88 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
+import { formatClearDivider } from '../../../shared/clear-divider'
+
+/**
+ * Per-tab cache of extension-registered command names, populated by
+ * engine_command_registry snapshots emitted from the Go engine. Used by
+ * the slash-autocomplete UI in InputBar so extension commands appear in
+ * the menu alongside filesystem `.md` discoveries. Keyed by engine session
+ * key (tabId or `${tabId}:${instanceId}`) — autocomplete reads under the
+ * active tab/instance combination.
+ *
+ * Snapshot semantics: every event REPLACES the prior set. An empty
+ * `commands: []` is the authoritative "no extension commands" signal and
+ * clears the entry. Mirrors the main-process cache in
+ * `desktop/src/main/state.ts:extensionCommandRegistry`.
+ */
+const extensionCommandsByKey = new Map<string, Array<{ name: string; description?: string }>>()
+
+/** Get a snapshot of the current extension commands for an engine session key.
+ *  Used by autocomplete; returns an empty array when no commands are cached. */
+export function getRendererExtensionCommands(key: string): Array<{ name: string; description?: string }> {
+  return extensionCommandsByKey.get(key) ?? []
+}
 
 export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
     handleEngineEvent: (key, event) => {
+      // engine_command_registry and engine_command_result are CROSS-CUTTING
+      // events that apply to both CLI tabs (bare tabId key) and engine tabs
+      // (compound tabId:instanceId key). We dispatch on them BEFORE the
+      // engine-tab-only guard below so they reach the correct slice.
+      if (event.type === 'engine_command_registry') {
+        const listings = Array.isArray(event.commands) ? event.commands : []
+        if (listings.length === 0) {
+          extensionCommandsByKey.delete(key)
+        } else {
+          extensionCommandsByKey.set(key, listings.map((l: { name: string; description?: string }) => ({ name: l.name, description: l.description })))
+        }
+        // No store mutation here — autocomplete reads via
+        // getRendererExtensionCommands() during keystroke handling, not
+        // through reactive subscriptions. The renderer re-renders on the
+        // next keystroke and pulls a fresh list.
+        return
+      }
+      if (event.type === 'engine_command_result') {
+        // Engine confirms a command dispatch. We use this for two things:
+        //   1. The /clear divider — drawn when command='clear' and
+        //      commandError is empty. The unified pipeline collapsed the
+        //      legacy renderer-side divider injection into this single
+        //      engine-driven trigger so desktop and iOS render the divider
+        //      from the same signal.
+        //   2. (Future) /export markdown banner, /compact confirmation,
+        //      and any extension-emitted command result that wants a
+        //      visible system bubble.
+        //
+        // For now we only branch on /clear because the other built-ins
+        // (export, compact) had no renderer-side feedback in the legacy
+        // path either.
+        const cmdName = event.command || ''
+        const failed = !!event.commandError
+        const tabIdForCmd = key.includes(':') ? key.split(':')[0] : key
+        if (cmdName === 'clear' && !failed) {
+          const divider = formatClearDivider(new Date())
+          if (key.includes(':')) {
+            // Engine tab — insert into engineMessages keyed by the compound key.
+            set((state) => {
+              const messages = new Map(state.engineMessages)
+              const msgs = [...(messages.get(key) || [])]
+              msgs.push({ id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() })
+              messages.set(key, msgs)
+              return { engineMessages: messages }
+            })
+          } else {
+            // CLI tab — insert into the tab's local messages array.
+            set((state) => ({
+              tabs: state.tabs.map((t) => t.id === tabIdForCmd
+                ? { ...t, messages: [...t.messages, { id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() }] }
+                : t),
+            }))
+          }
+        }
+        return
+      }
+
       if (!key.includes(':')) return
 
       const tabId = key.split(':')[0]

@@ -22,6 +22,16 @@ vi.mock('os', async () => {
   }
 })
 
+// Mock the logger so importing slash-expand.ts (which imports ../logger) does
+// not call homedir() at module-load time to compute the log file path — that
+// would fire before fakeHome is initialised and produce a ReferenceError.
+vi.mock('../logger', () => ({
+  log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}))
+
 import { expandSlashCommand, stripFrontmatter } from '../cli-compat/slash-expand'
 
 // ─── Fixtures ───
@@ -192,21 +202,25 @@ describe('expandSlashCommand', () => {
 
   // TC-SE-010
   it('project commands override user commands with same name', async () => {
-    writeCommand(fakeHome, 'review', 'USER review template')
-    writeCommand(projectDir, 'review', 'PROJECT review template')
+    writeCommand(fakeHome, 'review', 'USER review for: $ARGUMENTS')
+    writeCommand(projectDir, 'review', 'PROJECT review for: $ARGUMENTS')
 
     const result = await expandSlashCommand('/review PR #42', projectDir)
 
     expect(result.expanded).toBe(true)
     if (!result.expanded) return
 
-    expect(result.userPrompt).toBe('PROJECT review template')
+    expect(result.userPrompt).toBe('PROJECT review for: PR #42')
   })
 
-  // TC-SE-011: built-in commands are not expanded because InputBar intercepts
-  // them before they reach the IPC handler. This test confirms the expansion
-  // function itself does NOT match them when no .md files exist.
-  it('does not expand built-in command names when no .md file exists', async () => {
+  // TC-SE-011: ad-hoc slash-style strings should NOT be expanded when no
+  // matching .md file exists on disk. `/clear` is the only renderer-side
+  // builtin today (intercepted by InputBar before reaching this path); the
+  // others (/cost, /model, /mcp, /skills, /help) were removed but are kept
+  // in this list because they are realistic "user types something that
+  // looks like a slash command, no file exists" inputs. The expansion
+  // function must not match any of them.
+  it('does not expand slash-style names when no .md file exists', async () => {
     for (const cmd of ['/model sonnet', '/clear', '/cost', '/mcp', '/skills', '/help']) {
       const result = await expandSlashCommand(cmd, projectDir)
       expect(result.expanded).toBe(false)
@@ -233,6 +247,72 @@ describe('expandSlashCommand', () => {
     if (!result.expanded) return
 
     expect(result.userPrompt).toBe('Just plain content with stuff')
+  })
+
+  // TC-SE-012: Claude Code parity — when a skill template has no $ARGUMENTS
+  // placeholder and the user supplies args, append them as a trailing block.
+  // This is the primary bug fix: /ilograph <instructions> previously dropped
+  // <instructions> because ilograph's SKILL.md has no $ARGUMENTS token.
+  it('appends ARGUMENTS suffix when skill template has no placeholder', async () => {
+    writeSkill(fakeHome, 'ilograph', 'You are an Ilograph diagram expert.\n\nAnalyze the architecture.')
+
+    const result = await expandSlashCommand(
+      '/ilograph Please review these diagrams and improve them.',
+      projectDir,
+    )
+
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+
+    expect(result.userPrompt).toContain('You are an Ilograph diagram expert.')
+    const expectedSuffix = '\n\nARGUMENTS: Please review these diagrams and improve them.'
+    expect(result.userPrompt.endsWith(expectedSuffix)).toBe(true)
+    // No double-append: the literal prefix must appear exactly once
+    expect(result.userPrompt.split('\n\nARGUMENTS:').length).toBe(2)
+  })
+
+  // TC-SE-013: when the template DOES have $ARGUMENTS, the placeholder is
+  // substituted as normal — the trailing ARGUMENTS block must NOT appear.
+  it('does not append ARGUMENTS block when template has placeholder', async () => {
+    writeCommand(fakeHome, 'with-placeholder', 'Spec for: $ARGUMENTS\n\nDo the work.')
+
+    const result = await expandSlashCommand('/with-placeholder foo bar baz', projectDir)
+
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+
+    expect(result.userPrompt).toBe('Spec for: foo bar baz\n\nDo the work.')
+    expect(result.userPrompt).not.toContain('\n\nARGUMENTS:')
+  })
+
+  // TC-SE-014: no args supplied and no placeholder → body returned unchanged,
+  // no trailing ARGUMENTS block. Matches Claude Code's `args` non-empty guard.
+  it('does not append ARGUMENTS block when args is empty', async () => {
+    writeSkill(fakeHome, 'no-args-skill', 'Generic skill prose. No placeholder here.')
+
+    const result = await expandSlashCommand('/no-args-skill', projectDir)
+
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+
+    expect(result.userPrompt).toBe('Generic skill prose. No placeholder here.')
+    expect(result.userPrompt).not.toContain('ARGUMENTS:')
+  })
+
+  // TC-SE-015: same append behaviour applies to plain commands/ files, not
+  // just skills — the fix lives in expandSlashCommand, not skill-specific logic.
+  it('appends ARGUMENTS suffix for command file without placeholder', async () => {
+    writeCommand(fakeHome, 'no-placeholder-cmd', 'Run the analysis.\n\nBe thorough.')
+
+    const result = await expandSlashCommand('/no-placeholder-cmd check everything', projectDir)
+
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+
+    expect(result.userPrompt).toContain('Run the analysis.')
+    const expectedSuffix = '\n\nARGUMENTS: check everything'
+    expect(result.userPrompt.endsWith(expectedSuffix)).toBe(true)
+    expect(result.userPrompt).not.toContain('$ARGUMENTS')
   })
 })
 

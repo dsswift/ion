@@ -70,3 +70,33 @@ export const modelCache = {
   models: [] as Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }>,
   lastFetched: 0,
 }
+
+/**
+ * Per-session extension-command registry cache.
+ *
+ * Keyed by engine session key — `tabId` for CLI tabs, `${tabId}:${instanceId}`
+ * for engine tabs (matches the keying used by `engineBridge.sendCommand`).
+ * Populated and invalidated by `engine_command_registry` events emitted from
+ * the Go engine (see `engine/internal/session/command_registry.go`). The cache
+ * is a routing HINT for the unified prompt pipeline, not a source of truth:
+ *
+ *   - HIT  → "this name is registered with extensions on this session,
+ *            dispatch confidently."
+ *   - MISS → "either the name is not an extension command OR our snapshot is
+ *            stale (mid-session registration race). Dispatch anyway; the
+ *            engine resolves the live table at dispatch time and emits
+ *            engine_command_result with CommandError='unknown_command' if it
+ *            disclaims the name. The pipeline falls through to `.md`
+ *            expansion on that signal."
+ *
+ * Snapshot semantics: every event REPLACES the prior entry for the key. An
+ * empty `commands: []` payload is the authoritative "no extension commands
+ * live for this session" signal — we delete the cache entry on empty so a
+ * subsequent re-population creates a fresh entry. See AGENTS.md §4.
+ *
+ * Entries are populated reactively from engine events; never written by
+ * dispatch code. Reads are O(1) Set.has lookups, called once per slash
+ * command parsed by the unified pipeline.
+ */
+export const extensionCommandRegistry = new Map<string, Set<string>>()
+

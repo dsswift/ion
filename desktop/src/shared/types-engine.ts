@@ -56,6 +56,19 @@ export interface StatusFields {
   extensionName?: string
 }
 
+/**
+ * Slash-command listing carried inside engine_command_registry snapshots.
+ * Mirror of Go's types.EngineCommandListing. The desktop's prompt pipeline
+ * uses the `name` set as a routing hint so it can short-circuit `.md`
+ * template lookups for command names the session's extensions own. The
+ * `description` is the same hint the iOS autocomplete already shows for
+ * filesystem-discovered `.md` commands.
+ */
+export interface EngineCommandListing {
+  name: string
+  description?: string
+}
+
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
   | { type: 'engine_status'; fields: StatusFields }
@@ -80,3 +93,18 @@ export type EngineEvent =
   | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }
   | { type: 'engine_events_dropped'; count: number }
   | { type: 'engine_extension_dead_permanent'; extensionName: string; attemptNumber: number }
+  // engine_command_result is emitted at the end of every Manager.SendCommand
+  // dispatch — success (CommandError empty), extension-command failure
+  // (CommandError = the error message), and unknown command (CommandError =
+  // "unknown_command"). The `command` field carries the bare name so a
+  // consumer can switch on it without reparsing prose. The desktop's prompt
+  // pipeline awaits this event to decide between "dispatch landed, draw
+  // the divider" and "engine disclaims, fall through to `.md` expansion".
+  | { type: 'engine_command_result'; message?: string; command?: string; commandError?: string }
+  // engine_command_registry is a complete SNAPSHOT of the session's
+  // extension-registered slash commands. Emitted at session_start (after
+  // extensions wire up) and on every subsequent change (mid-session
+  // RegisterCommand, hot reload, etc.). Consumers REPLACE their cached
+  // routing-hint set with this payload. Empty `commands` is the authoritative
+  // "no extension commands live for this session" signal.
+  | { type: 'engine_command_registry'; commands: EngineCommandListing[] }

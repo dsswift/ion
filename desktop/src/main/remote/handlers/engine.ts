@@ -1,8 +1,7 @@
-import { IPC } from '../../../shared/types'
 import { log as _log } from '../../logger'
 import { state, engineBridge } from '../../state'
-import { broadcast } from '../../broadcast'
 import { encodeImageAttachments } from '../attachment-encoder'
+import { processIncomingPrompt } from '../../prompt-pipeline'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -93,25 +92,61 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    // Route through the renderer's submitEnginePrompt so it adds the user
-    // message, sets tab status, and calls the engine bridge properly.
-    // Prepend attachment context lines (same format as desktop send-slice)
-    // for client-side display, then encode each image to base64 so the
-    // engine can ship native multimodal content blocks to the LLM.
+    // Hand off to the unified prompt pipeline. The pipeline owns the full
+    // decision tree (slash → extension command → .md → unknown-command,
+    // or normal prompt). Routing is no longer duplicated in
+    // slash-intercept.ts; both CLI and engine entry points share the same
+    // policy. For normal prompts the pipeline broadcasts REMOTE_ENGINE_PROMPT
+    // so the renderer's submitEnginePrompt does the optimistic insert and
+    // calls the engine bridge.
+    //
+    // Image-attachment encoding happens INSIDE the pipeline for CLI; for
+    // engine tabs we pre-encode here because the engine bridge takes
+    // already-encoded ImageAttachmentPayload[] and the broadcast envelope
+    // mirrors that shape. Attachment-context lines are still prepended here
+    // for engine consistency with the prior behaviour.
     let fullText = cmd.text
     const attachments = cmd.attachments || []
     if (attachments.length > 0) {
-      const ctx = attachments.map((a: { type: string; name: string; path: string }) => `[Attached ${a.type}: ${a.path}]`).join('\n')
+      const ctx = attachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
       fullText = `${ctx}\n\n${fullText}`
     }
     const { encoded, rewrittenText } = encodeImageAttachments(fullText, attachments)
-
     const voicePrompt = getVoiceSystemPrompt(deviceId)
-    broadcast(IPC.REMOTE_ENGINE_PROMPT, {
+    const reqId = `remote-engine-${Date.now()}`
+
+    // Resolve the tab's working directory from the renderer store so the
+    // pipeline can find project-scoped `.md` templates. Mirrors the same
+    // query in tabs.ts:resolveTabProjectPath — duplicated inline here to
+    // avoid a cross-file import for one query. Engine tabs use the same
+    // `tab.workingDirectory` field as CLI tabs.
+    let projectPath: string | undefined
+    try {
+      const escapedTabForPath = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const cwd = await state.mainWindow.webContents.executeJavaScript(`
+        (function() {
+          var store = window.__Ion_SESSION_STORE__;
+          if (!store) return null;
+          var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabForPath}'; });
+          return tab && tab.workingDirectory ? tab.workingDirectory : null;
+        })()
+      `)
+      projectPath = cwd || undefined
+    } catch (err) {
+      log(`engine_prompt: project-path query failed for tab=${cmd.tabId}: ${(err as Error).message}`)
+    }
+
+    await processIncomingPrompt({
       tabId: cmd.tabId,
       text: rewrittenText,
-      appendSystemPrompt: voicePrompt,
+      attachments,
       imageAttachments: encoded.length > 0 ? encoded : undefined,
+      reqId,
+      source: 'remote',
+      isEngineTab: true,
+      instanceId,
+      appendSystemPrompt: voicePrompt,
+      projectPath,
     })
   } catch (err) {
     log(`engine_prompt error: ${(err as Error).message}`)

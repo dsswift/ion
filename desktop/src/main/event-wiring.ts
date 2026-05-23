@@ -2,10 +2,11 @@ import { readFileSync } from 'fs'
 import { IPC } from '../shared/types'
 import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log } from './logger'
-import { state, sessionPlane, engineBridge, activeAssistantMessages, activeToolInputs, lastMessagePreview } from './state'
+import { state, sessionPlane, engineBridge, activeAssistantMessages, activeToolInputs, lastMessagePreview, extensionCommandRegistry } from './state'
 import { broadcast } from './broadcast'
 import { currentBackend } from './settings-store'
 import { normalizedToRemote } from './remote/protocol'
+import { formatClearDivider } from '../shared/clear-divider'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -30,6 +31,29 @@ export function wireEngineBridgeEvents(): void {
     if (event.type === 'engine_status' && event.fields) {
       event = { ...event, fields: { ...event.fields, backend: currentBackend } }
     }
+
+    // engine_command_registry: refresh the main-process routing-hint cache
+    // BEFORE broadcasting so the unified prompt pipeline always observes the
+    // newest snapshot if a slash command is dispatched in the same tick.
+    // Snapshot semantics — see state.ts comment on extensionCommandRegistry.
+    if (event.type === 'engine_command_registry') {
+      const listings = Array.isArray(event.commands) ? event.commands : []
+      if (listings.length === 0) {
+        // Empty list is the authoritative "no extension commands" signal —
+        // drop the entry entirely so a future re-populate sees a clean slot
+        // and routing-hint MISSes correctly trigger the engine-resolved
+        // backstop. Leaving an empty Set in the map would be observationally
+        // identical but harder to reason about in logs.
+        const had = extensionCommandRegistry.has(key)
+        extensionCommandRegistry.delete(key)
+        log(`engine_command_registry: cleared key=${key} (was=${had})`)
+      } else {
+        const names = new Set<string>(listings.map((l: { name: string }) => l.name))
+        extensionCommandRegistry.set(key, names)
+        log(`engine_command_registry: cached key=${key} count=${names.size} names=[${[...names].join(',')}]`)
+      }
+    }
+
     broadcast(IPC.ENGINE_EVENT, key, event)
     if (state.remoteTransport) {
       const tabId = key.split(':')[0]
@@ -44,6 +68,42 @@ export function wireEngineBridgeEvents(): void {
         log(`engineBridge: agent_state forwarded key=${key} count=${agents.length} statuses=[${statuses}]`)
       }
       state.remoteTransport.send({ type: `engine_${event.type.replace('engine_', '')}`, tabId, instanceId, ...event })
+
+      // /clear success → relay an iOS-renderable divider so the mobile
+      // client sees the checkpoint immediately. We piggy-back on the
+      // existing envelopes iOS already decodes: `engine_harness_message`
+      // for engine tabs (NormalizedEvent.engineHarnessMessage handler),
+      // `message_added` for CLI tabs. Without this relay iOS would have
+      // to learn a new event type to render the divider; using the
+      // existing ones means iOS works without any Swift change.
+      //
+      // The renderer (engine-event-slice.ts) draws its own divider from
+      // the same engine_command_result event, so desktop and iOS both
+      // light up from a single engine signal.
+      if (event.type === 'engine_command_result' && event.command === 'clear' && !event.commandError) {
+        const divider = formatClearDivider(new Date())
+        if (instanceId) {
+          state.remoteTransport.send({
+            type: 'engine_harness_message',
+            tabId,
+            instanceId,
+            message: divider,
+            source: 'clear',
+          })
+        } else {
+          state.remoteTransport.send({
+            type: 'message_added',
+            tabId,
+            message: {
+              id: `clear-${Date.now()}`,
+              role: 'system',
+              content: divider,
+              timestamp: Date.now(),
+              source: 'desktop',
+            },
+          })
+        }
+      }
     }
     // Auto-reconcile on event drops so state self-heals
     if (event.type === 'engine_events_dropped') {

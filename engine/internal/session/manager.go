@@ -171,7 +171,26 @@ func (m *Manager) SendCommand(key, command, args string) {
 						TotalCostUsd:   s.lastTotalCost,
 					},
 				})
+				// Re-fire session_start so the harness can re-prime the now-empty
+				// conversation. `/clear` is a checkpoint, not a session restart —
+				// the session, extension subprocesses, and MCP connections stay
+				// alive. Only the LLM-visible history was wiped above; firing
+				// session_start gives the harness a chance to inject whatever
+				// bootstrap context it would normally inject for a fresh session.
+				// Same pattern as start_session.go:384-385.
+				if s.extGroup != nil && !s.extGroup.IsEmpty() {
+					utils.Log("Session", fmt.Sprintf("firing session_start on clear for session %s", key))
+					ctx := m.newExtContext(s, key)
+					_ = s.extGroup.FireSessionStart(ctx)
+					utils.Log("Session", fmt.Sprintf("session_start re-fired on clear for session %s", key))
+				} else {
+					utils.Debug("Session", fmt.Sprintf("clear: no extensions loaded for %s, skipping session_start re-fire", key))
+				}
+			} else {
+				utils.Log("Session", fmt.Sprintf("clear: failed to load conversation %s: %v", s.conversationID, err))
 			}
+		} else {
+			utils.Debug("Session", fmt.Sprintf("clear: no conversationID set on session %s, nothing to wipe", key))
 		}
 	case "compact":
 		if s.conversationID != "" {

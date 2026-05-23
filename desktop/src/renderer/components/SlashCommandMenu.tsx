@@ -1,9 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import {
-  Trash, Cpu, CurrencyDollar, Question, HardDrives, Sparkle,
-} from '@phosphor-icons/react'
+import { Trash } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 
@@ -16,11 +14,6 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/clear', description: 'Clear conversation history', icon: <Trash size={13} />, group: 'builtin' },
-  { command: '/cost', description: 'Show token usage and cost', icon: <CurrencyDollar size={13} />, group: 'builtin' },
-  { command: '/model', description: 'Show current model info', icon: <Cpu size={13} />, group: 'builtin' },
-  { command: '/mcp', description: 'Show MCP server status', icon: <HardDrives size={13} />, group: 'builtin' },
-  { command: '/skills', description: 'Show available skills', icon: <Sparkle size={13} />, group: 'builtin' },
-  { command: '/help', description: 'Show available commands', icon: <Question size={13} />, group: 'builtin' },
 ]
 
 const GROUP_ORDER: Record<string, number> = { builtin: 0, project: 1, user: 2 }
