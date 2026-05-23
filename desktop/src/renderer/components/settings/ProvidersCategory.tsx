@@ -14,6 +14,7 @@ function humanAuthSource(source: string | undefined): string {
     case 'filestore': return 'API key'
     case 'oauth': return 'signed in'
     case 'credentials.json': return 'credentials file'
+    case 'cli': return 'Claude CLI'
     case 'none': return 'no auth needed'
     default: return 'configured'
   }
@@ -28,6 +29,7 @@ function authSourceTooltip(source: string | undefined): string {
     case 'filestore': return 'Authenticated via API key saved in Ion settings'
     case 'oauth': return 'Authenticated via browser sign-in (OAuth)'
     case 'credentials.json': return 'Authenticated via legacy credentials.json file'
+    case 'cli': return 'Anthropic models served by the Claude CLI; no separate API key required'
     case 'none': return 'This provider runs locally and does not require authentication'
     default: return 'Provider has valid credentials'
   }

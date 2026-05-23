@@ -56,6 +56,11 @@ type Server struct {
 	stopOnce           sync.Once
 	version            string
 	startedAt          time.Time
+	// cliCapable is true when the engine is running with a backend that can
+	// serve Anthropic models via the Claude CLI (i.e. CliBackend or
+	// HybridBackend). list_models uses this to mark the anthropic provider
+	// as authed via CLI when no API key is configured.
+	cliCapable bool
 }
 
 // SetConfig stores the engine runtime config for use by sessions.
@@ -82,12 +87,20 @@ func (s *Server) SetAuthResolver(r *auth.Resolver) {
 func NewServer(socketPath string, b backend.RunBackend) *Server {
 	mgr := session.NewManager(b)
 
+	// Detect whether the backend can serve Anthropic models via Claude CLI.
+	var cliCapable bool
+	switch b.(type) {
+	case *backend.CliBackend, *backend.HybridBackend:
+		cliCapable = true
+	}
+
 	s := &Server{
 		socketPath: socketPath,
 		clients:    make(map[net.Conn]*clientWriter),
 		manager:    mgr,
 		done:       make(chan struct{}),
 		startedAt:  time.Now(),
+		cliCapable: cliCapable,
 	}
 
 	// Wire manager events to broadcast
@@ -580,6 +593,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 			if pid == "ollama" {
 				entry.HasAuth = true
 				entry.AuthSource = "none"
+			}
+			// CLI-capable backend (cli or hybrid) handles Anthropic auth
+			// via the Claude CLI itself. Surface that to clients so the
+			// model picker doesn't hide Anthropic models when the user
+			// hasn't configured a separate API key.
+			if s.cliCapable && pid == "anthropic" && !entry.HasAuth {
+				entry.HasAuth = true
+				entry.AuthSource = "cli"
 			}
 			// Populate config details (gateway URL, API key reference)
 			if s.config != nil {
