@@ -68,6 +68,7 @@ vi.mock('../session-store-helpers', () => ({
     isTerminalOnly: false,
     isEngine: false,
     engineProfileId: null,
+    lastMessagePreview: null,
   })),
   nextMsgId: vi.fn(() => `msg-${Math.random()}`),
   playNotificationIfHidden: vi.fn(async () => {}),
@@ -163,6 +164,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     isTerminalOnly: false,
     isEngine: false,
     engineProfileId: null,
+    lastMessagePreview: null,
     ...overrides,
   }
 }

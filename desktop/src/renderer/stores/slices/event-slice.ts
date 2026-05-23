@@ -3,6 +3,12 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden, totalInputTokens } from '../session-store-helpers'
 
+/** Compact a multi-line message into a single ~80-char preview for the tab strip. */
+function formatMessagePreview(content: string): string {
+  const flat = content.replace(/\s+/g, ' ').trim()
+  return flat.length > 80 ? flat.slice(0, 77) + '…' : flat
+}
+
 export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     handleNormalizedEvent: (tabId, event) => {
@@ -393,6 +399,14 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 ]
               }
               break
+          }
+
+          // Refresh last-message preview from whichever message ended up
+          // most recent. Used as a tab-pill subtitle to help distinguish
+          // multiple concurrent sessions.
+          const lastMsg = updated.messages[updated.messages.length - 1]
+          if (lastMsg) {
+            updated.lastMessagePreview = formatMessagePreview(lastMsg.content)
           }
 
           return updated

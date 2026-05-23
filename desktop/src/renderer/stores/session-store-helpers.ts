@@ -96,6 +96,7 @@ export function makeLocalTab(): TabState {
     queuedPrompts: [],
     workingDirectory: '~',
     hasChosenDirectory: false,
+    lastMessagePreview: null,
     additionalDirs: [],
     permissionMode,
     planFilePath: null,

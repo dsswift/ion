@@ -130,6 +130,9 @@ export interface TabState {
   isEngine: boolean
   /** Engine profile ID used for this tab (references EngineProfile.id) */
   engineProfileId: string | null
+  /** Short single-line preview of the last visible message (~80 chars), used
+   *  as a tab-pill subtitle to help distinguish multiple Jarvis sessions. */
+  lastMessagePreview: string | null
 }
 
 export interface Message {

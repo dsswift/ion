@@ -38,6 +38,11 @@ export interface PersistedTab {
   engineAgentStates?: Record<string, Array<{ name: string; status: string; metadata?: Record<string, any> }>>
   terminalInstances?: TerminalInstance[]
   terminalBuffers?: Record<string, string>
+  /** Wall-clock ms of the most recent engine event for this tab. Persisted so
+   *  the tab strip can show relative activity ("2m") across app restarts. */
+  lastEventAt?: number | null
+  /** Short single-line preview of the last visible message (~80 chars). */
+  lastMessagePreview?: string | null
 }
 
 export interface PersistedEditorFile {
