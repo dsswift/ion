@@ -5,6 +5,7 @@ import { IPC } from '../../shared/types'
 import { state } from '../state'
 import { showWindow } from '../window-manager'
 import { validateExternalUrl } from '../ipc-validation'
+import { engineBridge } from '../state'
 
 export function registerFileDialogIpc(): void {
   ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
@@ -32,6 +33,26 @@ export function registerFileDialogIpc(): void {
       : await dialog.showOpenDialog(state.mainWindow!, options)
     state.mainWindow?.show()
     return result.canceled ? null : result.filePaths
+  })
+
+  // Engine-host filesystem RPCs. Used by the remote-aware directory picker
+  // so the user browses the engine's filesystem (which is the cwd the engine
+  // chdir's into when spawning the Claude CLI) rather than the desktop's
+  // local filesystem. Local-engine setups also use these for symmetry.
+
+  ipcMain.handle(IPC.GET_ENGINE_HOST_INFO, async () => {
+    return engineBridge.getHostInfo()
+  })
+
+  ipcMain.handle(
+    IPC.LIST_ENGINE_DIRECTORY,
+    async (_event, path: string, showHidden: boolean) => {
+      return engineBridge.listDirectory(path ?? '', !!showHidden)
+    },
+  )
+
+  ipcMain.handle(IPC.ENGINE_IS_REMOTE, async () => {
+    return engineBridge.isRemote
   })
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {

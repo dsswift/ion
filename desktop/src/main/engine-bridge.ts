@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
-import type { EngineConfig, EngineEvent, ImageAttachmentPayload } from '../shared/types'
+import type { EngineConfig, EngineEvent, EngineDirListing, EngineHostInfo, ImageAttachmentPayload } from '../shared/types'
 
 const TAG = 'EngineBridge'
 function log(msg: string): void { _log(TAG, msg) }
@@ -45,6 +45,8 @@ export class EngineBridge extends EventEmitter {
   private activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
   /** Client-side key aliases: oldKey → newKey. Rewrites incoming event keys. */
   private keyAliases = new Map<string, string>()
+  /** Cached engine host info. Cleared on disconnect. */
+  private hostInfoCache: EngineHostInfo | null = null
 
   constructor() {
     super()
@@ -136,6 +138,7 @@ export class EngineBridge extends EventEmitter {
       conn.on('close', () => {
         this.connected = false
         this.conn = null
+        this.hostInfoCache = null
         log('Disconnected from engine server')
         this._scheduleReconnect()
       })
@@ -376,6 +379,47 @@ export class EngineBridge extends EventEmitter {
     this.activeSessions.set(key, { config, conversationId: entry?.conversationId })
     await this.connect()
     return this._sendWithResult({ cmd: 'start_session', key, config })
+  }
+
+  /**
+   * Whether the bridge is connected to a remote engine (TCP) rather than a
+   * local one (Unix socket). Read at module-load time from
+   * ION_DESKTOP_ENGINE_SOCKET; doesn't change for the life of the process.
+   */
+  get isRemote(): boolean {
+    return IS_REMOTE
+  }
+
+  /**
+   * Fetch the engine host's home, username, hostname, OS, and path separator.
+   * Cached after the first call until the next disconnect.
+   */
+  async getHostInfo(): Promise<{ ok: boolean; error?: string; data?: EngineHostInfo }> {
+    if (this.hostInfoCache) {
+      return { ok: true, data: this.hostInfoCache }
+    }
+    await this.connect()
+    const result = await this._sendWithData<EngineHostInfo>({ cmd: 'get_host_info' })
+    if (result.ok && result.data) {
+      this.hostInfoCache = result.data
+    }
+    return result
+  }
+
+  /**
+   * Browse a directory on the engine's host. Path "" or "~" resolves to the
+   * engine user's home. Other paths must be absolute.
+   */
+  async listDirectory(
+    path: string,
+    showHidden: boolean,
+  ): Promise<{ ok: boolean; error?: string; data?: EngineDirListing }> {
+    await this.connect()
+    return this._sendWithData<EngineDirListing>({
+      cmd: 'list_directory',
+      path,
+      showHidden,
+    })
   }
 
   /** Track the conversation ID for a session so it can be restored on reconnect. */

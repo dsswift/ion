@@ -7,6 +7,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { compactPath } from './StatusBarShared'
+import { pickDirectoryForSession } from '../stores/remote-fs-store'
 
 /* ─── Directory Picker (button + popover for base/additional dirs) ─── */
 
@@ -21,6 +22,7 @@ export function DirectoryPicker() {
             hasChosenDirectory: t.hasChosenDirectory,
             workingDirectory: t.workingDirectory,
             messages: t.messages,
+            isTerminalOnly: t.isTerminalOnly,
           }
         : undefined
     }),
@@ -73,7 +75,10 @@ export function DirectoryPicker() {
   }
 
   const handleAddDir = async () => {
-    const dir = await window.ion.selectDirectory()
+    const dir = await pickDirectoryForSession({
+      isTerminalOnly: tab.isTerminalOnly,
+      currentPath: tab.workingDirectory,
+    })
     if (dir) {
       if (!tab.hasChosenDirectory && !baseLocked) {
         setBaseDirectory(dir)
@@ -85,7 +90,10 @@ export function DirectoryPicker() {
 
   const handleChangeBaseDir = async () => {
     if (isRunning || baseLocked) return
-    const dir = await window.ion.selectDirectory()
+    const dir = await pickDirectoryForSession({
+      isTerminalOnly: tab.isTerminalOnly,
+      currentPath: tab.workingDirectory,
+    })
     if (dir) {
       setBaseDirectory(dir)
     }
