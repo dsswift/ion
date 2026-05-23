@@ -57,7 +57,7 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/protocol` | NDJSON wire format |
 | `internal/server` | Unix socket server, multi-client broadcast |
 | `internal/session` | SessionManager: lifecycle, event routing (decomposing) |
-| `internal/backend` | RunBackend interface, ApiBackend (agent loop) |
+| `internal/backend` | RunBackend interface, ApiBackend (agent loop), CliBackend (Claude Code subprocess), HybridBackend (routes per-run by model) |
 | `internal/providers` | LlmProvider interface + implementations + retry |
 | `internal/tools` | Registry, 14 core tools, BashOperations |
 | `internal/extension` | SDK, Host (subprocess JSON-RPC), agent discovery (decomposing) |

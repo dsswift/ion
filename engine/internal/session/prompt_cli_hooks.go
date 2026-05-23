@@ -18,8 +18,12 @@ import (
 // wirePermissionHookServer wires a Permission Hook server for the CLI backend
 // so that hook-driven "ask" decisions surface as engine_permission_request
 // events on the desktop and block the subprocess until the user responds.
+//
+// Under HybridBackend, this only wires when the model resolves to the
+// inner *CliBackend. API-routed hybrid runs use the in-process permission
+// engine path (identical to plain "backend": "api").
 func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *types.RunOptions, permEng *permissions.Engine) {
-	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
 		return
 	}
 	if permEng == nil {
@@ -73,8 +77,12 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 
 // wireToolServer starts a ToolServer for CLI backend when extensions provide
 // tools, exposing them via an MCP config that Claude Code subprocess loads.
+//
+// Under HybridBackend, this only fires when the model resolves to the
+// inner *CliBackend. API-routed hybrid runs expose extension tools via
+// the in-process tool registry instead.
 func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOptions, extGroup *extension.ExtensionGroup) {
-	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
 		return
 	}
 	if extGroup == nil || extGroup.IsEmpty() {
@@ -111,8 +119,12 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 
 // wireAgentToolServer registers an ion_agent tool on the ToolServer for CLI
 // backend sessions.
+//
+// Under HybridBackend, this only fires when the model resolves to the
+// inner *CliBackend. API-routed hybrid runs expose ion_agent via the
+// in-process agent spawner path (wired in buildRunConfig).
 func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.RunOptions) {
-	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
 		return
 	}
 

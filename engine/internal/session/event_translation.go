@@ -320,8 +320,14 @@ func (m *Manager) handleRunError(runID string, err error) {
 //     the model finished responding and tools (if any) have been executed.
 //   - TaskCompleteEvent: final result; close any active turn before the
 //     run finishes.
+//
+// Under HybridBackend, the resolved backend for the *current* run depends
+// on the model that started it. We use s.lastModel (set in prompt_dispatch
+// when StartRun is called) to drive the resolution. If lastModel is empty
+// (no run yet), this is a no-op — matching the pre-hybrid behavior of
+// returning early when the backend wasn't CliBackend.
 func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event types.NormalizedEvent) {
-	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(s.lastModel).(*backend.CliBackend); !isCli {
 		return
 	}
 	if !sOk || s.extGroup == nil || s.extGroup.IsEmpty() {

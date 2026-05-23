@@ -105,6 +105,18 @@ func (b *ApiBackend) SetAuthResolver(r *auth.Resolver) {
 	b.authResolver = r
 }
 
+// AuthResolver returns the currently-attached auth resolver, or nil if none
+// has been set. Used by HybridBackend.NewChild to propagate the resolver to
+// child backends when an ion_agent dispatch creates a fresh hybrid backend.
+//
+// Additive accessor — does not appear on the RunBackend interface and so
+// does not affect contract stability.
+func (b *ApiBackend) AuthResolver() *auth.Resolver {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.authResolver
+}
+
 // StartRun begins an agent loop with no per-run config (no hooks, no
 // permission engine, no external tools). Equivalent to StartRunWithConfig
 // with a nil cfg. Provided for callers and tests that exercise the API

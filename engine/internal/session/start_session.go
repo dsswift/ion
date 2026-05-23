@@ -124,11 +124,17 @@ func (a *sessionAccessor) McpConnections() []*mcp.Connection {
 func (a *sessionAccessor) SearchHistory(query string, maxResults int) []extension.HistoryMatch {
 	a.m.mu.RLock()
 	requestID := a.s.requestID
+	lastModel := a.s.lastModel
 	a.m.mu.RUnlock()
 	if requestID == "" {
 		return nil
 	}
-	apiBackend, ok := a.m.backend.(*backend.ApiBackend)
+	// resolvedBackend resolves to the inner *ApiBackend for hybrid (when the
+	// last dispatched model was non-Anthropic) or returns m.backend as-is
+	// for plain ApiBackend. CLI-routed hybrid runs and plain CliBackend
+	// return nil here — SearchHistory only operates on the API backend's
+	// in-process conversation buffer.
+	apiBackend, ok := a.m.resolvedBackend(lastModel).(*backend.ApiBackend)
 	if !ok {
 		return nil
 	}

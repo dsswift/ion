@@ -91,8 +91,13 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 // ApiBackend wires this hook inside buildRunConfig; CliBackend skips that path,
 // so we fire the hook here and materialise the result into RunOptions before
 // the subprocess is launched. No-op when the backend is not CliBackend.
+//
+// Under HybridBackend, this only fires when the model resolves to the
+// inner *CliBackend (Anthropic models). API-routed hybrid runs use the
+// ApiBackend's buildRunConfig path for before_prompt, identical to plain
+// "backend": "api".
 func (m *Manager) fireBeforePromptCli(s *engineSession, key string, extGroup *extension.ExtensionGroup, skipExtensions bool, opts *types.RunOptions) {
-	if _, isCli := m.backend.(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
 		return
 	}
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {

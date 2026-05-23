@@ -76,7 +76,15 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		// because the Claude CLI's native plan mode restricts writes to paths
 		// within or under the project root. API backend: use ~/.ion/plans/ since
 		// it controls its own tool execution and can write anywhere.
-		if _, isCli := m.backend.(*backend.CliBackend); isCli && s.config.WorkingDirectory != "" {
+		//
+		// Hybrid backend is treated like CLI here. The model isn't finalized
+		// at this point (buildRunOptions runs below), so we can't pick the
+		// inner backend by model. The common case for plan mode under hybrid
+		// is Claude, so the CLI-style project-dir path is the right default.
+		// See specs/feat-hybrid-backend-routing.md §"Edge Cases".
+		_, isCli := m.backend.(*backend.CliBackend)
+		_, isHybrid := m.backend.(*backend.HybridBackend)
+		if (isCli || isHybrid) && s.config.WorkingDirectory != "" {
 			plansDir := filepath.Join(s.config.WorkingDirectory, ".ion", "plans")
 			_ = os.MkdirAll(plansDir, 0755)
 			s.planFilePath = filepath.Join(plansDir, generatePlanID()+".md")
@@ -144,8 +152,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// guarantees that concurrent sessions cannot trample each other's
 	// closures. Without this, two desktop tabs running in parallel would
 	// see each other's extension context, MCP tools, and agent spawn rules.
+	//
+	// resolvedBackend(opts.Model) collapses the hybrid case: for plain
+	// CliBackend/ApiBackend it returns m.backend as-is; for HybridBackend
+	// it returns the inner backend that will actually handle this model.
 	var runCfg *backend.RunConfig
-	if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
+	if apiBackend, ok := m.resolvedBackend(opts.Model).(*backend.ApiBackend); ok {
 		runCfg = m.buildRunConfig(s, key, requestID, apiBackend, extGroup, skipExtensions, permEng, telemCollector, mcpConns, opts.Model)
 	}
 
@@ -186,7 +198,16 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// Dispatch to backend. ApiBackend uses the per-run config built above so
 	// every closure on this run sees this session's hooks/tools/perms.
 	// CliBackend ignores runCfg and follows its own subprocess wiring.
-	if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
+	//
+	// HybridBackend implements both StartRun and StartRunWithConfig: it
+	// records the routing decision for opts.Model and forwards to the
+	// inner *ApiBackend (with runCfg) or inner *CliBackend (without).
+	// We dispatch through m.backend here (not resolvedBackend) so the
+	// hybrid layer sees the call and can record its routing table entry
+	// before forwarding.
+	if hybrid, ok := m.backend.(*backend.HybridBackend); ok {
+		hybrid.StartRunWithConfig(requestID, opts, runCfg)
+	} else if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
 		apiBackend.StartRunWithConfig(requestID, opts, runCfg)
 	} else {
 		m.backend.StartRun(requestID, opts)

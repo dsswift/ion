@@ -148,9 +148,26 @@ func BuildDispatchAgentFunc(sa SessionAccessor) func(extension.DispatchAgentOpts
 
 		key := sa.SessionKey()
 		childReqID := fmt.Sprintf("%s-dispatch-%s", key, opts.Name)
-		if apiChild, ok := child.(*backend.ApiBackend); ok && childCfg != nil {
-			apiChild.StartRunWithConfig(childReqID, runOpts, childCfg)
-		} else {
+		// HybridBackend's StartRunWithConfig handles its own routing: for
+		// API-routed child models it forwards childCfg to the inner
+		// *ApiBackend; for CLI-routed child models it falls back to
+		// StartRun and drops childCfg (CliBackend wires hooks via flags).
+		// This is the only way to ensure non-Claude child models actually
+		// pick up the OnToolCall hook attached above.
+		switch c := child.(type) {
+		case *backend.ApiBackend:
+			if childCfg != nil {
+				c.StartRunWithConfig(childReqID, runOpts, childCfg)
+			} else {
+				c.StartRun(childReqID, runOpts)
+			}
+		case *backend.HybridBackend:
+			if childCfg != nil {
+				c.StartRunWithConfig(childReqID, runOpts, childCfg)
+			} else {
+				c.StartRun(childReqID, runOpts)
+			}
+		default:
 			child.StartRun(childReqID, runOpts)
 		}
 		childDone.Wait()
