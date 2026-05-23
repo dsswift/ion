@@ -126,11 +126,42 @@ func (m *Manager) ListSessions() []SessionInfo {
 
 
 // SendCommand dispatches an internal command to a session.
+//
+// Resolution order:
+//  1. Extension commands (s.extGroup.Commands()) — checked first so a harness
+//     that registers `/clear` or `/help` cannot be silently overridden by a
+//     stale `.md` template on the consumer side. Always read live from the
+//     group; never cached, so a command registered moments before this call
+//     is found even if the corresponding engine_command_registry snapshot is
+//     still in flight to the desktop.
+//  2. Built-in cases below (`clear`, `compact`, `export`).
+//  3. Default arm: emit an engine_command_result with CommandError set so the
+//     desktop pipeline can distinguish "ran fine" from "engine disclaims this
+//     name" and fall through to its `.md` expansion step. Without this, the
+//     desktop has no observable signal — the previous behavior was a silent
+//     no-op which stalls the iOS conversation forever (see plan: "Conversation
+//     just stops"). The default arm is the defence-in-depth backstop that
+//     makes mid-session registration races recoverable.
 func (m *Manager) SendCommand(key, command, args string) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
+		// Session not started yet (CLI tabs lazily start their engine session
+		// on the first submitPrompt). A slash command that arrives before
+		// the first prompt would otherwise vanish silently. Emit an
+		// unknown-command result so the desktop pipeline can fall back to
+		// `.md` expansion — semantically equivalent to "engine cannot run
+		// this command, try the next routing option". Contract-wise this is
+		// identical to the default-arm signal below; the pipeline does not
+		// need to distinguish the two.
+		utils.Log("Session", fmt.Sprintf("SendCommand: session %s not found, emitting unknown_command for cmd=%s", key, command))
+		m.emit(key, types.EngineEvent{
+			Type:         "engine_command_result",
+			EventMessage: "unknown command: " + command,
+			Command:      command,
+			CommandError: "unknown_command",
+		})
 		return
 	}
 
@@ -138,16 +169,29 @@ func (m *Manager) SendCommand(key, command, args string) {
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		cmds := s.extGroup.Commands()
 		if cmd, exists := cmds[command]; exists {
+			utils.Log("Session", fmt.Sprintf("SendCommand: dispatching extension command key=%s command=%s argsLen=%d", key, command, len(args)))
 			ctx := m.newExtContext(s, key)
 			err := cmd.Execute(args, ctx)
 			if err == nil {
 				m.emit(key, types.EngineEvent{
 					Type:         "engine_command_result",
 					EventMessage: "command executed: " + command,
+					Command:      command,
+				})
+			} else {
+				utils.Log("Session", fmt.Sprintf("SendCommand: extension command failed key=%s command=%s err=%v", key, command, err))
+				m.emit(key, types.EngineEvent{
+					Type:         "engine_command_result",
+					EventMessage: fmt.Sprintf("command failed: %s: %v", command, err),
+					Command:      command,
+					CommandError: err.Error(),
 				})
 			}
 			return
 		}
+		utils.Debug("Session", fmt.Sprintf("SendCommand: name not in extension registry, falling through to built-ins key=%s command=%s extCount=%d", key, command, len(cmds)))
+	} else {
+		utils.Debug("Session", fmt.Sprintf("SendCommand: no extension group on session key=%s command=%s", key, command))
 	}
 
 	switch command {
@@ -186,11 +230,35 @@ func (m *Manager) SendCommand(key, command, args string) {
 				} else {
 					utils.Debug("Session", fmt.Sprintf("clear: no extensions loaded for %s, skipping session_start re-fire", key))
 				}
+				// Emit a result so consumers (renderer, iOS) can render the
+				// `── Cleared` divider from a single, engine-driven trigger
+				// rather than the renderer deciding locally. The Command field
+				// carries the name verbatim so a subscriber can switch on it
+				// without re-parsing EventMessage.
+				m.emit(key, types.EngineEvent{
+					Type:         "engine_command_result",
+					EventMessage: "command executed: clear",
+					Command:      "clear",
+				})
 			} else {
 				utils.Log("Session", fmt.Sprintf("clear: failed to load conversation %s: %v", s.conversationID, err))
+				m.emit(key, types.EngineEvent{
+					Type:         "engine_command_result",
+					EventMessage: fmt.Sprintf("command failed: clear: %v", err),
+					Command:      "clear",
+					CommandError: err.Error(),
+				})
 			}
 		} else {
 			utils.Debug("Session", fmt.Sprintf("clear: no conversationID set on session %s, nothing to wipe", key))
+			// Still emit success so the renderer-side divider appears even on
+			// a never-talked-to session. The conversation was already "empty"
+			// so /clear semantically succeeded.
+			m.emit(key, types.EngineEvent{
+				Type:         "engine_command_result",
+				EventMessage: "command executed: clear",
+				Command:      "clear",
+			})
 		}
 	case "compact":
 		if s.conversationID != "" {
@@ -199,7 +267,27 @@ func (m *Manager) SendCommand(key, command, args string) {
 				conversation.Compact(conv, 10)
 				_ = conversation.Save(conv, "")
 				utils.Log("Session", fmt.Sprintf("compacted session %s", key))
+				m.emit(key, types.EngineEvent{
+					Type:         "engine_command_result",
+					EventMessage: "command executed: compact",
+					Command:      "compact",
+				})
+			} else {
+				utils.Log("Session", fmt.Sprintf("compact: failed to load conversation %s: %v", s.conversationID, err))
+				m.emit(key, types.EngineEvent{
+					Type:         "engine_command_result",
+					EventMessage: fmt.Sprintf("command failed: compact: %v", err),
+					Command:      "compact",
+					CommandError: err.Error(),
+				})
 			}
+		} else {
+			utils.Debug("Session", fmt.Sprintf("compact: no conversationID set on session %s", key))
+			m.emit(key, types.EngineEvent{
+				Type:         "engine_command_result",
+				EventMessage: "command executed: compact",
+				Command:      "compact",
+			})
 		}
 	case "export":
 		if s.conversationID != "" {
@@ -215,13 +303,35 @@ func (m *Manager) SendCommand(key, command, args string) {
 						Type:         "engine_export",
 						EventMessage: output,
 					})
+					m.emit(key, types.EngineEvent{
+						Type:         "engine_command_result",
+						EventMessage: "command executed: export",
+						Command:      "export",
+					})
 				} else {
 					utils.Log("Session", fmt.Sprintf("export failed for %s: %s", key, err))
+					m.emit(key, types.EngineEvent{
+						Type:         "engine_command_result",
+						EventMessage: fmt.Sprintf("command failed: export: %v", err),
+						Command:      "export",
+						CommandError: err.Error(),
+					})
 				}
 			}
 		}
 	default:
-		utils.Log("Session", fmt.Sprintf("unknown command %s/%s (args: %s)", key, command, args))
+		// Unknown command — neither an extension command nor a built-in.
+		// Emit an engine_command_result with CommandError populated so the
+		// desktop pipeline can fall back to `.md` template expansion. This
+		// replaces the previous silent log-only behavior that left iOS
+		// optimistically `.connecting` forever. See Phase 2 of the plan.
+		utils.Log("Session", fmt.Sprintf("SendCommand: unknown command key=%s command=%s argsLen=%d", key, command, len(args)))
+		m.emit(key, types.EngineEvent{
+			Type:         "engine_command_result",
+			EventMessage: "unknown command: " + command,
+			Command:      command,
+			CommandError: "unknown_command",
+		})
 	}
 }
 

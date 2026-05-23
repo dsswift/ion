@@ -83,15 +83,19 @@ func buildManifest() contractManifest {
 
 	// Shared types used across language boundaries
 	shared := map[string]reflect.Type{
-		"StatusFields":    reflect.TypeOf(StatusFields{}),
-		"EngineConfig":    reflect.TypeOf(EngineConfig{}),
-		"MessageEndUsage": reflect.TypeOf(MessageEndUsage{}),
-		"PermissionOpt":   reflect.TypeOf(PermissionOpt{}),
-		"McpServerInfo":   reflect.TypeOf(McpServerInfo{}),
-		"UsageData":       reflect.TypeOf(UsageData{}),
+		"StatusFields":     reflect.TypeOf(StatusFields{}),
+		"EngineConfig":     reflect.TypeOf(EngineConfig{}),
+		"MessageEndUsage":  reflect.TypeOf(MessageEndUsage{}),
+		"PermissionOpt":    reflect.TypeOf(PermissionOpt{}),
+		"McpServerInfo":    reflect.TypeOf(McpServerInfo{}),
+		"UsageData":        reflect.TypeOf(UsageData{}),
 		"AgentStateUpdate": reflect.TypeOf(AgentStateUpdate{}),
 		"ModelEntry":       reflect.TypeOf(ModelEntry{}),
 		"ProviderEntry":    reflect.TypeOf(ProviderEntry{}),
+		// Slash-command registry. Emitted inside engine_command_registry events
+		// so the desktop can populate its routing-hint cache without parsing
+		// engine internals. Snapshot semantics — see types.go comment.
+		"EngineCommandListing": reflect.TypeOf(EngineCommandListing{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

@@ -251,6 +251,17 @@ type AgentSpec struct {
 	SystemPrompt string   `json:"systemPrompt,omitempty"`
 }
 
+// EngineCommandListing describes a single slash command exposed by a session's
+// extensions. The desktop uses this to populate its routing-hint cache so it can
+// short-circuit `.md` template lookups for command names the extensions own.
+// Carried inside engine_command_registry events whose payload is always a
+// complete snapshot of the session's current command set (see AGENTS.md
+// snapshot-contract rules — consumers REPLACE local state, not merge).
+type EngineCommandListing struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
 // StatusFields are the fields emitted by engine_status events.
 type StatusFields struct {
 	Label             string             `json:"label"`
@@ -362,6 +373,23 @@ type EngineEvent struct {
 	ElicitMode      string                 `json:"elicitMode,omitempty"`
 	ElicitResponse  map[string]interface{} `json:"response,omitempty"`
 	ElicitCancelled bool                   `json:"cancelled,omitempty"`
+
+	// engine_command_registry — complete snapshot of slash commands exposed by
+	// the session's currently-loaded extensions. Emitted at session_start (after
+	// extensions wire up) and on every subsequent change to the command map
+	// (RegisterCommand from inside a hook, extension hot reload, etc.). Consumers
+	// REPLACE their cached set with this payload; never merge. An empty slice is
+	// the authoritative "no extension commands" signal.
+	Commands []EngineCommandListing `json:"commands,omitempty"`
+
+	// engine_command_result — `Command` carries the bare name (e.g. "clear",
+	// "ion--review-changes") so a consumer can switch on it without reparsing
+	// EventMessage prose. `CommandError` is set when the result is a failure
+	// (extension error, unknown command). Together these let the unified
+	// desktop pipeline distinguish "ran fine — render the divider" from
+	// "engine disclaims this name — fall through to `.md` expansion".
+	Command      string `json:"command,omitempty"`
+	CommandError string `json:"commandError,omitempty"`
 
 	// engine_early_stop_decision_request — request/response wire protocol for
 	// the before_early_stop_decision hook. Promotes the hook to the socket so

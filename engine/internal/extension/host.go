@@ -170,3 +170,12 @@ func (h *Host) Tools() []ToolDefinition {
 func (h *Host) Commands() map[string]CommandDefinition {
 	return h.sdk.Commands()
 }
+
+// SetOnCommandsChange wires an observer that fires (outside the SDK lock)
+// after any RegisterCommand call on this host. The session manager uses this
+// to broadcast an engine_command_registry snapshot when a host's command table
+// mutates. Mirror of SDK.SetOnCommandsChange — exposed at the Host level so
+// the session never reaches past the host abstraction. Nil clears.
+func (h *Host) SetOnCommandsChange(fn func()) {
+	h.sdk.SetOnCommandsChange(fn)
+}

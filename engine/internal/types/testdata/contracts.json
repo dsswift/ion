@@ -95,6 +95,9 @@
     "attemptNumber",
     "cancelled",
     "clearedBlocks",
+    "command",
+    "commandError",
+    "commands",
     "defaultValue",
     "dialogId",
     "earlyStopBudget",
@@ -158,6 +161,10 @@
       "metadata",
       "name",
       "status"
+    ],
+    "EngineCommandListing": [
+      "description",
+      "name"
     ],
     "EngineConfig": [
       "extensions",

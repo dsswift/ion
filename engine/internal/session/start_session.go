@@ -391,4 +391,24 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			host.SDK().RegisterCapability(cap)
 		}
 	}
+
+	// Phase 0.5: publish the initial command-registry snapshot, then wire
+	// per-host onCommandsChange observers so subsequent mid-session
+	// RegisterCommand calls also trigger snapshots.
+	//
+	// Ordering matters: by emitting the initial snapshot FIRST and wiring
+	// observers SECOND, we collapse all init-time RegisterCommand calls
+	// (which fire during host.Load() and during FireSessionStart) into a
+	// single snapshot event rather than N events with intermediate states.
+	// Mid-session registrations after this point each get their own
+	// snapshot, which is the desired behavior — the desktop's cache only
+	// needs to be re-warmed for changes that happen after init settles.
+	m.emitCommandRegistry(key)
+	for _, host := range group.Hosts() {
+		capturedKey := key
+		host.SetOnCommandsChange(func() {
+			m.emitCommandRegistry(capturedKey)
+		})
+	}
+	utils.Log("Session", fmt.Sprintf("loadAndWireExtensions: wired %d onCommandsChange observers for key=%s", len(group.Hosts()), key))
 }
