@@ -84,7 +84,11 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
 
 - Pick the scope matching the primary path touched. If files span multiple scopes, use the scope of the *primary* change; for pure CI/config/root changes use `repo`.
 - Examples: `feat(engine): add streaming support`, `fix(desktop): correct tab order`, `chore(repo): update ci workflow`.
-- Subject ≤ 50 chars, lowercase, imperative, no period.
+- Subject ≤ 65 chars, lowercase, imperative, no period. (Commitlint's hard cap from `@commitlint/config-conventional` is 72; 65 leaves headroom for the ` (#N)` issue suffix without tripping the warning.)
+- **Issue association is mandatory when working from a GitHub issue.** If the work was initiated by an issue (e.g. user said "let's work on #126"), the commit must associate it both ways:
+  - **Subject line**: append ` (#N)` so GitHub auto-links and the issue number is visible in `git log --oneline`. Example: `fix(engine): wire agent_start / agent_end hooks (#126)`. Stay within the 65-char subject cap; precedent: commit `a73824a9` (`fix(engine): wire before_provider_request hook (#128)`).
+  - **Body trailer**: include `Fixes #N` (or `Closes #N` for non-bug work) on its own line at the end of the body. This is what GitHub uses to auto-close the issue when the PR merges.
+  - Both are required. Subject alone gives the auto-link but won't close the issue; body alone closes the issue but isn't visible in short logs.
 - Never `--no-verify`.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
 - Never `git push`. Tell the user the changes are ready.
