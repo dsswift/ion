@@ -672,6 +672,52 @@ func TestParseClientCommand_StoreCredentialEmptyProvider(t *testing.T) {
 	}
 }
 
+// --- get_host_info / list_directory command tests ---
+
+func TestParseClientCommand_GetHostInfo(t *testing.T) {
+	raw := `{"cmd":"get_host_info","requestId":"r5"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command")
+	}
+	if cmd.Cmd != "get_host_info" {
+		t.Errorf("expected cmd 'get_host_info', got %q", cmd.Cmd)
+	}
+}
+
+func TestParseClientCommand_ListDirectoryWithPath(t *testing.T) {
+	raw := `{"cmd":"list_directory","requestId":"r6","path":"/Users/foo","showHidden":true}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command")
+	}
+	if cmd.Cmd != "list_directory" {
+		t.Errorf("expected cmd 'list_directory', got %q", cmd.Cmd)
+	}
+	if cmd.Path != "/Users/foo" {
+		t.Errorf("expected path '/Users/foo', got %q", cmd.Path)
+	}
+	if !cmd.ShowHidden {
+		t.Errorf("expected showHidden=true")
+	}
+}
+
+func TestParseClientCommand_ListDirectoryDefaults(t *testing.T) {
+	// path/showHidden are optional — empty payload should still parse, since
+	// "" → engine home is the documented default.
+	raw := `{"cmd":"list_directory","requestId":"r7"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command (path is optional)")
+	}
+	if cmd.Path != "" {
+		t.Errorf("expected empty path, got %q", cmd.Path)
+	}
+	if cmd.ShowHidden {
+		t.Errorf("expected showHidden=false default")
+	}
+}
+
 func TestParseClientCommand_StoreCredentialEmptyCredential(t *testing.T) {
 	// Empty credential is valid — it means "clear this provider's key"
 	raw := `{"cmd":"store_credential","provider":"openai","credential":""}`
