@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.24.0](https://github.com/dsswift/ion/compare/engine-v1.23.3...engine-v1.24.0) (2026-05-23)
+
+### Features
+
+* **engine:** add hybrid backend routing ([1e530d1](https://github.com/dsswift/ion/commit/1e530d15dc4d43981979015a0a6c7742c7c61346))
+
 ## [1.23.3](https://github.com/dsswift/ion/compare/engine-v1.23.2...engine-v1.23.3) (2026-05-22)
 
 ### Bug Fixes
