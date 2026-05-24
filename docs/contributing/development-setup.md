@@ -27,7 +27,7 @@ cd ion
 
 ```bash
 cd engine
-make build    # -> bin/ion (~7.8MB stripped)
+make build    # -> bin/ion (~9MB stripped)
 ```
 
 The binary is statically linked (`CGO_ENABLED=0`). No system libraries required.

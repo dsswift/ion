@@ -6,7 +6,7 @@ sidebar_position: 2
 
 # Engine Standalone
 
-The Ion Engine is a single static Go binary (~7.8MB). `CGO_ENABLED=0`, zero runtime dependencies, no glibc requirement. It runs on any Linux or macOS host without installation beyond copying the binary.
+The Ion Engine is a single static Go binary (~9MB). `CGO_ENABLED=0`, zero runtime dependencies, no glibc requirement. It runs on any Linux or macOS host without installation beyond copying the binary.
 
 ## Binary install
 

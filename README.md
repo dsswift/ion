@@ -2,7 +2,7 @@
 
 A headless agent runtime. One binary. Zero opinions. Fifty-five hooks to make it yours.
 
-`~7.8 MB static binary` · `16 LLM providers` · `59 extension hooks` · `14 built-in tools` · `MIT license`
+`~9 MB static binary` · `16 LLM providers` · `59 extension hooks` · `14 built-in tools` · `MIT license`
 
 Ion Engine is a headless, multi-provider LLM runtime for building agent systems in any domain. It runs as a single static Go binary with no runtime dependencies. Extensions speak JSON-RPC over stdin/stdout in any language. Your job is the interface, the workflow, and the domain. The engine handles the rest.
 
