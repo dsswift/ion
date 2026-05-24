@@ -178,7 +178,7 @@ func globWithRipgrep(ctx context.Context, searchDir, pattern string) ([]string, 
 			continue
 		}
 		// ripgrep returns paths relative to searchDir; promote to absolute so
-		// downstream consumers (LLM / desktop) see canonical paths.
+		// downstream consumers see canonical paths.
 		matches = append(matches, filepath.Join(searchDir, line))
 		if len(matches) >= maxGlobMatches {
 			truncated = true

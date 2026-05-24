@@ -15,8 +15,8 @@ const maxPromptTooLongRetries = 3
 
 // compactIfNeeded performs proactive compaction when context usage exceeds
 // the absolute token limit. Honours the session_before_compact hook (which
-// can cancel the operation) and emits CompactingEvent edges so the desktop
-// can render progress. The session_compact observer hook fires on completion.
+// can cancel the operation) and emits CompactingEvent edges so consumers
+// can mirror progress. The session_compact observer hook fires on completion.
 //
 // tokenLimit is the absolute token count above which compaction should fire
 // (see conversation.AutoCompactTokenLimit for how this is derived from the

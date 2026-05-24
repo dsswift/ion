@@ -200,7 +200,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	//  2. Wire-protocol request (Manager.requestEarlyStopDecisionViaWire).
 	//     Emits engine_early_stop_decision_request, blocks briefly on the
 	//     consumer's early_stop_decision_response command. Used by
-	//     socket-only harnesses (e.g. Ion Desktop) that participate in this
+	//     socket-only harnesses that participate in this
 	//     hook without running a subprocess extension.
 	//  3. Nil (no opinion) — engine's existing merge logic proceeds with
 	//     engine.json + RunOptions defaults. Without a ContinueMessage from
@@ -231,8 +231,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 			}
 		}
 		// Extension said nothing decisive — fan out to the wire protocol
-		// so socket-only consumers (the desktop in this product, anyone
-		// else's harness in general) can participate.
+		// so socket-only consumers can participate.
 		return m.requestEarlyStopDecisionViaWire(capturedKey, info)
 	}
 	runCfg.Hooks.OnEarlyStopContinued = func(info backend.EarlyStopContinuedInfo) {

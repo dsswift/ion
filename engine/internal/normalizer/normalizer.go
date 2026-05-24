@@ -79,7 +79,7 @@ func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 	case "message_start":
 		// Emit a usage event if the message carries cache token counts (TS parity:
 		// event-normalizer.ts emits a 'usage' NormalizedEvent for early/mid-stream
-		// cache token updates so the desktop context meter updates live).
+		// cache token updates so consumers tracking context can update live).
 		if sub.Message != nil {
 			usage := sub.Message.Usage
 			if usage.InputTokens != nil || usage.CacheReadInputTokens != nil {

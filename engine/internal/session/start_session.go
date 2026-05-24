@@ -244,9 +244,10 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 
 	m.mu.Unlock()
 
-	// Signal that session startup is in progress so clients can show loading UI.
-	// Events flow through the socket broadcast independently of the request-response
-	// ACK, so the desktop receives these before StartSession returns.
+	// Signal that session startup is in progress so consumers can mirror
+	// loading state. Events flow through the socket broadcast independently
+	// of the request-response ACK, so consumers receive these before
+	// StartSession returns.
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_status",
 		Fields: &types.StatusFields{Label: key, State: "starting"},
@@ -424,8 +425,9 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 	// (which fire during host.Load() and during FireSessionStart) into a
 	// single snapshot event rather than N events with intermediate states.
 	// Mid-session registrations after this point each get their own
-	// snapshot, which is the desired behavior — the desktop's cache only
-	// needs to be re-warmed for changes that happen after init settles.
+	// snapshot, which is the desired behavior — a consumer's cached view
+	// only needs to be re-warmed for changes that happen after init
+	// settles.
 	m.emitCommandRegistry(key)
 	for _, host := range group.Hosts() {
 		capturedKey := key

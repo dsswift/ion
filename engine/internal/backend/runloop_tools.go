@@ -353,7 +353,8 @@ func (b *ApiBackend) executeTools(
 				run.planFilePath = planFilePath
 				run.planModeReminderTurn = 0
 				run.mu.Unlock()
-				// Signal UI so the desktop dropdown and iOS status bar update.
+				// Emit the state-transition event so consumers can mirror the
+				// new plan-mode-enabled state.
 				b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
 					Enabled:      true,
 					PlanFilePath: planFilePath,
@@ -380,7 +381,7 @@ func (b *ApiBackend) executeTools(
 			}
 
 			// Intercept AskUserQuestion sentinel — available in all runs, not
-			// just plan mode. Record a PermissionDenial so the desktop surfaces
+			// just plan mode. Record a PermissionDenial so consumers can surface
 			// the question, then terminate the run. The user's answer arrives
 			// as the next prompt in the same session.
 			if block.Name == tools.AskUserQuestionName {
@@ -409,8 +410,9 @@ func (b *ApiBackend) executeTools(
 			// Stall detection: emit ToolStalledEvent periodically while the
 			// tool runs longer than the stall threshold. The first event fires
 			// at stallThreshold, then repeats every stallThreshold until the
-			// tool completes. This keeps the desktop watchdog alive so it
-			// does not kill tabs that are legitimately running long tools.
+			// tool completes. Consumers that run liveness watchdogs use these
+			// events to distinguish "still working" from "dead" for tabs that
+			// are legitimately running long tools.
 			// Capture the threshold locally so the goroutine doesn't race
 			// with tests that reassign the package-level var.
 			stallThreshold := toolStallThreshold

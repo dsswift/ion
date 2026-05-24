@@ -21,8 +21,8 @@ import (
 // via HTTP. This server handles those requests and routes them through the
 // Go permission engine.
 // PermissionAskCallback is called when the permission engine returns "ask".
-// It should emit a permission_request event to the desktop and return a
-// channel that resolves with the user's chosen option ID. The callback
+// It should emit a permission_request event so consumers can prompt the user
+// and return a channel that resolves with the chosen option ID. The callback
 // must also handle cleanup (unregistering) when the response arrives or times out.
 type PermissionAskCallback func(token string, questionID string, toolName string, toolDesc string, toolInput map[string]any, options []types.PermissionOpt) chan string
 
@@ -183,7 +183,8 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Decision is "ask" (or no permission engine) -- forward to desktop
+	// Decision is "ask" (or no permission engine) -- forward to the consumer
+	// callback so the user can be prompted.
 	s.mu.Lock()
 	askFn := s.onAsk
 	s.mu.Unlock()

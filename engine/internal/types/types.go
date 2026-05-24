@@ -261,8 +261,8 @@ type AgentSpec struct {
 }
 
 // EngineCommandListing describes a single slash command exposed by a session's
-// extensions. The desktop uses this to populate its routing-hint cache so it can
-// short-circuit `.md` template lookups for command names the extensions own.
+// extensions. Consumers use this to populate a routing-hint cache so they can
+// short-circuit local template lookups for command names the extensions own.
 // Carried inside engine_command_registry events whose payload is always a
 // complete snapshot of the session's current command set (see AGENTS.md
 // snapshot-contract rules — consumers REPLACE local state, not merge).
@@ -399,15 +399,15 @@ type EngineEvent struct {
 	// engine_command_result — `Command` carries the bare name (e.g. "clear",
 	// "ion--review-changes") so a consumer can switch on it without reparsing
 	// EventMessage prose. `CommandError` is set when the result is a failure
-	// (extension error, unknown command). Together these let the unified
-	// desktop pipeline distinguish "ran fine — render the divider" from
-	// "engine disclaims this name — fall through to `.md` expansion".
+	// (extension error, unknown command). Together these let consumers
+	// distinguish "ran fine" from "engine disclaims this name" and route to
+	// whatever fallback they own.
 	Command      string `json:"command,omitempty"`
 	CommandError string `json:"commandError,omitempty"`
 
 	// engine_early_stop_decision_request — request/response wire protocol for
 	// the before_early_stop_decision hook. Promotes the hook to the socket so
-	// socket-only harnesses (e.g. Ion Desktop) can participate without running
+	// socket-only harnesses can participate without running
 	// a subprocess extension. Mirrors the permission_request / elicitation_request
 	// patterns: engine emits this event carrying the full decision payload, then
 	// blocks briefly on a channel; consumers reply via the early_stop_decision_response
@@ -489,7 +489,7 @@ type RunOptions struct {
 	// EnterPlanMode sentinel tool entirely, so the model never sees the
 	// option and cannot re-propose plan mode mid-run.
 	//
-	// Replaces the prior mechanism, which was the desktop prepending a
+	// Replaces the prior mechanism, which was a harness prepending a
 	// "You are implementing a user-approved plan. Do not re-enter plan
 	// mode..." preamble to the user prompt and the EnterPlanMode tool's
 	// docstring instructing the model to recognize those phrases. That
@@ -677,7 +677,7 @@ type PermissionDenialEntry struct {
 }
 
 // PermissionDenial records a tool invocation that was denied.
-// Wire format uses camelCase to match the desktop NormalizedEvent task_complete consumer.
+// Wire format uses camelCase to match the NormalizedEvent JSON convention.
 type PermissionDenial struct {
 	ToolName  string         `json:"toolName"`
 	ToolUseID string         `json:"toolUseId"`

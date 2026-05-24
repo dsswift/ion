@@ -93,7 +93,7 @@ func buildManifest() contractManifest {
 		"ModelEntry":       reflect.TypeOf(ModelEntry{}),
 		"ProviderEntry":    reflect.TypeOf(ProviderEntry{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
-		// so the desktop can populate its routing-hint cache without parsing
+		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.
 		"EngineCommandListing": reflect.TypeOf(EngineCommandListing{}),
 	}

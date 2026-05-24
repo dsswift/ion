@@ -12,7 +12,7 @@ const ExitPlanModeName = "ExitPlanMode"
 // ExitPlanModeTool is a sentinel tool injected during plan mode that lets the LLM
 // signal "I'm ready to present my plan." The engine intercepts calls to this tool
 // before execution (see api_backend.go), records a PermissionDenial, and terminates
-// the run gracefully so the desktop can surface the plan for user approval.
+// the run gracefully so consumers can surface the plan for user approval.
 func ExitPlanModeTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        ExitPlanModeName,

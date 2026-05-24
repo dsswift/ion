@@ -199,7 +199,9 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 			InputSchema: exitPlanDef.InputSchema,
 		})
 
-		// Signal to the desktop that plan mode is now active for this run.
+		// Emit a state-transition event so consumers can mirror the active
+		// plan-mode flag. Snapshot-style: the event is the authoritative
+		// signal that the run is now in plan mode.
 		b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
 		utils.Info("PlanMode", fmt.Sprintf("run=%s tools_filtered=%d allowed=%v", run.requestID, len(toolDefs), planTools))
 	} else {
@@ -208,12 +210,12 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// Symmetric with ExitPlanMode which is injected only in plan mode.
 		//
 		// Implementation-phase suppression: when the harness has set
-		// RunOptions.ImplementationPhase=true (e.g. the desktop's
-		// "implement this plan" button on the plan-approval card), the
-		// engine skips the injection entirely so the model can't propose
-		// a fresh plan-mode entry mid-implementation. This replaces the
-		// previous prompt-text substring-matching mechanism with a
-		// structured boolean — see the field comment in
+		// RunOptions.ImplementationPhase=true (e.g. a harness button that
+		// hands off an approved plan to an "implement" run), the engine
+		// skips the injection entirely so the model can't propose a fresh
+		// plan-mode entry mid-implementation. This replaces the previous
+		// prompt-text substring-matching mechanism with a structured
+		// boolean — see the field comment in
 		// engine/internal/types/types.go.
 		if opts.ImplementationPhase {
 			utils.Info("PlanMode", fmt.Sprintf("run=%s skipping EnterPlanMode injection (implementation_phase=true)", run.requestID))

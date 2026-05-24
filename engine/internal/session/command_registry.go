@@ -1,19 +1,17 @@
 // Package session: command-registry snapshot emission.
 //
-// Phase 0.5 of the unified slash-command pipeline (see the plan in
-// docs/architecture/file-organization.md siblings or commit history): the
-// engine publishes the current set of extension-registered slash commands so
-// the desktop can route slash text without round-tripping every lookup
-// through the engine. Two desktop concerns drive the design:
+// The engine publishes the current set of extension-registered slash
+// commands so consumers can route slash text without round-tripping every
+// lookup through the engine. Two consumer concerns drive the design:
 //
-//  1. Routing precedence: extension commands take precedence over filesystem
-//     `.md` templates in `~/.claude/commands` (and the project mirror). The
-//     desktop needs an authoritative list of names the extensions own so it
-//     can short-circuit the `.md` lookup for those names.
+//  1. Routing precedence: extension commands take precedence over any
+//     consumer-side template store (e.g. filesystem `.md` files). Consumers
+//     need an authoritative list of names the extensions own so they can
+//     short-circuit their local lookup for those names.
 //  2. Live mutability: SDK.RegisterCommand is callable from any goroutine,
-//     including from inside hook handlers that fire mid-session. The desktop
-//     cannot rely on a one-shot publish at session_start; it needs an event
-//     every time the table changes.
+//     including from inside hook handlers that fire mid-session. Consumers
+//     cannot rely on a one-shot publish at session_start; they need an
+//     event every time the table changes.
 //
 // The wire shape follows the same SNAPSHOT semantics documented for
 // engine_agent_state in docs/engine-grounding.md §4: every event carries the
@@ -22,11 +20,11 @@
 // diff/delta variant — keeping the contract uniform across all snapshot-style
 // engine events.
 //
-// The engine itself never trusts the desktop's cache. Manager.SendCommand
+// The engine itself never trusts a consumer's cache. Manager.SendCommand
 // always resolves the command table at dispatch time from s.extGroup.Commands(),
 // so a freshly-registered command will be found even when the snapshot for
-// that change is still in flight to the desktop. The desktop's cache is a
-// routing HINT for steps 3-4 of the prompt pipeline, not a source of truth.
+// that change is still in flight. The consumer's cache is a routing HINT,
+// not a source of truth.
 
 package session
 

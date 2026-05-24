@@ -66,8 +66,9 @@ func TestBuildCommandListings_SortedByName(t *testing.T) {
 }
 
 // TestBuildCommandListings_PreservesDescription verifies the Description field
-// is propagated end-to-end. Without this, iOS autocomplete would lose the
-// human-readable hint that already populates from `.md` frontmatter.
+// is propagated end-to-end. Without this, consumers that surface autocomplete
+// hints would lose the human-readable description from extension command
+// definitions.
 func TestBuildCommandListings_PreservesDescription(t *testing.T) {
 	group := extension.NewExtensionGroup()
 	host := newTestHostWithCommands(map[string]string{
@@ -84,12 +85,12 @@ func TestBuildCommandListings_PreservesDescription(t *testing.T) {
 	}
 }
 
-// TestSendCommand_UnknownCommandEmitsResult is the Phase 2 contract test.
-// Before this change, an unknown command was a silent no-op that left iOS
-// optimistically `.connecting` forever. Now the engine must emit an
-// engine_command_result with CommandError populated so the desktop pipeline
-// can fall through to `.md` expansion (or surface "unknown command" to the
-// user when both lookups fail).
+// TestSendCommand_UnknownCommandEmitsResult is the unknown-command
+// contract test. Before this change, an unknown command was a silent no-op
+// that left in-flight conversations hanging. Now the engine must emit an
+// engine_command_result with CommandError populated so consumers can route
+// to whatever fallback they own (or surface "unknown command" to the user
+// when no fallback resolves).
 func TestSendCommand_UnknownCommandEmitsResult(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -118,11 +119,11 @@ func TestSendCommand_UnknownCommandEmitsResult(t *testing.T) {
 	}
 }
 
-// TestSendCommand_ClearEmitsSuccessResult locks in the new contract: every
+// TestSendCommand_ClearEmitsSuccessResult locks in the contract: every
 // successful built-in command also emits engine_command_result with the
-// Command field populated. The desktop renderer subscribes to this event to
-// draw the `── Cleared` divider, so without this emit the divider never
-// appears for desktop-initiated /clear after the renderer becomes a dumb pipe.
+// Command field populated. Consumers subscribing to this event use the
+// signal to render any post-clear UI; without this emit the consumer has
+// no engine-driven trigger to react to.
 func TestSendCommand_ClearEmitsSuccessResult(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -157,16 +158,15 @@ func TestSendCommand_ClearEmitsSuccessResult(t *testing.T) {
 // TestSendCommand_MissingSessionEmitsUnknownCommand verifies the missing-
 // session path now emits an engine_command_result with
 // CommandError='unknown_command' instead of returning silently. This is the
-// fix for the iOS regression where a CLI tab whose engine session hadn't
-// started yet would silently swallow a slash command, leaving the desktop
-// pipeline's awaiter hanging until a 5s timeout. The pipeline relies on
-// EVERY dispatch producing a result event; the previous silent-drop path
-// violated that invariant.
+// fix for the regression where a session that hadn't started yet would
+// silently swallow a slash command, leaving any awaiter hanging until
+// timeout. Consumers rely on EVERY dispatch producing a result event; the
+// previous silent-drop path violated that invariant.
 //
 // The signal is intentionally the same shape as the default-arm
-// unknown-command emit (CommandError='unknown_command') so the pipeline
-// can use a single fallback branch — semantically the engine cannot run
-// the command, the desktop should try `.md` expansion next.
+// unknown-command emit (CommandError='unknown_command') so consumers can
+// use a single fallback branch — semantically the engine cannot run the
+// command and the consumer should route to whatever fallback it owns.
 func TestSendCommand_MissingSessionEmitsUnknownCommand(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -215,8 +215,8 @@ func TestEmitCommandRegistry_MissingSessionIsSafe(t *testing.T) {
 // TestEmitCommandRegistry_InitialSnapshot covers the Phase 0.5 initial-publish
 // flow at the unit-test level: a session with a wired extension group emits an
 // engine_command_registry event listing exactly the commands the group exposes.
-// This is the event the desktop's routing-hint cache subscribes to, so the
-// shape matters: full snapshot semantics, sorted by name, with descriptions.
+// This is the event consumers subscribe to for their routing-hint cache, so
+// the shape matters: full snapshot semantics, sorted by name, with descriptions.
 func TestEmitCommandRegistry_InitialSnapshot(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -255,8 +255,8 @@ func TestEmitCommandRegistry_InitialSnapshot(t *testing.T) {
 
 // TestEmitCommandRegistry_EmptyGroupSnapshot locks in the snapshot-contract
 // invariant: a session with no extensions still emits a registry event with an
-// empty list (not nil, not absent). The desktop uses the event's arrival as
-// the "clear your cache" signal — without this, a session that loses all
+// empty list (not nil, not absent). Consumers use the event's arrival as the
+// "clear your cache" signal — without this, a session that loses all
 // extensions would leave stale entries cached on the consumer side forever.
 func TestEmitCommandRegistry_EmptyGroupSnapshot(t *testing.T) {
 	mb := newMockBackend()

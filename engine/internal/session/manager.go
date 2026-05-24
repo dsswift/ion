@@ -133,28 +133,28 @@ func (m *Manager) ListSessions() []SessionInfo {
 //     stale `.md` template on the consumer side. Always read live from the
 //     group; never cached, so a command registered moments before this call
 //     is found even if the corresponding engine_command_registry snapshot is
-//     still in flight to the desktop.
+//     still in flight to consumers.
 //  2. Built-in cases below (`clear`, `compact`, `export`).
-//  3. Default arm: emit an engine_command_result with CommandError set so the
-//     desktop pipeline can distinguish "ran fine" from "engine disclaims this
-//     name" and fall through to its `.md` expansion step. Without this, the
-//     desktop has no observable signal — the previous behavior was a silent
-//     no-op which stalls the iOS conversation forever (see plan: "Conversation
-//     just stops"). The default arm is the defence-in-depth backstop that
-//     makes mid-session registration races recoverable.
+//  3. Default arm: emit an engine_command_result with CommandError set so
+//     consumers can distinguish "ran fine" from "engine disclaims this name"
+//     and route to whatever fallback they own (e.g. local `.md` template
+//     expansion). Without this, consumers have no observable signal — the
+//     previous behavior was a silent no-op which leaves an in-flight
+//     conversation hanging. The default arm is the defence-in-depth backstop
+//     that makes mid-session registration races recoverable.
 func (m *Manager) SendCommand(key, command, args string) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		// Session not started yet (CLI tabs lazily start their engine session
-		// on the first submitPrompt). A slash command that arrives before
-		// the first prompt would otherwise vanish silently. Emit an
-		// unknown-command result so the desktop pipeline can fall back to
-		// `.md` expansion — semantically equivalent to "engine cannot run
-		// this command, try the next routing option". Contract-wise this is
-		// identical to the default-arm signal below; the pipeline does not
-		// need to distinguish the two.
+		// Session not started yet (consumers may lazily start their engine
+		// session on first prompt). A slash command that arrives before the
+		// first prompt would otherwise vanish silently. Emit an
+		// unknown-command result so consumers can route to whatever fallback
+		// they own — semantically equivalent to "engine cannot run this
+		// command, try the next routing option". Contract-wise this is
+		// identical to the default-arm signal below; consumers do not need
+		// to distinguish the two.
 		utils.Log("Session", fmt.Sprintf("SendCommand: session %s not found, emitting unknown_command for cmd=%s", key, command))
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
@@ -230,11 +230,11 @@ func (m *Manager) SendCommand(key, command, args string) {
 				} else {
 					utils.Debug("Session", fmt.Sprintf("clear: no extensions loaded for %s, skipping session_start re-fire", key))
 				}
-				// Emit a result so consumers (renderer, iOS) can render the
-				// `── Cleared` divider from a single, engine-driven trigger
-				// rather than the renderer deciding locally. The Command field
-				// carries the name verbatim so a subscriber can switch on it
-				// without re-parsing EventMessage.
+				// Emit an engine-driven result so consumers see a single
+				// authoritative "clear executed" event rather than inferring
+				// it locally. The Command field carries the name verbatim so
+				// a subscriber can switch on it without re-parsing
+				// EventMessage.
 				m.emit(key, types.EngineEvent{
 					Type:         "engine_command_result",
 					EventMessage: "command executed: clear",
@@ -251,9 +251,10 @@ func (m *Manager) SendCommand(key, command, args string) {
 			}
 		} else {
 			utils.Debug("Session", fmt.Sprintf("clear: no conversationID set on session %s, nothing to wipe", key))
-			// Still emit success so the renderer-side divider appears even on
-			// a never-talked-to session. The conversation was already "empty"
-			// so /clear semantically succeeded.
+			// Still emit success on a never-talked-to session so consumers
+			// see the same "clear executed" signal regardless of whether
+			// there was any conversation to wipe. The conversation was
+			// already "empty" so /clear semantically succeeded.
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_command_result",
 				EventMessage: "command executed: clear",
@@ -321,10 +322,10 @@ func (m *Manager) SendCommand(key, command, args string) {
 		}
 	default:
 		// Unknown command — neither an extension command nor a built-in.
-		// Emit an engine_command_result with CommandError populated so the
-		// desktop pipeline can fall back to `.md` template expansion. This
-		// replaces the previous silent log-only behavior that left iOS
-		// optimistically `.connecting` forever. See Phase 2 of the plan.
+		// Emit an engine_command_result with CommandError populated so
+		// consumers can route to whatever fallback they own. This replaces
+		// the previous silent log-only behavior, which left in-flight
+		// conversations hanging.
 		utils.Log("Session", fmt.Sprintf("SendCommand: unknown command key=%s command=%s argsLen=%d", key, command, len(args)))
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",

@@ -341,7 +341,8 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 
 	utils.Log("CliBackend", fmt.Sprintf("spawning: %s %s", claudePath, strings.Join(args, " ")))
 
-	// Signal to the desktop that plan mode is active for this run.
+	// Emit the state-transition event so consumers can mirror the active
+	// plan-mode flag for this run.
 	if run.planMode {
 		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
 		utils.Info("PlanMode", fmt.Sprintf("cli run=%s plan_file=%s", run.requestID, run.planFilePath))
@@ -455,8 +456,8 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 				// Plan mode enrichment: when the CLI's result contains an
 				// ExitPlanMode denial, inject our planFilePath (which the
 				// CLI's wire format doesn't carry) and emit a
-				// PlanModeChangedEvent before the TaskCompleteEvent so the
-				// desktop sets tab.planFilePath before rendering the card.
+				// PlanModeChangedEvent before the TaskCompleteEvent so
+				// consumers see the path before the run terminates.
 				if run.planMode && run.planFilePath != "" {
 					for i := range e.PermissionDenials {
 						if e.PermissionDenials[i].ToolName == "ExitPlanMode" {

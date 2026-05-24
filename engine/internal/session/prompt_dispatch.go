@@ -152,8 +152,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// Storing hooks/perm engine/external tools/agent spawner on each run --
 	// rather than mutating shared state on the singleton ApiBackend --
 	// guarantees that concurrent sessions cannot trample each other's
-	// closures. Without this, two desktop tabs running in parallel would
-	// see each other's extension context, MCP tools, and agent spawn rules.
+	// closures. Without this, two parallel sessions would see each other's
+	// extension context, MCP tools, and agent spawn rules.
 	//
 	// resolvedBackend(opts.Model) collapses the hybrid case: for plain
 	// CliBackend/ApiBackend it returns m.backend as-is; for HybridBackend

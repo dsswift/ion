@@ -51,8 +51,9 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	// translateToEngineEvent) because we need access to the session manager.
 	if pmc, ok := event.Data.(*types.PlanModeChangedEvent); ok {
 		if !pmc.Enabled {
-			// Model called ExitPlanMode: record the exit so that if the user
-			// re-enters plan mode via the dropdown the reentry prompt fires.
+			// Model called ExitPlanMode: record the exit so that if the
+			// session is later re-entered into plan mode, the reentry
+			// prompt fires.
 			m.MarkPlanModeExited(key)
 		} else if pmc.PlanFilePath != "" {
 			// Model called EnterPlanMode: keep the manager's session state in
@@ -223,7 +224,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	}
 	m.mu.Unlock()
 
-	// Clear engine-managed agent panel (Agent tool sub-agents).
+	// Clear engine-managed agent state (Agent tool sub-agents).
 	// Only emit if the session had built-in agent states; extension-managed
 	// agents are owned by the extension and must not be wiped on run exit.
 	//
@@ -244,7 +245,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 			Agents: []types.AgentStateUpdate{},
 		})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("handleRunExit: skipping engine agent_state — extension owns panel key=%s", key))
+		utils.Debug("Session", fmt.Sprintf("handleRunExit: skipping engine agent_state — extension owns registry key=%s", key))
 	}
 
 	// Clear any stale working message before transitioning to idle

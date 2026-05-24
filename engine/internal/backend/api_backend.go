@@ -214,7 +214,7 @@ const cancelWatchdogGrace = 5 * time.Second
 
 // Cancel stops a running agent loop. Returns true if a run was found and
 // cancelled. Cancel is a contract: within cancelWatchdogGrace of this call
-// the desktop sees a terminal engine_status idle event regardless of whether
+// consumers see a terminal engine_status idle event regardless of whether
 // the run goroutine has actually returned. If the goroutine is wedged in a
 // blocking call that ignores ctx, the run state is force-cleared anyway and
 // the wedged goroutine is leaked until process exit.

@@ -17,7 +17,7 @@ import (
 
 // wirePermissionHookServer wires a Permission Hook server for the CLI backend
 // so that hook-driven "ask" decisions surface as engine_permission_request
-// events on the desktop and block the subprocess until the user responds.
+// events to consumers and block the subprocess until the user responds.
 //
 // Under HybridBackend, this only wires when the model resolves to the
 // inner *CliBackend. API-routed hybrid runs use the in-process permission
@@ -39,8 +39,8 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 	hookServer.RegisterToken(token)
 
 	// When the hook server gets an "ask" decision, emit
-	// engine_permission_request to the desktop and block until the user
-	// responds with an option ID.
+	// engine_permission_request and block until the user responds with an
+	// option ID.
 	hookServer.SetOnAsk(func(reqToken string, questionID string, toolName string, toolDesc string, toolInput map[string]any, options []types.PermissionOpt) chan string {
 		ch := m.RegisterPendingPermission(key, questionID)
 		if ch == nil {

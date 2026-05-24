@@ -21,17 +21,19 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string, s
 	s.planMode = enabled
 	s.planModeTools = allowedTools
 	if !enabled {
-		// Preserve planFilePath across any manual disable (dropdown, keyboard,
-		// etc.). The plan ID is only retired when the engine session itself is
-		// replaced — which already happens via resetTabSession() when the user
-		// clicks Implement. That creates a fresh engineSession with planFilePath=""
-		// and a new hash is generated for the next plan.
+		// Preserve planFilePath across any harness-initiated disable. The
+		// plan ID is only retired when the engine session itself is
+		// replaced — which happens via resetTabSession() when a consumer
+		// signals implementation start. That creates a fresh engineSession
+		// with planFilePath="" and a new slug is generated for the next
+		// plan.
 		//
 		// We also mark hasExitedPlanMode=true whenever we disable with a
 		// non-empty path so that reentry detection in SendPrompt fires
 		// (planModeReentry := s.planMode && s.planFilePath != "" &&
-		// s.hasExitedPlanMode), even when the user toggled via the dropdown
-		// rather than the model calling ExitPlanMode.
+		// s.hasExitedPlanMode), even when the harness toggled plan mode
+		// off through SetPlanMode rather than the model calling
+		// ExitPlanMode.
 		if s.planFilePath != "" {
 			s.hasExitedPlanMode = true
 		}

@@ -201,10 +201,10 @@ type RunHooks struct {
 // engine, no external tools, no telemetry, etc.).
 //
 // Splitting these out of the backend singleton fixes the multi-session
-// interlacing bug: with one shared ApiBackend serving multiple desktop tabs,
-// per-session hooks were globally mutated on every SendPrompt. A run from tab
-// A would then fire hooks captured for tab B. Now each run captures its own
-// snapshot.
+// interlacing bug: with one shared ApiBackend serving multiple concurrent
+// sessions, per-session hooks were globally mutated on every SendPrompt. A
+// run from session A would then fire hooks captured for session B. Now each
+// run captures its own snapshot.
 type RunConfig struct {
 	Hooks RunHooks
 

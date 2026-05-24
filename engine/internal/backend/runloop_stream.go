@@ -85,7 +85,8 @@ func (b *ApiBackend) processStream(
 				currentPartialJSON.Reset()
 			}
 
-			// Server-side search results -- emit event for desktop rendering
+			// Server-side search results -- emit event so consumers can
+			// surface the citations alongside the assistant message.
 			if cb.Type == "web_search_tool_result" && cb.Content != nil {
 				if results, ok := cb.Content.([]any); ok {
 					var hits []types.WebSearchHit

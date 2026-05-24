@@ -80,7 +80,7 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 	}
 
 	// Emit the authoritative snapshot. Skip only when the session has
-	// an extension group — extensions own their agent panel and will
+	// an extension group — extensions own their agent registry and will
 	// publish their own snapshot. Even then, the engine emits a
 	// corrective snapshot on extension death (see handleHostDeath).
 	if !hasExt {
@@ -91,6 +91,6 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 			Agents: snapshot,
 		})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("abortAllDescendants: skipping engine snapshot — extension owns agent panel key=%s", key))
+		utils.Debug("Session", fmt.Sprintf("abortAllDescendants: skipping engine snapshot — extension owns agent registry key=%s", key))
 	}
 }

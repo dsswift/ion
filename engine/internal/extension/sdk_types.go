@@ -124,12 +124,12 @@ type Context struct {
 	SearchHistory func(query string, maxResults int) ([]HistoryMatch, error)
 
 	// SetPlanMode imperatively enables or disables plan mode for this session.
-	// Equivalent to the user toggling the dropdown: the engine flips session
-	// state, emits PlanModeChangedEvent so the UI updates, and (when enabled)
-	// ensures a planFilePath is allocated. When disabled, the plan file path
-	// is preserved so a subsequent re-enable reuses it (same plan ID semantics
-	// as a manual toggle). Nil when not wired (e.g. in child-dispatch sessions
-	// that have no plan-mode capability).
+	// The engine flips session state, emits PlanModeChangedEvent so consumers
+	// can mirror the new state, and (when enabled) ensures a planFilePath is
+	// allocated. When disabled, the plan file path is preserved so a
+	// subsequent re-enable reuses it (same plan ID semantics as any other
+	// harness-initiated toggle). Nil when not wired (e.g. in child-dispatch
+	// sessions that have no plan-mode capability).
 	//
 	// source is a free-form string logged for observability (e.g.
 	// "extension", "slash_command", "session_start"). It does not affect

@@ -376,8 +376,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			return
 		}
 
-		// Stream truncated (no stop reason) -- emit reset so desktop discards
-		// partial text, then retry the turn (capped at 3 consecutive).
+		// Stream truncated (no stop reason) -- emit reset so consumers
+		// discard partial text, then retry the turn (capped at 3
+		// consecutive).
 		if stopReason == "" {
 			truncationRetries++
 			maxTruncation := 3
@@ -412,7 +413,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			conversation.UpdateCost(conv, costUsd)
 
 			// Emit usage event with TOTAL input tokens (including cached) so
-			// desktop shows accurate context percentage
+			// consumers can compute accurate context percentage
 			totalIn := turnUsage.InputTokens + turnUsage.CacheReadInputTokens + turnUsage.CacheCreationInputTokens
 			outTok := turnUsage.OutputTokens
 			cacheRead := turnUsage.CacheReadInputTokens
