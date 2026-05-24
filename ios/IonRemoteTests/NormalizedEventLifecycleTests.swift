@@ -299,10 +299,29 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteCommand.createTab(workingDirectory: "/var/log")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd) = decoded {
+        if case .createTab(let wd, let pinToGroupId) = decoded {
             XCTAssertEqual(wd, "/var/log")
+            // pinToGroupId defaults to nil when omitted from the constructor;
+            // the round-trip must preserve that.
+            XCTAssertNil(pinToGroupId)
         } else {
             XCTFail("Round-trip createTab failed")
+        }
+    }
+
+    func testCommandRoundTripCreateTabWithPinToGroup() throws {
+        // The createTab command was extended in commit 7b39b6bb to accept an
+        // optional pinToGroupId so the desktop can pin a newly-created tab to
+        // a specific tab group on creation. Verify both associated values
+        // round-trip through encode→decode without loss.
+        let original = RemoteCommand.createTab(workingDirectory: "/Users/me/code", pinToGroupId: "group-abc")
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteCommand.self, from: data)
+        if case .createTab(let wd, let pinToGroupId) = decoded {
+            XCTAssertEqual(wd, "/Users/me/code")
+            XCTAssertEqual(pinToGroupId, "group-abc")
+        } else {
+            XCTFail("Round-trip createTab with pinToGroupId failed")
         }
     }
 

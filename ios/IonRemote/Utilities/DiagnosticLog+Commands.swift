@@ -11,8 +11,8 @@ extension DiagnosticLog {
         case .sync:
             log("CMD: sync")
 
-        case .createTab(let dir):
-            log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil")")
+        case .createTab(let dir, let pinToGroupId):
+            log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil") pinToGroup=\(pinToGroupId?.prefix(8) ?? "nil")")
 
         case .createTerminalTab(let dir):
             log("CMD: createTerminalTab dir=\(dir?.suffix(30) ?? "nil")")

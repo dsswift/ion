@@ -20,6 +20,8 @@
 		A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */; };
 		A1B2C3D4E5F60001000015AA /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000016AA /* KeychainStore.swift */; };
 		A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000018AA /* TabListView.swift */; };
+		A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */; };
+		A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */; };
 		A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FDAA /* TabRowView.swift */; };
 		A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001AAA /* ConversationView.swift */; };
 		A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */; };
@@ -61,6 +63,7 @@
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */; };
 		A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */; };
@@ -160,6 +163,8 @@
 		A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECrypto.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000016AA /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000018AA /* TabListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListNewTabSheet.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListGroupHeader.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FDAA /* TabRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001AAA /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCollectionView.swift; sourceTree = "<group>"; };
@@ -204,6 +209,7 @@
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+RemoteDisplay.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabGroupCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabEventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineKeys.swift"; sourceTree = "<group>"; };
@@ -389,6 +395,8 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001000018AA /* TabListView.swift */,
+				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
+				A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */,
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F6000100001AAA /* ConversationView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
@@ -453,6 +461,7 @@
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */,
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
@@ -664,6 +673,8 @@
 				A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */,
 				A1B2C3D4E5F60001000015AA /* KeychainStore.swift in Sources */,
 				A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */,
+				A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */,
+				A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */,
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */,
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
@@ -681,6 +692,7 @@
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,

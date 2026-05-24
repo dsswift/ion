@@ -10,9 +10,14 @@ extension RemoteCommand {
         switch self {
         case .sync:
             try container.encode(TypeKey.sync, forKey: .type)
-        case .createTab(let workingDirectory):
+        case .createTab(let workingDirectory, let pinToGroupId):
             try container.encode(TypeKey.createTab, forKey: .type)
             try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
+            // Only emit `pinToGroupId` when caller actually requested a pin,
+            // so the wire payload for the unmodified "Add tab" flow stays
+            // identical to the pre-feature version (helps when bisecting
+            // any future protocol-level diffs).
+            try container.encodeIfPresent(pinToGroupId, forKey: .pinToGroupId)
         case .closeTab(let tabId):
             try container.encode(TypeKey.closeTab, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

@@ -6,6 +6,15 @@ struct TabListView: View {
 
     @State private var showSettings = false
     @State private var showNewTab = false
+    // When the new-tab sheet was opened from a group header's `+` button,
+    // this holds the target group's id so we can stamp `pinToGroupId` on
+    // the outbound createTab command (fix for issue: per-group `+` would
+    // create tabs that the first prompt's auto-movement immediately
+    // yanked into the planning group). nil when the sheet was opened from
+    // the global toolbar `+`, in which case we want the legacy behavior.
+    // Reset to nil on every sheet close so the global toolbar `+` is
+    // never accidentally treated as a per-group request.
+    @State private var pendingPinToGroupId: String? = nil
     @State private var showPairingSheet = false
     @State private var enginePickerDirectory: String? = nil
     @State private var renamingTabId: String?
@@ -46,8 +55,27 @@ struct TabListView: View {
         .sheet(isPresented: $showPairingSheet) {
             PairingView()
         }
-        .sheet(isPresented: $showNewTab) {
-            newTabSheet
+        .sheet(isPresented: $showNewTab, onDismiss: {
+            // Always clear the per-group pin target on dismiss so a
+            // subsequent toolbar `+` doesn't inherit it. Required because
+            // the sheet has multiple dismissal paths (Cancel button, tap
+            // on a row's `+`, swipe-down).
+            pendingPinToGroupId = nil
+        }) {
+            TabListNewTabSheet(
+                directories: allDirectories,
+                pendingPinToGroupId: pendingPinToGroupId,
+                isPresented: $showNewTab,
+                onCreateConversationTab: { dir, pinToGroupId in
+                    viewModel.createTab(workingDirectory: dir, pinToGroupId: pinToGroupId)
+                },
+                onCreateTerminalTab: { dir in
+                    viewModel.createTerminalTab(workingDirectory: dir)
+                },
+                onCreateEngineTab: { dir in
+                    requestEngineTab(directory: dir)
+                }
+            )
         }
         .confirmationDialog(
             "Select Engine Profile",
@@ -299,6 +327,21 @@ struct TabListView: View {
                                     } label: {
                                         Label("Move to Group", systemImage: "arrow.right.arrow.left")
                                     }
+                                    // Combined "Move to Group AND Pin": same target list as the
+                                    // plain "Move to Group" submenu above, but each selection
+                                    // routes through moveTabToGroupAndPin which also sets
+                                    // groupPinned=true so the destination tab is protected from
+                                    // any subsequent auto-group-movement. Mirrors the desktop
+                                    // pattern (TabStripTabContextMenu's PushPin row).
+                                    Menu {
+                                        ForEach(targets) { target in
+                                            Button(target.label) {
+                                                viewModel.moveTabToGroupAndPin(tabId: tab.id, groupId: target.id)
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Move to Group and Pin", systemImage: "pin")
+                                    }
                                 }
                             }
                         }
@@ -317,50 +360,29 @@ struct TabListView: View {
     }
 
     private func groupHeader(_ group: (label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])) -> some View {
-        let isCollapsed = collapsedGroupIds.contains(group.id)
-        return HStack {
-            Image(systemName: "chevron.right")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.tertiary)
-                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-            Label(group.label, systemImage: group.icon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            if let dir = group.directory {
-                Button {
-                    showNewTab = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .contextMenu {
-                    Button {
-                        viewModel.createTab(workingDirectory: dir)
-                    } label: {
-                        Label("New Tab", systemImage: "plus")
-                    }
-                    Button {
-                        viewModel.createTerminalTab(workingDirectory: dir)
-                    } label: {
-                        Label("New Terminal", systemImage: "terminal")
-                    }
-                    Button {
-                        requestEngineTab(directory: dir)
-                    } label: {
-                        Label("New Engine", systemImage: "bolt.fill")
-                    }
-                }
-            }
-        }
-        .padding(.top, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(IonTheme.snappySpring) {
+        // Body extracted to TabListGroupHeader.swift to keep this file
+        // under the Swift 600-line cap. See CLAUDE.md → "When a file
+        // exceeds the cap". The wrapper function is kept so existing
+        // callers (the List's `header:` parameter) don't need to change.
+        TabListGroupHeader(
+            group: group,
+            isCollapsed: collapsedGroupIds.contains(group.id),
+            tabGroupMode: viewModel.tabGroupMode,
+            pendingPinToGroupId: $pendingPinToGroupId,
+            showNewTab: $showNewTab,
+            onCreateConversationTab: { dir, pin in
+                viewModel.createTab(workingDirectory: dir, pinToGroupId: pin)
+            },
+            onCreateTerminalTab: { dir in
+                viewModel.createTerminalTab(workingDirectory: dir)
+            },
+            onCreateEngineTab: { dir in
+                requestEngineTab(directory: dir)
+            },
+            onToggleCollapsed: {
                 toggleGroupCollapsed(group.id)
             }
-        }
+        )
     }
 
     // MARK: - Detail / Destination
@@ -486,52 +508,10 @@ struct TabListView: View {
         }
     }
 
-    private var newTabSheet: some View {
-        NavigationStack {
-            List {
-                ForEach(allDirectories, id: \.fullPath) { dir in
-                    HStack {
-                        Text(dir.label)
-                            .lineLimit(1)
-                        Spacer()
-                        Button {
-                            showNewTab = false
-                            viewModel.createTab(workingDirectory: dir.fullPath)
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.circle)
-                        Button {
-                            showNewTab = false
-                            viewModel.createTerminalTab(workingDirectory: dir.fullPath)
-                        } label: {
-                            Image(systemName: "terminal")
-                        }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.circle)
-                        Button {
-                            showNewTab = false
-                            requestEngineTab(directory: dir.fullPath)
-                        } label: {
-                            Image(systemName: "bolt")
-                        }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.circle)
-                        .tint(.orange)
-                    }
-                }
-            }
-            .navigationTitle("New Tab")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showNewTab = false }
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
+    // newTabSheet was extracted to TabListNewTabSheet.swift to keep this
+    // file under the Swift 600-line cap. See CLAUDE.md → "When a file
+    // exceeds the cap". The sheet is now presented inline in `body`'s
+    // `.sheet(isPresented:onDismiss:)` modifier above.
 
     // MARK: - Helpers
 

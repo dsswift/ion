@@ -151,10 +151,17 @@ extension SessionViewModel {
         conversationLoadRetryCount.removeValue(forKey: tabId)
     }
 
-    func createTab(workingDirectory: String? = nil) {
+    func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
         awaitingLocalTabCreation = true
-        send(.createTab(workingDirectory: dir))
+        // When `pinToGroupId` is supplied (e.g. via the per-group `+` button
+        // in TabListView's group header), include it on the wire so the
+        // desktop can create the tab inside that manual group with
+        // groupPinned=true from the start — preventing the first prompt's
+        // auto-group movement from yanking the tab away from the user's
+        // explicit choice. When nil, the desktop falls back to its default
+        // group placement (legacy behavior).
+        send(.createTab(workingDirectory: dir, pinToGroupId: pinToGroupId))
     }
 
     func closeTab(_ tabId: String) {
@@ -205,39 +212,10 @@ extension SessionViewModel {
         }
     }
 
-    /// Request the desktop to change the tab group mode.
-    func setTabGroupMode(_ mode: String) {
-        send(.setTabGroupMode(mode: mode))
-    }
-
-    /// Move a tab to a different manual group on the desktop.
-    func moveTabToGroup(tabId: String, groupId: String) {
-        // Optimistic local update for responsive UI
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].groupId = groupId
-        }
-        send(.moveTabToGroup(tabId: tabId, groupId: groupId))
-    }
-
-    /// Toggle the group-pin state for a tab on the desktop.
-    func toggleTabGroupPin(tabId: String) {
-        // Optimistic local update for responsive UI
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].groupPinned = !(tabs[idx].groupPinned ?? false)
-        }
-        send(.toggleTabGroupPin(tabId: tabId))
-    }
-
-    /// Reorder tab groups. Sends the new ordering to the desktop.
-    func reorderTabGroups(orderedIds: [String]) {
-        // Optimistic local update: reorder tabGroups to match orderedIds
-        let idOrder = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($1, $0) })
-        tabGroups.sort { (idOrder[$0.id] ?? Int.max) < (idOrder[$1.id] ?? Int.max) }
-        for i in tabGroups.indices {
-            tabGroups[i].order = i
-        }
-        send(.reorderTabGroups(orderedIds: orderedIds))
-    }
+    // Tab-group commands (setTabGroupMode, moveTabToGroup,
+    // moveTabToGroupAndPin, toggleTabGroupPin, reorderTabGroups) live in
+    // SessionViewModel+TabGroupCommands.swift to keep this file under the
+    // Swift size cap. See CLAUDE.md → "When a file exceeds the cap".
 
     // MARK: - Terminal Commands
 

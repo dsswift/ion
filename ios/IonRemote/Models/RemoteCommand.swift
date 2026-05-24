@@ -3,7 +3,13 @@ import Foundation
 /// Commands sent from iOS to Ion. Mirrors `RemoteCommand` in `src/main/remote/protocol.ts`.
 enum RemoteCommand: Codable, Sendable {
     case sync
-    case createTab(workingDirectory: String?)
+    /// Additive optional `pinToGroupId` extension. When non-nil and the
+    /// desktop is in manual tab-group mode, the new tab lands inside that
+    /// group with `groupPinned=true` so the very first prompt's auto-group
+    /// movement skips it. Older Ion desktops that don't know the field
+    /// simply ignore it; behavior degrades to the legacy default-group
+    /// placement.
+    case createTab(workingDirectory: String?, pinToGroupId: String? = nil)
     case createTerminalTab(workingDirectory: String?)
     case closeTab(tabId: String)
     /// User-typed prompt routed to the desktop's prompt pipeline.
@@ -152,6 +158,13 @@ enum RemoteCommand: Codable, Sendable {
         case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
         case instanceId, data, cols, rows, customTitle, label, messageId, clientMsgId
         case dialogId, value, profileId, model, groupId
+        // `pinToGroupId` is the distinct wire-level key for the optional
+        // create_tab extension. We deliberately do NOT reuse `groupId` here
+        // — `groupId` already names the destination on move_tab_to_group,
+        // and conflating the two would invite type confusion if a future
+        // command needs both (e.g. a hypothetical "create_tab_in_group_and_send"
+        // that names a target group AND a separate pin source).
+        case pinToGroupId
         case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden, hash
         case attachments, dataUrl, name, correlationId, orderedIds
         case enabled, systemPrompt
@@ -170,7 +183,13 @@ enum RemoteCommand: Codable, Sendable {
 
         case .createTab:
             let workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
-            self = .createTab(workingDirectory: workingDirectory)
+            // Decode the optional `pinToGroupId` extension. Older desktops
+            // do not emit this field on iOS-bound replays, but the decoder
+            // path is reused for round-trip tests where iOS encodes a
+            // createTab and decodes it back — having the field flow through
+            // both directions keeps the wire model symmetrical.
+            let pinToGroupId = try container.decodeIfPresent(String.self, forKey: .pinToGroupId)
+            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId)
 
         case .closeTab:
             let tabId = try container.decode(String.self, forKey: .tabId)
