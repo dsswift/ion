@@ -151,3 +151,36 @@ Consumers drop every entry. There is no "soft clear" vs "hard clear" distinction
 - Run lifecycle that drives the engine's emissions: [Session Lifecycle](../sessions/lifecycle.md)
 - Extension emission API: [TypeScript SDK](../extensions/sdk-typescript.md)
 - Engine internals: [Engine](engine.md)
+
+## Related contracts
+
+The snapshot-replace contract documented above is the canonical example of a
+broader principle: every event's *semantics* (snapshot vs incremental, state
+vs workflow, replace vs merge, idempotency) are part of its contract, and
+changing them is a breaking change even when the wire shape is unchanged.
+The same framing applies elsewhere in the engine:
+
+- **State vs workflow events.** [ADR-003](adr/003-state-events-vs-workflow-events.md)
+  splits `engine_plan_mode_changed` (state-only) from `engine_plan_proposal`
+  (workflow-only) so consumers don't have to filter the same event by trigger
+  origin. The pattern is the same one applied here: pick one semantic role
+  per event and document it.
+
+- **Snapshot vs incremental more generally.** `engine_command_registry`
+  follows the same snapshot-replace contract as `engine_agent_state`: every
+  emission is a complete listing of the session's extension slash commands;
+  consumers replace their cached set with the payload; an empty `commands: []`
+  is the authoritative "no extension commands" signal, not a no-op. See the
+  field comment on [`EngineEvent.Commands`](https://github.com/dsswift/ion/blob/main/engine/internal/types/types.go).
+
+- **Plan-mode lifecycle.** The plan-mode events section in
+  [Session Lifecycle](../sessions/lifecycle.md) documents which transitions
+  fire `engine_plan_mode_changed` and which proposals fire
+  `engine_plan_proposal`.
+
+When designing a new event, decide and document up front: is it a snapshot
+or an incremental update? Is it a state transition or a workflow proposal?
+Each axis is part of the contract. Future event design should pick one role
+per axis and stick to it; the discriminated-event pattern (a `kind` field
+on the variant struct) is preferred over conflating multiple roles into one
+event type.

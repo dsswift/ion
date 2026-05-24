@@ -64,6 +64,7 @@ Every consumer depends on published contracts. **Never ship a breaking change to
 - Remove or reorder positional arguments in an SDK callback signature.
 - Change wire-protocol message framing or envelope structure.
 - Change the **semantics** of an existing event (e.g. turning a snapshot into an incremental update, or vice versa) — even if the wire shape is unchanged.
+- Stop emitting an existing event on one of its established triggers, even when the wire shape is unchanged. Consumers depend on *when* events fire, not just on their schema. If a trigger needs to move to a new event for semantic clarity (e.g. unconflating state transitions from workflow proposals — see [ADR-003](architecture/adr/003-state-events-vs-workflow-events.md)), add the new event first; the old trigger continues firing alongside it until consumers have migrated.
 
 ### Cross-language sync (mandatory when shared types change)
 
