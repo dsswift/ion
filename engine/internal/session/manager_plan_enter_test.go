@@ -307,3 +307,64 @@ func TestEnterPlanModeChangedEvent_EmittedOnModelEntry(t *testing.T) {
 	}
 	_ = planChangedEvent // collected above; not used because the run key is unknown
 }
+
+// TestPlanProposalEvent_TranslationShape verifies that PlanProposalEvent is
+// translated to the flat EngineEvent with type=engine_plan_proposal and the
+// expected discriminator + path fields. This locks in the wire-side contract
+// for the workflow event that fires when the model calls ExitPlanMode — see
+// docs/architecture/adr/003-state-events-vs-workflow-events.md for the
+// state-vs-workflow distinction.
+func TestPlanProposalEvent_TranslationShape(t *testing.T) {
+	planFilePath := "/tmp/ion/plans/happy-jumping-rabbit.md"
+
+	ee := translateToEngineEvent(
+		types.NormalizedEvent{Data: &types.PlanProposalEvent{
+			Kind:         "exit",
+			PlanFilePath: planFilePath,
+		}},
+		200000,
+	)
+	if ee.Type != "engine_plan_proposal" {
+		t.Errorf("expected type=engine_plan_proposal, got %q", ee.Type)
+	}
+	if ee.PlanProposalKind != "exit" {
+		t.Errorf("expected PlanProposalKind=%q, got %q", "exit", ee.PlanProposalKind)
+	}
+	if ee.PlanModeFilePath != planFilePath {
+		t.Errorf("expected PlanModeFilePath=%q, got %q", planFilePath, ee.PlanModeFilePath)
+	}
+	// Slug fallback should populate from the path when the emitter did not
+	// set it directly.
+	wantSlug := types.PlanSlugFromPath(planFilePath)
+	if ee.PlanModeSlug != wantSlug {
+		t.Errorf("expected PlanModeSlug=%q, got %q", wantSlug, ee.PlanModeSlug)
+	}
+	// Crucially: PlanModeEnabled must NOT be set on a plan_proposal event.
+	// The proposal is a workflow signal; mode changes flow through
+	// engine_plan_mode_changed exclusively.
+	if ee.PlanModeEnabled {
+		t.Error("PlanModeEnabled should be false on a plan_proposal event (mode change is deferred to user approval)")
+	}
+}
+
+// TestPlanProposalEvent_TranslationEmptyPath covers the degenerate case where
+// a proposal is emitted without a plan file path. The slug must be empty too
+// (no fallback magic) and the translation must still produce a valid event.
+func TestPlanProposalEvent_TranslationEmptyPath(t *testing.T) {
+	ee := translateToEngineEvent(
+		types.NormalizedEvent{Data: &types.PlanProposalEvent{Kind: "exit"}},
+		200000,
+	)
+	if ee.Type != "engine_plan_proposal" {
+		t.Errorf("expected type=engine_plan_proposal, got %q", ee.Type)
+	}
+	if ee.PlanProposalKind != "exit" {
+		t.Errorf("expected PlanProposalKind=%q, got %q", "exit", ee.PlanProposalKind)
+	}
+	if ee.PlanModeFilePath != "" {
+		t.Errorf("expected empty PlanModeFilePath, got %q", ee.PlanModeFilePath)
+	}
+	if ee.PlanModeSlug != "" {
+		t.Errorf("expected empty PlanModeSlug, got %q", ee.PlanModeSlug)
+	}
+}

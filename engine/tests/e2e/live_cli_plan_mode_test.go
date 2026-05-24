@@ -102,6 +102,20 @@ func findPlanFilePath(events []types.EngineEvent) string {
 	return ""
 }
 
+// findPlanProposal returns the first engine_plan_proposal event with the
+// given kind, or nil if none was observed. The plan_proposal event is the
+// first-class workflow signal that the model has proposed a plan-mode
+// transition; see docs/architecture/adr/003-state-events-vs-workflow-events.md
+// for the state-vs-workflow distinction.
+func findPlanProposal(events []types.EngineEvent, kind string) *types.EngineEvent {
+	for i, ev := range events {
+		if ev.Type == "engine_plan_proposal" && ev.PlanProposalKind == kind {
+			return &events[i]
+		}
+	}
+	return nil
+}
+
 func hasErrors(events []types.EngineEvent) bool {
 	for _, ev := range events {
 		if ev.Type == "engine_error" {
@@ -168,6 +182,25 @@ func TestLiveCliPlanModeEnterAndExit(t *testing.T) {
 	for _, ev := range planEnter {
 		if !ev.PlanModeEnabled {
 			t.Error("unexpected engine_plan_mode_changed{planModeEnabled=false} (must be deferred to user approval)")
+		}
+	}
+
+	// Should expose the model's ExitPlanMode call as a first-class
+	// plan_proposal{kind:"exit"} workflow event with the planFilePath
+	// and planSlug carried directly (no permissionDenials scraping needed).
+	proposal := findPlanProposal(events, "exit")
+	if proposal == nil {
+		t.Error("expected engine_plan_proposal{kind:\"exit\"} after model ExitPlanMode tool call")
+	} else {
+		if proposal.PlanModeFilePath == "" {
+			t.Error("engine_plan_proposal should carry a non-empty planFilePath")
+		}
+		if proposal.PlanModeFilePath != planPath {
+			t.Errorf("plan_proposal planFilePath=%q does not match denial planFilePath=%q",
+				proposal.PlanModeFilePath, planPath)
+		}
+		if proposal.PlanModeSlug == "" && proposal.PlanModeFilePath != "" {
+			t.Error("engine_plan_proposal should carry a non-empty planSlug when planFilePath is non-empty")
 		}
 	}
 

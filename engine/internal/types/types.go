@@ -365,6 +365,16 @@ type EngineEvent struct {
 	// for the legacy-hex round-trip note.
 	PlanModeSlug string `json:"planSlug,omitempty"`
 
+	// engine_plan_proposal — workflow-level signal emitted when the model
+	// proposes a plan-mode transition that requires user approval. Distinct
+	// from engine_plan_mode_changed, which fires only on confirmed *state*
+	// transitions. PlanProposalKind discriminates the proposal ("exit"
+	// initially; future kinds may include "enter", "amend"). PlanFilePath
+	// and PlanModeSlug are shared with engine_plan_mode_changed since the
+	// shape is identical; only the discriminator differs. See
+	// docs/architecture/adr/003-state-events-vs-workflow-events.md.
+	PlanProposalKind string `json:"planProposalKind,omitempty"`
+
 	// engine_compacting
 	CompactingActive         bool   `json:"active,omitempty"`
 	CompactingSummary        string `json:"summary,omitempty"`

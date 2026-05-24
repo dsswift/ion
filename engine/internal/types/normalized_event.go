@@ -21,6 +21,7 @@ const (
 	EventUsage             = "usage"
 	EventPermissionRequest = "permission_request"
 	EventPlanModeChanged   = "plan_mode_changed"
+	EventPlanProposal      = "plan_proposal"
 	EventStreamReset       = "stream_reset"
 	EventCompacting        = "compacting"
 	EventToolStalled       = "tool_stalled"
@@ -96,6 +97,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &PermissionRequestEvent{}
 	case EventPlanModeChanged:
 		target = &PlanModeChangedEvent{}
+	case EventPlanProposal:
+		target = &PlanProposalEvent{}
 	case EventStreamReset:
 		target = &StreamResetEvent{}
 	case EventCompacting:
@@ -271,6 +274,45 @@ type PlanModeChangedEvent struct {
 }
 
 func (PlanModeChangedEvent) eventType() string { return EventPlanModeChanged }
+
+// PlanProposalEvent is a workflow-level signal emitted when the model proposes
+// a plan-mode transition that requires user approval. It is distinct from
+// PlanModeChangedEvent, which fires only on confirmed *state* transitions
+// (SetPlanMode by the harness, run start with PlanMode=true, plan-mode abort,
+// or the user-approval chokepoint).
+//
+// The Kind field discriminates the proposal:
+//
+//   - "exit" — emitted when the model calls the ExitPlanMode tool. The mode
+//     itself does NOT change at this point; the engine merely surfaces the
+//     proposal so consumers can present an approval UI. The PlanModeChangedEvent
+//     with Enabled=false only fires later, after the consumer's user-approval
+//     gate calls SetPlanMode(false).
+//
+// Future kinds ("enter", "amend", …) follow the same shape: a discriminator
+// plus the proposal-specific fields. Consumers must switch on Kind and treat
+// unknown kinds as forward-compatible no-ops.
+//
+// This event was introduced to un-conflate state-machine notifications from
+// workflow signals — see docs/architecture/adr/003-state-events-vs-workflow-events.md
+// for the full rationale. Carries PlanFilePath and PlanSlug directly so
+// consumers don't have to scrape `permissionDenials.toolInput` to recover
+// them.
+type PlanProposalEvent struct {
+	// Kind discriminates the proposal type. "exit" is the only kind emitted
+	// today. Consumers must treat unknown kinds as forward-compatible.
+	Kind string `json:"kind"`
+	// PlanFilePath is the absolute filesystem path of the plan markdown file
+	// associated with this proposal. Empty only in pathological cases where
+	// the run somehow reached the proposal without a plan path allocated.
+	PlanFilePath string `json:"planFilePath,omitempty"`
+	// PlanSlug is the human-readable identifier portion of the plan file
+	// path — the basename minus the ".md" extension. See PlanModeChangedEvent
+	// for the legacy-hex round-trip note.
+	PlanSlug string `json:"planSlug,omitempty"`
+}
+
+func (PlanProposalEvent) eventType() string { return EventPlanProposal }
 
 // PlanSlugFromPath extracts the human-readable slug portion of a plan
 // file path: the basename minus the ".md" extension. Empty path → "".

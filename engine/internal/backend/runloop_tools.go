@@ -297,7 +297,22 @@ func (b *ApiBackend) executeTools(
 				// (task_complete carrying the ExitPlanMode PermissionDenial)
 				// is the canonical card-trigger. Consumers flip their mode to
 				// 'auto' only when the user approves via their UI chokepoint.
-				utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool no_mode_event_emitted (mode change deferred to user approval)", run.requestID))
+				//
+				// Emit the new PlanProposalEvent{Kind:"exit"} as the primary,
+				// first-class workflow signal so consumers can listen for a
+				// purpose-built event instead of inferring proposal-state from
+				// task_complete + permissionDenials. The permission denial
+				// path keeps flowing through engine_status for back-compat
+				// (the existing approval-card render path keys off it), and
+				// task_complete keeps carrying the denial too. The proposal
+				// event is additive — consumers can migrate at their own
+				// pace. See docs/architecture/adr/003-state-events-vs-workflow-events.md.
+				b.emit(run, types.NormalizedEvent{Data: &types.PlanProposalEvent{
+					Kind:         "exit",
+					PlanFilePath: run.planFilePath,
+					PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
+				}})
+				utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool emit plan_proposal kind=exit planFile=%s (mode change deferred to user approval)", run.requestID, run.planFilePath))
 				results[i] = conversation.ToolResultEntry{
 					ToolUseID: block.ID,
 					Content:   "Plan mode exited.",

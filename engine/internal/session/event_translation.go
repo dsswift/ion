@@ -555,6 +555,25 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			PlanModeSlug:     slug,
 		}
 
+	case *types.PlanProposalEvent:
+		// PlanProposalEvent is the workflow-level counterpart to
+		// PlanModeChangedEvent: it fires when the model *proposes* a
+		// plan-mode transition (e.g. by calling ExitPlanMode) but the
+		// actual state change is deferred to the consumer's user-approval
+		// chokepoint. Same slug-fallback semantics as PlanModeChangedEvent
+		// so consumers receive a usable display string regardless of
+		// whether the emitter populated PlanSlug explicitly.
+		slug := e.PlanSlug
+		if slug == "" {
+			slug = types.PlanSlugFromPath(e.PlanFilePath)
+		}
+		return types.EngineEvent{
+			Type:             "engine_plan_proposal",
+			PlanProposalKind: e.Kind,
+			PlanModeFilePath: e.PlanFilePath,
+			PlanModeSlug:     slug,
+		}
+
 	case *types.StreamResetEvent:
 		return types.EngineEvent{Type: "engine_stream_reset"}
 

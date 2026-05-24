@@ -29,6 +29,11 @@
       "planFilePath",
       "planSlug"
     ],
+    "plan_proposal": [
+      "kind",
+      "planFilePath",
+      "planSlug"
+    ],
     "rate_limit": [
       "rateLimitType",
       "resetsAt",
@@ -136,6 +141,7 @@
     "permToolName",
     "planFilePath",
     "planModeEnabled",
+    "planProposalKind",
     "planSlug",
     "questionId",
     "requestId",
