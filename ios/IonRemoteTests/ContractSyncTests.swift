@@ -368,4 +368,57 @@ final class ContractSyncTests: XCTestCase {
             "Go EngineCommandListing has fields not tracked in Swift test: \(unhandled.sorted())"
         )
     }
+
+    // MARK: - PlanProposalEvent decode
+
+    /// The engine emits engine_plan_proposal when the model proposes a
+    /// plan-mode transition (currently only kind="exit"). iOS doesn't act
+    /// on this event — the desktop is the authoritative consumer that
+    /// renders the approval card — but the wire protocol stays uniform
+    /// across consumers by decoding it cleanly. Test verifies the shape
+    /// decodes and the field set matches the Go-side manifest.
+    func testPlanProposalDecode() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["plan_proposal"] else {
+            XCTFail("plan_proposal not found in Go manifest")
+            return
+        }
+
+        let json = """
+        {
+            "type": "engine_plan_proposal",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "planProposalKind": "exit",
+            "planFilePath": "/home/user/.ion/plans/happy-jumping-rabbit.md",
+            "planSlug": "happy-jumping-rabbit"
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .enginePlanProposal(let tabId, let instanceId, let kind, let path, let slug) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(kind, "exit")
+            XCTAssertEqual(path, "/home/user/.ion/plans/happy-jumping-rabbit.md")
+            XCTAssertEqual(slug, "happy-jumping-rabbit")
+        } else {
+            XCTFail("Expected enginePlanProposal, got \(event)")
+        }
+
+        // The Swift case uses the wire field name "planProposalKind" for the
+        // discriminator (mirroring the Go flat EngineEvent layout) but the
+        // NormalizedEvent variant — which is what the manifest tracks — uses
+        // the plain "kind" field name on the variant struct. Track both names
+        // here because the wire shape is what iOS decodes off the socket.
+        let swiftHandled: Set<String> = [
+            "kind", "planFilePath", "planSlug",
+        ]
+        let goSet = Set(goFields ?? [])
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go plan_proposal has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
 }

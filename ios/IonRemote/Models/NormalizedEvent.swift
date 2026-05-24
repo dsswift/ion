@@ -71,6 +71,13 @@ enum RemoteEvent: Codable, Sendable {
     case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
     case engineModelOverride(tabId: String, instanceId: String?, model: String)
     case engineProfiles(profiles: [EngineProfile])
+    /// Workflow event from the engine: the model has proposed a plan-mode
+    /// transition (currently only kind="exit"). iOS does not yet act on
+    /// this — the desktop is the authoritative consumer that renders the
+    /// approval card — but iOS decodes the variant cleanly so the wire
+    /// protocol stays uniform across consumers. See
+    /// docs/architecture/adr/003-state-events-vs-workflow-events.md.
+    case enginePlanProposal(tabId: String, instanceId: String?, kind: String, planFilePath: String?, planSlug: String?)
     // Git events
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
@@ -144,6 +151,7 @@ enum RemoteEvent: Codable, Sendable {
         case engineConversationHistory = "engine_conversation_history"
         case engineModelOverride = "engine_model_override"
         case engineProfiles = "engine_profiles"
+        case enginePlanProposal = "engine_plan_proposal"
         case gitChangesResponse = "git_changes_response"
         case gitGraphResponse = "git_graph_response"
         case gitDiffResponse = "git_diff_response"
@@ -186,6 +194,10 @@ enum RemoteEvent: Codable, Sendable {
         case attachments
         case sourceTabId, targetTabId
         case customName, customIcon, updatedAt, remoteDisplayUpdatedAt
+        // engine_plan_proposal — workflow event for plan-mode proposals.
+        // The engine emits these field names (no instanceId; the proposal
+        // is always at the tab level, not per-instance).
+        case planProposalKind, planFilePath, planSlug
     }
 
     // MARK: - Decoder

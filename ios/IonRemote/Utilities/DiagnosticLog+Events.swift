@@ -151,6 +151,14 @@ extension DiagnosticLog {
         case .engineProfiles(let profiles):
             log("EVENT: engineProfiles count=\(profiles.count)")
 
+        case .enginePlanProposal(let tabId, let instId, let kind, let path, _):
+            // Workflow event from the engine — iOS does not act on this
+            // (the desktop is the authoritative consumer for plan-proposal
+            // approval UI), but log it so the wire-protocol flow is fully
+            // observable in the diagnostic stream alongside other engine
+            // events.
+            log("EVENT: enginePlanProposal tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") kind=\(kind) path=\(path?.suffix(40) ?? "nil")")
+
         case .gitChangesResponse(let dir, _):
             log("EVENT: gitChangesResponse dir=\(dir.suffix(30))")
 

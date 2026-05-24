@@ -140,6 +140,20 @@ extension RemoteEvent {
             let profiles = try container.decode([EngineProfile].self, forKey: .profiles)
             return .engineProfiles(profiles: profiles)
 
+        case .enginePlanProposal:
+            // Workflow event: the model has proposed a plan-mode transition.
+            // iOS does not act on this event — the desktop is the authoritative
+            // consumer — but the wire protocol stays uniform by decoding it
+            // cleanly here. tabId / instanceId follow the standard engine
+            // event shape; kind / planFilePath / planSlug match the Go-side
+            // PlanProposalEvent struct one-to-one.
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let kind = try container.decodeIfPresent(String.self, forKey: .planProposalKind) ?? ""
+            let planFilePath = try container.decodeIfPresent(String.self, forKey: .planFilePath)
+            let planSlug = try container.decodeIfPresent(String.self, forKey: .planSlug)
+            return .enginePlanProposal(tabId: tabId, instanceId: instanceId, kind: kind, planFilePath: planFilePath, planSlug: planSlug)
+
         default:
             return nil
         }
@@ -295,6 +309,15 @@ extension RemoteEvent {
         case .engineProfiles(let profiles):
             try container.encode(TypeKey.engineProfiles, forKey: .type)
             try container.encode(profiles, forKey: .profiles)
+            return true
+
+        case .enginePlanProposal(let tabId, let instanceId, let kind, let planFilePath, let planSlug):
+            try container.encode(TypeKey.enginePlanProposal, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(kind, forKey: .planProposalKind)
+            try container.encodeIfPresent(planFilePath, forKey: .planFilePath)
+            try container.encodeIfPresent(planSlug, forKey: .planSlug)
             return true
 
         default:
