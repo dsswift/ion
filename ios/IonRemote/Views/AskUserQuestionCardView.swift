@@ -7,6 +7,7 @@ struct AskUserQuestionCardView: View {
 
     @State private var freeText: String = ""
     @FocusState private var textFieldFocused: Bool
+    @State private var isExpanded = true
 
     /// Parse engine format: { question: "...", options?: ["A","B"] }
     private var questionData: (question: String, options: [String])? {
@@ -50,59 +51,71 @@ struct AskUserQuestionCardView: View {
     var body: some View {
         if let data = questionData {
             VStack(alignment: .leading, spacing: 12) {
-                // Header
-                HStack(spacing: 6) {
-                    Image(systemName: "questionmark.circle.fill")
-                        .foregroundStyle(IonTheme.accent)
-                    Text("Question")
-                        .font(.headline)
-                }
-
-                // Question text
-                Text(data.question)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if data.options.isEmpty {
-                    // Free-text input for open-ended questions
-                    HStack(spacing: 8) {
-                        TextField("Type your answer…", text: $freeText)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.subheadline)
-                            .focused($textFieldFocused)
-                            .onSubmit { submitFreeText() }
-
-                        Button {
-                            submitFreeText()
-                        } label: {
-                            Text("Send")
-                                .font(.subheadline.weight(.medium))
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .clipShape(Capsule())
-                        .tint(IonTheme.accent)
-                        .disabled(freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                // Header — tap to collapse/expand
+                Button {
+                    withAnimation(IonTheme.snappySpring) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "questionmark.circle.fill")
+                            .foregroundStyle(IonTheme.accent)
+                        Text("Question")
+                            .font(.headline)
+                        Spacer()
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
-                } else {
-                    // Option buttons
-                    FlowLayout(spacing: 8) {
-                        ForEach(data.options, id: \.self) { option in
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if isExpanded {
+                    // Question text
+                    Text(data.question)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if data.options.isEmpty {
+                        // Free-text input for open-ended questions
+                        HStack(spacing: 8) {
+                            TextField("Type your answer…", text: $freeText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.subheadline)
+                                .focused($textFieldFocused)
+                                .onSubmit { submitFreeText() }
+
                             Button {
-                                Haptic.medium()
-                                viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-                                viewModel.sendPrompt(tabId: tabId, text: option)
+                                submitFreeText()
                             } label: {
-                                Text(option)
+                                Text("Send")
                                     .font(.subheadline.weight(.medium))
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
+                                    .padding(.vertical, 8)
                             }
                             .buttonStyle(.borderedProminent)
                             .clipShape(Capsule())
                             .tint(IonTheme.accent)
+                            .disabled(freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    } else {
+                        // Option buttons
+                        FlowLayout(spacing: 8) {
+                            ForEach(data.options, id: \.self) { option in
+                                Button {
+                                    Haptic.medium()
+                                    viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
+                                    viewModel.sendPrompt(tabId: tabId, text: option)
+                                } label: {
+                                    Text(option)
+                                        .font(.subheadline.weight(.medium))
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .clipShape(Capsule())
+                                .tint(IonTheme.accent)
+                            }
                         }
                     }
                 }
