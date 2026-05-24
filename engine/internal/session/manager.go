@@ -5,8 +5,6 @@ import (
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/backend"
-	"github.com/dsswift/ion/engine/internal/conversation"
-	"github.com/dsswift/ion/engine/internal/export"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -153,8 +151,8 @@ func (m *Manager) SendCommand(key, command, args string) {
 		// unknown-command result so consumers can route to whatever fallback
 		// they own — semantically equivalent to "engine cannot run this
 		// command, try the next routing option". Contract-wise this is
-		// identical to the default-arm signal below; consumers do not need
-		// to distinguish the two.
+		// identical to the default-arm signal in dispatchCommand; consumers
+		// do not need to distinguish the two.
 		utils.Log("Session", fmt.Sprintf("SendCommand: session %s not found, emitting unknown_command for cmd=%s", key, command))
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
@@ -164,176 +162,10 @@ func (m *Manager) SendCommand(key, command, args string) {
 		})
 		return
 	}
-
-	// Check extension commands first
-	if s.extGroup != nil && !s.extGroup.IsEmpty() {
-		cmds := s.extGroup.Commands()
-		if cmd, exists := cmds[command]; exists {
-			utils.Log("Session", fmt.Sprintf("SendCommand: dispatching extension command key=%s command=%s argsLen=%d", key, command, len(args)))
-			ctx := m.newExtContext(s, key)
-			err := cmd.Execute(args, ctx)
-			if err == nil {
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_command_result",
-					EventMessage: "command executed: " + command,
-					Command:      command,
-				})
-			} else {
-				utils.Log("Session", fmt.Sprintf("SendCommand: extension command failed key=%s command=%s err=%v", key, command, err))
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_command_result",
-					EventMessage: fmt.Sprintf("command failed: %s: %v", command, err),
-					Command:      command,
-					CommandError: err.Error(),
-				})
-			}
-			return
-		}
-		utils.Debug("Session", fmt.Sprintf("SendCommand: name not in extension registry, falling through to built-ins key=%s command=%s extCount=%d", key, command, len(cmds)))
-	} else {
-		utils.Debug("Session", fmt.Sprintf("SendCommand: no extension group on session key=%s command=%s", key, command))
-	}
-
-	switch command {
-	case "clear":
-		if s.conversationID != "" {
-			conv, err := conversation.Load(s.conversationID, "")
-			if err == nil {
-				conv.Messages = nil
-				conv.LastInputTokens = 0
-				conv.LastInputTokensMsgCount = 0
-				_ = conversation.Save(conv, "")
-				s.lastContextPct = 0
-				utils.Log("Session", fmt.Sprintf("cleared conversation for session %s", key))
-				m.emit(key, types.EngineEvent{
-					Type: "engine_status",
-					Fields: &types.StatusFields{
-						State:          m.sessionState(s),
-						ContextPercent: 0,
-						ContextWindow:  s.lastContextWindow,
-						Model:          s.lastModel,
-						TotalCostUsd:   s.lastTotalCost,
-					},
-				})
-				// Re-fire session_start so the harness can re-prime the now-empty
-				// conversation. `/clear` is a checkpoint, not a session restart —
-				// the session, extension subprocesses, and MCP connections stay
-				// alive. Only the LLM-visible history was wiped above; firing
-				// session_start gives the harness a chance to inject whatever
-				// bootstrap context it would normally inject for a fresh session.
-				// Same pattern as start_session.go:384-385.
-				if s.extGroup != nil && !s.extGroup.IsEmpty() {
-					utils.Log("Session", fmt.Sprintf("firing session_start on clear for session %s", key))
-					ctx := m.newExtContext(s, key)
-					_ = s.extGroup.FireSessionStart(ctx)
-					utils.Log("Session", fmt.Sprintf("session_start re-fired on clear for session %s", key))
-				} else {
-					utils.Debug("Session", fmt.Sprintf("clear: no extensions loaded for %s, skipping session_start re-fire", key))
-				}
-				// Emit an engine-driven result so consumers see a single
-				// authoritative "clear executed" event rather than inferring
-				// it locally. The Command field carries the name verbatim so
-				// a subscriber can switch on it without re-parsing
-				// EventMessage.
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_command_result",
-					EventMessage: "command executed: clear",
-					Command:      "clear",
-				})
-			} else {
-				utils.Log("Session", fmt.Sprintf("clear: failed to load conversation %s: %v", s.conversationID, err))
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_command_result",
-					EventMessage: fmt.Sprintf("command failed: clear: %v", err),
-					Command:      "clear",
-					CommandError: err.Error(),
-				})
-			}
-		} else {
-			utils.Debug("Session", fmt.Sprintf("clear: no conversationID set on session %s, nothing to wipe", key))
-			// Still emit success on a never-talked-to session so consumers
-			// see the same "clear executed" signal regardless of whether
-			// there was any conversation to wipe. The conversation was
-			// already "empty" so /clear semantically succeeded.
-			m.emit(key, types.EngineEvent{
-				Type:         "engine_command_result",
-				EventMessage: "command executed: clear",
-				Command:      "clear",
-			})
-		}
-	case "compact":
-		if s.conversationID != "" {
-			conv, err := conversation.Load(s.conversationID, "")
-			if err == nil {
-				conversation.Compact(conv, 10)
-				_ = conversation.Save(conv, "")
-				utils.Log("Session", fmt.Sprintf("compacted session %s", key))
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_command_result",
-					EventMessage: "command executed: compact",
-					Command:      "compact",
-				})
-			} else {
-				utils.Log("Session", fmt.Sprintf("compact: failed to load conversation %s: %v", s.conversationID, err))
-				m.emit(key, types.EngineEvent{
-					Type:         "engine_command_result",
-					EventMessage: fmt.Sprintf("command failed: compact: %v", err),
-					Command:      "compact",
-					CommandError: err.Error(),
-				})
-			}
-		} else {
-			utils.Debug("Session", fmt.Sprintf("compact: no conversationID set on session %s", key))
-			m.emit(key, types.EngineEvent{
-				Type:         "engine_command_result",
-				EventMessage: "command executed: compact",
-				Command:      "compact",
-			})
-		}
-	case "export":
-		if s.conversationID != "" {
-			conv, err := conversation.Load(s.conversationID, "")
-			if err == nil {
-				format := "markdown"
-				if args != "" {
-					format = args
-				}
-				output, err := export.ExportSession(conv, export.Options{Format: format})
-				if err == nil {
-					m.emit(key, types.EngineEvent{
-						Type:         "engine_export",
-						EventMessage: output,
-					})
-					m.emit(key, types.EngineEvent{
-						Type:         "engine_command_result",
-						EventMessage: "command executed: export",
-						Command:      "export",
-					})
-				} else {
-					utils.Log("Session", fmt.Sprintf("export failed for %s: %s", key, err))
-					m.emit(key, types.EngineEvent{
-						Type:         "engine_command_result",
-						EventMessage: fmt.Sprintf("command failed: export: %v", err),
-						Command:      "export",
-						CommandError: err.Error(),
-					})
-				}
-			}
-		}
-	default:
-		// Unknown command — neither an extension command nor a built-in.
-		// Emit an engine_command_result with CommandError populated so
-		// consumers can route to whatever fallback they own. This replaces
-		// the previous silent log-only behavior, which left in-flight
-		// conversations hanging.
-		utils.Log("Session", fmt.Sprintf("SendCommand: unknown command key=%s command=%s argsLen=%d", key, command, len(args)))
-		m.emit(key, types.EngineEvent{
-			Type:         "engine_command_result",
-			EventMessage: "unknown command: " + command,
-			Command:      command,
-			CommandError: "unknown_command",
-		})
-	}
+	// Real dispatch lives in command_dispatch.go so this god-file stays at
+	// a manageable size. The session lookup is kept here because it's the
+	// gate that protects every dispatch arm from a nil session pointer.
+	m.dispatchCommand(s, key, command, args)
 }
 
 // StopSession cancels the active run and cleans up the session.
