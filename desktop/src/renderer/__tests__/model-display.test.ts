@@ -4,11 +4,14 @@
  * Tests for getModelDisplayLabel which converts raw model IDs
  * (e.g. 'claude-opus-4-6[1m]') into human-readable display labels.
  *
+ * Also covers getModelContextWindow — the static fallback used by
+ * StatusBarContextIndicator before the dynamic model store populates.
+ *
  * Related spec: specs/issue-ion-4-model-display-label-normalization.tests.md
  */
 
 import { describe, it, expect } from 'vitest'
-import { getModelDisplayLabel } from '../stores/model-labels'
+import { getModelDisplayLabel, getModelContextWindow } from '../stores/model-labels'
 
 // ─── TC-001: Known models without context hints ───
 
@@ -87,5 +90,43 @@ describe('TC-006: non-1m bracket content is stripped without annotation', () => 
 describe('TC-007: date-suffixed model IDs with [1m]', () => {
   it('strips date suffix and appends (1M) for known model', () => {
     expect(getModelDisplayLabel('claude-haiku-4-5-20251001[1m]')).toBe('Haiku 4.5 (1M)')
+  })
+})
+
+// ─── TC-008: claude-opus-4-7 label ───
+
+describe('TC-008: claude-opus-4-7 display label', () => {
+  it('returns "Opus 4.7" for claude-opus-4-7', () => {
+    expect(getModelDisplayLabel('claude-opus-4-7')).toBe('Opus 4.7')
+  })
+
+  it('returns "Opus 4.7 (1M)" for claude-opus-4-7[1m]', () => {
+    expect(getModelDisplayLabel('claude-opus-4-7[1m]')).toBe('Opus 4.7 (1M)')
+  })
+})
+
+// ─── TC-009: getModelContextWindow fallback table ───
+// Guards the static lookup used before the dynamic store populates.
+// The root cause of the 200K display bug was claude-opus-4-7 missing here.
+
+describe('TC-009: getModelContextWindow static fallback', () => {
+  it('returns 1_000_000 for claude-opus-4-7', () => {
+    expect(getModelContextWindow('claude-opus-4-7')).toBe(1_000_000)
+  })
+
+  it('returns 1_000_000 for claude-opus-4-6', () => {
+    expect(getModelContextWindow('claude-opus-4-6')).toBe(1_000_000)
+  })
+
+  it('returns 200_000 for claude-sonnet-4-6', () => {
+    expect(getModelContextWindow('claude-sonnet-4-6')).toBe(200_000)
+  })
+
+  it('returns 200_000 for completely unknown model ids', () => {
+    expect(getModelContextWindow('claude-unknown-99-99')).toBe(200_000)
+  })
+
+  it('strips [1m] bracket before lookup — still resolves 1_000_000 for opus-4-7[1m]', () => {
+    expect(getModelContextWindow('claude-opus-4-7[1m]')).toBe(1_000_000)
   })
 })
