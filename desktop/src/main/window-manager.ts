@@ -130,7 +130,20 @@ export function createWindow(): void {
       message.startsWith('[task_complete]') ||
       message.startsWith('[event-slice]') ||
       message.startsWith('[engine-event-slice]') ||
-      message.startsWith('[store]')
+      message.startsWith('[store]') ||
+      // tab-slice's pin-to-group diagnostics. The store's other prefix is
+      // already covered by [store] above; pin operations use [tab-pin] as a
+      // distinct tag so they can be grep'd independently when investigating
+      // group-membership regressions. Without this allowlist entry the main
+      // process would silently drop the line.
+      message.startsWith('[tab-pin]') ||
+      // event-slice's plan-proposal handler (Part 3). The handler logs the
+      // kind + path the moment the engine emits engine_plan_proposal so the
+      // main-process log carries the same timeline the renderer sees.
+      message.startsWith('[plan_proposal]') ||
+      // auto-move suppression diagnostics from the same store. Same forward
+      // tag as the renderer's existing logs in tab-slice.ts.
+      message.startsWith('[auto-move]')
     ) log(`[renderer] ${message}`)
   })
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
