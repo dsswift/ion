@@ -356,6 +356,28 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               }
               break
 
+            case 'engine_plan_proposal' as any: {
+              // Workflow event from the engine: the model has proposed a
+              // plan-mode transition (currently only kind="exit"). This is
+              // NOT a state change — the engine has NOT flipped plan mode
+              // off. The approval-card render still flows through
+              // task_complete.permissionDenials below (for back-compat),
+              // but this event lets the renderer learn about the proposal
+              // *as soon as the model calls the tool*, before task_complete
+              // arrives. We record the proposed plan path on the tab so
+              // downstream UI (e.g. the implement button) has it without
+              // having to scrape it from permissionDenied entries. See
+              // docs/architecture/adr/003-state-events-vs-workflow-events.md.
+              const proposal = event as any
+              const kind = proposal.planProposalKind ?? proposal.kind
+              const path = proposal.planFilePath
+              console.log(`[plan_proposal] tab=${tabId.slice(0, 8)} kind=${kind} planFilePath=${path ?? ''} planSlug=${proposal.planSlug ?? ''}`)
+              if (path && updated.planFilePath !== path) {
+                updated.planFilePath = path
+              }
+              break
+            }
+
             case 'permission_request': {
               const newReq: import('../../../shared/types').PermissionRequest = {
                 questionId: event.questionId,

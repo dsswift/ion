@@ -81,6 +81,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     'toolName',
   ],
   plan_mode_changed: ['enabled', 'planFilePath', 'planSlug'],
+  plan_proposal: ['kind', 'planFilePath', 'planSlug'],
   stream_reset: [],
   compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],

@@ -95,6 +95,18 @@ export type EngineEvent =
   | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
+  // engine_plan_proposal is the workflow-level counterpart to
+  // engine_plan_mode_changed: it fires when the model *proposes* a plan-mode
+  // transition (e.g. by calling ExitPlanMode) but the actual mode change is
+  // deferred to the consumer's user-approval chokepoint. The `kind` field
+  // discriminates the proposal — `"exit"` is the only kind emitted today;
+  // future kinds may include `"enter"` or `"amend"`. Consumers must treat
+  // unknown kinds as forward-compatible. See
+  // docs/architecture/adr/003-state-events-vs-workflow-events.md for the
+  // state-vs-workflow distinction. PlanFilePath and PlanSlug are carried
+  // directly so consumers don't have to scrape `permissionDenials.toolInput`
+  // to recover them.
+  | { type: 'engine_plan_proposal'; planProposalKind: 'exit' | string; planFilePath?: string; planSlug?: string }
   | { type: 'engine_stream_reset' }
   | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string }
   | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }

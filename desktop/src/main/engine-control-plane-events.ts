@@ -174,6 +174,22 @@ export function handleEngineEvent(
       ctx.emit('event', tabId, event as any)
       break
 
+    case 'engine_plan_proposal':
+      // The model has proposed a plan-mode transition (currently only
+      // kind="exit" — the model called ExitPlanMode). This is a workflow
+      // event, NOT a state transition: the actual mode change is deferred
+      // to the user-approval chokepoint in usePermissionDeniedHandlers.
+      // The desktop forwards the event to the renderer as the authoritative
+      // signal that an approval card should render; the permission_denial
+      // path on engine_status remains the fallback card-render trigger so
+      // existing logic keeps working during the migration. See
+      // docs/architecture/adr/003-state-events-vs-workflow-events.md.
+      log(
+        `plan_proposal: tabId=${tabId} kind=${event.planProposalKind} planFilePath=${event.planFilePath ?? ''} planSlug=${event.planSlug ?? ''}`,
+      )
+      ctx.emit('event', tabId, event as any)
+      break
+
     case 'engine_stream_reset':
       log(`stream_reset: tabId=${tabId} (retry in progress, discarding partial text)`)
       ctx.emit('event', tabId, { type: 'stream_reset' } as NormalizedEvent)
