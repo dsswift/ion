@@ -95,9 +95,7 @@ import { log as _log } from './logger'
 import { state, sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { parseSlash, type ParsedSlash } from './slash-parse'
-import { awaitCommandResult, type CommandResult } from './command-await'
-import { expandSlashCommand } from './cli-compat/slash-expand'
-import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { dispatchExtensionCommand, tryExpandMarkdownSlash } from './slash-classify'
 import { encodeImageAttachments } from './remote/attachment-encoder'
 import type { ImageAttachmentPayload } from '../shared/types'
 
@@ -563,81 +561,16 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
 }
 
 /**
- * Attempt `.md` template expansion for the parsed slash. On success, mutates
- * the prompt text (and runOptions for the CLI path) to the expanded prompt
- * and auto-switches the tab's permission mode to 'auto', then re-enters
- * the pipeline at submitAsPrompt. Returns true when expansion occurred.
- */
-async function tryMarkdownExpansion(p: IncomingPrompt, slash: ParsedSlash): Promise<boolean> {
-  let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
-  try {
-    const s = readSettings()
-    claudeCompat = s.enableClaudeCompat ?? claudeCompat
-  } catch { /* default */ }
-  if (!claudeCompat) {
-    log(`pipeline: .md expansion disabled by settings, name=${slash.command}`)
-    return false
-  }
-
-  const rebuilt = '/' + slash.command + (slash.args ? ' ' + slash.args : '')
-  const expansion = await expandSlashCommand(rebuilt, p.projectPath)
-  if (!expansion.expanded) {
-    log(`pipeline: no .md expansion for /${slash.command}`)
-    return false
-  }
-  log(`pipeline: .md expanded /${slash.command} → userLen=${expansion.userPrompt.length} sysLen=${expansion.systemPrompt.length}`)
-
-  // Auto-switch permission mode to 'auto' (matches legacy applySlashExpansion).
-  sessionPlane.setPermissionMode(p.tabId, 'auto', 'slash_command')
-  broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId: p.tabId, mode: 'auto' })
-
-  // Rewrite the in-flight prompt. For the CLI desktop path, runOptions is the
-  // canonical struct submitPrompt will read, so mutate it.
-  if (p.runOptions) {
-    p.runOptions.prompt = expansion.userPrompt
-    p.runOptions.appendSystemPrompt = p.runOptions.appendSystemPrompt
-      ? p.runOptions.appendSystemPrompt + '\n\n' + expansion.systemPrompt
-      : expansion.systemPrompt
-  }
-  // Also keep IncomingPrompt's view in sync for the remote-broadcast path.
-  p.text = expansion.userPrompt
-  p.appendSystemPrompt = p.appendSystemPrompt
-    ? p.appendSystemPrompt + '\n\n' + expansion.systemPrompt
-    : expansion.systemPrompt
-
-  await submitAsPrompt(p)
-  return true
-}
-
-/**
- * Dispatch a parsed slash command to the engine and await the result. The
- * engine resolves the command table live at dispatch time so we never need
- * to check our snapshot cache here — we let the engine be authoritative
- * and react to the response shape.
- *
- * Returns the CommandResult so the caller can decide what to do next:
- *   - commandError === ""               → engine ran the command, done
- *   - commandError === "unknown_command" → fall through to .md expansion
- *   - any other commandError            → surface as system message
- */
-async function dispatchAsExtensionCommand(p: IncomingPrompt, slash: ParsedSlash): Promise<CommandResult> {
-  const key = engineKey(p)
-  log(`pipeline: dispatch ext cmd key=${key} cmd=/${slash.command} hasArgs=${!!slash.args}`)
-  // Register awaiter BEFORE issuing the dispatch so we never miss the event
-  // even on the local-process fast path. awaitCommandResult attaches the
-  // global listener idempotently.
-  const waiter = awaitCommandResult(key, slash.command)
-  void engineBridge.sendCommand(key, slash.command, slash.args)
-  const result = await waiter
-  log(`pipeline: ext cmd resolved key=${key} cmd=/${slash.command} err=${result.commandError || '(none)'}`)
-  return result
-}
-
 /**
  * Handle a parsed slash: try extension command first, fall back to `.md`,
  * else emit "unknown command". Always echoes the user's original slash text
  * to the remote transport so iOS replaces its optimistic entry's bad
  * timestamp with the canonical one.
+ *
+ * The actual extension-dispatch + `.md` lookup helpers live in
+ * `slash-classify.ts`. This function is the orchestrator that decides
+ * which to call based on the engine's response shape — it does not own
+ * the dispatch mechanics itself.
  */
 async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void> {
   // Echo the raw slash text to iOS so the optimistic timestamp is corrected
@@ -648,7 +581,7 @@ async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void>
     emitRemoteMessageAdded(p, p.text, 'user')
   }
 
-  const result = await dispatchAsExtensionCommand(p, slash)
+  const result = await dispatchExtensionCommand(engineKey(p), slash)
 
   if (result.commandError === '') {
     // Success. Clear the optimistic 'connecting' state because no run will
@@ -706,8 +639,25 @@ async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void>
     }
 
     log(`pipeline: engine disclaimed /${slash.command} → trying .md expansion`)
-    const expanded = await tryMarkdownExpansion(p, slash)
-    if (expanded) return
+    const expansion = await tryExpandMarkdownSlash(p.tabId, slash, p.projectPath)
+    if (expansion) {
+      // Rewrite the in-flight prompt and re-enter submission. The
+      // expansion helper returns the new user/system prompts but does
+      // NOT mutate the IncomingPrompt itself — keeping the orchestrator
+      // as the single mutator of `p` makes the data flow auditable.
+      if (p.runOptions) {
+        p.runOptions.prompt = expansion.userPrompt
+        p.runOptions.appendSystemPrompt = p.runOptions.appendSystemPrompt
+          ? p.runOptions.appendSystemPrompt + '\n\n' + expansion.systemPrompt
+          : expansion.systemPrompt
+      }
+      p.text = expansion.userPrompt
+      p.appendSystemPrompt = p.appendSystemPrompt
+        ? p.appendSystemPrompt + '\n\n' + expansion.systemPrompt
+        : expansion.systemPrompt
+      await submitAsPrompt(p)
+      return
+    }
 
     log(`pipeline: no .md template for /${slash.command} → emitting unknown-command system message`)
     const msg = `Unknown command: /${slash.command}`
