@@ -71,6 +71,33 @@ func TestSDK_FireFileChanged(t *testing.T) {
 	}
 }
 
+func TestSDK_FireWorkspaceFileChanged(t *testing.T) {
+	sdk := NewSDK()
+
+	var received WorkspaceFileChangedInfo
+	sdk.On(HookWorkspaceFileChanged, func(ctx *Context, payload interface{}) (interface{}, error) {
+		received = payload.(WorkspaceFileChangedInfo)
+		return nil, nil
+	})
+
+	info := WorkspaceFileChangedInfo{
+		Path:    "/repo/src/main.go",
+		RelPath: "src/main.go",
+		Action:  "modify",
+	}
+	sdk.FireWorkspaceFileChanged(testCtx(), info)
+
+	if received.Path != "/repo/src/main.go" {
+		t.Fatalf("expected /repo/src/main.go, got %q", received.Path)
+	}
+	if received.RelPath != "src/main.go" {
+		t.Fatalf("expected src/main.go, got %q", received.RelPath)
+	}
+	if received.Action != "modify" {
+		t.Fatalf("expected modify, got %q", received.Action)
+	}
+}
+
 func TestSDK_FireTaskCreated(t *testing.T) {
 	sdk := NewSDK()
 

@@ -80,7 +80,22 @@ const (
 	HookPermissionClassify = "permission_classify"
 
 	// File change hooks
+	//
+	// HookFileChanged fires only after the LLM's Write or Edit tool has
+	// successfully written a file. It is NOT a filesystem watcher -- external
+	// edits (user saving a file in their editor, a shell script writing to
+	// disk, an MCP server modifying state) do not fire it. For external-edit
+	// notifications subscribe to HookWorkspaceFileChanged instead.
 	HookFileChanged = "file_changed"
+
+	// HookWorkspaceFileChanged fires when any non-ignored file or directory
+	// inside the session's working directory is created, modified, or deleted
+	// by anything (including the LLM's tools, the user's editor, shell
+	// commands, etc.). Backed by an engine-owned recursive fsnotify watcher
+	// rooted at EngineConfig.WorkingDirectory. Paths outside the working
+	// directory are NOT covered -- extensions interested in those install
+	// their own watchers via node:fs.watch in their subprocess.
+	HookWorkspaceFileChanged = "workspace_file_changed"
 
 	// Task lifecycle hooks
 	HookTaskCreated   = "task_created"

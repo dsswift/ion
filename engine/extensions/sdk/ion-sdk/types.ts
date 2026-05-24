@@ -651,9 +651,41 @@ export interface PermissionClassifyInfo {
   input: Record<string, unknown>
 }
 
-/** Payload for `file_changed`. */
+/**
+ * Payload for `file_changed`.
+ *
+ * Fires only after the LLM's Write or Edit tool successfully writes a file.
+ * This is NOT a filesystem watcher: external edits (user saving in their
+ * editor, shell scripts, MCP servers) do NOT trigger it. For external-edit
+ * notifications subscribe to `workspace_file_changed` instead.
+ */
 export interface FileChangedInfo {
   path: string
+  action: string
+}
+
+/**
+ * Payload for `workspace_file_changed`.
+ *
+ * Fires whenever a non-ignored file or directory inside the session's
+ * working directory is created, modified, or deleted by anything (including
+ * the LLM, the user's editor, shell scripts). Backed by an engine-owned
+ * recursive fsnotify watcher rooted at `EngineConfig.workingDirectory`.
+ *
+ * - `path` is the absolute, OS-native path.
+ * - `relPath` is forward-slash separated and relative to the working
+ *   directory, so glob-matching is portable.
+ * - `action` is one of `"create"`, `"modify"`, `"delete"`. Rename is
+ *   reported as a paired delete + create -- cross-editor rename detection
+ *   is unreliable.
+ *
+ * Out-of-tree paths are NOT covered. Extensions that need to watch paths
+ * outside the working directory install their own watchers via
+ * `node:fs.watch` inside their subprocess.
+ */
+export interface WorkspaceFileChangedInfo {
+  path: string
+  relPath: string
   action: string
 }
 
@@ -1035,6 +1067,7 @@ export interface HookPayloadMap {
 
   // File (1)
   file_changed: FileChangedInfo
+  workspace_file_changed: WorkspaceFileChangedInfo
 
   // Task (2)
   task_created: TaskLifecycleInfo

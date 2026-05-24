@@ -15,6 +15,15 @@ export interface EngineConfig {
   maxTokens?: number
   thinking?: { enabled: boolean; budgetTokens?: number }
   systemHint?: string
+  /**
+   * Override the engine's default ignore-glob list for the
+   * workspace_file_changed watcher. When omitted or empty the engine uses
+   * its built-ins (`.git/**`, `node_modules/**`, `dist/**`, etc.). A
+   * non-empty array REPLACES the defaults entirely (not merge). Patterns
+   * use doublestar syntax and match against forward-slash repo-relative
+   * paths.
+   */
+  workspaceWatchIgnore?: string[]
 }
 
 export interface EngineInstance {

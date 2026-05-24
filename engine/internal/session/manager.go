@@ -366,6 +366,7 @@ func (m *Manager) StopSession(key string) error {
 	telemCollector := s.telemetry
 	sessionRecorder := s.recorder
 	toolServer := s.toolServer
+	fsWatcher := s.fsWatcher
 
 	delete(m.sessions, key)
 	m.mu.Unlock()
@@ -374,6 +375,10 @@ func (m *Manager) StopSession(key string) error {
 	if toolServer != nil {
 		toolServer.Stop()
 	}
+	// Stop the workspace watcher BEFORE firing session_end / closing the
+	// extension group so any in-flight watcher callbacks drain into a
+	// still-live group, and no late callback races with extGroup.Close().
+	stopWorkspaceWatcher(key, fsWatcher)
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		_ = extGroup.FireSessionEnd(ctx)

@@ -254,7 +254,7 @@ func main() {
 | **Per-tool** | `{bash,read,write,edit,grep,glob,agent}_tool_{call,result}` (14 hooks) |
 | **Context** | `context_discover`, `context_load`, `instruction_load`, `context_inject` |
 | **Permission** | `permission_request`, `permission_denied` |
-| **File** | `file_changed` |
+| **File** | `file_changed`, `workspace_file_changed` |
 | **Task** | `task_created`, `task_completed` |
 | **Elicitation** | `elicitation_request`, `elicitation_result` |
 | **Capability** | `capability_discover`, `capability_match`, `capability_invoke` |

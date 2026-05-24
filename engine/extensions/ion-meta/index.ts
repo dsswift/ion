@@ -43,7 +43,7 @@ const hookCatalog: Record<string, string[]> = {
     'permission_request', 'permission_denied', 'permission_classify',
   ],
   file: [
-    'file_changed',
+    'file_changed', 'workspace_file_changed',
   ],
   task: [
     'task_created', 'task_completed',

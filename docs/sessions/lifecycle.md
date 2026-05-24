@@ -36,7 +36,7 @@ If a session with the same key already exists, `StartSession` returns an error.
 5. Fire `context_inject` hook for extension-provided context.
 6. Inject git context from the working directory.
 7. Fire `before_agent_start` for system prompt injection.
-8. Wire extension hooks (tool_call, turn, compaction, permission, file_changed).
+8. Wire extension hooks (tool_call, turn, compaction, permission, file_changed, workspace_file_changed).
 9. Wire MCP tools and agent spawner.
 10. Emit `engine_status` with state `running`.
 11. Call `backend.StartRun()`.

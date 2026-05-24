@@ -112,6 +112,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'systemHint',
     'thinking',
     'workingDirectory',
+    'workspaceWatchIgnore',
   ],
   MessageEndUsage: ['contextPercent', 'cost', 'inputTokens', 'outputTokens'],
   PermissionOpt: ['id', 'kind', 'label'],

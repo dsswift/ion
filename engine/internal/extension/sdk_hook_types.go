@@ -181,10 +181,28 @@ type PermissionDeniedInfo struct {
 	Reason   string                 `json:"reason"`
 }
 
-// FileChangedInfo carries details about a file change.
+// FileChangedInfo carries details about a file change driven by the LLM's
+// Write or Edit tool. See the doc on HookFileChanged for the scope of when
+// this fires (LLM-write only -- it is NOT a filesystem watcher).
 type FileChangedInfo struct {
 	Path   string `json:"path"`
 	Action string `json:"action"`
+}
+
+// WorkspaceFileChangedInfo carries details about a filesystem event inside
+// the session's working directory, observed by the engine-owned recursive
+// watcher. Unlike FileChangedInfo this fires regardless of who wrote the
+// file (LLM tools, the user's editor, shell scripts, etc.).
+//
+// Path is absolute and OS-native; RelPath is forward-slash separated and
+// relative to EngineConfig.WorkingDirectory so consumers can glob-match
+// portably. Action is one of "create", "modify", "delete". Rename is
+// reported as paired delete+create -- cross-editor rename detection is
+// unreliable.
+type WorkspaceFileChangedInfo struct {
+	Path    string `json:"path"`
+	RelPath string `json:"relPath"`
+	Action  string `json:"action"`
 }
 
 // TaskLifecycleInfo carries details about a task event.

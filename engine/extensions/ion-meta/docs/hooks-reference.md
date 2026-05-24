@@ -91,11 +91,12 @@ All per-tool result hooks are fire-and-forget (void return).
 | `permission_request` | `{toolName, input, decision, ruleName}` | void | Observe permission flow |
 | `permission_denied` | `{toolName, input, reason}` | void | Log denied permissions |
 
-## File (1)
+## File (2)
 
 | Hook | Payload | Return | Use Case |
 |------|---------|--------|----------|
-| `file_changed` | `{path, action}` | void | React to file changes |
+| `file_changed` | `{path, action}` | void | React to LLM Write/Edit tool calls (does NOT fire on external edits) |
+| `workspace_file_changed` | `{path, relPath, action}` | void | React to any filesystem change under the session working directory (LLM, user editor, shell scripts) |
 
 ## Task (2)
 

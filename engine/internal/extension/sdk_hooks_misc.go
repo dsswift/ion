@@ -45,6 +45,13 @@ func (s *SDK) FireFileChanged(ctx *Context, info FileChangedInfo) {
 	s.fire(HookFileChanged, ctx, info)
 }
 
+// FireWorkspaceFileChanged fires the workspace_file_changed hook. Called by
+// the session-scoped filesystem watcher for every non-ignored create / modify
+// / delete event under the working directory.
+func (s *SDK) FireWorkspaceFileChanged(ctx *Context, info WorkspaceFileChangedInfo) {
+	s.fire(HookWorkspaceFileChanged, ctx, info)
+}
+
 // FireTaskCreated fires the task_created hook.
 func (s *SDK) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) {
 	s.fire(HookTaskCreated, ctx, info)

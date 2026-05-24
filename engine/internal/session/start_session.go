@@ -396,6 +396,17 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 	ctx := m.newExtContext(s, key)
 	_ = group.FireSessionStart(ctx)
 
+	// Start the workspace filesystem watcher after extensions are loaded and
+	// session_start has fired. Wiring after session_start lets extensions
+	// observe the very first batch of events without a startup-race; the
+	// watcher's own startup walk does not synthesize events for pre-existing
+	// files, so consumers see only post-start activity.
+	if w := m.startWorkspaceWatcher(s, key, group); w != nil {
+		m.mu.Lock()
+		s.fsWatcher = w
+		m.mu.Unlock()
+	}
+
 	// Discover capabilities from extensions
 	caps := group.FireCapabilityDiscover(ctx)
 	for _, cap := range caps {

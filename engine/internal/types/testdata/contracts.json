@@ -176,7 +176,8 @@
       "sessionId",
       "systemHint",
       "thinking",
-      "workingDirectory"
+      "workingDirectory",
+      "workspaceWatchIgnore"
     ],
     "McpServerInfo": [
       "name",

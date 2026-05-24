@@ -196,6 +196,15 @@ type EngineConfig struct {
 	MaxTokens        int               `json:"maxTokens,omitempty"`
 	Thinking         *ThinkingConfig   `json:"thinking,omitempty"`
 	SystemHint       string            `json:"systemHint,omitempty"`
+
+	// WorkspaceWatchIgnore overrides the engine's default ignore-glob list
+	// for the workspace_file_changed watcher. When nil/empty the engine uses
+	// its built-in defaults (.git/**, node_modules/**, dist/**, build/**,
+	// target/**, .next/**, .nuxt/**, .venv/**, __pycache__/**, .ion/**,
+	// .DS_Store, *.swp, *.swo, *.tmp, *~). A non-empty slice REPLACES the
+	// defaults entirely -- it does not merge. Patterns use doublestar
+	// (forward-slash) syntax and are matched against repo-relative paths.
+	WorkspaceWatchIgnore []string `json:"workspaceWatchIgnore,omitempty"`
 }
 
 // ThinkingConfig controls extended thinking for API-backend runs.

@@ -571,3 +571,12 @@ func (g *ExtensionGroup) FireFileChanged(ctx *Context, info FileChangedInfo) {
 		h.SDK().FireFileChanged(ctx, info)
 	}
 }
+
+// FireWorkspaceFileChanged fans the workspace_file_changed hook out to every
+// host in the group. Called by the session-scoped fsnotify watcher on every
+// non-ignored create / modify / delete event under the working directory.
+func (g *ExtensionGroup) FireWorkspaceFileChanged(ctx *Context, info WorkspaceFileChangedInfo) {
+	for _, h := range g.hosts {
+		h.SDK().FireWorkspaceFileChanged(ctx, info)
+	}
+}

@@ -285,11 +285,12 @@ type PermissionDeniedInfo struct {
 }
 ```
 
-## File Changes (1)
+## File Changes (2)
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `file_changed` | File created, modified, or deleted | `FileChangedInfo{Path, Action}` | ignored | Observe only |
+| `file_changed` | LLM Write or Edit tool wrote a file (does **not** fire on external edits — see `workspace_file_changed`) | `FileChangedInfo{Path, Action}` | ignored | Observe only |
+| `workspace_file_changed` | Any non-ignored file or directory under the session working directory was created, modified, or deleted (LLM tools, user editor, shell scripts — anything) | `WorkspaceFileChangedInfo{Path, RelPath, Action}` | ignored | Observe only |
 
 ### Payload Types
 
@@ -300,6 +301,19 @@ type FileChangedInfo struct {
     Action string
 }
 ```
+
+**WorkspaceFileChangedInfo**
+```go
+type WorkspaceFileChangedInfo struct {
+    Path    string  // absolute, OS-native
+    RelPath string  // forward-slash, relative to WorkingDirectory
+    Action  string  // "create", "modify", or "delete"
+}
+```
+
+`workspace_file_changed` is backed by an engine-owned recursive fsnotify watcher rooted at `EngineConfig.WorkingDirectory`. Defaults ignore `.git/**`, `node_modules/**`, `dist/**`, `build/**`, `target/**`, `.next/**`, `.nuxt/**`, `.venv/**`, `__pycache__/**`, `.ion/**`, plus editor noise (`.DS_Store`, `*.swp`, `*.swo`, `*.tmp`, `*~`). Override the whole list via `EngineConfig.WorkspaceWatchIgnore` (non-empty array replaces the defaults; it does not merge).
+
+Out-of-tree paths are not covered. Extensions that need to watch files outside the working directory install their own `node:fs.watch` in their subprocess. Renames are reported as paired delete+create events (cross-editor rename detection is unreliable).
 
 ## Task Lifecycle (2)
 
