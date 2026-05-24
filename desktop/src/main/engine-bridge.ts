@@ -1,10 +1,10 @@
 import { EventEmitter } from 'events'
 import { createConnection, Socket } from 'net'
-import { spawn, execSync } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
+import { spawnEngineServer } from './engine-bridge-spawn'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload } from '../shared/types'
 
 const TAG = 'EngineBridge'
@@ -162,53 +162,10 @@ export class EngineBridge extends EventEmitter {
   }
 
   private async _startServer(): Promise<void> {
-    log('Starting engine server...')
-
-    // Find ion engine binary
-    const bundled = process.resourcesPath
-      ? join(process.resourcesPath, 'engine', 'ion')
-      : null
-    const candidates = [
-      ...(bundled ? [bundled] : []),                              // packaged .app
-      join(__dirname, '..', '..', '..', 'engine', 'bin', 'ion'), // dev monorepo
-      join(homedir(), '.ion', 'bin', 'ion'),                      // installed CLI
-    ]
-
-    let binary: string | null = null
-    for (const c of candidates) {
-      if (existsSync(c)) {
-        binary = c
-        break
-      }
-    }
-
-    if (!binary) {
-      // Try finding via which
-      try {
-        binary = execSync('which ion', { encoding: 'utf-8' }).trim()
-      } catch {}
-    }
-
-    if (!binary) {
-      throw new Error('Cannot find ion executable')
-    }
-
-    // Spawn as child of Ion.app — keep parent process group/session intact so
-    // macOS TCC attributes file-system access to Ion.app rather than recording
-    // a separate identity for the engine binary.
-    const isJs = binary.endsWith('.js')
-    const cmd = isJs ? 'node' : binary
-    const args = isJs ? [binary, 'serve'] : ['serve']
-
-    const child = spawn(cmd, args, {
-      stdio: 'ignore',
-      env: {
-        ...process.env,
-        ION_SOCKET_PATH: SOCKET_PATH,
-        ION_PID_PATH: PID_PATH,
-      },
-    })
-    log(`Spawned engine server: PID ${child.pid}`)
+    // Binary discovery + child-spawn logic lives in engine-bridge-spawn.ts
+    // so this file stays under the 600-line cap. The split is purely
+    // mechanical; nothing about the contract changes.
+    spawnEngineServer(SOCKET_PATH, PID_PATH)
   }
 
   private _scheduleReconnect(): void {
