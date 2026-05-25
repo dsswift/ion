@@ -170,9 +170,12 @@ func (m *Manager) wireHostAsync(key string, host *extension.Host) {
 		m.mu.RUnlock()
 		if !ok || s == nil {
 			// No session yet (init handshake before session is fully
-			// wired). Fire with a nil ctx — most hook handlers don't
-			// care; veto returns are still respected.
-			return m.fireLifecycleHookSDK(event, nil, info, host)
+			// wired). Fire with a minimal stub ctx — callHook requires
+			// non-nil ctx because it populates `_ctx` on the wire
+			// payload; an empty Context with just SessionKey set
+			// satisfies that.
+			stub := &extension.Context{SessionKey: key}
+			return m.fireLifecycleHookSDK(event, stub, info, host)
 		}
 		ctx := m.newExtContext(s, key)
 		return m.fireLifecycleHookSDK(event, ctx, info, host)

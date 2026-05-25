@@ -57,19 +57,26 @@ func (h *Host) rpcRegisterWebhook(id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
-	err := h.RegisterWebhookDecl(req.Params, asyncreg.OriginRuntime)
-	if err != nil {
-		code := asyncRPCErrorCode(err)
-		utils.Log("extension", fmt.Sprintf("ext/register_webhook: ext=%s path=%q rejected: %v", h.name, req.Params.Path, err))
-		h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
-		return
-	}
-	utils.Log("extension", fmt.Sprintf("ext/register_webhook: ext=%s path=%q registered (origin=runtime)", h.name, req.Params.Path))
-	resp, _ := json.Marshal(struct {
-		OK bool   `json:"ok"`
-		ID string `json:"id"`
-	}{OK: true, ID: req.Params.Path})
-	h.sendResponse(id, resp, nil)
+	// Run the registration in a goroutine so the readLoop is free to
+	// receive the subsequent hook/webhook_registered request the
+	// engine sends as part of the veto pipeline. Without this the
+	// veto fire blocks forever waiting for a hook response that can
+	// only arrive over a readLoop that's already blocked.
+	go func() {
+		err := h.RegisterWebhookDecl(req.Params, asyncreg.OriginRuntime)
+		if err != nil {
+			code := asyncRPCErrorCode(err)
+			utils.Log("extension", fmt.Sprintf("ext/register_webhook: ext=%s path=%q rejected: %v", h.name, req.Params.Path, err))
+			h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
+			return
+		}
+		utils.Log("extension", fmt.Sprintf("ext/register_webhook: ext=%s path=%q registered (origin=runtime)", h.name, req.Params.Path))
+		resp, _ := json.Marshal(struct {
+			OK bool   `json:"ok"`
+			ID string `json:"id"`
+		}{OK: true, ID: req.Params.Path})
+		h.sendResponse(id, resp, nil)
+	}()
 }
 
 func (h *Host) rpcDeregisterWebhook(id int64, raw []byte) {
@@ -87,13 +94,15 @@ func (h *Host) rpcDeregisterWebhook(id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "path is required"})
 		return
 	}
-	removed := h.DeregisterWebhookDecl(req.Params.Path)
-	utils.Log("extension", fmt.Sprintf("ext/deregister_webhook: ext=%s path=%q removed=%t", h.name, req.Params.Path, removed))
-	resp, _ := json.Marshal(struct {
-		OK      bool `json:"ok"`
-		Removed bool `json:"removed"`
-	}{OK: true, Removed: removed})
-	h.sendResponse(id, resp, nil)
+	go func() {
+		removed := h.DeregisterWebhookDecl(req.Params.Path)
+		utils.Log("extension", fmt.Sprintf("ext/deregister_webhook: ext=%s path=%q removed=%t", h.name, req.Params.Path, removed))
+		resp, _ := json.Marshal(struct {
+			OK      bool `json:"ok"`
+			Removed bool `json:"removed"`
+		}{OK: true, Removed: removed})
+		h.sendResponse(id, resp, nil)
+	}()
 }
 
 func (h *Host) rpcRegisterSchedule(id int64, raw []byte) {
@@ -105,19 +114,21 @@ func (h *Host) rpcRegisterSchedule(id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
-	err := h.RegisterScheduleDecl(req.Params, asyncreg.OriginRuntime)
-	if err != nil {
-		code := asyncRPCErrorCode(err)
-		utils.Log("extension", fmt.Sprintf("ext/register_schedule: ext=%s id=%q rejected: %v", h.name, req.Params.JobID, err))
-		h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
-		return
-	}
-	utils.Log("extension", fmt.Sprintf("ext/register_schedule: ext=%s id=%q registered (origin=runtime)", h.name, req.Params.JobID))
-	resp, _ := json.Marshal(struct {
-		OK bool   `json:"ok"`
-		ID string `json:"id"`
-	}{OK: true, ID: req.Params.JobID})
-	h.sendResponse(id, resp, nil)
+	go func() {
+		err := h.RegisterScheduleDecl(req.Params, asyncreg.OriginRuntime)
+		if err != nil {
+			code := asyncRPCErrorCode(err)
+			utils.Log("extension", fmt.Sprintf("ext/register_schedule: ext=%s id=%q rejected: %v", h.name, req.Params.JobID, err))
+			h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
+			return
+		}
+		utils.Log("extension", fmt.Sprintf("ext/register_schedule: ext=%s id=%q registered (origin=runtime)", h.name, req.Params.JobID))
+		resp, _ := json.Marshal(struct {
+			OK bool   `json:"ok"`
+			ID string `json:"id"`
+		}{OK: true, ID: req.Params.JobID})
+		h.sendResponse(id, resp, nil)
+	}()
 }
 
 func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
@@ -135,13 +146,15 @@ func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "id is required"})
 		return
 	}
-	removed := h.DeregisterScheduleDecl(req.Params.ID)
-	utils.Log("extension", fmt.Sprintf("ext/deregister_schedule: ext=%s id=%q removed=%t", h.name, req.Params.ID, removed))
-	resp, _ := json.Marshal(struct {
-		OK      bool `json:"ok"`
-		Removed bool `json:"removed"`
-	}{OK: true, Removed: removed})
-	h.sendResponse(id, resp, nil)
+	go func() {
+		removed := h.DeregisterScheduleDecl(req.Params.ID)
+		utils.Log("extension", fmt.Sprintf("ext/deregister_schedule: ext=%s id=%q removed=%t", h.name, req.Params.ID, removed))
+		resp, _ := json.Marshal(struct {
+			OK      bool `json:"ok"`
+			Removed bool `json:"removed"`
+		}{OK: true, Removed: removed})
+		h.sendResponse(id, resp, nil)
+	}()
 }
 
 // asyncRPCErrorCode maps an internal registry error to a JSON-RPC

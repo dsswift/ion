@@ -33,6 +33,9 @@ func (h *Host) registerHookForwarders() {
 		// Extension lifecycle hooks (observational; engine fires after auto-respawn).
 		HookExtensionRespawned, HookTurnAborted,
 		HookPeerExtensionDied, HookPeerExtensionRespawned,
+		// Async-trigger deregistration hooks (observation-only;
+		// veto would let one extension trap another's resources).
+		HookWebhookDeregistered, HookScheduleDeregistered,
 	}
 	for _, hook := range noOpHooks {
 		h.registerNoOpForwarder(hook)
@@ -57,6 +60,12 @@ func (h *Host) registerHookForwarders() {
 
 	// Block-checking hooks: parse result.block and result.reason.
 	h.registerBlockForwarder(HookToolCall)
+
+	// Async-trigger registration veto hooks: same {block, reason}
+	// shape as registerBlockForwarder but the return type is
+	// *AsyncRegistrationVeto so the FireXxx wrappers can decode it.
+	h.registerAsyncRegistrationVetoForwarder(HookWebhookRegistered)
+	h.registerAsyncRegistrationVetoForwarder(HookScheduleRegistered)
 
 	// Per-tool call hooks: parse result.block, result.reason, result.mutate.
 	perToolCallHooks := []string{
