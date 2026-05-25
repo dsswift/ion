@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.37.0](https://github.com/dsswift/ion/compare/desktop-v1.36.0...desktop-v1.37.0) (2026-05-25)
+
+### Features
+
+* **desktop:** typed webhook and schedule events ([7c151df](https://github.com/dsswift/ion/commit/7c151df37ad97203f71f237be733d2c9735ff6f5))
+
 ## [1.36.0](https://github.com/dsswift/ion/compare/desktop-v1.35.1...desktop-v1.36.0) (2026-05-25)
 
 ### Features

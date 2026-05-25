@@ -13,6 +13,21 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.26.0](https://github.com/dsswift/ion/compare/engine-v1.25.0...engine-v1.26.0) (2026-05-25)
+
+### Features
+
+* **engine:** add asyncreg registry and async-trigger SDK types ([517d79b](https://github.com/dsswift/ion/commit/517d79b31e53db2fc63a7fa7bba9497c6b506fd3))
+* **engine:** wire host async-trigger registry and dynamic RPCs ([6ec61cc](https://github.com/dsswift/ion/commit/6ec61cc465ed59a2318793e10190da924d478319))
+* **engine:** webhook HTTP server with auth and route dispatch ([90c4100](https://github.com/dsswift/ion/commit/90c41001ad620a65c1f89f73e930aeb1ae7c8d58))
+* **engine:** scheduler with daily/weekly/interval kinds ([027086a](https://github.com/dsswift/ion/commit/027086a28b803b6ede11509e3513798fc366f720))
+* **engine:** wire async-trigger subsystems into session manager ([6a2ee54](https://github.com/dsswift/ion/commit/6a2ee548fe35ec73679b5e39221cea81336ba9d8))
+* **engine:** sdk runtime for ion.webhooks and ion.schedule ([02bb77f](https://github.com/dsswift/ion/commit/02bb77f0c2558db5530bbca47f139db3c2f98c7c))
+
+### Bug Fixes
+
+* **engine:** lint fixes for asyncreg and webhooks ([1c2f1f5](https://github.com/dsswift/ion/commit/1c2f1f513c2a6e125dfedfdf07815bae2e666c34))
+
 ## [1.25.0](https://github.com/dsswift/ion/compare/engine-v1.24.0...engine-v1.25.0) (2026-05-25)
 
 ### Features
