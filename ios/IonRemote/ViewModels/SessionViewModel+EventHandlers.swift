@@ -307,34 +307,10 @@ extension SessionViewModel {
             engineProfiles = profiles
 
         case .enginePlanProposal:
-            // Workflow event from the engine: the model has proposed a
-            // plan-mode transition (currently only kind="exit"). iOS does
-            // not yet render an approval UI for this — the desktop is the
-            // authoritative consumer that gates the actual mode flip — so
-            // we decode the event for diagnostic visibility (handled by
-            // DiagnosticLog.logEvent above) and otherwise no-op. The wire
-            // protocol stays uniform across consumers. See
-            // docs/architecture/adr/003-state-events-vs-workflow-events.md.
-            break
+            handleEnginePlanProposal()
 
         case .engineEarlyStopDecisionRequest:
-            // Engine ↔ harness wire-protocol request emitted when the
-            // engine wants an external opinion on whether to nudge a
-            // model that has stopped below the configured output-token
-            // budget. The desktop's early-stop-policy.ts is the
-            // authoritative responder via the early_stop_decision_response
-            // command. iOS does not respond — it observes the event for
-            // diagnostic visibility (handled by DiagnosticLog.logEvent
-            // above) and otherwise no-ops.
-            //
-            // Decoding the event cleanly on iOS keeps the wire protocol
-            // uniform: every engine event the desktop sees, iOS sees.
-            // The previous desktop-side filter that skipped this event
-            // before forwarding to iOS is now removed in
-            // desktop/src/main/event-wiring.ts. See ADR-002 for the
-            // engine-vs-harness boundary that motivates the request /
-            // response shape on the wire.
-            break
+            handleEngineEarlyStopDecisionRequest()
 
         case .desktopSettingsSnapshot(let settings, let schema, let groups):
             // Per-desktop user-preferences projection. Snapshot semantics

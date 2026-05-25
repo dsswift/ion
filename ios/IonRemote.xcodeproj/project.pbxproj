@@ -66,6 +66,7 @@
 		A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */; };
+		A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */; };
 		A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */; };
 		A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
@@ -217,6 +218,7 @@
 		A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabGroupCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConnectionEvents.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineWorkflowEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabEventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineKeys.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
@@ -477,6 +479,7 @@
 				A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */,
+				A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */,
 				A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */,
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
@@ -710,6 +713,7 @@
 				A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */,
+				A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */,
 				A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,
 				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
