@@ -10,6 +10,26 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.36.0](https://github.com/dsswift/ion/compare/desktop-v1.35.1...desktop-v1.36.0) (2026-05-25)
+
+### Features
+
+* **desktop:** unify slash pipeline + /clear checkpoint ([1a3894d](https://github.com/dsswift/ion/commit/1a3894dd2073077b90b98efb9cfec511bce284a9))
+* **engine:** early-stop continuation with opt-in wire protocol ([5f79236](https://github.com/dsswift/ion/commit/5f7923647e084ccd2be1ef1f3daf4d00bba7f3d8))
+* **desktop:** add opus 4.7 model with 1m context window ([3bceb82](https://github.com/dsswift/ion/commit/3bceb8240941cce0501125a1c15311872f65296e))
+* **engine:** plan-mode lifecycle with implementation phase ([10e63c4](https://github.com/dsswift/ion/commit/10e63c4dc8f4ca85991b323c24744882bca54037))
+* **engine:** add workspace_file_changed hook + watcher (#130) ([e8377e9](https://github.com/dsswift/ion/commit/e8377e96a91704524d430c13ec538031c3826608))
+* **desktop:** hide cd prefix and count collapsed tool groups ([8ff62da](https://github.com/dsswift/ion/commit/8ff62da2a901965c889195bf72a44c35acd66b0a))
+* **desktop:** add move to group and pin menu option ([49bebd8](https://github.com/dsswift/ion/commit/49bebd8bb31c8c2110e6b4eb4fa8e3dd37c908b9))
+* **desktop:** consume engine_plan_proposal in event pipeline ([ea13ca8](https://github.com/dsswift/ion/commit/ea13ca8795766de416d039b9b3d501e5d00d3dc7))
+* **desktop:** project user settings to iOS via wire protocol ([5d8e596](https://github.com/dsswift/ion/commit/5d8e5962f54c29c29dffd6b313af73a47b7c421c))
+
+### Bug Fixes
+
+* **desktop:** refresh git on tab switch, panel open, focus ([74c72ea](https://github.com/dsswift/ion/commit/74c72eac66eb0f67135e6ff0a00b215a859fc269))
+* **engine:** /clear leak + expand Skill tool with claude-skills manifest ([b7f1b2b](https://github.com/dsswift/ion/commit/b7f1b2bc423384aad95189b29c9c48ca8ac45c6f))
+* **desktop:** stub electron in tests for ci compatibility ([8f16df5](https://github.com/dsswift/ion/commit/8f16df519e9b3e6160b798cac03010188a08be8e))
+
 ## [1.35.1](https://github.com/dsswift/ion/compare/desktop-v1.35.0...desktop-v1.35.1) (2026-05-23)
 
 ### Bug Fixes

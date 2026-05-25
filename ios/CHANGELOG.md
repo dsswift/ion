@@ -10,6 +10,26 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.30.0](https://github.com/dsswift/ion/compare/ios-v1.29.0...ios-v1.30.0) (2026-05-25)
+
+### Features
+
+* **engine:** plan-mode lifecycle with implementation phase ([10e63c4](https://github.com/dsswift/ion/commit/10e63c4dc8f4ca85991b323c24744882bca54037))
+* **ios:** make ask user question card collapsible ([1bd01e1](https://github.com/dsswift/ion/commit/1bd01e1767611ba10e9335b02b5ec071b2afe2f0))
+* **ios:** add tab group pin support and ui components ([058d472](https://github.com/dsswift/ion/commit/058d4723943efd03771eaba56f97c3fa521f4d0c))
+* **ios:** decode engine_plan_proposal event ([f7fff62](https://github.com/dsswift/ion/commit/f7fff62144ba0c1b4a585f7fc3df4664c1609308))
+* **ios:** decode engine_early_stop_decision_request event ([6f32778](https://github.com/dsswift/ion/commit/6f3277851cbc4658c502bddfda8f10e26052c749))
+* **desktop:** project user settings to iOS via wire protocol ([5d8e596](https://github.com/dsswift/ion/commit/5d8e5962f54c29c29dffd6b313af73a47b7c421c))
+* **ios:** show desktop settings with apple-style settings ui ([268e133](https://github.com/dsswift/ion/commit/268e1339f29932d50eeeecd28f9a8aec9348c8a1))
+* **ios:** decode engine_command_registry + engine_command_result ([7c659c0](https://github.com/dsswift/ion/commit/7c659c0040a1717f2de48b48ef048b784685e0ce))
+* **ios:** add device-locked handling in install flow ([70614b0](https://github.com/dsswift/ion/commit/70614b0b154cb0167b5b431907ed7c4f62686194))
+
+### Bug Fixes
+
+* **ios:** write optimistic message timestamp in milliseconds ([774fce8](https://github.com/dsswift/ion/commit/774fce85c0e414111b04cfa2aac5141f8247c39d))
+* **ios:** add opus 4.7 to available models ([b85db64](https://github.com/dsswift/ion/commit/b85db64ca9cfa3e1b1bd9608f4a3a454d438c93a))
+* **ios:** refresh git on tab list, pane open, foreground ([3c0fbaa](https://github.com/dsswift/ion/commit/3c0fbaa451a81e0d5b0742dd58f42d1288b3adb0))
+
 ## [1.29.0](https://github.com/dsswift/ion/compare/ios-v1.28.0...ios-v1.29.0) (2026-05-22)
 
 ### Features

@@ -13,6 +13,27 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.25.0](https://github.com/dsswift/ion/compare/engine-v1.24.0...engine-v1.25.0) (2026-05-25)
+
+### Features
+
+* **engine:** bridge getContextUsage and searchHistory (#127) ([59e0eb4](https://github.com/dsswift/ion/commit/59e0eb43e6b0ad8c6684aee17319bb53ed141de9))
+* **desktop:** unify slash pipeline + /clear checkpoint ([1a3894d](https://github.com/dsswift/ion/commit/1a3894dd2073077b90b98efb9cfec511bce284a9))
+* **engine:** early-stop continuation with opt-in wire protocol ([5f79236](https://github.com/dsswift/ion/commit/5f7923647e084ccd2be1ef1f3daf4d00bba7f3d8))
+* **engine:** publish command registry and unknown-command result ([9621103](https://github.com/dsswift/ion/commit/962110303b577a2dd08ee9384fae3652390fc73b))
+* **engine:** surface compaction facts to session_compact (#129) ([7923705](https://github.com/dsswift/ion/commit/7923705652b3afa290c326962185a47ddff4941d))
+* **engine:** plan-mode lifecycle with implementation phase ([10e63c4](https://github.com/dsswift/ion/commit/10e63c4dc8f4ca85991b323c24744882bca54037))
+* **engine:** add workspace_file_changed hook + watcher (#130) ([e8377e9](https://github.com/dsswift/ion/commit/e8377e96a91704524d430c13ec538031c3826608))
+* **engine:** add engine_plan_proposal workflow event ([844feaf](https://github.com/dsswift/ion/commit/844feaf5f08d0f1dc1c790190f0eddd4cd0074bf))
+
+### Bug Fixes
+
+* **engine:** wire before_provider_request hook (#128) ([d969bd5](https://github.com/dsswift/ion/commit/d969bd5fa2ebca0f003b38b97f1d3f937784624d))
+* **engine:** wire agent_start / agent_end hooks (#126) ([7c9373b](https://github.com/dsswift/ion/commit/7c9373b05c699efab2015638eb2237906abb7873))
+* **engine:** /clear leak + expand Skill tool with claude-skills manifest ([b7f1b2b](https://github.com/dsswift/ion/commit/b7f1b2bc423384aad95189b29c9c48ca8ac45c6f))
+* **engine:** split conversation persistence to fix /clear (#146) ([b512bfd](https://github.com/dsswift/ion/commit/b512bfddedb0a6faf1e9c20edcb0c8a7a5d8449f))
+* **engine:** replace sleep with poll in ion serve test ([6b71fae](https://github.com/dsswift/ion/commit/6b71fae57dc08211ab79d5a9986958249b9fbdf9))
+
 ## [1.24.0](https://github.com/dsswift/ion/compare/engine-v1.23.3...engine-v1.24.0) (2026-05-23)
 
 ### Features
