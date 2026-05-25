@@ -128,6 +128,51 @@ Harness engineers running the engine outside the Ion desktop are encouraged to c
 
 **Sub-agents are off by default.** Runs dispatched through the Agent tool have `IsSubagent=true` and the engine skips the feature for them automatically — sub-agents are summoned with a tight remit and should not be poked to keep working. Harness extensions can still force-on per dispatch via `RunOptions.EarlyStopEnabled = &true`.
 
+## workspaceWatchIgnore
+
+Override the engine's default ignore-glob list for the `workspace_file_changed` hook's recursive filesystem watcher. The watcher is rooted at the session `workingDirectory` and fires the hook for every non-ignored create / modify / delete event under the tree. The ignore list runs before fsnotify descriptors are attached, so ignored subtrees (e.g. `node_modules/**`) never consume inotify capacity in the first place.
+
+This is an array of doublestar glob patterns matched against repo-relative, forward-slash paths. The field is optional; omit it (or supply an empty array) to inherit the engine defaults below.
+
+**Default ignore list (used when the field is unset or empty):**
+
+```
+.git/**
+node_modules/**
+dist/**
+build/**
+target/**
+.next/**
+.nuxt/**
+.venv/**
+__pycache__/**
+.ion/**
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*~
+```
+
+**Replacement semantics, not merge.** When `workspaceWatchIgnore` is non-empty, the engine uses the supplied list **verbatim** and the defaults above no longer apply. If you want the defaults plus a few extra patterns, copy the default list into your config and append your additions. This was a deliberate choice: a merge mode would force a second "negate this default" syntax (e.g. `!node_modules/**`) that consumers would have to learn; full replacement keeps the contract one-liner.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `workspaceWatchIgnore` | string[] | engine built-in list (above) | Doublestar glob patterns matched against repo-relative paths. Non-empty array replaces the defaults; does not merge. |
+
+```json
+{
+  "workspaceWatchIgnore": [
+    ".git/**",
+    "node_modules/**",
+    "vendor/**",
+    "**/*.generated.go"
+  ]
+}
+```
+
+Out-of-tree paths are deliberately out of scope. Extensions that need to watch files outside the working directory install their own `node:fs.watch` in their subprocess; the engine watcher exists to give every loaded extension a single coalesced view of in-tree changes without N extensions each spinning up their own watcher. See [`workspace_file_changed`](../hooks/reference.md#file-changes-2) in the Hook Reference for the hook payload and the rationale behind the engine-owned watcher.
+
 ## mcpServers
 
 Map of server name to MCP server configuration. Each entry defines a connection to a [Model Context Protocol](https://modelcontextprotocol.io/) server.
