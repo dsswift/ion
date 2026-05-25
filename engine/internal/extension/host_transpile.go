@@ -186,6 +186,14 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		Commands map[string]struct {
 			Description string `json:"description"`
 		} `json:"commands"`
+		// Async triggers declared at init time. Both are optional —
+		// extensions that register no webhooks / schedules at module
+		// scope omit them entirely. We stash the decoded values onto
+		// the host's pending-init buffer and the session manager
+		// commits them after wiring the lifecycle-hook callback so
+		// init-time vetoes can fire correctly.
+		Webhooks  []WebhookRoute `json:"webhooks,omitempty"`
+		Schedules []ScheduleJob  `json:"schedules,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		utils.Log("extension", fmt.Sprintf("init result parse error: %v", err))
@@ -238,5 +246,20 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 	if len(result.Tools) > 0 || len(result.Commands) > 0 {
 		utils.Log("extension", fmt.Sprintf("registered %d tools, %d commands from init",
 			len(result.Tools), len(result.Commands)))
+	}
+
+	// Stash async-trigger declarations on the host. The session manager
+	// commits them through the registry after wiring the lifecycle-hook
+	// callback so init-time vetoes can fire. Re-stashing on respawn is
+	// safe: the previous subprocess's declarations are gone with it, and
+	// the new init payload is the authoritative set.
+	if len(result.Webhooks) > 0 || len(result.Schedules) > 0 {
+		h.asyncOnce.Do(func() { h.async = &asyncHostState{} })
+		h.async.mu.Lock()
+		h.pendingInitWebhooks = append([]WebhookRoute(nil), result.Webhooks...)
+		h.pendingInitSchedules = append([]ScheduleJob(nil), result.Schedules...)
+		h.async.mu.Unlock()
+		utils.Log("extension", fmt.Sprintf("queued init async decls: ext=%s webhooks=%d schedules=%d",
+			h.name, len(result.Webhooks), len(result.Schedules)))
 	}
 }

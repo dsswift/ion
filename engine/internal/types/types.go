@@ -443,6 +443,63 @@ type EngineEvent struct {
 	EarlyStopLastContinuationDelta int    `json:"earlyStopLastContinuationDelta,omitempty"`
 	EarlyStopWouldContinue        bool   `json:"earlyStopWouldContinue,omitempty"`
 	EarlyStopIsSubagent           bool   `json:"earlyStopIsSubagent,omitempty"`
+
+	// --- Async-trigger events (D-010 / D-011) ---
+	//
+	// Webhook fire events: engine_webhook_received, engine_webhook_authenticated,
+	// engine_webhook_handler_error, engine_webhook_responded.
+	// Webhook lifecycle events: engine_webhook_registered, engine_webhook_deregistered.
+	// Schedule fire events: engine_schedule_fired, engine_schedule_skipped,
+	// engine_schedule_failed.
+	// Schedule lifecycle events: engine_schedule_registered, engine_schedule_deregistered.
+	// Shared error: engine_async_fire_dropped.
+	//
+	// All of these are observation-only — the engine emits them so the
+	// desktop / iOS can render a "what's registered" panel and an
+	// audit log of fires. Consumers MUST NOT depend on these for
+	// state machines; they are advisory.
+	//
+	// AsyncKind is "webhook" or "schedule" — discriminator for the
+	// engine_*_registered / engine_*_deregistered and engine_async_fire_dropped
+	// events. Carried as a free-form string so future kinds (e.g. queue
+	// listeners) don't force a wire break.
+	AsyncKind string `json:"asyncKind,omitempty"`
+	// AsyncID is the declaration's stable id within its kind (webhook
+	// path or schedule job id). Carried on every async event so a
+	// consumer can correlate received → authenticated → responded by
+	// (kind, id, requestId).
+	AsyncID string `json:"asyncId,omitempty"`
+	// AsyncOrigin is "init" or "runtime" — set on lifecycle events
+	// only. Lets the operator distinguish bulk init declarations from
+	// dynamic post-init add/remove.
+	AsyncOrigin string `json:"asyncOrigin,omitempty"`
+	// AsyncReason discriminates the cause for negative-path async
+	// events: engine_webhook_handler_error ("auth", "body_size",
+	// "handler_failed", "timeout"); engine_schedule_skipped
+	// ("disabled"); engine_schedule_failed (free-form);
+	// engine_async_fire_dropped ("no_session", "cap_exceeded",
+	// "subprocess_dead", "unregistered").
+	AsyncReason string `json:"asyncReason,omitempty"`
+	// AsyncDecl carries the declaration JSON for engine_*_registered /
+	// engine_*_deregistered events so a renderer can show "registered
+	// /webhook/foo via init handshake" without keeping its own table.
+	// Auth secrets are NEVER included — only the auth shape and the
+	// opaque TokenRefName.
+	AsyncDecl json.RawMessage `json:"asyncDecl,omitempty"`
+	// AsyncRequestID correlates a single webhook request from received
+	// → authenticated → handler_error/responded for downstream tracing.
+	// Schedule fires omit this (each fire is its own event).
+	AsyncRequestID string `json:"asyncRequestId,omitempty"`
+	// AsyncMethod / AsyncPath / AsyncStatus describe an engine_webhook_*
+	// event's HTTP layer. Method is "POST" / "GET" / …; Path mirrors
+	// AsyncID for symmetry; Status is the response status code
+	// (engine_webhook_responded, engine_webhook_handler_error).
+	AsyncMethod string `json:"asyncMethod,omitempty"`
+	AsyncPath   string `json:"asyncPath,omitempty"`
+	AsyncStatus int    `json:"asyncStatus,omitempty"`
+	// AsyncDurationMs is the elapsed time of a fire from receipt to
+	// response (webhook) or fire to handler-return (schedule).
+	AsyncDurationMs int64 `json:"asyncDurationMs,omitempty"`
 }
 
 // MessageEndUsage reports token usage at the end of a message.

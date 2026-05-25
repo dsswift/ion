@@ -122,6 +122,12 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 // with both a method and id field). The engine sends a response back.
 func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	ctx := h.currentCtx.Load()
+	// Async-trigger registration RPCs live in host_rpc_async.go to keep
+	// this file under the 800-line cap. handleAsyncRPC returns true when
+	// it dispatched the method.
+	if h.handleAsyncRPC(method, id, raw) {
+		return
+	}
 	switch method {
 	case "ext/register_process":
 		var req struct {
