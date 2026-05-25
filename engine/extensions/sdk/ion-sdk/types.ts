@@ -1161,4 +1161,189 @@ export interface IonSDK {
   on(hook: string, handler: HookHandler<any>): void
   registerTool(def: ToolDef): void
   registerCommand(name: string, def: CommandDef): void
+
+  /**
+   * Webhook route registration. Call `.register(route)` to bind an
+   * inbound HTTP path; static (module-scope) and dynamic (post-init)
+   * calls share the same shape and return a `WebhookHandle` with
+   * `.unregister()`.
+   *
+   * @example
+   * ```ts
+   * ion.webhooks.register({
+   *   path: '/webhook/github',
+   *   method: 'POST',
+   *   auth: { kind: 'hmac-signature', headerName: 'X-Hub-Signature-256',
+   *           algorithm: 'sha256', token: () => process.env.GH_SECRET ?? '' },
+   *   handler: async (ctx, req) => {
+   *     await ctx.dispatchAgent({ name: 'pr-reviewer', task: req.text() })
+   *     return { status: 200, body: 'ok' }
+   *   },
+   * })
+   * ```
+   */
+  webhooks: {
+    register(route: WebhookRoute): Promise<WebhookHandle>
+  }
+
+  /**
+   * Scheduled job registration. Three kinds: daily, weekly, interval.
+   * Each returns a `ScheduleHandle` with `.unregister()`. Static and
+   * dynamic registration share the same shape.
+   *
+   * @example
+   * ```ts
+   * ion.schedule.daily({
+   *   id: 'morning-summary',
+   *   time: '09:00',
+   *   tz: 'America/New_York',
+   *   handler: async (ctx) => {
+   *     await ctx.dispatchAgent({ name: 'summariser', task: 'today' })
+   *   },
+   * })
+   *
+   * ion.schedule.interval({
+   *   id: 'inbox-poll',
+   *   intervalMs: 30_000,
+   *   handler: async (ctx) => {
+   *     // ...
+   *   },
+   * })
+   * ```
+   */
+  schedule: {
+    daily(opts: ScheduleDaily): Promise<ScheduleHandle>
+    weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>
+    interval(opts: ScheduleInterval): Promise<ScheduleHandle>
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Async-trigger types (webhooks, schedules) — D-010 / D-011.
+// ---------------------------------------------------------------------------
+//
+// Extensions register webhook routes and scheduled jobs via the
+// ion.webhooks.register and ion.schedule.{daily, weekly, interval}
+// surfaces from the runtime. Static (module-scope) and dynamic
+// (post-init) registration share the same shape and the same handle
+// for later .unregister().
+
+/** Authentication strategies a webhook route can declare. */
+export type WebhookAuth =
+  | { kind: 'none' }
+  | { kind: 'bearer'; token: () => string | Promise<string> | string }
+  | { kind: 'shared-secret'; headerName: string; token: () => string | Promise<string> | string }
+  | { kind: 'hmac-signature'; headerName: string; algorithm: 'sha256'; token: () => string | Promise<string> | string }
+
+/**
+ * Single inbound webhook request as the engine hands it to the
+ * extension handler. The body is materialised as a string; `json()`
+ * and `text()` are sugar over it. Headers are single-valued (the
+ * first value wins for multi-valued headers).
+ */
+export interface WebhookRequest {
+  method: string
+  path: string
+  url: string
+  query: string
+  headers: Record<string, string>
+  body: string
+  remote: string
+  /** Parse the body as JSON. Returns {} on malformed or empty body. */
+  json<T = unknown>(): T
+  /** Return the raw body as text. */
+  text(): string
+}
+
+/**
+ * Handler return shape for a webhook fire. The engine writes status
+ * and body, plus any extra headers. Missing fields default to
+ * status=200, body="" (no-content response).
+ */
+export interface WebhookResponse {
+  status?: number
+  body?: string
+  headers?: Record<string, string>
+}
+
+/**
+ * A single webhook route registration. Path is the URL the engine's
+ * HTTP listener will match on (exact, must start with '/'). Method
+ * defaults to POST on the engine side; specify explicitly to register
+ * a GET endpoint.
+ */
+export interface WebhookRoute {
+  path: string
+  method?: string
+  auth: WebhookAuth
+  /** Body size cap in bytes. Zero/omitted inherits the engine config default (1 MiB). */
+  maxBodyBytes?: number
+  /** Override bind interface (advanced — usually inherited from engine config). */
+  interface?: string
+  /**
+   * Handler invoked for each matching request. The ctx is freshly
+   * built per fire; ctx.dispatchAgent / sendPrompt / emit /
+   * setPlanMode / etc. all work normally.
+   *
+   * Return the response shape or void (treated as `{status: 200}`).
+   */
+  handler: (ctx: IonContext, req: WebhookRequest) => Promise<WebhookResponse> | WebhookResponse
+}
+
+/** Handle returned by ion.webhooks.register. */
+export interface WebhookHandle {
+  id: string
+  unregister(): Promise<void>
+}
+
+/** Daily schedule: fires once per day at the configured wall-clock time. */
+export interface ScheduleDaily {
+  id: string
+  time: string // "HH:MM" 24-hour
+  tz?: string  // IANA timezone; empty inherits engine default
+  timeoutMs?: number
+  enabled?: () => boolean | Promise<boolean>
+  handler: (ctx: IonContext) => Promise<void> | void
+}
+
+/** Weekly schedule: fires once per week on dayOfWeek at time. */
+export interface ScheduleWeekly {
+  id: string
+  time: string                       // "HH:MM" 24-hour
+  dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
+  tz?: string
+  timeoutMs?: number
+  enabled?: () => boolean | Promise<boolean>
+  handler: (ctx: IonContext) => Promise<void> | void
+}
+
+/** Interval schedule: fires every intervalMs (>=1000ms required). */
+export interface ScheduleInterval {
+  id: string
+  intervalMs: number
+  timeoutMs?: number
+  enabled?: () => boolean | Promise<boolean>
+  handler: (ctx: IonContext) => Promise<void> | void
+}
+
+/** Wire-format job (handler stripped — kept locally). Used internally
+ *  by the SDK runtime to ship init-time and runtime declarations to
+ *  the engine. Extension authors normally don't construct this shape
+ *  directly; use the ScheduleDaily/Weekly/Interval inputs above.
+ */
+export interface ScheduleJob {
+  id: string
+  kind: 'daily' | 'weekly' | 'interval'
+  time?: string
+  dayOfWeek?: string
+  intervalMs?: number
+  tz?: string
+  timeoutMs?: number
+  enabledRefName?: string
+}
+
+/** Handle returned by ion.schedule.daily/weekly/interval. */
+export interface ScheduleHandle {
+  id: string
+  unregister(): Promise<void>
 }

@@ -6,6 +6,15 @@
 import { createInterface } from 'node:readline'
 import { format as utilFormat } from 'node:util'
 
+import {
+  dispatchFireAsync,
+  dispatchResolvePredicate,
+  dispatchResolveToken,
+  drainPendingInit,
+  registerRpcBridge,
+  scheduleApi,
+  webhooksApi,
+} from './runtime-async'
 import type {
   AgentSpec,
   CommandDef,
@@ -256,6 +265,11 @@ async function handleRequest(
     // -- Init handshake -----------------------------------------------------
     if (method === 'init') {
       initConfig = params || emptyConfig
+      // Drain any module-scope webhook / schedule registrations into
+      // the init payload so the engine sees them in the same response.
+      // After this call, subsequent registrations route through the
+      // ext/register_* RPCs instead of the pending queue.
+      const pending = drainPendingInit()
       respond(id, {
         tools: Array.from(tools.values()).map((t) => ({
           name: t.name,
@@ -268,7 +282,26 @@ async function handleRequest(
             { description: def.description },
           ]),
         ),
+        webhooks: pending.webhooks,
+        schedules: pending.schedules,
       })
+      return
+    }
+
+    // -- Async-trigger fires from the engine --------------------------------
+    if (method === 'engine/fire_async') {
+      const result = await dispatchFireAsync(params, buildContext)
+      respond(id, result)
+      return
+    }
+    if (method === 'engine/resolve_token') {
+      const result = await dispatchResolveToken(params)
+      respond(id, result)
+      return
+    }
+    if (method === 'engine/resolve_predicate') {
+      const result = await dispatchResolvePredicate(params)
+      respond(id, result)
       return
     }
 
@@ -413,6 +446,11 @@ export function createIon(): IonSDK {
   // `log` notification the native API uses.
   installConsoleRedirect()
 
+  // Wire the async-trigger runtime's RPC bridge so ion.webhooks /
+  // ion.schedule can issue ext/register_* and ext/deregister_* calls
+  // for dynamic registrations after init.
+  registerRpcBridge(request, () => nextRequestId++)
+
   process.nextTick(() => startListening())
 
   return {
@@ -425,5 +463,7 @@ export function createIon(): IonSDK {
     registerCommand(name, def) {
       commands.set(name, def)
     },
+    webhooks: webhooksApi,
+    schedule: scheduleApi,
   }
 }
