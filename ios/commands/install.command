@@ -19,6 +19,9 @@ BUNDLE_ID="com.sprague.ion.mobile"
 CONFIGURATION="Debug"
 DEVICE_ID=""
 
+# Tunables. Override via env if needed.
+IOS_DEPLOY_TIMEOUT="${IOS_DEPLOY_TIMEOUT:-90}"
+
 # ── Parse args ──
 
 while [[ $# -gt 0 ]]; do
@@ -241,15 +244,88 @@ fi
 
 echo "  App: $APP_PATH"
 
+# Run a command with a wall-clock timeout. macOS has no native `timeout`;
+# prefer GNU coreutils (`gtimeout`/`timeout`) when available, otherwise fall
+# back to a background+poll loop. Exit 124 == timed out.
+run_with_timeout() {
+  local secs="$1"; shift
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$secs" "$@"
+    return $?
+  fi
+  if command -v timeout &>/dev/null; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  "$@" &
+  local pid=$!
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( waited >= secs )); then
+      kill -TERM "$pid" 2>/dev/null
+      sleep 1
+      kill -KILL "$pid" 2>/dev/null
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$pid"
+}
+
+# Run a devicectl install. Returns 0 ok, 1 generic failure, 2 device locked.
+try_devicectl_install() {
+  local dev_id="$1"
+  local tmp_log
+  tmp_log=$(mktemp /tmp/devicectl-install.XXXXXX.log)
+  if xcrun devicectl device install app --device "$dev_id" "$APP_PATH" 2>&1 | tee "$tmp_log"; then
+    rm -f "$tmp_log"
+    return 0
+  fi
+  if grep -qiE 'DeviceLocked|kAMDMobileImageMounterDeviceLocked|device is locked' "$tmp_log"; then
+    rm -f "$tmp_log"
+    return 2
+  fi
+  rm -f "$tmp_log"
+  return 1
+}
+
 # Install to a single device. Args: $1=device_id
+# On a locked device, the DDI cannot mount — pause and ask the operator to
+# unlock, then try once more. Falls back to ios-deploy only for non-lock
+# devicectl failures, with a hard timeout so a stuck "Waiting for iOS device
+# to be connected" cannot hang the build.
 install_to_device() {
   local dev_id="$1"
 
-  # Prefer devicectl — it handles both USB and network installs.
   echo "  Using devicectl (device: $dev_id)..."
-  if xcrun devicectl device install app --device "$dev_id" "$APP_PATH" 2>&1; then
-    return 0
-  fi
+  local rc=0
+  try_devicectl_install "$dev_id" || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    2)
+      echo
+      echo "  ⚠ Device is locked. The developer disk image cannot mount until you unlock."
+      if [[ -t 0 ]]; then
+        printf "    Unlock your iPhone/iPad, then press Enter to retry... "
+        read -r _
+      else
+        echo "    Waiting 15s for unlock (non-interactive)..."
+        sleep 15
+      fi
+      echo "  Retrying devicectl..."
+      rc=0
+      try_devicectl_install "$dev_id" || rc=$?
+      if (( rc == 0 )); then
+        return 0
+      fi
+      if (( rc == 2 )); then
+        echo "  ✗ Device still locked. Unlock and re-run make ios."
+        return 1
+      fi
+      ;;
+  esac
 
   echo "  devicectl failed, trying ios-deploy..."
   if ! command -v ios-deploy &>/dev/null; then
@@ -264,8 +340,14 @@ install_to_device() {
   fi
   local install_id="${legacy_id:-$dev_id}"
 
-  echo "  Using ios-deploy (device: $install_id)..."
-  ios-deploy --id "$install_id" --bundle "$APP_PATH" --no-wifi 2>&1
+  echo "  Using ios-deploy (device: $install_id, ${IOS_DEPLOY_TIMEOUT}s timeout)..."
+  local rc=0
+  run_with_timeout "$IOS_DEPLOY_TIMEOUT" ios-deploy --id "$install_id" --bundle "$APP_PATH" --no-wifi 2>&1 || rc=$?
+  if (( rc == 124 )); then
+    echo "  ✗ ios-deploy timed out after ${IOS_DEPLOY_TIMEOUT}s. Device may be locked or unresponsive."
+    return 1
+  fi
+  return $rc
 }
 
 if $INSTALL_ALL; then
