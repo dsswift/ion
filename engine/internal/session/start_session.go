@@ -15,6 +15,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/skills"
 	"github.com/dsswift/ion/engine/internal/telemetry"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -268,8 +269,24 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			}
 		}
 	}
+	// Load Claude Code–style skills from ~/.claude/skills (one subdir per
+	// skill, each with a SKILL.md file). These are discovered when
+	// enableClaudeCompat is configured; the loader is always attempted so
+	// that users who install Claude-style skills without a compatibility flag
+	// still get model-invocable skill awareness. A missing directory is a
+	// silent no-op (returns nil, nil).
+	if claudeSkills, err := skills.LoadClaudeSkillsDirectory(skillPaths.ClaudeUser); err == nil {
+		for _, sk := range claudeSkills {
+			skills.RegisterSkill(sk)
+		}
+	}
 	if names := skills.ListSkillNames(); len(names) > 0 {
-		utils.Log("Session", fmt.Sprintf("loaded %d skills", len(names)))
+		utils.Log("Session", fmt.Sprintf("loaded %d skills: %v", len(names), names))
+		// Refresh the Skill tool's description so the model's tool manifest
+		// lists the available skills (with their when_to_use hints). This
+		// must run after all skills are registered; RefreshSkillToolDescription
+		// re-registers the Skill tool with a freshly-built manifest.
+		tools.RefreshSkillToolDescription()
 	}
 
 	// Connect MCP servers from config (outside lock)

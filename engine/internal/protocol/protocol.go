@@ -131,6 +131,13 @@ var validCommands = map[string]bool{
 	"list_models":           true,
 	"store_credential":      true,
 	"refresh_models":        true,
+	// clear_conversation_file: wipes the LLM-visible Messages (and resets
+	// LastInputTokens / LastInputTokensMsgCount) on a stored conversation
+	// file by sessionId, without requiring a live engine session. Used by
+	// the desktop when /clear is issued on a tab that has a loaded
+	// conversationId but has never sent a prompt (so no session exists yet).
+	// Non-breaking additive command. Requires key (sessionId).
+	"clear_conversation_file": true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -303,6 +310,9 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
 	case "refresh_models":
 		return true // optional: provider field to refresh a single provider
+	case "clear_conversation_file":
+		// key carries the sessionId (conversationId) to wipe. Required and non-empty.
+		return hasNonEmptyString(raw, "key")
 	}
 	return false
 }

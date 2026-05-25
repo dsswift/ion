@@ -66,12 +66,25 @@ type Skill struct {
 	Content     string
 	Source      string
 	Metadata    map[string]string
+
+	// WhenToUse is a brief prose hint for the model describing when to invoke
+	// this skill. Populated from the `when_to_use` frontmatter key, matching
+	// Claude Code's skill format. Empty means no hint is shown.
+	WhenToUse string
+
+	// DisableModelInvocation, when true, prevents the Skill tool from listing
+	// or executing this skill. It can still be invoked via a user-typed slash
+	// command through the desktop's CLI-compat expansion path. Populated from
+	// the `disable-model-invocation` frontmatter key; treat "true" (case-
+	// insensitive) as true, anything else as false.
+	DisableModelInvocation bool
 }
 
 // SkillPaths holds conventional skill directory paths.
 type SkillPaths struct {
-	User    string // per-user skills directory
-	Project string // project-local skills directory
+	User        string // per-user Ion skills directory (~/.ion/skills)
+	Project     string // project-local Ion skills directory (./.ion/skills)
+	ClaudeUser  string // per-user Claude Code skills directory (~/.claude/skills)
 }
 
 // LoadSkill reads a markdown file and parses it into a Skill. Frontmatter is
@@ -129,12 +142,16 @@ func LoadSkill(path string) (*Skill, error) {
 		name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	}
 
+	disableModelInvocation := strings.EqualFold(metadata["disable-model-invocation"], "true")
+
 	return &Skill{
-		Name:        name,
-		Description: metadata["description"],
-		Content:     content,
-		Source:      path,
-		Metadata:    metadata,
+		Name:                   name,
+		Description:            metadata["description"],
+		Content:                content,
+		Source:                 path,
+		Metadata:               metadata,
+		WhenToUse:              metadata["when_to_use"],
+		DisableModelInvocation: disableModelInvocation,
 	}, nil
 }
 
@@ -173,11 +190,57 @@ func LoadSkillDirectory(dir string, filter func(string) bool) ([]*Skill, error) 
 	return skills, nil
 }
 
+// LoadClaudeSkillsDirectory loads skills from a Claude Code–style skills
+// directory. Claude Code's convention is one subdirectory per skill, each
+// containing a SKILL.md file (e.g. ~/.claude/skills/ilograph/SKILL.md). The
+// subdirectory name is used as the skill name, overriding any `name` key in
+// the frontmatter — this matches Claude Code's loadSkillsFromSkillsDir which
+// also derives the skill name from the directory name.
+//
+// Subdirectories without a SKILL.md are silently skipped. An error is returned
+// only for real I/O failures; a missing or empty root directory returns nil,
+// nil (same convention as LoadSkillDirectory).
+func LoadClaudeSkillsDirectory(dir string) ([]*Skill, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var skills []*Skill
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		skillFile := filepath.Join(dir, entry.Name(), "SKILL.md")
+		if _, statErr := os.Stat(skillFile); os.IsNotExist(statErr) {
+			// No SKILL.md in this subdirectory — skip silently.
+			continue
+		}
+
+		skill, err := LoadSkill(skillFile)
+		if err != nil {
+			// Unreadable or malformed SKILL.md — skip silently (consistent
+			// with LoadSkillDirectory's per-file skip-on-error behaviour).
+			continue
+		}
+		// Override the name with the directory name, matching Claude Code.
+		skill.Name = entry.Name()
+		skills = append(skills, skill)
+	}
+	return skills, nil
+}
+
 // IonSkillPaths returns the conventional skill paths for Ion.
 func IonSkillPaths() SkillPaths {
 	home, _ := os.UserHomeDir()
 	return SkillPaths{
-		User:    filepath.Join(home, ".ion", "skills"),
-		Project: filepath.Join(".", ".ion", "skills"),
+		User:       filepath.Join(home, ".ion", "skills"),
+		Project:    filepath.Join(".", ".ion", "skills"),
+		ClaudeUser: filepath.Join(home, ".claude", "skills"),
 	}
 }
+

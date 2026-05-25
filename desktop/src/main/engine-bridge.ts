@@ -458,6 +458,23 @@ export class EngineBridge extends EventEmitter {
     return result.data || { messages: [], total: 0, hasMore: false }
   }
 
+  /**
+   * Wipes the LLM-visible message history for a stored conversation without
+   * requiring a live engine session. Called when /clear is issued on a tab
+   * that was loaded from disk but has never sent a prompt (so no engine
+   * session exists yet to receive dispatchClear). The conversationId is the
+   * session/conversation ID stored on the tab (tab.conversationId).
+   *
+   * Fields wiped (matches engine dispatchClear): Messages, LastInputTokens,
+   * LastInputTokensMsgCount. Entries, cost totals, and identity fields are
+   * preserved — /clear is a checkpoint, not a delete.
+   */
+  async clearConversationFile(conversationId: string): Promise<void> {
+    await this.connect()
+    log(`clearConversationFile: conversationId=${conversationId}`)
+    await this._sendWithResult({ cmd: 'clear_conversation_file', key: conversationId })
+  }
+
   async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
     await this.connect()
     return this._sendWithResult({ cmd: 'save_session_label', key: sessionId, label })

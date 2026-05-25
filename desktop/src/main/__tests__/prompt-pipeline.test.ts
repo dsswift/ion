@@ -40,6 +40,10 @@ const mocks = vi.hoisted(() => {
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
   const broadcastMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const expandSlashMock = (globalThis as any).vi?.fn?.() ?? function () {}
+  const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
+  // getTabStatusMock: returns a tab-like object. Default: no conversationId.
+  // Override in tests to simulate a loaded-but-not-started conversation.
+  const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null }) ?? function () { return { conversationId: null } }
   return {
     bridgeListeners,
     sendCommandMock,
@@ -50,6 +54,8 @@ const mocks = vi.hoisted(() => {
     executeJsMock,
     broadcastMock,
     expandSlashMock,
+    clearConversationFileMock,
+    getTabStatusMock,
   }
 })
 
@@ -63,6 +69,8 @@ mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
 mocks.broadcastMock = vi.fn()
 mocks.expandSlashMock = vi.fn().mockResolvedValue({ expanded: false })
+mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
+mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
 
 function emitBridgeEvent(key: string, event: any): void {
   const arr = mocks.bridgeListeners.get('event') ?? []
@@ -75,6 +83,7 @@ vi.mock('../state', () => {
   const mockEngineBridge = {
     sendCommand: (...args: any[]) => mocks.sendCommandMock(...args),
     sendPrompt: (...args: any[]) => mocks.sendPromptMock(...args),
+    clearConversationFile: (...args: any[]) => mocks.clearConversationFileMock(...args),
     on: (name: string, fn: (key: string, event: any) => void) => {
       const arr = mocks.bridgeListeners.get(name) ?? []
       arr.push(fn)
@@ -89,6 +98,9 @@ vi.mock('../state', () => {
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
+      // getTabStatus delegates through getTabStatusMock so individual tests
+      // can override the returned tab object (e.g. to set a conversationId).
+      getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
     },
     engineBridge: mockEngineBridge,
     extensionCommandRegistry: new Map(),
@@ -139,6 +151,8 @@ beforeEach(() => {
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
   mocks.broadcastMock.mockReset()
   mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: false })
+  mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
+  mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
   mocks.sendCommandMock.mockImplementation((key: string, command: string, _args: string) => {
@@ -539,3 +553,6 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
     expect(mocks.expandSlashMock).not.toHaveBeenCalled()
   })
 })
+
+// /clear file-wipe tests (loaded-but-not-started tab) live in the companion
+// file prompt-pipeline-clear-wipe.test.ts to keep both files under 600 lines.

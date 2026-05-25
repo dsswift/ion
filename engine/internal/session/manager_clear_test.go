@@ -163,3 +163,96 @@ func TestSendCommand_Clear_NoExtensionsIsOk(t *testing.T) {
 	// Should not panic. extGroup is nil at this point (no extensions loaded).
 	mgr.SendCommand(key, "clear", "")
 }
+
+// TestClearConversationFile verifies the stateless file-wipe path used when
+// the desktop issues /clear on a tab that has a loaded conversationId but
+// has never sent a prompt (so no live engine session exists).
+//
+// Key invariants:
+//   - Messages is nil after the wipe (LLM sees no prior history).
+//   - LastInputTokens and LastInputTokensMsgCount are zeroed.
+//   - Fields that MUST be preserved (TotalInputTokens, TotalCost, Entries,
+//     ID, Model, …) are untouched so the conversation tree, cost accounting,
+//     and metadata survive the /clear checkpoint.
+func TestClearConversationFile(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	const convID = "no-session-clear-conv"
+	convDir := filepath.Join(tempHome, ".ion", "conversations")
+
+	// Seed a conversation with messages and non-zero counters.
+	conv := conversation.CreateConversation(convID, "system prompt", "test-model")
+	conv.Messages = []types.LlmMessage{
+		{Role: "user", Content: "msg 1"},
+		{Role: "assistant", Content: "reply 1"},
+		{Role: "user", Content: "msg 2"},
+	}
+	conv.LastInputTokens = 500
+	conv.LastInputTokensMsgCount = 3
+	conv.TotalInputTokens = 1200
+	conv.TotalCost = 0.42
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("seed conversation save: %v", err)
+	}
+
+	// Verify seeded state.
+	seeded, err := conversation.Load(convID, convDir)
+	if err != nil {
+		t.Fatalf("verify-seed Load: %v", err)
+	}
+	if len(seeded.Messages) != 3 {
+		t.Fatalf("verify-seed: expected 3 messages, got %d", len(seeded.Messages))
+	}
+
+	// Call ClearConversationFile — no session required.
+	if err := mgr.ClearConversationFile(convID); err != nil {
+		t.Fatalf("ClearConversationFile: %v", err)
+	}
+
+	// Reload and assert wipe.
+	cleared, err := conversation.Load(convID, convDir)
+	if err != nil {
+		t.Fatalf("post-clear Load: %v", err)
+	}
+
+	if len(cleared.Messages) != 0 {
+		t.Errorf("Messages not wiped: got %d message(s): %+v", len(cleared.Messages), cleared.Messages)
+	}
+	if cleared.LastInputTokens != 0 {
+		t.Errorf("LastInputTokens not reset: got %d", cleared.LastInputTokens)
+	}
+	if cleared.LastInputTokensMsgCount != 0 {
+		t.Errorf("LastInputTokensMsgCount not reset: got %d", cleared.LastInputTokensMsgCount)
+	}
+
+	// Preserved fields must be untouched.
+	if cleared.ID != convID {
+		t.Errorf("ID changed: got %q, want %q", cleared.ID, convID)
+	}
+	if cleared.TotalInputTokens != 1200 {
+		t.Errorf("TotalInputTokens changed: got %d, want 1200", cleared.TotalInputTokens)
+	}
+	if cleared.TotalCost != 0.42 {
+		t.Errorf("TotalCost changed: got %f, want 0.42", cleared.TotalCost)
+	}
+}
+
+// TestClearConversationFile_MissingConv verifies that ClearConversationFile
+// returns a meaningful error when the conversation file does not exist on
+// disk. The caller (server.go dispatch) propagates this as an RPC error.
+func TestClearConversationFile_MissingConv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	err := mgr.ClearConversationFile("no-such-conv-id")
+	if err == nil {
+		t.Fatal("expected error for missing conversation file, got nil")
+	}
+}
+

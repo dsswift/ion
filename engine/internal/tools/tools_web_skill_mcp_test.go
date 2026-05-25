@@ -412,9 +412,128 @@ func TestSkillToolMultipleSkills(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// MCP Resource Tool Tests
-// ---------------------------------------------------------------------------
+func TestSkillToolManifestInDescription(t *testing.T) {
+	// Three skills, two model-invocable (alpha, gamma) and one not (beta).
+	skills.RegisterSkill(&skills.Skill{
+		Name:        "alpha",
+		Description: "Alpha does things",
+		Content:     "alpha content",
+		WhenToUse:   "Use for alpha tasks",
+	})
+	skills.RegisterSkill(&skills.Skill{
+		Name:                   "beta",
+		Description:            "Beta is hidden from model",
+		Content:                "beta content",
+		DisableModelInvocation: true,
+	})
+	skills.RegisterSkill(&skills.Skill{
+		Name:        "gamma",
+		Description: "Gamma does other things",
+		Content:     "gamma content",
+	})
+	defer skills.ClearSkillRegistry()
+
+	tool := SkillTool()
+	desc := tool.Description
+
+	// Should list alpha and gamma, but NOT beta.
+	if !strings.Contains(desc, "alpha") {
+		t.Errorf("expected 'alpha' in description, got:\n%s", desc)
+	}
+	if !strings.Contains(desc, "gamma") {
+		t.Errorf("expected 'gamma' in description, got:\n%s", desc)
+	}
+	if strings.Contains(desc, "beta") {
+		t.Errorf("expected 'beta' to be absent from description (disable-model-invocation), got:\n%s", desc)
+	}
+	// WhenToUse hint should appear.
+	if !strings.Contains(desc, "Use for alpha tasks") {
+		t.Errorf("expected when_to_use in description, got:\n%s", desc)
+	}
+	// Manifest header.
+	if !strings.Contains(desc, "Available skills:") {
+		t.Errorf("expected 'Available skills:' header in description, got:\n%s", desc)
+	}
+}
+
+func TestSkillToolDisableModelInvocationBlocked(t *testing.T) {
+	// A skill with DisableModelInvocation should not be executable by the model.
+	skills.RegisterSkill(&skills.Skill{
+		Name:                   "restricted",
+		Content:                "secret content",
+		DisableModelInvocation: true,
+	})
+	defer skills.ClearSkillRegistry()
+
+	result, _ := ExecuteTool(context.Background(), "Skill", map[string]any{
+		"skill": "restricted",
+	}, "/tmp")
+	if !result.IsError {
+		t.Error("expected error for disable-model-invocation skill")
+	}
+	if !strings.Contains(result.Content, "cannot be invoked by the model") {
+		t.Errorf("expected invocation-blocked message, got %q", result.Content)
+	}
+}
+
+func TestSkillToolManifestPerEntryTruncation(t *testing.T) {
+	// A skill with a very long description should be truncated to 250 chars.
+	longDesc := strings.Repeat("x", 300)
+	skills.RegisterSkill(&skills.Skill{
+		Name:        "verbose",
+		Description: longDesc,
+		Content:     "content",
+	})
+	defer skills.ClearSkillRegistry()
+
+	tool := SkillTool()
+	desc := tool.Description
+
+	// Find the line for "verbose" in the manifest.
+	var verboseLine string
+	for _, line := range strings.Split(desc, "\n") {
+		if strings.HasPrefix(line, "- verbose:") {
+			verboseLine = line
+			break
+		}
+	}
+	if verboseLine == "" {
+		t.Fatalf("expected 'verbose' entry in manifest, got:\n%s", desc)
+	}
+	if len(verboseLine) > SkillManifestPerEntryMaxChars {
+		t.Errorf("manifest entry exceeds %d chars: len=%d line=%q", SkillManifestPerEntryMaxChars, len(verboseLine), verboseLine)
+	}
+}
+
+// TestRefreshSkillToolDescription verifies that RefreshSkillToolDescription
+// updates the globally-registered Skill tool's description to reflect the
+// current registry.
+func TestRefreshSkillToolDescription(t *testing.T) {
+	// Start with no skills — base description only.
+	skills.ClearSkillRegistry()
+	RefreshSkillToolDescription()
+	before := GetTool("Skill")
+	if before == nil {
+		t.Fatal("Skill tool not registered")
+	}
+	if strings.Contains(before.Description, "Available skills:") {
+		t.Error("expected no manifest in description before skills are registered")
+	}
+
+	// Register a skill and refresh.
+	skills.RegisterSkill(&skills.Skill{Name: "fresh", Description: "Fresh skill", Content: "fresh"})
+	defer skills.ClearSkillRegistry()
+	RefreshSkillToolDescription()
+
+	after := GetTool("Skill")
+	if after == nil {
+		t.Fatal("Skill tool not registered after refresh")
+	}
+	if !strings.Contains(after.Description, "fresh") {
+		t.Errorf("expected 'fresh' in description after refresh, got:\n%s", after.Description)
+	}
+}
+
 
 func TestListMcpResourcesUnknownServer(t *testing.T) {
 	result, _ := ExecuteTool(context.Background(), "ListMcpResources", map[string]any{

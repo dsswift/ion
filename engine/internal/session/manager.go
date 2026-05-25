@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -276,6 +277,46 @@ func (m *Manager) sessionState(s *engineSession) string {
 		return "running"
 	}
 	return "idle"
+}
+
+// ClearConversationFile wipes the LLM-visible history on a stored conversation
+// file by sessionId, without requiring a live engine session. It is the
+// stateless counterpart of dispatchClear: it performs the same load → zero
+// → save sequence but does not emit any events (no session exists to emit to)
+// and does not re-fire session_start (no extension group is loaded).
+//
+// Fields wiped (matches dispatchClear exactly):
+//   - Messages           — the flat LLM-visible message list
+//   - LastInputTokens    — context-percent numerator
+//   - LastInputTokensMsgCount — companion message-count counter
+//
+// Fields preserved: Entries, LeafID, TotalInputTokens, TotalOutputTokens,
+// TotalCost, ID, System, Model, CreatedAt, Version, ParentID,
+// WorkingDirectory — same rationale as dispatchClear (/clear is a checkpoint,
+// not a delete).
+//
+// Returns nil on success. Returns an error if the conversation file cannot be
+// loaded or saved; in that case no partial write occurs (Load/Save are atomic
+// operations at the file level).
+func (m *Manager) ClearConversationFile(sessionID string) error {
+	utils.Log("Session", fmt.Sprintf("ClearConversationFile: loading conversation sessionId=%s", sessionID))
+	conv, err := conversation.Load(sessionID, "")
+	if err != nil {
+		utils.Log("Session", fmt.Sprintf("ClearConversationFile: load failed sessionId=%s err=%v", sessionID, err))
+		return fmt.Errorf("load conversation %q: %w", sessionID, err)
+	}
+
+	conv.Messages = nil
+	conv.LastInputTokens = 0
+	conv.LastInputTokensMsgCount = 0
+
+	if err := conversation.Save(conv, ""); err != nil {
+		utils.Log("Session", fmt.Sprintf("ClearConversationFile: save failed sessionId=%s err=%v", sessionID, err))
+		return fmt.Errorf("save conversation %q: %w", sessionID, err)
+	}
+
+	utils.Log("Session", fmt.Sprintf("ClearConversationFile: wiped messages sessionId=%s", sessionID))
+	return nil
 }
 
 // ReconcileState re-emits the current agent states and status for the given
