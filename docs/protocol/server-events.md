@@ -538,3 +538,108 @@ working unchanged; new consumers should prefer the typed
 `engine_plan_proposal` event because it arrives as soon as the model calls
 the tool (not at run end) and carries `planFilePath` / `planSlug` directly
 without scraping `toolInput`.
+
+#### engine_command_registry
+
+Complete snapshot of the slash commands currently registered by the
+session's loaded extensions. Emitted at session start (after extensions
+wire up) and on every subsequent change to the command map (mid-session
+`RegisterCommand` calls inside a hook handler, extension hot reload,
+etc.). Consumers REPLACE their cached set with this payload — never
+merge. An empty `commands: []` array is the authoritative "no extension
+commands live for this session" signal.
+
+Snapshot semantics follow the same rules as `engine_agent_state`; see
+[Agent State Contract](../architecture/agent-state.md) for the canonical
+example. Consumers using the snapshot as a routing-hint cache (e.g. the
+desktop's prompt pipeline, which short-circuits local `.md` template
+lookups when an extension owns the same slash name) must drop entries
+absent from the latest snapshot, not retain them defensively.
+
+The engine never trusts a consumer's cache when dispatching a command —
+`Manager.SendCommand` resolves the live command table at dispatch time —
+so a freshly-registered command will be found even when the snapshot
+event is still in flight. The cache is purely a hint.
+
+| Field          | Type                          | Description                            |
+|----------------|-------------------------------|----------------------------------------|
+| `type`         | `"engine_command_registry"`   | Event type                             |
+| `commands`     | `EngineCommandListing[]`      | Complete current command set (sorted alphabetically for deterministic output). Empty array is the authoritative "no extension commands" signal. |
+
+`EngineCommandListing` is a `{ name, description? }` pair. `name` is the
+bare slash name (e.g. `"clear"`, `"ion--review-changes"`).
+`description` is an optional human-readable hint the autocomplete UI
+surfaces.
+
+#### engine_command_result
+
+Result of every `Manager.SendCommand` dispatch: success (no error),
+extension-command failure (extension threw), or unknown command (engine
+disclaims the name). Emitted exactly once per dispatch, after the
+command's execution path completes.
+
+Consumers awaiting a slash dispatch (typically the desktop's prompt
+pipeline) read this event to decide between "engine handled it, draw
+the divider and move on" and "engine disclaimed the name, fall through
+to local `.md` template expansion."
+
+| Field          | Type                       | Description                                                                                                                          |
+|----------------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `type`         | `"engine_command_result"`  | Event type                                                                                                                           |
+| `command`      | string (omitempty)         | Bare command name the engine resolved (e.g. `"clear"`, `"ion--review-changes"`). May be empty for the catch-all error emit.          |
+| `message`      | string (omitempty)         | Human-readable note. Often empty on success.                                                                                         |
+| `commandError` | string (omitempty)         | Set when the dispatch failed. Special value `"unknown_command"` is reserved for the engine disclaiming the name (treat as "the engine does not own this command, route it locally"). Any other value is an extension-thrown error message. |
+
+#### engine_early_stop_decision_request
+
+Wire-protocol surface for the `before_early_stop_decision` extension
+hook. Emitted when the model has just emitted `end_turn` / `stop` below
+the configured output-token target *and* no subprocess extension has
+already expressed an opinion via the in-process hook. Lets socket-only
+harnesses (e.g. the desktop's `early-stop-policy.ts`) participate in
+the decision without running a subprocess extension. See
+[ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md) for
+the engine-vs-harness boundary that motivates the request/response
+shape.
+
+The engine blocks briefly (100ms timeout) on a matching
+`early_stop_decision_response` client command. A missed deadline is
+treated as "no opinion" — the engine falls through to its existing
+merge logic. Without a `ContinueMessage` supplied by any source
+(subprocess hook, wire response, or `RunOptions`), the engine logs the
+no-message-skip and falls through to normal `TaskCompleteEvent`
+emission. The feature is off by default; see ADR-002 for the
+three-layer disable matrix.
+
+| Field                              | Type                                  | Description                                                                                                |
+|------------------------------------|---------------------------------------|------------------------------------------------------------------------------------------------------------|
+| `type`                             | `"engine_early_stop_decision_request"` | Event type                                                                                                 |
+| `earlyStopRequestId`               | string                                | Opaque correlator. The consumer must echo this in its `early_stop_decision_response` so the engine can pair the reply to this request. |
+| `earlyStopRunId`                   | string                                | Engine-internal run identifier.                                                                            |
+| `earlyStopModel`                   | string                                | Model id that just stopped.                                                                                |
+| `earlyStopTurnNumber`              | int                                   | Turn number within the run.                                                                                |
+| `earlyStopStopReason`              | string                                | The model's stop reason (typically `"end_turn"` or `"stop"`).                                              |
+| `earlyStopCumulativeOutput`        | int                                   | Cumulative output tokens emitted so far this run.                                                          |
+| `earlyStopBudget`                  | int                                   | Resolved budget for this run (after merge through defaults / `engine.json` / `RunOptions`).                |
+| `earlyStopThresholdPct`            | int                                   | Resolved completion threshold percent.                                                                     |
+| `earlyStopContinuationCount`       | int                                   | Number of continuation nudges already injected this run.                                                   |
+| `earlyStopMaxContinuations`        | int                                   | Resolved cap on continuation nudges.                                                                       |
+| `earlyStopLastContinuationDelta`   | int                                   | Output-token delta from the previous continuation. Used by the diminishing-returns guard.                  |
+| `earlyStopWouldContinue`           | bool                                  | Engine's tentative verdict before harness input. Harness response can override either way.                 |
+| `earlyStopIsSubagent`              | bool                                  | `true` when the run is a child-agent dispatch. The engine's default is off for sub-agents; harness can still force on. |
+
+The matching response client command shape:
+
+| Field                              | Type             | Description                                                                                                                                                      |
+|------------------------------------|------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cmd`                              | `"early_stop_decision_response"` | Command type                                                                                                                                      |
+| `key`                              | string           | Session key (same key carried on the request).                                                                                                                   |
+| `earlyStopRequestId`               | string           | Echo of the request id.                                                                                                                                          |
+| `earlyStopForceContinue`           | `*bool` (omit)   | Override the engine's tentative verdict. `null` / omitted = no opinion; `false` = explicit do-not-continue; `true` = explicit continue.                          |
+| `earlyStopOverrideBudget`          | int (omitempty)  | Optional budget override applied to this and subsequent continuation decisions in the same run.                                                                  |
+| `earlyStopOverrideThresholdPct`    | int (omitempty)  | Optional threshold-percent override.                                                                                                                             |
+| `earlyStopContinueMessage`         | string (omitempty) | Harness-supplied continuation prose. The engine injects this verbatim as the next user message when the resolved verdict is "continue." Empty = engine skips the continuation (no nudge fires). |
+
+An empty response (only `key` + `earlyStopRequestId`, no other fields)
+is a valid "no opinion" reply. The engine treats it the same as a
+missed-deadline fallback.
