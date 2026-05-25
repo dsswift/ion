@@ -414,9 +414,8 @@ func (r *Registry) Reset(kind Kind, notify NotifyFunc) int {
 		origin Origin
 	}
 	dropped := make([]drop, 0, len(bucket))
-	for id, e := range bucket {
-		dropped = append(dropped, drop{decl: e.decl, origin: e.origin})
-		_ = id
+	for _, e := range bucket {
+		dropped = append(dropped, drop(e))
 	}
 	r.entries[kind] = make(map[string]entry)
 	channels := append([]chan ChangeEvent(nil), r.subs[kind]...)

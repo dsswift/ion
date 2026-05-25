@@ -443,7 +443,7 @@ func (s *Server) respond(w http.ResponseWriter, status int, body string, _ map[s
 // allowed for advanced use). The cap is applied at the io.Reader layer
 // so memory usage stays bounded.
 func readBodyCapped(r io.ReadCloser, maxBytes int64) ([]byte, error) {
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if maxBytes <= 0 {
 		return io.ReadAll(r)
 	}
