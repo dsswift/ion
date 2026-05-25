@@ -199,6 +199,18 @@ extension RemoteEvent {
                 isSubagent: isSubagent
             )
 
+        case .desktopSettingsSnapshot:
+            // Per-desktop user-preferences projection. The whole payload
+            // is wholesale-replace: SessionViewModel discards its
+            // previous snapshot and adopts this one verbatim. iOS does
+            // not merge values across snapshots — same semantics as
+            // engine_agent_state. See DesktopSettingsModel.swift for
+            // the higher-level state struct the view binds to.
+            let settings = try container.decode([String: AnyCodable].self, forKey: .settings)
+            let schema = try container.decode([DesktopSettingSchemaEntry].self, forKey: .schema)
+            let groups = try container.decode([DesktopSettingGroupDescriptor].self, forKey: .groups)
+            return .desktopSettingsSnapshot(settings: settings, schema: schema, groups: groups)
+
         default:
             return nil
         }
@@ -390,6 +402,13 @@ extension RemoteEvent {
             try container.encode(lastContinuationDelta, forKey: .earlyStopLastContinuationDelta)
             try container.encode(wouldContinue, forKey: .earlyStopWouldContinue)
             try container.encode(isSubagent, forKey: .earlyStopIsSubagent)
+            return true
+
+        case .desktopSettingsSnapshot(let settings, let schema, let groups):
+            try container.encode(TypeKey.desktopSettingsSnapshot, forKey: .type)
+            try container.encode(settings, forKey: .settings)
+            try container.encode(schema, forKey: .schema)
+            try container.encode(groups, forKey: .groups)
             return true
 
         default:

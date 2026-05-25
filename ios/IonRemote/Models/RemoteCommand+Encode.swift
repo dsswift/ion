@@ -317,6 +317,14 @@ extension RemoteCommand {
             }
             let updatedAtMs = updatedAt.timeIntervalSince1970 * 1000.0
             try container.encode(updatedAtMs, forKey: .updatedAt)
+
+        case .setDesktopSetting(let key, let value):
+            // Write-back for a single projectable desktop setting.
+            // `value` is type-erased via AnyCodable so the encoder
+            // emits the underlying Bool/String/Number verbatim.
+            try container.encode(TypeKey.setDesktopSetting, forKey: .type)
+            try container.encode(key, forKey: .key)
+            try container.encode(value, forKey: .value)
         }
     }
 }

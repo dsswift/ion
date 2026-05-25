@@ -16,6 +16,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 connectionSection
+                desktopSettingsSection
                 voiceSection
                 diagnosticsSection
                 newTabSection
@@ -205,6 +206,45 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            }
+        }
+    }
+
+    /// "Desktop Settings" entry-point row. A single NavigationLink that
+    /// pushes the per-desktop projection editor when the current pairing
+    /// has a snapshot loaded. Mirrors Apple's own Settings.app pattern
+    /// of a one-row section with secondary detail text and a chevron —
+    /// the row is the discoverable handle to a richer detail screen
+    /// rather than a soup of inline toggles at the top level.
+    ///
+    /// The section is hidden entirely when no pairing is active or the
+    /// initial snapshot hasn't arrived yet (`desktopSettings == nil`).
+    /// This keeps the Settings screen looking intentional rather than
+    /// showing a placeholder row that the user can't interact with.
+    @ViewBuilder
+    private var desktopSettingsSection: some View {
+        if viewModel.desktopSettings != nil, viewModel.connectionState == .connected {
+            Section {
+                NavigationLink {
+                    DesktopSettingsView()
+                        .environment(viewModel)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.body)
+                            .foregroundStyle(IonTheme.accent)
+                            .frame(width: 28, height: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Desktop Settings")
+                                .font(.body)
+                            Text(viewModel.activeDevice?.displayName ?? "Connected desktop")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } footer: {
+                Text("Preferences for the currently-connected desktop. Each paired desktop keeps its own values.")
             }
         }
     }

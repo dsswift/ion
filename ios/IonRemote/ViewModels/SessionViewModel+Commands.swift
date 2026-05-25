@@ -497,6 +497,24 @@ extension SessionViewModel {
         ))
     }
 
+    /// Write a single projectable desktop setting on the currently-paired
+    /// desktop. The desktop validates the key against its allowlist and
+    /// the value's type against the declared schema, persists the
+    /// change, and broadcasts a fresh `desktopSettingsSnapshot` back to
+    /// every paired iOS device — including this one — which is how
+    /// `desktopSettings` is updated.
+    ///
+    /// Optimistic UI: SwiftUI Toggle bindings call this on every flip;
+    /// the round-trip is short enough on LAN that we don't bother
+    /// pre-updating local state. The next snapshot wins. If the desktop
+    /// rejects the write (unknown key, wrong type), no snapshot fires
+    /// and the SwiftUI control re-renders with the cached prior value
+    /// on the next state read.
+    @MainActor
+    func setDesktopSetting(key: String, value: AnyCodable) {
+        send(.setDesktopSetting(key: key, value: value))
+    }
+
     // MARK: - Send
 
     func send(_ command: RemoteCommand) {

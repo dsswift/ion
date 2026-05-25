@@ -169,6 +169,14 @@ extension DiagnosticLog {
             // `early-stop-policy` lines.
             log("EVENT: engineEarlyStopDecisionRequest tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") reqId=\(reqId.prefix(8)) turn=\(turn) tokens=\(cumOut)/\(budget) thr=\(pct)% would=\(would)")
 
+        case .desktopSettingsSnapshot(let settings, let schema, let groups):
+            // Snapshot of the desktop's projectable user preferences.
+            // Logged with counts only — the actual values can be
+            // sensitive and the wire payload is small enough that a
+            // future diagnostic dump can capture the full record if
+            // needed.
+            log("EVENT: desktopSettingsSnapshot values=\(settings.count) schema=\(schema.count) groups=\(groups.count)")
+
         case .gitChangesResponse(let dir, _):
             log("EVENT: gitChangesResponse dir=\(dir.suffix(30))")
 

@@ -287,6 +287,10 @@ extension SessionViewModel {
         engineInstances = [:]
         activeEngineInstance = [:]
         engineProfiles = []
+        // Clear the cached per-desktop projection so a transport swap
+        // doesn't briefly render the previous desktop's settings while
+        // the new pairing's initial snapshot is in flight.
+        desktopSettings = nil
         pendingCloseTabIds = []
         pendingInputByTab = [:]
         awaitingLocalTabCreation = false

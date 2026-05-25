@@ -165,6 +165,19 @@ final class SessionViewModel {
     /// Falls back to default Claude models until the first snapshot with model data arrives.
     var availableModels: [RemoteModelEntry] = SessionViewModel.defaultModels
 
+    /// Currently-connected desktop's projectable user preferences,
+    /// surfaced in the Settings UI under "Desktop Settings". Replaced
+    /// wholesale on every `desktopSettingsSnapshot` event (snapshot
+    /// semantics — never merge). `nil` while no desktop is paired or
+    /// during the brief window before the first snapshot arrives on a
+    /// new pairing.
+    ///
+    /// Per-desktop scoping: the field tracks only the currently-active
+    /// pairing's settings. Switching to a different paired desktop
+    /// clears the field via `switchToDevice`, and the new desktop's
+    /// initial snapshot repopulates it.
+    var desktopSettings: DesktopSettingsState? = nil
+
     /// Default model list used before the desktop sends a dynamic list.
     static let defaultModels: [RemoteModelEntry] = [
         RemoteModelEntry(id: "claude-opus-4-7", providerId: "anthropic", label: "Opus 4.7", contextWindow: 1_000_000, hasAuth: true),

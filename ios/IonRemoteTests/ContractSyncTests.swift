@@ -20,6 +20,7 @@ import XCTest
 ///     "by design"; flip back to this comment.
 final class ContractSyncTests: XCTestCase {
     private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
 
     // MARK: - Manifest loading
 
@@ -552,4 +553,5 @@ final class ContractSyncTests: XCTestCase {
             XCTFail("Expected engineEarlyStopDecisionRequest, got \(event)")
         }
     }
+
 }

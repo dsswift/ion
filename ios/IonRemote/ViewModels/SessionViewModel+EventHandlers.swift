@@ -336,6 +336,22 @@ extension SessionViewModel {
             // response shape on the wire.
             break
 
+        case .desktopSettingsSnapshot(let settings, let schema, let groups):
+            // Per-desktop user-preferences projection. Snapshot semantics
+            // — replace the cached state wholesale. The view layer binds
+            // to `viewModel.desktopSettings` and re-renders the Settings
+            // detail screen automatically when this assignment fires.
+            //
+            // Per-desktop scoping: this snapshot describes the currently-
+            // connected desktop only. Switching to a different paired
+            // desktop (via `switchToDevice`) clears the cache and the
+            // new desktop's initial snapshot will repopulate it.
+            desktopSettings = DesktopSettingsState(
+                settings: settings,
+                schema: schema,
+                groups: groups,
+            )
+
         // Git events
         case .gitChangesResponse(let directory, let response):
             gitChanges[directory] = response

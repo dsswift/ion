@@ -109,6 +109,24 @@ enum RemoteEvent: Codable, Sendable {
         wouldContinue: Bool,
         isSubagent: Bool
     )
+    /// Desktop user-preferences projection. Emitted on initial pairing
+    /// and on every subsequent change to a projectable setting (either
+    /// from iOS via `setDesktopSetting` or from the desktop UI). Snapshot
+    /// semantics — consumers REPLACE their cached view with the payload;
+    /// never merge.
+    ///
+    /// The payload carries three things: the current values map (key →
+    /// AnyCodable), the schema (per-key metadata for UI rendering), and
+    /// the ordered group descriptors. The schema-on-the-wire design
+    /// means iOS auto-renders any new desktop setting without a Swift
+    /// code change — the allowlist on the desktop is the single source
+    /// of truth. See `DesktopSettingsModel.swift` for the higher-level
+    /// model the SettingsView consumes.
+    case desktopSettingsSnapshot(
+        settings: [String: AnyCodable],
+        schema: [DesktopSettingSchemaEntry],
+        groups: [DesktopSettingGroupDescriptor]
+    )
     // Git events
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
@@ -184,6 +202,7 @@ enum RemoteEvent: Codable, Sendable {
         case engineProfiles = "engine_profiles"
         case enginePlanProposal = "engine_plan_proposal"
         case engineEarlyStopDecisionRequest = "engine_early_stop_decision_request"
+        case desktopSettingsSnapshot = "desktop_settings_snapshot"
         case gitChangesResponse = "git_changes_response"
         case gitGraphResponse = "git_graph_response"
         case gitDiffResponse = "git_diff_response"
@@ -241,6 +260,11 @@ enum RemoteEvent: Codable, Sendable {
         case earlyStopContinuationCount, earlyStopMaxContinuations
         case earlyStopLastContinuationDelta
         case earlyStopWouldContinue, earlyStopIsSubagent
+        // desktop_settings_snapshot — Part 7 wire event.
+        // `settings` is the value map; `schema` carries per-key
+        // metadata (type, group, label, description, defaultValue);
+        // `groups` is the ordered list of section descriptors.
+        case settings, schema, groups
     }
 
     // MARK: - Decoder

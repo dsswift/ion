@@ -87,6 +87,23 @@ enum RemoteCommand: Codable, Sendable {
     /// (`Date().timeIntervalSince1970 * 1000`). The desktop applies LWW and
     /// broadcasts the canonical value back via `.remoteDisplay`.
     case setRemoteDisplay(customName: String?, customIcon: String?, updatedAt: Date)
+    /// Write-back for a single projectable desktop setting. The desktop
+    /// validates `key` against its allowlist (see
+    /// `desktop/src/main/projectable-settings.ts`) and validates
+    /// `value`'s runtime type matches the declared type before
+    /// persisting. Unknown keys and wrong-type values are silently
+    /// rejected on the desktop. After a successful write the desktop
+    /// broadcasts a fresh `desktopSettingsSnapshot` event so every
+    /// paired iOS device (including this one) sees the new value.
+    ///
+    /// `value` is type-erased on the wire — the supported runtime
+    /// types are Bool, String, and Double (Swift's `Int`/`Double`
+    /// distinction collapses to Double on JSON round-trip; the
+    /// desktop's validator coerces back to its declared type). The
+    /// iOS UI today only emits Bool, but the wire shape is
+    /// shape-agnostic so future string/number projections need no
+    /// protocol change.
+    case setDesktopSetting(key: String, value: AnyCodable)
 
     // MARK: - Codable
 
@@ -151,6 +168,7 @@ enum RemoteCommand: Codable, Sendable {
         case voiceConfig = "voice_config"
         case diagnosticLogsResponse = "diagnostic_logs_response"
         case setRemoteDisplay = "set_remote_display"
+        case setDesktopSetting = "set_desktop_setting"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -171,6 +189,12 @@ enum RemoteCommand: Codable, Sendable {
         case logs, deviceId, deviceName
         case sourceTabId, targetTabId
         case customName, customIcon, updatedAt
+        // setDesktopSetting payload. `key` is unique to this command;
+        // `value` is shared with engineDialogResponse (both carry a
+        // type-erased payload, both use the same wire field name) so
+        // we declare only `key` here and reuse the existing `value`
+        // CodingKey above.
+        case key
     }
 
     init(from decoder: Decoder) throws {
@@ -487,6 +511,15 @@ enum RemoteCommand: Codable, Sendable {
                 customIcon: customIcon,
                 updatedAt: Date(timeIntervalSince1970: updatedAtMs / 1000.0),
             )
+
+        case .setDesktopSetting:
+            // Round-trip decode for tests + diagnostic dumps. iOS
+            // typically only encodes this command (never decodes it
+            // from the wire), but the Codable conformance requires
+            // the path to exist.
+            let key = try container.decode(String.self, forKey: .key)
+            let value = try container.decode(AnyCodable.self, forKey: .value)
+            self = .setDesktopSetting(key: key, value: value)
         }
     }
 
