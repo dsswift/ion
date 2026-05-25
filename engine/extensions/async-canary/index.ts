@@ -119,3 +119,105 @@ ion.registerTool({
     }
   },
 })
+
+// Register an HMAC-signature route. The secret comes from
+// ASYNC_CANARY_HMAC_SECRET so the e2e test can sign requests with
+// the same key.
+ion.registerTool({
+  name: 'async_canary_register_hmac_route',
+  description: 'Register POST /test/hmac with HMAC-SHA256 auth',
+  parameters: { type: 'object', properties: {} },
+  execute: async () => {
+    await ion.webhooks.register({
+      path: '/test/hmac',
+      method: 'POST',
+      auth: {
+        kind: 'hmac-signature',
+        headerName: 'X-Signature',
+        algorithm: 'sha256',
+        token: () => process.env.ASYNC_CANARY_HMAC_SECRET ?? '',
+      },
+      handler: async () => ({ status: 200, body: 'hmac-ok' }),
+    })
+    return { content: 'ok' }
+  },
+})
+
+// Register a shared-secret route.
+ion.registerTool({
+  name: 'async_canary_register_shared_secret_route',
+  description: 'Register POST /test/shared with shared-secret auth',
+  parameters: { type: 'object', properties: {} },
+  execute: async () => {
+    await ion.webhooks.register({
+      path: '/test/shared',
+      method: 'POST',
+      auth: {
+        kind: 'shared-secret',
+        headerName: 'X-Token',
+        token: () => process.env.ASYNC_CANARY_SHARED_SECRET ?? '',
+      },
+      handler: async () => ({ status: 200, body: 'shared-ok' }),
+    })
+    return { content: 'ok' }
+  },
+})
+
+// Register an interval whose enabled predicate is always false. Used
+// by the scheduler e2e tests to verify engine_schedule_skipped fires
+// with reason='disabled'.
+ion.registerTool({
+  name: 'async_canary_register_disabled_interval',
+  description: 'Register a 1s interval whose enabled predicate returns false',
+  parameters: { type: 'object', properties: {} },
+  execute: async () => {
+    await ion.schedule.interval({
+      id: 'async-canary-disabled',
+      intervalMs: 1000,
+      enabled: () => false,
+      handler: async () => {
+        // never called.
+      },
+    })
+    return { content: 'ok' }
+  },
+})
+
+// Register an interval whose handler throws. Used by the scheduler
+// e2e tests to verify engine_schedule_failed fires.
+ion.registerTool({
+  name: 'async_canary_register_failing_interval',
+  description: 'Register a 1s interval whose handler throws',
+  parameters: { type: 'object', properties: {} },
+  execute: async () => {
+    await ion.schedule.interval({
+      id: 'async-canary-failing',
+      intervalMs: 1000,
+      handler: async () => {
+        throw new Error('intentional canary failure')
+      },
+    })
+    return { content: 'ok' }
+  },
+})
+
+// Register a daily job at a far-future time so the test can confirm
+// the scheduler picks it up without it actually firing during the
+// test window. The bootstrap path runs once and writes nothing — used
+// to exercise the persistence-directory wire-up.
+ion.registerTool({
+  name: 'async_canary_register_daily_job',
+  description: 'Register a daily job at 03:00 (far future for a daytime test run)',
+  parameters: { type: 'object', properties: {} },
+  execute: async () => {
+    await ion.schedule.daily({
+      id: 'async-canary-daily',
+      time: '03:00',
+      tz: 'UTC',
+      handler: async () => {
+        // would fire daily at 03:00 UTC; never in a test window.
+      },
+    })
+    return { content: 'ok' }
+  },
+})

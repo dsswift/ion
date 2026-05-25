@@ -168,30 +168,41 @@ func weekdayFromName(s string) time.Weekday {
 // fire (next-run = now + stagger) when the job's last scheduled slot
 // has been missed.
 func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJob, now time.Time) {
-	key := hostJobKey{host: h, id: job.JobID}
+	name := hostName(h)
 	loc := s.loadTz(jobTz(job))
+	next := s.computeBootstrapNextRun(name, job, now, loc)
+	key := hostJobKey{host: h, id: job.JobID}
+
+	s.mu.Lock()
+	s.nextRun[key] = next
+	s.mu.Unlock()
+	utils.Debug("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q next=%s", name, job.JobID, next))
+}
+
+// computeBootstrapNextRun is the pure computation half of
+// bootstrapNextRun, factored out so catchup_test.go can exercise the
+// decision tree without needing a real *extension.Host. Same body
+// as the inline logic — kept as a method on Scheduler so it has
+// access to s.shouldCatchUp() and s.readLastRunByName.
+func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location) time.Time {
 	next := nextRunFor(job, now, loc)
 
 	// Catch-up only applies to daily/weekly (interval jobs catch up
 	// implicitly by firing at now+interval). Disabled when persistence
 	// is off or CatchUpEnabled is explicitly false.
 	if job.Kind != extension.ScheduleInterval && s.shouldCatchUp() {
-		if lastRun, ok := s.readLastRun(h, job); ok {
+		if lastRun, ok := s.readLastRunByName(name, job); ok {
 			// What was the most recent scheduled slot BEFORE now?
 			lastSlot := lastScheduledSlotBefore(job, now, loc)
 			// If lastSlot is after lastRun, the slot was missed.
 			if lastSlot.After(lastRun) {
 				// Schedule the catch-up fire ~now + stagger.
 				next = now.Add(CatchUpStagger)
-				utils.Log("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q catch-up scheduled (missed slot %s)", h.Name(), job.JobID, lastSlot))
+				utils.Log("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q catch-up scheduled (missed slot %s)", name, job.JobID, lastSlot))
 			}
 		}
 	}
-
-	s.mu.Lock()
-	s.nextRun[key] = next
-	s.mu.Unlock()
-	utils.Debug("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q next=%s", h.Name(), job.JobID, next))
+	return next
 }
 
 // jobTz returns the job's configured timezone or empty for default.

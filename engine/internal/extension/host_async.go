@@ -339,22 +339,6 @@ func (h *Host) CommitPendingAsyncDecls() []error {
 		}
 	}
 	utils.Log("extension", fmt.Sprintf("CommitPendingAsyncDecls: ext=%s committed webhooks=%d schedules=%d errors=%d",
-		h.name, len(webhooks)-countErrs(errs, "webhook"), len(schedules)-countErrs(errs, "schedule"), len(errs)))
+		h.name, len(webhooks), len(schedules), len(errs)))
 	return errs
-}
-
-// countErrs counts wrapped errors whose path prefix matches the kind
-// label. Used for the post-commit log line so the operator sees an
-// accurate accept/reject split per kind.
-func countErrs(errs []error, kind string) int {
-	n := 0
-	for _, e := range errs {
-		// Errors here are wrapped as "<kind> <id>: <inner>" — we just
-		// check the leading kind label.
-		m := e.Error()
-		if len(m) >= len(kind) && m[:len(kind)] == kind {
-			n++
-		}
-	}
-	return n
 }

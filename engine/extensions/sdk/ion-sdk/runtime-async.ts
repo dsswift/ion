@@ -61,14 +61,11 @@ let initResolved = false
 // avoid a circular dep; instead runtime.ts calls registerRpcBridge
 // after it sets up its plumbing.
 type RpcRequest = (method: string, params: unknown) => Promise<unknown>
-type CounterFn = () => number
 let rpcRequest: RpcRequest | null = null
-let nextCorrelationId: CounterFn = () => 0
 
 /** Wired by runtime.ts during createIon(). */
-export function registerRpcBridge(fn: RpcRequest, counter: CounterFn): void {
+export function registerRpcBridge(fn: RpcRequest): void {
   rpcRequest = fn
-  nextCorrelationId = counter
 }
 
 // drainPendingInit returns the static init declarations the runtime
@@ -327,10 +324,3 @@ function normaliseWebhookResponse(resp: WebhookResponse | undefined | void): Web
     headers: resp.headers ?? undefined,
   }
 }
-
-// Compile-time touch so `nextCorrelationId` isn't pruned when the
-// future per-fire tracing wiring lands. Pulling the wired-but-unused
-// dependency out would force a churn on the bridge registration; this
-// makes the linter happy without scaffolding.
-function _unused(): number { return nextCorrelationId() }
-void _unused

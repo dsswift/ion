@@ -37,13 +37,20 @@ type lastRunMarker struct {
 // persistDir is empty (tests, or persistence disabled by config).
 // Interval jobs do not write markers — they don't catch up.
 func (s *Scheduler) recordLastRun(h *extension.Host, job extension.ScheduleJob, firedAt time.Time) {
+	s.recordLastRunByName(hostName(h), job, firedAt)
+}
+
+// recordLastRunByName is the host-name-keyed implementation. Kept
+// separate so persistence_test.go can exercise the on-disk format
+// without spinning up a real subprocess.
+func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, firedAt time.Time) {
 	if s.persistDir == "" {
 		return
 	}
 	if job.Kind == extension.ScheduleInterval {
 		return
 	}
-	path := s.markerPath(h, job)
+	path := s.markerPathByName(name, job)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		utils.Warn("scheduler", fmt.Sprintf("recordLastRun: mkdir %s: %v", filepath.Dir(path), err))
 		return
@@ -57,16 +64,19 @@ func (s *Scheduler) recordLastRun(h *extension.Host, job extension.ScheduleJob, 
 		utils.Warn("scheduler", fmt.Sprintf("recordLastRun: write %s: %v", path, err))
 		return
 	}
-	utils.Debug("scheduler", fmt.Sprintf("recordLastRun: ext=%s id=%q wrote %s", h.Name(), job.JobID, path))
+	utils.Debug("scheduler", fmt.Sprintf("recordLastRun: ext=%s id=%q wrote %s", name, job.JobID, path))
 }
 
-// readLastRun reads the marker if it exists. Returns (zero, false)
-// when the file is missing, malformed, or persistence is off.
-func (s *Scheduler) readLastRun(h *extension.Host, job extension.ScheduleJob) (time.Time, bool) {
+// readLastRunByName reads the marker if it exists. Returns (zero,
+// false) when the file is missing, malformed, or persistence is off.
+// The host-keyed version was dropped — every caller goes through a
+// resolvable string name, and the by-name variant is testable
+// without a subprocess.
+func (s *Scheduler) readLastRunByName(name string, job extension.ScheduleJob) (time.Time, bool) {
 	if s.persistDir == "" {
 		return time.Time{}, false
 	}
-	path := s.markerPath(h, job)
+	path := s.markerPathByName(name, job)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -87,14 +97,19 @@ func (s *Scheduler) readLastRun(h *extension.Host, job extension.ScheduleJob) (t
 	return ts, true
 }
 
-// markerPath computes the on-disk path for a marker. Uses the host
-// name + job id as a stable key, with non-filesystem-safe characters
-// replaced. Collisions across hosts with identical names are
-// possible; for now we accept that — host names come from the
-// extension's manifest and are conventionally unique.
-func (s *Scheduler) markerPath(h *extension.Host, job extension.ScheduleJob) string {
-	safe := safeName(h.Name()) + "_" + safeName(job.JobID) + ".json"
+// markerPathByName uses an explicit name string so tests don't need
+// a real Host to exercise sanitisation behavior.
+func (s *Scheduler) markerPathByName(name string, job extension.ScheduleJob) string {
+	safe := safeName(name) + "_" + safeName(job.JobID) + ".json"
 	return filepath.Join(s.persistDir, safe)
+}
+
+// hostName extracts the host name, tolerating a nil host (test seam).
+func hostName(h *extension.Host) string {
+	if h == nil {
+		return ""
+	}
+	return h.Name()
 }
 
 // safeName replaces characters that are awkward in filenames with

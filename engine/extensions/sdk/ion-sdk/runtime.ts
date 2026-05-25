@@ -449,7 +449,7 @@ export function createIon(): IonSDK {
   // Wire the async-trigger runtime's RPC bridge so ion.webhooks /
   // ion.schedule can issue ext/register_* and ext/deregister_* calls
   // for dynamic registrations after init.
-  registerRpcBridge(request, () => nextRequestId++)
+  registerRpcBridge(request)
 
   process.nextTick(() => startListening())
 

@@ -284,6 +284,24 @@ func (h *Host) Dead() bool {
 	return h.dead.Load()
 }
 
+// KillSubprocessForTest sends SIGKILL to the running subprocess.
+// Exposed for integration tests only — production code lets the
+// process exit naturally and relies on the readLoop's EOF detection
+// to fire the death signal. Returns nil if no subprocess is running.
+//
+// After calling this, callers typically wait for h.Dead() to return
+// true (the readLoop sets it asynchronously), then invoke Respawn
+// to recreate the subprocess.
+func (h *Host) KillSubprocessForTest() error {
+	h.mu.Lock()
+	p := h.process
+	h.mu.Unlock()
+	if p == nil {
+		return nil
+	}
+	return p.Kill()
+}
+
 // MarkTurnInFlight records that a turn was active at the moment of death so
 // the respawn path knows to fire turn_aborted on the new instance.
 func (h *Host) MarkTurnInFlight(active bool) {

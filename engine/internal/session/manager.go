@@ -280,6 +280,28 @@ func (m *Manager) StopAll() error {
 	return nil
 }
 
+// Shutdown stops every active session and tears down the manager-level
+// async subsystems (webhook listener, scheduler tick loop). Safe to
+// call multiple times; safe to call when no subsystems have been
+// started. Tests that load extensions via StartSession should
+// register this with t.Cleanup so a leaked listener cannot bleed
+// the default port across subsequent tests.
+func (m *Manager) Shutdown() {
+	_ = m.StopAll()
+	m.asyncMu.Lock()
+	srv := m.webhookServer
+	sch := m.scheduler
+	m.webhookServer = nil
+	m.scheduler = nil
+	m.asyncMu.Unlock()
+	if srv != nil {
+		srv.Stop()
+	}
+	if sch != nil {
+		sch.Stop()
+	}
+}
+
 // IsRunning reports whether the named session has an active run.
 func (m *Manager) IsRunning(key string) bool {
 	m.mu.RLock()
