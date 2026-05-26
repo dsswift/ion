@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.27.0](https://github.com/dsswift/ion/compare/engine-v1.26.1...engine-v1.27.0) (2026-05-26)
+
+### Features
+
+* **engine:** add ctx.LLMCall lightweight inference primitive ([73ee012](https://github.com/dsswift/ion/commit/73ee012c4248dc52ce320c359aedae80403591f7))
+
 ## [1.26.1](https://github.com/dsswift/ion/compare/engine-v1.26.0...engine-v1.26.1) (2026-05-26)
 
 ### Bug Fixes

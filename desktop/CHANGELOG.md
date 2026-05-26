@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.38.0](https://github.com/dsswift/ion/compare/desktop-v1.37.1...desktop-v1.38.0) (2026-05-26)
+
+### Features
+
+* **engine:** add ctx.LLMCall lightweight inference primitive ([73ee012](https://github.com/dsswift/ion/commit/73ee012c4248dc52ce320c359aedae80403591f7))
+
 ## [1.37.1](https://github.com/dsswift/ion/compare/desktop-v1.37.0...desktop-v1.37.1) (2026-05-26)
 
 ### Bug Fixes
