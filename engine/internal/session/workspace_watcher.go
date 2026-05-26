@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -51,15 +50,12 @@ func resolveWatchIgnores(cfg types.EngineConfig) []string {
 	return defaultWatchIgnores
 }
 
-// startWorkspaceWatcher constructs and starts the session-scoped fsnotify
-// watcher. Logs start / skip / failure outcomes and returns the live watcher
-// (or nil when the watcher should not run for this session).
-//
-// Skip conditions: no extension group loaded (nothing to fire hooks into),
-// empty WorkingDirectory (no root to watch). Failure to construct or start
-// is logged but does not propagate -- the session is still usable without
-// workspace file events.
-func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *extension.ExtensionGroup) *watcher.Watcher {
+// startWorkspaceWatcher acquires a shared watcher from the Manager's pool
+// for this session's working directory. Returns a release function (or nil
+// when no watcher should run). Multiple sessions on the same directory
+// share one underlying filesystem watcher, avoiding file-descriptor
+// exhaustion on macOS where kqueue requires one FD per watched directory.
+func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *extension.ExtensionGroup) func() {
 	if group == nil || group.IsEmpty() {
 		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=no_extensions", key))
 		return nil
@@ -75,16 +71,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		source = "harness_override"
 	}
 
-	w, err := watcher.New(s.config.WorkingDirectory, ignores)
-	if err != nil {
-		utils.Error("session", fmt.Sprintf("startWorkspaceWatcher: New failed key=%s cwd=%s err=%v", key, s.config.WorkingDirectory, err))
-		return nil
-	}
-
 	onEvent := func(info watcher.Info) {
-		// Rebuild the extension context per event so the callback always
-		// sees the current session state (mirrors how every other engine
-		// -> extension fan-out builds context fresh per call).
 		ctx := m.newExtContext(s, key)
 		group.FireWorkspaceFileChanged(ctx, extension.WorkspaceFileChangedInfo{
 			Path:    info.Path,
@@ -93,29 +80,12 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		})
 	}
 
-	if err := w.Start(context.Background(), onEvent); err != nil {
-		utils.Error("session", fmt.Sprintf("startWorkspaceWatcher: Start failed key=%s cwd=%s err=%v", key, s.config.WorkingDirectory, err))
-		// Best-effort cleanup of whatever the constructor allocated.
-		_ = w.Close()
+	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, onEvent)
+	if err != nil {
+		utils.Error("session", fmt.Sprintf("startWorkspaceWatcher: acquire failed key=%s cwd=%s err=%v", key, s.config.WorkingDirectory, err))
 		return nil
 	}
 
-	utils.Info("session", fmt.Sprintf("startWorkspaceWatcher: started key=%s cwd=%s ignore_count=%d ignore_source=%s", key, s.config.WorkingDirectory, len(ignores), source))
-	return w
-}
-
-// stopWorkspaceWatcher tears down the session's filesystem watcher, if any.
-// Idempotent and safe on a nil watcher. Called from the session-stop path
-// before the extension group is closed so any in-flight watcher callbacks
-// drain into a still-live group.
-func stopWorkspaceWatcher(key string, w *watcher.Watcher) {
-	if w == nil {
-		utils.Debug("session", fmt.Sprintf("stopWorkspaceWatcher: skip key=%s reason=nil_watcher", key))
-		return
-	}
-	if err := w.Close(); err != nil {
-		utils.Error("session", fmt.Sprintf("stopWorkspaceWatcher: Close failed key=%s err=%v", key, err))
-		return
-	}
-	utils.Info("session", fmt.Sprintf("stopWorkspaceWatcher: stopped key=%s", key))
+	utils.Info("session", fmt.Sprintf("startWorkspaceWatcher: acquired key=%s cwd=%s ignore_count=%d ignore_source=%s", key, s.config.WorkingDirectory, len(ignores), source))
+	return release
 }

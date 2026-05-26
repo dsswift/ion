@@ -78,12 +78,12 @@ func startSessionWithWatcher(t *testing.T, ignores []string) (*Manager, string, 
 	s.extGroup = group
 	mgr.mu.Unlock()
 
-	w := mgr.startWorkspaceWatcher(s, key, group)
-	if w == nil {
+	release := mgr.startWorkspaceWatcher(s, key, group)
+	if release == nil {
 		t.Fatal("startWorkspaceWatcher returned nil")
 	}
 	mgr.mu.Lock()
-	s.fsWatcher = w
+	s.fsWatcherRelease = release
 	mgr.mu.Unlock()
 
 	// Allow fsnotify to settle before tests start writing.

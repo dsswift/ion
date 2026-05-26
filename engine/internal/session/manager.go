@@ -47,6 +47,12 @@ type Manager struct {
 	asyncMu       sync.Mutex
 	webhookServer *webhooks.Server
 	scheduler     *scheduling.Scheduler
+
+	// watchers deduplicates filesystem watchers across sessions that
+	// share the same working directory. Without this, N sessions on
+	// one repo tree consume N * dirs kqueue FDs, exhausting the
+	// per-process file descriptor limit.
+	watchers *watcherPool
 }
 
 // SetConfig stores the engine runtime config for applying defaults.
@@ -75,6 +81,7 @@ func NewManager(b backend.RunBackend) *Manager {
 	m := &Manager{
 		sessions: make(map[string]*engineSession),
 		backend:  b,
+		watchers: newWatcherPool(),
 	}
 
 	b.OnNormalized(m.handleNormalizedEvent)
@@ -211,7 +218,7 @@ func (m *Manager) StopSession(key string) error {
 	telemCollector := s.telemetry
 	sessionRecorder := s.recorder
 	toolServer := s.toolServer
-	fsWatcher := s.fsWatcher
+	fsWatcherRelease := s.fsWatcherRelease
 
 	delete(m.sessions, key)
 	m.mu.Unlock()
@@ -220,10 +227,13 @@ func (m *Manager) StopSession(key string) error {
 	if toolServer != nil {
 		toolServer.Stop()
 	}
-	// Stop the workspace watcher BEFORE firing session_end / closing the
+	// Release the workspace watcher BEFORE firing session_end / closing the
 	// extension group so any in-flight watcher callbacks drain into a
 	// still-live group, and no late callback races with extGroup.Close().
-	stopWorkspaceWatcher(key, fsWatcher)
+	if fsWatcherRelease != nil {
+		fsWatcherRelease()
+		utils.Info("session", fmt.Sprintf("stopSession: released watcher key=%s", key))
+	}
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		_ = extGroup.FireSessionEnd(ctx)

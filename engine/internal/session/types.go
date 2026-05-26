@@ -10,7 +10,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
-	"github.com/dsswift/ion/engine/internal/watcher"
 )
 
 // toolMeta stores tool call metadata keyed by tool ID.
@@ -65,13 +64,10 @@ type engineSession struct {
 	procRegistry *extension.ProcessRegistry
 	pending      *pending.Broker
 
-	// fsWatcher is the recursive workspace_file_changed watcher rooted at
-	// config.WorkingDirectory. Started in StartSession after extensions are
-	// loaded; stopped in stopSession before the extension group is closed.
-	// nil when no extensions are loaded, when WorkingDirectory is empty, or
-	// when the watcher failed to start (a watcher failure is logged but does
-	// not abort session startup).
-	fsWatcher *watcher.Watcher
+	// fsWatcherRelease releases this session's share of the pooled workspace
+	// watcher. The underlying watcher closes when the last session sharing
+	// the same working directory releases. nil when no watcher is active.
+	fsWatcherRelease func()
 
 	// Last-known context usage state, carried forward across status
 	// emissions so the footer always reflects the most recent data.
