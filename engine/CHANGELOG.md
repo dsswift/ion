@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.28.0](https://github.com/dsswift/ion/compare/engine-v1.27.0...engine-v1.28.0) (2026-05-26)
+
+### Features
+
+* **engine:** deduplicate filesystem watchers across sessions ([9f53926](https://github.com/dsswift/ion/commit/9f5392647e1d0db3cc5f1cc7e135ed7f003742c0))
+
 ## [1.27.0](https://github.com/dsswift/ion/compare/engine-v1.26.1...engine-v1.27.0) (2026-05-26)
 
 ### Features
