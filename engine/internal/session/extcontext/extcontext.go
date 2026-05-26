@@ -146,6 +146,13 @@ func NewExtContext(sa SessionAccessor) *extension.Context {
 	// Wire engine-native agent dispatch.
 	ctx.DispatchAgent = BuildDispatchAgentFunc(sa)
 
+	// Wire the lightweight one-shot inference primitive. Always available
+	// (no nil check needed at call sites) because the closure itself
+	// handles every error path with a typed return value. Same accessor
+	// powers DispatchAgent and LLMCall — provider routing, hook firing,
+	// and event emission go through the same plumbing.
+	ctx.LLMCall = BuildLLMCallFunc(sa)
+
 	// Populate extension config if available.
 	if eg := sa.ExtGroup(); eg != nil && !eg.IsEmpty() {
 		ctx.Config = &extension.ExtensionConfig{

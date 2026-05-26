@@ -142,6 +142,24 @@ type Context struct {
 	// the path is preserved across toggles until the session is reset).
 	// Nil when not wired.
 	GetPlanMode func() (enabled bool, planFilePath string)
+
+	// LLMCall fires a one-shot, no-tools, no-loop inference call against the
+	// session's provider registry. Returns the accumulated assistant text
+	// plus usage / cost telemetry. Designed for harness-internal extraction,
+	// classification, and routing prompts that should observe Ion's hook
+	// surface (notably before_provider_request) without paying the cost of a
+	// full dispatchAgent or a direct provider HTTP bypass.
+	//
+	// Fires before_provider_request once per invocation so handlers that
+	// track outbound model calls see both agent-loop traffic and lightweight
+	// inference traffic uniformly. Emits exactly one engine_llm_call event
+	// after the call completes, carrying observability metadata (model,
+	// providerID, latencyMs, tokens, cost, jsonMode) — never the prompt or
+	// response content. Errors return (nil, error); no engine_llm_call event
+	// fires on the error path.
+	//
+	// Nil when the session has no extension wiring (rare; defensive guard).
+	LLMCall func(opts LLMCallOpts) (*LLMCallResult, error)
 }
 
 // DispatchAgentOpts configures an engine-native agent dispatch.
