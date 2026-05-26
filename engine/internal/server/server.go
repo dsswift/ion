@@ -91,6 +91,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	case *backend.CliBackend, *backend.HybridBackend:
 		cliCapable = true
 	}
+	utils.Log("Server", fmt.Sprintf("backend type=%T cliCapable=%v", b, cliCapable))
 
 	s := &Server{
 		socketPath: socketPath,

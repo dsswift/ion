@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // hostInfoCache caches the once-computed engine host info.
@@ -41,6 +43,7 @@ func computeHostInfo() map[string]interface{} {
 			"pathSep":  string(os.PathSeparator),
 		}
 	})
+	utils.Log("FS", fmt.Sprintf("host info cached: home=%s user=%s host=%s os=%s", hostInfoCached["home"], hostInfoCached["username"], hostInfoCached["hostname"], hostInfoCached["os"]))
 	return hostInfoCached
 }
 
@@ -68,13 +71,17 @@ type fsEntry struct {
 // Symlinks are reported but never followed; the client may pass an explicit
 // target path to navigate into one.
 func listDirectory(path string, showHidden bool) (map[string]interface{}, error) {
+	utils.Debug("FS", fmt.Sprintf("list_directory: path=%q showHidden=%v", path, showHidden))
 	resolved, err := resolveBrowsePath(path)
 	if err != nil {
+		utils.Error("FS", fmt.Sprintf("list_directory: resolve failed path=%q err=%v", path, err))
 		return nil, err
 	}
+	utils.Debug("FS", fmt.Sprintf("list_directory: resolved=%s", resolved))
 
 	dirEntries, err := os.ReadDir(resolved)
 	if err != nil {
+		utils.Error("FS", fmt.Sprintf("list_directory: readdir failed resolved=%s err=%v", resolved, err))
 		return nil, err
 	}
 
@@ -94,10 +101,6 @@ func listDirectory(path string, showHidden bool) (map[string]interface{}, error)
 		mode := de.Type()
 		if mode&os.ModeSymlink != 0 {
 			entry.IsSymlink = true
-			if info, statErr := os.Lstat(filepath.Join(resolved, name)); statErr == nil {
-				// dir-ness based on the symlink itself, not its target.
-				_ = info
-			}
 			// Resolve target to detect if it's a directory, but don't follow.
 			if target, statErr := os.Stat(filepath.Join(resolved, name)); statErr == nil {
 				entry.IsDir = target.IsDir()
@@ -116,6 +119,8 @@ func listDirectory(path string, showHidden bool) (map[string]interface{}, error)
 		}
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
+
+	utils.Log("FS", fmt.Sprintf("list_directory: resolved=%s entries=%d truncated=%v", resolved, len(out), truncated))
 
 	resp := map[string]interface{}{
 		"path":      resolved,

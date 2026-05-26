@@ -171,6 +171,7 @@ func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) 
 		if s.cliCapable && pid == "anthropic" && !entry.HasAuth {
 			entry.HasAuth = true
 			entry.AuthSource = "cli"
+			utils.Debug("Models", fmt.Sprintf("provider=%s: CLI-auth fallback applied", pid))
 		}
 		// Populate config details (gateway URL, API key reference)
 		if s.config != nil {
