@@ -98,6 +98,15 @@ type ClientCommand struct {
 	// EnterPlanModeDescription / RunOptions.PlanModePrompt — same additive
 	// omitempty contract. Mirrors RunOptions.PlanModeSparseReminder.
 	PlanModeSparseReminder string `json:"planModeSparseReminder,omitempty"`
+
+	// send_prompt: persisted plan file path from the desktop's tab state.
+	// When non-empty, the engine restores the session's planFilePath from
+	// this value instead of allocating a fresh slug — preserving plan file
+	// continuity across desktop restarts. The engine validates that the
+	// file exists on disk; if missing it falls back to fresh allocation.
+	// Additive optional field; omitted by clients that have no persisted
+	// plan file path.
+	PlanFilePath string `json:"planFilePath,omitempty"`
 }
 
 var validCommands = map[string]bool{

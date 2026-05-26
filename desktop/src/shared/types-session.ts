@@ -233,6 +233,17 @@ export interface RunOptions {
    * entries before they reach the engine.
    */
   imageAttachments?: ImageAttachmentPayload[]
+  /**
+   * Persisted plan file path from tab state. When set, the engine uses this
+   * path instead of allocating a fresh slug — restoring continuity after
+   * desktop restart. The engine validates that the file exists on disk; if
+   * the file is missing it falls back to allocating a new slug as before.
+   *
+   * Only sent when tab.planFilePath is non-null. Tabs that have never
+   * entered plan mode omit this field and the engine's behavior is
+   * unchanged.
+   */
+  planFilePath?: string
 }
 
 /** Pre-encoded image bytes that ride alongside a user prompt. */

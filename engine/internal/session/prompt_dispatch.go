@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -43,6 +44,14 @@ type PromptOverrides struct {
 	// plan file path. Parallel override to EnterPlanModeDescription;
 	// same additive omitempty contract.
 	PlanModeSparseReminder string
+	// PlanFilePath is the persisted plan file path from the desktop's
+	// tab state. When non-empty, the engine restores the session's
+	// planFilePath from this value instead of allocating a fresh slug —
+	// preserving plan file continuity across desktop restarts. The
+	// engine validates that the file exists on disk before using it;
+	// if missing it falls back to fresh allocation. Additive optional
+	// field; empty by default.
+	PlanFilePath string
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -90,12 +99,31 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	s.cliTurnActive = false
 
 	if s.planMode && s.planFilePath == "" {
-		// Plan file allocation is centralised in allocateNewPlanFilePath
-		// (plan_slug.go). That helper handles the CLI/Hybrid-vs-API
-		// directory choice and produces a fresh non-colliding word slug.
-		// See its doc comment for the directory selection rules.
-		s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-		utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+		// Try to restore a persisted plan file path from the client
+		// (desktop sends this from tab state after restarts). Only used
+		// when the file still exists on disk; otherwise fall through to
+		// fresh allocation.
+		if overrides != nil && overrides.PlanFilePath != "" {
+			if _, err := os.Stat(overrides.PlanFilePath); err == nil {
+				s.planFilePath = overrides.PlanFilePath
+				utils.Info("PlanMode", fmt.Sprintf(
+					"SendPrompt: key=%s restored planFile=%s from client",
+					key, s.planFilePath))
+			} else {
+				utils.Info("PlanMode", fmt.Sprintf(
+					"SendPrompt: key=%s client planFilePath=%s not on disk, allocating new",
+					key, overrides.PlanFilePath))
+				s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
+				utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+			}
+		} else {
+			// Plan file allocation is centralised in allocateNewPlanFilePath
+			// (plan_slug.go). That helper handles the CLI/Hybrid-vs-API
+			// directory choice and produces a fresh non-colliding word slug.
+			// See its doc comment for the directory selection rules.
+			s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
+			utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+		}
 	}
 
 	// Detect plan mode reentry: plan mode is active, we already have a plan

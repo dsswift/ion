@@ -343,11 +343,11 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string): Promise<{ ok: boolean; error?: string }> {
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string): Promise<{ ok: boolean; error?: string }> {
     const attCount = imageAttachments?.length ?? 0
     const descLen = enterPlanModeDescription?.length ?? 0
     const reminderLen = planModeSparseReminder?.length ?? 0
-    log(`sendPrompt: key=${key} len=${text.length} model=${model ?? 'default'} hasSysPrompt=${!!appendSystemPrompt} images=${attCount} implementationPhase=${implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen}`)
+    log(`sendPrompt: key=${key} len=${text.length} model=${model ?? 'default'} hasSysPrompt=${!!appendSystemPrompt} images=${attCount} implementationPhase=${implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${planFilePath ?? 'none'}`)
     await this.connect()
     const msg: Record<string, unknown> = { cmd: 'send_prompt', key, text }
     if (model) msg.model = model
@@ -378,6 +378,7 @@ export class EngineBridge extends EventEmitter {
     // Mirrors enterPlanModeDescription: the engine uses this verbatim
     // instead of buildPlanModeSparseReminder when present.
     if (planModeSparseReminder) msg.planModeSparseReminder = planModeSparseReminder
+    if (planFilePath) msg.planFilePath = planFilePath
     return this._sendWithResult(msg)
   }
 

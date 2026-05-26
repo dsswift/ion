@@ -207,6 +207,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         appendSystemPrompt: effectiveSystemPrompt,
         extensions,
         implementationPhase,
+        planFilePath: tab.planFilePath || undefined,
       }).catch((err: Error) => {
         get().handleError(activeTabId, {
           message: err.message,
@@ -302,6 +303,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         source: 'remote',
         extensions: remoteExtensions,
         imageAttachments,
+        planFilePath: tab.planFilePath || undefined,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,

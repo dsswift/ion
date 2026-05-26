@@ -159,6 +159,12 @@ export interface IncomingPrompt {
    *  pipeline mutates `prompt` and `appendSystemPrompt` on this object during
    *  `.md` expansion. */
   runOptions?: RunOptions
+  /**
+   * Persisted plan file path from tab state. Threaded through to the engine
+   * bridge so the engine can restore the plan file after a desktop restart
+   * instead of allocating a fresh slug.
+   */
+  planFilePath?: string
 }
 
 /**
@@ -290,7 +296,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     // case and the description value goes unused) so the call site stays
     // simple — no branching. Also forward the sparse-reminder override so
     // the per-turn reminder is consistent with the full prompt framing.
-    await engineBridge.sendPrompt(key, p.text, p.model, p.appendSystemPrompt, p.imageAttachments, p.implementationPhase, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER)
+    await engineBridge.sendPrompt(key, p.text, p.model, p.appendSystemPrompt, p.imageAttachments, p.implementationPhase, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER, p.planFilePath)
     return
   }
 
