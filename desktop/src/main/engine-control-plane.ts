@@ -176,6 +176,7 @@ export class EngineControlPlane extends EventEmitter {
         } as EnrichedError)
         return
       }
+      log(`workingDirectory confirmed on engine: tabId=${tabId} dir=${wd}`)
     }
 
     if (!tab.engineSessionStarted) {
