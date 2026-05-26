@@ -42,6 +42,8 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.contextTokens ? { contextTokens: t.contextTokens } : {}),
         ...(t.permissionDenied ? { permissionDenied: t.permissionDenied } : {}),
         ...(t.planFilePath ? { planFilePath: t.planFilePath } : {}),
+        ...(t.lastMessagePreview ? { lastMessagePreview: t.lastMessagePreview } : {}),
+        ...(t.lastEventAt ? { lastEventAt: t.lastEventAt } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.isEngine ? { isEngine: true, engineProfileId: t.engineProfileId } : {}),
         ...(t.isEngine ? (() => {

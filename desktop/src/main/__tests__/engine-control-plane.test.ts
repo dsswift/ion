@@ -46,9 +46,9 @@ vi.mock('../engine-bridge', () => {
 // tests we never exercise the remote path, so a no-op mock keeps it out of
 // the way.
 vi.mock('../engine-bridge-fs', () => ({
-  engineIsRemote: () => false,
-  getEngineHostInfo: () => Promise.resolve({ ok: false, error: 'not used in tests' }),
-  listEngineDirectory: () => Promise.resolve({ ok: false, error: 'not used in tests' }),
+  engineIsRemote: vi.fn(() => false),
+  getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
+  listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
 }))
 
 vi.mock('../logger', () => ({
@@ -69,6 +69,7 @@ vi.mock('crypto', async () => {
 
 import { EngineControlPlane } from '../engine-control-plane'
 import { EngineBridge } from '../engine-bridge'
+import { engineIsRemote, listEngineDirectory } from '../engine-bridge-fs'
 
 // ─── Helpers ───
 
@@ -287,6 +288,36 @@ describe('EngineControlPlane', () => {
       const complete = events.find((e) => e.ev.type === 'tool_call_complete')
       expect(complete).toBeDefined()
       expect(complete.ev.index).toBe(3)
+    })
+  })
+
+  describe('remote directory validation', () => {
+    it('rejects unreachable remote working directory', async () => {
+      vi.mocked(engineIsRemote).mockReturnValue(true)
+      vi.mocked(listEngineDirectory).mockResolvedValue({ ok: false, error: 'not found' })
+
+      const tabId = cp.createTab()
+      const errors: any[] = []
+      cp.on('error', (_tid: string, err: any) => errors.push(err))
+
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      expect(mockBridge.startSession).not.toHaveBeenCalled()
+      expect(errors).toHaveLength(1)
+      expect(errors[0].message).toContain('does not exist on the engine host')
+    })
+
+    it('proceeds when remote working directory is reachable', async () => {
+      vi.mocked(engineIsRemote).mockReturnValue(true)
+      vi.mocked(listEngineDirectory).mockResolvedValue({
+        ok: true,
+        data: { path: '/home/user', entries: [], truncated: false, parent: '/home' },
+      })
+
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      expect(mockBridge.startSession).toHaveBeenCalledOnce()
     })
   })
 })

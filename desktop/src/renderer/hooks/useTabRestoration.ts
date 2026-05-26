@@ -75,6 +75,8 @@ export function useTabRestoration() {
                       contextTokens: st.contextTokens || null,
                       queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                       draftInput: st.draftInput ?? '',
+                      lastMessagePreview: st.lastMessagePreview || null,
+                      lastEventAt: st.lastEventAt ?? null,
                       // Persisted permissionDenied is authoritative over resumeSession reconstruction
                       ...(st.permissionDenied ? { permissionDenied: st.permissionDenied } : {}),
                       ...(st.planFilePath ? { planFilePath: st.planFilePath } : {}),
@@ -166,6 +168,8 @@ export function useTabRestoration() {
                       modelOverride: st.modelOverride || null,
                       conversationId: st.conversationId || null,
                       draftInput: st.draftInput ?? '',
+                      lastMessagePreview: st.lastMessagePreview || null,
+                      lastEventAt: st.lastEventAt ?? null,
                     }
                   : t
               ),
@@ -212,6 +216,8 @@ export function useTabRestoration() {
                       groupId: st.groupId || null,
                       groupPinned: st.groupPinned ?? false,
                       draftInput: st.draftInput ?? '',
+                      lastMessagePreview: st.lastMessagePreview || null,
+                      lastEventAt: st.lastEventAt ?? null,
                     }
                   : t
               ),
@@ -260,6 +266,8 @@ export function useTabRestoration() {
                       contextTokens: st.contextTokens || null,
                       queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                       draftInput: st.draftInput ?? '',
+                      lastMessagePreview: st.lastMessagePreview || null,
+                      lastEventAt: st.lastEventAt ?? null,
                     }
                   : t
               ),
