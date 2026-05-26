@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.40.0](https://github.com/dsswift/ion/compare/desktop-v1.39.0...desktop-v1.40.0) (2026-05-26)
+
+### Features
+
+* **desktop:** persist last-message preview on tabs for richer tab pills ([29777cb](https://github.com/dsswift/ion/commit/29777cbd05d153f4b18144c9c466f83026c843dc))
+* **desktop:** show last-message preview and relative time on tab pills ([c8ef91e](https://github.com/dsswift/ion/commit/c8ef91ea6cc8d648c8d302bd57bc623d2c82ba54))
+
 ## [1.39.0](https://github.com/dsswift/ion/compare/desktop-v1.38.1...desktop-v1.39.0) (2026-05-26)
 
 ### Features
