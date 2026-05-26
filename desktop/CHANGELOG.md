@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.38.1](https://github.com/dsswift/ion/compare/desktop-v1.38.0...desktop-v1.38.1) (2026-05-26)
+
+### Bug Fixes
+
+* **engine:** mark anthropic provider authed when CLI backend is in use ([6e17630](https://github.com/dsswift/ion/commit/6e17630481bffd107cf6e136344c878e53a83b43))
+
 ## [1.38.0](https://github.com/dsswift/ion/compare/desktop-v1.37.1...desktop-v1.38.0) (2026-05-26)
 
 ### Features

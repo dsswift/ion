@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.29.1](https://github.com/dsswift/ion/compare/engine-v1.29.0...engine-v1.29.1) (2026-05-26)
+
+### Bug Fixes
+
+* **engine:** mark anthropic provider authed when CLI backend is in use ([6e17630](https://github.com/dsswift/ion/commit/6e17630481bffd107cf6e136344c878e53a83b43))
+
 ## [1.29.0](https://github.com/dsswift/ion/compare/engine-v1.28.0...engine-v1.29.0) (2026-05-26)
 
 ### Features
