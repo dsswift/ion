@@ -13,6 +13,13 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.29.2](https://github.com/dsswift/ion/compare/engine-v1.29.1...engine-v1.29.2) (2026-05-26)
+
+### Bug Fixes
+
+* **engine:** add logging to fs_browse and list_models ([2aafbb1](https://github.com/dsswift/ion/commit/2aafbb15c7e315c19fa1cbe71aa610ebba578447))
+* **engine:** extract buildProviderEntries and add CLI-auth tests ([669c124](https://github.com/dsswift/ion/commit/669c124f89277128b661eb9f3c20b9aed33013e6))
+
 ## [1.29.1](https://github.com/dsswift/ion/compare/engine-v1.29.0...engine-v1.29.1) (2026-05-26)
 
 ### Bug Fixes

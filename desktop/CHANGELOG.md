@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.40.1](https://github.com/dsswift/ion/compare/desktop-v1.40.0...desktop-v1.40.1) (2026-05-26)
+
+### Bug Fixes
+
+* **desktop:** add logging to engine-bridge-fs and control plane remote check ([a62d755](https://github.com/dsswift/ion/commit/a62d755adca1db40bf5e6fecc094d2d18726f003))
+* **desktop:** wire lastMessagePreview persistence and add remote-probe tests ([986fa64](https://github.com/dsswift/ion/commit/986fa644646b5c31d785b300b865531dab404dc8))
+
 ## [1.40.0](https://github.com/dsswift/ion/compare/desktop-v1.39.0...desktop-v1.40.0) (2026-05-26)
 
 ### Features
