@@ -500,6 +500,39 @@ type EngineEvent struct {
 	// AsyncDurationMs is the elapsed time of a fire from receipt to
 	// response (webhook) or fire to handler-return (schedule).
 	AsyncDurationMs int64 `json:"asyncDurationMs,omitempty"`
+
+	// --- engine_llm_call ---
+	//
+	// Emitted exactly once when ctx.LLMCall completes successfully. This is
+	// the lightweight-inference counterpart to the rich telemetry the agent
+	// loop emits via engine_message_end / engine_status: LLMCall does not
+	// produce a streamed conversation, so consumers need a single
+	// observability event carrying the post-call metadata in one place.
+	//
+	// The event NEVER carries the prompt text or the response content —
+	// LLMCall is often used for sensitive extraction / classification
+	// prompts (private-memory recall, intent routing) and the engine
+	// refuses to put that material on the wire. Consumers that want to log
+	// content must do so inside the extension that owns the call.
+	//
+	// Field set:
+	//   - LlmCallModel:        model name the call resolved to
+	//   - LlmCallProvider:     provider id ("anthropic", "openai", "ollama", …)
+	//   - LlmCallLatencyMs:    elapsed wall-clock time of the call
+	//   - LlmCallInputTokens:  prompt tokens reported by the provider
+	//   - LlmCallOutputTokens: completion tokens reported by the provider
+	//   - LlmCallCost:         USD cost estimate via the model registry
+	//   - LlmCallJsonMode:     true when the call requested JSON output
+	//
+	// No event is emitted on the error path; LLMCall returns (nil, error)
+	// and the caller decides whether to surface a harness-level event.
+	LlmCallModel        string  `json:"llmCallModel,omitempty"`
+	LlmCallProvider     string  `json:"llmCallProvider,omitempty"`
+	LlmCallLatencyMs    int64   `json:"llmCallLatencyMs,omitempty"`
+	LlmCallInputTokens  int     `json:"llmCallInputTokens,omitempty"`
+	LlmCallOutputTokens int     `json:"llmCallOutputTokens,omitempty"`
+	LlmCallCost         float64 `json:"llmCallCost,omitempty"`
+	LlmCallJsonMode     bool    `json:"llmCallJsonMode,omitempty"`
 }
 
 // MessageEndUsage reports token usage at the end of a message.

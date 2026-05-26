@@ -119,6 +119,56 @@ export interface HistoryMatch {
 }
 
 /**
+ * Options for {@link IonContext.llmCall}. The lightweight one-shot
+ * inference primitive — a single round-trip to the provider with no
+ * tools, no agent loop, no fallback chain.
+ *
+ * Designed for harness-internal extraction / classification / routing
+ * prompts that previously had to bypass Ion entirely (direct provider
+ * HTTP) to avoid the cost of a full {@link IonContext.dispatchAgent}.
+ * Going through `llmCall` keeps these calls visible to Ion's hook
+ * surface (notably `before_provider_request`) and to per-call
+ * observability (`engine_llm_call` event).
+ *
+ * - `model`: the model to call. Required. Resolves through the same
+ *   provider registry the agent loop uses, so any model the session
+ *   can dispatch is callable here.
+ * - `system`: optional system prompt. Omit for none.
+ * - `prompt`: the single user-role message. Required.
+ * - `jsonMode`: advisory flag requesting JSON-formatted output. Today
+ *   the engine forwards this in observability metadata only; provider-
+ *   side wiring is reserved for a future release. Parse defensively.
+ * - `maxTokens`: response cap (0 = provider default).
+ */
+export interface LLMCallOpts {
+  model: string
+  system?: string
+  prompt: string
+  jsonMode?: boolean
+  maxTokens?: number
+}
+
+/**
+ * Result from {@link IonContext.llmCall}. Carries the model's text
+ * response plus token / cost telemetry mirroring the data the engine
+ * emits on the `engine_llm_call` observability event.
+ *
+ * - `content`: the concatenated assistant text. Empty when the model
+ *   produced no text output (rare; llmCall has no tools to call so
+ *   tool_use-only completions yield empty content).
+ * - `inputTokens` / `outputTokens`: provider-reported usage.
+ * - `cost`: USD cost estimate via the model registry. `0` when the
+ *   model is not in the registry (e.g. a custom model without cost
+ *   metadata) — treat as "unknown" not "free".
+ */
+export interface LLMCallResult {
+  content: string
+  inputTokens: number
+  outputTokens: number
+  cost: number
+}
+
+/**
  * Sandbox profile for {@link IonContext.sandboxWrap}. All fields are optional.
  * - `fsAllowWrite` / `fsDenyWrite` / `fsDenyRead`: filesystem path lists.
  * - `netAllowedDomains` (allowlist) wins over `netBlockedDomains` (blocklist).
@@ -369,6 +419,49 @@ export interface IonContext {
    * ```
    */
   searchHistory(query: string, maxResults?: number): Promise<HistoryMatch[]>
+
+  /**
+   * One-shot lightweight inference call. Fires a single round-trip to
+   * the provider — no tools, no agent loop, no fallback chain. The
+   * lightweight counterpart to {@link IonContext.dispatchAgent}.
+   *
+   * Use this for harness-internal classification, extraction, and
+   * routing prompts that don't need the full agent machinery. Examples:
+   *   - "Is this user message about coding?" (intent classification)
+   *   - "Extract the city from this query." (slot filling)
+   *   - "Pick a specialist agent for this task." (router prompts)
+   *
+   * `llmCall` fires `before_provider_request` once per invocation so
+   * extensions that count or tag outbound model traffic see uniform
+   * telemetry across both the agent loop and lightweight inference.
+   * After the call completes, the engine emits exactly one
+   * `engine_llm_call` event carrying model / provider / latency /
+   * tokens / cost / jsonMode — but never the prompt or response
+   * content (privacy-by-default for harness-internal prompts).
+   *
+   * Errors reject the promise with a normal Error. On error no
+   * `engine_llm_call` event fires; the harness decides whether to
+   * surface a failure event of its own.
+   *
+   * If a path needs tools, that's {@link IonContext.dispatchAgent}.
+   * `llmCall` is intentionally the no-tools, no-loop primitive.
+   *
+   * @example
+   * ```ts
+   * ion.on('turn_end', async (ctx, payload) => {
+   *   const { content } = await ctx.llmCall({
+   *     model: 'qwen2-7b',
+   *     system: 'Reply with one word: yes or no.',
+   *     prompt: `Does this turn mention scheduling? "${payload.lastMessage}"`,
+   *     maxTokens: 5,
+   *   })
+   *   if (content.trim().toLowerCase().startsWith('yes')) {
+   *     await ctx.emit({ type: 'jarvis_scheduling_signal', message: payload.lastMessage })
+   *   }
+   * })
+   * ```
+   */
+  llmCall(opts: LLMCallOpts): Promise<LLMCallResult>
 }
 
 /** Options for {@link IonContext.sendPrompt}. */

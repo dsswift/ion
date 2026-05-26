@@ -276,6 +276,60 @@ type BeforeProviderRequestInfo struct {
 	MaxTokens int `json:"maxTokens,omitempty"`
 }
 
+// LLMCallOpts configures a one-shot, no-tools, no-loop inference call through
+// ctx.LLMCall. It is the lightweight counterpart to ctx.DispatchAgent: where
+// DispatchAgent spins up a full child backend with the agent loop, hook chain,
+// and tool registry, LLMCall drains a single provider stream and returns the
+// accumulated assistant text. Designed for harness-internal classification,
+// extraction, and routing prompts that previously had to bypass Ion entirely
+// (direct provider HTTP) to avoid the per-call overhead of a full dispatch.
+//
+// Field stability: this struct is part of the published SDK contract. New
+// fields may be added with zero-value defaults; existing fields must not be
+// removed or renamed.
+type LLMCallOpts struct {
+	// Model is the model name the request will be sent to. Resolves through
+	// the same provider registry that the agent loop uses, so any model the
+	// session can dispatch is callable here. Required — empty Model returns
+	// an error.
+	Model string `json:"model"`
+	// System is the system prompt for the call. Empty means no system prompt.
+	System string `json:"system,omitempty"`
+	// Prompt is the user-role message sent in a single turn. Required —
+	// empty Prompt returns an error.
+	Prompt string `json:"prompt"`
+	// JSONMode requests JSON-formatted output. Today this is advisory: the
+	// engine forwards the flag in observability metadata, but providers vary
+	// in how they honour structured-output flags through the streaming API.
+	// Callers should still parse the response defensively. Reserved for a
+	// future provider-side wiring when every backend exposes a uniform
+	// JSON-mode switch.
+	JSONMode bool `json:"jsonMode,omitempty"`
+	// MaxTokens caps the response length. 0 means provider default. Mirrors
+	// LlmStreamOptions.MaxTokens — passed through verbatim.
+	MaxTokens int `json:"maxTokens,omitempty"`
+}
+
+// LLMCallResult is the response from ctx.LLMCall. Carries the accumulated
+// assistant text plus usage/cost telemetry. Errors are returned as a non-nil
+// error from the call; on error LLMCallResult is nil.
+//
+// Field stability: published SDK contract — additive only.
+type LLMCallResult struct {
+	// Content is the concatenated text content of the model's response.
+	// Empty if the model produced no text (e.g. tool-only output, which
+	// LLMCall does not support — there are no tools to call).
+	Content string `json:"content"`
+	// InputTokens is the prompt token count reported by the provider.
+	InputTokens int `json:"inputTokens"`
+	// OutputTokens is the completion token count reported by the provider.
+	OutputTokens int `json:"outputTokens"`
+	// Cost is the USD cost estimate for the call, computed from the model
+	// registry's costPer1kInput / costPer1kOutput entries. 0 when the model
+	// is not in the registry (e.g. a custom model with no cost metadata).
+	Cost float64 `json:"cost"`
+}
+
 // BeforeAgentStartResult holds the optional overrides a before_agent_start handler may return.
 type BeforeAgentStartResult struct {
 	SystemPrompt string `json:"systemPrompt,omitempty"`

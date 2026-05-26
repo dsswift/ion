@@ -189,3 +189,22 @@ export type EngineEvent =
       earlyStopWouldContinue: boolean
       earlyStopIsSubagent?: boolean
     }
+  // engine_llm_call is the lightweight-inference observability event,
+  // emitted exactly once per successful ctx.LLMCall invocation. Carries
+  // model / provider / latency / token / cost / jsonMode metadata —
+  // never the prompt text or response content (privacy-by-default for
+  // harness-internal classification prompts). The desktop is observation-
+  // only; it does NOT need to act on this, but the variant is typed so
+  // any future cost-summary or telemetry-rendering work has the shape
+  // ready. See engine/internal/types/types.go for the canonical Go
+  // definition.
+  | {
+      type: 'engine_llm_call'
+      llmCallModel: string
+      llmCallProvider: string
+      llmCallLatencyMs: number
+      llmCallInputTokens: number
+      llmCallOutputTokens: number
+      llmCallCost: number
+      llmCallJsonMode?: boolean
+    }

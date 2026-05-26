@@ -30,6 +30,8 @@ import type {
   HistoryMatch,
   IonContext,
   IonSDK,
+  LLMCallOpts,
+  LLMCallResult,
   ProcessInfo,
   SandboxProfile,
   SandboxWrapResult,
@@ -248,6 +250,29 @@ function buildContext(ctxData: any): IonContext {
       })
       if (!Array.isArray(result)) return []
       return result as HistoryMatch[]
+    },
+    async llmCall(opts: LLMCallOpts): Promise<LLMCallResult> {
+      // One-shot lightweight inference. Forwards the opts verbatim to the
+      // engine's ext/llm_call RPC; the engine resolves the provider, fires
+      // before_provider_request, drains the stream, and emits the
+      // engine_llm_call observability event.
+      //
+      // We coerce every numeric/boolean field defensively because the engine
+      // returns a real LLMCallResult on success but a JSON-RPC error on
+      // failure (which the request helper unwraps into a thrown Error).
+      const result = await request('ext/llm_call', {
+        model: opts.model || '',
+        system: opts.system || '',
+        prompt: opts.prompt || '',
+        jsonMode: !!opts.jsonMode,
+        maxTokens: typeof opts.maxTokens === 'number' ? opts.maxTokens : 0,
+      })
+      return {
+        content: typeof result?.content === 'string' ? result.content : '',
+        inputTokens: typeof result?.inputTokens === 'number' ? result.inputTokens : 0,
+        outputTokens: typeof result?.outputTokens === 'number' ? result.outputTokens : 0,
+        cost: typeof result?.cost === 'number' ? result.cost : 0,
+      }
     },
   }
 }
