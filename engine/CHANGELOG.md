@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.29.0](https://github.com/dsswift/ion/compare/engine-v1.28.0...engine-v1.29.0) (2026-05-26)
+
+### Features
+
+* **engine:** add get_host_info and list_directory RPCs ([a1d4bca](https://github.com/dsswift/ion/commit/a1d4bcaa87f758af13219674dc6b18f472314fba))
+
 ## [1.28.0](https://github.com/dsswift/ion/compare/engine-v1.27.0...engine-v1.28.0) (2026-05-26)
 
 ### Features
