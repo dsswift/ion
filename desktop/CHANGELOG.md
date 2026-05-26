@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.37.1](https://github.com/dsswift/ion/compare/desktop-v1.37.0...desktop-v1.37.1) (2026-05-26)
+
+### Bug Fixes
+
+* **engine:** persist and restore planFilePath across restarts ([e0a9f69](https://github.com/dsswift/ion/commit/e0a9f69a323df5afc3316da04b45c34ef5b8762c))
+
 ## [1.37.0](https://github.com/dsswift/ion/compare/desktop-v1.36.0...desktop-v1.37.0) (2026-05-25)
 
 ### Features

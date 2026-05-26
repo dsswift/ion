@@ -13,6 +13,14 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.26.1](https://github.com/dsswift/ion/compare/engine-v1.26.0...engine-v1.26.1) (2026-05-26)
+
+### Bug Fixes
+
+* **engine:** normalize paths in plan mode write gate ([554722b](https://github.com/dsswift/ion/commit/554722b9f23bd58472cf1ca591af5226c3ea49d2))
+* **engine:** persist and restore planFilePath across restarts ([e0a9f69](https://github.com/dsswift/ion/commit/e0a9f69a323df5afc3316da04b45c34ef5b8762c))
+* **engine:** replace [plan-file] in entries, not just messages ([71ee236](https://github.com/dsswift/ion/commit/71ee23621a44a9f6b40ee08eeac5da5d1d95a602))
+
 ## [1.26.0](https://github.com/dsswift/ion/compare/engine-v1.25.0...engine-v1.26.0) (2026-05-25)
 
 ### Features
