@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -229,7 +230,7 @@ func (b *ApiBackend) executeTools(
 			var planWriteOverwrite bool
 			if run.planMode && (block.Name == "Write" || block.Name == "Edit") {
 				if targetPath, ok := block.Input["file_path"].(string); ok {
-					if targetPath != run.planFilePath {
+					if filepath.Clean(targetPath) != filepath.Clean(run.planFilePath) {
 						utils.Info("PlanMode", fmt.Sprintf("run=%s blocked=%s target=%s plan_file=%s", run.requestID, block.Name, targetPath, run.planFilePath))
 						msg := fmt.Sprintf("Plan mode: cannot write to %s. Only the plan file (%s) is writable.", targetPath, run.planFilePath)
 						results[i] = conversation.ToolResultEntry{
