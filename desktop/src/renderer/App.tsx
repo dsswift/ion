@@ -17,6 +17,8 @@ import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
+import { RemoteDirectoryPicker } from './components/RemoteDirectoryPicker'
+import { useRemoteFsStore } from './stores/remote-fs-store'
 import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
 import { useThemeSync } from './hooks/useThemeSync'
@@ -51,6 +53,11 @@ export default function App() {
   // Set up background model sync (initial fetch, periodic refresh, IPC listener)
   useEffect(() => {
     setupModelSync()
+  }, [])
+
+  // Initialize remote-fs store (queries main for isRemote)
+  useEffect(() => {
+    void useRemoteFsStore.getState().init()
   }, [])
 
   const [closeConfirmTab, setCloseConfirmTab] = useState<{ id: string; title: string; directory: string } | null>(null)
@@ -397,6 +404,9 @@ export default function App() {
 
         {/* Auto-update install dialog */}
         <UpdateDialog />
+
+        {/* Engine-host filesystem picker (used when the engine is remote) */}
+        <RemoteDirectoryPicker />
       </div>
     </PopoverLayerProvider>
   )

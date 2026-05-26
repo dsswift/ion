@@ -2,14 +2,19 @@ import React from 'react'
 import { FolderOpen } from '@phosphor-icons/react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useColors } from '../../theme'
+import { pickDirectoryForSession } from '../../stores/remote-fs-store'
+import { useShallow } from 'zustand/shallow'
 
 /** Empty state shown when no messages exist yet — directory picker prompt. */
 export function EmptyState() {
   const setBaseDirectory = useSessionStore((s) => s.setBaseDirectory)
+  const isTerminalOnly = useSessionStore(
+    useShallow((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isTerminalOnly ?? false),
+  )
   const colors = useColors()
 
   const handleChooseFolder = async () => {
-    const dir = await window.ion.selectDirectory()
+    const dir = await pickDirectoryForSession({ isTerminalOnly })
     if (dir) {
       setBaseDirectory(dir)
     }

@@ -458,6 +458,33 @@ export interface FsEntry {
   modifiedMs: number
 }
 
+// ─── Engine-host filesystem (browsed via the engine, may be remote) ───
+
+/** One entry in a list_directory response from the engine. */
+export interface EngineDirEntry {
+  name: string
+  isDir: boolean
+  isSymlink: boolean
+  readable: boolean
+}
+
+/** Response of the engine's list_directory RPC. */
+export interface EngineDirListing {
+  path: string
+  parent: string | null
+  entries: EngineDirEntry[]
+  truncated: boolean
+}
+
+/** Response of the engine's get_host_info RPC. */
+export interface EngineHostInfo {
+  home: string
+  username: string
+  hostname: string
+  os: string
+  pathSep: string
+}
+
 // ─── Remote Control Types ───
 
 export interface RemoteSettings {

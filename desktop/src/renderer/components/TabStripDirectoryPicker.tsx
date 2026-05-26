@@ -6,6 +6,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore } from '../preferences'
+import { pickDirectoryForSession } from '../stores/remote-fs-store'
 
 interface DirectoryPickerProps {
   anchor: { x: number; y: number; bottom: number }
@@ -56,7 +57,10 @@ export function DirectoryPicker({
   }, [onClose])
 
   const handleChooseDirectory = async () => {
-    const dir = await window.ion.selectDirectory()
+    // New-tab creation doesn't know its session type yet; we treat it as
+    // engine-mediated by default, which means the remote picker is used
+    // when the bridge is remote.
+    const dir = await pickDirectoryForSession({ isTerminalOnly: false })
     if (dir) {
       onSelectDir(dir)
       onClose()

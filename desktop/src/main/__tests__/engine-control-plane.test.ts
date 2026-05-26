@@ -37,8 +37,19 @@ vi.mock('../engine-bridge', () => {
     EngineBridge: function () {
       return mockBridge
     },
+    IS_REMOTE: false,
+    REMOTE_SOCKET: '',
   }
 })
+
+// engine-bridge-fs reads through to state.engineBridge lazily; for these
+// tests we never exercise the remote path, so a no-op mock keeps it out of
+// the way.
+vi.mock('../engine-bridge-fs', () => ({
+  engineIsRemote: () => false,
+  getEngineHostInfo: () => Promise.resolve({ ok: false, error: 'not used in tests' }),
+  listEngineDirectory: () => Promise.resolve({ ok: false, error: 'not used in tests' }),
+}))
 
 vi.mock('../logger', () => ({
   log: vi.fn(),

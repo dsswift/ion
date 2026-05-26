@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, RemoteTransportState, DiscoveredCommand, ImageAttachmentPayload, GitEvent, RepoSnapshot } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, ImageAttachmentPayload, GitEvent, RepoSnapshot } from '../shared/types'
 
 export interface IonAPI {
   // ─── Request-response (renderer → main) ───
@@ -16,6 +16,9 @@ export interface IonAPI {
   closeTab(tabId: string): Promise<void>
   selectDirectory(): Promise<string | null>
   selectExtensionFiles(): Promise<string[] | null>
+  getEngineHostInfo(): Promise<{ ok: boolean; error?: string; data?: EngineHostInfo }>
+  listEngineDirectory(path: string, showHidden: boolean): Promise<{ ok: boolean; error?: string; data?: EngineDirListing }>
+  engineIsRemote(): Promise<boolean>
   openExternal(url: string): Promise<boolean>
   openInVSCode(projectPath: string): Promise<boolean>
   attachFiles(): Promise<FileAttachment[] | null>
@@ -207,6 +210,10 @@ const api: IonAPI = {
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   selectExtensionFiles: () => ipcRenderer.invoke(IPC.SELECT_EXTENSION_FILES),
+  getEngineHostInfo: () => ipcRenderer.invoke(IPC.GET_ENGINE_HOST_INFO),
+  listEngineDirectory: (path: string, showHidden: boolean) =>
+    ipcRenderer.invoke(IPC.LIST_ENGINE_DIRECTORY, path, showHidden),
+  engineIsRemote: () => ipcRenderer.invoke(IPC.ENGINE_IS_REMOTE),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   openInVSCode: (projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, projectPath),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),

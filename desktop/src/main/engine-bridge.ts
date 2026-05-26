@@ -22,8 +22,8 @@ const PID_PATH = join(ION_HOME, 'desktop.pid')
  * over TCP to a remote engine instead of spawning a local one. Reconnect on
  * disconnect is automatic with exponential backoff (500 ms → 8 s, then 30 s cap).
  */
-const REMOTE_SOCKET = process.env.ION_DESKTOP_ENGINE_SOCKET || ''
-const IS_REMOTE = REMOTE_SOCKET.includes(':')
+export const REMOTE_SOCKET = process.env.ION_DESKTOP_ENGINE_SOCKET || ''
+export const IS_REMOTE = REMOTE_SOCKET.includes(':')
 
 /**
  * EngineBridge: thin socket client connecting Ion to the standalone
@@ -334,6 +334,9 @@ export class EngineBridge extends EventEmitter {
     await this.connect()
     return this._sendWithResult({ cmd: 'start_session', key, config })
   }
+
+  /** Send a typed-response command. Sibling helpers (e.g. engine-bridge-fs.ts) layer on top of the bridge via this. */
+  async request<T>(cmd: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; data?: T }> { await this.connect(); return this._sendWithData<T>({ cmd, ...payload }) }
 
   /** Track the conversation ID for a session so it can be restored on reconnect. */
   updateSessionConversationId(key: string, conversationId: string): void {

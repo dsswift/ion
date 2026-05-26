@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
 import { EngineBridge } from './engine-bridge'
+import { engineIsRemote, getEngineHostInfo, listEngineDirectory } from './engine-bridge-fs'
 import { log as _log, warn as _warn, error as _error } from './logger'
 import { handleEngineEvent, type TabEntry, type EventEmitterContext } from './engine-control-plane-events'
 import type {
@@ -144,6 +145,37 @@ export class EngineControlPlane extends EventEmitter {
       sessionId: options.sessionId || tab.conversationId || undefined,
       maxTokens: options.maxTokens,
       thinking: options.thinking,
+    }
+
+    // When the engine is remote, the workingDirectory must exist on the engine
+    // host (the desktop's local file dialog cannot know that). If a stale path
+    // from this desktop's filesystem is sent, the CLI dies with chdir errors
+    // and the tab silently stays idle. Resolve ~/~-prefixed paths against the
+    // engine's home, then probe the engine and surface a clear error instead.
+    if (engineIsRemote() && config.workingDirectory) {
+      let wd = config.workingDirectory
+      if (wd === '~' || wd.startsWith('~/')) {
+        const hostInfo = await getEngineHostInfo()
+        if (hostInfo.ok && hostInfo.data?.home) {
+          wd = wd === '~' ? hostInfo.data.home : `${hostInfo.data.home}/${wd.slice(2)}`
+          config.workingDirectory = wd
+        }
+      }
+      const probe = await listEngineDirectory(wd, false)
+      if (!probe.ok) {
+        warn(`workingDirectory unreachable on engine: tabId=${tabId} dir=${wd} err=${probe.error}`)
+        this._setStatus(tabId, 'failed')
+        this.emit('error', tabId, {
+          message:
+            `Working directory "${wd}" does not exist on the engine host. ` +
+            'Choose a directory on the remote engine via the status-bar folder picker, then try again.',
+          stderrTail: [],
+          exitCode: 1,
+          elapsedMs: 0,
+          toolCallCount: 0,
+        } as EnrichedError)
+        return
+      }
     }
 
     if (!tab.engineSessionStarted) {
