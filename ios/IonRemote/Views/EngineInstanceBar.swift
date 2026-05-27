@@ -49,6 +49,17 @@ struct EngineInstanceBar: View {
             viewModel.selectEngineInstance(tabId: tabId, instanceId: instance.id)
         } label: {
             HStack(spacing: 4) {
+                // Per-instance waiting-state dot. Desktop maps the value
+                // to "question" (AskUserQuestion pending) or "plan-ready"
+                // (ExitPlanMode pending) per the snapshot contract. Color
+                // and semantic priority mirror the desktop palette
+                // (yellow/orange for question, green for plan-ready).
+                // When nil, no dot is shown.
+                if let ws = instance.waitingState {
+                    Circle()
+                        .fill(ws == "question" ? Color.orange : Color.green)
+                        .frame(width: 6, height: 6)
+                }
                 Image(systemName: "bolt")
                     .font(.caption2)
                 Text(instance.label)

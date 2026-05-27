@@ -59,6 +59,26 @@ export interface State {
   engineMessages: Map<string, Message[]>
   engineModelOverrides: Map<string, string>
   engineDraftInputs: Map<string, string>
+  /**
+   * Pending AskUserQuestion / ExitPlanMode denials per engine instance,
+   * keyed by the compound `${tabId}:${instanceId}` key. A `null` slot is
+   * the explicit "no pending denial" marker for an instance (preserved
+   * across cost-only `engine_status` ticks).
+   *
+   * Engine sub-tabs (instances under a single engine view) are independent
+   * sub-conversations. Storing denial state per-instance (vs. on the
+   * parent `tab.permissionDenied`) keeps siblings from showing each
+   * other's AskUserQuestion / ExitPlanMode cards when the user switches
+   * between them. CLI tabs continue to use `tab.permissionDenied` — this
+   * map is engine-only.
+   *
+   * Parent-pill bubbling: `getWaitingState()` in `TabStripShared.ts` folds
+   * across an engine tab's instance entries so the strip pill still glows
+   * when any sub-tab is blocked. iOS receives the active instance's
+   * denial via `RemoteTabState.permissionQueue` (see snapshot.ts) so the
+   * iOS card path continues to work unchanged at the tab level.
+   */
+  enginePermissionDenied: Map<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null>
 
   tallViewTabId: string | null
   scrollToBottomCounter: number

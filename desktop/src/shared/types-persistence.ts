@@ -36,6 +36,14 @@ export interface PersistedTab {
   engineInstances?: EngineInstance[]
   engineMessages?: Record<string, Array<{ role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }>>
   engineAgentStates?: Record<string, Array<{ name: string; status: string; metadata?: Record<string, any> }>>
+  /**
+   * Per-engine-instance AskUserQuestion / ExitPlanMode denials, keyed by
+   * `instanceId`. Mirrors the runtime `enginePermissionDenied` map (which
+   * is keyed by the compound `${tabId}:${instanceId}`). Only instances
+   * with a non-null pending denial appear here. Restored on relaunch so
+   * a crash mid-question doesn't lose the card.
+   */
+  engineDenials?: Record<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }>
   terminalInstances?: TerminalInstance[]
   terminalBuffers?: Record<string, string>
   /** Wall-clock ms of the most recent engine event for this tab. Persisted so

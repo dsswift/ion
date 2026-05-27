@@ -209,6 +209,7 @@ function buildHarness(initialTab: TabState) {
     enginePanes: new Map(),
     engineMessages: new Map(),
     engineDraftInputs: new Map(),
+    enginePermissionDenied: new Map(),
     fileExplorerOpenDirs: new Set(),
     fileEditorOpenDirs: new Set(),
   }
@@ -364,6 +365,7 @@ describe('toggleTabGroupPin', () => {
       enginePanes: new Map(),
       engineMessages: new Map(),
       engineDraftInputs: new Map(),
+      enginePermissionDenied: new Map(),
       fileExplorerOpenDirs: new Set(),
       fileEditorOpenDirs: new Set(),
     }

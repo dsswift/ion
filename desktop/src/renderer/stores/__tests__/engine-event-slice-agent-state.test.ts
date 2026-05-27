@@ -41,6 +41,7 @@ function buildHarness() {
     engineModelOverrides: new Map(),
     engineConversationIds: new Map(),
     enginePanes: new Map(),
+    enginePermissionDenied: new Map(),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial

@@ -84,13 +84,59 @@ export function formatRelativeShort(ms: number): string {
 /** Tristate "waiting for the user" derived from queued permission denials. */
 export type WaitingState = 'plan-ready' | 'question' | null
 
-/** Derive the waiting state from a tab's permission-denied tools. */
-export function getWaitingState(tab: TabState): WaitingState {
-  const tools = tab.permissionDenied?.tools
+/** Derive the waiting state from a denial-tools array. Returns 'question'
+ *  if any tool is AskUserQuestion, else 'plan-ready' if any is
+ *  ExitPlanMode, else null. Shared by both CLI and engine paths. */
+function waitingStateFromTools(
+  tools: ReadonlyArray<{ toolName: string }> | undefined | null,
+): WaitingState {
   if (!tools?.length) return null
   if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
   if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
   return null
+}
+
+/**
+ * Derive the waiting state from a tab's pending denials.
+ *
+ * - CLI tabs: read from `tab.permissionDenied`.
+ * - Engine tabs (`tab.isEngine === true`): fold across every engine
+ *   instance under this tab in `state.enginePermissionDenied`, returning
+ *   the worst-priority waiting state ('question' > 'plan-ready' > null).
+ *
+ * Engine sub-tabs (instances) are independent sub-conversations and
+ * each may have its own pending question or plan card. Parent-pill
+ * glow must surface "any sub-tab is blocked," so we walk the per-
+ * instance map keyed by `${tabId}:${instanceId}`.
+ */
+export function getWaitingState(tab: TabState): WaitingState {
+  if (tab.isEngine) {
+    // Read the store directly. This is invoked from render callsites
+    // that already subscribe to the parts of state that change the
+    // map's identity (enginePermissionDenied / enginePanes), so this
+    // is consistent at render time.
+    const s = useSessionStore.getState()
+    const pane = s.enginePanes.get(tab.id)
+    if (!pane || pane.instances.length === 0) return null
+    let hasPlanReady = false
+    for (const inst of pane.instances) {
+      const entry = s.enginePermissionDenied.get(`${tab.id}:${inst.id}`)
+      const ws = waitingStateFromTools(entry?.tools)
+      if (ws === 'question') return 'question'
+      if (ws === 'plan-ready') hasPlanReady = true
+    }
+    return hasPlanReady ? 'plan-ready' : null
+  }
+  return waitingStateFromTools(tab.permissionDenied?.tools)
+}
+
+/** Same tristate logic as `getWaitingState`, but for a single engine
+ *  instance identified by its compound `${tabId}:${instanceId}` key.
+ *  Used by the engine sub-tab pill renderer to draw a per-instance
+ *  status dot. */
+export function getEngineInstanceWaitingState(key: string): WaitingState {
+  const entry = useSessionStore.getState().enginePermissionDenied.get(key)
+  return waitingStateFromTools(entry?.tools)
 }
 
 /** Status-dot color/pulse/glow derived from a tab's runtime state. Used by both single dots and stacked group dots. */

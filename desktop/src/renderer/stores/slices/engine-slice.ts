@@ -145,6 +145,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
       const engineUsage = new Map(get().engineUsage)
       const engineDraftInputs = new Map(get().engineDraftInputs)
+      const enginePermissionDenied = new Map(get().enginePermissionDenied)
       engineMessages.delete(key)
       engineAgentStates.delete(key)
       engineStatusFields.delete(key)
@@ -154,9 +155,10 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       enginePinnedPrompt.delete(key)
       engineUsage.delete(key)
       engineDraftInputs.delete(key)
+      enginePermissionDenied.delete(key)
       const engineModelOverrides = new Map(get().engineModelOverrides)
       engineModelOverrides.delete(key)
-      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineDraftInputs, engineModelOverrides })
+      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineDraftInputs, engineModelOverrides, enginePermissionDenied })
     },
 
     selectEngineInstance: (tabId, instanceId) => {
@@ -213,6 +215,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const engineDraftInputs = new Map(state.engineDraftInputs)
       const engineModelOverrides = new Map(state.engineModelOverrides)
       const engineConversationIds = new Map(state.engineConversationIds)
+      const enginePermissionDenied = new Map(state.enginePermissionDenied)
 
       const rekey = <V>(m: Map<string, V>) => {
         if (m.has(oldKey)) { m.set(newKey, m.get(oldKey)!); m.delete(oldKey) }
@@ -228,6 +231,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       rekey(engineDraftInputs)
       rekey(engineModelOverrides)
       rekey(engineConversationIds)
+      rekey(enginePermissionDenied)
 
       // Update enginePanes: remove from source, add to target
       const enginePanes = new Map(state.enginePanes)
@@ -260,6 +264,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         engineDraftInputs,
         engineModelOverrides,
         engineConversationIds,
+        enginePermissionDenied,
       })
 
       // Close source tab if it's now empty
@@ -321,7 +326,12 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         })
         messages.set(key, msgs)
         const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'running' as const } : t)
-        return { enginePinnedPrompt: pinnedPrompt, engineMessages: messages, tabs }
+        // Clear any pending engine-instance denial — submitting a new
+        // prompt is the user moving past the question/plan card. Mirrors
+        // the engine-side clearing in `prompt_dispatch.go`.
+        const enginePermissionDenied = new Map(state.enginePermissionDenied)
+        enginePermissionDenied.set(key, null)
+        return { enginePinnedPrompt: pinnedPrompt, engineMessages: messages, tabs, enginePermissionDenied }
       })
       const prefs = usePreferencesStore.getState()
       const modelOverride = get().engineModelOverrides.get(key) || prefs.engineDefaultModel || prefs.preferredModel || undefined

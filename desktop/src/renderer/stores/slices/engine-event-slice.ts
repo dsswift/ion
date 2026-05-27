@@ -149,59 +149,70 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
             }
 
             // Promote AskUserQuestion / ExitPlanMode permissionDenials
-            // carried on engine_status into the parent tab's
-            // `permissionDenied` state. This is the engine-view counterpart
-            // to the sessionPlane synthesis at
+            // carried on engine_status into the per-engine-instance
+            // `enginePermissionDenied` map (keyed by the compound
+            // `${tabId}:${instanceId}` key). This is the engine-view
+            // counterpart to the sessionPlane synthesis at
             // engine-control-plane-events.ts:handleStatusEvent — which is
             // bypassed for engine-view tabs because EngineControlPlane is
             // keyed by bare tabId and engine-view events arrive with the
-            // compound `tabId:instanceId` key.
+            // compound key.
+            //
+            // Per-instance scoping (vs. mutating the parent
+            // `tab.permissionDenied`) is what keeps sibling instances
+            // under the same engine tab from showing each other's cards
+            // when the user switches between sub-tabs. The parent tab's
+            // pill still glows via getWaitingState() in TabStripShared.ts,
+            // which folds across this map for engine tabs.
             //
             // Snapshot/idempotence rules:
-            //   - Only the renderer's `tab.permissionDenied` is mutated;
-            //     `tab.status` is left to the existing isIdle/isRunning
-            //     logic above (we don't have a per-engine 'completed'
-            //     status concept like the CLI sessionPlane does).
+            //   - We write `state.enginePermissionDenied.set(key, ...)`
+            //     using the FULL compound key — not the parent tabId.
             //   - When the array is empty/absent (a follow-up cost-only
-            //     `engine_status` tick), we PRESERVE any existing
-            //     `tab.permissionDenied` so the card stays visible.
-            //     The renderer-side card render relies on this — the
-            //     engine emits one engine_status with denials and then
-            //     a stream of cost-only ticks; clobbering would make the
+            //     `engine_status` tick), we PRESERVE any existing entry
+            //     for this key so the card stays visible. The renderer-
+            //     side card render in EngineView relies on this — the
+            //     engine emits one engine_status with denials and then a
+            //     stream of cost-only ticks; clobbering would make the
             //     card flicker out.
             //   - We log both branches with verbosity matching
             //     event-slice.ts's `[task_complete] tab=... branch=...`
             //     lines so a single grep covers CLI + engine paths.
+            //     `enginePermDenied` is the engine-tab marker; CLI tabs
+            //     use the older `permDenied` token in their own logs.
             const askOrExitDenials: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> = (event.fields?.permissionDenials || []).filter(
               (d: { toolName: string }) => d.toolName === 'AskUserQuestion' || d.toolName === 'ExitPlanMode',
             )
             const hasInterestingDenials = askOrExitDenials.length > 0
-            let denialTabsUpdate: typeof state.tabs | null = null
+            let enginePermissionDeniedUpdate: Map<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null> | null = null
             if (hasInterestingDenials) {
               const toolNamesStr = JSON.stringify(askOrExitDenials.map((d) => d.toolName))
               const instanceId = key.split(':')[1] || ''
-              console.log(`[engine_status] tab=${tabId.slice(0, 8)} instance=${instanceId} branch=denials permDenied set to ${toolNamesStr}`)
-              denialTabsUpdate = state.tabs.map((t) =>
-                t.id === tabId ? { ...t, permissionDenied: { tools: askOrExitDenials } } : t,
-              )
+              console.log(`[engine_status] tab=${tabId.slice(0, 8)} instance=${instanceId} branch=denials enginePermDenied set to ${toolNamesStr}`)
+              enginePermissionDeniedUpdate = new Map(state.enginePermissionDenied)
+              enginePermissionDeniedUpdate.set(key, { tools: askOrExitDenials })
             } else if ((event.fields?.permissionDenials?.length ?? 0) === 0) {
-              // Cost-only or running tick — PRESERVE existing permissionDenied.
-              // Logged at debug verbosity (no state change). Keep the noise
-              // low; only log if we currently hold a card to preserve.
-              const existingTab = state.tabs.find((t) => t.id === tabId)
-              if (existingTab?.permissionDenied?.tools?.length) {
+              // Cost-only or running tick — PRESERVE existing entry for
+              // this key. Logged at debug verbosity (no state change).
+              // Keep the noise low; only log if we currently hold a card
+              // to preserve for this instance.
+              const existing = state.enginePermissionDenied.get(key)
+              if (existing?.tools?.length) {
                 const instanceId = key.split(':')[1] || ''
-                console.log(`[engine_status] tab=${tabId.slice(0, 8)} instance=${instanceId} branch=noDenials preserving existing permDenied (${existingTab.permissionDenied.tools.length} tools)`)
+                console.log(`[engine_status] tab=${tabId.slice(0, 8)} instance=${instanceId} branch=noDenials preserving existing enginePermDenied (${existing.tools.length} tools)`)
               }
             }
 
             const needsTabUpdate = isActive && (sessionId || isIdle || isRunning)
-            // If we computed a denialTabsUpdate, fold the conversationId /
-            // status updates into the same `tabs.map` pass so we don't drop
-            // either change.
-            if (needsTabUpdate || denialTabsUpdate) {
-              const baseTabs = denialTabsUpdate || state.tabs
-              const tabs = baseTabs.map((t) => {
+            // Fold conversationId / status updates into the same tabs.map
+            // pass when applicable. The `enginePermissionDenied` map is
+            // returned separately — it lives outside the per-tab struct.
+            const returnPatch: Partial<typeof state> = { engineStatusFields: statusFields, engineConversationIds }
+            if (enginePermissionDeniedUpdate) {
+              returnPatch.enginePermissionDenied = enginePermissionDeniedUpdate
+            }
+            if (needsTabUpdate) {
+              const tabs = state.tabs.map((t) => {
                 if (t.id !== tabId) return t
                 const updates: Partial<typeof t> = {}
                 if (sessionId && t.conversationId !== sessionId) {
@@ -216,9 +227,9 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
                 }
                 return Object.keys(updates).length > 0 ? { ...t, ...updates } : t
               })
-              return { engineStatusFields: statusFields, engineConversationIds, tabs }
+              returnPatch.tabs = tabs
             }
-            return { engineStatusFields: statusFields, engineConversationIds }
+            return returnPatch
           })
           break
         }

@@ -5,7 +5,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
-import { checkWorktreeUncommitted, shouldUseWorktree, zoomRect } from './TabStripShared'
+import { checkWorktreeUncommitted, getWaitingState, shouldUseWorktree, zoomRect } from './TabStripShared'
 import { StackedStatusDots } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 import { PillColorPicker } from './TabStripPillColorPicker'
@@ -56,15 +56,25 @@ export function GroupPill({
 
   const displayTitle = selectedTab ? (selectedTab.customTitle || selectedTab.title) : ''
 
-  // Derive aggregate waiting state: if ANY tab in the group is waiting on the user
-  // Question takes priority over plan-ready across all tabs in the group
+  // Subscribe to the engine-instance denial map so the group pill border
+  // re-renders when any engine sub-tab gets/clears a pending denial.
+  // `getWaitingState()` reads this map for engine tabs; without the
+  // subscription the group pill would stall on stale data.
+  useSessionStore((s) => s.enginePermissionDenied)
+  useSessionStore((s) => s.enginePanes)
+
+  // Derive aggregate waiting state: if ANY tab in the group is waiting on the user.
+  // Question takes priority over plan-ready across all tabs in the group.
+  // We delegate to getWaitingState() so the engine-tab branch (folding
+  // across per-instance denials in `enginePermissionDenied`) is honored
+  // here too. For CLI tabs the helper reads `tab.permissionDenied` as
+  // before.
   const groupWaitingState: 'plan-ready' | 'question' | null = (() => {
     let hasPlanReady = false
     for (const t of group.tabs) {
-      const tools = t.permissionDenied?.tools
-      if (!tools?.length) continue
-      if (tools.some((x) => x.toolName === 'AskUserQuestion')) return 'question'
-      if (tools.some((x) => x.toolName === 'ExitPlanMode')) hasPlanReady = true
+      const ws = getWaitingState(t)
+      if (ws === 'question') return 'question'
+      if (ws === 'plan-ready') hasPlanReady = true
     }
     return hasPlanReady ? 'plan-ready' : null
   })()

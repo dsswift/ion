@@ -48,6 +48,15 @@ struct TerminalInstanceInfo: Codable, Identifiable, Sendable {
 struct EngineInstanceInfo: Codable, Identifiable, Sendable {
     let id: String
     var label: String
+    /// Per-engine-instance waiting state, decoded from the desktop snapshot.
+    /// Values: `"question"` (AskUserQuestion pending), `"plan-ready"`
+    /// (ExitPlanMode pending), or nil/absent (no waiting state). Engine
+    /// sub-tabs are independent sub-conversations on the desktop, so each
+    /// instance carries its own state — `EngineInstanceBar` renders a dot
+    /// when this is non-nil. The parent tab's overall waiting state comes
+    /// through `permissionQueue` on the enclosing `RemoteTabState` (the
+    /// desktop promotes the active instance's denial into that queue).
+    var waitingState: String? = nil
 }
 
 // MARK: - PermissionMode

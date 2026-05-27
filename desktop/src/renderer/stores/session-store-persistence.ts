@@ -81,6 +81,15 @@ function persistTabs(useSessionStore: Store): void {
             if (d && d.length > 0) drafts[inst.id] = d
           }
           if (Object.keys(drafts).length > 0) result.engineDrafts = drafts
+          const { enginePermissionDenied: eDenials } = useSessionStore.getState()
+          const denials: Record<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }> = {}
+          for (const inst of hPane.instances) {
+            const d = eDenials.get(`${t.id}:${inst.id}`)
+            if (d && d.tools && d.tools.length > 0) {
+              denials[inst.id] = { tools: d.tools }
+            }
+          }
+          if (Object.keys(denials).length > 0) result.engineDenials = denials
           return result
         })() : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),
@@ -184,15 +193,19 @@ function scanForStuckTabs(useSessionStore: Store): void {
 export function setupPersistence(useSessionStore: Store): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
-    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes || state.engineDraftInputs !== prev.engineDraftInputs) {
+    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes || state.engineDraftInputs !== prev.engineDraftInputs || state.enginePermissionDenied !== prev.enginePermissionDenied) {
       // Flush immediately when permissionDenied changes on any tab — this
       // state must survive a crash or force-quit (e.g. the desktop is killed
       // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
-      // denial is never written to the conversation file).
-      const permissionDeniedChanged = state.tabs !== prev.tabs && state.tabs.some((t, i) => {
-        const p = prev.tabs[i]
-        return p && t.id === p.id && t.permissionDenied !== p.permissionDenied
-      })
+      // denial is never written to the conversation file). This covers both:
+      //   - CLI tabs: `tab.permissionDenied` changing on `state.tabs`.
+      //   - Engine tabs: `enginePermissionDenied` map identity change.
+      const permissionDeniedChanged =
+        (state.tabs !== prev.tabs && state.tabs.some((t, i) => {
+          const p = prev.tabs[i]
+          return p && t.id === p.id && t.permissionDenied !== p.permissionDenied
+        })) ||
+        state.enginePermissionDenied !== prev.enginePermissionDenied
       if (permissionDeniedChanged) {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
         persistTabs(useSessionStore)

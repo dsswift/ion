@@ -84,6 +84,7 @@ function buildHarness() {
     engineDraftInputs: new Map([['srcTab:inst1', 'draft']]),
     engineModelOverrides: new Map([['srcTab:inst1', 'claude-3']]),
     engineConversationIds: new Map([['srcTab:inst1', ['conv-abc']]]),
+    enginePermissionDenied: new Map([['srcTab:inst1', { tools: [{ toolName: 'AskUserQuestion', toolUseId: 'tu-1', toolInput: { question: 'q?' } }] }]]),
     closeTab: vi.fn(),
   }
 
@@ -129,7 +130,7 @@ vi.mock('../../preferences', () => ({
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('moveEngineInstance', () => {
-  it('migrates state across all 11 compound-keyed Maps', () => {
+  it('migrates state across all 12 compound-keyed Maps', () => {
     const { state, slice } = buildHarness()
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
@@ -148,6 +149,7 @@ describe('moveEngineInstance', () => {
     expect(state.engineDraftInputs.has(newKey)).toBe(true)
     expect(state.engineModelOverrides.has(newKey)).toBe(true)
     expect(state.engineConversationIds.has(newKey)).toBe(true)
+    expect(state.enginePermissionDenied.has(newKey)).toBe(true)
 
     // Old key absent from every map
     expect(state.engineMessages.has(oldKey)).toBe(false)
@@ -161,6 +163,7 @@ describe('moveEngineInstance', () => {
     expect(state.engineDraftInputs.has(oldKey)).toBe(false)
     expect(state.engineModelOverrides.has(oldKey)).toBe(false)
     expect(state.engineConversationIds.has(oldKey)).toBe(false)
+    expect(state.enginePermissionDenied.has(oldKey)).toBe(false)
 
     // Values were actually transferred
     expect(state.engineModelOverrides.get(newKey)).toBe('claude-3')

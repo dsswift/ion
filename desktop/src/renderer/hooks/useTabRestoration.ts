@@ -107,6 +107,13 @@ export function useTabRestoration() {
             const restoredEngineMessages = new Map(useSessionStore.getState().engineMessages)
             const restoredEngineAgentStates = new Map(useSessionStore.getState().engineAgentStates)
             const restoredEngineDraftInputs = new Map(useSessionStore.getState().engineDraftInputs)
+            // Per-engine-instance pending denials. We deliberately do NOT
+            // carry the legacy parent-level `st.permissionDenied` forward
+            // for engine tabs — that field was written by the old slice
+            // and would show a stale parent-card on every sibling. The
+            // engine's reconcile handshake will repopulate the
+            // per-instance map authoritatively on the next engine_status.
+            const restoredEnginePermissionDenied = new Map(useSessionStore.getState().enginePermissionDenied)
 
             if (st.engineInstances && st.engineInstances.length > 0) {
               restoredPanes.set(tabId, {
@@ -156,9 +163,20 @@ export function useTabRestoration() {
                   }
                 }
               }
+
+              if (st.engineDenials) {
+                for (const inst of st.engineInstances) {
+                  const d = st.engineDenials[inst.id]
+                  if (d && d.tools && d.tools.length > 0) {
+                    const key = `${tabId}:${inst.id}`
+                    restoredEnginePermissionDenied.set(key, { tools: d.tools })
+                    console.log(`[restore] engine denial for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tools=${d.tools.map((t) => t.toolName).join(',')}`)
+                  }
+                }
+              }
             }
 
-            // Single atomic setState: tab metadata + panes + messages + agent states + drafts
+            // Single atomic setState: tab metadata + panes + messages + agent states + drafts + denials
             useSessionStore.setState((s) => ({
               tabs: s.tabs.map((t) =>
                 t.id === tabId
@@ -173,6 +191,10 @@ export function useTabRestoration() {
                       draftInput: st.draftInput ?? '',
                       lastMessagePreview: st.lastMessagePreview || null,
                       lastEventAt: st.lastEventAt ?? null,
+                      // NB: deliberately NOT restoring st.permissionDenied
+                      // for engine tabs — legacy field, now superseded by
+                      // enginePermissionDenied (per-instance). See the
+                      // restoredEnginePermissionDenied comment above.
                     }
                   : t
               ),
@@ -180,6 +202,7 @@ export function useTabRestoration() {
               engineMessages: restoredEngineMessages,
               engineAgentStates: restoredEngineAgentStates,
               engineDraftInputs: restoredEngineDraftInputs,
+              enginePermissionDenied: restoredEnginePermissionDenied,
             }))
             if (st.draftInput) console.log(`[restore] draft for engine tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
 

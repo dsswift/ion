@@ -65,14 +65,18 @@ export function EngineView({ tabId }: EngineViewProps) {
     return k ? (s.engineWorkingMessages.get(k) || '') : ''
   })
   const tabStatus = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.status)
-  // PermissionDenied is set on the parent tab by engine-event-slice when
-  // engine_status carries AskUserQuestion / ExitPlanMode denials. It is
-  // tab-scoped (not engine-instance-scoped) — see plan comment in
-  // engine-event-slice.ts case 'engine_status'. If a tab hosts multiple
-  // engine instances and two post denials concurrently, the last writer
-  // wins. That matches the existing single-card-per-tab UX in
-  // ConversationView; revisit if per-instance cards are wanted.
-  const permissionDenied = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.permissionDenied)
+  // PermissionDenied is stored PER ENGINE INSTANCE in
+  // `enginePermissionDenied`, keyed by `${tabId}:${instanceId}`. Engine
+  // sub-tabs (instances) are independent sub-conversations, so storing
+  // the denial on the parent tab would show the same card on every
+  // sibling sub-tab. The card is scoped to whichever instance produced
+  // it; switching to a sibling without a pending denial shows no card.
+  //
+  // Parent-tab pill bubbling: getWaitingState() in TabStripShared.ts
+  // folds across this map for engine tabs, so the strip pill still
+  // glows when any sub-tab is blocked. iOS receives the active
+  // instance's denial via the snapshot path (see main/remote/snapshot.ts).
+  const permissionDenied = useSessionStore(s => key ? (s.enginePermissionDenied.get(key) || null) : null)
   const tabMessages = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.messages || EMPTY_MESSAGES)
   const tabPlanFilePath = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.planFilePath)
   const tabGroupPinned = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.groupPinned)
@@ -200,10 +204,13 @@ export function EngineView({ tabId }: EngineViewProps) {
   // only the AskUserQuestion path; ExitPlanMode on engine tabs is still
   // an open item flagged in the plan.
   const clearPermissionDenied = useCallback(() => {
-    useSessionStore.setState((s) => ({
-      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, permissionDenied: null } : t)),
-    }))
-  }, [tabId])
+    if (!key) return
+    useSessionStore.setState((s) => {
+      const next = new Map(s.enginePermissionDenied)
+      next.set(key, null)
+      return { enginePermissionDenied: next }
+    })
+  }, [key])
 
   const handleAnswerDenial = useCallback((answer: string) => {
     console.log(`[EngineView] handleAnswerDenial: tab=${tabId.slice(0, 8)} key=${key} answerLen=${answer.length}`)

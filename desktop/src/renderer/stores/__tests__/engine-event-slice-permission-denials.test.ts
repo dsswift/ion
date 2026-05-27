@@ -1,21 +1,25 @@
 /**
- * engine-event-slice — engine_status.permissionDenials → tab.permissionDenied
+ * engine-event-slice — engine_status.permissionDenials → enginePermissionDenied
  *
  * The engine intercepts AskUserQuestion and ExitPlanMode and emits the
  * denial on the next engine_status event under `fields.permissionDenials`.
- * For engine-view tabs (compound `tabId:instanceId` key), the slice is the
- * only place that translates this signal into the renderer's
- * `tab.permissionDenied` shape — the CLI synthesis path in
- * engine-control-plane-events.ts:handleStatusEvent is bypassed for these
- * tabs because EngineControlPlane is keyed by bare tabId only.
+ * For engine-view tabs (compound `tabId:instanceId` key), the slice
+ * translates this signal into the renderer's
+ * `enginePermissionDenied` map (keyed by the FULL compound key) — the
+ * CLI synthesis path in engine-control-plane-events.ts:handleStatusEvent
+ * is bypassed for these tabs because EngineControlPlane is keyed by
+ * bare tabId only.
  *
  * Contract pinned here:
- *   1. AskUserQuestion / ExitPlanMode denials populate tab.permissionDenied.
+ *   1. AskUserQuestion / ExitPlanMode denials populate
+ *      `enginePermissionDenied.get(compoundKey)`.
  *   2. Other denial tool names are ignored.
  *   3. Cost-only follow-up status (no denials) preserves the existing
- *      permissionDenied — it does NOT clobber.
- *   4. The parent tabId (key.split(':')[0]) is updated, even when the
- *      event arrives on a compound key.
+ *      entry — it does NOT clobber.
+ *   4. Two compound keys under the same parent tabId track INDEPENDENT
+ *      denials. Sibling instances don't share a card.
+ *   5. The parent `tab.permissionDenied` is NOT mutated by this slice
+ *      for engine paths — that field is CLI-only.
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -44,6 +48,7 @@ function buildHarness() {
     engineModelOverrides: new Map(),
     engineConversationIds: new Map(),
     enginePanes: new Map(),
+    enginePermissionDenied: new Map(),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial
@@ -54,8 +59,8 @@ function buildHarness() {
   return { state, slice }
 }
 
-describe('engine_status.permissionDenials → tab.permissionDenied', () => {
-  it('sets tab.permissionDenied for AskUserQuestion denial on compound key', () => {
+describe('engine_status.permissionDenials → enginePermissionDenied', () => {
+  it('sets enginePermissionDenied for AskUserQuestion denial on compound key', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst-a'
 
@@ -77,15 +82,18 @@ describe('engine_status.permissionDenials → tab.permissionDenied', () => {
       },
     } as any)
 
+    const entry = state.enginePermissionDenied.get(key)
+    expect(entry).not.toBeNull()
+    expect(entry.tools).toHaveLength(1)
+    expect(entry.tools[0].toolName).toBe('AskUserQuestion')
+    expect(entry.tools[0].toolUseId).toBe('tu-1')
+    expect(entry.tools[0].toolInput).toEqual({ question: 'Pick one', options: ['A', 'B'] })
+    // Parent tab's permissionDenied stays null — engine path no longer mutates it.
     const tab = state.tabs.find((t: any) => t.id === 'tab1')
-    expect(tab.permissionDenied).not.toBeNull()
-    expect(tab.permissionDenied.tools).toHaveLength(1)
-    expect(tab.permissionDenied.tools[0].toolName).toBe('AskUserQuestion')
-    expect(tab.permissionDenied.tools[0].toolUseId).toBe('tu-1')
-    expect(tab.permissionDenied.tools[0].toolInput).toEqual({ question: 'Pick one', options: ['A', 'B'] })
+    expect(tab.permissionDenied).toBeNull()
   })
 
-  it('sets tab.permissionDenied for ExitPlanMode denial', () => {
+  it('sets enginePermissionDenied for ExitPlanMode denial', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst-a'
 
@@ -107,8 +115,8 @@ describe('engine_status.permissionDenials → tab.permissionDenied', () => {
       },
     } as any)
 
-    const tab = state.tabs.find((t: any) => t.id === 'tab1')
-    expect(tab.permissionDenied?.tools[0].toolName).toBe('ExitPlanMode')
+    const entry = state.enginePermissionDenied.get(key)
+    expect(entry?.tools[0].toolName).toBe('ExitPlanMode')
   })
 
   it('filters out non-interactive tool denials (Read, Bash, etc.)', () => {
@@ -130,12 +138,11 @@ describe('engine_status.permissionDenials → tab.permissionDenied', () => {
       },
     } as any)
 
-    const tab = state.tabs.find((t: any) => t.id === 'tab1')
-    // No AskUserQuestion / ExitPlanMode denials → tab.permissionDenied untouched (null).
-    expect(tab.permissionDenied).toBeNull()
+    // No AskUserQuestion / ExitPlanMode denials → map entry stays absent.
+    expect(state.enginePermissionDenied.get(key)).toBeUndefined()
   })
 
-  it('preserves existing permissionDenied on follow-up cost-only status (no denials)', () => {
+  it('preserves existing enginePermissionDenied on follow-up cost-only status (no denials)', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst-a'
 
@@ -168,17 +175,18 @@ describe('engine_status.permissionDenials → tab.permissionDenied', () => {
       },
     } as any)
 
-    const tab = state.tabs.find((t: any) => t.id === 'tab1')
-    expect(tab.permissionDenied).not.toBeNull()
-    expect(tab.permissionDenied.tools[0].toolName).toBe('AskUserQuestion')
+    const entry = state.enginePermissionDenied.get(key)
+    expect(entry).not.toBeUndefined()
+    expect(entry.tools[0].toolName).toBe('AskUserQuestion')
   })
 
-  it('derives parent tabId from compound key (key.split(":")[0])', () => {
+  it('isolates sibling instances under the same parent tabId', () => {
     const { state, slice } = buildHarness()
-    // Add a second tab to confirm we only touch the parent of the compound key.
-    state.tabs.push({ id: 'tab2', isEngine: true, lastEventAt: 0, status: 'running', permissionDenied: null })
+    const keyA = 'tab1:inst-a'
+    const keyB = 'tab1:inst-b'
 
-    slice.handleEngineEvent('tab1:inst-a', {
+    // Instance A: AskUserQuestion denial.
+    slice.handleEngineEvent(keyA, {
       type: 'engine_status',
       fields: {
         label: 'engine',
@@ -187,15 +195,33 @@ describe('engine_status.permissionDenials → tab.permissionDenied', () => {
         contextPercent: 0,
         contextWindow: 200000,
         permissionDenials: [
-          { toolName: 'AskUserQuestion', toolUseId: 'tu-1', toolInput: { question: 'q?' } },
+          { toolName: 'AskUserQuestion', toolUseId: 'tu-a', toolInput: { question: 'A?' } },
         ],
       },
     } as any)
 
-    const tab1 = state.tabs.find((t: any) => t.id === 'tab1')
-    const tab2 = state.tabs.find((t: any) => t.id === 'tab2')
-    expect(tab1.permissionDenied).not.toBeNull()
-    expect(tab2.permissionDenied).toBeNull()
+    // Instance B: ExitPlanMode denial. Distinct compound key under the
+    // same parent tab.
+    slice.handleEngineEvent(keyB, {
+      type: 'engine_status',
+      fields: {
+        label: 'engine',
+        state: 'idle',
+        model: 'sonnet',
+        contextPercent: 0,
+        contextWindow: 200000,
+        permissionDenials: [
+          { toolName: 'ExitPlanMode', toolUseId: 'tu-b', toolInput: { planFilePath: '/p.md' } },
+        ],
+      },
+    } as any)
+
+    const entryA = state.enginePermissionDenied.get(keyA)
+    const entryB = state.enginePermissionDenied.get(keyB)
+    expect(entryA?.tools[0].toolName).toBe('AskUserQuestion')
+    expect(entryB?.tools[0].toolName).toBe('ExitPlanMode')
+    // Crucially, the two entries are independent — clearing one must
+    // not affect the other.
   })
 
   it('ignores engine_status on bare (non-compound) keys', () => {
@@ -216,6 +242,10 @@ describe('engine_status.permissionDenials → tab.permissionDenied', () => {
       },
     } as any)
 
+    // Neither the bare key nor any compound key receives an entry.
+    expect(state.enginePermissionDenied.get('tab1')).toBeUndefined()
+    expect(state.enginePermissionDenied.size).toBe(0)
+    // Parent tab's permissionDenied also stays null.
     const tab = state.tabs.find((t: any) => t.id === 'tab1')
     expect(tab.permissionDenied).toBeNull()
   })

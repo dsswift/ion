@@ -4,6 +4,7 @@ import { Reorder } from 'framer-motion'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import type { EngineInstance } from '../../shared/types'
+import { getEngineInstanceWaitingState } from './TabStripShared'
 
 interface Props {
   tabId: string
@@ -15,6 +16,11 @@ export function EngineStatusBar({ tabId }: Props) {
   const instances = pane?.instances || []
   const activeId = pane?.activeInstanceId || null
   const tabs = useSessionStore((s) => s.tabs)
+  // Subscribe to enginePermissionDenied so the per-instance status dot
+  // re-renders when this tab's instances acquire or clear a pending
+  // AskUserQuestion / ExitPlanMode denial. The map identity changes on
+  // every write in engine-event-slice.ts.
+  useSessionStore((s) => s.enginePermissionDenied)
   // Other engine tabs this instance can be moved to
   const engineTargetTabs = tabs.filter((t) => t.isEngine && t.id !== tabId)
 
@@ -59,6 +65,21 @@ export function EngineStatusBar({ tabId }: Props) {
 
   const renderTab = (inst: EngineInstance) => {
     const isActive = inst.id === activeId
+    // Per-instance waiting-state dot. 'question' (yellow/orange) and
+    // 'plan-ready' (green) mirror the parent-tab pill glow palette in
+    // TabStripStatusDot.tsx. Null = no dot. Engine sub-tabs are
+    // independent sub-conversations, so the dot is scoped to whichever
+    // instance has the pending denial. The parent-tab pill in TabStrip
+    // bubbles "any instance waiting" via getWaitingState().
+    const waitingState = getEngineInstanceWaitingState(`${tabId}:${inst.id}`)
+    const dotColor =
+      waitingState === 'question' ? colors.infoText :
+        waitingState === 'plan-ready' ? colors.statusComplete :
+          null
+    const dotGlow =
+      waitingState === 'question' ? colors.tabGlowQuestion :
+        waitingState === 'plan-ready' ? colors.tabGlowPlanReady :
+          null
     return (
       <Reorder.Item
         key={inst.id}
@@ -88,6 +109,18 @@ export function EngineStatusBar({ tabId }: Props) {
           flexShrink: 0,
         }}
       >
+        {dotColor && (
+          <span
+            className="flex-shrink-0"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: dotColor,
+              ...(dotGlow ? { boxShadow: `0 0 6px 2px ${dotGlow}` } : {}),
+            }}
+          />
+        )}
         {editingId === inst.id ? (
           <input
             data-ion-ui

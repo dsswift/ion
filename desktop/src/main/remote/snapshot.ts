@@ -42,7 +42,44 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               }
             }
             var queue = (t.permissionQueue || []).slice();
-            if (t.status !== 'failed' && t.status !== 'dead') {
+            // Promote PER-ENGINE-INSTANCE denials into the parent tab's
+            // permissionQueue so the iOS card path (which keys off the
+            // tab-level queue) continues to work unchanged at the
+            // conversation level. We pick the *active* instance's
+            // denial — sibling instances under the same tab are
+            // independent sub-conversations and iOS only navigates one
+            // engine sub-tab at a time.
+            //
+            // NB: iOS does NOT consume per-instance waitingState into
+            // any parent-tab field; the parent pill glows because the
+            // promoted denial is in permissionQueue. The per-instance
+            // waitingState (set below on engineInstances[i]) drives the
+            // iOS sub-tab pill dot in EngineInstanceBar, not the
+            // parent-tab pill. If you ever want to bubble per-instance
+            // state into the parent tab fields directly (separate from
+            // queue promotion), do it here — not by piping waitingState
+            // through to RemoteTabState top-level.
+            if (t.isEngine === true && s.enginePermissionDenied && s.enginePermissionDenied.get) {
+              var ePane = s.enginePanes && s.enginePanes.get ? s.enginePanes.get(t.id) : null;
+              var activeInst = ePane ? (ePane.activeInstanceId || (ePane.instances && ePane.instances[0] && ePane.instances[0].id)) : null;
+              if (activeInst) {
+                var pdEntry = s.enginePermissionDenied.get(t.id + ':' + activeInst);
+                var pdTools = pdEntry && pdEntry.tools;
+                if (pdTools && pdTools.length > 0) {
+                  for (var pdi = 0; pdi < pdTools.length; pdi++) {
+                    queue.push({
+                      questionId: 'denied-' + pdTools[pdi].toolUseId,
+                      toolName: pdTools[pdi].toolName,
+                      toolTitle: pdTools[pdi].toolName,
+                      toolInput: pdTools[pdi].toolInput,
+                      options: [],
+                    });
+                  }
+                }
+              }
+            } else if (t.status !== 'failed' && t.status !== 'dead') {
+              // CLI tabs: unchanged path. permissionDenied lives on the
+              // tab itself.
               var denied = t.permissionDenied && t.permissionDenied.tools;
               if (denied && denied.length > 0) {
                 for (var d = 0; d < denied.length; d++) {
@@ -69,14 +106,31 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               activeTerminalInstanceId = pane.activeInstanceId || pane.instances[0].id;
             }
             var ePanes = s.enginePanes;
-            var ePane = ePanes && ePanes.get ? ePanes.get(t.id) : null;
+            var ePaneForList = ePanes && ePanes.get ? ePanes.get(t.id) : null;
             var engineInstances = undefined;
             var activeEngineInstanceId = undefined;
-            if (ePane && ePane.instances && ePane.instances.length > 0) {
-              engineInstances = ePane.instances.map(function(inst) {
-                return { id: inst.id, label: inst.label };
+            if (ePaneForList && ePaneForList.instances && ePaneForList.instances.length > 0) {
+              // For each instance, derive its individual waitingState
+              // from enginePermissionDenied so iOS can show a per-sub-tab
+              // status dot in EngineInstanceBar. 'question' outranks
+              // 'plan-ready' (matches desktop's getWaitingState helper).
+              engineInstances = ePaneForList.instances.map(function(inst) {
+                var ws = null;
+                if (s.enginePermissionDenied && s.enginePermissionDenied.get) {
+                  var pdEntry = s.enginePermissionDenied.get(t.id + ':' + inst.id);
+                  var pdTools = pdEntry && pdEntry.tools;
+                  if (pdTools && pdTools.length > 0) {
+                    var hasPlanReady = false;
+                    for (var k = 0; k < pdTools.length; k++) {
+                      if (pdTools[k].toolName === 'AskUserQuestion') { ws = 'question'; break; }
+                      if (pdTools[k].toolName === 'ExitPlanMode') hasPlanReady = true;
+                    }
+                    if (ws === null && hasPlanReady) ws = 'plan-ready';
+                  }
+                }
+                return { id: inst.id, label: inst.label, waitingState: ws };
               });
-              activeEngineInstanceId = ePane.activeInstanceId || ePane.instances[0].id;
+              activeEngineInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
             }
             return {
               id: t.id,

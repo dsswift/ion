@@ -252,6 +252,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const engineConversationIds = new Map(get().engineConversationIds)
         const engineMessages = new Map(get().engineMessages)
         const engineDraftInputs = new Map(get().engineDraftInputs)
+        const enginePermissionDenied = new Map(get().enginePermissionDenied)
         const enginePanes = new Map(get().enginePanes)
         for (const k of engineAgentStates.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineAgentStates.delete(k)
         for (const k of engineStatusFields.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineStatusFields.delete(k)
@@ -263,8 +264,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         for (const k of engineConversationIds.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineConversationIds.delete(k)
         for (const k of engineMessages.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineMessages.delete(k)
         for (const k of engineDraftInputs.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineDraftInputs.delete(k)
+        for (const k of enginePermissionDenied.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) enginePermissionDenied.delete(k)
         enginePanes.delete(tabId)
-        set({ engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineConversationIds, engineMessages, engineDraftInputs, enginePanes })
+        set({ engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineConversationIds, engineMessages, engineDraftInputs, enginePermissionDenied, enginePanes })
       }
       if (closingTab) {
         const dir = closingTab.workingDirectory

@@ -23,6 +23,16 @@ import { TabPill } from './TabStripTabPill'
 
 export function TabStrip() {
   const tabs = useSessionStore((s) => s.tabs)
+  // Subscribe to engine state so the waiting-state border on an engine
+  // tab's pill re-renders when any of its sub-instances gets/clears a
+  // pending AskUserQuestion / ExitPlanMode denial. getWaitingState()
+  // reads these maps via useSessionStore.getState() at render time;
+  // these subscriptions trigger the re-render when the map identity
+  // changes. Without them, pills don't update on instance-scoped
+  // denial changes because tab.permissionDenied is no longer the
+  // engine source of truth.
+  useSessionStore((s) => s.enginePermissionDenied)
+  useSessionStore((s) => s.enginePanes)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const selectTab = useSessionStore((s) => s.selectTab)
   const closeTab = useSessionStore((s) => s.closeTab)

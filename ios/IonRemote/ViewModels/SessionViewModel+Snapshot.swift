@@ -143,7 +143,13 @@ extension SessionViewModel {
             }
             // Populate engine instance state from snapshot tab data
             if tab.isEngine == true, let instances = tab.engineInstances {
-                engineInstances[tab.id] = instances.map { EngineInstanceInfo(id: $0.id, label: $0.label) }
+                // Carry waitingState through to the local model so
+                // EngineInstanceBar can render its per-instance status
+                // dot. Desktop sends nil for no-state, "question" for
+                // AskUserQuestion, "plan-ready" for ExitPlanMode.
+                engineInstances[tab.id] = instances.map {
+                    EngineInstanceInfo(id: $0.id, label: $0.label, waitingState: $0.waitingState)
+                }
                 activeEngineInstance[tab.id] = tab.activeEngineInstanceId ?? instances.first?.id
                 ionLog.info("snapshot: engine tab \(tab.id.prefix(8)), instances=\(instances.map(\.id)), active=\(tab.activeEngineInstanceId ?? "nil")")
                 // Pre-load engine conversation history for all engine tabs
