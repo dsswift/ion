@@ -13,6 +13,13 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.30.0](https://github.com/dsswift/ion/compare/engine-v1.29.3...engine-v1.30.0) (2026-05-27)
+
+### Features
+
+* **engine:** improve ask user question tool instructions ([f15a7f9](https://github.com/dsswift/ion/commit/f15a7f9cb660b03be199797196a5881b721819eb))
+* **engine:** clarify plan mode exit timing in prompts ([f1906b5](https://github.com/dsswift/ion/commit/f1906b5279d079a790466ee8fe1e37fa46e9fbba))
+
 ## [1.29.3](https://github.com/dsswift/ion/compare/engine-v1.29.2...engine-v1.29.3) (2026-05-27)
 
 ### Bug Fixes

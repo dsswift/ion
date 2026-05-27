@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.41.0](https://github.com/dsswift/ion/compare/desktop-v1.40.1...desktop-v1.41.0) (2026-05-27)
+
+### Features
+
+* **desktop:** hide UI during initialization with progress text ([84ba374](https://github.com/dsswift/ion/commit/84ba37442f07b4ec44ad91d851c2d88c00d0c958))
+* **engine:** clarify plan mode exit timing in prompts ([f1906b5](https://github.com/dsswift/ion/commit/f1906b5279d079a790466ee8fe1e37fa46e9fbba))
+
 ## [1.40.1](https://github.com/dsswift/ion/compare/desktop-v1.40.0...desktop-v1.40.1) (2026-05-26)
 
 ### Bug Fixes
