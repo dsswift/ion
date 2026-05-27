@@ -91,6 +91,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor) func(extension.DispatchAgentOpts
 		// Track child cost/tokens and forward events to extension callback.
 		var totalCost float64
 		var totalInputTokens, totalOutputTokens int
+		var totalCacheReadTokens, totalCacheCreationTokens int
 		var childSessionID string
 
 		var result string
@@ -118,6 +119,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor) func(extension.DispatchAgentOpts
 				}
 				if tc.Usage.OutputTokens != nil {
 					totalOutputTokens = *tc.Usage.OutputTokens
+				}
+				if tc.Usage.CacheReadInputTokens != nil {
+					totalCacheReadTokens = *tc.Usage.CacheReadInputTokens
+				}
+				if tc.Usage.CacheCreationInputTokens != nil {
+					totalCacheCreationTokens = *tc.Usage.CacheCreationInputTokens
 				}
 				if tc.SessionID != "" {
 					childSessionID = tc.SessionID
@@ -181,24 +188,28 @@ func BuildDispatchAgentFunc(sa SessionAccessor) func(extension.DispatchAgentOpts
 
 		if childErr != nil {
 			return &extension.DispatchAgentResult{
-				Output:       childErr.Error(),
-				ExitCode:     1,
-				Elapsed:      elapsed,
-				Cost:         totalCost,
-				InputTokens:  totalInputTokens,
-				OutputTokens: totalOutputTokens,
-				SessionID:    childSessionID,
+				Output:                   childErr.Error(),
+				ExitCode:                 1,
+				Elapsed:                  elapsed,
+				Cost:                     totalCost,
+				InputTokens:              totalInputTokens,
+				OutputTokens:             totalOutputTokens,
+				CacheReadInputTokens:     totalCacheReadTokens,
+				CacheCreationInputTokens: totalCacheCreationTokens,
+				SessionID:                childSessionID,
 			}, childErr
 		}
 
 		return &extension.DispatchAgentResult{
-			Output:       result,
-			ExitCode:     0,
-			Elapsed:      elapsed,
-			Cost:         totalCost,
-			InputTokens:  totalInputTokens,
-			OutputTokens: totalOutputTokens,
-			SessionID:    childSessionID,
+			Output:                   result,
+			ExitCode:                 0,
+			Elapsed:                  elapsed,
+			Cost:                     totalCost,
+			InputTokens:              totalInputTokens,
+			OutputTokens:             totalOutputTokens,
+			CacheReadInputTokens:     totalCacheReadTokens,
+			CacheCreationInputTokens: totalCacheCreationTokens,
+			SessionID:                childSessionID,
 		}, nil
 	}
 }

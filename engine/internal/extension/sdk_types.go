@@ -185,13 +185,15 @@ type DispatchAgentOpts struct {
 
 // DispatchAgentResult holds the outcome of a dispatched agent.
 type DispatchAgentResult struct {
-	Output       string  `json:"output"`
-	ExitCode     int     `json:"exitCode"`
-	Elapsed      float64 `json:"elapsed"`
-	Cost         float64 `json:"cost"`
-	InputTokens  int     `json:"inputTokens"`
-	OutputTokens int     `json:"outputTokens"`
-	SessionID    string  `json:"sessionId,omitempty"`
+	Output                   string  `json:"output"`
+	ExitCode                 int     `json:"exitCode"`
+	Elapsed                  float64 `json:"elapsed"`
+	Cost                     float64 `json:"cost"`
+	InputTokens              int     `json:"inputTokens"`
+	OutputTokens             int     `json:"outputTokens"`
+	CacheReadInputTokens     int     `json:"cacheReadInputTokens,omitempty"`
+	CacheCreationInputTokens int     `json:"cacheCreationInputTokens,omitempty"`
+	SessionID                string  `json:"sessionId,omitempty"`
 }
 
 // DiscoverAgentsOpts configures which directories to scan for agent definitions
