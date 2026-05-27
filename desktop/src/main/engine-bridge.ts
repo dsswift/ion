@@ -5,6 +5,8 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
 import { spawnEngineServer } from './engine-bridge-spawn'
+import { startSession as startSessionImpl } from './engine-bridge-start-session'
+import * as conv from './engine-bridge-conversations'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload } from '../shared/types'
 
 const TAG = 'EngineBridge'
@@ -42,7 +44,11 @@ export class EngineBridge extends EventEmitter {
   private requestCounter = 0
   private connectPromise: Promise<void> | null = null
   private reconnectDisabled = false
-  private activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
+  // Treated as internal to the engine-bridge.* module group (used by
+  // engine-bridge-start-session.ts). Not `private` so sibling files in
+  // the same module group can read/write the registry without forcing
+  // every helper back into this already-cap-bound file.
+  activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
   /** Client-side key aliases: oldKey → newKey. Rewrites incoming event keys. */
   private keyAliases = new Map<string, string>()
 
@@ -281,7 +287,18 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  private _sendWithResult(msg: any): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Internal command dispatch with typed { ok, error } response.
+   *
+   * Marked with a leading underscore to signal "treat as internal to the
+   * engine-bridge.* module group" — TypeScript's `private` keyword would
+   * be stricter but would also prevent sibling files like
+   * engine-bridge-start-session.ts from calling it, which is the
+   * extraction-driven seam we need to stay under the file-size cap.
+   * Treat external callers as a code-review concern, not a compile-time
+   * one.
+   */
+  _sendWithResult(msg: any): Promise<{ ok: boolean; error?: string }> {
     const requestId = `bridge-${++this.requestCounter}-${Date.now()}`
     msg.requestId = requestId
 
@@ -301,7 +318,9 @@ export class EngineBridge extends EventEmitter {
     })
   }
 
-  private _sendWithData<T>(msg: any): Promise<{ ok: boolean; error?: string; data?: T }> {
+  // Internal to the engine-bridge.* module group. See _sendWithResult
+  // for the rationale on widening from `private` to module-package scope.
+  _sendWithData<T>(msg: any): Promise<{ ok: boolean; error?: string; data?: T }> {
     const requestId = `bridge-${++this.requestCounter}-${Date.now()}`
     msg.requestId = requestId
 
@@ -323,16 +342,7 @@ export class EngineBridge extends EventEmitter {
   // ─── Public API ───
 
   async startSession(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string }> {
-    const entry = this.activeSessions.get(key)
-    // If we have a tracked conversationId from a previous session lifecycle,
-    // inject it into the config so the engine can resume the conversation.
-    if (entry?.conversationId && !config.sessionId) {
-      config = { ...config, sessionId: entry.conversationId }
-    }
-    log(`startSession: key=${key} model=${config.model} sessionId=${config.sessionId ?? 'none'}`)
-    this.activeSessions.set(key, { config, conversationId: entry?.conversationId })
-    await this.connect()
-    return this._sendWithResult({ cmd: 'start_session', key, config })
+    return startSessionImpl(this, key, config)
   }
 
   /** Send a typed-response command. Sibling helpers (e.g. engine-bridge-fs.ts) layer on top of the bridge via this. */
@@ -441,56 +451,40 @@ export class EngineBridge extends EventEmitter {
     this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools, source })
   }
 
+  // ─── Conversation-data RPCs ───
+  //
+  // Bodies live in engine-bridge-conversations.ts. The methods stay on
+  // the bridge so external callers (renderer IPC, control plane, OAuth
+  // token store) keep their existing surface area. Each wrapper is a
+  // single-line delegate — see the sibling file for behavior, logging,
+  // and wire-protocol contract notes.
+
   async listStoredSessions(limit?: number): Promise<any[]> {
-    await this.connect()
-    const result = await this._sendWithData<any[]>({ cmd: 'list_stored_sessions', limit: limit || 50 })
-    return result.data || []
+    return conv.listStoredSessions(this, limit)
   }
 
   async loadSessionHistory(sessionId: string): Promise<any[]> {
-    await this.connect()
-    const result = await this._sendWithData<any[]>({ cmd: 'load_session_history', key: sessionId })
-    return result.data || []
+    return conv.loadSessionHistory(this, sessionId)
   }
 
   async loadChainHistory(sessionIds: string[]): Promise<any[]> {
-    await this.connect()
-    const result = await this._sendWithData<any[]>({ cmd: 'load_session_history', sessionIds })
-    return result.data || []
+    return conv.loadChainHistory(this, sessionIds)
   }
 
   async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> {
-    await this.connect()
-    const result = await this._sendWithData<any>({ cmd: 'get_conversation', key: conversationId, offset, limit })
-    return result.data || { messages: [], total: 0, hasMore: false }
+    return conv.getConversation(this, conversationId, offset, limit)
   }
 
-  /**
-   * Wipes the LLM-visible message history for a stored conversation without
-   * requiring a live engine session. Called when /clear is issued on a tab
-   * that was loaded from disk but has never sent a prompt (so no engine
-   * session exists yet to receive dispatchClear). The conversationId is the
-   * session/conversation ID stored on the tab (tab.conversationId).
-   *
-   * Fields wiped (matches engine dispatchClear): Messages, LastInputTokens,
-   * LastInputTokensMsgCount. Entries, cost totals, and identity fields are
-   * preserved — /clear is a checkpoint, not a delete.
-   */
   async clearConversationFile(conversationId: string): Promise<void> {
-    await this.connect()
-    log(`clearConversationFile: conversationId=${conversationId}`)
-    await this._sendWithResult({ cmd: 'clear_conversation_file', key: conversationId })
+    return conv.clearConversationFile(this, conversationId)
   }
 
   async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
-    await this.connect()
-    return this._sendWithResult({ cmd: 'save_session_label', key: sessionId, label })
+    return conv.saveSessionLabel(this, sessionId, label)
   }
 
   async generateTitle(text: string): Promise<string> {
-    await this.connect()
-    const result = await this._sendWithData<{ title: string }>({ cmd: 'generate_title', text })
-    return result.data?.title || ''
+    return conv.generateTitle(this, text)
   }
 
   async migrateConversation(
@@ -499,8 +493,7 @@ export class EngineBridge extends EventEmitter {
     targetDir: string,
     sourceDir: string,
   ): Promise<{ ok: boolean; error?: string; data?: { newSessionId: string; outputPath: string; messageCount: number; contentHash: string } }> {
-    await this.connect()
-    return this._sendWithData({ cmd: 'migrate_conversation', key: sessionId, text: targetFormat, message: targetDir, args: sourceDir })
+    return conv.migrateConversation(this, sessionId, targetFormat, targetDir, sourceDir)
   }
 
   async listModels(): Promise<{ models: any[]; providers: any[] }> {
