@@ -87,26 +87,47 @@ export function FileExplorerTreeRow({
   )
 }
 
-/** Inline new-file/new-folder input row (rendered above siblings). */
+/** Inline new-file/new-folder/rename input row (rendered above siblings or in-place). */
 export function FileExplorerInlineInput({
   depth,
   onSubmit,
   onCancel,
   placeholder,
   colors,
+  initialValue = '',
 }: {
   depth: number
   onSubmit: (name: string) => void
   onCancel: () => void
   placeholder: string
   colors: ReturnType<typeof useColors>
+  /**
+   * Pre-filled value (used for rename so the user starts with the
+   * current name selected). Defaults to empty for new-file / new-folder
+   * flows where the row appears above siblings with no preset.
+   */
+  initialValue?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(initialValue)
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    // Focus the field, and when starting with a preset (rename) select
+    // the basename portion (everything before the last `.`) so typing
+    // immediately replaces the name while preserving the extension as
+    // the obvious starting selection — matches Finder / VSCode behavior.
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    if (initialValue) {
+      const lastDot = initialValue.lastIndexOf('.')
+      if (lastDot > 0) {
+        el.setSelectionRange(0, lastDot)
+      } else {
+        el.select()
+      }
+    }
+  }, [initialValue])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && value.trim()) {

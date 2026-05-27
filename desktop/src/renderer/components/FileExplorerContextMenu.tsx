@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut } from '@phosphor-icons/react'
+import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSimple } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
@@ -17,11 +17,18 @@ export function FileExplorerContextMenu({
   menu,
   workingDir,
   onClose,
+  onRename,
   portalTarget,
 }: {
   menu: ContextMenuState
   workingDir: string
   onClose: () => void
+  /**
+   * Caller-supplied callback to start an inline-rename for `entry`.
+   * The caller (FileExplorer) decides how to render the rename UI;
+   * the context menu just signals intent.
+   */
+  onRename: (entry: FsEntry) => void
   portalTarget: HTMLDivElement
 }) {
   const colors = useColors()
@@ -55,10 +62,17 @@ export function FileExplorerContextMenu({
       { label: 'Copy Path', icon: Copy, action: () => navigator.clipboard.writeText(menu.entry.path) },
       { label: 'Copy Relative Path', icon: Copy, action: () => navigator.clipboard.writeText(relativePath) },
       { separator: true as const },
+      // Rename routes through the parent FileExplorer which renders the
+      // inline-input row in place of the entry (reuses the same component
+      // used by New File / New Folder, with the entry's current name
+      // pre-filled). This avoids introducing a modal dialog and keeps the
+      // rename UX consistent with creation.
+      { label: 'Rename', icon: PencilSimple, action: () => onRename(menu.entry) },
+      { separator: true as const },
       { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsRevealInFinder(menu.entry.path) } },
       { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsOpenNative(menu.entry.path) } },
     ]
-  }, [menu.entry.path, workingDir])
+  }, [menu.entry.path, workingDir, onRename])
 
   return createPortal(
     <div

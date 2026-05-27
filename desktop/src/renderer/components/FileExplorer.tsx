@@ -42,6 +42,15 @@ export function FileExplorer() {
   const [ignoredPaths, setIgnoredPaths] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [inlineInput, setInlineInput] = useState<{ type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
+  /**
+   * Inline-rename state. When set, the row whose `path === renaming.path`
+   * is replaced (not augmented) by a `FileExplorerInlineInput` pre-filled
+   * with `renaming.initialName`. The state is cleared on submit or
+   * cancel. This pattern mirrors `inlineInput` above but operates on an
+   * existing entry rather than synthesizing a new one above its
+   * siblings.
+   */
+  const [renaming, setRenaming] = useState<{ path: string; initialName: string } | null>(null)
   const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
   const refreshCounter = useRef(0)
 
@@ -171,6 +180,55 @@ export function FileExplorer() {
     fetchDir(inlineInput.parentDir)
   }, [inlineInput, fetchDir])
 
+  /**
+   * Begin an in-place rename for `entry`. Called from the context menu.
+   * The row is swapped for an inline input pre-filled with the current
+   * name. Submit calls `window.ion.fsRename`; cancel restores the row.
+   */
+  const handleRenameStart = useCallback((entry: FsEntry) => {
+    console.log('[FileExplorer] handleRenameStart', { path: entry.path, name: entry.name })
+    setRenaming({ path: entry.path, initialName: entry.name })
+  }, [])
+
+  /**
+   * Submit an in-place rename. Builds the new path under the same parent
+   * directory as the original entry (rename, not move), invokes the
+   * existing IPC, and refreshes the parent listing. Logs both success
+   * and failure with the `[FileExplorer]` tag so the renderer log
+   * stream tells the full story (see CLAUDE.md → Logging policy).
+   */
+  const handleRenameSubmit = useCallback(async (newName: string) => {
+    if (!renaming) return
+    const trimmed = newName.trim()
+    // No-op when the user submitted the same name (or empty after trim).
+    if (!trimmed || trimmed === renaming.initialName) {
+      console.log('[FileExplorer] handleRenameSubmit: skipped', { reason: trimmed ? 'unchanged' : 'empty', oldPath: renaming.path })
+      setRenaming(null)
+      return
+    }
+    const lastSlash = renaming.path.lastIndexOf('/')
+    const parentDir = lastSlash >= 0 ? renaming.path.slice(0, lastSlash) : renaming.path
+    const newPath = `${parentDir}/${trimmed}`
+    console.log('[FileExplorer] handleRenameSubmit: invoking fsRename', { oldPath: renaming.path, newPath })
+    try {
+      const result = await window.ion.fsRename(renaming.path, newPath)
+      if (result.ok) {
+        console.log('[FileExplorer] handleRenameSubmit: success', { oldPath: renaming.path, newPath })
+      } else {
+        console.log('[FileExplorer] handleRenameSubmit: failed', { oldPath: renaming.path, newPath, error: result.error })
+      }
+    } catch (err) {
+      console.log('[FileExplorer] handleRenameSubmit: threw', { oldPath: renaming.path, newPath, error: (err as Error).message })
+    }
+    setRenaming(null)
+    fetchDir(parentDir)
+  }, [renaming, fetchDir])
+
+  const handleRenameCancel = useCallback(() => {
+    console.log('[FileExplorer] handleRenameCancel', { path: renaming?.path })
+    setRenaming(null)
+  }, [renaming])
+
   const isIgnored = useCallback((filePath: string) => {
     if (ignoredPaths.has(filePath)) return true
     // Directory entries from git end with '/' but FsEntry paths don't
@@ -206,20 +264,38 @@ export function FileExplorer() {
       const isExpanded = explorerState.expandedPaths.has(entry.path)
       const isSelected = explorerState.selectedPath === entry.path
 
-      nodes.push(
-        <FileExplorerTreeRow
-          key={entry.path}
-          entry={entry}
-          depth={depth}
-          expanded={isExpanded}
-          selected={isSelected}
-          isGitIgnored={isIgnored(entry.path)}
-          onToggle={() => handleToggleDir(entry)}
-          onClick={() => handleFileClick(entry)}
-          onContextMenu={(e) => handleContextMenu(e, entry)}
-          colors={colors}
-        />,
-      )
+      if (renaming && renaming.path === entry.path) {
+        // Replace the row with the inline input (NOT add above siblings).
+        // The placeholder mirrors the file/folder placeholder used for
+        // new-entry creation; the pre-filled `initialValue` makes the
+        // distinction obvious to the user.
+        nodes.push(
+          <FileExplorerInlineInput
+            key={`__rename__${entry.path}`}
+            depth={depth}
+            onSubmit={handleRenameSubmit}
+            onCancel={handleRenameCancel}
+            placeholder={entry.isDirectory ? 'folder name' : 'filename'}
+            initialValue={renaming.initialName}
+            colors={colors}
+          />,
+        )
+      } else {
+        nodes.push(
+          <FileExplorerTreeRow
+            key={entry.path}
+            entry={entry}
+            depth={depth}
+            expanded={isExpanded}
+            selected={isSelected}
+            isGitIgnored={isIgnored(entry.path)}
+            onToggle={() => handleToggleDir(entry)}
+            onClick={() => handleFileClick(entry)}
+            onContextMenu={(e) => handleContextMenu(e, entry)}
+            colors={colors}
+          />,
+        )
+      }
 
       if (entry.isDirectory && isExpanded) {
         nodes.push(...renderTree(entry.path, depth + 1))
@@ -227,7 +303,7 @@ export function FileExplorer() {
     }
 
     return nodes
-  }, [dirCache, explorerState, inlineInput, handleInlineSubmit, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
+  }, [dirCache, explorerState, inlineInput, renaming, handleInlineSubmit, handleRenameSubmit, handleRenameCancel, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
 
   const expandedUI = usePreferencesStore((s) => s.expandedUI)
 
@@ -336,6 +412,7 @@ export function FileExplorer() {
           menu={contextMenu}
           workingDir={workingDir}
           onClose={() => setContextMenu(null)}
+          onRename={handleRenameStart}
           portalTarget={popoverLayer}
         />
       )}

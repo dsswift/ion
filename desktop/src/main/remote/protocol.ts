@@ -131,6 +131,12 @@ export type RemoteCommand =
   | { type: 'fs_read_file'; filePath: string }
   | { type: 'fs_read_image'; filePath: string }
   | { type: 'fs_write_file'; filePath: string; content: string }
+  // Rename a file or directory inside a project root. Both `oldPath` and
+  // `newPath` are validated by `isValidProjectPath` on the desktop;
+  // failures surface via `fs_rename_result` with `ok: false` rather than
+  // throwing. This is purely a client↔harness wire — the engine has no
+  // notion of a "file explorer" and never sees these commands.
+  | { type: 'fs_rename'; oldPath: string; newPath: string }
   | { type: 'discover_commands'; directory: string }
   | { type: 'upload_attachment'; dataUrl: string; name: string; correlationId?: string }
   | { type: 'voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
@@ -178,14 +184,19 @@ export type RemoteEvent =
   | { type: 'terminal_instance_removed'; tabId: string; instanceId: string }
   | { type: 'terminal_snapshot'; tabId: string; instances: TerminalInstanceInfo[]; activeInstanceId: string | null; buffers?: Record<string, string> }
   | { type: 'engine_agent_state'; tabId: string; instanceId?: string | null; agents: AgentStateUpdate[] }
-  | { type: 'engine_status'; tabId: string; instanceId?: string | null; fields: StatusFields }
-  | { type: 'engine_working_message'; tabId: string; instanceId?: string | null; message: string }
-  | { type: 'engine_notify'; tabId: string; instanceId?: string | null; message: string; level: string }
+  | { type: 'engine_status'; tabId: string; instanceId?: string | null; fields: StatusFields; metadata?: Record<string, unknown> }
+  | { type: 'engine_working_message'; tabId: string; instanceId?: string | null; message: string; metadata?: Record<string, unknown> }
+  | { type: 'engine_notify'; tabId: string; instanceId?: string | null; message: string; level: string; metadata?: Record<string, unknown> }
   | { type: 'engine_dialog'; tabId: string; instanceId?: string | null; dialogId: string; method: string; title: string; message?: string; options?: string[]; defaultValue?: string }
   | { type: 'engine_dialog_resolved'; tabId: string; instanceId?: string | null; dialogId: string }
   | { type: 'engine_text_delta'; tabId: string; instanceId?: string | null; text: string }
   | { type: 'engine_message_end'; tabId: string; instanceId?: string | null; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
-  | { type: 'engine_harness_message'; tabId: string; instanceId?: string | null; message: string; source?: string }
+  // `metadata` is an opaque pass-through hint map forwarded from the engine.
+  // Carried verbatim across the relay to iOS so future iOS-side handlers
+  // (e.g. dedup, render-style hints) can adopt the same conventions the
+  // desktop renderer honors without a protocol break. See
+  // docs/protocol/server-events.md for well-known keys.
+  | { type: 'engine_harness_message'; tabId: string; instanceId?: string | null; message: string; source?: string; metadata?: Record<string, unknown> }
   | { type: 'engine_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'engine_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
@@ -195,7 +206,7 @@ export type RemoteEvent =
   | { type: 'engine_instance_added'; tabId: string; instance: { id: string; label: string } }
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
   | { type: 'engine_instance_moved'; sourceTabId: string; instanceId: string; targetTabId: string }
-  | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
+  | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number; dedupKey?: string }> }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
@@ -255,6 +266,10 @@ export type RemoteEvent =
   | { type: 'fs_file_content'; filePath: string; content: string | null; error?: string }
   | { type: 'fs_image_content'; filePath: string; dataUrl: string | null; error?: string }
   | { type: 'fs_write_result'; filePath: string; ok: boolean; error?: string }
+  // Result of an fs_rename command. iOS uses this to refresh the parent
+  // directory listing on success and to surface errors. The shape mirrors
+  // `fs_write_result` deliberately: ok-flag plus optional error string.
+  | { type: 'fs_rename_result'; oldPath: string; newPath: string; ok: boolean; error?: string }
   | { type: 'upload_attachment_result'; id: string; name: string; path: string; correlationId?: string; error?: string }
   | { type: 'discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
   | { type: 'tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }

@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs'
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import { isValidProjectPath } from '../../ipc-validation'
@@ -111,6 +111,41 @@ export async function handleFsWriteFile(cmd: Extract<RemoteCommand, { type: 'fs_
   } catch (err) {
     log(`fs_write_file error: ${(err as Error).message}`)
     state.remoteTransport?.send({ type: 'fs_write_result', filePath, ok: false, error: (err as Error).message })
+  }
+}
+
+/**
+ * Rename a file or directory at the request of a remote (iOS) client.
+ *
+ * Mirrors the local IPC handler in `desktop/src/main/ipc/files.ts` —
+ * both ends validate `oldPath` and `newPath` against `isValidProjectPath`
+ * so a paired iOS client cannot rename arbitrary system files. On
+ * success/failure we emit `fs_rename_result`; the iOS event handler
+ * re-issues `fs_list_dir` on the parent directory to refresh the
+ * listing.
+ *
+ * No pre-check for an existing target — `renameSync` will overwrite on
+ * most platforms; we let the OS surface ENOTDIR / EEXIST / EISDIR via
+ * the catch block. Symmetry with the IPC handler is intentional. If
+ * we ever want a "target exists" pre-check it must be added to both
+ * the IPC and remote handlers in lockstep.
+ */
+export async function handleFsRename(cmd: Extract<RemoteCommand, { type: 'fs_rename' }>): Promise<void> {
+  const { oldPath, newPath } = cmd
+  log(`fs_rename: start oldPath=${oldPath} newPath=${newPath}`)
+  try {
+    if (!isValidProjectPath(oldPath) || !isValidProjectPath(newPath)) {
+      log(`fs_rename: rejected oldPath=${oldPath} newPath=${newPath} reason=invalid_path`)
+      state.remoteTransport?.send({ type: 'fs_rename_result', oldPath, newPath, ok: false, error: 'Invalid path' })
+      return
+    }
+    renameSync(oldPath, newPath)
+    log(`fs_rename: success oldPath=${oldPath} newPath=${newPath}`)
+    state.remoteTransport?.send({ type: 'fs_rename_result', oldPath, newPath, ok: true })
+  } catch (err) {
+    const message = (err as Error).message
+    log(`fs_rename: failed oldPath=${oldPath} newPath=${newPath} error=${message}`)
+    state.remoteTransport?.send({ type: 'fs_rename_result', oldPath, newPath, ok: false, error: message })
   }
 }
 
