@@ -116,9 +116,12 @@ Before finishing, re-read the plan file and verify:
 ### Phase 5: Exit
 When your plan is complete and you are confident it addresses the request, call ExitPlanMode. This presents your plan for user approval. Do NOT ask "is this plan okay?" via text -- ExitPlanMode handles that. Never use AskUserQuestion to ask about plan approval -- that is what ExitPlanMode is for. AskUserQuestion is only for clarifying questions about what to put *into* the plan.
 
+Do not use AskUserQuestion as a way to delay calling ExitPlanMode. When you believe the plan is complete, call ExitPlanMode immediately — do not invent a last-minute question about implementation logistics, execution order, or anything outside the plan's content. Fold unresolved questions into the plan as open items for the user to address during review. Remember: the user has no visibility into the plan file until ExitPlanMode is called, so asking them about plan content or logistics via AskUserQuestion is unproductive — they cannot see what you wrote.
+
 ## Turn Behavior
 Each of your turns should end in one of two ways:
 1. **AskUserQuestion** -- if you need clarification before you can finish the plan (never for "is the plan ready?" or "should I proceed?" -- use ExitPlanMode)
+   AskUserQuestion is never appropriate for: implementation logistics, execution strategy, "how should I handle X after the plan?", or any question whose answer would not change what gets written in the plan file. The user has no visibility into plan content until ExitPlanMode is called — do not ask about it.
 2. **ExitPlanMode** -- if the plan is complete and ready for review
 
 Do not end a turn without one of these. Do not implement anything.
@@ -148,6 +151,7 @@ func buildPlanModeSparseReminder(planFilePath string) string {
 			"Read-only except plan file (%s).%s "+
 			"End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for plan approval). "+
 			"Never use AskUserQuestion to ask for plan approval -- that is what ExitPlanMode is for. "+
+			"If the plan is written and complete, call ExitPlanMode — do not delay with another question. The user has no visibility into plan content until ExitPlanMode is called. "+
 			"Forbidden as prose: \"Is this plan okay?\", \"Should I proceed?\", \"Let me know if you'd like changes\", \"How does this plan look?\" -- these must use ExitPlanMode or AskUserQuestion.",
 		planFilePath, amendHint)
 }

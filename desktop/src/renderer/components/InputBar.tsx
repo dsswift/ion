@@ -61,6 +61,7 @@ export function InputBar() {
   })
   const bashExecuting = tab?.bashExecuting ?? false
   const tabsReady = useSessionStore((s) => s.tabsReady)
+  const initProgress = useSessionStore((s) => s.initProgress)
   const bashCommandEntry = usePreferencesStore((s) => s.bashCommandEntry)
   const colors = useColors()
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
@@ -384,7 +385,7 @@ export function InputBar() {
       : bashMode
         ? bashPlaceholder
         : isConnecting
-          ? 'Initializing...'
+          ? (initProgress || 'Initializing…')
           : voiceState === 'recording'
             ? 'Recording... ✓ to confirm, ✕ to cancel'
             : voiceState === 'transcribing'

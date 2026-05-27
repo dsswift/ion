@@ -20,13 +20,15 @@ func AskUserQuestionTool() *types.ToolDef {
 		Name: AskUserQuestionName,
 		Description: `Ask the user a question to gather information, clarify ambiguity, or get a decision. The run pauses until the user responds. Use this instead of guessing when requirements are unclear.
 
-When the question has a finite set of reasonable answers, ALWAYS provide options — this is faster for the user than typing. The user can always type a custom answer even when options are provided. Only omit options for genuinely open-ended questions (e.g. "What should the project be called?").`,
+When the question has a finite set of reasonable answers, ALWAYS provide options — this is faster for the user than typing. The user can always type a custom answer even when options are provided. Only omit options for genuinely open-ended questions (e.g. "What should the project be called?").
+
+IMPORTANT: The question is displayed in a small UI card — keep it to 1-2 sentences containing only the decision point. Any necessary context, explanation, or narrative should be written as regular assistant text BEFORE calling this tool. Do not put background information, analysis, or reasoning into the question field.`,
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"question": map[string]any{
 					"type":        "string",
-					"description": "The question to ask the user. Should be clear, specific, and end with a question mark.",
+					"description": "The question to ask the user. Must be 1-2 concise sentences containing only the decision point, ending with a question mark. Do not include background context, narrative, or explanation — put that in your regular message text before calling this tool.",
 				},
 				"options": map[string]any{
 					"type": "array",

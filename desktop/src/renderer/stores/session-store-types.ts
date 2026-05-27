@@ -43,6 +43,7 @@ export interface State {
   editorGeometry: { x: number; y: number; w: number; h: number }
   planGeometry: { x: number; y: number; w: number; h: number }
   tabsReady: boolean
+  initProgress: string | null
   backend: 'api' | 'cli'
   worktreeUncommittedMap: Map<string, boolean>
 

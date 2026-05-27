@@ -23,14 +23,17 @@ export function useTabRestoration() {
     let aborted = false
     useSessionStore.getState().initStaticInfo().then(async () => {
       if (aborted) return
+      useSessionStore.setState({ initProgress: 'Loading saved tabs…' })
       const homeDir = useSessionStore.getState().staticInfo?.homePath || '~'
 
       // Try restoring saved tabs
       const saved = await window.ion.loadTabs().catch(() => null)
       if (saved && saved.tabs && saved.tabs.length > 0) {
+        useSessionStore.setState({ initProgress: `Restoring ${saved.tabs.length} tabs…` })
         // Restore each saved tab
         const restoredTabIds: Array<{ tabId: string; sessionId: string | null; index: number }> = []
         for (let i = 0; i < saved.tabs.length; i++) {
+          useSessionStore.setState({ initProgress: `Restoring tab ${i + 1} of ${saved.tabs.length}…` })
           const st = saved.tabs[i]
           if (st.conversationId && !st.isEngine) {
             // Conversation tab with a session -- resume it
@@ -277,6 +280,7 @@ export function useTabRestoration() {
           }
         }
 
+        useSessionStore.setState({ initProgress: 'Loading history…' })
         // Load historical session messages for tabs that have them
         for (const { tabId, index } of restoredTabIds) {
           const st = saved.tabs[index]
@@ -403,6 +407,7 @@ export function useTabRestoration() {
           }))
         }
 
+        useSessionStore.setState({ initProgress: 'Restoring workspace…' })
         // Restore editor states (per-directory)
         if (saved.editorStates) {
           const restoredEditorStates = new Map<string, any>()
@@ -477,7 +482,7 @@ export function useTabRestoration() {
         const restoredExpanded = typeof saved.isExpanded === 'boolean'
           ? saved.isExpanded
           : usePreferencesStore.getState().expandOnTabSwitch
-        useSessionStore.setState({ isExpanded: restoredExpanded, tabsReady: true })
+        useSessionStore.setState({ isExpanded: restoredExpanded, tabsReady: true, initProgress: null })
         return
       }
 
@@ -490,6 +495,7 @@ export function useTabRestoration() {
         useSessionStore.setState((s) => ({
           tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, workingDirectory: startDir, hasChosenDirectory: hasChosen } : t)),
         }))
+        useSessionStore.setState({ initProgress: 'Creating new tab…' })
         const registerInitialTab = async (retries = 5): Promise<void> => {
           for (let i = 0; i < retries; i++) {
             try {
@@ -498,6 +504,7 @@ export function useTabRestoration() {
                 tabs: s.tabs.map((t, idx) => (idx === 0 ? { ...t, id: tabId } : t)),
                 activeTabId: tabId,
                 tabsReady: true,
+                initProgress: null,
               }))
               return
             } catch {
@@ -505,7 +512,7 @@ export function useTabRestoration() {
             }
           }
           // All retries failed — still set tabsReady so UI isn't stuck forever
-          useSessionStore.setState({ tabsReady: true })
+          useSessionStore.setState({ tabsReady: true, initProgress: null })
         }
         registerInitialTab()
       }

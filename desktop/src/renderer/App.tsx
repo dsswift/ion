@@ -81,6 +81,7 @@ export default function App() {
   const isTerminalBigScreen = useSessionStore((s) => s.terminalBigScreenTabId === s.activeTabId)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const activeTabId = useSessionStore((s) => s.activeTabId)
+  const tabsReady = useSessionStore((s) => s.tabsReady)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const isTerminalOnly = activeTab?.isTerminalOnly || false
   const isEngine = activeTab?.isEngine || false
@@ -183,7 +184,7 @@ export default function App() {
           {/* ─── Terminal panel ─── */}
           {/* Normal mode: above conversation, hidden in tall/terminal-tall/big-screen view */}
           <AnimatePresence initial={false}>
-            {terminalOpen && !isTallView && !isTerminalTall && !isTerminalOnly && !isTerminalBigScreen && (
+            {tabsReady && terminalOpen && !isTallView && !isTerminalTall && !isTerminalOnly && !isTerminalBigScreen && (
               <motion.div
                 data-ion-ui
                 initial={{ opacity: 0, height: 0 }}
@@ -234,6 +235,7 @@ export default function App() {
               zIndex: isExpanded || isTerminalOnly || isTerminalTall || isEngine ? 20 : 10,
             }}
           >
+            {tabsReady && (<>
             {/* Tab strip — always mounted */}
             <div>
               <TabStrip />
@@ -287,6 +289,7 @@ export default function App() {
                 <StatusBar />
               </div>
             )}
+            </>)}
           </motion.div>
 
           {/* ─── Input row — circles float outside left ─── */}
@@ -348,7 +351,7 @@ export default function App() {
           </div>
           {/* File explorer — anchored to left edge of content column */}
           <AnimatePresence>
-            {explorerOpen && (
+            {tabsReady && explorerOpen && (
               <motion.div
                 data-ion-ui
                 initial={{ opacity: 0, x: -20 }}
@@ -370,7 +373,7 @@ export default function App() {
           </AnimatePresence>
           {/* Git side panel — anchored to right edge of content column */}
           <AnimatePresence>
-            {gitPanelOpen && (
+            {tabsReady && gitPanelOpen && (
               <motion.div
                 data-ion-ui
                 initial={{ opacity: 0, x: 20 }}
@@ -393,12 +396,12 @@ export default function App() {
         </div>
 
         {/* File editor floating panel */}
-        {editorOpen && editorDirState && editorDirState.files.length > 0 && activeTab && (
+        {tabsReady && editorOpen && editorDirState && editorDirState.files.length > 0 && activeTab && (
           <FileEditor dir={editorDirForTab(activeTab)} tabId={activeTabId} />
         )}
 
         {/* Terminal big screen overlay */}
-        {isTerminalBigScreen && (
+        {tabsReady && isTerminalBigScreen && (
           <TerminalBigScreen tabId={activeTabId} />
         )}
 

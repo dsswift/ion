@@ -90,5 +90,6 @@ export const PLAN_MODE_SPARSE_REMINDER =
   'Read-only except plan file. ' +
   'End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for plan approval). ' +
   'Never use AskUserQuestion to ask for plan approval -- that is what ExitPlanMode is for. ' +
+  'If the plan is written and complete, call ExitPlanMode — do not delay with another question. The user has no visibility into plan content until ExitPlanMode is called. ' +
   'Forbidden as prose: "Is this plan okay?", "Should I proceed?", "Let me know if you\'d like changes", ' +
   '"How does this plan look?" -- these must use ExitPlanMode or AskUserQuestion.'

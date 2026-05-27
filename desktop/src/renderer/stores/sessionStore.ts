@@ -45,6 +45,7 @@ const initialState = {
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
   planGeometry: { x: 60, y: 80, w: 720, h: 420 },
   tabsReady: false,
+  initProgress: null,
   backend: 'api' as const,
   worktreeUncommittedMap: new Map(),
   engineAgentStates: new Map(),
