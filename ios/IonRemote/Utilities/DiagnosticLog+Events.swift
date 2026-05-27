@@ -94,10 +94,10 @@ extension DiagnosticLog {
         case .engineAgentState(let tabId, let instId, let agents):
             log("EVENT: engineAgentState tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") agents=\(agents.count)")
 
-        case .engineStatus(let tabId, let instId, _):
+        case .engineStatus(let tabId, let instId, _, _):
             log("EVENT: engineStatus tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
 
-        case .engineWorkingMessage(let tabId, let instId, _):
+        case .engineWorkingMessage(let tabId, let instId, _, _):
             log("EVENT: engineWorkingMessage tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
 
         case .engineToolStart(let tabId, let instId, let toolName, let toolId):
@@ -112,7 +112,7 @@ extension DiagnosticLog {
         case .engineError(let tabId, let instId, let msg):
             log("ERR: engine tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") msg=\(msg.prefix(80))")
 
-        case .engineNotify(let tabId, let instId, let msg, let level):
+        case .engineNotify(let tabId, let instId, let msg, let level, _):
             log("EVENT: engineNotify tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") level=\(level) msg=\(msg.prefix(60))")
 
         case .engineDialog(let tabId, let instId, let dId, let method, _, _, _):
@@ -139,7 +139,7 @@ extension DiagnosticLog {
         case .engineInstanceMoved(let srcTabId, let instId, let tgtTabId):
             log("EVENT: engineInstanceMoved src=\(srcTabId.prefix(8)) inst=\(instId.prefix(8)) tgt=\(tgtTabId.prefix(8))")
 
-        case .engineHarnessMessage(let tabId, let instId, let msg, _):
+        case .engineHarnessMessage(let tabId, let instId, let msg, _, _):
             log("EVENT: engineHarnessMessage tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(msg.count)")
 
         case .engineConversationHistory(let tabId, let instId, let msgs):
@@ -237,6 +237,9 @@ extension DiagnosticLog {
 
         case .fsWriteResult(let path, _):
             log("EVENT: fsWriteResult path=\(path.suffix(40))")
+
+        case .fsRenameResult(let oldPath, let newPath, let response):
+            log("EVENT: fsRenameResult old=\(oldPath.suffix(40)) new=\(newPath.suffix(40)) ok=\(response.ok) err=\(response.error ?? "nil")")
 
         case .discoverCommandsResponse(let dir, let cmds):
             log("EVENT: discoverCommandsResponse dir=\(dir.suffix(30)) cmds=\(cmds.count)")

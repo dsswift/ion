@@ -52,13 +52,13 @@ enum RemoteEvent: Codable, Sendable {
     case terminalSnapshot(tabId: String, instances: [TerminalInstanceInfo], activeInstanceId: String?, buffers: [String: String]?)
     // Engine events (structured)
     case engineAgentState(tabId: String, instanceId: String?, agents: [AgentStateUpdate])
-    case engineStatus(tabId: String, instanceId: String?, fields: StatusFields)
-    case engineWorkingMessage(tabId: String, instanceId: String?, message: String)
+    case engineStatus(tabId: String, instanceId: String?, fields: StatusFields, metadata: [String: AnyCodable]?)
+    case engineWorkingMessage(tabId: String, instanceId: String?, message: String, metadata: [String: AnyCodable]?)
     case engineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String)
     case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool)
     case engineToolStalled(tabId: String, instanceId: String?, toolId: String, toolName: String, elapsed: Double)
     case engineError(tabId: String, instanceId: String?, message: String)
-    case engineNotify(tabId: String, instanceId: String?, message: String, level: String)
+    case engineNotify(tabId: String, instanceId: String?, message: String, level: String, metadata: [String: AnyCodable]?)
     case engineDialog(tabId: String, instanceId: String?, dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?)
     case engineDialogResolved(tabId: String, instanceId: String?, dialogId: String)
     case engineTextDelta(tabId: String, instanceId: String?, text: String)
@@ -67,7 +67,12 @@ enum RemoteEvent: Codable, Sendable {
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
     case engineInstanceMoved(sourceTabId: String, instanceId: String, targetTabId: String)
-    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?)
+    /// `metadata` is an opaque harness-defined hints map the engine forwards
+    /// verbatim. iOS does not yet act on the field, but decoding it cleanly
+    /// here means future iOS handlers (e.g. dedupKey-based rendering) can
+    /// adopt the convention without a wire-protocol change. `AnyCodable`
+    /// is the same pass-through JSON helper used by `desktopSettingsSnapshot`.
+    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?, metadata: [String: AnyCodable]?)
     case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
     case engineModelOverride(tabId: String, instanceId: String?, model: String)
     case engineProfiles(profiles: [EngineProfile])
@@ -190,6 +195,11 @@ enum RemoteEvent: Codable, Sendable {
     case fsFileContent(filePath: String, response: FsFileContentResponse)
     case fsImageContent(filePath: String, dataUrl: String?, error: String?)
     case fsWriteResult(filePath: String, response: FsWriteResultResponse)
+    /// Result of an `fsRename` command. iOS handles this by refreshing
+    /// the parent directory listing on success (so the new name appears
+    /// and the old entry disappears) and surfacing the error via
+    /// `fileRenameResult` on failure.
+    case fsRenameResult(oldPath: String, newPath: String, response: FsRenameResultResponse)
     // Command discovery events
     case discoverCommandsResponse(directory: String, commands: [DiscoveredSlashCommand])
     // Upload attachment result
@@ -266,6 +276,7 @@ enum RemoteEvent: Codable, Sendable {
         case fsFileContent = "fs_file_content"
         case fsImageContent = "fs_image_content"
         case fsWriteResult = "fs_write_result"
+        case fsRenameResult = "fs_rename_result"
         case discoverCommandsResponse = "discover_commands_response"
         case uploadAttachmentResult = "upload_attachment_result"
         case tabAttachments = "tab_attachments"
@@ -288,6 +299,11 @@ enum RemoteEvent: Codable, Sendable {
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
         case commits, totalCount, diff, fileName, graphLayout, hash, stats
         case entries, filePath, ok, error
+        // fs_rename_result payload — the command carries `oldPath`/`newPath`
+        // and the result echoes them so the iOS handler can refresh the
+        // parent directory listing without re-correlating with the
+        // outbound command.
+        case oldPath, newPath
         case commands
         case ts, buffered
         case id, name, path
@@ -325,6 +341,13 @@ enum RemoteEvent: Codable, Sendable {
         // metadata (type, group, label, description, defaultValue);
         // `groups` is the ordered list of section descriptors.
         case settings, schema, groups
+        // Pass-through harness-defined hint map carried on the four
+        // user-visible engine events (status, working_message, notify,
+        // harness_message). iOS does not act on the field yet but
+        // decodes it cleanly so future handlers can adopt conventions
+        // like `metadata.dedupKey` without a wire change. See
+        // docs/protocol/server-events.md for well-known keys.
+        case metadata
     }
 
     // MARK: - Decoder

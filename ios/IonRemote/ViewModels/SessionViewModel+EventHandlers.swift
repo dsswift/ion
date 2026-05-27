@@ -203,11 +203,11 @@ extension SessionViewModel {
             DiagnosticLog.log("ENGINE: agent_state key=\(key) count=\(agents.count) statuses=[\(statuses)]")
             engineAgentStates[key] = agents
 
-        case .engineStatus(let tabId, let instanceId, let fields):
+        case .engineStatus(let tabId, let instanceId, let fields, _):
             let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
             engineStatusFields[key] = fields
 
-        case .engineWorkingMessage(let tabId, let instanceId, let message):
+        case .engineWorkingMessage(let tabId, let instanceId, let message, _):
             let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
             engineWorkingMessages[key] = message
 
@@ -224,7 +224,7 @@ extension SessionViewModel {
         case .engineError(let tabId, let instanceId, let message):
             handleEngineError(tabId: tabId, instanceId: instanceId, message: message)
 
-        case .engineNotify(let tabId, let instanceId, let message, let level):
+        case .engineNotify(let tabId, let instanceId, let message, let level, _):
             handleEngineNotify(tabId: tabId, instanceId: instanceId, message: message, level: level)
 
         case .engineDialog(let tabId, let instanceId, let dialogId, let method, let title, let options, let defaultValue):
@@ -241,7 +241,7 @@ extension SessionViewModel {
         case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _):
             handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent)
 
-        case .engineHarnessMessage(let tabId, let instanceId, let message, _):
+        case .engineHarnessMessage(let tabId, let instanceId, let message, _, _):
             let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
             var msgs = engineMessages[key] ?? []
             msgs.append(EngineMessage(id: UUID().uuidString, role: "harness", content: message, timestamp: Date().timeIntervalSince1970 * 1000))
@@ -391,6 +391,24 @@ extension SessionViewModel {
 
         case .fsWriteResult(_, let response):
             fileWriteResult = response
+
+        case .fsRenameResult(_, let newPath, let response):
+            // Lightweight pattern mirroring `.fsWriteResult`:
+            //   - publish the response so the view can surface errors,
+            //   - on success, re-issue `fsListDir` on the parent dir of
+            //     newPath so the listing reflects the rename. We don't
+            //     also refresh oldPath's parent because the desktop
+            //     handler only ever changes basename, so the parents
+            //     match. If a future variant ever moves across
+            //     directories, this is the spot to add the second
+            //     refresh.
+            fileRenameResult = response
+            if response.ok {
+                let parent = (newPath as NSString).deletingLastPathComponent
+                if !parent.isEmpty {
+                    requestFsListDir(directory: parent)
+                }
+            }
 
         case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
             handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)

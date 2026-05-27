@@ -37,6 +37,14 @@ extension RemoteEvent {
             let response = FsWriteResultResponse(filePath: filePath, ok: ok, error: error)
             return .fsWriteResult(filePath: filePath, response: response)
 
+        case .fsRenameResult:
+            let oldPath = try container.decode(String.self, forKey: .oldPath)
+            let newPath = try container.decode(String.self, forKey: .newPath)
+            let ok = try container.decode(Bool.self, forKey: .ok)
+            let error = try container.decodeIfPresent(String.self, forKey: .error)
+            let response = FsRenameResultResponse(oldPath: oldPath, newPath: newPath, ok: ok, error: error)
+            return .fsRenameResult(oldPath: oldPath, newPath: newPath, response: response)
+
         case .discoverCommandsResponse:
             let directory = try container.decode(String.self, forKey: .directory)
             let commands = try container.decode([DiscoveredSlashCommand].self, forKey: .commands)
@@ -87,6 +95,14 @@ extension RemoteEvent {
         case .fsWriteResult(_, let response):
             try container.encode(TypeKey.fsWriteResult, forKey: .type)
             try container.encode(response.filePath, forKey: .filePath)
+            try container.encode(response.ok, forKey: .ok)
+            try container.encodeIfPresent(response.error, forKey: .error)
+            return true
+
+        case .fsRenameResult(_, _, let response):
+            try container.encode(TypeKey.fsRenameResult, forKey: .type)
+            try container.encode(response.oldPath, forKey: .oldPath)
+            try container.encode(response.newPath, forKey: .newPath)
             try container.encode(response.ok, forKey: .ok)
             try container.encodeIfPresent(response.error, forKey: .error)
             return true

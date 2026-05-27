@@ -472,6 +472,14 @@ extension SessionViewModel {
         send(.fsWriteFile(filePath: filePath, content: content))
     }
 
+    /// Rename a file or directory on the paired desktop. Fire-and-forget;
+    /// the result arrives as `.fsRenameResult` which the event handler
+    /// turns into a refreshed `fsListDir` on the parent directory of
+    /// `newPath` (and surfaces errors via `fileRenameResult`).
+    func requestFsRename(oldPath: String, newPath: String) {
+        send(.fsRename(oldPath: oldPath, newPath: newPath))
+    }
+
     func requestLoadAttachments(tabId: String) {
         send(.loadAttachments(tabId: tabId))
     }

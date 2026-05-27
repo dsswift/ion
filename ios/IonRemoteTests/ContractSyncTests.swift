@@ -135,7 +135,7 @@ final class ContractSyncTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineStatus(let tabId, _, let fields) = event {
+        if case .engineStatus(let tabId, _, let fields, _) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(fields.label, "Running")
             XCTAssertEqual(fields.state, "running")

@@ -78,6 +78,13 @@ enum RemoteCommand: Codable, Sendable {
     case fsReadFile(filePath: String)
     case fsReadImage(filePath: String)
     case fsWriteFile(filePath: String, content: String)
+    /// Rename a file or directory inside a project root on the paired
+    /// desktop. The desktop validates both paths via `isValidProjectPath`
+    /// and replies with `fsRenameResult`. iOS does not synthesize an
+    /// optimistic local rename — the file listing is owned by the
+    /// desktop, so we wait for the result event and re-issue
+    /// `fsListDir` on the parent directory to refresh.
+    case fsRename(oldPath: String, newPath: String)
     case discoverCommands(directory: String)
     case uploadAttachment(dataUrl: String, name: String, correlationId: String)
     case loadAttachments(tabId: String)
@@ -162,6 +169,7 @@ enum RemoteCommand: Codable, Sendable {
         case fsReadFile = "fs_read_file"
         case fsReadImage = "fs_read_image"
         case fsWriteFile = "fs_write_file"
+        case fsRename = "fs_rename"
         case discoverCommands = "discover_commands"
         case uploadAttachment = "upload_attachment"
         case loadAttachments = "load_attachments"
@@ -184,6 +192,10 @@ enum RemoteCommand: Codable, Sendable {
         // that names a target group AND a separate pin source).
         case pinToGroupId
         case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden, hash
+        // fs_rename payload — both paths are absolute and live under a
+        // project root. New CodingKeys (no collision with existing entries);
+        // checked against the full enum above before adding.
+        case oldPath, newPath
         case attachments, dataUrl, name, correlationId, orderedIds
         case enabled, systemPrompt
         case logs, deviceId, deviceName
@@ -473,6 +485,11 @@ enum RemoteCommand: Codable, Sendable {
             let filePath = try container.decode(String.self, forKey: .filePath)
             let content = try container.decode(String.self, forKey: .content)
             self = .fsWriteFile(filePath: filePath, content: content)
+
+        case .fsRename:
+            let oldPath = try container.decode(String.self, forKey: .oldPath)
+            let newPath = try container.decode(String.self, forKey: .newPath)
+            self = .fsRename(oldPath: oldPath, newPath: newPath)
 
         case .discoverCommands:
             let directory = try container.decode(String.self, forKey: .directory)

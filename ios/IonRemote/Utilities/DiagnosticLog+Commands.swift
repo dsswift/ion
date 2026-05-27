@@ -167,6 +167,9 @@ extension DiagnosticLog {
         case .fsWriteFile(let path, let content):
             log("CMD: fsWriteFile path=\(path.suffix(40)) len=\(content.count)")
 
+        case .fsRename(let oldPath, let newPath):
+            log("CMD: fsRename old=\(oldPath.suffix(40)) new=\(newPath.suffix(40))")
+
         case .discoverCommands(let dir):
             log("CMD: discoverCommands dir=\(dir.suffix(30))")
 

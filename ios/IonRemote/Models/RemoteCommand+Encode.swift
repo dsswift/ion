@@ -275,6 +275,11 @@ extension RemoteCommand {
             try container.encode(filePath, forKey: .filePath)
             try container.encode(content, forKey: .content)
 
+        case .fsRename(let oldPath, let newPath):
+            try container.encode(TypeKey.fsRename, forKey: .type)
+            try container.encode(oldPath, forKey: .oldPath)
+            try container.encode(newPath, forKey: .newPath)
+
         case .discoverCommands(let directory):
             try container.encode(TypeKey.discoverCommands, forKey: .type)
             try container.encode(directory, forKey: .directory)

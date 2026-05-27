@@ -20,13 +20,15 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let fields = try container.decode(StatusFields.self, forKey: .fields)
-            return .engineStatus(tabId: tabId, instanceId: instanceId, fields: fields)
+            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
+            return .engineStatus(tabId: tabId, instanceId: instanceId, fields: fields, metadata: metadata)
 
         case .engineWorkingMessage:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
-            return .engineWorkingMessage(tabId: tabId, instanceId: instanceId, message: message)
+            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
+            return .engineWorkingMessage(tabId: tabId, instanceId: instanceId, message: message, metadata: metadata)
 
         case .engineToolStart:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -62,7 +64,8 @@ extension RemoteEvent {
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             let level = try container.decodeIfPresent(String.self, forKey: .level) ?? "info"
-            return .engineNotify(tabId: tabId, instanceId: instanceId, message: message, level: level)
+            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
+            return .engineNotify(tabId: tabId, instanceId: instanceId, message: message, level: level, metadata: metadata)
 
         case .engineDialog:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -122,7 +125,13 @@ extension RemoteEvent {
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             let source = try container.decodeIfPresent(String.self, forKey: .source)
-            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source)
+            // `metadata` is an opaque hint map (e.g. dedupKey) the harness
+            // sets via ctx.emit and the engine forwards verbatim. Decoded
+            // as [String: AnyCodable] so future iOS-side handlers can read
+            // typed values without a contract change. iOS does not yet
+            // honor any specific key — desktop is the only consumer today.
+            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
+            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source, metadata: metadata)
 
         case .engineConversationHistory:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -269,18 +278,20 @@ extension RemoteEvent {
             try container.encode(agents, forKey: .agents)
             return true
 
-        case .engineStatus(let tabId, let instanceId, let fields):
+        case .engineStatus(let tabId, let instanceId, let fields, let metadata):
             try container.encode(TypeKey.engineStatus, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(fields, forKey: .fields)
+            try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
-        case .engineWorkingMessage(let tabId, let instanceId, let message):
+        case .engineWorkingMessage(let tabId, let instanceId, let message, let metadata):
             try container.encode(TypeKey.engineWorkingMessage, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(message, forKey: .message)
+            try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
         case .engineToolStart(let tabId, let instanceId, let toolName, let toolId):
@@ -316,12 +327,13 @@ extension RemoteEvent {
             try container.encode(message, forKey: .message)
             return true
 
-        case .engineNotify(let tabId, let instanceId, let message, let level):
+        case .engineNotify(let tabId, let instanceId, let message, let level, let metadata):
             try container.encode(TypeKey.engineNotify, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(message, forKey: .message)
             try container.encode(level, forKey: .level)
+            try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
         case .engineDialog(let tabId, let instanceId, let dialogId, let method, let title, let options, let defaultValue):
@@ -384,12 +396,13 @@ extension RemoteEvent {
             try container.encode(targetTabId, forKey: .targetTabId)
             return true
 
-        case .engineHarnessMessage(let tabId, let instanceId, let message, let source):
+        case .engineHarnessMessage(let tabId, let instanceId, let message, let source, let metadata):
             try container.encode(TypeKey.engineHarnessMessage, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(message, forKey: .message)
             try container.encodeIfPresent(source, forKey: .source)
+            try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
         case .engineConversationHistory(let tabId, let instanceId, let messages):

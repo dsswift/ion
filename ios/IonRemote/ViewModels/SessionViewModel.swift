@@ -205,6 +205,12 @@ final class SessionViewModel {
     var fileListings: [String: FsDirListingResponse] = [:]   // directory -> listing
     var fileContent: [String: FsFileContentResponse] = [:]    // filePath -> content
     var fileWriteResult: FsWriteResultResponse? = nil
+    /// Latest result of an `fsRename` command. Observed by
+    /// `FileExplorerRowView` to surface error alerts (the success path
+    /// is handled by the event handler triggering a fresh
+    /// `requestFsListDir` on the parent directory; the view doesn't
+    /// need to read this for the happy path).
+    var fileRenameResult: FsRenameResultResponse? = nil
     var fileListingLoading: Set<String> = []
     var fileContentLoading: Set<String> = []
 

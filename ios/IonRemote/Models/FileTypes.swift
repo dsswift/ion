@@ -75,6 +75,20 @@ struct FsWriteResultResponse: Codable, Sendable, Equatable {
     let error: String?
 }
 
+/// Response payload for fs_rename_result. Carries both paths so the
+/// view-model can refresh the parent directory of `newPath` (and
+/// optionally `oldPath` if the rename moved between parents in some
+/// future extension — today the desktop handler only ever changes
+/// the basename, so the parents will match). Equatable conformance
+/// mirrors `FsWriteResultResponse` so SwiftUI's `.onChange(of:)`
+/// fires reliably when the same path produces successive results.
+struct FsRenameResultResponse: Codable, Sendable, Equatable {
+    let oldPath: String
+    let newPath: String
+    let ok: Bool
+    let error: String?
+}
+
 /// An attachment entry from the desktop's full message history scan.
 struct TabAttachmentEntry: Codable, Sendable {
     let type: String   // "image", "file", or "plan"

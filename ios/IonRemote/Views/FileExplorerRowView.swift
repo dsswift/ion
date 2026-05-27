@@ -10,6 +10,16 @@ struct FileExplorerRowView: View {
     let rootDirectory: String
     let onTap: () -> Void
 
+    /// Inline-rename UI state. The alert presents a `TextField` pre-filled
+    /// with the entry's current name; submitting builds `newPath` under
+    /// the same parent and dispatches `requestFsRename`. The desktop
+    /// validates both paths and replies with `fs_rename_result`, which
+    /// `SessionViewModel+EventHandlers` consumes to refresh the parent
+    /// directory listing. We don't optimistically mutate local state —
+    /// the listing comes back from the desktop.
+    @State private var showRenameAlert = false
+    @State private var renameText = ""
+
     /// Path relative to the root working directory.
     private var relativePath: String {
         let prefix = rootDirectory.hasSuffix("/") ? rootDirectory : rootDirectory + "/"
@@ -20,11 +30,44 @@ struct FileExplorerRowView: View {
     }
 
     var body: some View {
-        if entry.isDirectory {
-            directoryRow
-        } else {
-            fileRow
+        Group {
+            if entry.isDirectory {
+                directoryRow
+            } else {
+                fileRow
+            }
         }
+        .alert("Rename", isPresented: $showRenameAlert) {
+            TextField("Name", text: $renameText)
+                // File names should never autocapitalize or get
+                // autocorrected. Matches the rename-tab alert in
+                // `TabListView.swift` and the create-file flow on
+                // desktop, which never alters typed text.
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Rename") { submitRename() }
+            Button("Cancel", role: .cancel) {
+                showRenameAlert = false
+            }
+        } message: {
+            Text("Enter a new name for \(entry.name).")
+        }
+    }
+
+    /// Build `newPath` under the same parent as `entry.path` and dispatch
+    /// the remote command. Trimming the field defends against accidental
+    /// whitespace; an empty or unchanged name is a silent no-op so the
+    /// user isn't punished for opening the alert by accident.
+    private func submitRename() {
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != entry.name else {
+            showRenameAlert = false
+            return
+        }
+        let parent = (entry.path as NSString).deletingLastPathComponent
+        let newPath = parent.isEmpty ? trimmed : "\(parent)/\(trimmed)"
+        viewModel.requestFsRename(oldPath: entry.path, newPath: newPath)
+        showRenameAlert = false
     }
 
     // MARK: - Directory Row
@@ -106,6 +149,16 @@ struct FileExplorerRowView: View {
         }
         Button { UIPasteboard.general.string = relativePath } label: {
             Label("Copy Relative Path", systemImage: "doc.on.doc")
+        }
+        Button {
+            // Seed the field with the current name and present the alert
+            // on the next runloop. Setting both flags in the same tick
+            // is safe because SwiftUI's alert reads `renameText` when
+            // the binding triggers, not before.
+            renameText = entry.name
+            showRenameAlert = true
+        } label: {
+            Label("Rename", systemImage: "pencil")
         }
     }
 }
