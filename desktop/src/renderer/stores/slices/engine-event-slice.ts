@@ -334,6 +334,35 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           })
           break
         }
+        case 'engine_tool_update': {
+          // The engine streams tool input incrementally as the model
+          // generates JSON. We accumulate the partial chunks onto the
+          // tool message's `toolInput` field so the persistence layer
+          // can serialize the final value (used by PermissionDeniedCard
+          // to render AskUserQuestion / ExitPlanMode question text and
+          // plan content on a fresh launch). Without this capture,
+          // `engineMessages[*].toolInput` was always undefined and the
+          // card lost its content across restarts.
+          //
+          // Snapshot semantics: each engine_tool_update is incremental
+          // — we concatenate partial chunks. The final value is the
+          // complete JSON-string toolInput. Storing it on the message
+          // (instead of a separate map) mirrors how CLI tabs do it via
+          // event-slice.ts so PermissionDeniedCard's fallback scan
+          // (`messages.find((m) => m.toolName === 'AskUserQuestion' &&
+          // m.toolInput)`) finds it on engine tabs too.
+          if (!event.toolId) break
+          set((state) => {
+            const messages = new Map(state.engineMessages)
+            const msgs = (messages.get(key) || []).map((m) => {
+              if (m.toolId !== event.toolId) return m
+              return { ...m, toolInput: (m.toolInput || '') + (event.partialInput || '') }
+            })
+            messages.set(key, msgs)
+            return { engineMessages: messages }
+          })
+          break
+        }
         case 'engine_tool_end': {
           set((state) => {
             const messages = new Map(state.engineMessages)

@@ -56,7 +56,7 @@ function persistTabs(useSessionStore: Store): void {
             const k = `${t.id}:${inst.id}`
             const arr = eMsgs.get(k)
             if (arr && arr.length > 0) {
-              msgs[inst.id] = arr.map((m) => ({ role: m.role, content: m.content, toolName: m.toolName, toolId: m.toolId, toolStatus: m.toolStatus, timestamp: m.timestamp }))
+              msgs[inst.id] = arr.map((m) => ({ role: m.role, content: m.content, toolName: m.toolName, toolId: m.toolId, toolInput: m.toolInput, toolStatus: m.toolStatus, timestamp: m.timestamp }))
             }
           }
           if (Object.keys(msgs).length > 0) result.engineMessages = msgs
@@ -90,6 +90,22 @@ function persistTabs(useSessionStore: Store): void {
             }
           }
           if (Object.keys(denials).length > 0) result.engineDenials = denials
+          // Persist the most recent conversation ID for each instance so
+          // we can resume the engine session with continuity on relaunch
+          // and so the denial-backfill hook can locate the right
+          // conversation file. The runtime map (engineConversationIds)
+          // is keyed by the compound `${tabId}:${instanceId}` and may
+          // hold a chain of historical IDs — we serialize only the most
+          // recent (last) ID per instance.
+          const { engineConversationIds: eConvs } = useSessionStore.getState()
+          const sessionIds: Record<string, string> = {}
+          for (const inst of hPane.instances) {
+            const chain = eConvs.get(`${t.id}:${inst.id}`)
+            if (chain && chain.length > 0) {
+              sessionIds[inst.id] = chain[chain.length - 1]
+            }
+          }
+          if (Object.keys(sessionIds).length > 0) result.engineSessionIds = sessionIds
           return result
         })() : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),

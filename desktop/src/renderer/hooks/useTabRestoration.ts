@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
-import type { Message, AgentStateUpdate } from '../../shared/types'
+import type { Message } from '../../shared/types'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { setSavedBuffer } from '../components/TerminalInstance'
+import { restoreEngineTab } from './useTabRestoration-engine'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {
@@ -95,135 +96,14 @@ export function useTabRestoration() {
             window.ion.setPermissionMode(tabId, st.permissionMode, 'tab_restore')
             if (st.draftInput) console.log(`[restore] draft for tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
           } else if (st.isEngine) {
-            // Engine tab
-            const tabId = useSessionStore.getState().createEngineTab(st.workingDirectory, st.engineProfileId || undefined)
-            restoredTabIds.push({ tabId, sessionId: null, index: i })
-
-            // Build all engine state before any setState call to avoid
-            // intermediate renders where EngineView sees no instances
-            // (its auto-create effect would fire, causing duplicate sessions
-            // and cascading re-renders → React error #310).
-            const restoredPanes = new Map(useSessionStore.getState().enginePanes)
-            const restoredEngineMessages = new Map(useSessionStore.getState().engineMessages)
-            const restoredEngineAgentStates = new Map(useSessionStore.getState().engineAgentStates)
-            const restoredEngineDraftInputs = new Map(useSessionStore.getState().engineDraftInputs)
-            // Per-engine-instance pending denials. We deliberately do NOT
-            // carry the legacy parent-level `st.permissionDenied` forward
-            // for engine tabs — that field was written by the old slice
-            // and would show a stale parent-card on every sibling. The
-            // engine's reconcile handshake will repopulate the
-            // per-instance map authoritatively on the next engine_status.
-            const restoredEnginePermissionDenied = new Map(useSessionStore.getState().enginePermissionDenied)
-
-            if (st.engineInstances && st.engineInstances.length > 0) {
-              restoredPanes.set(tabId, {
-                instances: st.engineInstances,
-                activeInstanceId: st.engineInstances[0].id,
-              })
-
-              if (st.engineMessages) {
-                for (const inst of st.engineInstances) {
-                  const saved = st.engineMessages[inst.id]
-                  if (saved && saved.length > 0) {
-                    const key = `${tabId}:${inst.id}`
-                    restoredEngineMessages.set(key, saved.map((m) => ({
-                      id: crypto.randomUUID(),
-                      role: m.role as Message['role'],
-                      content: m.content || '',
-                      toolName: m.toolName,
-                      toolId: m.toolId,
-                      toolStatus: m.toolStatus as Message['toolStatus'],
-                      timestamp: m.timestamp,
-                    })))
-                  }
-                }
-              }
-
-              if (st.engineAgentStates) {
-                for (const inst of st.engineInstances) {
-                  const saved = st.engineAgentStates[inst.id]
-                  if (saved && saved.length > 0) {
-                    const key = `${tabId}:${inst.id}`
-                    restoredEngineAgentStates.set(key, saved.map((a) => ({
-                      name: a.name,
-                      status: (a.status === 'running' ? 'done' : a.status) as AgentStateUpdate['status'],
-                      metadata: a.metadata,
-                    })))
-                  }
-                }
-              }
-
-              if (st.engineDrafts) {
-                for (const inst of st.engineInstances) {
-                  const d = st.engineDrafts[inst.id]
-                  if (d && d.length > 0) {
-                    const key = `${tabId}:${inst.id}`
-                    restoredEngineDraftInputs.set(key, d)
-                    console.log(`[restore] engine draft for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} len=${d.length}`)
-                  }
-                }
-              }
-
-              if (st.engineDenials) {
-                for (const inst of st.engineInstances) {
-                  const d = st.engineDenials[inst.id]
-                  if (d && d.tools && d.tools.length > 0) {
-                    const key = `${tabId}:${inst.id}`
-                    restoredEnginePermissionDenied.set(key, { tools: d.tools })
-                    console.log(`[restore] engine denial for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tools=${d.tools.map((t) => t.toolName).join(',')}`)
-                  }
-                }
-              }
-            }
-
-            // Single atomic setState: tab metadata + panes + messages + agent states + drafts + denials
-            useSessionStore.setState((s) => ({
-              tabs: s.tabs.map((t) =>
-                t.id === tabId
-                  ? {
-                      ...t,
-                      customTitle: st.customTitle || null,
-                      pillColor: st.pillColor || null,
-                      groupId: st.groupId || null,
-                      groupPinned: st.groupPinned ?? false,
-                      modelOverride: st.modelOverride || null,
-                      conversationId: st.conversationId || null,
-                      draftInput: st.draftInput ?? '',
-                      lastMessagePreview: st.lastMessagePreview || null,
-                      lastEventAt: st.lastEventAt ?? null,
-                      // NB: deliberately NOT restoring st.permissionDenied
-                      // for engine tabs — legacy field, now superseded by
-                      // enginePermissionDenied (per-instance). See the
-                      // restoredEnginePermissionDenied comment above.
-                    }
-                  : t
-              ),
-              enginePanes: restoredPanes,
-              engineMessages: restoredEngineMessages,
-              engineAgentStates: restoredEngineAgentStates,
-              engineDraftInputs: restoredEngineDraftInputs,
-              enginePermissionDenied: restoredEnginePermissionDenied,
-            }))
-            if (st.draftInput) console.log(`[restore] draft for engine tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
-
-            // Start engine processes (state is fully set up)
-            if (st.engineInstances && st.engineInstances.length > 0) {
-              const { engineProfiles } = usePreferencesStore.getState()
-              const profile = st.engineProfileId ? engineProfiles.find((p) => p.id === st.engineProfileId) : null
-              if (profile) {
-                for (const inst of st.engineInstances) {
-                  const key = `${tabId}:${inst.id}`
-                  window.ion.engineStart(key, {
-                    profileId: profile.id,
-                    extensions: profile.extensions,
-                    workingDirectory: st.workingDirectory,
-                    ...(st.conversationId ? { sessionId: st.conversationId } : {}),
-                  }).catch((err: any) => {
-                    console.error(`[restore] engine start failed for ${key}: ${err.message}`)
-                  })
-                }
-              }
-            }
+            // Engine tab — full restoration logic is extracted to
+            // useTabRestoration-engine.ts to keep this file under the
+            // 600-line cap. Returns the new tabId (used by the
+            // historical-message loop below; engine tabs don't have
+            // historicalSessionIds so the new id appears in
+            // restoredTabIds but gets skipped by the loop's
+            // `historicalIds.length > 0` guard).
+            restoreEngineTab(st, restoredTabIds, i)
           } else if (st.isTerminalOnly) {
             // Terminal-only tab
             const tabId = await useSessionStore.getState().createTerminalTab()

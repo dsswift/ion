@@ -24,6 +24,7 @@ import { useHealthReconciliation } from './hooks/useHealthReconciliation'
 import { useThemeSync } from './hooks/useThemeSync'
 import { useTrayMenuListeners } from './hooks/useTrayMenuListeners'
 import { useTabRestoration } from './hooks/useTabRestoration'
+import { useEnginePermissionDenialBackfill } from './hooks/useEnginePermissionDenialBackfill'
 import { useClickThrough } from './hooks/useClickThrough'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useWindowHeight, useInputRowHeight } from './hooks/useWindowGeometry'
@@ -41,6 +42,7 @@ export default function App() {
   useThemeSync()
   useTrayMenuListeners()
   useTabRestoration()
+  useEnginePermissionDenialBackfill()
   useClickThrough()
 
   // Listen for auto-update download notifications from the main process

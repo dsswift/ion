@@ -77,7 +77,6 @@ export function EngineView({ tabId }: EngineViewProps) {
   // glows when any sub-tab is blocked. iOS receives the active
   // instance's denial via the snapshot path (see main/remote/snapshot.ts).
   const permissionDenied = useSessionStore(s => key ? (s.enginePermissionDenied.get(key) || null) : null)
-  const tabMessages = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.messages || EMPTY_MESSAGES)
   const tabPlanFilePath = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.planFilePath)
   const tabGroupPinned = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.groupPinned)
   const tabConversationId = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.conversationId)
@@ -386,7 +385,7 @@ export function EngineView({ tabId }: EngineViewProps) {
             tabId={tabId}
             sessionId={tabConversationId ?? null}
             projectPath={staticInfo?.projectPath || ''}
-            messages={tabMessages}
+            messages={messages}
             tabPlanFilePath={tabPlanFilePath}
             tabGroupPinned={tabGroupPinned}
             onDismiss={clearPermissionDenied}

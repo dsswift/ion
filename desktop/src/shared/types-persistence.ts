@@ -34,8 +34,26 @@ export interface PersistedTab {
   isEngine?: boolean
   engineProfileId?: string | null
   engineInstances?: EngineInstance[]
-  engineMessages?: Record<string, Array<{ role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }>>
+  engineMessages?: Record<string, Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number }>>
   engineAgentStates?: Record<string, Array<{ name: string; status: string; metadata?: Record<string, any> }>>
+  /**
+   * Most recent engine conversation ID per engine instance, keyed by
+   * `instanceId`. Used on restoration to resume the engine session
+   * with continuity instead of starting a fresh conversation file.
+   *
+   * Why per-instance: a single engine tab hosts multiple independent
+   * sub-conversations (one per instance), each backed by its own
+   * `~/.ion/conversations/<sessionId>.jsonl`. Persisting the parent
+   * `tab.conversationId` alone wasn't enough — three instances under
+   * the same tab would collide on a single ID. The first version of
+   * the engine-tab persistence missed this; the field is added in
+   * the same change that introduces per-instance permission denials.
+   *
+   * Engine continuity also matters for `useEnginePermissionDenialBackfill`:
+   * the hook needs to know which conversation file to read to recover
+   * a pending AskUserQuestion / ExitPlanMode card after a restart.
+   */
+  engineSessionIds?: Record<string, string>
   /**
    * Per-engine-instance AskUserQuestion / ExitPlanMode denials, keyed by
    * `instanceId`. Mirrors the runtime `enginePermissionDenied` map (which
