@@ -150,6 +150,32 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   // The desktop's prompt pipeline reads this off the wire to populate a
   // routing-hint cache keyed by session — see desktop/src/main/prompt-pipeline.ts.
   EngineCommandListing: ['description', 'name'],
+  // Wire shape for content blocks carried inside LlmMessage payloads.
+  // The compact_boundary variant (gentle-knitting-cup plan) added the
+  // optional summary / trigger / messages* / clearedBlocks / tokensBefore
+  // / factCount / recentFiles fields; the existing tool/image/text
+  // variants share the same struct so every variant shows up here.
+  LlmContentBlock: [
+    'clearedBlocks',
+    'content',
+    'factCount',
+    'id',
+    'input',
+    'is_error',
+    'messagesAfter',
+    'messagesBefore',
+    'messagesSummarized',
+    'name',
+    'recentFiles',
+    'source',
+    'summary',
+    'text',
+    'thinking',
+    'tokensBefore',
+    'tool_use_id',
+    'trigger',
+    'type',
+  ],
 }
 
 // ─── Tests ───

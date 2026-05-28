@@ -91,6 +91,53 @@ export interface EngineCommandListing {
   description?: string
 }
 
+/**
+ * Mirror of Go's `types.LlmContentBlock`. This is the wire shape for
+ * every block carried inside an `LlmMessage` — providers, persistence,
+ * and the conversation history all serialize through it.
+ *
+ * The desktop does NOT currently render `LlmMessage` payloads directly
+ * (the engine emits normalized events instead), but the type is mirrored
+ * for two reasons:
+ *
+ *   1. Cross-language contract sync — the Go side adds field-level
+ *      coverage via `contract_test.go`, and this mirror keeps drift
+ *      detectable. The `compact_boundary` variant added in the
+ *      gentle-knitting-cup plan ships with several optional metadata
+ *      fields (`trigger`, `summary`, `clearedBlocks`, etc.) that future
+ *      desktop work may want to render in a compaction marker UI; the
+ *      type being already mirrored avoids a churn-PR when that lands.
+ *
+ *   2. Unknown block types must not crash a renderer. Any future
+ *      renderer that walks an `LlmContentBlock[]` should fall through
+ *      `type` it doesn't recognise — the field is open-string by design
+ *      because the engine ships new block variants additively.
+ */
+export interface LlmContentBlock {
+  type: string
+  text?: string
+  id?: string
+  name?: string
+  input?: Record<string, unknown>
+  tool_use_id?: string
+  content?: string
+  is_error?: boolean
+  thinking?: string
+  source?: { type: string; media_type: string; data: string }
+  // compact_boundary structured fields. All optional; only populated
+  // when `type === 'compact_boundary'`. See Go-side llm.go for canonical
+  // semantics.
+  trigger?: string
+  messagesSummarized?: number
+  messagesBefore?: number
+  messagesAfter?: number
+  clearedBlocks?: number
+  tokensBefore?: number
+  summary?: string
+  factCount?: number
+  recentFiles?: string[]
+}
+
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
   | { type: 'engine_status'; fields: StatusFields; metadata?: Record<string, unknown> }
