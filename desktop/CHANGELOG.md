@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.42.0](https://github.com/dsswift/ion/compare/desktop-v1.41.0...desktop-v1.42.0) (2026-05-28)
+
+### Features
+
+* **desktop:** render askuserquestion card in engine view tabs ([a7a25ed](https://github.com/dsswift/ion/commit/a7a25ed4973623de71af305a2b083c71d12fa118))
+* **desktop:** add per-instance waiting state to engine ui ([b8be7b2](https://github.com/dsswift/ion/commit/b8be7b226a03e1c19ce5581031c14d013df6dff0))
+
+### Bug Fixes
+
+* **desktop:** reconcile engine state after start_session attach ([3345cba](https://github.com/dsswift/ion/commit/3345cba427154998c72893a46d2be710c4670912))
+* **desktop:** restore engine askuserquestion cards across restarts ([9d35938](https://github.com/dsswift/ion/commit/9d3593859e8b8d568c75cd80e62ffcf9c523a365))
+* **desktop:** persist engine session ids immediately on capture ([f8c043b](https://github.com/dsswift/ion/commit/f8c043bf9109bae12d31634d0ee4ddebe801ba30))
+
 ## [1.41.0](https://github.com/dsswift/ion/compare/desktop-v1.40.1...desktop-v1.41.0) (2026-05-27)
 
 ### Features

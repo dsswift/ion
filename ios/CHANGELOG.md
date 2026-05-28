@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.31.0](https://github.com/dsswift/ion/compare/ios-v1.30.0...ios-v1.31.0) (2026-05-28)
+
+### Features
+
+* **desktop:** add per-instance waiting state to engine ui ([b8be7b2](https://github.com/dsswift/ion/commit/b8be7b226a03e1c19ce5581031c14d013df6dff0))
+
 ## [1.30.0](https://github.com/dsswift/ion/compare/ios-v1.29.0...ios-v1.30.0) (2026-05-25)
 
 ### Features

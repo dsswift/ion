@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.30.1](https://github.com/dsswift/ion/compare/engine-v1.30.0...engine-v1.30.1) (2026-05-28)
+
+### Bug Fixes
+
+* **engine:** retain pending permission denials for reconcile ([2adba4f](https://github.com/dsswift/ion/commit/2adba4ff507e1aa9ce4b92f282ddcae2219f9f92))
+
 ## [1.30.0](https://github.com/dsswift/ion/compare/engine-v1.29.3...engine-v1.30.0) (2026-05-27)
 
 ### Features
