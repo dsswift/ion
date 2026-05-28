@@ -33,6 +33,18 @@ const (
 	HookSessionFork          = "session_fork"
 	HookSessionBeforeSwitch  = "session_before_switch"
 
+	// HookCompactSummaryRequest is an optional harness hook invoked
+	// inside proactive / reactive compaction. Handlers receive the
+	// pre-compaction message slice (already sliced at the last boundary
+	// so prior summaries aren't re-scanned) and may return a string
+	// summary that becomes the new compact_boundary block's Summary
+	// field, short-circuiting the engine's regex fact extractor. A
+	// handler that does not want to provide a summary should return the
+	// zero value (empty string + nil) so the engine falls back to the
+	// regex path. The first non-empty summary wins (last-writer
+	// semantics across multiple handlers).
+	HookCompactSummaryRequest = "compact_summary_request"
+
 	// Pre-action hooks
 	HookBeforeAgentStart      = "before_agent_start"
 	HookBeforeProviderRequest = "before_provider_request"

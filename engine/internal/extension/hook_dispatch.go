@@ -80,6 +80,14 @@ func (h *Host) FireSessionBeforeCompact(ctx *Context, info CompactionInfo) (bool
 	return h.sdk.FireSessionBeforeCompact(ctx, info)
 }
 
+// FireCompactSummaryRequest delegates to the SDK. Returns (summary, ok)
+// with ok=true when any handler produced a non-empty summary, else
+// ("", false). The engine reads ok=false as "fall back to the regex
+// fact extractor"; see RunHooks.OnRequestCompactSummary.
+func (h *Host) FireCompactSummaryRequest(ctx *Context, info CompactSummaryRequestInfo) (string, bool) {
+	return h.sdk.FireCompactSummaryRequest(ctx, info)
+}
+
 func (h *Host) FireSessionBeforeFork(ctx *Context, info ForkInfo) (bool, error) {
 	return h.sdk.FireSessionBeforeFork(ctx, info)
 }

@@ -196,6 +196,27 @@ type RunHooks struct {
 	// OnSessionCompact observes a completed compaction.
 	OnSessionCompact func(runID string, info interface{})
 
+	// OnRequestCompactSummary is an optional harness-owned summariser
+	// invoked during proactive / reactive compaction in place of the
+	// engine's built-in regex fact extractor. The handler receives the
+	// pre-compaction message slice (already filtered through
+	// MessagesAfterLastCompactBoundary so prior summaries are not in
+	// scope) and returns (summary, ok). When ok is true, summary is
+	// used verbatim as the boundary block's Summary field. When ok is
+	// false (or the field is nil), the engine falls back to its
+	// FormatFactsSummary(ExtractFacts(...)) pipeline.
+	//
+	// The engine never blocks on this callback; the runloop dispatches
+	// synchronously. Harness implementations that want to call an LLM
+	// must do so with a bounded timeout and surface failures by
+	// returning ("", false) — never by blocking the run.
+	//
+	// This is the engine-side bridge for the optional
+	// "compact_summary_request" hook on the extension SDK. See
+	// docs/hooks/reference.md and the runloop_compaction.go logging for
+	// the "path=hook" / "path=regex" markers.
+	OnRequestCompactSummary func(runID string, messages []types.LlmMessage) (summary string, ok bool)
+
 	OnFileChanged func(runID string, path string, action string)
 
 	OnPermissionRequest func(runID string, info interface{})

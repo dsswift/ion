@@ -418,6 +418,16 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 							"image_url": map[string]any{"url": url},
 						})
 					}
+				case "compact_boundary":
+					// Flatten the engine-internal compaction marker to a
+					// plain text part so the model still sees the
+					// rendered summary in context. See the matching case
+					// in anthropic.go formatAnthropicBlock for rationale.
+					text := b.Summary
+					if text == "" {
+						text = "[Previous conversation compacted]"
+					}
+					parts = append(parts, map[string]any{"type": "text", "text": text})
 				}
 			}
 			if len(parts) > 0 {

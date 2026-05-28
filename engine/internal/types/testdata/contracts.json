@@ -215,6 +215,27 @@
       "workingDirectory",
       "workspaceWatchIgnore"
     ],
+    "LlmContentBlock": [
+      "clearedBlocks",
+      "content",
+      "factCount",
+      "id",
+      "input",
+      "is_error",
+      "messagesAfter",
+      "messagesBefore",
+      "messagesSummarized",
+      "name",
+      "recentFiles",
+      "source",
+      "summary",
+      "text",
+      "thinking",
+      "tokensBefore",
+      "tool_use_id",
+      "trigger",
+      "type"
+    ],
     "McpServerInfo": [
       "name",
       "status"

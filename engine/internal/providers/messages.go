@@ -83,6 +83,45 @@ func mapToContentBlock(m map[string]any) types.LlmContentBlock {
 		}
 		b.Source = src
 	}
+	// --- compact_boundary fields. Round-trip the structured metadata so
+	// boundary blocks reconstructed from on-disk JSON keep the same shape
+	// as freshly-built ones. Only meaningful when m["type"] ==
+	// "compact_boundary" but we copy unconditionally — the fields are
+	// zero-valued for every other block type, so the cost is negligible
+	// and the code stays free of a per-type switch.
+	if v, ok := m["trigger"].(string); ok {
+		b.Trigger = v
+	}
+	if v, ok := m["messagesSummarized"].(float64); ok {
+		b.MessagesSummarized = int(v)
+	}
+	if v, ok := m["messagesBefore"].(float64); ok {
+		b.MessagesBefore = int(v)
+	}
+	if v, ok := m["messagesAfter"].(float64); ok {
+		b.MessagesAfter = int(v)
+	}
+	if v, ok := m["clearedBlocks"].(float64); ok {
+		b.ClearedBlocks = int(v)
+	}
+	if v, ok := m["tokensBefore"].(float64); ok {
+		b.TokensBefore = int(v)
+	}
+	if v, ok := m["summary"].(string); ok {
+		b.Summary = v
+	}
+	if v, ok := m["factCount"].(float64); ok {
+		b.FactCount = int(v)
+	}
+	if v, ok := m["recentFiles"].([]any); ok {
+		files := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				files = append(files, s)
+			}
+		}
+		b.RecentFiles = files
+	}
 	return b
 }
 

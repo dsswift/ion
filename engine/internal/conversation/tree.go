@@ -84,11 +84,21 @@ func BuildContextPath(conv *Conversation) []types.LlmMessage {
 			// tree preserves for user viewing.
 			cd := asCompactionData(entry.Data)
 			messages = nil
-			if cd != nil && cd.Summary != "" {
-				messages = append(messages, types.LlmMessage{
-					Role:    "user",
-					Content: []types.LlmContentBlock{textBlock("[Previous conversation summary]: " + cd.Summary)},
-				})
+			if cd != nil {
+				// Reconstruct the boundary as a typed compact_boundary
+				// block so a rebuilt context path is byte-identical to a
+				// freshly-injected one (see runloop_compaction.go). The
+				// original CompactionData record only persists Summary +
+				// FirstKeptEntryID + TokensBefore, so the reconstructed
+				// boundary carries those fields and leaves the rest
+				// zero-valued — Trigger is unknown after a rebuild, the
+				// fact count is not persisted, etc. Consumers handle
+				// missing fields uniformly because they're all optional.
+				messages = append(messages, BuildCompactBoundaryMessage(CompactMeta{
+					Trigger:      "auto", // historical reconstructions default to auto; original trigger is not persisted
+					Summary:      cd.Summary,
+					TokensBefore: cd.TokensBefore,
+				}))
 			}
 		}
 	}

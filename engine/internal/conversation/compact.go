@@ -143,6 +143,11 @@ func Compact(conv *Conversation, keepTurns int) {
 }
 
 // CompactWithSummary summarizes older messages via the provided function, then drops them.
+//
+// The resulting summary is injected as a typed compact_boundary block
+// (see BuildCompactBoundaryMessage) rather than a prose "[Previous
+// conversation summary]: …" prefix. Consumers that walk conv.Messages
+// recognise the boundary by block Type, not by substring matching.
 func CompactWithSummary(conv *Conversation, summarize func(string) (string, error), keepTurns int) error {
 	utils.Debug("Compaction", fmt.Sprintf("CompactWithSummary: entry keepTurns=%d len(msgs)=%d", keepTurns, len(conv.Messages)))
 	if keepTurns <= 0 {
@@ -188,13 +193,17 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 		return err
 	}
 
+	droppedCount := cutIdx
 	conv.Messages = conv.Messages[cutIdx:]
-	summaryMsg := types.LlmMessage{
-		Role:    "user",
-		Content: []types.LlmContentBlock{textBlock("[Previous conversation summary]: " + summary)},
-	}
+	summaryMsg := BuildCompactBoundaryMessage(CompactMeta{
+		Trigger:            "manual",
+		MessagesSummarized: droppedCount,
+		MessagesBefore:     droppedCount + len(conv.Messages),
+		MessagesAfter:      len(conv.Messages) + 1,
+		Summary:            summary,
+	})
 	conv.Messages = append([]types.LlmMessage{summaryMsg}, conv.Messages...)
-	invalidateTokenCache(conv)
+	PostCompactReset(conv)
 	return nil
 }
 

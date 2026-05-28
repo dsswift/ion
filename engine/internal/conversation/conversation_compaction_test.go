@@ -172,8 +172,11 @@ func TestCompactWithSummary(t *testing.T) {
 	if !ok {
 		t.Fatal("expected content to be []LlmContentBlock")
 	}
-	if !strings.Contains(blocks[0].Text, "Previous conversation summary") {
-		t.Errorf("summary message missing expected text, got %q", blocks[0].Text)
+	if blocks[0].Type != CompactBoundaryBlockType {
+		t.Errorf("first block type = %q, want %q", blocks[0].Type, CompactBoundaryBlockType)
+	}
+	if blocks[0].Summary != "conversation about questions and answers" {
+		t.Errorf("boundary summary = %q, want callback's return string", blocks[0].Summary)
 	}
 }
 
@@ -431,16 +434,13 @@ func TestCompactWithSummary_SummarizeError_FallbackToTruncation(t *testing.T) {
 		t.Fatalf("expected fewer messages after fallback truncation, got %d", len(conv.Messages))
 	}
 
-	// No summary prefix in first message
+	// No compact_boundary block should appear at the head after the
+	// fallback truncation (we drop straight to Compact when summarise
+	// fails).
 	first := conv.Messages[0]
-	switch c := first.Content.(type) {
-	case string:
-		if strings.Contains(c, "Previous conversation summary") {
-			t.Error("should not contain summary after error")
-		}
-	case []types.LlmContentBlock:
-		if len(c) > 0 && strings.Contains(c[0].Text, "Previous conversation summary") {
-			t.Error("should not contain summary after error")
+	if blocks, ok := first.Content.([]types.LlmContentBlock); ok {
+		if len(blocks) > 0 && blocks[0].Type == CompactBoundaryBlockType {
+			t.Error("should not inject a compact_boundary block after summariser error")
 		}
 	}
 }
@@ -491,11 +491,11 @@ func TestCompactWithSummary_InsertsSummaryAsFirstMessage(t *testing.T) {
 	if !ok {
 		t.Fatal("expected []LlmContentBlock")
 	}
-	if !strings.Contains(blocks[0].Text, "Previous conversation summary") {
-		t.Error("expected summary prefix")
+	if blocks[0].Type != CompactBoundaryBlockType {
+		t.Errorf("first block type = %q, want %q", blocks[0].Type, CompactBoundaryBlockType)
 	}
-	if !strings.Contains(blocks[0].Text, "the summary text") {
-		t.Error("expected summary content")
+	if blocks[0].Summary != "the summary text" {
+		t.Errorf("boundary summary = %q, want callback's return string", blocks[0].Summary)
 	}
 }
 

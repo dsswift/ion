@@ -41,3 +41,34 @@ func (s *SDK) FireSessionBeforeSwitch(ctx *Context) error {
 	s.fire(HookSessionBeforeSwitch, ctx, nil)
 	return nil
 }
+
+// FireCompactSummaryRequest fires the compact_summary_request hook and
+// returns the first non-empty summary string a handler produced (along
+// with ok=true). When no handler produces a non-empty summary, returns
+// ("", false) so the engine falls back to its regex fact extractor.
+//
+// Handler return shape: either a CompactSummaryRequestResult value or a
+// bare string. Bare strings are accepted because the natural extension
+// shape (a single-line summariser that returns the summary directly) is
+// strictly easier than constructing the result struct. Both paths flow
+// through the same first-non-empty selection.
+func (s *SDK) FireCompactSummaryRequest(ctx *Context, info CompactSummaryRequestInfo) (string, bool) {
+	results := s.fire(HookCompactSummaryRequest, ctx, info)
+	for _, r := range results {
+		switch v := r.(type) {
+		case CompactSummaryRequestResult:
+			if v.Summary != "" {
+				return v.Summary, true
+			}
+		case *CompactSummaryRequestResult:
+			if v != nil && v.Summary != "" {
+				return v.Summary, true
+			}
+		case string:
+			if v != "" {
+				return v, true
+			}
+		}
+	}
+	return "", false
+}

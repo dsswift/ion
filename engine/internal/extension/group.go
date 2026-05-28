@@ -544,6 +544,24 @@ func (g *ExtensionGroup) FireSessionCompact(ctx *Context, info CompactionInfo) {
 	}
 }
 
+// FireCompactSummaryRequest fans the hook out across every host and
+// returns the first non-empty summary string a host produced. When no
+// host provides a summary the engine falls back to its regex fact
+// extractor. The decision is logged so a developer reading
+// ~/.ion/engine.log can tell which path won — see runloop_compaction.go
+// for the corresponding "path=hook" / "path=regex" markers.
+func (g *ExtensionGroup) FireCompactSummaryRequest(ctx *Context, info CompactSummaryRequestInfo) (string, bool) {
+	for _, h := range g.hosts {
+		summary, ok := h.FireCompactSummaryRequest(ctx, info)
+		if ok && summary != "" {
+			utils.Log("ExtensionGroup", fmt.Sprintf("FireCompactSummaryRequest: host produced summary len=%d msgCount=%d", len(summary), info.MessageCount))
+			return summary, true
+		}
+	}
+	utils.Debug("ExtensionGroup", fmt.Sprintf("FireCompactSummaryRequest: no host produced a summary, falling through (msgCount=%d hosts=%d)", info.MessageCount, len(g.hosts)))
+	return "", false
+}
+
 func (g *ExtensionGroup) FirePermissionRequest(ctx *Context, info PermissionRequestInfo) {
 	for _, h := range g.hosts {
 		h.SDK().FirePermissionRequest(ctx, info)

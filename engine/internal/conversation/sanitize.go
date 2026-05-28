@@ -341,6 +341,44 @@ func contentToBlockSlice(content any) []types.LlmContentBlock {
 				if t, ok := m["is_error"].(bool); ok {
 					b.IsError = &t
 				}
+				// compact_boundary structured fields. Optional on every
+				// block type; copied so persistence round-trips keep
+				// boundary metadata. Matches providers/messages.go
+				// mapToContentBlock — keep in sync if either side
+				// changes.
+				if t, ok := m["trigger"].(string); ok {
+					b.Trigger = t
+				}
+				if t, ok := m["messagesSummarized"].(float64); ok {
+					b.MessagesSummarized = int(t)
+				}
+				if t, ok := m["messagesBefore"].(float64); ok {
+					b.MessagesBefore = int(t)
+				}
+				if t, ok := m["messagesAfter"].(float64); ok {
+					b.MessagesAfter = int(t)
+				}
+				if t, ok := m["clearedBlocks"].(float64); ok {
+					b.ClearedBlocks = int(t)
+				}
+				if t, ok := m["tokensBefore"].(float64); ok {
+					b.TokensBefore = int(t)
+				}
+				if t, ok := m["summary"].(string); ok {
+					b.Summary = t
+				}
+				if t, ok := m["factCount"].(float64); ok {
+					b.FactCount = int(t)
+				}
+				if t, ok := m["recentFiles"].([]interface{}); ok {
+					files := make([]string, 0, len(t))
+					for _, item := range t {
+						if s, ok := item.(string); ok {
+							files = append(files, s)
+						}
+					}
+					b.RecentFiles = files
+				}
 				blocks = append(blocks, b)
 			}
 		}

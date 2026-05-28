@@ -364,6 +364,22 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 			}
 		}
 		return m
+	case "compact_boundary":
+		// compact_boundary is an engine-internal structural marker that
+		// providers must never see on the wire (unknown block types are
+		// rejected by Anthropic and silently dropped by OpenAI). Flatten
+		// to a text block carrying the rendered Summary so the model
+		// still sees the post-compaction summary in context. The
+		// structured fields (Trigger, ClearedBlocks, …) are
+		// engine-internal only — they round-trip through persistence but
+		// are not forwarded to providers.
+		text := b.Summary
+		if text == "" {
+			// Defensive: a boundary with no rendered summary still needs
+			// a non-empty text body so Anthropic accepts the message.
+			text = "[Previous conversation compacted]"
+		}
+		return map[string]any{"type": "text", "text": text}
 	default:
 		// Pass through unknown block types as-is
 		m := map[string]any{"type": b.Type}

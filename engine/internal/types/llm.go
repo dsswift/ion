@@ -21,6 +21,26 @@ type LlmMessage struct {
 }
 
 // LlmContentBlock is a union type for message content blocks.
+//
+// Most fields are scoped to a single block-type variant (e.g. ToolUseID +
+// Content + IsError describe a "tool_result" block). The block is the wire
+// shape for both provider-bound content and engine-internal markers.
+//
+// New variant: "compact_boundary"
+//
+// The block-type "compact_boundary" marks a compaction boundary inside the
+// conversation history. It is the structural alternative to the legacy
+// "[Previous conversation summary]: …" prose-prefix marker and exists so
+// the engine can slice history at a typed seam (see
+// conversation.MessagesAfterLastCompactBoundary). The Summary field carries
+// the human-readable summary text the model should see; provider
+// serialisers translate the block to a normal text block on the wire so
+// that providers never see an unknown block type. The remaining fields
+// (Trigger, MessagesBefore/After, ClearedBlocks, TokensBefore, FactCount,
+// RecentFiles, MessagesSummarized) are structured metadata mirrored from
+// CompactingEvent + the compaction extractor output. All are optional and
+// emitted with omitempty so older consumers continue to round-trip the
+// block without loss.
 type LlmContentBlock struct {
 	Type      string         `json:"type"`
 	Text      string         `json:"text,omitempty"`
@@ -32,6 +52,43 @@ type LlmContentBlock struct {
 	IsError   *bool          `json:"is_error,omitempty"`
 	Thinking  string         `json:"thinking,omitempty"`
 	Source    *ImageSource   `json:"source,omitempty"`
+
+	// --- compact_boundary fields ---
+	// All optional; only meaningful when Type == "compact_boundary".
+
+	// Trigger is the compaction strategy that produced this boundary.
+	// One of "auto" (proactive token-limit driven), "reactive" (provider
+	// prompt_too_long retry), or "manual" (user-initiated). Empty when
+	// unknown.
+	Trigger string `json:"trigger,omitempty"`
+	// MessagesSummarized is the number of source messages folded into the
+	// Summary field. Zero when not tracked.
+	MessagesSummarized int `json:"messagesSummarized,omitempty"`
+	// MessagesBefore is the conversation message count at the moment the
+	// boundary fired (pre-compaction).
+	MessagesBefore int `json:"messagesBefore,omitempty"`
+	// MessagesAfter is the conversation message count after the boundary
+	// (post-compaction, including the boundary message itself).
+	MessagesAfter int `json:"messagesAfter,omitempty"`
+	// ClearedBlocks is the number of tool-result / large-text blocks
+	// cleared by step-1 micro-compaction. Zero when no clears happened.
+	ClearedBlocks int `json:"clearedBlocks,omitempty"`
+	// TokensBefore is the reported context-token count at the moment the
+	// boundary fired. Zero when not available (reactive path does not
+	// always know this).
+	TokensBefore int `json:"tokensBefore,omitempty"`
+	// Summary is the rendered human-readable summary body the model sees
+	// in place of the compacted region. Empty when no facts were
+	// extracted and no harness summarizer ran.
+	Summary string `json:"summary,omitempty"`
+	// FactCount is the number of distinct structured facts the engine
+	// extracted from the compacted region (post-dedupe).
+	FactCount int `json:"factCount,omitempty"`
+	// RecentFiles is the set of file paths surfaced by ExtractRecentFiles
+	// at the moment of compaction. Provided as structured data so
+	// consumers (and the model) can re-attach them without re-parsing
+	// the Summary prose.
+	RecentFiles []string `json:"recentFiles,omitempty"`
 }
 
 // ImageSource carries base64-encoded image data for vision.

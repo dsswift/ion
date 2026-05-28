@@ -134,8 +134,18 @@ func TestBuildContextPathWithCompaction(t *testing.T) {
 	if !ok {
 		t.Fatal("expected content blocks for compaction summary")
 	}
-	if !strings.Contains(blocks[0].Text, "we talked about Go") {
-		t.Errorf("compaction summary not found in message: %q", blocks[0].Text)
+	// Reconstructed boundary blocks carry the persisted Summary on the
+	// structured Summary field, not as a "[Previous conversation
+	// summary]: …" prose prefix. The block type is the structural
+	// marker — see compact_boundary.go.
+	if blocks[0].Type != CompactBoundaryBlockType {
+		t.Errorf("expected type=%q, got %q", CompactBoundaryBlockType, blocks[0].Type)
+	}
+	if !strings.Contains(blocks[0].Summary, "we talked about Go") {
+		t.Errorf("compaction summary not found in block.Summary: %q", blocks[0].Summary)
+	}
+	if blocks[0].TokensBefore != 5000 {
+		t.Errorf("expected TokensBefore=5000 on reconstructed boundary, got %d", blocks[0].TokensBefore)
 	}
 }
 

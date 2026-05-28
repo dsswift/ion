@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -165,8 +164,8 @@ func (cp *compactParams) resolveSessionMemory(conv *conversation.Conversation, l
 // emits an ErrorEvent with code compact_loop_aborted and stops trying
 // proactively. The counter resets on any successful API response.
 //
-// ctx is threaded for LLM-based summarisation (tier 2 of the three-tier
-// summary fallback: session memory → LLM → regex).
+// ctx is threaded for LLM-based summarisation (tier 2 of the four-tier
+// summary fallback: session memory → LLM → hook → regex).
 func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *conversation.Conversation, hooks RunHooks, contextWindow, tokenLimit int, cp compactParams) {
 	// Gate: skip proactive compaction when explicitly disabled.
 	if run.opts != nil && run.opts.CompactEnabled != nil && !*run.opts.CompactEnabled {
@@ -211,9 +210,14 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 	b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
 	msgBefore := len(conv.Messages)
 
-	// Extract facts before any mutation so they reflect the full pre-compaction state.
-	facts := compaction.ExtractFacts(conv.Messages)
-	utils.Log("ApiBackend", fmt.Sprintf("proactive compact: extracted %d facts from %d messages", len(facts), msgBefore))
+	// Slice at the most recent boundary so the fact extractor cannot
+	// re-extract from a prior summary. Combined with the structural
+	// boundary block this is the duplication firewall: previous
+	// summaries stay in-context for the model to see, but they are
+	// invisible to the regex pipeline that builds the next summary.
+	scanSlice := conversation.MessagesAfterLastCompactBoundary(conv)
+	facts := compaction.ExtractFacts(scanSlice)
+	utils.Log("ApiBackend", fmt.Sprintf("proactive compact: extracted %d facts from %d-message scan slice (full conv=%d)", len(facts), len(scanSlice), msgBefore))
 
 	// Step 1: MicroCompact — protect only the most recent N turns (default 3).
 	cleared := conversation.MicroCompact(conv, cp.microKeepTurns)
@@ -228,7 +232,7 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: usageAfterMicro.Tokens=%d (limit=%d)", usageAfterMicro.Tokens, tokenLimit))
 	if usageAfterMicro.Tokens > tokenLimit {
 
-		// Three-tier summary fallback: session memory → LLM → regex.
+		// Four-tier summary fallback: session memory → LLM → hook → regex.
 		// Must generate summary BEFORE truncation drops the messages.
 		if mem, reason := cp.resolveSessionMemory(conv, "proactive"); mem != "" {
 			summary = mem
@@ -258,6 +262,12 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 				utils.Debug("ApiBackend", "proactive compact: no text content for LLM summary")
 			}
 		}
+		if summary == "" && hooks.OnRequestCompactSummary != nil {
+			if hookSummary, ok := hooks.OnRequestCompactSummary(run.requestID, scanSlice); ok && hookSummary != "" {
+				summary = hookSummary
+				utils.Log("ApiBackend", fmt.Sprintf("proactive compact: hook summary (%d chars)", len(summary)))
+			}
+		}
 		if summary == "" && len(facts) > 0 {
 			summary = compaction.FormatFactsSummary(facts)
 			utils.Log("ApiBackend", fmt.Sprintf("proactive compact: regex fact summary (%d facts)", len(facts)))
@@ -269,33 +279,27 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 		// Now truncate.
 		conversation.CompactToTokenBudget(conv, targetTokens, cp.minKeepTurns, cp.estimationPadding)
 		utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 2: truncated to budget=%d (%.0f%% of %d), %d messages remain", targetTokens, cp.targetPercent, contextWindow, len(conv.Messages)))
+
+		// Inject a typed boundary block so the next compaction can slice
+		// at this point and avoid re-extracting facts from this summary.
+		recentFiles := compaction.ExtractRecentFiles(conversation.MessagesAfterLastCompactBoundary(conv))
+		utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: extracted %d recent files", len(recentFiles)))
+		injectCompactBoundary(conv, conversation.CompactMeta{
+			Trigger:            "auto",
+			MessagesSummarized: msgBefore - len(conv.Messages),
+			MessagesBefore:     msgBefore,
+			MessagesAfter:      len(conv.Messages) + 1, // +1 for the boundary about to be inserted
+			ClearedBlocks:      cleared,
+			TokensBefore:       usage.Tokens,
+			Summary:            summary,
+			FactCount:          len(facts),
+			RecentFiles:        recentFiles,
+		})
 	} else {
 		targetTokens = 0
 		utils.Debug("ApiBackend", fmt.Sprintf("proactive compact: step 1 sufficient, skipping hard truncate (tokens=%d limit=%d)", usageAfterMicro.Tokens, tokenLimit))
 	}
-
-	// Inject post-compact context as a transient system message instead of
-	// regular user messages. Transient messages are not persisted and don't
-	// count as "turns" for future compaction decisions.
-	var compactNotice strings.Builder
-	compactNotice.WriteString("[SYSTEM] Context compaction completed.")
-	if cleared > 0 {
-		fmt.Fprintf(&compactNotice, " Cleared %d older tool results.", cleared)
-	}
-	if summary != "" {
-		fmt.Fprintf(&compactNotice, "\n\n[Extracted facts from compacted context]:\n%s", summary)
-	}
-	recentFiles := compaction.ExtractRecentFiles(conv.Messages)
-	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: extracted %d recent files", len(recentFiles)))
-	if len(recentFiles) > 0 {
-		fmt.Fprintf(&compactNotice, "\n\nRecently modified files: %s", strings.Join(recentFiles, ", "))
-	}
-	// Include transcript path so the model can read full pre-compaction history.
-	if cp.convDir != "" && conv.ID != "" {
-		fmt.Fprintf(&compactNotice, "\n\nFull conversation history is preserved at: %s/%s.tree.jsonl", cp.convDir, conv.ID)
-	}
-	compactNotice.WriteString("\n\nUse the SearchHistory tool to find specific details from the compacted conversation, or re-read relevant files. Continue the conversation from where it left off without recapping what was happening.")
-	conversation.AddTransientUserMessage(conv, compactNotice.String())
+	conversation.PostCompactReset(conv)
 
 	// Emit enriched completion event so clients can render a compaction marker.
 	msgAfter := len(conv.Messages)
@@ -369,8 +373,8 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 // false when the session_before_compact hook cancelled it (the caller should
 // still retry the turn as-is in that case).
 //
-// ctx is threaded for LLM-based summarisation (tier 2 of the three-tier
-// summary fallback: session memory → LLM → regex).
+// ctx is threaded for LLM-based summarisation (tier 2 of the four-tier
+// summary fallback: session memory → LLM → hook → regex).
 func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *conversation.Conversation, hooks RunHooks, contextWindow, attempt int, cp compactParams) bool {
 	utils.Log("ApiBackend", fmt.Sprintf("compactReactive: entry contextWindow=%d attempt=%d targetPercent=%.1f microKeepTurns=%d minKeepTurns=%d summaryEnabled=%v memoryEnabled=%v",
 		contextWindow, attempt, cp.targetPercent, cp.microKeepTurns, cp.minKeepTurns, cp.summaryEnabled, cp.memoryEnabled))
@@ -388,12 +392,10 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 	usageBefore := conversation.GetContextUsage(conv, contextWindow)
 	tokensBefore := usageBefore.Tokens
 
-	// Extract facts up front (above all message mutation) so they reflect the
-	// pre-compaction state and so the same slice serves both the in-context
-	// summary and the session_compact hook payload. ExtractFacts is safe on
-	// empty/nil inputs.
-	facts := compaction.ExtractFacts(conv.Messages)
-	utils.Log("ApiBackend", fmt.Sprintf("reactive compact: extracted %d facts from %d messages", len(facts), msgBefore))
+	// Same duplication firewall as compactIfNeeded — see comment there.
+	scanSlice := conversation.MessagesAfterLastCompactBoundary(conv)
+	facts := compaction.ExtractFacts(scanSlice)
+	utils.Log("ApiBackend", fmt.Sprintf("reactive compact: extracted %d facts from %d-message scan slice (full conv=%d)", len(facts), len(scanSlice), msgBefore))
 
 	// Step 1: micro-compact (tool results, then assistant text)
 	cleared := conversation.MicroCompact(conv, cp.microKeepTurns)
@@ -401,7 +403,7 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 	usageAfterMicro := conversation.GetContextUsage(conv, contextWindow)
 	utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: tokens after micro-compact=%d (pct=%d%%)", usageAfterMicro.Tokens, usageAfterMicro.Percent))
 
-	// Step 2: Three-tier summary fallback: session memory → LLM → regex.
+	// Step 2: Four-tier summary fallback: session memory → LLM → hook → regex.
 	// Must generate summary BEFORE step 3 truncation drops the messages.
 	var summary string
 	var sessionMemory string
@@ -433,11 +435,17 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 			utils.Debug("ApiBackend", "reactive compact: no text content for LLM summary")
 		}
 	}
+	if summary == "" && hooks.OnRequestCompactSummary != nil {
+		if hookSummary, ok := hooks.OnRequestCompactSummary(run.requestID, scanSlice); ok && hookSummary != "" {
+			summary = hookSummary
+			utils.Log("ApiBackend", fmt.Sprintf("reactive compact: hook summary (%d chars)", len(summary)))
+		}
+	}
 	if summary == "" && len(facts) > 0 {
 		summary = compaction.FormatFactsSummary(facts)
 		utils.Log("ApiBackend", fmt.Sprintf("reactive compact: regex fact summary (%d facts)", len(facts)))
 	} else if summary == "" {
-		utils.Debug("ApiBackend", "reactive compact: no summary generated (no facts, no LLM, no session memory)")
+		utils.Debug("ApiBackend", "reactive compact: no summary generated (no facts, no LLM, no hook, no session memory)")
 	}
 
 	// Step 3: hard truncate using progressively smaller token budget on each retry.
@@ -448,25 +456,22 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 	utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long hard-truncated to budget=%d (%.0f%% of %d), %d messages remain",
 		targetTokens, escalatedPercent, contextWindow, len(conv.Messages)))
 
-	// Inject post-compact context as a single transient message.
-	var compactNotice strings.Builder
-	compactNotice.WriteString("[SYSTEM] Context compaction completed (reactive — provider reported prompt too long).")
-	if cleared > 0 {
-		fmt.Fprintf(&compactNotice, " Cleared %d older tool results.", cleared)
-	}
-	if summary != "" {
-		fmt.Fprintf(&compactNotice, "\n\n[Extracted facts from compacted context]:\n%s", summary)
-	}
-	recentFiles := compaction.ExtractRecentFiles(conv.Messages)
+	// Inject a typed boundary block so the next compaction can slice
+	// at this point and avoid re-extracting facts from this summary.
+	recentFiles := compaction.ExtractRecentFiles(conversation.MessagesAfterLastCompactBoundary(conv))
 	utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: extracted %d recent files", len(recentFiles)))
-	if len(recentFiles) > 0 {
-		fmt.Fprintf(&compactNotice, "\n\nRecently modified files: %s", strings.Join(recentFiles, ", "))
-	}
-	if cp.convDir != "" && conv.ID != "" {
-		fmt.Fprintf(&compactNotice, "\n\nFull conversation history is preserved at: %s/%s.tree.jsonl", cp.convDir, conv.ID)
-	}
-	compactNotice.WriteString("\n\nUse the SearchHistory tool to find specific details from the compacted conversation, or re-read relevant files. Continue the conversation from where it left off without recapping what was happening.")
-	conversation.AddTransientUserMessage(conv, compactNotice.String())
+	injectCompactBoundary(conv, conversation.CompactMeta{
+		Trigger:            "reactive",
+		MessagesSummarized: msgBefore - len(conv.Messages),
+		MessagesBefore:     msgBefore,
+		MessagesAfter:      len(conv.Messages) + 1,
+		ClearedBlocks:      cleared,
+		TokensBefore:       tokensBefore,
+		Summary:            summary,
+		FactCount:          len(facts),
+		RecentFiles:        recentFiles,
+	})
+	conversation.PostCompactReset(conv)
 
 	// Emit enriched completion event so clients can render a compaction marker.
 	msgAfter := len(conv.Messages)
@@ -528,6 +533,46 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 		})
 	}
 	return true
+}
+
+// renderCompactSummary picks the rendering path for the boundary block's
+// Summary field. When the harness wired RunHooks.OnRequestCompactSummary
+// and that hook returned a non-empty string, the hook's output wins. Else
+// the engine falls back to its regex pipeline:
+// FormatFactsSummary(facts).
+//
+// Returns (summary, path) where path is "hook" | "regex" | "empty" for
+// log correlation. An empty summary is a valid return — the caller still
+// injects the boundary block so the conversation has a structural anchor
+// to slice at on the next pass.
+func renderCompactSummary(runID string, hooks RunHooks, strategy string, scanSlice []types.LlmMessage, facts []compaction.Fact) (string, string) {
+	if hooks.OnRequestCompactSummary != nil {
+		if hookSummary, ok := hooks.OnRequestCompactSummary(runID, scanSlice); ok && hookSummary != "" {
+			utils.Debug("ApiBackend", fmt.Sprintf("renderCompactSummary: strategy=%s path=hook summaryLen=%d msgCount=%d", strategy, len(hookSummary), len(scanSlice)))
+			return hookSummary, "hook"
+		}
+		utils.Debug("ApiBackend", fmt.Sprintf("renderCompactSummary: strategy=%s hook present but returned empty, falling back to regex", strategy))
+	}
+	if len(facts) == 0 {
+		utils.Debug("ApiBackend", fmt.Sprintf("renderCompactSummary: strategy=%s path=empty (no facts, no hook)", strategy))
+		return "", "empty"
+	}
+	regex := compaction.FormatFactsSummary(facts)
+	utils.Debug("ApiBackend", fmt.Sprintf("renderCompactSummary: strategy=%s path=regex summaryLen=%d factCount=%d", strategy, len(regex), len(facts)))
+	return regex, "regex"
+}
+
+// injectCompactBoundary prepends a compact_boundary message built from
+// meta to conv.Messages. Single construction site shared by both
+// compactIfNeeded and compactReactive so the on-wire shape stays
+// byte-identical regardless of the trigger.
+//
+// The boundary lives at the head of the slice (index 0) so the next call
+// to MessagesAfterLastCompactBoundary finds it as the most recent
+// boundary even when subsequent messages are appended.
+func injectCompactBoundary(conv *conversation.Conversation, meta conversation.CompactMeta) {
+	boundary := conversation.BuildCompactBoundaryMessage(meta)
+	conv.Messages = append([]types.LlmMessage{boundary}, conv.Messages...)
 }
 
 // firstEntryID returns the ID of the first conversation tree entry, or empty string.

@@ -83,6 +83,39 @@ type CompactionInfo struct {
 	SessionMemory    string           `json:"sessionMemory,omitempty"`
 }
 
+// CompactSummaryRequestInfo is the payload for the
+// compact_summary_request hook. Handlers receive the pre-compaction
+// message slice (already sliced at the last boundary by
+// MessagesAfterLastCompactBoundary so previous summaries are not
+// included) and may return a summary string that becomes the new
+// compact_boundary block's Summary field, short-circuiting the engine's
+// regex fact extractor.
+//
+// MessageCount is informational (the slice length) so handlers can log
+// without re-counting. Strategy is "auto" (proactive) or "reactive"
+// (prompt_too_long retry) — handlers that want to tune their summariser
+// based on the trigger can branch on it.
+//
+// Field stability: this struct is part of the published hook contract.
+// New fields may be added with zero-value defaults; existing fields must
+// not be removed or renamed.
+type CompactSummaryRequestInfo struct {
+	Strategy     string             `json:"strategy"`
+	MessageCount int                `json:"messageCount"`
+	Messages     []types.LlmMessage `json:"messages"`
+}
+
+// CompactSummaryRequestResult is the optional return value from a
+// compact_summary_request handler. Summary, when non-empty, replaces the
+// engine's regex-built summary text. An empty Summary (or a nil result)
+// means "no opinion — fall back to the engine's regex path". The first
+// non-empty Summary across hosts wins (last-writer semantics).
+//
+// Field stability: published hook contract — additive only.
+type CompactSummaryRequestResult struct {
+	Summary string `json:"summary,omitempty"`
+}
+
 // ForkInfo describes a session fork event.
 type ForkInfo struct {
 	SourceSessionKey string `json:"sourceSessionKey"`
