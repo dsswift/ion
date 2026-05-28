@@ -18,6 +18,16 @@ import XCTest
 ///     `types-engine.ts`. Drift attribution: if a future review flags
 ///     a missing iOS mirror of an EngineConfig field, the answer is
 ///     "by design"; flip back to this comment.
+///   - `LlmContentBlock` is intentionally not mirrored on iOS. The type
+///     is the wire shape carried inside `LlmMessage` payloads, which
+///     iOS never decodes (iOS consumes the higher-level normalized event
+///     stream — `engine_text_delta`, `engine_compacting`, etc.). The
+///     `compact_boundary` variant added in the gentle-knitting-cup plan
+///     surfaces on the wire through the existing `engine_compacting`
+///     event (which iOS already decodes); the typed boundary block is an
+///     engine-internal marker, not a renderer input. If a future iOS
+///     feature ever needs to walk `LlmMessage` blocks (e.g. a compaction
+///     transcript reader), add the Swift mirror at that point.
 final class ContractSyncTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
