@@ -128,6 +128,11 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           set((state) => {
             const statusFields = new Map(state.engineStatusFields)
 
+            // Trace permission denials for diagnostics
+            if (event.fields?.permissionDenials?.length) {
+              console.log(`[engine_status] key=${key} tabId=${tabId} denials=${JSON.stringify(event.fields.permissionDenials.map((d: any) => d.toolName))} state=${event.fields?.state}`)
+            }
+
             // Merge last-known context/cost into incoming status fields
             // so the footer doesn't reset to 0% when the engine emits a
             // status event without usage data.
@@ -245,7 +250,17 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
                   updates.status = 'running' as const
                 }
                 if (isIdle && t.status !== 'idle' && isActive) {
-                  updates.status = 'idle' as const
+                  // When the engine reports AskUserQuestion / ExitPlanMode
+                  // denials, set status='completed' so the tab strip shows
+                  // the "waiting" pill. The actual denial data lives in
+                  // enginePermissionDenied (per-instance, set above) — we
+                  // do NOT mutate tab.permissionDenied here because that
+                  // field is CLI-only. Engine tabs use the per-instance map.
+                  if (hasInterestingDenials) {
+                    updates.status = 'completed' as const
+                  } else {
+                    updates.status = 'idle' as const
+                  }
                 }
                 return Object.keys(updates).length > 0 ? { ...t, ...updates } : t
               })

@@ -254,6 +254,78 @@ describe('EngineControlPlane', () => {
       expect(tab?.status).toBe('idle')
     })
 
+    it('engine_status idle with AskUserQuestion denial emits task_complete with permissionDenials and sets status completed', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      const events: any[] = []
+      cp.on('event', (tid: string, ev: any) => events.push({ tid, ev }))
+
+      const statusChanges: any[] = []
+      cp.on('tab-status-change', (tid: string, newS: string, oldS: string) => {
+        statusChanges.push({ tid, newS, oldS })
+      })
+
+      capturedEventHandler!(tabId, {
+        type: 'engine_status',
+        fields: {
+          state: 'idle',
+          totalCostUsd: 0.02,
+          permissionDenials: [
+            { toolName: 'AskUserQuestion', toolUseId: 'ask-1', toolInput: { question: 'Pick one' } },
+          ],
+        },
+      })
+
+      // task_complete carries the denials
+      const taskComplete = events.find((e) => e.ev.type === 'task_complete')
+      expect(taskComplete).toBeDefined()
+      expect(taskComplete.ev.permissionDenials).toHaveLength(1)
+      expect(taskComplete.ev.permissionDenials[0].toolName).toBe('AskUserQuestion')
+
+      // Control plane status is 'completed' (not 'idle')
+      const tab = cp.getTabStatus(tabId)
+      expect(tab?.status).toBe('completed')
+
+      // tab-status-change emitted as 'completed'
+      const completedChange = statusChanges.find((s) => s.newS === 'completed')
+      expect(completedChange).toBeDefined()
+    })
+
+    it('engine_status idle with AskUserQuestion denial skips duplicate idle', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      const events: any[] = []
+      cp.on('event', (tid: string, ev: any) => events.push({ tid, ev }))
+
+      // First idle with denial → completed
+      capturedEventHandler!(tabId, {
+        type: 'engine_status',
+        fields: {
+          state: 'idle',
+          permissionDenials: [
+            { toolName: 'AskUserQuestion', toolUseId: 'ask-1', toolInput: { question: 'Yes?' } },
+          ],
+        },
+      })
+      expect(cp.getTabStatus(tabId)?.status).toBe('completed')
+
+      // Second idle (cost-only update) should be skipped by the completed guard
+      const eventsBefore = events.length
+      capturedEventHandler!(tabId, {
+        type: 'engine_status',
+        fields: { state: 'idle', totalCostUsd: 0.05 },
+      })
+
+      // No additional task_complete should have been emitted
+      const taskCompletes = events.filter((e) => e.ev.type === 'task_complete')
+      expect(taskCompletes).toHaveLength(1) // only the first one
+
+      // Status remains completed
+      expect(cp.getTabStatus(tabId)?.status).toBe('completed')
+    })
+
     it('engine_tool_update emits tool_call_update with partialInput', async () => {
       const tabId = cp.createTab()
       await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
