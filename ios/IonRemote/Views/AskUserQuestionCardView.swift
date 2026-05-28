@@ -105,7 +105,7 @@ struct AskUserQuestionCardView: View {
                                 Button {
                                     Haptic.medium()
                                     viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-                                    viewModel.sendPrompt(tabId: tabId, text: option)
+                                    submitAnswer(option)
                                 } label: {
                                     Text(option)
                                         .font(.subheadline.weight(.medium))
@@ -134,7 +134,19 @@ struct AskUserQuestionCardView: View {
         guard !trimmed.isEmpty else { return }
         Haptic.medium()
         viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-        viewModel.sendPrompt(tabId: tabId, text: trimmed)
+        submitAnswer(trimmed)
+    }
+
+    /// Route the answer through the correct prompt pathway.
+    /// Engine tabs use `submitEnginePrompt` so the desktop prompt pipeline
+    /// recognises the message as engine-scoped (`isEngineTab: true`);
+    /// conversation tabs use `sendPrompt` as before.
+    private func submitAnswer(_ text: String) {
+        if viewModel.tab(for: tabId)?.isEngine == true {
+            viewModel.submitEnginePrompt(tabId: tabId, text: text)
+        } else {
+            viewModel.sendPrompt(tabId: tabId, text: text)
+        }
     }
 }
 

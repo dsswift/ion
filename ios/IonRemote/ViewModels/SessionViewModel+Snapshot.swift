@@ -16,6 +16,11 @@ extension SessionViewModel {
             let tools = t.permissionQueue.map { "\($0.toolName)(id=\($0.questionId.prefix(12)))" }.joined(separator: ", ")
             DiagnosticLog.log("SNAP: tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=[\(tools)]")
         }
+        for t in snapshotTabs where t.isEngine == true && t.permissionQueue.isEmpty {
+            if t.status == .completed || t.status == .idle {
+                DiagnosticLog.log("SNAP: engine tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=EMPTY (no denials promoted)")
+            }
+        }
         if connectionState != .connected {
             DiagnosticLog.log("SNAP: connected (was \(connectionState))")
             connectionState = .connected
