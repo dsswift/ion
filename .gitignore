@@ -73,4 +73,4 @@ engine/tests/e2e/testconfig.json
 
 docs/diagrams/
 docs/responses/
-docs/*.html
+docs/**/*.html
