@@ -147,6 +147,9 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
             if (!merged.totalCostUsd && prev?.totalCostUsd) {
               merged.totalCostUsd = prev.totalCostUsd
             }
+            if (!merged.sessionId && prev?.sessionId) {
+              merged.sessionId = prev.sessionId
+            }
             statusFields.set(key, merged)
             const sessionId = event.fields?.sessionId
             const pane = state.enginePanes.get(tabId)
