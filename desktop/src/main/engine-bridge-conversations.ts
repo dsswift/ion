@@ -53,7 +53,9 @@ export async function getConversation(bridge: EngineBridge, conversationId: stri
   await bridge.connect()
   log(`getConversation: conversationId=${conversationId} offset=${offset} limit=${limit}`)
   const result = await bridge._sendWithData<any>({ cmd: 'get_conversation', key: conversationId, offset, limit })
-  return result.data || { messages: [], total: 0, hasMore: false }
+  const data = result.data || { messages: [], total: 0, hasMore: false }
+  log(`getConversation: result conversationId=${conversationId} messages=${data.messages?.length ?? 0} total=${data.total ?? 0}`)
+  return data
 }
 
 /**

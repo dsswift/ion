@@ -55,6 +55,26 @@ export function wireEngineBridgeEvents(): void {
     }
 
     broadcast(IPC.ENGINE_EVENT, key, event)
+
+    // Trace agent_state so we can correlate engine→desktop→iOS flow when
+    // diagnosing stuck-row, stale-snapshot, or missing-conversation reports.
+    // Pairs with the engine's `agent_snapshot_emitted` utils.Log line.
+    // Always log — not gated on remoteTransport — so desktop.log is
+    // sufficient for diagnosis even without an iOS device connected.
+    if (event.type === 'engine_agent_state') {
+      const agents = Array.isArray(event.agents) ? event.agents : []
+      const statuses = agents.map((a: any) => `${a.name}:${a.status}`).join(',')
+      log(`engineBridge: agent_state key=${key} count=${agents.length} statuses=[${statuses}]`)
+      // Log dispatch metadata for terminal agents so we can verify
+      // conversationId survives the engine→desktop pipeline.
+      for (const a of agents) {
+        if ((a.status === 'done' || a.status === 'error') && a.metadata?.task) {
+          const meta = a.metadata
+          log(`engineBridge: dispatch_agent name=${a.name} status=${a.status} convId=${meta.conversationId ?? 'MISSING'} convIds=${JSON.stringify(meta.conversationIds ?? 'MISSING')} convIdsType=${typeof meta.conversationIds}`)
+        }
+      }
+    }
+
     if (state.remoteTransport) {
       const tabId = key.split(':')[0]
       const instanceId = key.split(':')[1] || null
@@ -66,16 +86,6 @@ export function wireEngineBridgeEvents(): void {
       // the event for diagnostic visibility only — the desktop is the
       // authoritative responder via early-stop-policy.ts — but the wire
       // protocol is now uniform across consumers.
-      //
-      // Trace agent_state forwarding so we can correlate engine→desktop→iOS
-      // flow when diagnosing stuck-row or stale-snapshot reports. Pairs
-      // with the iOS-side `ENGINE: agent_state` DiagnosticLog line and the
-      // engine's `agent_snapshot_emitted` utils.Log.
-      if (event.type === 'engine_agent_state') {
-        const agents = Array.isArray(event.agents) ? event.agents : []
-        const statuses = agents.map((a: any) => `${a.name}:${a.status}`).join(',')
-        log(`engineBridge: agent_state forwarded key=${key} count=${agents.length} statuses=[${statuses}]`)
-      }
       state.remoteTransport.send({ type: `engine_${event.type.replace('engine_', '')}`, tabId, instanceId, ...event })
 
       // Synthesize a `permission_request` envelope for iOS when an

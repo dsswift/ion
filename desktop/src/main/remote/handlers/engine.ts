@@ -396,3 +396,78 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
     log(`sendCurrentEngineState error: ${(err as Error).message}`)
   }
 }
+
+export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { type: 'load_agent_conversation' }>, deviceId: string): Promise<void> {
+  try {
+    log(`load_agent_conversation: conversationIds=${cmd.conversationIds.join(',')}`)
+    if (!engineBridge || cmd.conversationIds.length === 0) {
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName: '', messages: [] })
+      return
+    }
+
+    const allMessages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> = []
+    for (const convId of cmd.conversationIds) {
+      try {
+        const data = await engineBridge.getConversation(convId, 0, 0)
+        const msgs = data.messages || []
+        for (const m of msgs) {
+          let content = m.content || ''
+          // Truncate tool result content at 2KB to keep wire size manageable.
+          // User, assistant, and harness messages are never truncated.
+          if (m.role === 'tool' && content.length > 2048) {
+            content = content.substring(0, 2048) + '\n... [truncated]'
+          }
+          allMessages.push({
+            id: m.id || '',
+            role: m.role || 'system',
+            content,
+            toolName: m.toolName,
+            toolId: m.toolId,
+            toolStatus: m.toolStatus,
+            timestamp: m.timestamp || 0,
+          })
+        }
+      } catch (convErr) {
+        log(`load_agent_conversation: failed to load convId=${convId}: ${(convErr as Error).message}`)
+      }
+    }
+
+    // Resolve agent name from the desktop's agent state.
+    // The agent state snapshot in the renderer maps compound keys to agent
+    // arrays; we look up the first agent whose conversationId matches one
+    // of the requested IDs so the iOS side can key the response.
+    let agentName = ''
+    if (state.mainWindow) {
+      try {
+        const convIdsJson = JSON.stringify(cmd.conversationIds)
+        agentName = await state.mainWindow.webContents.executeJavaScript(`
+          (function() {
+            var store = window.__Ion_SESSION_STORE__;
+            if (!store) return '';
+            var convIds = ${convIdsJson};
+            var agentStates = store.getState().engineAgentStates;
+            for (var [, agents] of agentStates) {
+              for (var a of agents) {
+                var meta = a.metadata || {};
+                var aConvId = meta.conversationId || '';
+                var aConvIds = meta.conversationIds || [];
+                for (var cid of convIds) {
+                  if (cid === aConvId || aConvIds.indexOf(cid) >= 0) return a.name;
+                }
+              }
+            }
+            return '';
+          })()
+        `) || ''
+      } catch (_) {
+        // Best-effort name resolution; empty string is fine
+      }
+    }
+
+    log(`load_agent_conversation: resolved agentName=${agentName || '(unknown)'}, totalMessages=${allMessages.length}`)
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName, messages: allMessages })
+  } catch (err) {
+    log(`load_agent_conversation error: ${(err as Error).message}`)
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName: '', messages: [] })
+  }
+}

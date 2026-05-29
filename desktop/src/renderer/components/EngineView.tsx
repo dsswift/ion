@@ -92,6 +92,9 @@ export function EngineView({ tabId }: EngineViewProps) {
   const isRunning = tabStatus === 'running' || tabStatus === 'connecting'
   const hasRunningChildren = agentStates.some(a => a.status === 'running')
   const [agentPanelFullscreen, setAgentPanelFullscreen] = useState(false)
+  // Per-instance agent panel heights — persisted only for the tab's lifetime.
+  // Key is the engine instance compound key (tabId:instanceId).
+  const [agentPanelHeights, setAgentPanelHeights] = useState<Map<string, number>>(new Map())
   const scrollRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -401,6 +404,11 @@ export function EngineView({ tabId }: EngineViewProps) {
           agents={agentStates}
           isFullscreen={agentPanelFullscreen}
           onToggleFullscreen={() => setAgentPanelFullscreen(!agentPanelFullscreen)}
+          panelHeight={key ? agentPanelHeights.get(key) : undefined}
+          onPanelHeightChange={(h) => {
+            if (!key) return
+            setAgentPanelHeights(prev => { const next = new Map(prev); next.set(key, h); return next })
+          }}
         />
       </div>
 

@@ -61,13 +61,14 @@ function persistTabs(useSessionStore: Store): void {
           }
           if (Object.keys(msgs).length > 0) result.engineMessages = msgs
           const { engineAgentStates: eAgents } = useSessionStore.getState()
-          const agentStates: Record<string, Array<{ name: string; status: string; metadata?: Record<string, any> }>> = {}
+          const agentStates: Record<string, Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>> = {}
           for (const inst of hPane.instances) {
             const k = `${t.id}:${inst.id}`
             const arr = eAgents.get(k)
             if (arr && arr.length > 0) {
               agentStates[inst.id] = arr.map((a) => ({
                 name: a.name,
+                ...(a.id ? { id: a.id } : {}),
                 status: a.status === 'running' ? 'done' : a.status,
                 ...(a.metadata ? { metadata: a.metadata } : {}),
               }))

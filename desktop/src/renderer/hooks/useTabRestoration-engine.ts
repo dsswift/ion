@@ -94,6 +94,7 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
           const key = `${tabId}:${inst.id}`
           restoredEngineAgentStates.set(key, saved.map((a) => ({
             name: a.name,
+            ...(a.id ? { id: a.id } : {}),
             status: (a.status === 'running' ? 'done' : a.status) as AgentStateUpdate['status'],
             metadata: a.metadata,
           })))

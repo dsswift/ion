@@ -106,6 +106,7 @@ export type RemoteCommand =
   | { type: 'engine_move_instance'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_set_model'; tabId: string; instanceId?: string; model: string }
   | { type: 'load_engine_conversation'; tabId: string; instanceId?: string }
+  | { type: 'load_agent_conversation'; conversationIds: string[] }
   | { type: 'set_tab_group_mode'; mode: 'auto' | 'manual' }
   | { type: 'move_tab_to_group'; tabId: string; groupId: string }
   | { type: 'toggle_tab_group_pin'; tabId: string }
@@ -207,6 +208,7 @@ export type RemoteEvent =
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
   | { type: 'engine_instance_moved'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number; dedupKey?: string }> }
+  | { type: 'agent_conversation_history'; agentName: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
