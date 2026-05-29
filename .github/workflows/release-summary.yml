@@ -157,20 +157,5 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          set -euo pipefail
-          BYTES=$(wc -c < /tmp/summary.md)
-          if [ "$BYTES" -le 1900 ]; then
-            jq -Rs '{content: .}' /tmp/summary.md > /tmp/discord-payload.json
-          else
-            jq -Rs '{embeds: [{title: "Ion release", description: (.[0:4090] + (if (length > 4090) then "..." else "" end)), color: 5814783}]}' \
-              /tmp/summary.md > /tmp/discord-payload.json
-          fi
-          HTTP_CODE=$(curl -sS -o /tmp/discord-response.txt -w '%{http_code}' \
-            -X POST -H 'Content-Type: application/json' \
-            -d @/tmp/discord-payload.json "$DISCORD_WEBHOOK_URL")
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Discord webhook failed: HTTP $HTTP_CODE" >&2
-            cat /tmp/discord-response.txt >&2
-            exit 1
-          fi
-          echo "Discord webhook delivered (HTTP $HTTP_CODE)"
+          chmod +x .github/scripts/post-to-discord.sh
+          .github/scripts/post-to-discord.sh /tmp/summary.md "$DISCORD_WEBHOOK_URL" "Ion release"
