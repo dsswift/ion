@@ -183,3 +183,60 @@ Caution: These files are large >20KB. Use intelligent searching when looking thr
 - Adding a single log line per investigation cycle and hoping it's enough. **Instrument the entire code path in one pass.**
 - Logging only the error case. **Log the success case too** — "operation X completed with result Y" is as valuable as "operation X failed with error Z".
 - Using opaque messages like "failed" or "error occurred". **Include the what, the why, and the relevant IDs.**
+
+## Conversation storage
+
+Conversations are persisted as NDJSON file pairs under `~/.ion/conversations/`.
+
+### ID format
+
+Each conversation ID is `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). Generated in `engine/internal/backend/runloop_setup.go` via `time.Now().UnixMilli()` + `newConvSuffix()` (see `runloop_helpers.go`).
+
+### File layout
+
+A conversation with ID `<id>` produces two files:
+
+| File | Purpose |
+|------|---------|
+| `<id>.tree.jsonl` | Conversation tree for rendering and branching. Source of truth for the full message history with parent/child relationships. |
+| `<id>.llm.jsonl` | LLM-authoritative message history. Source of truth for what the model actually saw and for token/cost accounting. |
+
+Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-migrates legacy files to the split format on the next save.
+
+### `.tree.jsonl` structure
+
+- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"leafId"`, `"workingDirectory"`, `"version"`.
+- **Subsequent lines:** `SessionEntry` objects (`engine/internal/conversation/conversation.go`), each with:
+  - `id` — unique entry identifier
+  - `parentId` — pointer to parent entry (null for roots)
+  - `type` — one of `message`, `compaction`, `model_change`, `label`, `custom`
+  - `timestamp` — Unix millis
+  - `data` — type-specific payload (message content, compaction summary, etc.)
+
+### `.llm.jsonl` structure
+
+- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"version"`, `"model"`, `"system"` (system prompt), `"totalInputTokens"`, `"totalOutputTokens"`, `"lastInputTokens"`, `"lastInputTokensMsgCount"`, `"totalCost"`, `"createdAt"`, and optional `"parentId"`.
+- **Subsequent lines:** `LlmMessage` objects (`engine/internal/types/llm.go`), each with:
+  - `role` — `user`, `assistant`, or `system`
+  - `content` — string or array of `LlmContentBlock` (text, tool_use, tool_result, image, etc.)
+
+### Looking up a conversation
+
+When given a conversation ID, glob for its files:
+
+```
+~/.ion/conversations/{id}.*
+```
+
+- Read `{id}.tree.jsonl` for the full message history with branching structure.
+- Read `{id}.llm.jsonl` for the LLM-side view, system prompt, and token/cost accounting.
+- If only `{id}.jsonl` or `{id}.json` exists, the conversation is in legacy format (pre-split).
+
+### Key source files
+
+| What | Where |
+|------|-------|
+| ID generation | `engine/internal/backend/runloop_helpers.go` (`newConvSuffix`) |
+| Save/load logic | `engine/internal/conversation/persistence.go` (`Save`, `Load`, `saveSplit`) |
+| Data structures | `engine/internal/conversation/conversation.go` (`Conversation`, `SessionEntry`) |
+| LLM message type | `engine/internal/types/llm.go` (`LlmMessage`) |
