@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
+import { TableScrollWrapper } from './AssistantMessage'
 import type { Message } from '../../../shared/types'
 
 // Harness messages are markdown-formatted by convention. Extensions like
@@ -30,6 +31,7 @@ export function HarnessMessage({ message, skipMotion, bootstrapCollapsedCount }:
   // engine-authored and not expected to embed file paths the user might
   // ⌘-click; this keeps the surface area minimal.
   const markdownComponents = useMemo(() => ({
+    table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
     a: ({ href, children }: any) => (
       <button
         type="button"

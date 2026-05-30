@@ -63,7 +63,7 @@ export function UserMessage({ message, skipMotion }: { message: Message; skipMot
             borderRadius: '14px 14px 4px 14px',
           }}
         >
-          <div className="prose-cloud prose-cloud-user">
+          <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
             <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
               {displayContent}
             </Markdown>

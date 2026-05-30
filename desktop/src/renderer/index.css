@@ -139,9 +139,8 @@ input::placeholder {
 .prose-cloud table {
   border-collapse: collapse;
   max-width: 100%;
-  overflow-x: auto;
-  display: block;
   font-size: 12px;
+  width: 100%;
 }
 .prose-cloud th, .prose-cloud td {
   border: 1px solid var(--ion-container-border);
