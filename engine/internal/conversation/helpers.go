@@ -124,6 +124,37 @@ func asCompactionData(data any) *CompactionData {
 	return nil
 }
 
+func asAgentDispatchData(data any) *AgentDispatchData {
+	switch d := data.(type) {
+	case AgentDispatchData:
+		return &d
+	case *AgentDispatchData:
+		return d
+	case map[string]any:
+		b, _ := json.Marshal(d)
+		var ad AgentDispatchData
+		if json.Unmarshal(b, &ad) == nil {
+			return &ad
+		}
+	}
+	return nil
+}
+
+// AgentDispatchEntries returns all agent_dispatch entries from the conversation.
+// Used by the session package to rehydrate agent state on session reload.
+func AgentDispatchEntries(conv *Conversation) []AgentDispatchData {
+	var dispatches []AgentDispatchData
+	for _, e := range conv.Entries {
+		if e.Type != EntryAgentDispatch {
+			continue
+		}
+		if ad := asAgentDispatchData(e.Data); ad != nil {
+			dispatches = append(dispatches, *ad)
+		}
+	}
+	return dispatches
+}
+
 func extractText(msg types.LlmMessage) string {
 	switch c := msg.Content.(type) {
 	case string:

@@ -21,11 +21,12 @@ const DefaultContext = 200000
 type SessionEntryType string
 
 const (
-	EntryMessage     SessionEntryType = "message"
-	EntryCompaction  SessionEntryType = "compaction"
-	EntryModelChange SessionEntryType = "model_change"
-	EntryLabel       SessionEntryType = "label"
-	EntryCustom      SessionEntryType = "custom"
+	EntryMessage       SessionEntryType = "message"
+	EntryCompaction    SessionEntryType = "compaction"
+	EntryModelChange   SessionEntryType = "model_change"
+	EntryLabel         SessionEntryType = "label"
+	EntryCustom        SessionEntryType = "custom"
+	EntryAgentDispatch SessionEntryType = "agent_dispatch"
 )
 
 // MessageData holds a chat message entry.
@@ -54,6 +55,19 @@ type LabelData struct {
 type ModelChangeData struct {
 	Model         string `json:"model"`
 	PreviousModel string `json:"previousModel,omitempty"`
+}
+
+// AgentDispatchData records a completed agent dispatch for persistence.
+type AgentDispatchData struct {
+	AgentName       string   `json:"agentName"`
+	AgentID         string   `json:"agentId"`
+	DisplayName     string   `json:"displayName,omitempty"`
+	Task            string   `json:"task,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	Status          string   `json:"status"`
+	Elapsed         float64  `json:"elapsed,omitempty"`
+	ConversationID  string   `json:"conversationId,omitempty"`
+	ConversationIDs []string `json:"conversationIds,omitempty"`
 }
 
 // SessionEntry is a single node in the conversation tree.
@@ -105,9 +119,9 @@ type ContextUsageInfo struct {
 
 // ToolResultEntry is a tool result to add as a user message.
 type ToolResultEntry struct {
-	ToolUseID string              `json:"tool_use_id"`
-	Content   string              `json:"content"`
-	IsError   bool                `json:"is_error,omitempty"`
+	ToolUseID string               `json:"tool_use_id"`
+	Content   string               `json:"content"`
+	IsError   bool                 `json:"is_error,omitempty"`
 	Images    []*types.ImageSource `json:"images,omitempty"` // vision images to attach alongside text
 }
 

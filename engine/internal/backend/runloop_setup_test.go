@@ -684,3 +684,42 @@ func TestPlanModeSparseReminderOverride_DefaultWhenBothEmpty(t *testing.T) {
 		t.Errorf("expected empty override (engine will use default), got %q", run.planModeSparseReminderOverride)
 	}
 }
+
+// --- loadOrCreateConversation tests (Fix 2: reject missing SessionID) ---
+
+// TestLoadOrCreateConversation_SessionIDNotFound_ReturnsError verifies
+// that when a caller supplies a SessionID that does not correspond to any
+// persisted conversation file, loadOrCreateConversation returns an error
+// instead of silently creating a replacement conversation. This is the
+// core assertion for Fix 2.
+func TestLoadOrCreateConversation_SessionIDNotFound_ReturnsError(t *testing.T) {
+	opts := types.RunOptions{
+		SessionID: "nonexistent-conv-id-12345",
+	}
+	conv, err := loadOrCreateConversation(opts, "mock-model")
+	if err == nil {
+		t.Fatal("expected error when SessionID does not exist, got nil")
+	}
+	if conv != nil {
+		t.Errorf("expected nil conversation on error, got %+v", conv)
+	}
+}
+
+// TestLoadOrCreateConversation_NoSessionID_CreatesFresh verifies the
+// fresh-creation path: when SessionID is empty, loadOrCreateConversation
+// must create and return a new conversation with a non-empty ID and no error.
+func TestLoadOrCreateConversation_NoSessionID_CreatesFresh(t *testing.T) {
+	opts := types.RunOptions{
+		SessionID: "",
+	}
+	conv, err := loadOrCreateConversation(opts, "mock-model")
+	if err != nil {
+		t.Fatalf("expected no error for fresh creation, got %v", err)
+	}
+	if conv == nil {
+		t.Fatal("expected non-nil conversation for fresh creation")
+	}
+	if conv.ID == "" {
+		t.Error("expected fresh conversation to have a non-empty ID")
+	}
+}

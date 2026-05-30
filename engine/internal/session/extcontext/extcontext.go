@@ -81,10 +81,15 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 		SessionKey: sa.SessionKey(),
 		Cwd:        sa.WorkingDirectory(),
 		Emit: func(ev types.EngineEvent) {
-			// Cache extension-emitted agent states so the built-in Agent tool
-			// spawner can merge them into its own snapshots.
 			if ev.Type == "engine_agent_state" {
+				// Cache extension-emitted agent states, then re-emit a merged
+				// snapshot that includes engine-managed entries (dispatch state
+				// with task, conversationId, progress). Forwarding the raw
+				// extension event would overwrite engine-managed entries on
+				// the desktop due to the complete-snapshot contract.
 				sa.CacheExtAgentStates(ev.Agents)
+				sa.EmitAgentSnapshot("ext_emit_merged")
+				return
 			}
 			sa.Emit(ev)
 		},

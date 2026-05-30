@@ -42,12 +42,15 @@ func (b *ApiBackend) resolveProvider(model string) providers.LlmProvider {
 // loadOrCreateConversation returns an existing conversation when SessionID
 // resolves to one on disk, otherwise creates a new conversation with a
 // timestamp+random suffix id that cannot collide with same-millisecond peers.
-func loadOrCreateConversation(opts types.RunOptions, model string) *conversation.Conversation {
+// When SessionID is non-empty and Load fails, the error is returned instead
+// of silently creating a replacement — this prevents overwriting existing
+// conversation files on transient read failures.
+func loadOrCreateConversation(opts types.RunOptions, model string) (*conversation.Conversation, error) {
 	if opts.SessionID != "" {
 		loaded, err := conversation.Load(opts.SessionID, "")
 		if err != nil {
-			utils.Log("ApiBackend", "creating new conversation: "+opts.SessionID)
-			return conversation.CreateConversation(opts.SessionID, opts.SystemPrompt, model)
+			utils.Error("ApiBackend", fmt.Sprintf("failed to load conversation %s: %v", opts.SessionID, err))
+			return nil, fmt.Errorf("failed to load conversation %s: %w", opts.SessionID, err)
 		}
 		// Sanitize loaded messages (fix orphaned tool_result blocks, remove thinking)
 		loaded.Messages = conversation.SanitizeMessages(loaded.Messages)
@@ -57,7 +60,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) *conversation
 		if opts.PlanFilePath != "" {
 			conversation.ReplacePlanFilePlaceholder(loaded, opts.PlanFilePath)
 		}
-		return loaded
+		return loaded, nil
 	}
 	// Append a 6-byte random suffix so two runs that begin in the same
 	// millisecond cannot collide on the conversation file. Falls back to
@@ -66,7 +69,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) *conversation
 		fmt.Sprintf("%d-%s", time.Now().UnixMilli(), newConvSuffix()),
 		opts.SystemPrompt,
 		model,
-	)
+	), nil
 }
 
 // buildSystemPrompt assembles the final system prompt for a run, layering in

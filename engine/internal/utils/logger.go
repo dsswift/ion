@@ -46,7 +46,8 @@ func ParseLevel(s string) LogLevel {
 }
 
 const (
-	maxLogSize = 5 * 1024 * 1024 // 5MB per file
+	maxLogSize   = 50 * 1024 * 1024 // 50MB per file
+	rotatedFiles = 3                // keep engine.log.1 … engine.log.3
 )
 
 var (
@@ -146,25 +147,38 @@ func initLogFile() {
 	logFile, _ = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 }
 
-// rotate closes the current log, renames it to .old, and opens a fresh file.
+// rotate closes the current log, shifts numbered backups, and opens a fresh
+// file. Keeps up to rotatedFiles old logs (engine.log.1 … engine.log.N).
+// Also maintains the legacy engine.log.old symlink pointing at engine.log.1
+// so existing tooling that reads .old continues to work.
 // Must be called with logMu held.
 func rotate() {
 	if logFile != nil {
-		// Best-effort close. We can't call Log() to report a close failure
-		// because we're inside the rotation path that owns the log file —
-		// re-entering would deadlock on logMu and recurse on the missing
-		// handle. A failed close here only leaks one fd until process exit;
-		// the rotation itself still proceeds.
 		_ = logFile.Close()
 		logFile = nil
 	}
 
 	path := filepath.Join(logDir, "engine.log")
-	oldPath := filepath.Join(logDir, "engine.log.old")
 
-	// Remove old backup, rename current, ignore errors (best effort)
+	// Shift numbered backups: .3 → delete, .2 → .3, .1 → .2, current → .1
+	for i := rotatedFiles; i >= 1; i-- {
+		src := path
+		if i > 1 {
+			src = fmt.Sprintf("%s.%d", path, i-1)
+		}
+		dst := fmt.Sprintf("%s.%d", path, i)
+		if i == rotatedFiles {
+			_ = os.Remove(dst)
+		}
+		_ = os.Rename(src, dst)
+	}
+
+	// Maintain legacy .old symlink → .1 for backward compatibility.
+	oldPath := filepath.Join(logDir, "engine.log.old")
 	_ = os.Remove(oldPath)
-	_ = os.Rename(path, oldPath)
+	// Use a relative target so the symlink works regardless of the
+	// absolute path to ~/.ion.
+	_ = os.Symlink("engine.log.1", oldPath)
 
 	logFile, _ = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	bytesWritten = 0

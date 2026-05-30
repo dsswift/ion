@@ -106,6 +106,11 @@ func rehydrateEntries(conv *Conversation) error {
 			if err := json.Unmarshal(b, &mc); err == nil {
 				e.Data = mc
 			}
+		case EntryAgentDispatch:
+			var ad AgentDispatchData
+			if err := json.Unmarshal(b, &ad); err == nil {
+				e.Data = ad
+			}
 		}
 	}
 	return nil

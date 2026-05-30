@@ -270,6 +270,16 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 
 	m.mu.Unlock()
 
+	// Rehydrate agent dispatch state from the conversation file if the
+	// session is resuming an existing conversation. This runs before
+	// extensions fire session_start so the agent registry is pre-populated
+	// with completed dispatches. When the extension later emits its fresh
+	// roster, MergedSnapshot deduplicates: engine-managed entries (with
+	// task, conversationId, elapsed) win over the extension's idle entries.
+	if s.conversationID != "" {
+		m.rehydrateDispatchState(s, key)
+	}
+
 	// Signal that session startup is in progress so consumers can mirror
 	// loading state. Events flow through the socket broadcast independently
 	// of the request-response ACK, so consumers receive these before
