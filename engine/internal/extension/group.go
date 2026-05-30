@@ -87,6 +87,12 @@ func (g *ExtensionGroup) FireMessageUpdate(ctx *Context, info MessageUpdateInfo)
 func (g *ExtensionGroup) FireToolEnd(ctx *Context) error {
 	return g.fireVoid(func(h *Host) error { return h.FireToolEnd(ctx) })
 }
+func (g *ExtensionGroup) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) error {
+	return g.fireVoid(func(h *Host) error { return h.FireTaskCreated(ctx, info) })
+}
+func (g *ExtensionGroup) FireTaskCompleted(ctx *Context, info TaskLifecycleInfo) error {
+	return g.fireVoid(func(h *Host) error { return h.FireTaskCompleted(ctx, info) })
+}
 
 func (g *ExtensionGroup) FireOnError(ctx *Context, info ErrorInfo) error {
 	return g.fireVoid(func(h *Host) error { return h.FireOnError(ctx, info) })

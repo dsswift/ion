@@ -384,6 +384,12 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 		if !alreadyActive {
 			ctx := m.newExtContext(s, key)
 			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
+			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
+			_ = s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
+				TaskID: taskID,
+				Name:   fmt.Sprintf("turn-%d", turnNum),
+				Status: "running",
+			})
 		}
 
 	case *types.ToolCallEvent:
@@ -442,6 +448,17 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 				})
 			}
 			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		}
+		// task_completed fires unconditionally: the run is fully done whether or
+		// not a turn was active when it finished.
+		{
+			ctx := m.newExtContext(s, key)
+			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
+			_ = s.extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{
+				TaskID: taskID,
+				Name:   fmt.Sprintf("turn-%d", turnNum),
+				Status: "completed",
+			})
 		}
 	}
 }

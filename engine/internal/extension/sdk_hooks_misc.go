@@ -53,13 +53,15 @@ func (s *SDK) FireWorkspaceFileChanged(ctx *Context, info WorkspaceFileChangedIn
 }
 
 // FireTaskCreated fires the task_created hook.
-func (s *SDK) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) {
+func (s *SDK) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) error {
 	s.fire(HookTaskCreated, ctx, info)
+	return nil
 }
 
 // FireTaskCompleted fires the task_completed hook.
-func (s *SDK) FireTaskCompleted(ctx *Context, info TaskLifecycleInfo) {
+func (s *SDK) FireTaskCompleted(ctx *Context, info TaskLifecycleInfo) error {
 	s.fire(HookTaskCompleted, ctx, info)
+	return nil
 }
 
 // FireElicitationRequest fires the elicitation_request hook.
