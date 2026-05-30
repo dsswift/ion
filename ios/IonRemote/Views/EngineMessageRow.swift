@@ -107,6 +107,8 @@ struct EngineMessageRow: View {
                 blocks: MarkdownBlockCache.shared.blocks(for: message.content)
             )
             .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
             Spacer(minLength: 0)
         }
     }

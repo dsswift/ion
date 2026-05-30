@@ -118,6 +118,7 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         collectionView.delegate = self
         collectionView.keyboardDismissMode = .interactive
         collectionView.contentInsetAdjustmentBehavior = .always
+        collectionView.clipsToBounds = true
         view.addSubview(collectionView)
 
         let reg = UICollectionView.CellRegistration<UICollectionViewCell, ChatItem<Payload>> {

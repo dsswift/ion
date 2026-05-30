@@ -12,6 +12,7 @@ struct MarkdownContentView: View {
                 blockView(block)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Block dispatch
@@ -203,6 +204,7 @@ struct MarkdownContentView: View {
                     .stroke(Color(.separator), lineWidth: 0.5)
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func tableCellContent(
