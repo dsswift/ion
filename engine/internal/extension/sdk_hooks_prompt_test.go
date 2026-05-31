@@ -229,6 +229,42 @@ func TestSDK_FireBeforeAgentStart_MapResult(t *testing.T) {
 	}
 }
 
+func TestSDK_FireBeforeAgentStart_AgentName(t *testing.T) {
+	sdk := NewSDK()
+	sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return BeforeAgentStartResult{AgentName: "resolved-agent"}, nil
+	})
+
+	sysPrompt, agentName, err := sdk.FireBeforeAgentStart(testCtx(), AgentInfo{Name: "pre-agent", Task: "do stuff"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if agentName != "resolved-agent" {
+		t.Fatalf("expected agentName 'resolved-agent', got %q", agentName)
+	}
+	if sysPrompt != "" {
+		t.Fatalf("expected empty systemPrompt (independent per-field resolution), got %q", sysPrompt)
+	}
+}
+
+func TestSDK_FireBeforeAgentStart_AgentName_MapResult(t *testing.T) {
+	sdk := NewSDK()
+	sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {
+		return map[string]interface{}{"agentName": "from-map"}, nil
+	})
+
+	sysPrompt, agentName, err := sdk.FireBeforeAgentStart(testCtx(), AgentInfo{Name: "test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if agentName != "from-map" {
+		t.Fatalf("expected agentName 'from-map', got %q", agentName)
+	}
+	if sysPrompt != "" {
+		t.Fatalf("expected empty systemPrompt, got %q", sysPrompt)
+	}
+}
+
 func TestSDK_FireBeforeProviderRequest(t *testing.T) {
 	sdk := NewSDK()
 	var called bool
