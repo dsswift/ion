@@ -250,9 +250,9 @@ func TestPlanGate_ExitPlanModeIntercepted(t *testing.T) {
 	}
 }
 
-// Test 9: ExitPlanMode in auto mode falls through to unknown tool
-func TestPlanGate_ExitPlanModeAutoModeFallthrough(t *testing.T) {
-	b, run, _ := planGateHelper(t, false, "")
+// Test 9: ExitPlanMode in auto mode is still intercepted (prompt-level plan mode)
+func TestPlanGate_ExitPlanModeAutoModeIntercepted(t *testing.T) {
+	b, run, emitted := planGateHelper(t, false, "")
 
 	blocks := []types.LlmContentBlock{{
 		Name:  tools.ExitPlanModeName,
@@ -263,12 +263,34 @@ func TestPlanGate_ExitPlanModeAutoModeFallthrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// In auto mode, ExitPlanMode is not intercepted — it falls through
-	// to the "Unknown tool" handler.
-	if !results[0].IsError {
-		t.Error("expected ExitPlanMode in auto mode to produce an error (unknown tool)")
+	// ExitPlanMode is now intercepted even in auto mode — the model may be
+	// following prompt-level plan mode instructions (e.g. from AGENTS.md).
+	// It should NOT produce an "Unknown tool" error.
+	if results[0].IsError {
+		t.Errorf("expected ExitPlanMode in auto mode to succeed (intercepted), got error: %s", results[0].Content)
 	}
-	if !strings.Contains(results[0].Content, "Unknown tool") {
-		t.Errorf("expected 'Unknown tool' error, got: %s", results[0].Content)
+	if !strings.Contains(results[0].Content, "Plan mode exited") {
+		t.Errorf("expected 'Plan mode exited' result, got: %s", results[0].Content)
+	}
+	// The run should be flagged for exit, just like in plan mode.
+	run.mu.Lock()
+	exited := run.exitPlanMode
+	denials := len(run.permissionDenials)
+	run.mu.Unlock()
+	if !exited {
+		t.Error("expected ExitPlanMode in auto mode to set run.exitPlanMode = true")
+	}
+	if denials != 1 {
+		t.Errorf("expected 1 permission denial, got %d", denials)
+	}
+	// Verify a PlanProposalEvent was emitted.
+	foundProposal := false
+	for _, ev := range *emitted {
+		if pp, ok := ev.Data.(*types.PlanProposalEvent); ok && pp.Kind == "exit" {
+			foundProposal = true
+		}
+	}
+	if !foundProposal {
+		t.Error("expected a PlanProposalEvent{Kind:exit} to be emitted")
 	}
 }
