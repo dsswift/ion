@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { TabGroup } from '../shared/types'
-import { applyTheme, syncTokensToCss, darkColors, lightColors, type ColorPalette } from './theme-tokens'
+import { applyTheme, syncTokensToCss, darkColors, lightColors, getTheme, type ColorPalette } from './theme-tokens'
 import type { PreferencesState, ThemeMode } from './preferences-types'
 import { saveSettings, getAllSettings, getEffectiveTabGroups, INITIAL_SAVED, loadPersistedSettings } from './preferences-persist'
 
@@ -8,10 +8,12 @@ export type { ThemeMode, PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
 
 const saved = INITIAL_SAVED
+const _savedThemeId = localStorage.getItem('ion_selectedTheme') ?? 'ion-dark'
 
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   isDark: saved.themeMode === 'dark' ? true : saved.themeMode === 'light' ? false : true,
   themeMode: saved.themeMode,
+  selectedTheme: _savedThemeId,
   soundEnabled: saved.soundEnabled,
   expandedUI: saved.expandedUI,
   ultraWide: saved.ultraWide,
@@ -105,8 +107,21 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   setThemeMode: (mode) => {
     const resolved = mode === 'system' ? get()._systemIsDark : mode === 'dark'
     set({ themeMode: mode, isDark: resolved })
-    applyTheme(resolved)
+    // Only apply ion-dark/ion-light if no forced-scheme theme is active
+    if (!getTheme(get().selectedTheme).forcedColorScheme) {
+      applyTheme(resolved)
+    }
     saveSettings(getAllSettings(get))
+  },
+  setSelectedTheme: (id) => {
+    set({ selectedTheme: id })
+    localStorage.setItem('ion_selectedTheme', id)
+    const theme = getTheme(id)
+    if (theme.forcedColorScheme) {
+      applyTheme(id)
+    } else {
+      applyTheme(get().isDark)
+    }
   },
   setSoundEnabled: (enabled) => {
     set({ soundEnabled: enabled })
@@ -448,7 +463,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
 }))
 
 // Initialize CSS vars with saved theme
-syncTokensToCss(saved.themeMode === 'light' ? lightColors : darkColors)
+if (getTheme(_savedThemeId).forcedColorScheme) {
+  syncTokensToCss(getTheme(_savedThemeId).colors)
+  document.documentElement.classList.add('dark')
+  document.documentElement.classList.remove('light')
+} else {
+  syncTokensToCss(saved.themeMode === 'light' ? lightColors : darkColors)
+}
 
 // Load persisted settings from disk (async, fires once on startup)
 loadPersistedSettings(
