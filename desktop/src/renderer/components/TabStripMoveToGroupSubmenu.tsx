@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
-import { zoomViewport } from './TabStripShared'
+import { useAnchoredPopoverPosition, zoomViewport } from './TabStripShared'
 
 interface MoveToGroupSubmenuProps {
   anchor: { x: number; y: number }
@@ -21,6 +21,14 @@ interface MoveToGroupSubmenuProps {
    * Defaults to false to preserve the existing plain-move behavior.
    */
   pinAfter?: boolean
+  /**
+   * The bounding rect of the parent menu row that triggered this
+   * submenu. Used by `useAnchoredPopoverPosition` to flip the submenu
+   * to the left of the parent row when there isn't room to the right.
+   * Optional — the hook falls back to flipping relative to `anchor.x`
+   * when not provided, which is visually fine but slightly off.
+   */
+  parentRect?: { left: number; right: number; top: number; bottom: number }
 }
 
 /** Submenu listing destination tab-groups for a single tab. Auto and manual modes show different target sets. */
@@ -31,6 +39,7 @@ export function MoveToGroupSubmenu({
   onClose,
   containerRef,
   pinAfter = false,
+  parentRect,
 }: MoveToGroupSubmenuProps) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
@@ -72,9 +81,9 @@ export function MoveToGroupSubmenu({
     if (showNewGroupInput) inputRef.current?.focus()
   }, [showNewGroupInput])
 
-  if (!popoverLayer) return null
-
-  // Build available targets
+  // Build available targets. Computed before the early-popoverLayer
+  // return so we can include `targets.length` in the positioning
+  // hook's deps (the hook must run unconditionally — rules of hooks).
   let targets: Array<{ id: string; label: string }> = []
 
   if (tabGroupMode === 'auto') {
@@ -95,12 +104,22 @@ export function MoveToGroupSubmenu({
   }
 
   const vp = zoomViewport()
-  const top = Math.min(anchor.y, vp.height - 200)
-  const left = Math.min(anchor.x + 8, vp.width - 180)
+  // Position is computed by the shared hook so the submenu always
+  // stays on-screen. `showNewGroupInput` is in `deps` because
+  // expanding the inline input changes the submenu's rendered
+  // height, and we want the menu to re-position so the input row
+  // doesn't drop off the bottom edge.
+  const pos = useAnchoredPopoverPosition(anchor, {
+    prefer: 'rightOf',
+    parentRect,
+    deps: [showNewGroupInput, targets.length],
+  })
+
+  if (!popoverLayer) return null
 
   return createPortal(
     <motion.div
-      ref={setRefs}
+      ref={(node) => { setRefs(node); pos.ref(node) }}
       data-ion-ui
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -108,8 +127,11 @@ export function MoveToGroupSubmenu({
       transition={{ duration: 0.1 }}
       style={{
         position: 'fixed',
-        left,
-        top,
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.ready ? 'visible' : 'hidden',
+        maxHeight: vp.height - 16,
+        overflowY: 'auto',
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
