@@ -2,7 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var themeId = "ion-default"
     @State private var showPairingSheet = false
     @State private var elevenLabsKey: String = ""
     @State private var keySaved = false
@@ -15,6 +17,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                themeSection
                 connectionSection
                 desktopSettingsSection
                 voiceSection
@@ -63,6 +66,20 @@ struct SettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var themeSection: some View {
+        Section {
+            Picker("Theme", selection: $themeId) {
+                ForEach(ThemeRegistry.themes, id: \.id) { t in
+                    Text(t.displayName).tag(t.id)
+                }
+            }
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Arc Reactor forces dark mode. Ion Default follows system settings.")
+        }
+    }
 
     private var voiceSection: some View {
         Section {

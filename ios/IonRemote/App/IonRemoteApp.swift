@@ -5,6 +5,11 @@ struct IonRemoteApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var viewModel = SessionViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("selectedTheme") private var themeId = "ion-default"
+
+    private var theme: any AppTheme {
+        ThemeRegistry.theme(for: themeId)
+    }
 
     init() {
         CrashReporter.install()
@@ -14,8 +19,9 @@ struct IonRemoteApp: App {
         WindowGroup {
             ContentView()
                 .environment(viewModel)
-                .preferredColorScheme(.dark)
-                .tint(IonTheme.accent)
+                .environment(\.appTheme, theme)
+                .preferredColorScheme(theme.preferredColorScheme)
+                .tint(theme.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
                 }

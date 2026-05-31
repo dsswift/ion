@@ -139,6 +139,11 @@
 		A1B2C3D4E5F60001005118AA /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */; };
 		A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */; };
 		A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */; };
+		A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10001AA /* AppTheme.swift */; };
+		A1B2C3D4E5F60001F10004AA /* IonDefaultTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */; };
+		A1B2C3D4E5F60001F10006AA /* JarvisArcReactorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */; };
+		A1B2C3D4E5F60001F10008AA /* ArcReactorBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */; };
+		A1B2C3D4E5F60001F1000AAA /* ThinkingScanLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */; };
 		A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */; };
 		A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */; };
 		A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */; };
@@ -291,6 +296,11 @@
 		A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOverlay.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10001AA /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonDefaultTheme.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisArcReactorTheme.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcReactorBackground.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingScanLine.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImagePreview.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001006001AA /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
@@ -468,6 +478,8 @@
 					A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */,
 					A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */,
 					A1B2C3D4E5F60001006001AA /* ToastView.swift */,
+					A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */,
+					A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -539,6 +551,9 @@
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
+				A1B2C3D4E5F60001F10001AA /* AppTheme.swift */,
+				A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */,
+				A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */,
 				A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */,
 				A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */,
 				A1B2C3D4E5F60001009001AA /* TabSearchHelper.swift */,
@@ -803,6 +818,11 @@
 				A1B2C3D4E5F60001005118AA /* SpeechRecognitionService.swift in Sources */,
 				A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */,
 				A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */,
+				A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */,
+				A1B2C3D4E5F60001F10004AA /* IonDefaultTheme.swift in Sources */,
+				A1B2C3D4E5F60001F10006AA /* JarvisArcReactorTheme.swift in Sources */,
+				A1B2C3D4E5F60001F10008AA /* ArcReactorBackground.swift in Sources */,
+				A1B2C3D4E5F60001F1000AAA /* ThinkingScanLine.swift in Sources */,
 				A1B2C3D4E5F60001009000AA /* TabSearchHelper.swift in Sources */,
 				A1B2C3D4E5F60001009D01AA /* SafeDecodable.swift in Sources */,
 			);
