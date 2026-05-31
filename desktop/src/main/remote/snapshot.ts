@@ -128,15 +128,36 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
                     if (ws === null && hasPlanReady) ws = 'plan-ready';
                   }
                 }
-                return { id: inst.id, label: inst.label, waitingState: ws };
+                // Per-instance running state so iOS EngineInstanceBar can
+                // show a pulsing dot on each running sub-tab. Parallels the
+                // waitingState derivation above.
+                var instRunning = false;
+                if (s.engineStatusFields && s.engineStatusFields.get) {
+                  var sf = s.engineStatusFields.get(t.id + ':' + inst.id);
+                  if (sf) {
+                    var st = sf.state;
+                    instRunning = st === 'running' || st === 'connecting' || st === 'starting';
+                  }
+                }
+                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined };
               });
               activeEngineInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
+            }
+            // Aggregate running state across all engine instances so the
+            // iOS tab-list dot pulses when ANY instance is running, even
+            // if the active instance is idle. Parallels the desktop's
+            // isAnyEngineInstanceRunning helper in TabStripShared.ts.
+            var anyInstanceRunning = false;
+            if (engineInstances) {
+              for (var ei = 0; ei < engineInstances.length; ei++) {
+                if (engineInstances[ei].isRunning) { anyInstanceRunning = true; break; }
+              }
             }
             return {
               id: t.id,
               title: t.title,
               customTitle: t.customTitle,
-              status: t.status,
+              status: (t.isEngine && anyInstanceRunning && t.status !== 'running' && t.status !== 'connecting') ? 'running' : t.status,
               workingDirectory: t.workingDirectory,
               permissionMode: t.permissionMode,
               permissionQueue: queue,
