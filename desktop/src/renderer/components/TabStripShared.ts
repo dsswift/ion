@@ -336,6 +336,28 @@ export function getEngineInstanceWaitingState(key: string): WaitingState {
   return waitingStateFromTools(entry?.tools)
 }
 
+/**
+ * Check whether any engine instance under a tab is currently running.
+ * Folds across `enginePanes` instances and reads per-instance state
+ * from `engineStatusFields` — parallel to how `getWaitingState` folds
+ * across `enginePermissionDenied` for denial aggregation.
+ *
+ * NOTE: This reads from `useSessionStore.getState()` — it is not
+ * reactive on its own. Callers in React components must separately
+ * subscribe to `engineStatusFields` (or a projection of it) so the
+ * component re-renders when instance states change.
+ */
+export function isAnyEngineInstanceRunning(tabId: string): boolean {
+  const s = useSessionStore.getState()
+  const pane = s.enginePanes.get(tabId)
+  if (!pane || pane.instances.length === 0) return false
+  for (const inst of pane.instances) {
+    const state = s.engineStatusFields.get(`${tabId}:${inst.id}`)?.state
+    if (state === 'running' || state === 'connecting' || state === 'starting') return true
+  }
+  return false
+}
+
 /** Status-dot color/pulse/glow derived from a tab's runtime state. Used by both single dots and stacked group dots. */
 export function getTabStatusColor(
   tab: TabState,
@@ -356,7 +378,7 @@ export function getTabStatusColor(
     bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
   } else if (waitingState === 'question') {
     bg = colors.infoText; glow = true; glowColor = colors.tabGlowQuestion
-  } else if (tab.status === 'connecting' || tab.status === 'running') {
+  } else if (tab.status === 'connecting' || tab.status === 'running' || (tab.isEngine && isAnyEngineInstanceRunning(tab.id))) {
     bg = colors.statusRunning; pulse = true
   } else if (tab.bashExecuting) {
     bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow

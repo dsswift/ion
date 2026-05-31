@@ -173,7 +173,71 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const pane = panes.get(tabId)
       if (!pane) return
       panes.set(tabId, { ...pane, activeInstanceId: instanceId })
-      set({ enginePanes: panes })
+
+      // Reconcile tab.status from the newly-active instance's known
+      // state so the thinking indicator, interrupt button, and status
+      // bar correctly reflect the selected sub-tab. Without this, the
+      // tab status stays frozen at whatever the *previous* instance
+      // last set — e.g. stuck 'running' after switching to an idle
+      // instance.
+      const key = `${tabId}:${instanceId}`
+      const statusFields = get().engineStatusFields.get(key)
+      const instanceState = statusFields?.state
+      const denial = get().enginePermissionDenied.get(key)
+
+      // Also sync conversationId so the status bar footer shows the
+      // correct conversation for the newly-active instance.
+      const convChain = get().engineConversationIds.get(key)
+      const lastConvId = convChain?.[convChain.length - 1]
+
+      if (instanceState) {
+        // Map instance state to tab.status — mirrors the logic in
+        // engine-event-status.ts:167-181.
+        let newStatus: TabStatus
+        if (instanceState === 'running' || instanceState === 'connecting' || instanceState === 'starting') {
+          newStatus = 'running'
+        } else if (instanceState === 'idle') {
+          // Check for "interesting" denials (AskUserQuestion / ExitPlanMode)
+          const hasInterestingDenials = denial?.tools?.some(
+            (t) => t.toolName === 'AskUserQuestion' || t.toolName === 'ExitPlanMode',
+          ) ?? false
+          newStatus = hasInterestingDenials ? 'completed' : 'idle'
+        } else {
+          newStatus = 'idle'
+        }
+
+        console.log(`[selectEngineInstance] tab=${tabId.slice(0, 8)} instance=${instanceId} reconciledStatus=${newStatus}`)
+
+        set((state) => ({
+          enginePanes: panes,
+          tabs: state.tabs.map((t) => {
+            if (t.id !== tabId) return t
+            const updates: Partial<typeof t> = { status: newStatus }
+            if (lastConvId && t.conversationId !== lastConvId) {
+              updates.conversationId = lastConvId
+              updates.lastKnownSessionId = lastConvId
+            }
+            return { ...t, ...updates }
+          }),
+        }))
+      } else {
+        // No status entry yet (instance just created, no events
+        // received) — update panes and conversationId only, leave
+        // tab.status unchanged.
+        console.log(`[selectEngineInstance] tab=${tabId.slice(0, 8)} instance=${instanceId} noStatusEntry, panes only`)
+        if (lastConvId) {
+          set((state) => ({
+            enginePanes: panes,
+            tabs: state.tabs.map((t) => {
+              if (t.id !== tabId) return t
+              if (t.conversationId === lastConvId) return { ...t }
+              return { ...t, conversationId: lastConvId, lastKnownSessionId: lastConvId }
+            }),
+          }))
+        } else {
+          set({ enginePanes: panes })
+        }
+      }
     },
 
     renameEngineInstance: (tabId, instanceId, label) => {

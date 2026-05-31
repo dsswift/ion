@@ -2,8 +2,9 @@ import React, { useCallback } from 'react'
 import { X, GitBranch, GitFork, FolderSimple, PushPin } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
+import { useSessionStore } from '../stores/sessionStore'
 import type { TabState } from '../../shared/types'
-import { getWaitingState, formatRelativeShort } from './TabStripShared'
+import { getWaitingState, isAnyEngineInstanceRunning, formatRelativeShort } from './TabStripShared'
 import { StatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 
@@ -56,8 +57,19 @@ export function TabPill({
   const gitOpsMode = usePreferencesStore((s) => s.gitOpsMode)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
 
+  // Subscribe to engineStatusFields so this component re-renders when
+  // any engine instance's state changes (e.g. running → idle). Without
+  // this, isAnyEngineInstanceRunning reads stale getState() data. Only
+  // engine tabs need this subscription — CLI tabs never touch the map.
+  useSessionStore((s) => tab.isEngine ? s.engineStatusFields : null)
+
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const displayTitle = tab.customTitle || tab.title
+
+  // For engine tabs, check if any sub-tab instance is running so the
+  // main tab pill pulses even when the active instance is idle.
+  const anyInstanceRunning = tab.isEngine && isAnyEngineInstanceRunning(tab.id)
+  const effectiveStatus = (anyInstanceRunning && !isRunning) ? 'running' as const : tab.status
 
   // Derive waiting-for-user state from permission denials
   const waitingState = getWaitingState(tab)
@@ -117,7 +129,7 @@ export function TabPill({
           onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
         }}
       >
-        <StatusDot status={tab.status} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} />
+        <StatusDot status={effectiveStatus} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} />
       </span>
       {tab.groupPinned && tabGroupMode === 'manual' && (
         <PushPin size={10} color={colors.textTertiary} className="flex-shrink-0" style={{ opacity: 0.7 }} />

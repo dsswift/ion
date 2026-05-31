@@ -49,16 +49,19 @@ struct EngineInstanceBar: View {
             viewModel.selectEngineInstance(tabId: tabId, instanceId: instance.id)
         } label: {
             HStack(spacing: 4) {
-                // Per-instance waiting-state dot. Desktop maps the value
-                // to "question" (AskUserQuestion pending) or "plan-ready"
-                // (ExitPlanMode pending) per the snapshot contract. Color
-                // and semantic priority mirror the desktop palette
-                // (yellow/orange for question, green for plan-ready).
-                // When nil, no dot is shown.
+                // Per-instance status dot. Priority:
+                // 1. waitingState (question → blue, plan-ready → green)
+                //    Colors match TabRowView.statusInfo and desktop
+                //    EngineStatusBar palette: blue (#4A9EF5) for question,
+                //    green for plan-ready.
+                // 2. isRunning → pulsing orange (matches tab-list running dot)
+                // 3. Neither → no dot shown
                 if let ws = instance.waitingState {
                     Circle()
-                        .fill(ws == "question" ? Color.orange : Color.green)
+                        .fill(ws == "question" ? Color(hex: 0x4A9EF5) : Color.green)
                         .frame(width: 6, height: 6)
+                } else if instance.isRunning == true {
+                    InstancePulsingDot()
                 }
                 Image(systemName: "bolt")
                     .font(.caption2)
@@ -111,5 +114,25 @@ struct EngineInstanceBar: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - InstancePulsingDot
+
+/// Small pulsing orange dot for running engine instances. Matches the
+/// pulse animation from `TabRowView` (1.5s easeInOut, opacity 1→0.3).
+private struct InstancePulsingDot: View {
+    @State private var pulseOpacity: Double = 1.0
+
+    var body: some View {
+        Circle()
+            .fill(IonTheme.statusRunning)
+            .frame(width: 6, height: 6)
+            .opacity(pulseOpacity)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                    pulseOpacity = 0.3
+                }
+            }
     }
 }

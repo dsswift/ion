@@ -57,6 +57,13 @@ struct EngineInstanceInfo: Codable, Identifiable, Sendable {
     /// through `permissionQueue` on the enclosing `RemoteTabState` (the
     /// desktop promotes the active instance's denial into that queue).
     var waitingState: String? = nil
+    /// Per-engine-instance running state, decoded from the desktop snapshot.
+    /// `true` when the instance's engine state is `running`, `connecting`,
+    /// or `starting`. `EngineInstanceBar` renders a pulsing orange dot when
+    /// this is true and no `waitingState` is set. The parent tab's overall
+    /// status is aggregated by the snapshot — if any instance is running,
+    /// `RemoteTabState.status` is promoted to `.running`.
+    var isRunning: Bool? = nil
 }
 
 // MARK: - PermissionMode

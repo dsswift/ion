@@ -244,6 +244,16 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
           extensions: profile.extensions,
           workingDirectory: st.workingDirectory,
           ...(instSessionId ? { sessionId: instSessionId } : {}),
+        }).then(() => {
+          // Sync plan mode to the engine after the session exists.
+          // The engine creates fresh sessions with planMode=false;
+          // without this, a restored plan-mode tab loses its engine
+          // plan mode state until the next submitEnginePrompt fires
+          // the belt-and-suspenders sync.
+          if (st.permissionMode === 'plan') {
+            console.log(`[restore] syncing plan mode to engine for ${key}`)
+            window.ion.engineSetPlanMode(key, true)
+          }
         }).catch((err: { message?: string }) => {
           console.error(`[restore] engine start failed for ${key}: ${err.message}`)
         })

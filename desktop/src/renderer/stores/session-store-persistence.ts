@@ -238,7 +238,22 @@ export function setupPersistence(useSessionStore: Store): void {
           return p && t.id === p.id && t.permissionDenied !== p.permissionDenied
         })) ||
         state.enginePermissionDenied !== prev.enginePermissionDenied
-      if (permissionDeniedChanged) {
+
+      // Flush immediately when a CLI tab captures its first conversationId.
+      // The engine event slice already does this for engine tabs via
+      // __ionForceFlushTabs (engine-event-slice.ts:126–142). For CLI tabs,
+      // session_init sets conversationId inside the Zustand reducer
+      // (event-slice.ts), and the normal 100ms debounce creates a window
+      // where a hard kill (SIGUSR1 drain → app.exit, laptop lid close)
+      // drops the session ID — making the tab irrecoverable on restart
+      // (conversationId: null → sessionless blank tab path).
+      const conversationIdCaptured =
+        state.tabs !== prev.tabs && state.tabs.some((t, i) => {
+          const p = prev.tabs[i]
+          return p && t.id === p.id && !p.conversationId && !!t.conversationId
+        })
+
+      if (permissionDeniedChanged || conversationIdCaptured) {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
         persistTabs(useSessionStore)
         return

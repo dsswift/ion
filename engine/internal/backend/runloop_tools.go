@@ -254,11 +254,19 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Intercept ExitPlanMode sentinel — only during plan-mode runs.
-			// In auto mode the LLM may hallucinate this call from conversation
-			// history; let it fall through to "Unknown tool" so it self-corrects.
-			if run.planMode && block.Name == tools.ExitPlanModeName {
-				utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool plan_file=%s", run.requestID, run.planFilePath))
+			// Intercept ExitPlanMode sentinel — in any mode. When
+			// run.planMode is true, this is the normal plan-mode exit
+			// flow. When run.planMode is false, the model is following
+			// prompt-level plan mode instructions (e.g. from AGENTS.md
+			// context) rather than the engine's plan mode machinery.
+			// Either way, intercept the call so the model never sees an
+			// "Unknown tool" / "not found" error for ExitPlanMode.
+			if block.Name == tools.ExitPlanModeName {
+				if !run.planMode {
+					utils.Warn("PlanMode", fmt.Sprintf("run=%s exit_tool called outside engine plan mode (prompt-level plan mode detected) plan_file=%s", run.requestID, run.planFilePath))
+				} else {
+					utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool plan_file=%s", run.requestID, run.planFilePath))
+				}
 
 				// Fire before_plan_mode_exit hook so extensions can veto.
 				exitAllowed := true

@@ -40,11 +40,13 @@ export function InactiveGroupMenu({
   const [newGroupName, setNewGroupName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
+  const confirmDialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node) &&
-          (!submenuRef.current || !submenuRef.current.contains(e.target as Node))) { setMoveSubmenu(null); onClose() }
+          (!submenuRef.current || !submenuRef.current.contains(e.target as Node)) &&
+          (!confirmDialogRef.current || !confirmDialogRef.current.contains(e.target as Node))) { setMoveSubmenu(null); onClose() }
     }
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setMoveSubmenu(null); onClose() }
@@ -159,6 +161,7 @@ export function InactiveGroupMenu({
       )}
       </motion.div>
       {pendingMoveAll && (
+        <div ref={confirmDialogRef}>
         <ConfirmDialog
           title="Move all tabs?"
           message={`Move all ${group.tabs.length} tab${group.tabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
@@ -177,6 +180,7 @@ export function InactiveGroupMenu({
             onClose()
           }}
         />
+        </div>
       )}
     </>,
     popoverLayer,

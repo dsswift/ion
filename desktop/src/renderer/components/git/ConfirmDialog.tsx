@@ -42,6 +42,7 @@ export function ConfirmDialog({
         justifyContent: 'center',
         background: 'rgba(0,0,0,0.4)',
         zIndex: 10000,
+        pointerEvents: 'auto',
       }}
       onClick={onCancel}
     >

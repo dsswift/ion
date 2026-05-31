@@ -71,6 +71,7 @@ export function TabContextMenu({
   const [newGroupName, setNewGroupName] = useState('')
   const newGroupInputRef = useRef<HTMLInputElement>(null)
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
+  const confirmDialogRef = useRef<HTMLDivElement>(null)
 
   const showMoveAll = groupTabs && groupTabs.length > 1
   const [isGitRepo, setIsGitRepo] = useState(false)
@@ -90,7 +91,8 @@ export function TabContextMenu({
       if (ref.current && !ref.current.contains(e.target as Node) &&
           (!submenuRef.current || !submenuRef.current.contains(e.target as Node)) &&
           (!movePinSubmenuRef.current || !movePinSubmenuRef.current.contains(e.target as Node)) &&
-          (!moveAllSubmenuRef.current || !moveAllSubmenuRef.current.contains(e.target as Node))) { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
+          (!moveAllSubmenuRef.current || !moveAllSubmenuRef.current.contains(e.target as Node)) &&
+          (!confirmDialogRef.current || !confirmDialogRef.current.contains(e.target as Node))) { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
     }
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
@@ -398,6 +400,7 @@ export function TabContextMenu({
       )}
     </motion.div>
     {pendingMoveAll && groupTabs && (
+      <div ref={confirmDialogRef}>
       <ConfirmDialog
         title="Move all tabs?"
         message={`Move all ${groupTabs.length} tab${groupTabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
@@ -416,6 +419,7 @@ export function TabContextMenu({
           onClose()
         }}
       />
+      </div>
     )}
     </>,
     popoverLayer,

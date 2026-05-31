@@ -61,6 +61,12 @@ desktop/src/
 - Framer Motion for animations.
 - Narrow Zustand selectors with custom equality functions; avoid whole-store subscriptions.
 
+## PopoverLayer and pointer events
+
+The `PopoverLayer` has `pointerEvents: 'none'` so it doesn't block interaction with the page beneath it. Any element portaled into it (context menus, dialogs, tooltips) must set `pointerEvents: 'auto'` on its outermost interactive container or clicks will silently pass through.
+
+Context-menu components already do this on their `motion.div`. The `ConfirmDialog` component sets it on its backdrop. If you create a new overlay component that portals into `PopoverLayer`, add `pointerEvents: 'auto'` to its root — without it the component will render but be completely non-interactable with no visible error.
+
 ## Subprocess env
 
 - `CLAUDECODE` and similar leakage env vars are stripped before spawn (`main/cli-env.ts`). Don't bypass.
@@ -123,3 +129,4 @@ If a Go struct gained a field you don't have, the test says `"Go-only: [fieldNam
 3. `make check-file-sizes` passes.
 4. UI changes: smoke-tested in `npm run dev`. Report what was tested.
 5. Don't `git push`.
+6. **iOS parity check.** If the change affects a feature that exists on iOS (tab status, engine instances, permissions, working state), verify the iOS side is updated or document why it's deferred. See root `AGENTS.md` § "Cross-platform parity".

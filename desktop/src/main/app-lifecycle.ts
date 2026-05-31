@@ -14,6 +14,25 @@ function log(msg: string): void {
   _log('main', msg)
 }
 
+/**
+ * Force the renderer to flush any pending debounced tab persistence.
+ * The Zustand store debounces persistTabs() at 100ms — if we call
+ * app.exit(0) before the timer fires, the latest tab state (including
+ * conversationId, titles, etc.) is lost. This mirrors the pattern used
+ * by SWITCH_BACKEND in ipc/settings.ts.
+ */
+async function flushRendererTabs(): Promise<void> {
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      await win.webContents.executeJavaScript(
+        'window.__ionForceFlushTabs && window.__ionForceFlushTabs()',
+      )
+    } catch {
+      // Window may already be destroyed or renderer unresponsive — safe to skip.
+    }
+  }
+}
+
 export function setupAppLifecycle(): void {
   app.whenReady().then(async () => {
     if (process.platform === 'darwin' && app.dock) {
@@ -125,8 +144,9 @@ export function setupAppLifecycle(): void {
 
   process.on('SIGUSR1', () => {
     log('SIGUSR1 received — draining active work before quit')
-    const timeout = setTimeout(() => {
+    const timeout = setTimeout(async () => {
       log('Drain timeout (5min) — force quitting')
+      await flushRendererTabs()
       state.forceQuit = true
       terminalManager.destroyAll()
       engineBridge.stopAll()
@@ -138,9 +158,10 @@ export function setupAppLifecycle(): void {
       app.exit(0)
     }, 5 * 60 * 1000)
 
-    sessionPlane.drain(() => bashProcesses.size > 0).then(() => {
+    sessionPlane.drain(() => bashProcesses.size > 0).then(async () => {
       clearTimeout(timeout)
       log('All agents finished — quitting')
+      await flushRendererTabs()
       state.forceQuit = true
       terminalManager.destroyAll()
       engineBridge.stopAll()

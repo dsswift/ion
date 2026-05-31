@@ -109,6 +109,34 @@ Engine executes, harness decides. Engine never blocks for user input, never pers
 
 When labeling work: engine, harness, or client. If a harness gap is caused by missing engine capability, note both.
 
+## Cross-platform parity (desktop ↔ iOS)
+
+Desktop and iOS are co-equal clients. When a desktop change touches a feature that also exists on iOS, **you must assess the iOS impact before considering the work complete.**
+
+### Checklist for every desktop UI/state change
+
+1. **Does this feature exist on iOS?** Check `ios/IonRemote/Views/` and `ios/IonRemote/ViewModels/` for the iOS counterpart.
+2. **If yes:** update the iOS side in the same PR, or document why it's deferred.
+3. **If the feature can't translate to iOS** (no physical space, no interaction model): document the trade-off. Consider an alternate iOS-appropriate rendering before deciding to skip.
+4. **If state flows through the snapshot** (`desktop/src/main/remote/snapshot.ts`): check whether the snapshot projection needs updating. The snapshot is the bridge — iOS can only see what the snapshot sends.
+
+### Common parity surfaces
+
+| Desktop | iOS counterpart | Sync path |
+|---------|----------------|-----------|
+| Tab status dot (TabStripTabPill, StatusDot) | Tab list dot (TabRowView.statusInfo) | `snapshot.ts` → `RemoteTabState.status` |
+| Engine instance bar (EngineStatusBar) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.engineInstances` |
+| Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `engineInstances` |
+| Tab group pills | Tab group sections | `snapshot.ts` → group fields on `RemoteTabState` |
+| Thinking indicator / interrupt button | Activity indicator / interrupt button | Real-time events (`engineTextDelta`, `tabStatus`) |
+
+### When to skip iOS
+
+Only when the interface physically cannot work on iOS (e.g. a keyboard-only interaction, a desktop window management feature, or a rendering surface that doesn't exist on mobile). In that case:
+- Note in the PR description why iOS was skipped.
+- Consider whether an alternate mobile-appropriate rendering exists.
+- At minimum, ensure the iOS app doesn't break or show stale data because of the desktop change.
+
 ## Contract stability (never break the client)
 
 The client is the consumer of the Ion engine — desktop, iOS, and harness extensions all depend on published contracts. **Never ship a breaking change to a published contract.**
