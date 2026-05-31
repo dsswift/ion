@@ -365,7 +365,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       set({ engineModelOverrides: overrides })
     },
 
-    submitEnginePrompt: (tabId, text, appendSystemPrompt, imageAttachments, rawAttachments) => {
+    submitEnginePrompt: (tabId, text, appendSystemPrompt, imageAttachments, rawAttachments, implementationPhase) => {
       const pane = get().enginePanes.get(tabId)
       const instanceId = pane?.activeInstanceId
       if (!instanceId) return
@@ -421,7 +421,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       })
       const prefs = usePreferencesStore.getState()
       const modelOverride = get().engineModelOverrides.get(key) || prefs.engineDefaultModel || prefs.preferredModel || undefined
-      window.ion.enginePrompt(key, text, modelOverride, appendSystemPrompt, imageAttachments, rawAttachments).then((result) => {
+      window.ion.enginePrompt(key, text, modelOverride, appendSystemPrompt, imageAttachments, rawAttachments, implementationPhase).then((result) => {
         if (result && !result.ok) {
           set((state) => {
             const messages = new Map(state.engineMessages)
