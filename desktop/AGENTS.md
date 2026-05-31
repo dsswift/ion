@@ -129,3 +129,4 @@ If a Go struct gained a field you don't have, the test says `"Go-only: [fieldNam
 3. `make check-file-sizes` passes.
 4. UI changes: smoke-tested in `npm run dev`. Report what was tested.
 5. Don't `git push`.
+6. **iOS parity check.** If the change affects a feature that exists on iOS (tab status, engine instances, permissions, working state), verify the iOS side is updated or document why it's deferred. See root `AGENTS.md` § "Cross-platform parity".
