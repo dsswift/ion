@@ -36,7 +36,7 @@ protocol AppTheme {
 
 /// Central list of all available themes. Add new themes here.
 enum ThemeRegistry {
-    static let themes: [any AppTheme] = [
+    nonisolated(unsafe) static let themes: [any AppTheme] = [
         IonDefaultTheme(),
         JarvisArcReactorTheme(),
     ]
@@ -49,7 +49,7 @@ enum ThemeRegistry {
 // MARK: - Environment Key
 
 private struct AppThemeKey: EnvironmentKey {
-    static let defaultValue: any AppTheme = IonDefaultTheme()
+    nonisolated(unsafe) static let defaultValue: any AppTheme = IonDefaultTheme()
 }
 
 extension EnvironmentValues {
