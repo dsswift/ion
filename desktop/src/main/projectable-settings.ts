@@ -166,7 +166,7 @@ export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = [
     group: 'workflow',
     label: 'Claude Code commands',
     description:
-      'Resolve project-local .claude/commands/*.md templates when a slash command does not match a registered extension command.',
+      'Resolve .claude/commands/*.md and .claude/skills/ templates when a slash command does not match a registered extension command. Commands in .ion/commands/ are always available.',
     defaultValue: true,
   },
   {

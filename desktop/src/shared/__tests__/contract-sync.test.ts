@@ -105,6 +105,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'totalCostUsd',
   ],
   EngineConfig: [
+    'claudeCompat',
     'extensions',
     'maxTokens',
     'model',

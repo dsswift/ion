@@ -10,10 +10,11 @@
  *      its own extension-command table; the desktop is purely a courier
  *      here.
  *
- *   2. `tryExpandMarkdownSlash` — looks up a project-local
- *      `.claude/commands/<name>.md` template and (when found) returns
- *      the expanded user/system prompt pair. Gated behind the
- *      `enableClaudeCompat` setting.
+ *   2. `tryExpandMarkdownSlash` — expands a `.md` template into a
+ *      user/system prompt pair. Ion-native paths (`.ion/commands/`) are
+ *      always probed; Claude-compat paths (`.claude/commands/`,
+ *      `.claude/skills/`) are only probed when `enableClaudeCompat` is
+ *      enabled in settings.
  *
  * Neither helper calls back into the orchestrator. `tryExpandMarkdownSlash`
  * used to mutate the in-flight `IncomingPrompt` and recurse into
@@ -90,10 +91,12 @@ export async function dispatchExtensionCommand(
 }
 
 /**
- * Try to expand a parsed slash as a project-local `.md` template (the
- * Claude-Code-compat path). Returns the expanded user/system prompt pair
- * on success and `null` when no expansion occurred (feature disabled or
- * no template found).
+ * Try to expand a parsed slash as a `.md` template. Ion-native paths
+ * (`.ion/commands/`) are always probed first. Claude-compat paths
+ * (`.claude/commands/`, `.claude/skills/`) are probed only when the
+ * `enableClaudeCompat` setting is enabled. Returns the expanded
+ * user/system prompt pair on success, or `null` when no expansion
+ * occurred (no matching template in any searched path).
  *
  * Side effects: on a successful expansion this function flips the tab's
  * permission mode to `'auto'` and broadcasts the change to remote
@@ -116,23 +119,37 @@ export async function tryExpandMarkdownSlash(
   slash: ParsedSlash,
   projectPath: string | undefined,
 ): Promise<ExpansionResult | null> {
+  const rebuilt = '/' + slash.command + (slash.args ? ' ' + slash.args : '')
+
+  // 1. Always try Ion-native paths (.ion/commands/) — not gated
+  const ionExpansion = await expandSlashCommand(rebuilt, projectPath, 'ion')
+  if (ionExpansion.expanded) {
+    log(`pipeline: .ion/ expanded /${slash.command} → userLen=${ionExpansion.userPrompt.length} sysLen=${ionExpansion.systemPrompt.length}`)
+    sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
+    broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
+    return {
+      userPrompt: ionExpansion.userPrompt,
+      systemPrompt: ionExpansion.systemPrompt,
+    }
+  }
+
+  // 2. Try Claude-compat paths (.claude/commands/, .claude/skills/) — gated
   let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
   try {
     const s = readSettings()
     claudeCompat = s.enableClaudeCompat ?? claudeCompat
   } catch { /* default */ }
   if (!claudeCompat) {
-    log(`pipeline: .md expansion disabled by settings, name=${slash.command}`)
+    log(`pipeline: .md expansion skipped (.claude/ gated off), name=${slash.command}`)
     return null
   }
 
-  const rebuilt = '/' + slash.command + (slash.args ? ' ' + slash.args : '')
-  const expansion = await expandSlashCommand(rebuilt, projectPath)
-  if (!expansion.expanded) {
+  const claudeExpansion = await expandSlashCommand(rebuilt, projectPath, 'claude')
+  if (!claudeExpansion.expanded) {
     log(`pipeline: no .md expansion for /${slash.command}`)
     return null
   }
-  log(`pipeline: .md expanded /${slash.command} → userLen=${expansion.userPrompt.length} sysLen=${expansion.systemPrompt.length}`)
+  log(`pipeline: .claude/ expanded /${slash.command} → userLen=${claudeExpansion.userPrompt.length} sysLen=${claudeExpansion.systemPrompt.length}`)
 
   // Auto-switch permission mode to 'auto' (matches legacy
   // applySlashExpansion semantics). The flip lives here rather than in
@@ -145,7 +162,7 @@ export async function tryExpandMarkdownSlash(
   broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
 
   return {
-    userPrompt: expansion.userPrompt,
-    systemPrompt: expansion.systemPrompt,
+    userPrompt: claudeExpansion.userPrompt,
+    systemPrompt: claudeExpansion.systemPrompt,
   }
 }

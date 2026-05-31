@@ -1,9 +1,10 @@
 /**
  * Slash Command Expansion Tests
  *
- * Validates that filesystem-based slash commands (~/.claude/commands,
- * {project}/.claude/commands, ~/.claude/skills) are correctly resolved,
- * frontmatter-stripped, $ARGUMENTS-replaced, and returned as system prompts.
+ * Validates that filesystem-based slash commands (~/.ion/commands,
+ * {project}/.ion/commands, ~/.claude/commands, {project}/.claude/commands,
+ * ~/.claude/skills) are correctly resolved, frontmatter-stripped,
+ * $ARGUMENTS-replaced, and returned as system prompts.
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -36,8 +37,19 @@ import { expandSlashCommand, stripFrontmatter } from '../cli-compat/slash-expand
 
 // ─── Fixtures ───
 
+/** Write a .claude/commands/ template file. */
 function writeCommand(base: string, name: string, content: string): void {
   const dir = join(base, '.claude', 'commands')
+  const filePath = name.replace(/:/g, '/') + '.md'
+  const fullPath = join(dir, filePath)
+  const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'))
+  mkdirSync(parentDir, { recursive: true })
+  writeFileSync(fullPath, content)
+}
+
+/** Write a .ion/commands/ template file. */
+function writeIonCommand(base: string, name: string, content: string): void {
+  const dir = join(base, '.ion', 'commands')
   const filePath = name.replace(/:/g, '/') + '.md'
   const fullPath = join(dir, filePath)
   const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'))
@@ -313,6 +325,178 @@ describe('expandSlashCommand', () => {
     const expectedSuffix = '\n\nARGUMENTS: check everything'
     expect(result.userPrompt.endsWith(expectedSuffix)).toBe(true)
     expect(result.userPrompt).not.toContain('$ARGUMENTS')
+  })
+})
+
+describe('expandSlashCommand — .ion/commands/ support', () => {
+  // TC-SE-ION-001
+  it('expands user .ion/commands/ template', async () => {
+    writeIonCommand(fakeHome, 'greet', 'Hello from ion: $ARGUMENTS')
+    const result = await expandSlashCommand('/greet world', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Hello from ion: world')
+  })
+
+  // TC-SE-ION-002
+  it('expands project .ion/commands/ template', async () => {
+    writeIonCommand(projectDir, 'build', 'Project ion build: $ARGUMENTS')
+    const result = await expandSlashCommand('/build release', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Project ion build: release')
+  })
+
+  // TC-SE-ION-003
+  it('ion project commands take priority over ion user commands', async () => {
+    writeIonCommand(fakeHome, 'lint', 'USER ion lint: $ARGUMENTS')
+    writeIonCommand(projectDir, 'lint', 'PROJECT ion lint: $ARGUMENTS')
+    const result = await expandSlashCommand('/lint strict', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('PROJECT ion lint: strict')
+  })
+
+  // TC-SE-ION-004
+  it('ion commands take priority over claude commands', async () => {
+    writeCommand(fakeHome, 'check', 'Claude check: $ARGUMENTS')
+    writeIonCommand(fakeHome, 'check', 'Ion check: $ARGUMENTS')
+    const result = await expandSlashCommand('/check all', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Ion check: all')
+  })
+
+  // TC-SE-ION-005
+  it('ion project commands take priority over claude project commands', async () => {
+    writeCommand(projectDir, 'fmt', 'Claude project fmt: $ARGUMENTS')
+    writeIonCommand(projectDir, 'fmt', 'Ion project fmt: $ARGUMENTS')
+    const result = await expandSlashCommand('/fmt src/', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Ion project fmt: src/')
+  })
+
+  // TC-SE-ION-006
+  it('scope=ion only probes ion paths', async () => {
+    writeCommand(fakeHome, 'only-claude', 'Claude only: $ARGUMENTS')
+    const miss = await expandSlashCommand('/only-claude x', projectDir, 'ion')
+    expect(miss.expanded).toBe(false)
+
+    writeIonCommand(fakeHome, 'only-claude', 'Ion only: $ARGUMENTS')
+    const hit = await expandSlashCommand('/only-claude x', projectDir, 'ion')
+    expect(hit.expanded).toBe(true)
+    if (!hit.expanded) return
+    expect(hit.userPrompt).toBe('Ion only: x')
+  })
+
+  // TC-SE-ION-007
+  it('scope=claude only probes claude paths', async () => {
+    writeIonCommand(fakeHome, 'only-ion', 'Ion only: $ARGUMENTS')
+    const miss = await expandSlashCommand('/only-ion x', projectDir, 'claude')
+    expect(miss.expanded).toBe(false)
+
+    writeCommand(fakeHome, 'only-ion', 'Claude only: $ARGUMENTS')
+    const hit = await expandSlashCommand('/only-ion x', projectDir, 'claude')
+    expect(hit.expanded).toBe(true)
+    if (!hit.expanded) return
+    expect(hit.userPrompt).toBe('Claude only: x')
+  })
+
+  // TC-SE-ION-008
+  it('scope=all probes both ion and claude (ion wins)', async () => {
+    writeIonCommand(fakeHome, 'dual', 'Ion dual content')
+    writeCommand(fakeHome, 'dual', 'Claude dual content')
+    const result = await expandSlashCommand('/dual', projectDir, 'all')
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Ion dual content')
+  })
+
+  // TC-SE-ION-009
+  it('ion commands support colon-delimited subdirectory names', async () => {
+    writeIonCommand(fakeHome, 'e2e:setup', 'Ion e2e setup: $ARGUMENTS')
+    const result = await expandSlashCommand('/e2e:setup feature-x', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Ion e2e setup: feature-x')
+  })
+
+  // TC-SE-ION-010
+  it('ion commands handle $ARGUMENTS substitution', async () => {
+    writeIonCommand(fakeHome, 'sub', 'A=$ARGUMENTS B=$ARGUMENTS')
+    const result = await expandSlashCommand('/sub val', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('A=val B=val')
+  })
+
+  // TC-SE-ION-011
+  it('ion commands append ARGUMENTS suffix when no placeholder', async () => {
+    writeIonCommand(fakeHome, 'noplc', 'Fixed instructions only.')
+    const result = await expandSlashCommand('/noplc extra stuff', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Fixed instructions only.\n\nARGUMENTS: extra stuff')
+  })
+
+  // TC-SE-ION-012
+  it('ion commands handle frontmatter stripping', async () => {
+    writeIonCommand(fakeHome, 'fmion', '---\ndescription: Ion cmd\n---\nIon body: $ARGUMENTS')
+    const result = await expandSlashCommand('/fmion data', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('Ion body: data')
+    expect(result.userPrompt).not.toContain('---')
+    expect(result.userPrompt).not.toContain('description:')
+  })
+
+  // TC-SE-ION-013
+  it('ion commands work without projectPath', async () => {
+    writeIonCommand(fakeHome, 'noproj', 'No project: $ARGUMENTS')
+    const result = await expandSlashCommand('/noproj args')
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+    expect(result.userPrompt).toBe('No project: args')
+  })
+
+  // TC-SE-ION-014
+  it('full priority chain with all sources', async () => {
+    // Populate all five candidate locations with distinct content
+    writeIonCommand(projectDir, 'chain', 'ion-project')     // 1st
+    writeIonCommand(fakeHome, 'chain', 'ion-user')           // 2nd
+    writeCommand(projectDir, 'chain', 'claude-project')      // 3rd
+    writeCommand(fakeHome, 'chain', 'claude-user')           // 4th
+    writeSkill(fakeHome, 'chain', 'claude-skill')            // 5th
+
+    // ion project wins
+    let r = await expandSlashCommand('/chain', projectDir, 'all')
+    expect(r.expanded).toBe(true)
+    if (r.expanded) expect(r.userPrompt).toBe('ion-project')
+
+    // Remove ion project → ion user wins
+    rmSync(join(projectDir, '.ion'), { recursive: true, force: true })
+    r = await expandSlashCommand('/chain', projectDir, 'all')
+    expect(r.expanded).toBe(true)
+    if (r.expanded) expect(r.userPrompt).toBe('ion-user')
+
+    // Remove ion user → claude project wins
+    rmSync(join(fakeHome, '.ion'), { recursive: true, force: true })
+    r = await expandSlashCommand('/chain', projectDir, 'all')
+    expect(r.expanded).toBe(true)
+    if (r.expanded) expect(r.userPrompt).toBe('claude-project')
+
+    // Remove claude project → claude user wins
+    rmSync(join(projectDir, '.claude'), { recursive: true, force: true })
+    r = await expandSlashCommand('/chain', projectDir, 'all')
+    expect(r.expanded).toBe(true)
+    if (r.expanded) expect(r.userPrompt).toBe('claude-user')
+
+    // Remove claude user commands → claude skill wins
+    rmSync(join(fakeHome, '.claude', 'commands'), { recursive: true, force: true })
+    r = await expandSlashCommand('/chain', projectDir, 'all')
+    expect(r.expanded).toBe(true)
+    if (r.expanded) expect(r.userPrompt).toBe('claude-skill')
   })
 })
 

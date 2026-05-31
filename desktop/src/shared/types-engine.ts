@@ -24,6 +24,13 @@ export interface EngineConfig {
    * paths.
    */
   workspaceWatchIgnore?: string[]
+  /**
+   * Enable Claude Code compatibility features — loading skills from
+   * `~/.claude/skills/` on the engine side, and expanding `.claude/commands/`
+   * templates on the desktop side. When false or absent, only Ion-native
+   * `.ion/` paths are active.
+   */
+  claudeCompat?: boolean
 }
 
 export interface EngineInstance {

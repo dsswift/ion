@@ -17,10 +17,17 @@ function log(msg: string): void {
 /**
  * Expand a slash command prompt into system prompt + user arguments.
  *
- * Resolution priority:
- *   1. {projectPath}/.claude/commands/{name}.md   (project scope)
- *   2. ~/.claude/commands/{name}.md               (user scope)
- *   3. ~/.claude/skills/{name}/SKILL.md           (user scope)
+ * Resolution priority (when scope is 'all'):
+ *   1. {projectPath}/.ion/commands/{name}.md      (project scope, Ion-native)
+ *   2. ~/.ion/commands/{name}.md                  (user scope, Ion-native)
+ *   3. {projectPath}/.claude/commands/{name}.md   (project scope, Claude compat)
+ *   4. ~/.claude/commands/{name}.md               (user scope, Claude compat)
+ *   5. ~/.claude/skills/{name}/SKILL.md           (user scope, Claude compat)
+ *
+ * The `scope` parameter controls which subset of paths is probed:
+ *   - `'ion'`   → only `.ion/commands/` paths (1–2)
+ *   - `'claude'`→ only `.claude/commands/` + `.claude/skills/` paths (3–5)
+ *   - `'all'`   → both, ion first then claude (default, backward-compat)
  *
  * Colon-delimited names (e.g. `e2e:setup`) resolve to subdirectory paths
  * (`e2e/setup.md`).
@@ -40,6 +47,7 @@ function log(msg: string): void {
 export async function expandSlashCommand(
   prompt: string,
   projectPath?: string,
+  scope: 'ion' | 'claude' | 'all' = 'all',
 ): Promise<SlashExpansion> {
   const match = prompt.match(SLASH_RE)
   if (!match) return { expanded: false }
@@ -47,7 +55,7 @@ export async function expandSlashCommand(
   const commandName = match[1]
   const args = match[2].trim()
 
-  log(`command=${commandName} argsLen=${args.length}`)
+  log(`command=${commandName} argsLen=${args.length} scope=${scope}`)
 
   // Convert colon-delimited names to path separators
   const filePath = commandName.replace(/:/g, '/') + '.md'
@@ -55,18 +63,29 @@ export async function expandSlashCommand(
   const home = homedir()
   const candidates: string[] = []
 
-  // 1. Project scope (highest priority)
-  if (projectPath) {
-    candidates.push(join(projectPath, '.claude', 'commands', filePath))
+  const includeIon = scope === 'ion' || scope === 'all'
+  const includeClaude = scope === 'claude' || scope === 'all'
+
+  // Ion-native paths (highest priority)
+  if (includeIon) {
+    if (projectPath) {
+      candidates.push(join(projectPath, '.ion', 'commands', filePath))
+    }
+    candidates.push(join(home, '.ion', 'commands', filePath))
   }
 
-  // 2. User scope commands
-  candidates.push(join(home, '.claude', 'commands', filePath))
+  // Claude-compat paths
+  if (includeClaude) {
+    if (projectPath) {
+      candidates.push(join(projectPath, '.claude', 'commands', filePath))
+    }
+    candidates.push(join(home, '.claude', 'commands', filePath))
 
-  // 3. User scope skills (SKILL.md inside named directory)
-  // Only for non-colon names (skills are flat directories)
-  if (!commandName.includes(':')) {
-    candidates.push(join(home, '.claude', 'skills', commandName, 'SKILL.md'))
+    // User scope skills (SKILL.md inside named directory)
+    // Only for non-colon names (skills are flat directories)
+    if (!commandName.includes(':')) {
+      candidates.push(join(home, '.claude', 'skills', commandName, 'SKILL.md'))
+    }
   }
 
   log(`candidates=${candidates.length}`)

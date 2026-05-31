@@ -7,18 +7,38 @@ export type { DiscoveredCommand }
 
 /**
  * Discover slash commands from user and project command/skill directories.
- * Scans ~/.claude/commands, ~/.claude/skills, and {projectPath}/.claude/commands.
+ *
+ * Ion-native paths (~/.ion/commands, {project}/.ion/commands) are always
+ * scanned. Claude-compat paths (~/.claude/commands, ~/.claude/skills,
+ * {project}/.claude/commands) are scanned unconditionally here — the
+ * compat gate lives at expansion time in slash-classify.ts, not at
+ * discovery time. This keeps the autocomplete list complete regardless
+ * of the gate setting.
  */
 export async function discoverCommands(projectPath: string): Promise<DiscoveredCommand[]> {
   const home = homedir()
 
-  const [userCommands, userSkills, projectCommands] = await Promise.all([
+  const [
+    ionUserCommands,
+    ionProjectCommands,
+    userCommands,
+    userSkills,
+    projectCommands,
+  ] = await Promise.all([
+    scanCommandDir(join(home, '.ion', 'commands'), 'user'),
+    scanCommandDir(join(projectPath, '.ion', 'commands'), 'project'),
     scanCommandDir(join(home, '.claude', 'commands'), 'user'),
     scanSkillsDir(join(home, '.claude', 'skills')),
     scanCommandDir(join(projectPath, '.claude', 'commands'), 'project'),
   ])
 
-  return [...userCommands, ...userSkills, ...projectCommands]
+  return [
+    ...ionProjectCommands,
+    ...ionUserCommands,
+    ...projectCommands,
+    ...userCommands,
+    ...userSkills,
+  ]
 }
 
 /** Check if a directory exists and is actually a directory. */

@@ -154,7 +154,7 @@ export function GeneralCategory() {
 
       <SettingToggle
         label="Claude Compatibility"
-        description="Load commands and skills from .claude/ directories in the project and home folder."
+        description="Load commands and skills from .claude/ directories. Commands in .ion/ directories are always loaded."
         checked={enableClaudeCompat}
         onChange={setEnableClaudeCompat}
       />

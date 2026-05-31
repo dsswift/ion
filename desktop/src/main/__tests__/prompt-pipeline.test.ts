@@ -266,7 +266,7 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
       runOptions: opts,
     })
     expect(mocks.sendCommandMock).toHaveBeenCalledWith('tab-1', 'ion--review', '138')
-    expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review 138', '/proj')
+    expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review 138', '/proj', 'ion')
     // Pipeline should mutate runOptions and then submit it.
     expect(opts.prompt).toBe('expanded body')
     expect(opts.appendSystemPrompt).toBe('sys')
@@ -405,7 +405,7 @@ describe('processIncomingPrompt — engine reports unknown_command, .md template
       isEngineTab: false,
       projectPath: '/Users/me/proj',
     })
-    expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review-changes 138,139', '/Users/me/proj')
+    expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review-changes 138,139', '/Users/me/proj', 'ion')
   })
 
   it('submits the expansion via REMOTE_USER_MESSAGE for remote-source CLI tabs', async () => {
@@ -521,8 +521,10 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
       runOptions: { prompt: '/no-such-command' } as any,
     })
     // .md expansion was attempted (then failed), so the unknown-command
-    // system message was emitted — NOT the divider.
-    expect(mocks.expandSlashMock).toHaveBeenCalledTimes(1)
+    // system message was emitted — NOT the divider. Two calls: ion scope
+    // first (always), then claude scope (gated, but enableClaudeCompat
+    // defaults to true in the mock settings).
+    expect(mocks.expandSlashMock).toHaveBeenCalledTimes(2)
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
     expect(calls.some((s: string) => s.includes('Unknown command: /no-such-command'))).toBe(true)
     expect(calls.every((s: string) => !s.includes('── Cleared'))).toBe(true)
