@@ -178,16 +178,30 @@ export function createWindow(): void {
       detail: 'Tip: Press ⌥Space to hide/show the app without quitting.',
     })
     if (choice === 0) {
-      state.forceQuit = true
-      terminalManager.destroyAll()
-      sessionPlane.shutdown()
-      globalShortcut.unregisterAll()
-      if (state.tray) {
-        state.tray.destroy()
-        state.tray = null
-      }
-      flushLogs()
-      app.exit(0)
+      // Flush renderer tab state before exiting — the Zustand store debounces
+      // persistTabs() at 100ms and app.exit(0) kills the renderer immediately,
+      // so any pending state (conversationId, titles, etc.) would be lost.
+      void (async () => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          try {
+            await win.webContents.executeJavaScript(
+              'window.__ionForceFlushTabs && window.__ionForceFlushTabs()',
+            )
+          } catch {
+            // Window may already be destroyed or renderer unresponsive.
+          }
+        }
+        state.forceQuit = true
+        terminalManager.destroyAll()
+        sessionPlane.shutdown()
+        globalShortcut.unregisterAll()
+        if (state.tray) {
+          state.tray.destroy()
+          state.tray = null
+        }
+        flushLogs()
+        app.exit(0)
+      })()
     }
   })
   mainWindow.on('close', (e) => {
