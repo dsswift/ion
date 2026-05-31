@@ -72,6 +72,8 @@ vi.mock('../session-store-helpers', () => ({
   })),
   nextMsgId: vi.fn(() => `msg-${Math.random()}`),
   playNotificationIfHidden: vi.fn(async () => {}),
+  cancelDoneGroupMove: vi.fn(() => false),
+  scheduleDoneGroupMove: vi.fn(),
 }))
 
 // Preferences store: supply enough to satisfy the auto-move guard.

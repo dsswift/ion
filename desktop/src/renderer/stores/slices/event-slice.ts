@@ -1,7 +1,7 @@
 import type { TabStatus } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { nextMsgId, playNotificationIfHidden, totalInputTokens } from '../session-store-helpers'
+import { nextMsgId, playNotificationIfHidden, totalInputTokens, scheduleDoneGroupMove } from '../session-store-helpers'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -279,24 +279,38 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 updated.permissionDenied = null
               }
               playNotificationIfHidden()
-              // Auto-move to done group on clean auto-mode completion
+              // Auto-move to done group on clean auto-mode completion.
+              // Scheduled with a delay so the tab is visible in the in-progress
+              // group before moving. The send-slice cancels pending done-moves
+              // if the user re-sends, so the tab stays in in-progress.
               // Guard: only move if tab was actually running (not a stale task_complete
               // from a killed session during resetTabSession → implement flow)
               if (tab.status === 'running' && updated.permissionMode === 'auto' && updated.permissionDenied === null) {
-                const capturedTabId2 = tabId
-                setTimeout(() => {
-                  const { autoGroupMovement, tabGroupMode, doneGroupId } = usePreferencesStore.getState()
-                  if (autoGroupMovement && tabGroupMode === 'manual' && doneGroupId) {
-                    const currentTab = get().tabs.find(t => t.id === capturedTabId2)
-                    if (currentTab && currentTab.status === 'completed' && currentTab.groupId !== doneGroupId) {
-                      if (currentTab.groupPinned) {
-                        console.log(`[auto-move] suppressed: tab=${capturedTabId2.slice(0, 8)} pinned=true currentGroup=${currentTab.groupId ?? 'none'} wouldMoveTo=${doneGroupId}`)
-                      } else {
-                        get().moveTabToGroup(capturedTabId2, doneGroupId)
+                const { autoGroupMovement, tabGroupMode, doneGroupId } = usePreferencesStore.getState()
+                console.log(`[auto-move:done] tab=${tabId.slice(0, 8)} autoGroup=${autoGroupMovement} tabGroupMode=${tabGroupMode} doneGroup=${doneGroupId ?? 'none'} currentGroup=${updated.groupId ?? 'none'} pinned=${updated.groupPinned}`)
+                if (autoGroupMovement && tabGroupMode === 'manual' && doneGroupId && updated.groupId !== doneGroupId) {
+                  if (updated.groupPinned) {
+                    console.log(`[auto-move:done] suppressed: tab=${tabId.slice(0, 8)} pinned=true currentGroup=${updated.groupId ?? 'none'} wouldMoveTo=${doneGroupId}`)
+                  } else {
+                    console.log(`[auto-move:done] scheduling tab=${tabId.slice(0, 8)} to done group=${doneGroupId} in 1500ms`)
+                    const capturedDoneGroupId = doneGroupId
+                    scheduleDoneGroupMove(tabId, 1500, () => {
+                      // Re-check: the tab may have started new work since the
+                      // timer was scheduled (e.g. the engine's warmup idle
+                      // fired task_complete, then state=running arrived for the
+                      // real work). Only move if the tab is actually done.
+                      const currentTab = get().tabs.find(t => t.id === tabId)
+                      if (currentTab && (currentTab.status === 'running' || currentTab.status === 'connecting')) {
+                        console.log(`[auto-move:done] cancelled: tab=${tabId.slice(0, 8)} status=${currentTab.status} (still active)`)
+                        return
                       }
-                    }
+                      console.log(`[auto-move:done] executing moveTabToGroup tab=${tabId.slice(0, 8)} → ${capturedDoneGroupId} status=${currentTab?.status ?? 'unknown'}`)
+                      get().moveTabToGroup(tabId, capturedDoneGroupId)
+                    })
                   }
-                }, 0)
+                }
+              } else {
+                console.log(`[auto-move:done] skipped: tab=${tabId.slice(0, 8)} prevStatus=${tab.status} permMode=${updated.permissionMode} permDenied=${updated.permissionDenied !== null}`)
               }
               if (
                 !updated.customTitle &&

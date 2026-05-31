@@ -1,7 +1,7 @@
 import type { TabStatus, Attachment } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { nextMsgId, playNotificationIfHidden } from '../session-store-helpers'
+import { nextMsgId, playNotificationIfHidden, cancelDoneGroupMove } from '../session-store-helpers'
 
 export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -68,12 +68,23 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       const effectiveMode = tab.permissionMode
 
+      // Cancel any pending done-group move from a prior task_complete.
+      // Without this, a fast re-send would move the tab to in-progress,
+      // but the pending timer would fire and move it right back to done.
+      const cancelled = cancelDoneGroupMove(tab.id)
+      if (cancelled) {
+        console.log(`[auto-move:send] cancelled pending done-move for tab=${tab.id.slice(0, 8)}`)
+      }
+
       // Auto group movement: move tab based on effective permission mode
       const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId } = usePreferencesStore.getState()
+      console.log(`[auto-move:send] tab=${tab.id.slice(0, 8)} mode=${effectiveMode} autoGroup=${autoGroupMovement} tabGroupMode=${tabGroupMode} pinned=${tab.groupPinned} currentGroup=${tab.groupId ?? 'none'} inProgressGroup=${inProgressGroupId ?? 'none'} planningGroup=${planningGroupId ?? 'none'}`)
       if (autoGroupMovement && tabGroupMode === 'manual' && !tab.groupPinned) {
         if (effectiveMode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
+          console.log(`[auto-move:send] moving tab=${tab.id.slice(0, 8)} to planning group=${planningGroupId}`)
           get().moveTabToGroup(tab.id, planningGroupId)
         } else if (effectiveMode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
+          console.log(`[auto-move:send] moving tab=${tab.id.slice(0, 8)} to in-progress group=${inProgressGroupId}`)
           get().moveTabToGroup(tab.id, inProgressGroupId)
         }
       } else if (autoGroupMovement && tabGroupMode === 'manual' && tab.groupPinned) {
@@ -225,6 +236,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       if (tab.status === 'connecting') return
+
+      // Cancel any pending done-group move from a prior task_complete
+      const cancelledRemote = cancelDoneGroupMove(tab.id)
+      if (cancelledRemote) {
+        console.log(`[auto-move:send] cancelled pending done-move for tab=${tab.id.slice(0, 8)} (remote)`)
+      }
 
       // Auto group movement for remote prompts
       const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId: ipGroupId } = usePreferencesStore.getState()

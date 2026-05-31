@@ -132,3 +132,31 @@ export function totalInputTokens(usage: { input_tokens?: number; cache_read_inpu
   if (!usage) return 0
   return (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0)
 }
+
+// ── Pending done-group move timers ──────────────────────────────────────────
+// When task_complete fires, the done-group move is scheduled with a short
+// delay so the tab is visible in the in-progress group before moving to done.
+// If the user re-sends before the timer fires, the send-slice cancels the
+// pending move so the tab stays in in-progress.
+const pendingDoneMoves = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Schedule a done-group move for `tabId` after `delayMs`. */
+export function scheduleDoneGroupMove(tabId: string, delayMs: number, callback: () => void): void {
+  cancelDoneGroupMove(tabId)
+  const timer = setTimeout(() => {
+    pendingDoneMoves.delete(tabId)
+    callback()
+  }, delayMs)
+  pendingDoneMoves.set(tabId, timer)
+}
+
+/** Cancel any pending done-group move for `tabId`. */
+export function cancelDoneGroupMove(tabId: string): boolean {
+  const timer = pendingDoneMoves.get(tabId)
+  if (timer) {
+    clearTimeout(timer)
+    pendingDoneMoves.delete(tabId)
+    return true
+  }
+  return false
+}

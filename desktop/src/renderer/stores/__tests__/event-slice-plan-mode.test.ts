@@ -14,12 +14,14 @@
  *      message (the prior race-compensator is gone).
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../session-store-helpers', () => ({
   nextMsgId: vi.fn(() => 'mock-msg-id'),
   playNotificationIfHidden: vi.fn(async () => {}),
   totalInputTokens: vi.fn(() => 0),
+  scheduleDoneGroupMove: vi.fn(),
+  cancelDoneGroupMove: vi.fn(() => false),
 }))
 
 vi.mock('../../preferences', () => ({
@@ -125,13 +127,6 @@ describe('event-slice — engine_plan_mode_changed', () => {
 })
 
 describe('event-slice — task_complete with ExitPlanMode denial', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('populates permissionDenied and does NOT schedule sendMessage while in plan mode', () => {
     const { state, slice } = buildHarness()
 
@@ -156,9 +151,7 @@ describe('event-slice — task_complete with ExitPlanMode denial', () => {
     expect(state.tabs[0].permissionDenied.tools).toHaveLength(1)
     expect(state.tabs[0].permissionDenied.tools[0].toolName).toBe('ExitPlanMode')
 
-    // Advance any pending timers and confirm no synthetic
-    // "Plan mode is not active..." message was scheduled.
-    vi.runAllTimers()
+    // Confirm no synthetic "Plan mode is not active..." message was scheduled.
     expect(state.sendMessage).not.toHaveBeenCalled()
   })
 })

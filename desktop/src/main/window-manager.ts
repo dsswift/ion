@@ -141,9 +141,10 @@ export function createWindow(): void {
       // kind + path the moment the engine emits engine_plan_proposal so the
       // main-process log carries the same timeline the renderer sees.
       message.startsWith('[plan_proposal]') ||
-      // auto-move suppression diagnostics from the same store. Same forward
-      // tag as the renderer's existing logs in tab-slice.ts.
-      message.startsWith('[auto-move]')
+      // auto-move diagnostics from send-slice and event-slice. Covers both
+      // [auto-move] (suppression) and [auto-move:send] / [auto-move:done]
+      // (diagnostic traces for group-movement debugging).
+      message.startsWith('[auto-move')
     ) log(`[renderer] ${message}`)
   })
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
