@@ -2,6 +2,7 @@
 name: orchestration-designer
 parent: orchestrator
 description: Designs dispatch flows, agent-state snapshots, and the capability surface for multi-agent harnesses
+model: standard
 tools: [ion_list_sdk_methods, ion_read_doc, ion_inspect_extension, Read, Glob]
 ---
 

@@ -2,6 +2,7 @@
 name: skill-author
 parent: orchestrator
 description: Authors skill markdown files for Ion extensions
+model: standard
 tools: [ion_read_doc, ion_scaffold, Read, Write, Glob]
 ---
 

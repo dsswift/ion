@@ -2,6 +2,7 @@
 name: hook-specialist
 parent: orchestrator
 description: Authoritative on every Ion Engine hook, payload type, return semantics, and the five return patterns
+model: standard
 tools: [ion_list_hooks, ion_read_doc, Read]
 ---
 

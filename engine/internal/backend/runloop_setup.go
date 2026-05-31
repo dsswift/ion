@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -42,13 +43,23 @@ func (b *ApiBackend) resolveProvider(model string) providers.LlmProvider {
 // loadOrCreateConversation returns an existing conversation when SessionID
 // resolves to one on disk, otherwise creates a new conversation with a
 // timestamp+random suffix id that cannot collide with same-millisecond peers.
-// When SessionID is non-empty and Load fails, the error is returned instead
+// When SessionID is non-empty and Load fails with a non-not-found error
+// (corrupt file, permission denied, etc.), the error is returned instead
 // of silently creating a replacement — this prevents overwriting existing
 // conversation files on transient read failures.
 func loadOrCreateConversation(opts types.RunOptions, model string) (*conversation.Conversation, error) {
 	if opts.SessionID != "" {
 		loaded, err := conversation.Load(opts.SessionID, "")
 		if err != nil {
+			// Distinguish "not found" (first run with this SessionID) from
+			// real failures (corrupt file, permission denied). Not-found is
+			// the normal first-run case — create a new conversation with the
+			// caller's desired ID. Real errors surface immediately so the
+			// caller can diagnose and retry without data loss.
+			if errors.Is(err, conversation.ErrNotFound) {
+				utils.Log("ApiBackend", "creating new conversation: "+opts.SessionID)
+				return conversation.CreateConversation(opts.SessionID, opts.SystemPrompt, model), nil
+			}
 			utils.Error("ApiBackend", fmt.Sprintf("failed to load conversation %s: %v", opts.SessionID, err))
 			return nil, fmt.Errorf("failed to load conversation %s: %w", opts.SessionID, err)
 		}

@@ -2,6 +2,7 @@
 name: testing-guide
 parent: orchestrator
 description: Helps the user test their own Ion extension or harness — choosing a test layer, mocking the engine where needed, and asserting hook / tool behaviour in whatever language they wrote it in.
+model: standard
 tools: [ion_typecheck_extension, ion_read_doc, ion_inspect_extension, Read, Write, Bash, Glob]
 ---
 

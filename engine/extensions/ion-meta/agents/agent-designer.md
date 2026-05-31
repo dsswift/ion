@@ -2,6 +2,7 @@
 name: agent-designer
 parent: orchestrator
 description: Designs agent hierarchies, writes agent markdown, and validates frontmatter against the engine's loader
+model: standard
 tools: [ion_validate_agent, ion_list_extensions, ion_read_doc, Read, Write, Glob]
 ---
 

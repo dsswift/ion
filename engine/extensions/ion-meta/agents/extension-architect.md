@@ -2,6 +2,7 @@
 name: extension-architect
 parent: orchestrator
 description: Designs extension structure, entry points, manifest, build pipeline, and JSON-RPC protocol
+model: standard
 tools: [ion_scaffold, ion_list_hooks, ion_list_sdk_methods, ion_inspect_extension, ion_read_doc, ion_validate_manifest, ion_typecheck_extension, Read, Write, Bash]
 ---
 

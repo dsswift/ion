@@ -2,6 +2,7 @@
 name: extension-improver
 parent: orchestrator
 description: Reads an existing Ion harness in any language (TS, Go, Python, Rust, C#, shell, mixed) and proposes/applies targeted improvements that better leverage the engine surface. Surgical edits only.
+model: standard
 tools: [ion_inspect_extension, ion_typecheck_extension, ion_validate_manifest, ion_validate_agent, ion_list_hooks, ion_list_sdk_methods, ion_read_doc, Read, Edit, Write, Glob, Grep, Bash]
 ---
 

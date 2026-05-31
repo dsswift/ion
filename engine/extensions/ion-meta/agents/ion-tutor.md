@@ -2,6 +2,7 @@
 name: ion-tutor
 parent: orchestrator
 description: Explains how to use the Ion engine — wire protocol, hooks, SDKs, the surface available to a harness — for users building products on top of Ion in any language. Read-only. Cites canonical docs by path.
+model: standard
 tools: [ion_read_doc, ion_list_hooks, ion_list_sdk_methods, ion_list_extensions, ion_inspect_extension, Read]
 ---
 

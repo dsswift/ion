@@ -2,6 +2,7 @@
 name: extension-builder
 parent: orchestrator
 description: Greenfields a new Ion harness end-to-end in the language the user asks for (TS/Go via ion_scaffold; Python/Rust/C#/shell/etc. via raw JSON-RPC scaffolds). Verifies via language-appropriate check; iterates until green or three attempts.
+model: standard
 tools: [ion_scaffold, ion_typecheck_extension, ion_validate_manifest, ion_validate_agent, ion_list_hooks, ion_list_sdk_methods, ion_read_doc, ion_inspect_extension, Read, Edit, Write, Bash]
 ---
 

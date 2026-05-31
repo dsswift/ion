@@ -13,6 +13,12 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// ErrNotFound is returned by Load when no conversation file exists for the
+// given ID. Callers can use errors.Is(err, ErrNotFound) to distinguish
+// "conversation does not exist" from "conversation exists but is corrupt or
+// unreadable".
+var ErrNotFound = errors.New("conversation not found")
+
 // MigrateConversation upgrades a raw JSON map to the current schema version.
 func MigrateConversation(raw map[string]any) (*Conversation, error) {
 	if raw == nil {
@@ -378,7 +384,7 @@ func Load(id, dir string) (*Conversation, error) {
 	if err != nil {
 		utils.Log("Conversation", fmt.Sprintf("Load: id=%s not found (probed %s, %s, %s)",
 			id, llmPath, jsonlPath, jsonPath))
-		return nil, fmt.Errorf("conversation not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 
 	var raw map[string]any
