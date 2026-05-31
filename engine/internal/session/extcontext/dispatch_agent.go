@@ -36,8 +36,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		start := time.Now()
 
 		utils.Log("Dispatch", fmt.Sprintf(
-			"starting dispatch agent=%q task=%q model=%q sysPromptLen=%d background=%v session=%s",
-			opts.Name, truncate(opts.Task, 80), opts.Model, len(opts.SystemPrompt), opts.Background, sa.SessionKey(),
+			"starting dispatch agent=%q task=%q model=%q sysPromptLen=%d background=%v planMode=%v session=%s",
+			opts.Name, truncate(opts.Task, 80), opts.Model, len(opts.SystemPrompt), opts.Background, opts.PlanMode, sa.SessionKey(),
 		))
 
 		// Determine model and project path.
@@ -158,6 +158,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		// Track active tool names by ID for structured callbacks.
 		toolNames := make(map[string]string)
 
+		// Plan mode tracking.
+		var childPlanFilePath string
+		var childPlanExited bool
+
 		// Cancellation context for background dispatch / recall support.
 		ctx, cancelFn := context.WithCancel(context.Background())
 		var recalled bool
@@ -201,6 +205,19 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				emitProgress(fmt.Sprintf("Using %s...", e.ToolName))
 			}
 
+			// Track plan mode state from child events.
+			switch pe := ev.Data.(type) {
+			case *types.PlanModeChangedEvent:
+				if pe.PlanFilePath != "" {
+					childPlanFilePath = pe.PlanFilePath
+				}
+			case *types.PlanProposalEvent:
+				childPlanExited = true
+				if pe.PlanFilePath != "" {
+					childPlanFilePath = pe.PlanFilePath
+				}
+			}
+
 			// Capture final result, cost, and session ID from TaskCompleteEvent.
 			if tc, ok := ev.Data.(*types.TaskCompleteEvent); ok {
 				resultText = tc.Result
@@ -242,6 +259,15 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		}
 		if opts.MaxTurns > 0 {
 			runOpts.MaxTurns = opts.MaxTurns
+		}
+		if opts.PlanMode {
+			runOpts.PlanMode = true
+			if opts.PlanFilePath != "" {
+				runOpts.PlanFilePath = opts.PlanFilePath
+			}
+			if len(opts.PlanModeTools) > 0 {
+				runOpts.PlanModeTools = opts.PlanModeTools
+			}
 		}
 
 		key = sa.SessionKey()
@@ -317,6 +343,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				CacheReadInputTokens:     totalCacheReadTokens,
 				CacheCreationInputTokens: totalCacheCreationTokens,
 				SessionID:                childSessionID,
+				PlanFilePath:             childPlanFilePath,
+				PlanExited:               childPlanExited,
 			}
 
 			// Update agent state with terminal status and conversation ID.
@@ -580,6 +608,24 @@ func fireLifecycleCallbacks(
 	case *types.TaskCompleteEvent:
 		// Update cumulative cost from the authoritative source.
 		*cumulativeCost = e.CostUsd
+
+	case *types.PlanProposalEvent:
+		if opts.OnPlanProposal != nil {
+			info := extension.DispatchPlanProposalInfo{
+				Name:          opts.Name,
+				PlanFilePath:  e.PlanFilePath,
+				PlanSlug:      e.PlanSlug,
+				PlanRequested: opts.PlanMode,
+			}
+			result := opts.OnPlanProposal(info)
+			// If the extension handled it, we're done. If not, the event
+			// was already forwarded via OnEvent above — the parent session
+			// stream gets the raw plan_proposal event.
+			utils.Log("Dispatch", fmt.Sprintf(
+				"plan proposal agent=%q planSlug=%q requested=%v handled=%v",
+				opts.Name, e.PlanSlug, opts.PlanMode, result.Handled,
+			))
+		}
 	}
 }
 
