@@ -67,12 +67,21 @@ struct SettingsView: View {
     // MARK: - Sections
 
     private var themeSection: some View {
-        @Bindable var tm = theme
-        return Section {
-            Picker("Theme", selection: $tm.selectedThemeId) {
+        Section {
+            Picker("Theme", selection: Binding(
+                get: { theme.selectedThemeId },
+                set: { newValue in
+                    theme.selectedThemeId = newValue
+                    DiagnosticLog.log("[SettingsView] theme picker set to: \(newValue)")
+                }
+            )) {
                 ForEach(ThemeRegistry.themes, id: \.id) { t in
                     Text(t.displayName).tag(t.id)
                 }
+            }
+            .onChange(of: theme.selectedThemeId) { oldVal, newVal in
+                DiagnosticLog.log("[SettingsView] theme picker changed: \(oldVal) -> \(newVal)")
+                DiagnosticLog.log("[SettingsView] theme.accent is now: \(theme.accent)")
             }
         } header: {
             Text("Appearance")

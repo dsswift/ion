@@ -33,13 +33,17 @@ struct TabListView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        Group {
-            if sizeClass == .regular {
-                iPadLayout
-            } else {
-                iPhoneLayout
+        ZStack {
+            if let bg = theme.backgroundView {
+                bg.ignoresSafeArea()
             }
-        }
+            Group {
+                if sizeClass == .regular {
+                    iPadLayout
+                } else {
+                    iPhoneLayout
+                }
+            }
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
@@ -115,6 +119,7 @@ struct TabListView: View {
         } message: {
             Text("Enter a new name for this tab.")
         }
+        } // ZStack
     }
 
     // MARK: - iPad Layout (NavigationSplitView)
