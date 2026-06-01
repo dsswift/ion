@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
-    @Environment(ThemeManager.self) private var themeManager
     @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var showPairingSheet = false
@@ -68,7 +67,7 @@ struct SettingsView: View {
     // MARK: - Sections
 
     private var themeSection: some View {
-        @Bindable var tm = themeManager
+        @Bindable var tm = theme
         return Section {
             Picker("Theme", selection: $tm.selectedThemeId) {
                 ForEach(ThemeRegistry.themes, id: \.id) { t in

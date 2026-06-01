@@ -122,7 +122,7 @@ struct EngineInstanceBar: View {
 /// Small pulsing orange dot for running engine instances. Matches the
 /// pulse animation from `TabRowView` (1.5s easeInOut, opacity 1→0.3).
 private struct InstancePulsingDot: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {

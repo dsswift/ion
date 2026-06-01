@@ -6,7 +6,7 @@ import SwiftUI
 /// row, mirroring the desktop's `ToolGroup` component.  For single-tool groups
 /// it delegates to the existing `MessageBubble` so the UX is unchanged.
 struct ToolGroupView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let tools: [Message]
     var isTabRunning: Bool = false
 

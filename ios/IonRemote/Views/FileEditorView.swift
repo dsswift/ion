@@ -4,7 +4,7 @@ import SwiftUI
 /// Opens in read-only preview mode by default. Markdown files render richly
 /// using `MarkdownContentView`. Tap "Edit" to switch to the TextEditor.
 struct FileEditorView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
 

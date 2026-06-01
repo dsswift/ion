@@ -15,10 +15,9 @@ struct IonRemoteApp: App {
         WindowGroup {
             ContentView()
                 .environment(viewModel)
-                .environment(themeManager)
-                .environment(\.appTheme, themeManager.current)
-                .preferredColorScheme(themeManager.current.preferredColorScheme)
-                .tint(themeManager.current.accent)
+                .environment(\.appTheme, themeManager)
+                .preferredColorScheme(themeManager.preferredColorScheme)
+                .tint(themeManager.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
                 }
@@ -49,7 +48,7 @@ struct IonRemoteApp: App {
 
 struct ContentView: View {
     @Environment(SessionViewModel.self) private var viewModel
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @State private var connectingElapsed: Int = 0
     @State private var showTroubleshooting = false
 

@@ -3,7 +3,7 @@ import PhotosUI
 import UniformTypeIdentifiers
 
 struct EngineView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let tabId: String
     @Environment(SessionViewModel.self) var viewModel
     @FocusState private var isInputFocused: Bool

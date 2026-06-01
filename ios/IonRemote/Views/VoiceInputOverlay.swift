@@ -6,7 +6,7 @@ import SwiftUI
 /// Shows animated waveform bars, a stop button (keep text), and a cancel button (discard).
 /// Text streams directly into the draft field — there is no staging buffer here.
 struct VoiceRecordingStrip: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let audioLevel: Float
     let onStop: () -> Void
     let onCancel: () -> Void
@@ -59,7 +59,7 @@ struct VoiceRecordingStrip: View {
 // MARK: - WaveBar
 
 private struct WaveBar: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let audioLevel: Float
     let phase: Double
     let frequency: Double

@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Renders a single engine conversation message based on role.
 struct EngineMessageRow: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let message: EngineMessage
     @State private var previewImage: UIImage?
     @State private var previewName: String = ""

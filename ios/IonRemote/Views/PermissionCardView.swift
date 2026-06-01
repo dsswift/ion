@@ -19,7 +19,7 @@ struct PermissionCardView: View {
 // MARK: - Generic Permission Card
 
 struct PermissionCardGenericView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
     let request: PermissionRequest

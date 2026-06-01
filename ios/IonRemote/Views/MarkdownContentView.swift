@@ -4,7 +4,7 @@ import SwiftUI
 /// Each block becomes its own SwiftUI view, enabling backgrounds on code blocks,
 /// dividers under headers, accent bars on blockquotes, and proper list indentation.
 struct MarkdownContentView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let blocks: [MarkdownBlock]
 
     var body: some View {

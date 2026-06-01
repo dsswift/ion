@@ -104,8 +104,10 @@ struct ArcReactorBackground: View {
 }
 
 #Preview {
-    ArcReactorBackground()
+    let tm = ThemeManager()
+    tm.selectedThemeId = "jarvis-arc-reactor"
+    return ArcReactorBackground()
         .frame(width: 400, height: 400)
         .background(Color(red: 4 / 255, green: 14 / 255, blue: 28 / 255))
-        .environment(\.appTheme, JarvisArcReactorTheme())
+        .environment(\.appTheme, tm)
 }

@@ -3,7 +3,7 @@ import SwiftUI
 /// Transient toast overlay for git mutation results.
 /// Slides in from top, auto-dismisses after 2 seconds.
 struct GitToastView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let toast: GitToast
     let onDismiss: () -> Void
 

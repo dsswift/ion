@@ -8,7 +8,7 @@ import SwiftUI
 /// desktop. The desktop persists the value and broadcasts to every paired
 /// phone — so this same edit will appear on the user's other iPhones too.
 struct DeviceCustomizationSheet: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let device: PairedDevice
 
     @Environment(SessionViewModel.self) private var viewModel

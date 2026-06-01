@@ -3,7 +3,7 @@ import SwiftUI
 /// List of staged and unstaged file changes in a tree layout grouped by directory,
 /// with stage/unstage swipe actions and a commit bar.
 struct GitChangesListView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     let directory: String
     @State private var commitMessage = ""

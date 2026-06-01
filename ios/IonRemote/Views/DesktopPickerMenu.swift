@@ -4,7 +4,7 @@ import SwiftUI
 /// Shows the active device with a green dot, other devices with status
 /// indicators, and an option to pair a new desktop.
 struct DesktopPickerMenu: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     @Binding var showPairingSheet: Bool
 

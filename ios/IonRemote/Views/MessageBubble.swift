@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - MessageBubble
 
 struct MessageBubble: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let message: Message
     var isRunning: Bool = false
     var onRewind: ((String) -> Void)?

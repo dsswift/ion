@@ -3,7 +3,7 @@ import SwiftUI
 /// Single-line status bar for conversation tabs showing model picker,
 /// permission mode toggle, and context usage.
 struct ConversationStatusBar: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let modelOverride: String?
     let preferredModel: String
     let contextPercent: Double?

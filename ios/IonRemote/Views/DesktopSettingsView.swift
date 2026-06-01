@@ -25,7 +25,7 @@ import SwiftUI
 /// to bounce back to its prior state on the next snapshot. No optimistic
 /// state is maintained — the desktop is the source of truth.
 struct DesktopSettingsView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
 
     /// Display name for the desktop whose settings we're showing.

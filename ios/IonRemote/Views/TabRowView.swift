@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - TabRowView
 
 struct TabRowView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     let tab: RemoteTabState
     var showDirectory: Bool = false
     var showGitInfo: Bool = false

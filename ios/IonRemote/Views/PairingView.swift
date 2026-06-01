@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PairingView: View {
-    @Environment(\.appTheme) private var theme: any AppTheme
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
