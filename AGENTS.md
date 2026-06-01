@@ -109,6 +109,16 @@ Engine executes, harness decides. Engine never blocks for user input, never pers
 
 When labeling work: engine, harness, or client. If a harness gap is caused by missing engine capability, note both.
 
+## Engine consumers
+
+The Ion engine is the product. Desktop and iOS are **reference implementations** — one opinion on how to use the engine, not the only way. The engine's real consumers are external developers building their own clients, extensions, and integrations against the wire protocol and SDK.
+
+Consequences:
+
+- **Do not require an in-repo consumer before adding engine API surface.** If a hook, protocol field, or SDK method is useful to external consumers, it belongs in the engine — even if desktop and iOS don't use it yet. The absence of desktop/iOS usage is not evidence of premature code; it is evidence that the reference implementations haven't caught up.
+- **Engine API surface should be generous.** Every configurable behavior should be exposed: as an `engine.json` config field, as a per-prompt `ClientCommand` override, and (where applicable) as an SDK context method. External consumers want every hook we can imagine.
+- **Desktop and iOS are not gatekeepers.** They consume the engine; they do not define its surface. When reviewing engine changes, do not ask "does desktop use this?" — ask "would an external consumer want this?"
+
 ## Cross-platform parity (desktop ↔ iOS)
 
 Desktop and iOS are co-equal clients. When a desktop change touches a feature that also exists on iOS, **you must assess the iOS impact before considering the work complete.**
@@ -215,6 +225,16 @@ Caution: These files are large >20KB. Use intelligent searching when looking thr
 - Adding a single log line per investigation cycle and hoping it's enough. **Instrument the entire code path in one pass.**
 - Logging only the error case. **Log the success case too** — "operation X completed with result Y" is as valuable as "operation X failed with error Z".
 - Using opaque messages like "failed" or "error occurred". **Include the what, the why, and the relevant IDs.**
+
+## Aspirational comments
+
+When a comment describes behavior that the code does not implement (e.g. "This is exposed to extensions via the SDK" on a method with no SDK wiring), the default assumption is that the **implementation is incomplete**, not that the comment is wrong.
+
+1. **Investigate first.** Check whether the described behavior was partially implemented, planned in a related issue, or left behind by an incomplete PR.
+2. **Implement the feature** if the comment describes a legitimate capability gap. The comment is documentation of intent — honor it.
+3. **Remove the comment only** if investigation confirms the described behavior is explicitly unwanted or was superseded by a different design decision. Document why in the commit message.
+
+Never silently delete an aspirational comment. A comment that describes unimplemented functionality is a bug report, not a false statement.
 
 ## Conversation storage
 

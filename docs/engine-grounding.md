@@ -28,9 +28,11 @@ If a UI requirement seems to demand an engine change, that is a **major red flag
 The engine never:
 
 - Blocks for user input.
-- Persists memory or user preferences.
+- Persists user preferences or cross-session memory.
 - Decides policy (who can do what, what to load, how to orchestrate).
 - Knows that a UI exists.
+
+> **Note:** The engine *does* persist conversation-scoped operational state (`.tree.jsonl`, `.llm.jsonl`, `.memory.md`) as part of session management. This is not "memory" in the LLM sense — it is compaction infrastructure that the engine owns. The prohibition targets user preference persistence and durable cross-session memory features, which belong to the harness or client.
 
 When labeling work, decide first: is this engine, harness, or client? If a harness or client gap is caused by a missing engine capability, call that out explicitly — but the default answer is almost always "fix it in the consumer."
 

@@ -95,7 +95,7 @@ Client --[Unix socket, NDJSON]--> Server
 
 ## Core principle
 
-Engine executes, harness decides. Engine never blocks for user input, never persists memory, never decides policy. Engine is UI-agnostic — emits typed data events; clients interpret.
+Engine executes, harness decides. Engine never blocks for user input, never persists user preferences or cross-session memory (conversation-scoped state like `.memory.md` is part of session management, not memory), never decides policy. Engine is UI-agnostic — emits typed data events; clients interpret.
 
 ## Event contracts
 
