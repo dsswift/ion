@@ -1,13 +1,43 @@
+// @file-size-exception: unified rendering component absorbing MessageBubble and ToolGroupView; decomposition deferred to Workstream C
 import SwiftUI
 
 // MARK: - EngineMessageRow
 
-/// Renders a single engine conversation message based on role.
+/// Renders a single conversation message based on role.
+///
+/// In engine-view usage (no extra params) it renders a compact, engine-style
+/// row. In conversation-view usage the optional params unlock the full rich
+/// rendering: timestamps, copy/share/rewind context menus, voice overlays,
+/// blinking cursor, and attachment previews.
 struct EngineMessageRow: View {
     @Environment(\.appTheme) private var theme
     let message: Message
+
+    // Conversation-view enrichment params (nil = engine-view compact mode)
+    var copyableContent: String? = nil
+    var onRewind: ((String) -> Void)? = nil
+    var onFork: ((String) -> Void)? = nil
+    var isSpeaking: Bool = false
+    var isRunning: Bool = false
+    var onSkipSpeaking: (() -> Void)? = nil
+    var onStopAllSpeaking: (() -> Void)? = nil
+    var hasPendingSpeech: Bool = false
+
+    // Shared state
     @State private var previewImage: UIImage?
     @State private var previewName: String = ""
+
+    // Conversation-view-only state
+    @State private var isToolExpanded = false
+    @State private var showRewindConfirm = false
+    @State private var showCopyButton = false
+    @State private var showCopiedCheck = false
+    @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
+
+    /// True when operating in full conversation-view mode.
+    private var isConversationMode: Bool {
+        copyableContent != nil || onRewind != nil || onFork != nil || isSpeaking || isRunning || onSkipSpeaking != nil
+    }
 
     var body: some View {
         Group {
@@ -32,14 +62,158 @@ struct EngineMessageRow: View {
                 AttachmentImagePreview(image: img, name: previewName)
             }
         }
+        .background(
+            isConversationMode
+                ? GeometryReader { geo in
+                    Color.clear.preference(key: ContainerWidthKey.self, value: geo.size.width)
+                }
+                : nil
+        )
+        .onPreferenceChange(ContainerWidthKey.self) { containerWidth = $0 }
     }
 
-    /// Splits the user message text on `[Attached image: PATH]` markers so
-    /// each image renders inline above the cleaned text. Bytes are looked up
-    /// in the local `AttachmentImageCache` by path — populated at upload time
-    /// and surviving conversation rehydration without a wire-side change to
-    /// `Message`.
+    // MARK: - Timestamp helper
+
+    private var relativeTimestamp: String {
+        let date = Date(timeIntervalSince1970: (message.timestamp ?? 0) / 1000)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    // MARK: - Attachment views (conversation mode)
+
+    @ViewBuilder
+    private func attachmentViews(_ attachments: [MessageAttachment]) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ForEach(attachments) { att in
+                let img = AttachmentImageCache.shared.image(forKey: att.id)
+                    ?? AttachmentImageCache.shared.image(forKey: att.path)
+                if att.type == .image, let img {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
+                        .onTapGesture {
+                            previewName = att.name
+                            previewImage = img
+                        }
+                } else {
+                    HStack(spacing: 3) {
+                        Image(systemName: att.type == .image ? "photo" : "doc")
+                            .font(.caption2)
+                        Text(att.name)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(.secondarySystemFill))
+                    .clipShape(Capsule())
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: - User
+
     private var userMessage: some View {
+        Group {
+            if isConversationMode {
+                conversationUserBubble
+            } else {
+                engineUserBubble
+            }
+        }
+    }
+
+    /// Full conversation-view user bubble: source badge, attachments, bash
+    /// highlight, timestamp, context menu with rewind/fork.
+    private var conversationUserBubble: some View {
+        HStack {
+            Spacer(minLength: 24)
+            VStack(alignment: .trailing, spacing: 4) {
+                if let source = message.source, source == .remote {
+                    HStack(spacing: 4) {
+                        Image(systemName: "iphone")
+                            .font(.caption2)
+                        Text("from iOS")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+
+                if let attachments = message.attachments, !attachments.isEmpty {
+                    attachmentViews(attachments)
+                }
+
+                let segments = parseAttachmentSegments(message.content)
+                let attachmentPaths = Set((message.attachments ?? []).filter { $0.type == .image }.map { $0.path })
+                let extraImagePaths = segments.images.filter { !attachmentPaths.contains($0) }
+                ForEach(Array(extraImagePaths.enumerated()), id: \.offset) { _, path in
+                    InlineAttachmentImage(path: path) { img in
+                        previewName = (path as NSString).lastPathComponent
+                        previewImage = img
+                    }
+                }
+
+                if !segments.text.isEmpty {
+                    let cap = UIScreen.main.bounds.width * 0.8
+                    ViewThatFits(in: .horizontal) {
+                        userBubbleContent(text: segments.text, isBash: message.content.hasPrefix("! "))
+                            .fixedSize(horizontal: true, vertical: true)
+                        userBubbleContent(text: segments.text, isBash: message.content.hasPrefix("! "))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: cap, alignment: .trailing)
+                }
+
+                Text(relativeTimestamp)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.trailing, 12)
+            .padding(.vertical, 2)
+        }
+        .contextMenu {
+            Button { UIPasteboard.general.string = message.content } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+            ShareLink(item: message.content) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            if onRewind != nil || onFork != nil {
+                Divider()
+            }
+            if onRewind != nil {
+                Button { showRewindConfirm = true } label: {
+                    Label("Rewind to Here", systemImage: "arrow.counterclockwise")
+                }
+            }
+            if let onFork {
+                Button { onFork(message.id) } label: {
+                    Label("Fork from Here", systemImage: "arrow.triangle.branch")
+                }
+            }
+        }
+        .confirmationDialog(
+            "Rewind Conversation",
+            isPresented: $showRewindConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Rewind", role: .destructive) {
+                onRewind?(message.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will reset the conversation to before this message. This cannot be undone.")
+        }
+    }
+
+    /// Engine-view compact user bubble: marker-derived inline images + text.
+    private var engineUserBubble: some View {
         HStack {
             Spacer(minLength: 24)
             VStack(alignment: .trailing, spacing: 4) {
@@ -53,17 +227,10 @@ struct EngineMessageRow: View {
 
                 if !segments.text.isEmpty {
                     let cap = UIScreen.main.bounds.width * 0.8
-                    // ViewThatFits picks the first candidate that fits in the
-                    // proposed width. The first uses .fixedSize so short text
-                    // stays at its intrinsic width (and intrinsic height —
-                    // text + padding, not stretched). The second falls back
-                    // to filling the cap and wrapping for long text. Both
-                    // candidates pin vertical size to ideal so the bubble
-                    // never bloats above what the text needs.
                     ViewThatFits(in: .horizontal) {
-                        userBubbleContent(text: segments.text)
+                        userBubbleContent(text: segments.text, isBash: false)
                             .fixedSize(horizontal: true, vertical: true)
-                        userBubbleContent(text: segments.text)
+                        userBubbleContent(text: segments.text, isBash: false)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: cap, alignment: .trailing)
@@ -75,12 +242,7 @@ struct EngineMessageRow: View {
     }
 
     @ViewBuilder
-    private func userBubbleContent(text: String) -> some View {
-        // Layout: Text drives height; the accent stripe rides as an overlay so
-        // it inherits the bubble's height instead of pushing it. Putting the
-        // accent in the HStack as a sibling Shape (no height constraint) made
-        // the HStack request all available vertical space — bubble bloated to
-        // the height of the inline image above it.
+    private func userBubbleContent(text: String, isBash: Bool) -> some View {
         Text(text)
             .textSelection(.enabled)
             .padding(.leading, 14)
@@ -100,9 +262,151 @@ struct EngineMessageRow: View {
                     .padding(.vertical, 4)
                     .padding(.leading, 1)
             }
+            .overlay(
+                isBash
+                    ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
+                        .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
+                    : nil
+            )
     }
 
+    // MARK: - Assistant
+
     private var assistantMessage: some View {
+        Group {
+            if isConversationMode {
+                conversationAssistantBubble
+            } else {
+                engineAssistantBubble
+            }
+        }
+    }
+
+    /// Full conversation-view assistant bubble: material background, blinking
+    /// cursor, voice overlays, copy button, timestamp, context menu.
+    private var conversationAssistantBubble: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .bottomTrailing) {
+                ZStack(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !message.content.isEmpty {
+                            MarkdownContentView(
+                                blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                            )
+                            .textSelection(.enabled)
+                        }
+
+                        // Blinking cursor for streaming
+                        if isRunning && message.isAssistant {
+                            RoundedRectangle(cornerRadius: 0.5)
+                                .fill(Color.primary)
+                                .frame(width: 2, height: 18)
+                                .modifier(BlinkingModifier())
+                        }
+                    }
+
+                    // Voice playback controls
+                    if isSpeaking {
+                        HStack(spacing: 6) {
+                            Button { onSkipSpeaking?() } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "speaker.wave.2.fill")
+                                        .font(.caption2)
+                                        .symbolEffect(.variableColor.iterative)
+                                    Image(systemName: hasPendingSpeech ? "forward.fill" : "stop.fill")
+                                        .font(.caption2)
+                                }
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                            }
+
+                            if hasPendingSpeech {
+                                Button { onStopAllSpeaking?() } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "stop.fill")
+                                            .font(.caption2)
+                                        Text("Stop All")
+                                            .font(.caption2)
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .transition(.opacity.combined(with: .scale))
+                        .padding(4)
+                    }
+                }
+
+                // Copy button overlay
+                if showCopyButton && !isSpeaking {
+                    Button {
+                        UIPasteboard.general.string = copyableContent ?? message.content
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showCopiedCheck = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            withAnimation { showCopiedCheck = false }
+                        }
+                    } label: {
+                        Image(systemName: showCopiedCheck ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .transition(.opacity)
+                    .padding(4)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: containerWidth * 0.92, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !showCopyButton else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showCopyButton = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    withAnimation(.easeOut(duration: 0.3)) { showCopyButton = false }
+                }
+            }
+
+            Text(relativeTimestamp)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = copyableContent ?? message.content
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+            ShareLink(item: copyableContent ?? message.content) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        } preview: {
+            Text(message.content.prefix(200) + (message.content.count > 200 ? "…" : ""))
+                .font(.body)
+                .padding()
+                .frame(maxWidth: 300, alignment: .leading)
+        }
+    }
+
+    /// Engine-view compact assistant bubble: plain markdown, no chrome.
+    private var engineAssistantBubble: some View {
         HStack {
             MarkdownContentView(
                 blocks: MarkdownBlockCache.shared.blocks(for: message.content)
@@ -113,6 +417,152 @@ struct EngineMessageRow: View {
             Spacer(minLength: 0)
         }
     }
+
+    // MARK: - Tool
+
+    private var toolMessage: some View {
+        Group {
+            if isConversationMode {
+                conversationToolBubble
+            } else {
+                engineToolBubble
+            }
+        }
+    }
+
+    private var toolAccentColor: Color {
+        switch message.toolStatus {
+        case .running:  return .orange
+        case .completed: return .green
+        case .error:    return .red
+        case nil:       return .gray
+        }
+    }
+
+    /// Full conversation-view tool bubble: expandable input/output detail.
+    private var conversationToolBubble: some View {
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(toolAccentColor)
+                .frame(width: 2)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    withAnimation(IonTheme.snappySpring) {
+                        isToolExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        conversationToolStatusIcon
+
+                        Text(message.toolName ?? "Tool")
+                            .font(.subheadline.monospaced())
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        Image(systemName: isToolExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+
+                if isToolExpanded {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let input = message.toolInput, !input.isEmpty {
+                            Text("Input:")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            Text(input)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .lineLimit(10)
+                        }
+                        if !message.content.isEmpty {
+                            Text(message.toolStatus == .error ? "Error:" : "Result:")
+                                .font(.caption.bold())
+                                .foregroundStyle(message.toolStatus == .error ? .red : .secondary)
+                            Text(message.content)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .lineLimit(20)
+                                .foregroundStyle(message.toolStatus == .error ? .red : .primary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+        }
+        .background(Color(.tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 1)
+    }
+
+    private var conversationToolStatusIcon: some View {
+        Group {
+            switch message.toolStatus {
+            case .running:
+                ProgressView()
+                    .controlSize(.mini)
+            case .completed:
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.subheadline)
+            case .error:
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .font(.subheadline)
+            case nil:
+                Image(systemName: "gearshape")
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    /// Engine-view compact tool bubble: icon + name only, no expand.
+    private var engineToolBubble: some View {
+        HStack(spacing: 6) {
+            engineToolStatusIcon
+            Text(message.toolName ?? "tool")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    @ViewBuilder
+    private var engineToolStatusIcon: some View {
+        switch message.toolStatus {
+        case .running:
+            ProgressView()
+                .scaleEffect(0.6)
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+        case .error:
+            Image(systemName: "xmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.red)
+        case nil:
+            Image(systemName: "wrench")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Harness (engine-only)
 
     private var harnessMessage: some View {
         HStack(spacing: 6) {
@@ -137,42 +587,36 @@ struct EngineMessageRow: View {
         .padding(.vertical, 2)
     }
 
-    private var toolMessage: some View {
-        HStack(spacing: 6) {
-            toolStatusIcon
-            Text(message.toolName ?? "tool")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    @ViewBuilder
-    private var toolStatusIcon: some View {
-        switch message.toolStatus {
-        case .running:
-            ProgressView()
-                .scaleEffect(0.6)
-        case .completed:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.green)
-        case .error:
-            Image(systemName: "xmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.red)
-        case nil:
-            Image(systemName: "wrench")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
+    // MARK: - System
 
     private var systemMessage: some View {
+        Group {
+            if isConversationMode {
+                conversationSystemBubble
+            } else {
+                engineSystemBubble
+            }
+        }
+    }
+
+    /// Conversation-view system bubble: divider-flanked centered text.
+    private var conversationSystemBubble: some View {
+        HStack(spacing: 8) {
+            VStack { Divider() }
+            Text(message.content)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .layoutPriority(1)
+            VStack { Divider() }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 6)
+    }
+
+    /// Engine-view system bubble: plain centered text, no dividers.
+    private var engineSystemBubble: some View {
         HStack {
             Spacer()
             Text(message.content)
@@ -285,5 +729,74 @@ struct InlineAttachmentImage: View {
                 failed = true
             }
         }
+    }
+}
+
+// MARK: - BlinkingModifier
+
+struct BlinkingModifier: ViewModifier {
+    @State private var pulse = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(pulse ? 0.3 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+    }
+}
+
+// MARK: - Color hex init
+
+extension Color {
+    init(hex: UInt, opacity: Double = 1.0) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: opacity
+        )
+    }
+}
+
+// MARK: - MarkdownBlockCache
+
+/// Caches parsed `[MarkdownBlock]` arrays so full block-level markdown is only
+/// parsed once per unique content string, not on every SwiftUI re-render.
+@MainActor
+final class MarkdownBlockCache {
+    static let shared = MarkdownBlockCache()
+
+    private let cache = NSCache<NSString, CacheEntry>()
+
+    private class CacheEntry {
+        let value: [MarkdownBlock]
+        init(_ value: [MarkdownBlock]) { self.value = value }
+    }
+
+    init() {
+        cache.countLimit = 200
+    }
+
+    func blocks(for content: String) -> [MarkdownBlock] {
+        let key = content as NSString
+        if let entry = cache.object(forKey: key) {
+            return entry.value
+        }
+        let result = MarkdownFormatter.parse(content)
+        cache.setObject(CacheEntry(result), forKey: key)
+        return result
+    }
+}
+
+// MARK: - Container Width Preference
+
+struct ContainerWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = UIScreen.main.bounds.width
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
