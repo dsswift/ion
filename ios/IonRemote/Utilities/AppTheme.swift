@@ -52,11 +52,23 @@ enum ThemeRegistry {
 /// Injected into the environment via `.environment(\.appTheme, themeManager)`.
 /// Views read `theme.accent`, `theme.statusRunning` etc. and SwiftUI
 /// automatically re-renders when the selected theme changes because
-/// ThemeManager is @Observable and the property access is tracked.
+/// ThemeManager is @Observable and the delegating properties read from
+/// `_currentTheme`, which is a stored @Observable property.
 @Observable
 final class ThemeManager: AppTheme {
+    // MARK: - Stored properties (tracked by @Observable)
+
+    /// The currently active resolved theme. Stored (not computed) so @Observable
+    /// can track it directly. Every delegating color property reads from here,
+    /// giving SwiftUI a clear dependency to subscribe to.
+    private var _currentTheme: any AppTheme
+
     var selectedThemeId: String {
         didSet {
+            guard selectedThemeId != oldValue else { return }
+            print("[ThemeManager] selectedThemeId changed: \(oldValue) -> \(selectedThemeId)")
+            _currentTheme = ThemeRegistry.theme(for: selectedThemeId)
+            print("[ThemeManager] resolved theme id: \(_currentTheme.id)")
             UserDefaults.standard.set(selectedThemeId, forKey: "selectedTheme")
         }
     }
@@ -64,38 +76,44 @@ final class ThemeManager: AppTheme {
     init() {
         let saved = UserDefaults.standard.string(forKey: "selectedTheme") ?? "ion-default"
         self.selectedThemeId = saved
+        self._currentTheme = ThemeRegistry.theme(for: saved)
+        print("[ThemeManager] init — loaded theme: \(saved)")
     }
 
-    // MARK: - Resolved theme (private)
+    // MARK: - AppTheme conformance (delegates to _currentTheme)
+    //
+    // Each property reads from the stored _currentTheme. Because _currentTheme
+    // is a stored @Observable property, SwiftUI tracks access to it and
+    // invalidates any view body that called these properties when _currentTheme
+    // changes.
 
-    private var resolved: any AppTheme {
-        ThemeRegistry.theme(for: selectedThemeId)
-    }
-
-    // MARK: - AppTheme conformance (delegates to resolved)
-
-    var id: String { resolved.id }
-    var displayName: String { resolved.displayName }
-    var accent: Color { resolved.accent }
-    var accentSubtle: Color { resolved.accentSubtle }
-    var statusRunning: Color { resolved.statusRunning }
-    var statusDone: Color { resolved.statusDone }
-    var statusError: Color { resolved.statusError }
-    var statusPending: Color { resolved.statusPending }
-    var surfaceElevated: Color { resolved.surfaceElevated }
-    var codeBg: Color { resolved.codeBg }
-    var userBubbleTint: Color { resolved.userBubbleTint }
-    var preferredColorScheme: ColorScheme? { resolved.preferredColorScheme }
-    var backgroundView: AnyView? { resolved.backgroundView }
-    var activityIndicator: ((Bool) -> AnyView)? { resolved.activityIndicator }
+    var id: String { _currentTheme.id }
+    var displayName: String { _currentTheme.displayName }
+    var accent: Color { _currentTheme.accent }
+    var accentSubtle: Color { _currentTheme.accentSubtle }
+    var statusRunning: Color { _currentTheme.statusRunning }
+    var statusDone: Color { _currentTheme.statusDone }
+    var statusError: Color { _currentTheme.statusError }
+    var statusPending: Color { _currentTheme.statusPending }
+    var surfaceElevated: Color { _currentTheme.surfaceElevated }
+    var codeBg: Color { _currentTheme.codeBg }
+    var userBubbleTint: Color { _currentTheme.userBubbleTint }
+    var preferredColorScheme: ColorScheme? { _currentTheme.preferredColorScheme }
+    var backgroundView: AnyView? { _currentTheme.backgroundView }
+    var activityIndicator: ((Bool) -> AnyView)? { _currentTheme.activityIndicator }
 }
 
 // MARK: - Environment Key
 
 /// The environment key stores the ThemeManager itself (which conforms to
-/// AppTheme). Because ThemeManager is @Observable, SwiftUI tracks property
-/// access and re-renders views when the resolved theme changes.
+/// AppTheme). Because ThemeManager is @Observable and all delegating
+/// properties read from the stored `_currentTheme` property, SwiftUI
+/// tracks property access and re-renders views when the theme changes.
 private struct AppThemeKey: EnvironmentKey {
+    // defaultValue is only used when no ThemeManager has been injected
+    // (e.g. in Xcode Previews that don't set up the environment). The
+    // real app always injects via .environment(\.appTheme, themeManager)
+    // in IonRemoteApp, so this instance is never used at runtime.
     nonisolated(unsafe) static let defaultValue: ThemeManager = ThemeManager()
 }
 
