@@ -182,6 +182,24 @@ type DispatchAgentOpts struct {
 	// touching global engine config.
 	MaxTurns int `json:"maxTurns,omitempty"`
 
+	// --- Plan mode ---
+
+	// PlanMode, when true, starts the child session in plan mode. The child
+	// receives a plan-mode-filtered tool set, the plan-mode system prompt,
+	// and the ExitPlanMode sentinel tool. When the child calls ExitPlanMode,
+	// the run terminates with the plan file path in the result.
+	PlanMode bool `json:"planMode,omitempty"`
+
+	// PlanFilePath overrides the plan file path for the child session. When
+	// empty and PlanMode is true, the engine allocates a fresh plan file
+	// with a word-slug name (the default behavior for any plan-mode session).
+	PlanFilePath string `json:"planFilePath,omitempty"`
+
+	// PlanModeTools overrides the set of allowed tools during plan mode for
+	// the child session. When nil/empty and PlanMode is true, the engine
+	// uses the default plan-mode tool set.
+	PlanModeTools []string `json:"planModeTools,omitempty"`
+
 	// OnEvent is called for each engine event emitted by the child session.
 	// Not serialized -- set via the host when dispatching from an extension.
 	OnEvent func(ev types.EngineEvent) `json:"-"`
@@ -225,6 +243,15 @@ type DispatchAgentOpts struct {
 	// OnTextDelta fires when the dispatched agent emits a text chunk,
 	// carrying the delta and accumulated text so far.
 	OnTextDelta func(info DispatchTextDeltaInfo) `json:"-"`
+
+	// --- Plan mode lifecycle callbacks ---
+
+	// OnPlanProposal fires when a dispatched agent calls ExitPlanMode,
+	// proposing a plan for approval. This callback is observational — the
+	// plan proposal event is always forwarded to the parent session via
+	// OnEvent regardless of whether this callback is set. Use it to react
+	// to proposals (e.g. log, notify, update state) without suppressing them.
+	OnPlanProposal func(info DispatchPlanProposalInfo) `json:"-"`
 }
 
 // DispatchAgentResult holds the outcome of a dispatched agent.
@@ -239,6 +266,17 @@ type DispatchAgentResult struct {
 	CacheReadInputTokens     int     `json:"cacheReadInputTokens,omitempty"`
 	CacheCreationInputTokens int     `json:"cacheCreationInputTokens,omitempty"`
 	SessionID                string  `json:"sessionId,omitempty"`
+
+	// PlanFilePath is the absolute path of the plan file written by the
+	// child session. Non-empty only when the child was in plan mode and
+	// wrote a plan (regardless of whether it called ExitPlanMode).
+	PlanFilePath string `json:"planFilePath,omitempty"`
+
+	// PlanExited is true when the child called ExitPlanMode (the run
+	// terminated because the model proposed a plan for approval). When
+	// false and PlanFilePath is non-empty, the child was in plan mode but
+	// finished without proposing (e.g. hit max turns or was recalled).
+	PlanExited bool `json:"planExited,omitempty"`
 }
 
 // DispatchError describes a failed background dispatch.
@@ -306,6 +344,18 @@ type DispatchTextDeltaInfo struct {
 	Name        string `json:"name"`
 	Delta       string `json:"delta"`
 	Accumulated string `json:"accumulated"`
+}
+
+// DispatchPlanProposalInfo carries data for the OnPlanProposal callback.
+type DispatchPlanProposalInfo struct {
+	Name         string `json:"name"`
+	AgentID      string `json:"agentId"`
+	PlanFilePath string `json:"planFilePath"`
+	PlanSlug     string `json:"planSlug"`
+	// PlanRequested is true when the caller explicitly set PlanMode=true
+	// on the dispatch opts. False when the child agent self-initiated
+	// plan mode (called EnterPlanMode without being told to).
+	PlanRequested bool `json:"planRequested"`
 }
 
 // DiscoverAgentsOpts configures which directories to scan for agent definitions

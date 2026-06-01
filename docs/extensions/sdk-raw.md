@@ -262,6 +262,7 @@ When a background dispatch is active (started with `ext/dispatch_agent` and `bac
 | `dispatch_tool_error` | Tool errored in child | `{name, toolName, toolId, content}` |
 | `dispatch_usage` | Token usage update from child | `{name, inputTokens, outputTokens, cumulativeInputTokens, cumulativeOutputTokens, cumulativeCost}` |
 | `dispatch_text_delta` | Streaming text from child | `{name, delta, accumulated}` |
+| `dispatch_plan_proposal` | Child agent proposed a plan (called ExitPlanMode) | `{name, agentId, planFilePath, planSlug, planRequested}` |
 
 Example incoming notification:
 

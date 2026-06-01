@@ -267,7 +267,7 @@ export function EngineView({ tabId }: EngineViewProps) {
       ? `Implement the following plan:\n\n${planContent}`
       : 'Implement the plan.'
     console.log(`[EngineView] submitting implement prompt: tab=${tabId.slice(0, 8)} promptLen=${implementPrompt.length}`)
-    submitEnginePrompt(tabId, implementPrompt, undefined, undefined)
+    submitEnginePrompt(tabId, implementPrompt, undefined, undefined, undefined, true)
   }, [tabId, key, clearPermissionDenied, submitEnginePrompt, tabPlanFilePath, permissionDenied])
 
   const handleImplementAndUnpin = useCallback(async () => {

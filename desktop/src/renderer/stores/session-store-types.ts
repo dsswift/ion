@@ -170,7 +170,7 @@ export interface State {
   setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
   createEngineTab: (dir?: string, profileId?: string) => string
   handleEngineEvent: (key: string, event: any) => void
-  submitEnginePrompt: (tabId: string, text: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], rawAttachments?: FileAttachment[]) => void
+  submitEnginePrompt: (tabId: string, text: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], rawAttachments?: FileAttachment[], implementationPhase?: boolean) => void
   respondEngineDialog: (tabId: string, dialogId: string, value: any) => void
   addEngineInstance: (tabId: string) => string
   removeEngineInstance: (tabId: string, instanceId: string) => void

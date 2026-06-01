@@ -29,7 +29,7 @@ func TestFireLifecycleCallbacks_ToolCall(t *testing.T) {
 
 	ev := types.NormalizedEvent{Data: &types.ToolCallEvent{ToolName: "bash", ToolID: "tc-1", Index: 0}}
 
-	fireLifecycleCallbacks(opts, ev, toolNames, &toolCount, &accumulatedText,
+	fireLifecycleCallbacks(opts, ev, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 		&cumIn, &cumOut, &cumCost)
 
 	if !fired {
@@ -79,7 +79,7 @@ func TestFireLifecycleCallbacks_ToolResult(t *testing.T) {
 			IsError: false,
 		}}
 
-		fireLifecycleCallbacks(opts, ev, toolNames, &toolCount, &accumulatedText,
+		fireLifecycleCallbacks(opts, ev, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 			&cumIn, &cumOut, &cumCost)
 
 		if !endFired {
@@ -126,7 +126,7 @@ func TestFireLifecycleCallbacks_ToolResult(t *testing.T) {
 			IsError: true,
 		}}
 
-		fireLifecycleCallbacks(opts, ev, toolNames, &toolCount, &accumulatedText,
+		fireLifecycleCallbacks(opts, ev, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 			&cumIn, &cumOut, &cumCost)
 
 		if !errFired {
@@ -164,7 +164,7 @@ func TestFireLifecycleCallbacks_TextChunk(t *testing.T) {
 	chunks := []string{"Hello", ", ", "world!"}
 	for _, chunk := range chunks {
 		ev := types.NormalizedEvent{Data: &types.TextChunkEvent{Text: chunk}}
-		fireLifecycleCallbacks(opts, ev, toolNames, &toolCount, &accumulatedText,
+		fireLifecycleCallbacks(opts, ev, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 			&cumIn, &cumOut, &cumCost)
 	}
 
@@ -225,7 +225,7 @@ func TestFireLifecycleCallbacks_Usage(t *testing.T) {
 	ev1 := types.NormalizedEvent{Data: &types.UsageEvent{
 		Usage: types.UsageData{InputTokens: &in1, OutputTokens: &out1},
 	}}
-	fireLifecycleCallbacks(opts, ev1, toolNames, &toolCount, &accumulatedText,
+	fireLifecycleCallbacks(opts, ev1, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 		&cumIn, &cumOut, &cumCost)
 
 	// Second usage event — cumulative totals should grow.
@@ -234,7 +234,7 @@ func TestFireLifecycleCallbacks_Usage(t *testing.T) {
 	ev2 := types.NormalizedEvent{Data: &types.UsageEvent{
 		Usage: types.UsageData{InputTokens: &in2, OutputTokens: &out2},
 	}}
-	fireLifecycleCallbacks(opts, ev2, toolNames, &toolCount, &accumulatedText,
+	fireLifecycleCallbacks(opts, ev2, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 		&cumIn, &cumOut, &cumCost)
 
 	if len(gotUsage) != 2 {
@@ -361,7 +361,7 @@ func TestFireLifecycleCallbacks_NilCallbacks(t *testing.T) {
 	}
 
 	for _, ev := range events {
-		fireLifecycleCallbacks(opts, ev, toolNames, &toolCount, &accumulatedText,
+		fireLifecycleCallbacks(opts, ev, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 			&cumIn, &cumOut, &cumCost)
 	}
 
@@ -397,7 +397,7 @@ func TestFireLifecycleCallbacks_TaskCompleteUpdatesCost(t *testing.T) {
 
 	// TaskCompleteEvent sets the authoritative cost.
 	tcEv := types.NormalizedEvent{Data: &types.TaskCompleteEvent{CostUsd: 0.042}}
-	fireLifecycleCallbacks(opts, tcEv, toolNames, &toolCount, &accumulatedText,
+	fireLifecycleCallbacks(opts, tcEv, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 		&cumIn, &cumOut, &cumCost)
 
 	if cumCost != 0.042 {
@@ -410,7 +410,7 @@ func TestFireLifecycleCallbacks_TaskCompleteUpdatesCost(t *testing.T) {
 	usageEv := types.NormalizedEvent{Data: &types.UsageEvent{
 		Usage: types.UsageData{InputTokens: &in, OutputTokens: &out},
 	}}
-	fireLifecycleCallbacks(opts, usageEv, toolNames, &toolCount, &accumulatedText,
+	fireLifecycleCallbacks(opts, usageEv, "test-agent-id", toolNames, &toolCount, &accumulatedText,
 		&cumIn, &cumOut, &cumCost)
 
 	if gotUsage.CumulativeCost != 0.042 {

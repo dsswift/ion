@@ -36,8 +36,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		start := time.Now()
 
 		utils.Log("Dispatch", fmt.Sprintf(
-			"starting dispatch agent=%q task=%q model=%q sysPromptLen=%d background=%v session=%s",
-			opts.Name, truncate(opts.Task, 80), opts.Model, len(opts.SystemPrompt), opts.Background, sa.SessionKey(),
+			"starting dispatch agent=%q task=%q model=%q sysPromptLen=%d background=%v planMode=%v session=%s",
+			opts.Name, truncate(opts.Task, 80), opts.Model, len(opts.SystemPrompt), opts.Background, opts.PlanMode, sa.SessionKey(),
 		))
 
 		// Determine model and project path.
@@ -158,6 +158,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		// Track active tool names by ID for structured callbacks.
 		toolNames := make(map[string]string)
 
+		// Plan mode tracking.
+		var childPlanFilePath string
+		var childPlanExited bool
+
 		// Cancellation context for background dispatch / recall support.
 		ctx, cancelFn := context.WithCancel(context.Background())
 		var recalled bool
@@ -172,7 +176,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			}
 
 			// Phase 2: Structured lifecycle callbacks.
-			fireLifecycleCallbacks(&opts, ev, toolNames, &toolCount, &accumulatedText,
+			fireLifecycleCallbacks(&opts, ev, agentID, toolNames, &toolCount, &accumulatedText,
 				&cumulativeInputTokens, &cumulativeOutputTokens, &cumulativeCost)
 
 			// Live progress forwarding for the agent panel.
@@ -199,6 +203,27 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				textAccum = ""
 				progressMu.Unlock()
 				emitProgress(fmt.Sprintf("Using %s...", e.ToolName))
+			}
+
+			// Track plan mode state from child events.
+			switch pe := ev.Data.(type) {
+			case *types.PlanModeChangedEvent:
+				if pe.PlanFilePath != "" {
+					childPlanFilePath = pe.PlanFilePath
+					utils.Debug("Dispatch", fmt.Sprintf(
+						"child plan file path updated agent=%q planFilePath=%q session=%s",
+						opts.Name, childPlanFilePath, sa.SessionKey(),
+					))
+				}
+			case *types.PlanProposalEvent:
+				childPlanExited = true
+				if pe.PlanFilePath != "" {
+					childPlanFilePath = pe.PlanFilePath
+				}
+				utils.Debug("Dispatch", fmt.Sprintf(
+					"child plan exited agent=%q planFilePath=%q session=%s",
+					opts.Name, childPlanFilePath, sa.SessionKey(),
+				))
 			}
 
 			// Capture final result, cost, and session ID from TaskCompleteEvent.
@@ -242,6 +267,15 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		}
 		if opts.MaxTurns > 0 {
 			runOpts.MaxTurns = opts.MaxTurns
+		}
+		if opts.PlanMode {
+			runOpts.PlanMode = true
+			if opts.PlanFilePath != "" {
+				runOpts.PlanFilePath = opts.PlanFilePath
+			}
+			if len(opts.PlanModeTools) > 0 {
+				runOpts.PlanModeTools = opts.PlanModeTools
+			}
 		}
 
 		key = sa.SessionKey()
@@ -317,6 +351,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				CacheReadInputTokens:     totalCacheReadTokens,
 				CacheCreationInputTokens: totalCacheCreationTokens,
 				SessionID:                childSessionID,
+				PlanFilePath:             childPlanFilePath,
+				PlanExited:               childPlanExited,
 			}
 
 			// Update agent state with terminal status and conversation ID.
@@ -507,6 +543,7 @@ func startChild(child backend.RunBackend, reqID string, runOpts types.RunOptions
 func fireLifecycleCallbacks(
 	opts *extension.DispatchAgentOpts,
 	ev types.NormalizedEvent,
+	agentID string,
 	toolNames map[string]string,
 	toolCount *int,
 	accumulatedText *string,
@@ -580,6 +617,22 @@ func fireLifecycleCallbacks(
 	case *types.TaskCompleteEvent:
 		// Update cumulative cost from the authoritative source.
 		*cumulativeCost = e.CostUsd
+
+	case *types.PlanProposalEvent:
+		if opts.OnPlanProposal != nil {
+			info := extension.DispatchPlanProposalInfo{
+				Name:          opts.Name,
+				AgentID:       agentID,
+				PlanFilePath:  e.PlanFilePath,
+				PlanSlug:      e.PlanSlug,
+				PlanRequested: opts.PlanMode,
+			}
+			opts.OnPlanProposal(info)
+			utils.Log("Dispatch", fmt.Sprintf(
+				"plan proposal callback fired agent=%q planSlug=%q requested=%v",
+				opts.Name, e.PlanSlug, opts.PlanMode,
+			))
+		}
 	}
 }
 

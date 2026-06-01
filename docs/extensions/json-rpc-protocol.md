@@ -420,7 +420,10 @@ Dispatch an engine-native agent. Creates a child session with optional extension
     "model": "claude-sonnet-4-6",
     "extensionDir": "~/.ion/extensions/my-ext",
     "systemPrompt": "You are a research agent.",
-    "projectPath": "/Users/you/project"
+    "projectPath": "/Users/you/project",
+    "planMode": true,
+    "planFilePath": "/tmp/my-plan.md",
+    "planModeTools": ["Read", "Grep", "Glob"]
   }
 }
 ```
@@ -434,12 +437,14 @@ Dispatch an engine-native agent. Creates a child session with optional extension
   "result": {
     "output": "Found 3 uses of deprecated API...",
     "exitCode": 0,
-    "elapsed": 12.5
+    "elapsed": 12.5,
+    "planFilePath": "/tmp/my-plan.md",
+    "planExited": true
   }
 }
 ```
 
-Only `name` and `task` are required. All other fields are optional.
+Only `name` and `task` are required. All other fields are optional. When `planMode` is true, the child runs in plan mode with a restricted tool set; `planFilePath` and `planModeTools` override the defaults.
 
 ## Event buffering during hooks
 

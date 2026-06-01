@@ -450,6 +450,9 @@ interface DispatchAgentOpts {
   projectPath?: string      // working directory for the agent
   sessionId?: string        // resume an existing child session
   maxTurns?: number         // cap child agent loop turns (omit or <=0 = unlimited)
+  planMode?: boolean        // start child in plan mode
+  planFilePath?: string     // override plan file path (default: engine allocates one)
+  planModeTools?: string[]  // override allowed tools during plan mode
   background?: boolean      // run async; return stub result immediately
   onComplete?: (result: DispatchAgentResult) => void   // background: success
   onError?: (err: DispatchError) => void               // background: failure
@@ -459,6 +462,7 @@ interface DispatchAgentOpts {
   onToolError?: (info: DispatchToolErrorInfo) => void   // tool errored in child
   onUsage?: (info: DispatchUsageInfo) => void           // token/cost usage update
   onTextDelta?: (info: DispatchTextDeltaInfo) => void   // streaming text chunks from child
+  onPlanProposal?: (info: DispatchPlanProposalInfo) => void  // child proposed a plan
 }
 ```
 
@@ -474,6 +478,8 @@ interface DispatchAgentResult {
   inputTokens: number
   outputTokens: number
   sessionId?: string  // child session ID (for resume)
+  planFilePath?: string  // plan file written by child (when planMode was true)
+  planExited?: boolean   // true when child called ExitPlanMode
 }
 ```
 
@@ -553,6 +559,14 @@ interface DispatchTextDeltaInfo {
   name: string       // agent name
   delta: string      // new text chunk
   accumulated: string // all text so far
+}
+
+interface DispatchPlanProposalInfo {
+  name: string          // agent name
+  agentId: string       // dispatch-generated agent ID
+  planFilePath: string  // absolute path to the plan file
+  planSlug: string      // human-readable slug (basename minus .md)
+  planRequested: boolean // true when caller set planMode=true; false if child self-initiated
 }
 ```
 

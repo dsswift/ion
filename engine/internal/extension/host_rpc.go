@@ -299,6 +299,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 					data, _ := json.Marshal(info)
 					h.sendNotification("dispatch_text_delta", data)
 				}
+				req.Params.OnPlanProposal = func(info DispatchPlanProposalInfo) {
+					info.Name = agentName
+					data, _ := json.Marshal(info)
+					h.sendNotification("dispatch_plan_proposal", data)
+				}
 
 				// Dispatch in a goroutine; respond immediately with stub.
 				go func() {
