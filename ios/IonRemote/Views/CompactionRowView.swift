@@ -20,7 +20,7 @@ struct CompactionRowView: View {
     }
 
     private var timestamp: String {
-        let date = Date(timeIntervalSince1970: message.timestamp / 1000)
+        let date = Date(timeIntervalSince1970: (message.timestamp ?? 0) / 1000)
         let fmt = DateFormatter()
         fmt.dateFormat = "h:mm a"
         return fmt.string(from: date)

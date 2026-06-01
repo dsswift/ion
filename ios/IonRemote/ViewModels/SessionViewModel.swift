@@ -149,11 +149,11 @@ final class SessionViewModel {
     var enginePinnedPrompt: [String: String] = [:]
     var engineModelOverrides: [String: String] = [:]             // compoundKey -> model override
     // Engine conversation messages (per compound key)
-    var engineMessages: [String: [EngineMessage]] = [:]         // compoundKey -> messages
+    var engineMessages: [String: [Message]] = [:]         // compoundKey -> messages
     var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history
     var engineTurnHasText: Set<String> = []                      // compoundKeys where current LLM sub-turn produced text
     // Agent dispatch conversation history (per agent name)
-    var agentConversationMessages: [String: [EngineMessage]] = [:]  // agentName -> messages
+    var agentConversationMessages: [String: [Message]] = [:]  // agentName -> messages
     var agentConversationLoading: Set<String> = []                   // agent names currently loading
     // Engine instance state (per engine tab)
     var engineInstances: [String: [EngineInstanceInfo]] = [:]   // tabId -> instances

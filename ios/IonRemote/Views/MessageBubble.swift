@@ -31,7 +31,7 @@ struct MessageBubble: View {
                 assistantBubble
             case .tool:
                 toolBubble
-            case .system:
+            case .system, .harness:
                 systemBubble
             }
         }
@@ -54,7 +54,7 @@ struct MessageBubble: View {
     // MARK: - Timestamp helper
 
     private var relativeTimestamp: String {
-        let date = Date(timeIntervalSince1970: message.timestamp / 1000)
+        let date = Date(timeIntervalSince1970: (message.timestamp ?? 0) / 1000)
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())

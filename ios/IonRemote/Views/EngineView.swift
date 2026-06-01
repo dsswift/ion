@@ -67,13 +67,13 @@ struct EngineView: View {
     private var activeToolsList: [ActiveToolInfo] {
         (viewModel.activeTools[compoundKey] ?? [:]).values.sorted { $0.startTime < $1.startTime }
     }
-    private var engineMsgs: [EngineMessage] {
+    private var engineMsgs: [Message] {
         viewModel.engineMessages[compoundKey] ?? []
     }
 
     private enum GroupedItem: Identifiable {
-        case single(EngineMessage)
-        case toolGroup([EngineMessage])
+        case single(Message)
+        case toolGroup([Message])
         var id: String {
             switch self {
             case .single(let msg): return msg.id
@@ -87,8 +87,8 @@ struct EngineView: View {
     private var groupedMessages: [GroupedItem] {
         DiagnosticLog.log("ENGINE-BOOTSTRAP: groupedMessages entry total=\(engineMsgs.count)")
         var result: [GroupedItem] = []
-        var toolBuf: [EngineMessage] = []
-        var bootstrapBuf: [EngineMessage] = []
+        var toolBuf: [Message] = []
+        var bootstrapBuf: [Message] = []
         var totalRunsFlushed = 0
         var totalSuppressed = 0
 
@@ -109,7 +109,7 @@ struct EngineView: View {
         }
 
         for msg in engineMsgs {
-            if msg.role == "tool" {
+            if msg.role == .tool {
                 flushBootstrap()
                 toolBuf.append(msg)
             } else {
@@ -117,7 +117,7 @@ struct EngineView: View {
                     result.append(.toolGroup(toolBuf))
                     toolBuf = []
                 }
-                if msg.role == "harness" && msg.content.hasPrefix(Self.bootstrapPrefix) {
+                if msg.role == .harness && msg.content.hasPrefix(Self.bootstrapPrefix) {
                     DiagnosticLog.log("ENGINE-BOOTSTRAP: enqueue id=\(msg.id) buf=\(bootstrapBuf.count + 1)")
                     bootstrapBuf.append(msg)
                 } else {

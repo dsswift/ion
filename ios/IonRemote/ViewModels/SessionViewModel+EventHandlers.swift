@@ -244,7 +244,7 @@ extension SessionViewModel {
         case .engineHarnessMessage(let tabId, let instanceId, let message, _, _):
             let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
             var msgs = engineMessages[key] ?? []
-            msgs.append(EngineMessage(id: UUID().uuidString, role: "harness", content: message, timestamp: Date().timeIntervalSince1970 * 1000))
+            msgs.append(Message(id: UUID().uuidString, role: .harness, content: message, timestamp: Date().timeIntervalSince1970 * 1000))
             engineMessages[key] = msgs
 
         case .engineConversationHistory(let tabId, let instanceId, let messages):

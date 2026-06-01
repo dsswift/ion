@@ -5,22 +5,22 @@ import SwiftUI
 /// Renders a single engine conversation message based on role.
 struct EngineMessageRow: View {
     @Environment(\.appTheme) private var theme
-    let message: EngineMessage
+    let message: Message
     @State private var previewImage: UIImage?
     @State private var previewName: String = ""
 
     var body: some View {
         Group {
             switch message.role {
-            case "user":
+            case .user:
                 userMessage
-            case "assistant":
+            case .assistant:
                 assistantMessage
-            case "harness":
+            case .harness:
                 harnessMessage
-            case "tool":
+            case .tool:
                 toolMessage
-            default:
+            case .system:
                 systemMessage
             }
         }
@@ -38,7 +38,7 @@ struct EngineMessageRow: View {
     /// each image renders inline above the cleaned text. Bytes are looked up
     /// in the local `AttachmentImageCache` by path — populated at upload time
     /// and surviving conversation rehydration without a wire-side change to
-    /// `EngineMessage`.
+    /// `Message`.
     private var userMessage: some View {
         HStack {
             Spacer(minLength: 24)
@@ -154,18 +154,18 @@ struct EngineMessageRow: View {
     @ViewBuilder
     private var toolStatusIcon: some View {
         switch message.toolStatus {
-        case "running":
+        case .running:
             ProgressView()
                 .scaleEffect(0.6)
-        case "completed":
+        case .completed:
             Image(systemName: "checkmark.circle.fill")
                 .font(.caption2)
                 .foregroundStyle(.green)
-        case "error":
+        case .error:
             Image(systemName: "xmark.circle.fill")
                 .font(.caption2)
                 .foregroundStyle(.red)
-        default:
+        case nil:
             Image(systemName: "wrench")
                 .font(.caption2)
                 .foregroundStyle(.secondary)

@@ -25,7 +25,7 @@ enum TabSearchHelper {
         tab: RemoteTabState,
         query: String,
         messages: [Message]?,
-        engineMessages: [EngineMessage]?,
+        engineMessages: [Message]?,
         attachments: [TabAttachmentEntry]?
     ) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)

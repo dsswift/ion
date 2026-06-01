@@ -136,12 +136,12 @@ extension RemoteEvent {
         case .engineConversationHistory:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let messages = try container.decode([EngineMessage].self, forKey: .messages)
+            let messages = try Message.decodeEngineArray(from: container, forKey: .messages)
             return .engineConversationHistory(tabId: tabId, instanceId: instanceId, messages: messages)
 
         case .agentConversationHistory:
             let agentName = try container.decode(String.self, forKey: .agentName)
-            let messages = try container.decode([EngineMessage].self, forKey: .messages)
+            let messages = try Message.decodeEngineArray(from: container, forKey: .messages)
             return .agentConversationHistory(agentName: agentName, messages: messages)
 
         case .engineModelOverride:

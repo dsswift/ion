@@ -73,8 +73,8 @@ enum RemoteEvent: Codable, Sendable {
     /// adopt the convention without a wire-protocol change. `AnyCodable`
     /// is the same pass-through JSON helper used by `desktopSettingsSnapshot`.
     case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?, metadata: [String: AnyCodable]?)
-    case engineConversationHistory(tabId: String, instanceId: String?, messages: [EngineMessage])
-    case agentConversationHistory(agentName: String, messages: [EngineMessage])
+    case engineConversationHistory(tabId: String, instanceId: String?, messages: [Message])
+    case agentConversationHistory(agentName: String, messages: [Message])
     case engineModelOverride(tabId: String, instanceId: String?, model: String)
     case engineProfiles(profiles: [EngineProfile])
     /// Workflow event from the engine: the model has proposed a plan-mode

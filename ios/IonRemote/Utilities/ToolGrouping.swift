@@ -48,7 +48,7 @@ func groupConversationItems(_ messages: [Message]) -> [ConversationItem] {
             switch msg.role {
             case .user:      result.append(.user(msg))
             case .assistant: result.append(.assistant(msg))
-            case .system:
+            case .system, .harness:
                 if msg.content.hasPrefix("[Compaction]") {
                     result.append(.compaction(msg))
                 } else {
