@@ -339,19 +339,27 @@ struct EngineView: View {
         VStack(spacing: 0) {
             Divider()
             if let fields = viewModel.engineStatusFields[compoundKey] {
-                EngineFooterView(
-                    fields: fields,
+                ConversationStatusBar(
+                    modelOverride: viewModel.engineModelOverrides[compoundKey],
+                    preferredModel: fields.model,
+                    contextPercent: fields.contextPercent,
+                    contextTokens: nil,
+                    isRunning: isRunning,
+                    permissionMode: viewModel.tab(for: tabId)?.permissionMode,
+                    availableModels: viewModel.availableModels,
+                    attachmentCount: 0,
                     onSelectModel: { model in
                         viewModel.setEngineModel(tabId: tabId, model: model)
                     },
-                    availableModels: viewModel.availableModels,
-                    selectedModel: viewModel.engineModelOverrides[compoundKey] ?? "",
-                    permissionMode: viewModel.tab(for: tabId)?.permissionMode,
                     onToggleMode: {
                         guard let current = viewModel.tab(for: tabId)?.permissionMode else { return }
                         let newMode: PermissionMode = current == .plan ? .auto : .plan
                         viewModel.setPermissionMode(tabId: tabId, mode: newMode)
-                    }
+                    },
+                    onTapAttachments: {},
+                    isEngine: true,
+                    extensionName: fields.extensionName,
+                    statusState: fields.state
                 )
             }
             Divider()
