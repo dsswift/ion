@@ -33,25 +33,13 @@ struct TabListView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        ZStack {
-            // Base background for themed views
-            if theme.backgroundView != nil {
-                Color(red: 4/255, green: 12/255, blue: 26/255)
-                    .ignoresSafeArea()
-            }
-            if let bg = theme.backgroundView {
-                bg.ignoresSafeArea()
-                let _ = DiagnosticLog.log("THEME-BG: rendering backgroundView for theme \(theme.id)")
+        Group {
+            if sizeClass == .regular {
+                iPadLayout
             } else {
-                let _ = DiagnosticLog.log("THEME-BG: backgroundView is nil for theme \(theme.id)")
+                iPhoneLayout
             }
-            Group {
-                if sizeClass == .regular {
-                    iPadLayout
-                } else {
-                    iPhoneLayout
-                }
-            }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
@@ -127,7 +115,6 @@ struct TabListView: View {
         } message: {
             Text("Enter a new name for this tab.")
         }
-        } // ZStack
     }
 
     // MARK: - iPad Layout (NavigationSplitView)
@@ -164,63 +151,78 @@ struct TabListView: View {
     // MARK: - iPhone Layout (NavigationStack)
 
     private var iPhoneLayout: some View {
-        NavigationStack(path: $navigationPath) {
-            List {
-                tabGroupSections(selectionStyle: .navigation)
+        ZStack {
+            if theme.backgroundView != nil {
+                Color(red: 4/255, green: 14/255, blue: 28/255).ignoresSafeArea()
             }
-            .scrollContentBackground(.hidden)
-            .listRowBackground(Color.clear)
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
-            .navigationTitle("")
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+            if let bg = theme.backgroundView {
+                bg.ignoresSafeArea().opacity(0.9)
+                let _ = DiagnosticLog.log("THEME-BG: rendering backgroundView for theme \(theme.id)")
+            }
+            NavigationStack(path: $navigationPath) {
+                List {
+                    tabGroupSections(selectionStyle: .navigation)
                 }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 12) {
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-                        ConnectionQualityView(compact: true)
+                .scrollContentBackground(.hidden)
+                .listRowBackground(Color.clear)
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
+                .navigationTitle("")
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        DesktopPickerMenu(showPairingSheet: $showPairingSheet)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    newTabButton
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HStack(spacing: 12) {
+                            Button {
+                                showSettings = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                            }
+                            ConnectionQualityView(compact: true)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        newTabButton
+                    }
                 }
-            }
-            .navigationDestination(for: String.self) { tabId in
-                destinationView(for: tabId)
-            }
-            .refreshable {
-                Haptic.light()
-                viewModel.sync()
-            }
-            .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
-                if let tabId {
-                    navigationPath.append(tabId)
-                    viewModel.pendingNavigationTabId = nil
+                .navigationDestination(for: String.self) { tabId in
+                    destinationView(for: tabId)
                 }
-            }
-            .overlay {
-                emptyStateOverlay
-            }
-            .overlay {
-                searchEmptyStateOverlay
-            }
-            .overlay(alignment: .top) {
-                if viewModel.voiceService.isSpeaking {
-                    VoicePlaybackBar(
-                        onSkip: { viewModel.voiceService.skip() },
-                        onStopAll: { viewModel.voiceService.stop() },
-                        hasPending: viewModel.voiceService.hasPending
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
+                .refreshable {
+                    Haptic.light()
+                    viewModel.sync()
                 }
+                .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
+                    if let tabId {
+                        navigationPath.append(tabId)
+                        viewModel.pendingNavigationTabId = nil
+                    }
+                }
+                .overlay {
+                    emptyStateOverlay
+                }
+                .overlay {
+                    searchEmptyStateOverlay
+                }
+                .overlay(alignment: .top) {
+                    if viewModel.voiceService.isSpeaking {
+                        VoicePlaybackBar(
+                            onSkip: { viewModel.voiceService.skip() },
+                            onStopAll: { viewModel.voiceService.stop() },
+                            hasPending: viewModel.voiceService.hasPending
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
+                    }
+                }
+                .toolbarBackground(
+                    theme.backgroundView != nil
+                        ? Color(red: 4/255, green: 14/255, blue: 28/255).opacity(0.95)
+                        : Color.clear,
+                    for: .navigationBar
+                )
             }
         }
     }
