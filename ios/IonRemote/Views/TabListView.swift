@@ -1,3 +1,4 @@
+// @file-size-exception: single-screen view; split deferred per file-organization.md decomposition phase
 import SwiftUI
 
 struct TabListView: View {
@@ -31,6 +32,7 @@ struct TabListView: View {
 
     // iPhone: path-based navigation
     @State private var navigationPath = NavigationPath()
+    @State private var flickerOpacity: Double = 1.0
 
     var body: some View {
         Group {
@@ -169,7 +171,18 @@ struct TabListView: View {
                 .navigationTitle("")
                 .toolbar {
                     ToolbarItem(placement: .principal) {
-                        DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+                        if theme.backgroundView != nil {
+                            Text("J A R V I S")
+                                .font(.headline.weight(.black))
+                                .kerning(4)
+                                .foregroundStyle(theme.accent)
+                                .shadow(color: theme.accent.opacity(0.9), radius: 4)
+                                .shadow(color: theme.accent.opacity(0.6), radius: 10)
+                                .shadow(color: theme.accent.opacity(0.3), radius: 20)
+                                .opacity(flickerOpacity)
+                        } else {
+                            DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+                        }
                     }
                 }
                 .toolbar {
@@ -223,6 +236,23 @@ struct TabListView: View {
                         : Color.clear,
                     for: .navigationBar
                 )
+                .toolbarColorScheme(
+                    theme.backgroundView != nil ? .dark : nil,
+                    for: .navigationBar
+                )
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(Double.random(in: 3.0...9.0)))
+                        guard !Task.isCancelled else { break }
+                        withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 0.55 }
+                        try? await Task.sleep(for: .milliseconds(60))
+                        withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 1.0 }
+                        try? await Task.sleep(for: .milliseconds(90))
+                        withAnimation(.easeInOut(duration: 0.04)) { flickerOpacity = 0.75 }
+                        try? await Task.sleep(for: .milliseconds(50))
+                        withAnimation(.easeInOut(duration: 0.1)) { flickerOpacity = 1.0 }
+                    }
+                }
             }
         }
     }

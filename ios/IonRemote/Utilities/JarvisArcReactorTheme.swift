@@ -10,6 +10,10 @@ struct JarvisArcReactorTheme: AppTheme {
 
     let accent = Color(red: 0x33 / 255, green: 0xC3 / 255, blue: 0xF7 / 255)
     let accentSubtle = Color(red: 0x33 / 255, green: 0xC3 / 255, blue: 0xF7 / 255).opacity(0.12)
+    var accentGlow: Color { accent.opacity(0.18) }
+    var background: Color { Color(red: 4/255, green: 14/255, blue: 28/255) }
+    var textPrimary: Color { Color(red: 190/255, green: 235/255, blue: 255/255).opacity(0.92) }
+    var textSecondary: Color { Color(red: 190/255, green: 235/255, blue: 255/255).opacity(0.55) }
     let statusRunning = Color(red: 0x33 / 255, green: 0xC3 / 255, blue: 0xF7 / 255).opacity(0.85)
     let statusDone = Color.green
     let statusError = Color(red: 0xC4 / 255, green: 0x70 / 255, blue: 0x60 / 255)

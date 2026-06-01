@@ -13,6 +13,10 @@ protocol AppTheme {
     // Color tokens
     var accent: Color { get }
     var accentSubtle: Color { get }
+    var accentGlow: Color { get }
+    var background: Color { get }
+    var textPrimary: Color { get }
+    var textSecondary: Color { get }
     var statusRunning: Color { get }
     var statusDone: Color { get }
     var statusError: Color { get }
@@ -93,6 +97,10 @@ final class ThemeManager: AppTheme {
     var displayName: String { _currentTheme.displayName }
     var accent: Color { _currentTheme.accent }
     var accentSubtle: Color { _currentTheme.accentSubtle }
+    var accentGlow: Color { _currentTheme.accentGlow }
+    var background: Color { _currentTheme.background }
+    var textPrimary: Color { _currentTheme.textPrimary }
+    var textSecondary: Color { _currentTheme.textSecondary }
     var statusRunning: Color { _currentTheme.statusRunning }
     var statusDone: Color { _currentTheme.statusDone }
     var statusError: Color { _currentTheme.statusError }

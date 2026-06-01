@@ -1,3 +1,4 @@
+// @file-size-exception: single-screen view; split deferred per file-organization.md decomposition phase
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
@@ -414,8 +415,25 @@ struct EngineView: View {
         }
     }
 
-    var body: some View {
+    private var themedBackground: some View {
+        ZStack {
+            theme.background
+            if let bg = theme.backgroundView {
+                bg.opacity(0.35)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var styledMainContent: some View {
         mainContent
+            .background(themedBackground)
+            .toolbarBackground(theme.background.opacity(0.95), for: .navigationBar)
+            .toolbarColorScheme(theme.backgroundView != nil ? .dark : nil, for: .navigationBar)
+    }
+
+    var body: some View {
+        styledMainContent
         .navigationTitle(viewModel.tab(for: tabId)?.displayTitle ?? "Engine")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
