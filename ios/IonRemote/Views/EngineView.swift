@@ -273,7 +273,10 @@ struct EngineView: View {
                                 agent: agent,
                                 messages: viewModel.agentConversationMessages[agent.name],
                                 isLoadingMessages: viewModel.agentConversationLoading.contains(agent.name),
-                                onExpand: { viewModel.loadAgentConversation(agent: agent) }
+                                onExpand: { viewModel.loadAgentConversation(agent: agent) },
+                                onLoadDispatch: { convId in
+                                    viewModel.loadAgentDispatchConversation(agent: agent, conversationId: convId)
+                                }
                             )
                         }
                     }

@@ -6,8 +6,25 @@ struct AgentBarRow: View {
     let messages: [Message]?
     let isLoadingMessages: Bool
     let onExpand: (() -> Void)?
+    /// Called with a single conversationId to load a specific dispatch.
+    let onLoadDispatch: ((String) -> Void)?
     @State private var isExpanded = false
     @State private var now = Date()
+    @State private var selectedDispatchIndex: Int?
+
+    init(
+        agent: AgentStateUpdate,
+        messages: [Message]?,
+        isLoadingMessages: Bool,
+        onExpand: (() -> Void)? = nil,
+        onLoadDispatch: ((String) -> Void)? = nil
+    ) {
+        self.agent = agent
+        self.messages = messages
+        self.isLoadingMessages = isLoadingMessages
+        self.onExpand = onExpand
+        self.onLoadDispatch = onLoadDispatch
+    }
 
     // Live elapsed seconds from startTime (running) or final elapsed (done).
     private var elapsedSeconds: Int? {
@@ -94,6 +111,14 @@ struct AgentBarRow: View {
 
     // MARK: - Expanded body
 
+    /// The active dispatch (if multiple dispatches exist).
+    private var activeDispatch: DispatchInfo? {
+        guard agent.dispatches.count > 1 else { return nil }
+        let idx = selectedDispatchIndex ?? agent.dispatches.count - 1
+        guard idx >= 0 && idx < agent.dispatches.count else { return nil }
+        return agent.dispatches[idx]
+    }
+
     private var expandedBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().padding(.horizontal, 8)
@@ -101,7 +126,8 @@ struct AgentBarRow: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     // Model tag
-                    if let model = agent.model, !model.isEmpty {
+                    let activeModel = activeDispatch?.model ?? agent.model
+                    if let model = activeModel, !model.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "cpu")
                                 .font(.caption2)
@@ -112,8 +138,14 @@ struct AgentBarRow: View {
                         .padding(.horizontal, 12)
                     }
 
+                    // Dispatch picker (shown when multiple dispatches exist)
+                    if agent.dispatches.count > 1 {
+                        dispatchPicker
+                    }
+
                     // Dispatch task (the orchestrator's instruction to the agent)
-                    if let task = agent.task, !task.isEmpty {
+                    let activeTask = activeDispatch?.task ?? agent.task
+                    if let task = activeTask, !task.isEmpty {
                         dispatchBubble(task)
                     }
 
@@ -156,6 +188,37 @@ struct AgentBarRow: View {
         }
     }
 
+    /// Horizontal pill row for switching between dispatches.
+    private var dispatchPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                Text("Dispatches:")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                ForEach(Array(agent.dispatches.enumerated()), id: \.element.id) { idx, d in
+                    let displayNum = agent.dispatches.count - idx
+                    let isActive = idx == (selectedDispatchIndex ?? agent.dispatches.count - 1)
+                    Button {
+                        selectedDispatchIndex = idx
+                        if !d.conversationId.isEmpty {
+                            onLoadDispatch?(d.conversationId)
+                        }
+                    } label: {
+                        Text("#\(displayNum)")
+                            .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                            .foregroundStyle(isActive ? .primary : .tertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(isActive ? Color(.systemGray4) : Color(.systemGray6))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+    }
+
     /// A visually distinct bubble for the orchestrator's dispatch instruction.
     private func dispatchBubble(_ task: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
@@ -181,7 +244,7 @@ struct AgentBarRow: View {
     /// matches the dispatch task (already shown in the bubble) and drops
     /// tool/system messages (matches desktop's groupMessages behavior).
     private func conversationMessages(_ msgs: [Message]) -> [Message] {
-        let task = agent.task ?? ""
+        let task = activeDispatch?.task ?? agent.task ?? ""
         return msgs.filter { msg in
             guard msg.role == .assistant || msg.role == .user else { return false }
             if msg.role == .user && !task.isEmpty && msg.content.trimmingCharacters(in: .whitespacesAndNewlines) == task.trimmingCharacters(in: .whitespacesAndNewlines) {

@@ -199,9 +199,26 @@ func (a *sessionAccessor) GetPlanModeState() (bool, string) {
 
 func (a *sessionAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
 	a.s.agents.AppendOrUpdate(state, func(existing *types.AgentStateUpdate) {
+		// Preserve and merge the structured dispatches array from previous
+		// dispatches. When the incoming state carries new dispatch entries
+		// (e.g. a re-dispatch of the same agent name), merge them with any
+		// existing entries rather than replacing.
+		var prevDispatches []interface{}
+		if existing.Metadata != nil {
+			if pd, ok := existing.Metadata["dispatches"].([]interface{}); ok {
+				prevDispatches = pd
+			}
+		}
 		existing.ID = state.ID
 		existing.Status = state.Status
 		existing.Metadata = state.Metadata
+		if len(prevDispatches) > 0 && existing.Metadata != nil {
+			if newDisp, ok := existing.Metadata["dispatches"].([]interface{}); ok {
+				existing.Metadata["dispatches"] = append(prevDispatches, newDisp...)
+			} else {
+				existing.Metadata["dispatches"] = prevDispatches
+			}
+		}
 	})
 	return state.ID
 }

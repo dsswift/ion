@@ -59,15 +59,16 @@ type ModelChangeData struct {
 
 // AgentDispatchData records a completed agent dispatch for persistence.
 type AgentDispatchData struct {
-	AgentName       string   `json:"agentName"`
-	AgentID         string   `json:"agentId"`
-	DisplayName     string   `json:"displayName,omitempty"`
-	Task            string   `json:"task,omitempty"`
-	Model           string   `json:"model,omitempty"`
-	Status          string   `json:"status"`
-	Elapsed         float64  `json:"elapsed,omitempty"`
-	ConversationID  string   `json:"conversationId,omitempty"`
-	ConversationIDs []string `json:"conversationIds,omitempty"`
+	AgentName       string                   `json:"agentName"`
+	AgentID         string                   `json:"agentId"`
+	DisplayName     string                   `json:"displayName,omitempty"`
+	Task            string                   `json:"task,omitempty"`
+	Model           string                   `json:"model,omitempty"`
+	Status          string                   `json:"status"`
+	Elapsed         float64                  `json:"elapsed,omitempty"`
+	ConversationID  string                   `json:"conversationId,omitempty"`
+	ConversationIDs []string                 `json:"conversationIds,omitempty"`
+	Dispatches      []map[string]interface{} `json:"dispatches,omitempty"`
 }
 
 // SessionEntry is a single node in the conversation tree.

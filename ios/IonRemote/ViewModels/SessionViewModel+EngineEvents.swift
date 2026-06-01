@@ -159,6 +159,17 @@ extension SessionViewModel {
         send(.loadAgentConversation(conversationIds: agent.conversationIds))
     }
 
+    /// Load a single dispatch's conversation by conversationId.
+    /// Used when the dispatch pager selects a specific dispatch.
+    @MainActor
+    func loadAgentDispatchConversation(agent: AgentStateUpdate, conversationId: String) {
+        guard !conversationId.isEmpty else { return }
+        guard !agentConversationLoading.contains(agent.name) else { return }
+        DiagnosticLog.log("ENGINE: loading dispatch conversation agent=\(agent.name) convId=\(conversationId)")
+        agentConversationLoading.insert(agent.name)
+        send(.loadAgentConversation(conversationIds: [conversationId]))
+    }
+
     // MARK: - Diagnostic log request
 
     @MainActor

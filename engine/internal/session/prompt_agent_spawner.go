@@ -114,6 +114,13 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		// one. Using AppendOrUpdate prevents the TOCTOU race where two
 		// concurrent dispatches of the same specialist both see "not found"
 		// and both append, creating duplicate rows.
+		newDispatch := map[string]interface{}{
+			"id":        agentID,
+			"task":      prompt,
+			"model":     childModel,
+			"status":    "running",
+			"startTime": start.Unix(),
+		}
 		reused := s.agents.AppendOrUpdate(types.AgentStateUpdate{
 			Name:   agentName,
 			ID:     agentID,
@@ -126,6 +133,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				"task":        prompt,
 				"model":       childModel,
 				"startTime":   start.Unix(),
+				"dispatches":  []interface{}{newDispatch},
 			},
 		}, func(existing *types.AgentStateUpdate) {
 			existing.ID = agentID
@@ -138,6 +146,9 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			existing.Metadata["startTime"] = start.Unix()
 			existing.Metadata["lastWork"] = ""
 			delete(existing.Metadata, "elapsed")
+			// Append new dispatch entry to the structured dispatches array.
+			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+			existing.Metadata["dispatches"] = append(existingDispatches, newDispatch)
 		})
 		snapshot := s.agents.MergedSnapshot()
 
@@ -302,6 +313,20 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				state.Metadata["conversationIds"] = append(existing, childConvID)
 				// Keep single-value key for backward compatibility
 				state.Metadata["conversationId"] = childConvID
+			}
+			// Update the current dispatch entry in the structured dispatches array.
+			if dispatches, ok := state.Metadata["dispatches"].([]interface{}); ok {
+				for i, d := range dispatches {
+					if dm, ok := d.(map[string]interface{}); ok && dm["id"] == agentID {
+						dm["status"] = state.Status
+						dm["elapsed"] = elapsed
+						if childConvID != "" {
+							dm["conversationId"] = childConvID
+						}
+						dispatches[i] = dm
+						break
+					}
+				}
 			}
 		})
 		snapshot2 := s.agents.MergedSnapshot()

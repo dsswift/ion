@@ -1,9 +1,55 @@
 import type { AgentStateUpdate } from '../../shared/types'
 
+/** Structured dispatch info extracted from agent metadata. */
+export interface DispatchInfo {
+  id: string
+  task: string
+  model: string
+  conversationId: string
+  elapsed?: number
+  status: string
+  startTime?: number
+}
+
 /** Read a metadata field with fallback */
 export function meta<T>(agent: AgentStateUpdate, key: string, fallback: T): T {
   const val = agent.metadata?.[key]
   return val != null ? (val as T) : fallback
+}
+
+/**
+ * Extract the structured dispatches array from agent metadata.
+ * Falls back to a single-entry array built from top-level metadata
+ * for backward compat with agents that don't have the dispatches array.
+ */
+export function getDispatches(agent: AgentStateUpdate): DispatchInfo[] {
+  const raw = agent.metadata?.dispatches
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw.map((d: any) => ({
+      id: String(d.id ?? ''),
+      task: String(d.task ?? ''),
+      model: String(d.model ?? ''),
+      conversationId: String(d.conversationId ?? ''),
+      elapsed: typeof d.elapsed === 'number' ? d.elapsed : undefined,
+      status: String(d.status ?? ''),
+      startTime: typeof d.startTime === 'number' ? d.startTime : undefined,
+    }))
+  }
+  // Backward compat: build a single dispatch from top-level metadata
+  const convId = agent.metadata?.conversationId
+  const task = agent.metadata?.task
+  if (typeof convId === 'string' || typeof task === 'string') {
+    return [{
+      id: agent.id || '',
+      task: String(task ?? ''),
+      model: meta(agent, 'model', ''),
+      conversationId: String(convId ?? ''),
+      elapsed: typeof agent.metadata?.elapsed === 'number' ? agent.metadata.elapsed : undefined,
+      status: agent.status,
+      startTime: typeof agent.metadata?.startTime === 'number' ? agent.metadata.startTime : undefined,
+    }]
+  }
+  return []
 }
 
 const AGENT_COLORS: Record<string, string> = {

@@ -65,7 +65,7 @@ func TestRehydrateDispatchState_LoadsCompletedDispatches(t *testing.T) {
 		t.Fatalf("expected 1 dispatch, got %d", len(dispatches))
 	}
 
-	// Simulate what rehydrateDispatchState does.
+	// Simulate what rehydrateDispatchState does (using AppendOrUpdate).
 	for _, d := range dispatches {
 		metadata := map[string]interface{}{
 			"displayName": d.DisplayName,
@@ -86,11 +86,47 @@ func TestRehydrateDispatchState_LoadsCompletedDispatches(t *testing.T) {
 			}
 			metadata["conversationIds"] = ids
 		}
-		s.agents.AppendState(types.AgentStateUpdate{
+
+		dispatchEntry := map[string]interface{}{
+			"id":     d.AgentID,
+			"task":   d.Task,
+			"model":  d.Model,
+			"status": d.Status,
+		}
+		if d.Elapsed > 0 {
+			dispatchEntry["elapsed"] = d.Elapsed
+		}
+		if d.ConversationID != "" {
+			dispatchEntry["conversationId"] = d.ConversationID
+		}
+		metadata["dispatches"] = []interface{}{dispatchEntry}
+
+		s.agents.AppendOrUpdate(types.AgentStateUpdate{
 			Name:     d.AgentName,
 			ID:       d.AgentID,
 			Status:   d.Status,
 			Metadata: metadata,
+		}, func(existing *types.AgentStateUpdate) {
+			existing.ID = d.AgentID
+			existing.Status = d.Status
+			if existing.Metadata == nil {
+				existing.Metadata = map[string]interface{}{}
+			}
+			existing.Metadata["task"] = d.Task
+			existing.Metadata["conversationId"] = d.ConversationID
+			existingIDs, _ := existing.Metadata["conversationIds"].([]interface{})
+			seen := make(map[string]bool)
+			for _, id := range existingIDs {
+				if s, ok := id.(string); ok {
+					seen[s] = true
+				}
+			}
+			if d.ConversationID != "" && !seen[d.ConversationID] {
+				existingIDs = append(existingIDs, d.ConversationID)
+			}
+			existing.Metadata["conversationIds"] = existingIDs
+			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+			existing.Metadata["dispatches"] = append(existingDispatches, dispatchEntry)
 		})
 	}
 
@@ -114,6 +150,15 @@ func TestRehydrateDispatchState_LoadsCompletedDispatches(t *testing.T) {
 		t.Errorf("elapsed = %v, want 32.5", entry.Metadata["elapsed"])
 	}
 
+	// Verify dispatches array has 1 entry.
+	dispatchesMeta, ok := entry.Metadata["dispatches"].([]interface{})
+	if !ok {
+		t.Fatalf("dispatches metadata is not []interface{}: %T", entry.Metadata["dispatches"])
+	}
+	if len(dispatchesMeta) != 1 {
+		t.Errorf("dispatches length = %d, want 1", len(dispatchesMeta))
+	}
+
 	_ = m // Manager created for consistency but not needed in this unit test path.
 }
 
@@ -126,8 +171,8 @@ func TestRehydrateDispatchState_MergesWithExtensionRoster(t *testing.T) {
 		agents: agents.NewRegistry(),
 	}
 
-	// Simulate rehydration.
-	s.agents.AppendState(types.AgentStateUpdate{
+	// Simulate rehydration (using AppendOrUpdate for consistency).
+	s.agents.AppendOrUpdate(types.AgentStateUpdate{
 		Name:   "agent-designer",
 		ID:     "dispatch-ad-1",
 		Status: "done",
@@ -136,6 +181,14 @@ func TestRehydrateDispatchState_MergesWithExtensionRoster(t *testing.T) {
 			"task":           "brief me",
 			"conversationId": "conv-abc",
 		},
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-ad-1"
+		existing.Status = "done"
+		if existing.Metadata == nil {
+			existing.Metadata = map[string]interface{}{}
+		}
+		existing.Metadata["task"] = "brief me"
+		existing.Metadata["conversationId"] = "conv-abc"
 	})
 
 	// Extension fires session_start → emits all-idle roster.
@@ -173,7 +226,7 @@ func TestRehydrateDispatchState_MultipleAgentsMultipleDispatches(t *testing.T) {
 		agents: agents.NewRegistry(),
 	}
 
-	// Simulate rehydrating 4 dispatch records from disk.
+	// Simulate rehydrating 4 dispatch records from disk using AppendOrUpdate.
 	records := []struct {
 		name, id, status, task, convID string
 	}{
@@ -183,35 +236,111 @@ func TestRehydrateDispatchState_MultipleAgentsMultipleDispatches(t *testing.T) {
 		{"security-officer", "dispatch-so-1", "error", "audit", ""},
 	}
 
-	for _, r := range records {
+	for _, rec := range records {
 		metadata := map[string]interface{}{
-			"task": r.task,
+			"task": rec.task,
 		}
-		if r.convID != "" {
-			metadata["conversationId"] = r.convID
+		if rec.convID != "" {
+			metadata["conversationId"] = rec.convID
+			metadata["conversationIds"] = []interface{}{rec.convID}
 		}
-		s.agents.AppendState(types.AgentStateUpdate{
-			Name:     r.name,
-			ID:       r.id,
-			Status:   r.status,
+
+		dispatchEntry := map[string]interface{}{
+			"id":     rec.id,
+			"task":   rec.task,
+			"status": rec.status,
+		}
+		if rec.convID != "" {
+			dispatchEntry["conversationId"] = rec.convID
+		}
+		metadata["dispatches"] = []interface{}{dispatchEntry}
+
+		convID := rec.convID // capture for closure
+		s.agents.AppendOrUpdate(types.AgentStateUpdate{
+			Name:     rec.name,
+			ID:       rec.id,
+			Status:   rec.status,
 			Metadata: metadata,
+		}, func(existing *types.AgentStateUpdate) {
+			existing.ID = rec.id
+			existing.Status = rec.status
+			if existing.Metadata == nil {
+				existing.Metadata = map[string]interface{}{}
+			}
+			existing.Metadata["task"] = rec.task
+			if convID != "" {
+				existing.Metadata["conversationId"] = convID
+			}
+
+			// Merge conversationIds.
+			existingIDs, _ := existing.Metadata["conversationIds"].([]interface{})
+			seen := make(map[string]bool)
+			for _, id := range existingIDs {
+				if s, ok := id.(string); ok {
+					seen[s] = true
+				}
+			}
+			if convID != "" && !seen[convID] {
+				existingIDs = append(existingIDs, convID)
+			}
+			if len(existingIDs) > 0 {
+				existing.Metadata["conversationIds"] = existingIDs
+			}
+
+			// Append to dispatches.
+			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+			existing.Metadata["dispatches"] = append(existingDispatches, dispatchEntry)
 		})
 	}
 
 	snapshot := s.agents.MergedSnapshot()
-	if len(snapshot) != 4 {
-		t.Fatalf("expected 4 entries, got %d", len(snapshot))
+	// 3 entries: agent-designer (coalesced) + cloud-architect + security-officer.
+	if len(snapshot) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(snapshot))
 	}
 
-	// Count agent-designer entries.
+	// Count agent-designer entries — should be 1 (coalesced).
 	adCount := 0
 	for _, entry := range snapshot {
 		if entry.Name == "agent-designer" {
 			adCount++
+
+			// Latest dispatch fields should win.
+			if entry.Metadata["task"] != "second task" {
+				t.Errorf("agent-designer task = %v, want second task", entry.Metadata["task"])
+			}
+			if entry.Metadata["conversationId"] != "conv-2" {
+				t.Errorf("agent-designer conversationId = %v, want conv-2", entry.Metadata["conversationId"])
+			}
+
+			// conversationIds should contain both conv-1 and conv-2.
+			convIDs, ok := entry.Metadata["conversationIds"].([]interface{})
+			if !ok {
+				t.Fatalf("agent-designer conversationIds is not []interface{}: %T", entry.Metadata["conversationIds"])
+			}
+			if len(convIDs) != 2 {
+				t.Errorf("agent-designer conversationIds length = %d, want 2: %v", len(convIDs), convIDs)
+			}
+			idSet := map[string]bool{}
+			for _, id := range convIDs {
+				idSet[id.(string)] = true
+			}
+			if !idSet["conv-1"] || !idSet["conv-2"] {
+				t.Errorf("agent-designer conversationIds should have conv-1 and conv-2, got %v", convIDs)
+			}
+
+			// dispatches array should have 2 entries.
+			dispatchesMeta, ok := entry.Metadata["dispatches"].([]interface{})
+			if !ok {
+				t.Fatalf("agent-designer dispatches is not []interface{}: %T", entry.Metadata["dispatches"])
+			}
+			if len(dispatchesMeta) != 2 {
+				t.Errorf("agent-designer dispatches length = %d, want 2", len(dispatchesMeta))
+			}
 		}
 	}
-	if adCount != 2 {
-		t.Errorf("expected 2 agent-designer entries, got %d", adCount)
+	if adCount != 1 {
+		t.Errorf("expected 1 agent-designer entry (coalesced), got %d", adCount)
 	}
 
 	// Verify security-officer has error status and no convID.

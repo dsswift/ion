@@ -66,6 +66,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			displayName = spec.Description
 		}
 
+		newDispatch := map[string]interface{}{
+			"id":        agentID,
+			"task":      opts.Task,
+			"model":     model,
+			"status":    "running",
+			"startTime": start.Unix(),
+		}
 		sa.AppendOrUpdateAgentState(types.AgentStateUpdate{
 			Name:   agentName,
 			ID:     agentID,
@@ -78,6 +85,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				"task":        opts.Task,
 				"model":       model,
 				"startTime":   start.Unix(),
+				"dispatches":  []interface{}{newDispatch},
 			},
 		})
 		sa.EmitAgentSnapshot("dispatch_start")
@@ -379,6 +387,20 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 					existing, _ := state.Metadata["conversationIds"].([]interface{})
 					state.Metadata["conversationIds"] = append(existing, childSessionID)
 					state.Metadata["conversationId"] = childSessionID
+				}
+				// Update the current dispatch entry in the structured dispatches array.
+				if dispatches, ok := state.Metadata["dispatches"].([]interface{}); ok {
+					for i, d := range dispatches {
+						if dm, ok := d.(map[string]interface{}); ok && dm["id"] == agentID {
+							dm["status"] = state.Status
+							dm["elapsed"] = elapsed
+							if childSessionID != "" {
+								dm["conversationId"] = childSessionID
+							}
+							dispatches[i] = dm
+							break
+						}
+					}
 				}
 			})
 			sa.EmitAgentSnapshot("dispatch_end")

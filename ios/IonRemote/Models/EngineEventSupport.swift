@@ -17,6 +17,32 @@ import Foundation
 
 // MARK: - AgentStateUpdate
 
+/// Structured dispatch info for a single agent dispatch.
+/// Decoded from the `dispatches` array inside agent metadata.
+struct DispatchInfo: Identifiable, Sendable {
+    let id: String
+    let task: String
+    let model: String
+    let conversationId: String
+    let elapsed: Double?
+    let status: String
+    let startTime: Double?
+
+    init(from dict: [String: Any]) {
+        id = dict["id"] as? String ?? ""
+        task = dict["task"] as? String ?? ""
+        model = dict["model"] as? String ?? ""
+        conversationId = dict["conversationId"] as? String ?? ""
+        status = dict["status"] as? String ?? ""
+        if let e = dict["elapsed"] as? Double { elapsed = e }
+        else if let e = dict["elapsed"] as? Int { elapsed = Double(e) }
+        else { elapsed = nil }
+        if let st = dict["startTime"] as? Double { startTime = st }
+        else if let st = dict["startTime"] as? Int { startTime = Double(st) }
+        else { startTime = nil }
+    }
+}
+
 /// Structured agent state sent from the desktop engine runtime.
 /// The wire format has `name`, `status`, and a `metadata` map containing
 /// all other fields (displayName, type, visibility, invited, etc.).
@@ -40,6 +66,7 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
     let model: String?
     let startTime: Double?   // Unix timestamp in seconds
     let conversationIds: [String]
+    let dispatches: [DispatchInfo]
 
     /// Whether this agent should be shown in the UI based on visibility rules.
     var isVisible: Bool {
@@ -86,6 +113,17 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
             conversationIds = []
         }
 
+        // Decode structured dispatches array from metadata.
+        if let rawDispatches = meta["dispatches"]?.value as? [AnyCodable] {
+            dispatches = rawDispatches.compactMap { item -> DispatchInfo? in
+                guard let dict = item.value as? [String: AnyCodable] else { return nil }
+                let plain = dict.mapValues { $0.value }
+                return DispatchInfo(from: plain)
+            }
+        } else {
+            dispatches = []
+        }
+
         // Bool and numeric values may arrive as various types
         if let inv = meta["invited"]?.value as? Bool {
             invited = inv
@@ -129,6 +167,7 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         if let model { meta["model"] = AnyCodable(model) }
         if let startTime { meta["startTime"] = AnyCodable(startTime) }
         if !conversationIds.isEmpty { meta["conversationIds"] = AnyCodable(conversationIds.map { AnyCodable($0) }) }
+        // dispatches are read-only from the engine; no need to encode back
         try container.encode(meta, forKey: .metadata)
     }
 }

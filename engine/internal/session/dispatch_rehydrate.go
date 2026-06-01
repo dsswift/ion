@@ -48,8 +48,6 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) {
 			metadata["conversationId"] = d.ConversationID
 		}
 		if len(d.ConversationIDs) > 0 {
-			// Convert []string to []interface{} for consistency with the
-			// in-memory format used by dispatch_agent.go and spawner.
 			ids := make([]interface{}, len(d.ConversationIDs))
 			for i, id := range d.ConversationIDs {
 				ids[i] = id
@@ -57,11 +55,85 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) {
 			metadata["conversationIds"] = ids
 		}
 
-		s.agents.AppendState(types.AgentStateUpdate{
+		// Build a dispatch info entry for the structured dispatches array.
+		dispatchEntry := map[string]interface{}{
+			"id":     d.AgentID,
+			"task":   d.Task,
+			"model":  d.Model,
+			"status": d.Status,
+		}
+		if d.Elapsed > 0 {
+			dispatchEntry["elapsed"] = d.Elapsed
+		}
+		if d.ConversationID != "" {
+			dispatchEntry["conversationId"] = d.ConversationID
+		}
+
+		// Restore persisted dispatches array, or initialize with this entry.
+		if len(d.Dispatches) > 0 {
+			dispatchList := make([]interface{}, len(d.Dispatches))
+			for i, dp := range d.Dispatches {
+				dispatchList[i] = dp
+			}
+			metadata["dispatches"] = dispatchList
+		} else {
+			metadata["dispatches"] = []interface{}{dispatchEntry}
+		}
+
+		s.agents.AppendOrUpdate(types.AgentStateUpdate{
 			Name:     d.AgentName,
 			ID:       d.AgentID,
 			Status:   d.Status,
 			Metadata: metadata,
+		}, func(existing *types.AgentStateUpdate) {
+			existing.ID = d.AgentID
+			existing.Status = d.Status
+			if existing.Metadata == nil {
+				existing.Metadata = map[string]interface{}{}
+			}
+			existing.Metadata["task"] = d.Task
+			existing.Metadata["model"] = d.Model
+			existing.Metadata["elapsed"] = d.Elapsed
+			if d.ConversationID != "" {
+				existing.Metadata["conversationId"] = d.ConversationID
+			}
+
+			// Merge conversationIds: union old + new, preserving order, no duplicates.
+			existingIDs, _ := existing.Metadata["conversationIds"].([]interface{})
+			seen := make(map[string]bool, len(existingIDs))
+			for _, id := range existingIDs {
+				if s, ok := id.(string); ok {
+					seen[s] = true
+				}
+			}
+			if d.ConversationID != "" && !seen[d.ConversationID] {
+				existingIDs = append(existingIDs, d.ConversationID)
+				seen[d.ConversationID] = true
+			}
+			for _, id := range d.ConversationIDs {
+				if !seen[id] {
+					existingIDs = append(existingIDs, id)
+					seen[id] = true
+				}
+			}
+			if len(existingIDs) > 0 {
+				existing.Metadata["conversationIds"] = existingIDs
+			}
+
+			// Merge the structured dispatches array. When the persisted entry
+			// carries a full dispatches array, use it as the authoritative
+			// source (it has startTime, elapsed, etc.). Otherwise fall back
+			// to appending the bare dispatchEntry.
+			if len(d.Dispatches) > 0 {
+				dispatchList := make([]interface{}, len(d.Dispatches))
+				for i, dp := range d.Dispatches {
+					dispatchList[i] = dp
+				}
+				existing.Metadata["dispatches"] = dispatchList
+			} else {
+				existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+				existing.Metadata["dispatches"] = append(existingDispatches, dispatchEntry)
+			}
 		})
 	}
 
@@ -108,17 +180,22 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		elapsed, _ := meta["elapsed"].(float64)
 		childConvID, _ := meta["conversationId"].(string)
 
-		var convIDs []string
-		if childConvID != "" {
-			convIDs = []string{childConvID}
-		}
-		// Also try to extract accumulated conversationIds.
-		if ids, ok := meta["conversationIds"].([]interface{}); ok {
-			convIDs = make([]string, 0, len(ids))
-			for _, id := range ids {
-				if s, ok := id.(string); ok {
-					convIDs = append(convIDs, s)
+		var dispatchList []map[string]interface{}
+		if dl, ok := meta["dispatches"].([]interface{}); ok {
+			for _, item := range dl {
+				if m, ok := item.(map[string]interface{}); ok {
+					dispatchList = append(dispatchList, m)
 				}
+			}
+		}
+
+		// Derive conversationIDs from the structured dispatches array
+		// (single source of truth). Keep childConvID from the legacy
+		// field as the "latest" pointer for AgentDispatchData.ConversationID.
+		var convIDs []string
+		for _, dm := range dispatchList {
+			if cid, ok := dm["conversationId"].(string); ok && cid != "" {
+				convIDs = append(convIDs, cid)
 			}
 		}
 
@@ -137,6 +214,7 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 				Elapsed:         elapsed,
 				ConversationID:  childConvID,
 				ConversationIDs: convIDs,
+				Dispatches:      dispatchList,
 			},
 		})
 	}
