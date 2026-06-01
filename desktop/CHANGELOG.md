@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.0](https://github.com/dsswift/ion/compare/desktop-v1.45.0...desktop-v1.46.0) (2026-06-01)
+
+### Features
+
+* **desktop:** wire implementationPhase for engine tab implement action ([5fdbb49](https://github.com/dsswift/ion/commit/5fdbb495a07b6ba101a788e4c600ee5a9b1b0cd8))
+
+### Bug Fixes
+
+* **desktop:** sync plan mode unconditionally on engine prompt ([0f90cdf](https://github.com/dsswift/ion/commit/0f90cdf6831201089116f260326494bca60f869e))
+
 ## [1.45.0](https://github.com/dsswift/ion/compare/desktop-v1.44.0...desktop-v1.45.0) (2026-05-31)
 
 ### Features

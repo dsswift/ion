@@ -13,6 +13,16 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.32.0](https://github.com/dsswift/ion/compare/engine-v1.31.2...engine-v1.32.0) (2026-06-01)
+
+### Features
+
+* **engine:** add plan mode fields to dispatch agent opts and result ([5249421](https://github.com/dsswift/ion/commit/5249421d9b155829c62a51993837f9afc14067e4))
+
+### Bug Fixes
+
+* **engine:** populate AgentID, simplify OnPlanProposal, add logging ([15c96a8](https://github.com/dsswift/ion/commit/15c96a8f949f3795b0f4658a26b316199d047765))
+
 ## [1.31.2](https://github.com/dsswift/ion/compare/engine-v1.31.1...engine-v1.31.2) (2026-05-31)
 
 ### Bug Fixes
