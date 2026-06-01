@@ -3,7 +3,6 @@
   "anthropic": {
     "apiKey": "",
     "apiKeyEnv": "ION_API_KEY",
-    "baseURL": "https://ai.dcim.com",
     "testModel": "claude-opus-4-6"
   },
   "openai": {
