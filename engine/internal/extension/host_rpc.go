@@ -299,14 +299,10 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 					data, _ := json.Marshal(info)
 					h.sendNotification("dispatch_text_delta", data)
 				}
-				req.Params.OnPlanProposal = func(info DispatchPlanProposalInfo) DispatchPlanProposalResult {
+				req.Params.OnPlanProposal = func(info DispatchPlanProposalInfo) {
 					info.Name = agentName
 					data, _ := json.Marshal(info)
 					h.sendNotification("dispatch_plan_proposal", data)
-					// Default: not handled by extension RPC — let the engine
-					// surface it. Extensions that want to intercept must use
-					// the in-process API, not the JSON-RPC bridge.
-					return DispatchPlanProposalResult{Handled: false}
 				}
 
 				// Dispatch in a goroutine; respond immediately with stub.

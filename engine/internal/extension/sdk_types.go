@@ -247,12 +247,11 @@ type DispatchAgentOpts struct {
 	// --- Plan mode lifecycle callbacks ---
 
 	// OnPlanProposal fires when a dispatched agent calls ExitPlanMode,
-	// proposing a plan for approval. The extension can inspect the plan
-	// and decide whether to handle it (return handled=true to suppress
-	// the default plan card rendering on the parent session) or let the
-	// engine surface it to the client (return handled=false or don't set
-	// the callback).
-	OnPlanProposal func(info DispatchPlanProposalInfo) DispatchPlanProposalResult `json:"-"`
+	// proposing a plan for approval. This callback is observational — the
+	// plan proposal event is always forwarded to the parent session via
+	// OnEvent regardless of whether this callback is set. Use it to react
+	// to proposals (e.g. log, notify, update state) without suppressing them.
+	OnPlanProposal func(info DispatchPlanProposalInfo) `json:"-"`
 }
 
 // DispatchAgentResult holds the outcome of a dispatched agent.
@@ -357,14 +356,6 @@ type DispatchPlanProposalInfo struct {
 	// on the dispatch opts. False when the child agent self-initiated
 	// plan mode (called EnterPlanMode without being told to).
 	PlanRequested bool `json:"planRequested"`
-}
-
-// DispatchPlanProposalResult is returned by OnPlanProposal.
-type DispatchPlanProposalResult struct {
-	// Handled, when true, tells the engine not to re-emit the plan
-	// proposal on the parent session's event stream. The extension
-	// owns the UX for this proposal.
-	Handled bool `json:"handled"`
 }
 
 // DiscoverAgentsOpts configures which directories to scan for agent definitions

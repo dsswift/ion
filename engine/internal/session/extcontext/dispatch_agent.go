@@ -176,7 +176,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			}
 
 			// Phase 2: Structured lifecycle callbacks.
-			fireLifecycleCallbacks(&opts, ev, toolNames, &toolCount, &accumulatedText,
+			fireLifecycleCallbacks(&opts, ev, agentID, toolNames, &toolCount, &accumulatedText,
 				&cumulativeInputTokens, &cumulativeOutputTokens, &cumulativeCost)
 
 			// Live progress forwarding for the agent panel.
@@ -210,12 +210,20 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			case *types.PlanModeChangedEvent:
 				if pe.PlanFilePath != "" {
 					childPlanFilePath = pe.PlanFilePath
+					utils.Debug("Dispatch", fmt.Sprintf(
+						"child plan file path updated agent=%q planFilePath=%q session=%s",
+						opts.Name, childPlanFilePath, sa.SessionKey(),
+					))
 				}
 			case *types.PlanProposalEvent:
 				childPlanExited = true
 				if pe.PlanFilePath != "" {
 					childPlanFilePath = pe.PlanFilePath
 				}
+				utils.Debug("Dispatch", fmt.Sprintf(
+					"child plan exited agent=%q planFilePath=%q session=%s",
+					opts.Name, childPlanFilePath, sa.SessionKey(),
+				))
 			}
 
 			// Capture final result, cost, and session ID from TaskCompleteEvent.
@@ -535,6 +543,7 @@ func startChild(child backend.RunBackend, reqID string, runOpts types.RunOptions
 func fireLifecycleCallbacks(
 	opts *extension.DispatchAgentOpts,
 	ev types.NormalizedEvent,
+	agentID string,
 	toolNames map[string]string,
 	toolCount *int,
 	accumulatedText *string,
@@ -613,17 +622,15 @@ func fireLifecycleCallbacks(
 		if opts.OnPlanProposal != nil {
 			info := extension.DispatchPlanProposalInfo{
 				Name:          opts.Name,
+				AgentID:       agentID,
 				PlanFilePath:  e.PlanFilePath,
 				PlanSlug:      e.PlanSlug,
 				PlanRequested: opts.PlanMode,
 			}
-			result := opts.OnPlanProposal(info)
-			// If the extension handled it, we're done. If not, the event
-			// was already forwarded via OnEvent above — the parent session
-			// stream gets the raw plan_proposal event.
+			opts.OnPlanProposal(info)
 			utils.Log("Dispatch", fmt.Sprintf(
-				"plan proposal agent=%q planSlug=%q requested=%v handled=%v",
-				opts.Name, e.PlanSlug, opts.PlanMode, result.Handled,
+				"plan proposal callback fired agent=%q planSlug=%q requested=%v",
+				opts.Name, e.PlanSlug, opts.PlanMode,
 			))
 		}
 	}

@@ -398,20 +398,25 @@ type ToolResult struct {
 
 ```go
 type DispatchAgentOpts struct {
-    Name         string `json:"name"`
-    Task         string `json:"task"`
-    Model        string `json:"model,omitempty"`
-    ExtensionDir string `json:"extensionDir,omitempty"`
-    SystemPrompt string `json:"systemPrompt,omitempty"`
-    ProjectPath  string `json:"projectPath,omitempty"`
-    SessionID    string `json:"sessionId,omitempty"`
-    MaxTurns     int    `json:"maxTurns,omitempty"` // cap child loop turns; <=0 means unlimited
+    Name          string   `json:"name"`
+    Task          string   `json:"task"`
+    Model         string   `json:"model,omitempty"`
+    ExtensionDir  string   `json:"extensionDir,omitempty"`
+    SystemPrompt  string   `json:"systemPrompt,omitempty"`
+    ProjectPath   string   `json:"projectPath,omitempty"`
+    SessionID     string   `json:"sessionId,omitempty"`
+    MaxTurns      int      `json:"maxTurns,omitempty"`      // cap child loop turns; <=0 means unlimited
+    PlanMode      bool     `json:"planMode,omitempty"`      // start child in plan mode
+    PlanFilePath  string   `json:"planFilePath,omitempty"`  // override plan file path
+    PlanModeTools []string `json:"planModeTools,omitempty"` // override allowed tools during plan mode
 }
 
 type DispatchAgentResult struct {
-    Output   string  `json:"output"`
-    ExitCode int     `json:"exitCode"`
-    Elapsed  float64 `json:"elapsed"`
+    Output       string  `json:"output"`
+    ExitCode     int     `json:"exitCode"`
+    Elapsed      float64 `json:"elapsed"`
+    PlanFilePath string  `json:"planFilePath,omitempty"` // plan file written by child
+    PlanExited   bool    `json:"planExited,omitempty"`   // true when child called ExitPlanMode
 }
 ```
 
