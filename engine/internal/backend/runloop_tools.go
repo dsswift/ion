@@ -262,17 +262,51 @@ func (b *ApiBackend) executeTools(
 			// Either way, intercept the call so the model never sees an
 			// "Unknown tool" / "not found" error for ExitPlanMode.
 			if block.Name == tools.ExitPlanModeName {
+				// Resolve planFilePath: prefer the run's own value, fall
+				// back to the session-level value (preserved across plan
+				// mode toggles). This closes the gap where a non-plan-mode
+				// run inherits an empty planFilePath but the session still
+				// knows the path from a prior plan-mode run.
+				resolvedPlanFilePath := run.planFilePath
+				if resolvedPlanFilePath == "" && hooks.GetSessionPlanFilePath != nil {
+					resolvedPlanFilePath = hooks.GetSessionPlanFilePath()
+					if resolvedPlanFilePath != "" {
+						utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool resolved planFilePath from session: %s", run.requestID, resolvedPlanFilePath))
+					}
+				}
+
 				if !run.planMode {
-					utils.Warn("PlanMode", fmt.Sprintf("run=%s exit_tool called outside engine plan mode (prompt-level plan mode detected) plan_file=%s", run.requestID, run.planFilePath))
+					utils.Warn("PlanMode", fmt.Sprintf("run=%s exit_tool called outside engine plan mode (prompt-level plan mode detected) plan_file=%s", run.requestID, resolvedPlanFilePath))
 				} else {
-					utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool plan_file=%s", run.requestID, run.planFilePath))
+					utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool plan_file=%s", run.requestID, resolvedPlanFilePath))
+				}
+
+				// If planFilePath is still empty after session fallback,
+				// return an informative error to the model instead of
+				// emitting a useless plan_proposal with no path. This
+				// prevents consumers from receiving an unactionable
+				// approval card.
+				if resolvedPlanFilePath == "" {
+					utils.Error("PlanMode", fmt.Sprintf("run=%s exit_tool has no planFilePath (run or session) — returning error to model", run.requestID))
+					errMsg := "Plan mode is not active and no plan file is associated with this session. If you are in plan mode, write your plan to the plan file first."
+					results[i] = conversation.ToolResultEntry{
+						ToolUseID: block.ID,
+						Content:   errMsg,
+						IsError:   true,
+					}
+					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
+						ToolID:  block.ID,
+						Content: errMsg,
+						IsError: true,
+					}})
+					return nil
 				}
 
 				// Fire before_plan_mode_exit hook so extensions can veto.
 				exitAllowed := true
 				exitReason := ""
 				if hooks.OnPlanModeExit != nil {
-					exitAllowed, exitReason = hooks.OnPlanModeExit(run.planFilePath)
+					exitAllowed, exitReason = hooks.OnPlanModeExit(resolvedPlanFilePath)
 				}
 				if !exitAllowed {
 					if exitReason == "" {
@@ -297,7 +331,7 @@ func (b *ApiBackend) executeTools(
 				run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
 					ToolName:  block.Name,
 					ToolUseID: block.ID,
-					ToolInput: map[string]any{"planFilePath": run.planFilePath},
+					ToolInput: map[string]any{"planFilePath": resolvedPlanFilePath},
 				})
 				run.mu.Unlock()
 				// No PlanModeChangedEvent{Enabled:false} emit here. The model
@@ -318,10 +352,10 @@ func (b *ApiBackend) executeTools(
 				// pace. See docs/architecture/adr/003-state-events-vs-workflow-events.md.
 				b.emit(run, types.NormalizedEvent{Data: &types.PlanProposalEvent{
 					Kind:         "exit",
-					PlanFilePath: run.planFilePath,
-					PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
+					PlanFilePath: resolvedPlanFilePath,
+					PlanSlug:     types.PlanSlugFromPath(resolvedPlanFilePath),
 				}})
-				utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool emit plan_proposal kind=exit planFile=%s (mode change deferred to user approval)", run.requestID, run.planFilePath))
+				utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool emit plan_proposal kind=exit planFile=%s (mode change deferred to user approval)", run.requestID, resolvedPlanFilePath))
 				results[i] = conversation.ToolResultEntry{
 					ToolUseID: block.ID,
 					Content:   "Plan mode exited.",

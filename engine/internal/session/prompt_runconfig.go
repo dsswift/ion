@@ -113,6 +113,15 @@ func (m *Manager) buildRunConfig(
 		return m.RequestPlanModeExit(capturedKey, planFilePath)
 	}
 
+	// Wire GetSessionPlanFilePath: lets the ExitPlanMode interception resolve
+	// the session-level planFilePath when the run's own planFilePath is empty.
+	// This covers the case where the model calls ExitPlanMode in a non-plan-mode
+	// run (prompt-level plan mode) after a prior plan-mode session set the path.
+	runCfg.Hooks.GetSessionPlanFilePath = func() string {
+		_, path := m.GetPlanModeState(capturedKey)
+		return path
+	}
+
 	return runCfg
 }
 

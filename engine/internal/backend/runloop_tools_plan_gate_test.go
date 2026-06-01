@@ -250,9 +250,18 @@ func TestPlanGate_ExitPlanModeIntercepted(t *testing.T) {
 	}
 }
 
-// Test 9: ExitPlanMode in auto mode is still intercepted (prompt-level plan mode)
+// Test 9: ExitPlanMode in auto mode with session-level planFilePath is intercepted
 func TestPlanGate_ExitPlanModeAutoModeIntercepted(t *testing.T) {
+	// Simulate prompt-level plan mode: run has planMode=false, planFilePath=""
+	// but the session retains the planFilePath from a prior plan-mode run.
+	sessionPlanFile := filepath.Join(t.TempDir(), "session-plan.md")
+	if err := os.WriteFile(sessionPlanFile, []byte("# plan"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	b, run, emitted := planGateHelper(t, false, "")
+	// Wire the GetSessionPlanFilePath hook to return the session-level path.
+	run.cfg = &RunConfig{}
+	run.cfg.Hooks.GetSessionPlanFilePath = func() string { return sessionPlanFile }
 
 	blocks := []types.LlmContentBlock{{
 		Name:  tools.ExitPlanModeName,
@@ -263,9 +272,7 @@ func TestPlanGate_ExitPlanModeAutoModeIntercepted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// ExitPlanMode is now intercepted even in auto mode — the model may be
-	// following prompt-level plan mode instructions (e.g. from AGENTS.md).
-	// It should NOT produce an "Unknown tool" error.
+	// ExitPlanMode should succeed because the session-level planFilePath was resolved.
 	if results[0].IsError {
 		t.Errorf("expected ExitPlanMode in auto mode to succeed (intercepted), got error: %s", results[0].Content)
 	}
@@ -283,14 +290,64 @@ func TestPlanGate_ExitPlanModeAutoModeIntercepted(t *testing.T) {
 	if denials != 1 {
 		t.Errorf("expected 1 permission denial, got %d", denials)
 	}
-	// Verify a PlanProposalEvent was emitted.
+	// Verify the denial carries the resolved planFilePath.
+	if denials > 0 {
+		input := run.permissionDenials[0].ToolInput
+		if input["planFilePath"] != sessionPlanFile {
+			t.Errorf("expected denial planFilePath=%s, got %v", sessionPlanFile, input["planFilePath"])
+		}
+	}
+	// Verify a PlanProposalEvent was emitted with the resolved path.
 	foundProposal := false
 	for _, ev := range *emitted {
 		if pp, ok := ev.Data.(*types.PlanProposalEvent); ok && pp.Kind == "exit" {
 			foundProposal = true
+			if pp.PlanFilePath != sessionPlanFile {
+				t.Errorf("expected PlanProposalEvent.PlanFilePath=%s, got %s", sessionPlanFile, pp.PlanFilePath)
+			}
 		}
 	}
 	if !foundProposal {
 		t.Error("expected a PlanProposalEvent{Kind:exit} to be emitted")
+	}
+}
+
+// Test 10: ExitPlanMode in auto mode without any planFilePath returns error
+func TestPlanGate_ExitPlanModeAutoModeNoPlanFile(t *testing.T) {
+	b, run, emitted := planGateHelper(t, false, "")
+
+	blocks := []types.LlmContentBlock{{
+		Name:  tools.ExitPlanModeName,
+		ID:    "tc-10",
+		Input: map[string]interface{}{},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With no planFilePath anywhere, the engine should return an error
+	// to the model instead of emitting a useless plan_proposal.
+	if !results[0].IsError {
+		t.Errorf("expected ExitPlanMode with no planFilePath to return error, got success: %s", results[0].Content)
+	}
+	if !strings.Contains(results[0].Content, "not active") {
+		t.Errorf("expected error about plan mode not active, got: %s", results[0].Content)
+	}
+	// The run should NOT be flagged for exit.
+	run.mu.Lock()
+	exited := run.exitPlanMode
+	denials := len(run.permissionDenials)
+	run.mu.Unlock()
+	if exited {
+		t.Error("expected run.exitPlanMode to remain false when no planFilePath")
+	}
+	if denials != 0 {
+		t.Errorf("expected 0 permission denials, got %d", denials)
+	}
+	// Verify NO PlanProposalEvent was emitted.
+	for _, ev := range *emitted {
+		if _, ok := ev.Data.(*types.PlanProposalEvent); ok {
+			t.Error("expected no PlanProposalEvent when planFilePath is empty")
+		}
 	}
 }

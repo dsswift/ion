@@ -164,6 +164,15 @@ type RunHooks struct {
 	// auto-approve (always allow the exit).
 	OnPlanModeExit func(planFilePath string) (allowed bool, reason string)
 
+	// GetSessionPlanFilePath retrieves the session-level planFilePath when
+	// the run's own planFilePath is empty. This happens when the model calls
+	// ExitPlanMode outside of engine plan mode (prompt-level plan mode) — the
+	// run was created with planMode=false and planFilePath="", but the session
+	// still retains the planFilePath from a prior plan-mode run. Without this
+	// fallback, the ExitPlanMode interception emits a plan_proposal with an
+	// empty planFilePath, which consumers cannot act on.
+	GetSessionPlanFilePath func() string
+
 	// OnSystemInject fires before each engine-injected steering message.
 	// Returns (text, suppress). If suppress is true, the message is not injected.
 	// If text is non-empty, it replaces the default.
