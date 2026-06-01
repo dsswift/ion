@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -766,5 +767,25 @@ func TestLoadJSONL_ContextUsageAfterLoad_UsesPersistedTokens(t *testing.T) {
 	}
 	if info.Percent != 15 {
 		t.Errorf("percent = %d, want 15", info.Percent)
+	}
+}
+
+func TestScanNonEmptyLines_LargeToken(t *testing.T) {
+	// Regression test: lines exceeding the old 1 MB scanner cap must be
+	// handled without error. This validates the maxScanTokenSize bump.
+	const size = 2 * 1024 * 1024 // 2 MB
+	bigValue := strings.Repeat("x", size)
+	line := `{"role":"assistant","content":"` + bigValue + `"}`
+	data := []byte(line + "\n")
+
+	lines, err := scanNonEmptyLines(data)
+	if err != nil {
+		t.Fatalf("scanNonEmptyLines failed on %d-byte line: %v", len(line), err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	if lines[0] != line {
+		t.Errorf("round-tripped line length = %d, want %d", len(lines[0]), len(line))
 	}
 }

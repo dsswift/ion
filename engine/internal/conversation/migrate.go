@@ -239,7 +239,7 @@ func LoadClaudeCodeMessages(filePath string) ([]claudeCodeLine, error) {
 
 	var result []claudeCodeLine
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 	lineNum := 0
 
 	for scanner.Scan() {
@@ -356,7 +356,7 @@ func extractCCField(filePath, field string) string {
 	defer f.Close() //nolint:errcheck
 
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 	for scanner.Scan() {
 		var raw map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {

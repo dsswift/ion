@@ -132,7 +132,7 @@ func scanSplitSessionFiles(llmPath, treePath string) (types.StoredSessionInfo, e
 	}()
 
 	llmScanner := bufio.NewScanner(llmFile)
-	llmScanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	llmScanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 
 	var info types.StoredSessionInfo
 	if llmScanner.Scan() {
@@ -162,7 +162,7 @@ func scanSplitSessionFiles(llmPath, treePath string) (types.StoredSessionInfo, e
 	}()
 
 	treeScanner := bufio.NewScanner(treeFile)
-	treeScanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	treeScanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 
 	headerParsed := false
 	firstUserFound := false
@@ -237,7 +237,7 @@ func scanSessionFile(path string) (types.StoredSessionInfo, error) {
 	}()
 
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 
 	var info types.StoredSessionInfo
 	headerParsed := false
