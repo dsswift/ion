@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // CompactionOptions configures compaction behavior.
@@ -105,6 +106,8 @@ func SelectStrategy(messages []types.LlmMessage, opts *CompactionOptions) Compac
 	mu.RLock()
 	defer mu.RUnlock()
 
+	utils.Debug("Compaction", fmt.Sprintf("SelectStrategy: %d messages, %d strategies registered", len(messages), len(strategies)))
+
 	order := preferredOrder
 	if len(order) == 0 {
 		order = make([]string, 0, len(strategies))
@@ -116,9 +119,11 @@ func SelectStrategy(messages []types.LlmMessage, opts *CompactionOptions) Compac
 	for _, name := range order {
 		s, ok := strategies[name]
 		if ok && s.CanHandle(messages, opts) {
+			utils.Debug("Compaction", fmt.Sprintf("SelectStrategy: selected %s", name))
 			return s
 		}
 	}
+	utils.Debug("Compaction", "SelectStrategy: no strategy matched")
 	return nil
 }
 
@@ -126,6 +131,7 @@ func SelectStrategy(messages []types.LlmMessage, opts *CompactionOptions) Compac
 // is empty, SelectStrategy picks the first eligible one. Returns an error if
 // no suitable strategy is found.
 func ExecuteCompaction(messages []types.LlmMessage, opts *CompactionOptions, strategyName string) ([]types.LlmMessage, *CompactionResult, error) {
+	utils.Debug("Compaction", fmt.Sprintf("ExecuteCompaction: strategy=%q messages=%d", strategyName, len(messages)))
 	var s CompactionStrategy
 	if strategyName != "" {
 		s = GetStrategy(strategyName)

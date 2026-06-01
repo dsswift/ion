@@ -59,6 +59,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			if matched, ok := m.resolveAgentSpec(s, key, requestedName); ok {
 				spec = matched
 				specMatched = true
+			} else {
+				utils.Debug("Session", fmt.Sprintf("agent spec not resolved: name=%q key=%s (continuing as unnamed)", requestedName, key))
 			}
 			// When resolution fails, continue with an unnamed agent rather
 			// than hard-failing. The model's intent was to parallelize work;
@@ -103,6 +105,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		if childModel == "" {
 			childModel = capturedModel
 		}
+
+		utils.Debug("Session", fmt.Sprintf("child model resolved: requested=%q spec=%q parent=%q resolved=%q name=%s", model, func() string { if specMatched { return spec.Model }; return "" }(), capturedModel, childModel, agentName))
 
 		start := time.Now()
 
@@ -218,6 +222,9 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				textAccum = "" // Reset text accumulator on new tool call
 				progressMu.Unlock()
 				emitProgress(fmt.Sprintf("Using %s...", e.ToolName))
+
+			default:
+				utils.Debug("Session", fmt.Sprintf("child event not forwarded: agentID=%s type=%T", agentID, ev.Data))
 			}
 		})
 		child.OnExit(func(_ string, _ *int, _ *string, _ string) {
@@ -317,6 +324,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		} else {
 			utils.Debug("Session", fmt.Sprintf("agent_end skipped: no extensions key=%s name=%s", capturedKey, agentName))
 		}
+
+		utils.Debug("Session", fmt.Sprintf("agent spawner returning: name=%s id=%s cancelled=%v err=%v resultLen=%d", agentName, agentID, cancelled, childErr, len(result)))
 
 		if cancelled {
 			return "", ctx.Err()
