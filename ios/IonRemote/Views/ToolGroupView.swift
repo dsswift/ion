@@ -6,6 +6,7 @@ import SwiftUI
 /// row, mirroring the desktop's `ToolGroup` component.  For single-tool groups
 /// it delegates to the existing `MessageBubble` so the UX is unchanged.
 struct ToolGroupView: View {
+    @Environment(\.appTheme) private var theme: any AppTheme
     let tools: [Message]
     var isTabRunning: Bool = false
 
@@ -91,7 +92,7 @@ struct ToolGroupView: View {
                             } label: {
                                 Text(forceExpandAll == true ? "Collapse all" : "Expand all")
                                     .font(.caption2)
-                                    .foregroundStyle(IonTheme.accent)
+                                    .foregroundStyle(theme.accent)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)

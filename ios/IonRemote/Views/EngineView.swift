@@ -3,6 +3,7 @@ import PhotosUI
 import UniformTypeIdentifiers
 
 struct EngineView: View {
+    @Environment(\.appTheme) private var theme: any AppTheme
     let tabId: String
     @Environment(SessionViewModel.self) var viewModel
     @FocusState private var isInputFocused: Bool
@@ -227,7 +228,7 @@ struct EngineView: View {
                         if runningAgentCount > 0 {
                             Text("\(runningAgentCount) active")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(IonTheme.accent)
+                                .foregroundStyle(theme.accent)
                         }
                     }
                     .foregroundStyle(.secondary)

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TabListView: View {
+    @Environment(\.appTheme) private var theme: any AppTheme
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -469,7 +470,7 @@ struct TabListView: View {
             VStack(spacing: 12) {
                 Image(systemName: "terminal")
                     .font(.system(size: 40))
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
                 Text("No Tabs")
                     .font(.title3.weight(.semibold))
                 Text("Tap + to create a new tab or pull to refresh.")

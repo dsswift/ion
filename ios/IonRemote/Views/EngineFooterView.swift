@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Single-line status footer for engine tabs showing label, team, model picker, mode, and context.
 struct EngineFooterView: View {
+    @Environment(\.appTheme) private var theme: any AppTheme
     let fields: StatusFields
     let onSelectModel: (String) -> Void
     var availableModels: [RemoteModelEntry] = SessionViewModel.defaultModels
@@ -85,7 +86,7 @@ struct EngineFooterView: View {
                         Text(mode == .plan ? "Plan" : "Auto")
                             .fontWeight(.medium)
                     }
-                    .foregroundStyle(mode == .plan ? IonTheme.accent : .secondary)
+                    .foregroundStyle(mode == .plan ? theme.accent : .secondary)
                 }
                 .buttonStyle(.plain)
             }

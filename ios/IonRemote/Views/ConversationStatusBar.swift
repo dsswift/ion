@@ -3,6 +3,7 @@ import SwiftUI
 /// Single-line status bar for conversation tabs showing model picker,
 /// permission mode toggle, and context usage.
 struct ConversationStatusBar: View {
+    @Environment(\.appTheme) private var theme: any AppTheme
     let modelOverride: String?
     let preferredModel: String
     let contextPercent: Double?
@@ -82,7 +83,7 @@ struct ConversationStatusBar: View {
                         Text(mode == .plan ? "Plan" : "Auto")
                             .fontWeight(.medium)
                     }
-                    .foregroundStyle(mode == .plan ? IonTheme.accent : .secondary)
+                    .foregroundStyle(mode == .plan ? theme.accent : .secondary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(Capsule().fill(Color(.tertiarySystemFill)))
@@ -99,7 +100,7 @@ struct ConversationStatusBar: View {
                             .fontWeight(.medium)
                     }
                 }
-                .foregroundStyle(attachmentCount > 0 ? IonTheme.accent : .secondary)
+                .foregroundStyle(attachmentCount > 0 ? theme.accent : .secondary)
             }
             .buttonStyle(.plain)
 

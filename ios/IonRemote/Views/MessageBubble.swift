@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - MessageBubble
 
 struct MessageBubble: View {
+    @Environment(\.appTheme) private var theme: any AppTheme
     let message: Message
     var isRunning: Bool = false
     var onRewind: ((String) -> Void)?
@@ -71,13 +72,13 @@ struct MessageBubble: View {
             .background(
                 ZStack {
                     Color(.tertiarySystemBackground)
-                    IonTheme.userBubbleTint
+                    theme.userBubbleTint
                 }
             )
             .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(IonTheme.accent)
+                    .fill(theme.accent)
                     .frame(width: 2.5)
                     .padding(.vertical, 4)
                     .padding(.leading, 1)

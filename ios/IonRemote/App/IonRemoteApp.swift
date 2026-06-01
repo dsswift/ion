@@ -52,6 +52,7 @@ struct IonRemoteApp: App {
 
 struct ContentView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme: any AppTheme
     @State private var connectingElapsed: Int = 0
     @State private var showTroubleshooting = false
 
@@ -87,7 +88,7 @@ struct ContentView: View {
             Spacer()
             Image(systemName: "bolt.shield.fill")
                 .font(.system(size: 50))
-                .foregroundStyle(IonTheme.accent)
+                .foregroundStyle(theme.accent)
             ProgressView()
                 .controlSize(.large)
             Text(viewModel.connectionState.label)
@@ -104,7 +105,7 @@ struct ContentView: View {
                 viewModel.reconnect()
             }
             .buttonStyle(.borderedProminent)
-            .tint(IonTheme.accent)
+            .tint(theme.accent)
             .padding(.top, 8)
             if connectingElapsed > 10 {
                 DisclosureGroup("Troubleshooting", isExpanded: $showTroubleshooting) {
@@ -131,7 +132,7 @@ struct ContentView: View {
                             .font(.caption)
                     }
                     .buttonStyle(.bordered)
-                    .tint(IonTheme.accent)
+                    .tint(theme.accent)
                 }
             }
             Spacer()
