@@ -23,6 +23,10 @@ struct EngineView: View {
     /// Set to true when a reconnect-triggered reload is in flight so the next
     /// engine-message count change force-scrolls to the bottom.
     @State private var pendingScrollAfterReload = false
+    @State private var isRecordingVoice = false
+    @State private var showPermissionDeniedAlert = false
+    /// Draft text snapshot taken when recording starts, used to restore on cancel.
+    @State private var draftBeforeRecording = ""
 
     private var instances: [EngineInstanceInfo] {
         viewModel.engineInstances[tabId] ?? []
@@ -67,17 +71,19 @@ struct EngineView: View {
     private var activeToolsList: [ActiveToolInfo] {
         (viewModel.activeTools[compoundKey] ?? [:]).values.sorted { $0.startTime < $1.startTime }
     }
-    private var engineMsgs: [EngineMessage] {
+    private var engineMsgs: [Message] {
         viewModel.engineMessages[compoundKey] ?? []
     }
 
     private enum GroupedItem: Identifiable {
-        case single(EngineMessage)
-        case toolGroup([EngineMessage])
+        case single(Message)
+        case toolGroup([Message])
+        case compaction(Message)
         var id: String {
             switch self {
             case .single(let msg): return msg.id
             case .toolGroup(let msgs): return "tg-\(msgs.first?.id ?? "")"
+            case .compaction(let msg): return "cp-\(msg.id)"
             }
         }
     }
@@ -87,8 +93,8 @@ struct EngineView: View {
     private var groupedMessages: [GroupedItem] {
         DiagnosticLog.log("ENGINE-BOOTSTRAP: groupedMessages entry total=\(engineMsgs.count)")
         var result: [GroupedItem] = []
-        var toolBuf: [EngineMessage] = []
-        var bootstrapBuf: [EngineMessage] = []
+        var toolBuf: [Message] = []
+        var bootstrapBuf: [Message] = []
         var totalRunsFlushed = 0
         var totalSuppressed = 0
 
@@ -109,7 +115,7 @@ struct EngineView: View {
         }
 
         for msg in engineMsgs {
-            if msg.role == "tool" {
+            if msg.role == .tool {
                 flushBootstrap()
                 toolBuf.append(msg)
             } else {
@@ -117,9 +123,12 @@ struct EngineView: View {
                     result.append(.toolGroup(toolBuf))
                     toolBuf = []
                 }
-                if msg.role == "harness" && msg.content.hasPrefix(Self.bootstrapPrefix) {
+                if msg.role == .harness && msg.content.hasPrefix(Self.bootstrapPrefix) {
                     DiagnosticLog.log("ENGINE-BOOTSTRAP: enqueue id=\(msg.id) buf=\(bootstrapBuf.count + 1)")
                     bootstrapBuf.append(msg)
+                } else if msg.content.hasPrefix("[Compaction]") {
+                    flushBootstrap()
+                    result.append(.compaction(msg))
                 } else {
                     flushBootstrap()
                     result.append(.single(msg))
@@ -186,6 +195,8 @@ struct EngineView: View {
                         EngineMessageRow(message: msg)
                     case .toolGroup(let tools):
                         EngineToolGroupRow(tools: tools)
+                    case .compaction(let msg):
+                        CompactionRowView(message: msg)
                     }
                 }
             }
@@ -339,19 +350,27 @@ struct EngineView: View {
         VStack(spacing: 0) {
             Divider()
             if let fields = viewModel.engineStatusFields[compoundKey] {
-                EngineFooterView(
-                    fields: fields,
+                ConversationStatusBar(
+                    modelOverride: viewModel.engineModelOverrides[compoundKey],
+                    preferredModel: fields.model,
+                    contextPercent: fields.contextPercent,
+                    contextTokens: nil,
+                    isRunning: isRunning,
+                    permissionMode: viewModel.tab(for: tabId)?.permissionMode,
+                    availableModels: viewModel.availableModels,
+                    attachmentCount: 0,
                     onSelectModel: { model in
                         viewModel.setEngineModel(tabId: tabId, model: model)
                     },
-                    availableModels: viewModel.availableModels,
-                    selectedModel: viewModel.engineModelOverrides[compoundKey] ?? "",
-                    permissionMode: viewModel.tab(for: tabId)?.permissionMode,
                     onToggleMode: {
                         guard let current = viewModel.tab(for: tabId)?.permissionMode else { return }
                         let newMode: PermissionMode = current == .plan ? .auto : .plan
                         viewModel.setPermissionMode(tabId: tabId, mode: newMode)
-                    }
+                    },
+                    onTapAttachments: {},
+                    isEngine: true,
+                    extensionName: fields.extensionName,
+                    statusState: fields.state
                 )
             }
             Divider()
@@ -542,10 +561,26 @@ struct EngineView: View {
                 .padding(.vertical, 8)
                 .background(Color(.tertiarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
-                .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(Color(.separator), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(
+                    isRecordingVoice ? theme.accent.opacity(0.5) : Color(.separator),
+                    lineWidth: isRecordingVoice ? 1.5 : 1
+                ))
                 .focused($isInputFocused)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+
+            // Mic area: inline recording strip while active, mic button when idle
+            if isRecordingVoice {
+                VoiceRecordingStrip(
+                    audioLevel: viewModel.speechService.audioLevel,
+                    onStop: { stopVoiceRecording() },
+                    onCancel: { cancelVoiceRecording() }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else {
+                engineMicButton
+            }
+
             Button { submitPrompt() } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
@@ -555,6 +590,83 @@ struct EngineView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .animation(IonTheme.snappySpring, value: isRecordingVoice)
+        .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Ion Remote needs microphone and speech recognition access to transcribe your voice. Enable both in Settings > Privacy.")
+        }
+        .onChange(of: viewModel.speechService.transcript) { _, newTranscript in
+            guard isRecordingVoice else { return }
+            let base = draftBeforeRecording
+            if newTranscript.isEmpty { return }
+            let separator = base.isEmpty ? "" : " "
+            viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, base + separator + newTranscript)
+        }
+    }
+
+    private var engineMicButton: some View {
+        Button {
+            startVoiceRecording()
+        } label: {
+            Image(systemName: "mic.fill")
+                .font(.title3)
+                .foregroundStyle(engineMicButtonColor)
+        }
+        .accessibilityLabel("Record voice input")
+    }
+
+    private var engineMicButtonColor: Color {
+        return viewModel.speechService.permissionState == .denied ? Color(.quaternaryLabel) : .secondary
+    }
+
+    private func startVoiceRecording() {
+        DiagnosticLog.log("ENGINE-INPUTBAR: startVoiceRecording tapped")
+        Haptic.light()
+        Task {
+            viewModel.speechService.refreshPermissions()
+            if viewModel.speechService.permissionState == .denied {
+                DiagnosticLog.log("ENGINE-INPUTBAR: permission denied — showing alert")
+                showPermissionDeniedAlert = true
+                return
+            }
+            let granted = await viewModel.speechService.requestPermission()
+            guard granted else {
+                DiagnosticLog.log("ENGINE-INPUTBAR: permission request denied")
+                showPermissionDeniedAlert = true
+                return
+            }
+            draftBeforeRecording = promptText
+            isInputFocused = false
+            do {
+                try await viewModel.speechService.startRecording(stoppingVoiceService: viewModel.voiceService)
+                isRecordingVoice = true
+                DiagnosticLog.log("ENGINE-INPUTBAR: recording started draftSnapshot=\(draftBeforeRecording.prefix(40))")
+            } catch {
+                DiagnosticLog.log("ENGINE-INPUTBAR: startRecording error: \(error.localizedDescription)")
+                isRecordingVoice = false
+            }
+        }
+    }
+
+    private func stopVoiceRecording() {
+        DiagnosticLog.log("ENGINE-INPUTBAR: stopVoiceRecording — text already in field")
+        viewModel.speechService.cancelRecording()
+        isRecordingVoice = false
+        Haptic.light()
+    }
+
+    private func cancelVoiceRecording() {
+        DiagnosticLog.log("ENGINE-INPUTBAR: cancelVoiceRecording — restoring draft snapshot")
+        viewModel.speechService.cancelRecording()
+        isRecordingVoice = false
+        viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, draftBeforeRecording)
+        Haptic.light()
     }
 
     private var attachButton: some View {

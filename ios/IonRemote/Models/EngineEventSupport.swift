@@ -173,52 +173,6 @@ struct EngineInstancePayload: Codable, Sendable {
     let label: String
 }
 
-// MARK: - EngineMessage
-
-/// A single message in the engine conversation history.
-/// Roles: "user", "assistant", "tool", "harness", "system".
-struct EngineMessage: Identifiable, Sendable {
-    let id: String
-    let role: String
-    var content: String
-    var toolName: String?
-    var toolId: String?
-    var toolStatus: String?
-    var timestamp: Double?
-    var isInternal: Bool?
-    /// View-only: number of consecutive bootstrap messages that were collapsed
-    /// into this one (not encoded/decoded — excluded from CodingKeys). Nil when
-    /// this message is displayed individually. When > 0 the harness row renders
-    /// a count badge showing the total occurrences (collapsed + 1).
-    var bootstrapCollapsedCount: Int?
-}
-
-extension EngineMessage: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case id, role, content, toolName, toolId, toolStatus, timestamp
-        case isInternal = "internal"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        // id: accept String or Int (coerce to String)
-        if let s = try? container.decode(String.self, forKey: .id) {
-            id = s
-        } else if let n = try? container.decode(Int.self, forKey: .id) {
-            id = String(n)
-        } else {
-            id = UUID().uuidString
-        }
-        role = try container.decodeIfPresent(String.self, forKey: .role) ?? "system"
-        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
-        toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
-        toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
-        toolStatus = try container.decodeIfPresent(String.self, forKey: .toolStatus)
-        timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp)
-        isInternal = try container.decodeIfPresent(Bool.self, forKey: .isInternal)
-    }
-}
-
 // MARK: - EngineMessageEndUsage
 
 /// Nested usage stats within an engine_message_end event.

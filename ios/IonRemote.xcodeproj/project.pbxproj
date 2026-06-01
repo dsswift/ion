@@ -49,7 +49,7 @@
 		A1B2C3D4E5F600010000D0AA /* EngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D1AA /* EngineView.swift */; };
 		A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */; };
 		A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */; };
-		A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */; };
+
 		A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */; };
 		A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */; };
 		A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */; };
@@ -106,8 +106,7 @@
 		A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */; };
 		A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */; };
 		A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */; };
-		A1B2C3D4E5F60001000700AA /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000701AA /* MessageBubble.swift */; };
-		A1B2C3D4E5F60001000702AA /* ToolGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */; };
+
 		A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */; };
 		A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */; };
 		A1B2C3D4E5F60001005200AA /* VoicePlaybackBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */; };
@@ -208,7 +207,7 @@
 		A1B2C3D4E5F600010000D1AA /* EngineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnsiParser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarRow.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineFooterView.swift; sourceTree = "<group>"; };
+
 		A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTerminalView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationAttachmentsSheet.swift; sourceTree = "<group>"; };
@@ -265,8 +264,6 @@
 		A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredSlashCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001101AA /* RemoteModelEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModelEntry.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandMenu.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001000701AA /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGrouping.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicatorView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackBar.swift; sourceTree = "<group>"; };
@@ -447,7 +444,6 @@
 				A1B2C3D4E5F600010000D1AA /* EngineView.swift */,
 				A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */,
 				A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */,
-				A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */,
 				A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */,
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
 				A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */,
@@ -460,8 +456,6 @@
 				A1B2C3D4E5F60001000408AA /* FileEditorView.swift */,
 				A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */,
 				A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */,
-				A1B2C3D4E5F60001000701AA /* MessageBubble.swift */,
-				A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */,
 				A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */,
 				A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */,
 				A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */,
@@ -770,7 +764,6 @@
 				A1B2C3D4E5F600010000F4AA /* EngineInstanceBar.swift in Sources */,
 				A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */,
 				A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */,
-				A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */,
 				A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */,
 				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
 				A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */,
@@ -782,8 +775,6 @@
 				A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */,
 				A1B2C3D4E5F60001001100AA /* RemoteModelEntry.swift in Sources */,
 				A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */,
-				A1B2C3D4E5F60001000700AA /* MessageBubble.swift in Sources */,
-				A1B2C3D4E5F60001000702AA /* ToolGroupView.swift in Sources */,
 				A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */,
 				A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */,
 				A1B2C3D4E5F60001005200AA /* VoicePlaybackBar.swift in Sources */,

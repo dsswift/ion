@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Collapsible row that groups consecutive tool messages in the engine conversation.
 struct EngineToolGroupRow: View {
-    let tools: [EngineMessage]
+    let tools: [Message]
     @State private var isExpanded = false
 
     var body: some View {
@@ -50,14 +50,14 @@ struct EngineToolGroupRow: View {
     }
 
     private var compositeIcon: String {
-        if tools.contains(where: { $0.toolStatus == "running" }) { return "arrow.triangle.2.circlepath" }
-        if tools.contains(where: { $0.toolStatus == "error" }) { return "xmark.circle.fill" }
+        if tools.contains(where: { $0.toolStatus == .running }) { return "arrow.triangle.2.circlepath" }
+        if tools.contains(where: { $0.toolStatus == .error }) { return "xmark.circle.fill" }
         return "checkmark.circle.fill"
     }
 
     private var compositeColor: Color {
-        if tools.contains(where: { $0.toolStatus == "running" }) { return .orange }
-        if tools.contains(where: { $0.toolStatus == "error" }) { return .red }
+        if tools.contains(where: { $0.toolStatus == .running }) { return .orange }
+        if tools.contains(where: { $0.toolStatus == .error }) { return .red }
         return .green
     }
 
@@ -68,15 +68,15 @@ struct EngineToolGroupRow: View {
     }
 
     @ViewBuilder
-    private func toolIcon(for tool: EngineMessage) -> some View {
+    private func toolIcon(for tool: Message) -> some View {
         switch tool.toolStatus {
-        case "running":
+        case .running:
             ProgressView().scaleEffect(0.6)
-        case "completed":
+        case .completed:
             Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(.green)
-        case "error":
+        case .error:
             Image(systemName: "xmark.circle.fill").font(.caption2).foregroundStyle(.red)
-        default:
+        case nil:
             Image(systemName: "wrench").font(.caption2).foregroundStyle(.secondary)
         }
     }

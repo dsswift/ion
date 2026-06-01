@@ -13,7 +13,7 @@ extension SessionViewModel {
         activeTools[key, default: [:]][toolId] = info
         // Add tool message to conversation
         var msgs = engineMessages[key] ?? []
-        msgs.append(EngineMessage(id: toolId, role: "tool", content: "", toolName: toolName, toolId: toolId, toolStatus: "running", timestamp: Date().timeIntervalSince1970 * 1000))
+        msgs.append(Message(id: toolId, role: .tool, content: "", toolName: toolName, toolId: toolId, toolStatus: .running, timestamp: Date().timeIntervalSince1970 * 1000))
         engineMessages[key] = msgs
     }
 
@@ -28,7 +28,7 @@ extension SessionViewModel {
         // Update tool message status in conversation
         if var msgs = engineMessages[key],
            let idx = msgs.lastIndex(where: { $0.toolId == toolId }) {
-            msgs[idx].toolStatus = isError ? "error" : "completed"
+            msgs[idx].toolStatus = isError ? .error : .completed
             if let result = result {
                 msgs[idx].content = result
             }
@@ -42,7 +42,7 @@ extension SessionViewModel {
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         // Add error as system message in conversation
         var msgs = engineMessages[key] ?? []
-        msgs.append(EngineMessage(id: UUID().uuidString, role: "system", content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000))
+        msgs.append(Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000))
         engineMessages[key] = msgs
         // Reset tab to idle so user can retry
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
@@ -58,7 +58,7 @@ extension SessionViewModel {
         // Surface notifications as system messages in the conversation
         var msgs = engineMessages[key] ?? []
         let prefix = level == "warning" ? "⚠️ " : level == "error" ? "❌ " : ""
-        msgs.append(EngineMessage(id: UUID().uuidString, role: "system", content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000))
+        msgs.append(Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000))
         engineMessages[key] = msgs
     }
 
@@ -66,10 +66,10 @@ extension SessionViewModel {
     func handleEngineTextDelta(tabId: String, instanceId: String?, text: String) {
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         var msgs = engineMessages[key] ?? []
-        if let last = msgs.last, last.role == "assistant" {
+        if let last = msgs.last, last.role == .assistant {
             msgs[msgs.count - 1].content += text
         } else {
-            msgs.append(EngineMessage(id: UUID().uuidString, role: "assistant", content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+            msgs.append(Message(id: UUID().uuidString, role: .assistant, content: text, timestamp: Date().timeIntervalSince1970 * 1000))
         }
         engineMessages[key] = msgs
         engineTurnHasText.insert(key)
@@ -117,7 +117,7 @@ extension SessionViewModel {
         var deathMsg = "Engine process died (exit code \(exitCode))"
         if let signal { deathMsg += ", signal: \(signal)" }
         if !stderrTail.isEmpty { deathMsg += "\n" + stderrTail.suffix(5).joined(separator: "\n") }
-        msgs.append(EngineMessage(id: UUID().uuidString, role: "system", content: deathMsg, timestamp: Date().timeIntervalSince1970 * 1000))
+        msgs.append(Message(id: UUID().uuidString, role: .system, content: deathMsg, timestamp: Date().timeIntervalSince1970 * 1000))
         engineMessages[key] = msgs
     }
 
@@ -143,7 +143,7 @@ extension SessionViewModel {
     // MARK: - Agent conversation history
 
     @MainActor
-    func handleAgentConversationHistory(agentName: String, messages: [EngineMessage]) {
+    func handleAgentConversationHistory(agentName: String, messages: [Message]) {
         let filtered = messages.filter { $0.isInternal != true }
         DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) count=\(messages.count) filtered=\(filtered.count)")
         agentConversationMessages[agentName] = filtered

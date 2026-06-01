@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Single-line status bar for conversation tabs showing model picker,
 /// permission mode toggle, and context usage.
+/// Also used for engine tabs when `isEngine` is true.
 struct ConversationStatusBar: View {
     @Environment(\.appTheme) private var theme
     let modelOverride: String?
@@ -15,6 +16,13 @@ struct ConversationStatusBar: View {
     let onSelectModel: (String) -> Void
     let onToggleMode: () -> Void
     let onTapAttachments: () -> Void
+
+    // Engine-specific optional parameters
+    var isEngine: Bool = false
+    var extensionName: String? = nil
+    var statusState: String? = nil
+
+    @State private var showModeConfirm = false
 
     /// The effective model: override > preferred > default fallback.
     private var effectiveModel: String {
@@ -48,6 +56,31 @@ struct ConversationStatusBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // Leading area: extension name (engine tabs only)
+            if let name = extensionName, !name.isEmpty {
+                Text(name)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+
+                Divider()
+                    .frame(height: 12)
+            }
+
+            // Running/idle dot indicator (when statusState is provided)
+            if let state = statusState {
+                let isRunningState = state.lowercased() == "running"
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(isRunningState ? theme.accent : Color.gray)
+                        .frame(width: 6, height: 6)
+                    Text(state)
+                        .foregroundStyle(isRunningState ? theme.accent : Color.secondary)
+                }
+
+                Divider()
+                    .frame(height: 12)
+            }
+
             // Model picker menu
             Menu {
                 ForEach(availableModels) { model in
@@ -77,32 +110,52 @@ struct ConversationStatusBar: View {
 
             // Permission mode toggle
             if let mode = permissionMode {
-                Button(action: onToggleMode) {
-                    HStack(spacing: 3) {
-                        Image(systemName: mode == .plan ? "doc.text" : "bolt.fill")
-                        Text(mode == .plan ? "Plan" : "Auto")
-                            .fontWeight(.medium)
+                if isEngine {
+                    // Engine tabs: tapping shows a confirmation dialog before overriding
+                    Button {
+                        showModeConfirm = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: mode == .plan ? "doc.text" : "bolt.fill")
+                            Text(mode == .plan ? "Plan" : "Auto")
+                                .fontWeight(.medium)
+                        }
+                        .foregroundStyle(mode == .plan ? theme.accent : .secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color(.tertiarySystemFill)))
                     }
-                    .foregroundStyle(mode == .plan ? theme.accent : .secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color(.tertiarySystemFill)))
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: onToggleMode) {
+                        HStack(spacing: 3) {
+                            Image(systemName: mode == .plan ? "doc.text" : "bolt.fill")
+                            Text(mode == .plan ? "Plan" : "Auto")
+                                .fontWeight(.medium)
+                        }
+                        .foregroundStyle(mode == .plan ? theme.accent : .secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color(.tertiarySystemFill)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Attachments button (conversation tabs only)
+            if !isEngine {
+                Button(action: onTapAttachments) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "paperclip")
+                        if attachmentCount > 0 {
+                            Text("\(attachmentCount)")
+                                .fontWeight(.medium)
+                        }
+                    }
+                    .foregroundStyle(attachmentCount > 0 ? theme.accent : .secondary)
                 }
                 .buttonStyle(.plain)
             }
-
-            // Attachments button
-            Button(action: onTapAttachments) {
-                HStack(spacing: 3) {
-                    Image(systemName: "paperclip")
-                    if attachmentCount > 0 {
-                        Text("\(attachmentCount)")
-                            .fontWeight(.medium)
-                    }
-                }
-                .foregroundStyle(attachmentCount > 0 ? theme.accent : .secondary)
-            }
-            .buttonStyle(.plain)
 
             // Context usage (only when data is available)
             if let pct = resolvedContextPercent {
@@ -119,5 +172,18 @@ struct ConversationStatusBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.ultraThinMaterial)
+        .confirmationDialog(
+            "Change Mode",
+            isPresented: $showModeConfirm,
+            titleVisibility: .visible
+        ) {
+            let targetMode = permissionMode == .plan ? "Auto" : "Plan"
+            Button("Switch to \(targetMode)") {
+                onToggleMode()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The extension controls this tab's planning mode. Changing it manually may interfere with the extension's workflow.")
+        }
     }
 }

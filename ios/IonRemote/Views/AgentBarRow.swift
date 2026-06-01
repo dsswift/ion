@@ -3,7 +3,7 @@ import SwiftUI
 /// A single agent bar row: compact header + expandable conversation body.
 struct AgentBarRow: View {
     let agent: AgentStateUpdate
-    let messages: [EngineMessage]?
+    let messages: [Message]?
     let isLoadingMessages: Bool
     let onExpand: (() -> Void)?
     @State private var isExpanded = false
@@ -180,11 +180,11 @@ struct AgentBarRow: View {
     /// Filters conversation messages: drops user messages whose content
     /// matches the dispatch task (already shown in the bubble) and drops
     /// tool/system messages (matches desktop's groupMessages behavior).
-    private func conversationMessages(_ msgs: [EngineMessage]) -> [EngineMessage] {
+    private func conversationMessages(_ msgs: [Message]) -> [Message] {
         let task = agent.task ?? ""
         return msgs.filter { msg in
-            guard msg.role == "assistant" || msg.role == "user" else { return false }
-            if msg.role == "user" && !task.isEmpty && msg.content.trimmingCharacters(in: .whitespacesAndNewlines) == task.trimmingCharacters(in: .whitespacesAndNewlines) {
+            guard msg.role == .assistant || msg.role == .user else { return false }
+            if msg.role == .user && !task.isEmpty && msg.content.trimmingCharacters(in: .whitespacesAndNewlines) == task.trimmingCharacters(in: .whitespacesAndNewlines) {
                 return false
             }
             return !msg.content.isEmpty
@@ -193,8 +193,8 @@ struct AgentBarRow: View {
 
     /// Renders a single conversation message with role-appropriate styling.
     @ViewBuilder
-    private func conversationBubble(_ msg: EngineMessage) -> some View {
-        if msg.role == "user" {
+    private func conversationBubble(_ msg: Message) -> some View {
+        if msg.role == .user {
             // User messages as a subtle bubble (distinct from dispatch)
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "person.fill")
