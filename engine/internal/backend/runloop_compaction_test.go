@@ -301,3 +301,132 @@ func TestCompactReactive_HookEmptyFactsWhenNoPatterns(t *testing.T) {
 		t.Errorf("expected zero facts on filler conversation; got %d: %+v", len(rawFacts), rawFacts)
 	}
 }
+
+func TestIsMemoryCurrent_BoundaryInLatterHalf(t *testing.T) {
+	conv := conversation.CreateConversation("test", "", "test-model")
+	// Create 10 entries.
+	for i := 0; i < 10; i++ {
+		conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+	}
+
+	// Boundary at entry index 7 (out of 10) — in the latter half.
+	boundaryID := conv.Entries[7].ID
+	if !isMemoryCurrent(conv, boundaryID) {
+		t.Errorf("expected isMemoryCurrent=true for boundary at idx 7 of 10")
+	}
+}
+
+func TestIsMemoryCurrent_BoundaryInFirstHalf(t *testing.T) {
+	conv := conversation.CreateConversation("test", "", "test-model")
+	// Create 10 entries.
+	for i := 0; i < 10; i++ {
+		conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+	}
+
+	// Boundary at entry index 2 (out of 10) — in the first half, stale.
+	boundaryID := conv.Entries[2].ID
+	if isMemoryCurrent(conv, boundaryID) {
+		t.Errorf("expected isMemoryCurrent=false for boundary at idx 2 of 10")
+	}
+}
+
+func TestIsMemoryCurrent_EmptyBoundary(t *testing.T) {
+	conv := conversation.CreateConversation("test", "", "test-model")
+	conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+
+	if isMemoryCurrent(conv, "") {
+		t.Error("expected isMemoryCurrent=false for empty boundary")
+	}
+}
+
+func TestIsMemoryCurrent_BoundaryNotFound(t *testing.T) {
+	conv := conversation.CreateConversation("test", "", "test-model")
+	conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+
+	if isMemoryCurrent(conv, "nonexistent") {
+		t.Error("expected isMemoryCurrent=false when boundary not found")
+	}
+}
+
+func TestIsMemoryCurrent_NilEntries(t *testing.T) {
+	conv := &conversation.Conversation{Entries: nil}
+
+	if isMemoryCurrent(conv, "abc123") {
+		t.Error("expected isMemoryCurrent=false when entries is nil")
+	}
+}
+
+func TestIsMemoryCurrent_BoundaryAtMidpoint(t *testing.T) {
+	conv := conversation.CreateConversation("test", "", "test-model")
+	// Create 10 entries (midpoint = 5).
+	for i := 0; i < 10; i++ {
+		conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+	}
+
+	// Boundary at the exact midpoint (idx 5) — should be current.
+	boundaryID := conv.Entries[5].ID
+	if !isMemoryCurrent(conv, boundaryID) {
+		t.Errorf("expected isMemoryCurrent=true for boundary at midpoint idx 5 of 10")
+	}
+}
+
+func TestIsMemoryCurrent_BoundaryJustBeforeMidpoint(t *testing.T) {
+	conv := conversation.CreateConversation("test", "", "test-model")
+	// Create 10 entries (midpoint = 5).
+	for i := 0; i < 10; i++ {
+		conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+	}
+
+	// Boundary at idx 4 — just before midpoint, stale.
+	boundaryID := conv.Entries[4].ID
+	if isMemoryCurrent(conv, boundaryID) {
+		t.Errorf("expected isMemoryCurrent=false for boundary at idx 4 of 10 (just before midpoint)")
+	}
+}
+
+func TestCompactIfNeeded_SessionMemoryCoverageCheck(t *testing.T) {
+	// When session memory has a stale boundary, compaction should fall
+	// through to LLM summary (or regex facts) instead of using stale memory.
+	b := NewApiBackend()
+	_ = captureEvents(b, "stale-mem")
+
+	conv := conversation.CreateConversation("stale-mem", "", "test-model")
+	// Create entries so we can test boundary checking.
+	for i := 0; i < 20; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
+		conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+		conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "assistant"})
+	}
+
+	// Force tokens above the limit.
+	conv.LastInputTokens = 180_000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	run := &activeRun{requestID: "stale-mem", conv: conv}
+	ctx := context.Background()
+	cp := testCompactParams()
+
+	// Set up session memory with a stale boundary (entry index 2 out of 40 entries).
+	staleBoundaryID := conv.Entries[2].ID
+	cp.getSessionMemory = func() string { return "stale iOS theme summary" }
+	cp.getLastSummarizedEntryID = func() string { return staleBoundaryID }
+
+	var capturedSessionMemory string
+	hooks := RunHooks{
+		OnSessionCompact: func(_ string, info interface{}) {
+			if m, ok := info.(map[string]interface{}); ok {
+				if sm, ok := m["sessionMemory"].(string); ok {
+					capturedSessionMemory = sm
+				}
+			}
+		},
+	}
+
+	b.compactIfNeeded(ctx, run, conv, hooks, 200_000, 100_000, cp)
+
+	// The stale session memory should NOT have been used.
+	if capturedSessionMemory == "stale iOS theme summary" {
+		t.Error("stale session memory should not have been used when boundary is in the first half of entries")
+	}
+}

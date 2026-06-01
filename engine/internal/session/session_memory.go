@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -29,6 +30,12 @@ type SessionMemory struct {
 	lastUpdateTokens int
 	lastUpdateTurn   int
 
+	// lastSummarizedEntryID is the entry ID of the newest conversation
+	// entry captured in the most recent session memory summary. Used by
+	// the compaction system to determine whether the memory actually
+	// covers the messages being dropped. Empty means no boundary is known.
+	lastSummarizedEntryID string
+
 	// Configuration.
 	model           string
 	maxTokens       int
@@ -46,11 +53,11 @@ const DefaultMemoryMaxTokens = 8192
 
 // DefaultMemoryUpdateThreshold is the token growth since the last update
 // that triggers a new background summary.
-const DefaultMemoryUpdateThreshold = 20000
+const DefaultMemoryUpdateThreshold = 5000
 
 // DefaultMemoryUpdateMinTurns is the minimum number of turns between
 // background memory updates.
-const DefaultMemoryUpdateMinTurns = 5
+const DefaultMemoryUpdateMinTurns = 3
 
 // NewSessionMemory creates a session memory manager. Call Start() to begin
 // background updates, or load existing memory via LoadMemory().
@@ -87,18 +94,54 @@ func (sm *SessionMemory) memoryFilePath() string {
 	return filepath.Join(sm.convDir, sm.convID+".memory.md")
 }
 
-// LoadMemory loads an existing memory file from disk. Returns true if a
-// memory file was found and loaded.
+// LoadMemory loads an existing memory file from disk. If the file
+// contains YAML front-matter (delimited by --- lines), the metadata
+// is parsed to restore lastUpdateTokens, lastUpdateTurn, and
+// lastSummarizedEntryID. Returns true if a memory file was found.
 func (sm *SessionMemory) LoadMemory() bool {
 	path := sm.memoryFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
+
+	content := string(data)
 	sm.mu.Lock()
-	sm.memory = string(data)
+
+	// Parse front-matter if present: lines between opening and closing "---".
+	if strings.HasPrefix(content, "---\n") {
+		if endIdx := strings.Index(content[4:], "\n---\n"); endIdx >= 0 {
+			frontMatter := content[4 : 4+endIdx]
+			content = content[4+endIdx+5:] // skip past closing "---\n"
+
+			for _, line := range strings.Split(frontMatter, "\n") {
+				parts := strings.SplitN(line, ": ", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				key, val := parts[0], parts[1]
+				switch key {
+				case "lastUpdateTokens":
+					if n, err := fmt.Sscanf(val, "%d", &sm.lastUpdateTokens); n != 1 || err != nil {
+						utils.Warn("SessionMemory", fmt.Sprintf("LoadMemory: failed to parse lastUpdateTokens=%q", val))
+					}
+				case "lastUpdateTurn":
+					if n, err := fmt.Sscanf(val, "%d", &sm.lastUpdateTurn); n != 1 || err != nil {
+						utils.Warn("SessionMemory", fmt.Sprintf("LoadMemory: failed to parse lastUpdateTurn=%q", val))
+					}
+				case "lastSummarizedEntryID":
+					sm.lastSummarizedEntryID = val
+				}
+			}
+			utils.Log("SessionMemory", fmt.Sprintf(
+				"loaded front-matter: lastUpdateTokens=%d lastUpdateTurn=%d lastSummarizedEntryID=%s",
+				sm.lastUpdateTokens, sm.lastUpdateTurn, sm.lastSummarizedEntryID))
+		}
+	}
+
+	sm.memory = content
 	sm.mu.Unlock()
-	utils.Log("SessionMemory", fmt.Sprintf("loaded memory file: %s (%d bytes)", path, len(data)))
+	utils.Log("SessionMemory", fmt.Sprintf("loaded memory file: %s (%d bytes, %d content bytes)", path, len(data), len(content)))
 	return true
 }
 
@@ -122,14 +165,25 @@ func (sm *SessionMemory) SetMemory(content string) {
 	sm.persistMemory(content)
 }
 
-// persistMemory writes the given content to the memory file on disk.
+// persistMemory writes the given content to the memory file on disk,
+// prepending YAML front-matter with debounce state and coverage
+// boundary so the metadata survives session restarts.
 func (sm *SessionMemory) persistMemory(content string) {
 	path := sm.memoryFilePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		utils.Warn("SessionMemory", "failed to create memory dir: "+err.Error())
 		return
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+
+	sm.mu.RLock()
+	frontMatter := fmt.Sprintf("---\nlastUpdateTokens: %d\nlastUpdateTurn: %d\nlastSummarizedEntryID: %s\nupdatedAt: %s\n---\n",
+		sm.lastUpdateTokens,
+		sm.lastUpdateTurn,
+		sm.lastSummarizedEntryID,
+		time.Now().UTC().Format(time.RFC3339))
+	sm.mu.RUnlock()
+
+	if err := os.WriteFile(path, []byte(frontMatter+content), 0o644); err != nil {
 		utils.Warn("SessionMemory", "failed to write memory file: "+err.Error())
 	}
 }
@@ -139,6 +193,31 @@ func (sm *SessionMemory) GetLastUpdateTurn() int {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.lastUpdateTurn
+}
+
+// GetLastSummarizedEntryID returns the entry ID boundary of the most
+// recent session memory summary. Returns empty string if no boundary
+// has been recorded (e.g. memory was loaded from a legacy file without
+// front-matter metadata).
+func (sm *SessionMemory) GetLastSummarizedEntryID() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.lastSummarizedEntryID
+}
+
+// ResetUpdateTracking resets the debounce baselines to the given token
+// count and turn number. Called after compaction drops messages and
+// reduces the token count, so the growth threshold restarts from the
+// post-compaction baseline instead of the pre-compaction peak (which
+// would be unreachable when tokens went backwards).
+func (sm *SessionMemory) ResetUpdateTracking(currentTokens int, currentTurn int) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	utils.Log("SessionMemory", fmt.Sprintf(
+		"ResetUpdateTracking: lastUpdateTokens %d→%d lastUpdateTurn %d→%d",
+		sm.lastUpdateTokens, currentTokens, sm.lastUpdateTurn, currentTurn))
+	sm.lastUpdateTokens = currentTokens
+	sm.lastUpdateTurn = currentTurn
 }
 
 // Start initializes background memory updates. The cancel function is
@@ -190,6 +269,14 @@ func (sm *SessionMemory) OnTurnEnd(conv *conversation.Conversation, turnNumber i
 		"OnTurnEnd: triggering background summary (turn=%d tokens=%d growth=%d)",
 		turnNumber, currentTokens, currentTokens-lastTokens))
 
+	// Capture the entry boundary BEFORE spawning the goroutine. This is
+	// the newest entry that the summary will cover. LeafID is a *string
+	// so we dereference to a value copy for goroutine safety.
+	var boundaryEntryID string
+	if conv.LeafID != nil {
+		boundaryEntryID = *conv.LeafID
+	}
+
 	// Spawn background summarization. The goroutine captures the current
 	// message state so the runloop is not blocked.
 	messagesCopy := make([]types.LlmMessage, len(conv.Messages))
@@ -237,13 +324,14 @@ func (sm *SessionMemory) OnTurnEnd(conv *conversation.Conversation, turnNumber i
 		sm.memory = summary
 		sm.lastUpdateTokens = currentTokens
 		sm.lastUpdateTurn = turnNumber
+		sm.lastSummarizedEntryID = boundaryEntryID
 		sm.mu.Unlock()
 
 		// Persist to disk.
 		sm.persistMemory(summary)
 		utils.Log("SessionMemory", fmt.Sprintf(
-			"updated memory at turn %d (tokens=%d, summary=%d chars)",
-			turnNumber, currentTokens, len(summary)))
+			"updated memory at turn %d (tokens=%d, summary=%d chars, boundary=%s)",
+			turnNumber, currentTokens, len(summary), boundaryEntryID))
 	}()
 }
 

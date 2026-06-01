@@ -1,6 +1,7 @@
 package session
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -229,5 +230,231 @@ func TestSessionMemory_MemoryEnabledConfigGate(t *testing.T) {
 				t.Errorf("memoryDisabled = %v, want %v", memoryDisabled, tt.wantDisabled)
 			}
 		})
+	}
+}
+
+func TestSessionMemory_ResetUpdateTracking(t *testing.T) {
+	sm := NewSessionMemory("test-conv", t.TempDir(), nil)
+	sm.lastUpdateTokens = 508494
+	sm.lastUpdateTurn = 23
+
+	sm.ResetUpdateTracking(50000, 5)
+
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	if sm.lastUpdateTokens != 50000 {
+		t.Errorf("lastUpdateTokens: got %d, want 50000", sm.lastUpdateTokens)
+	}
+	if sm.lastUpdateTurn != 5 {
+		t.Errorf("lastUpdateTurn: got %d, want 5", sm.lastUpdateTurn)
+	}
+}
+
+func TestSessionMemory_ResetUpdateTrackingEnablesGrowthAfterCompaction(t *testing.T) {
+	// Simulates the "tokens went backwards" scenario: after compaction,
+	// the token count drops below lastUpdateTokens. Without reset, the
+	// growth threshold can never be satisfied.
+	sm := NewSessionMemory("test-conv", t.TempDir(), &types.RunOptions{
+		CompactMemoryUpdateMinTurns:  1,
+		CompactMemoryUpdateThreshold: 5000,
+	})
+	sm.lastUpdateTokens = 200000 // pre-compaction peak
+	sm.lastUpdateTurn = 10
+
+	// Post-compaction: tokens dropped to 50000. Without reset,
+	// growth = 50000 - 200000 = -150000, threshold never reached.
+	sm.ResetUpdateTracking(50000, 10)
+
+	// Now growth from 50000 to 56000 (6000 tokens) should exceed the 5000 threshold.
+	conv := &conversation.Conversation{
+		Messages: makeMessagesWithTokens(56000),
+	}
+	// Turn 12 is 2 turns after reset at turn 10, meeting the minTurns=1 threshold.
+	// The actual OnTurnEnd will check token growth: 56000 - 50000 = 6000 > 5000.
+	sm.mu.RLock()
+	currentTokens := conversation.EstimateTokens(conv.Messages)
+	growthMet := currentTokens-sm.lastUpdateTokens >= sm.updateThreshold
+	sm.mu.RUnlock()
+
+	if !growthMet {
+		t.Errorf("growth threshold should be met after reset: tokens=%d baseline=%d threshold=%d",
+			currentTokens, 50000, 5000)
+	}
+}
+
+// makeMessagesWithTokens creates a slice of messages with approximately the given token count.
+// Token estimation is ~4 chars per token, so we generate enough text to hit the target.
+func makeMessagesWithTokens(targetTokens int) []types.LlmMessage {
+	// Each char ≈ 0.25 tokens, so we need ~4 chars per token.
+	textLen := targetTokens * 4
+	text := strings.Repeat("a", textLen)
+	return []types.LlmMessage{
+		{Role: "user", Content: text},
+	}
+}
+
+func TestSessionMemory_LoadMemoryParseFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSessionMemory("test-conv", dir, nil)
+
+	// Write a memory file with front-matter.
+	content := "---\nlastUpdateTokens: 508494\nlastUpdateTurn: 23\nlastSummarizedEntryID: a3f7b201\nupdatedAt: 2025-05-29T02:49:26Z\n---\nSession is deeply stuck with iOS theme issues."
+	if err := os.WriteFile(sm.memoryFilePath(), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sm2 := NewSessionMemory("test-conv", dir, nil)
+	if !sm2.LoadMemory() {
+		t.Fatal("LoadMemory should return true when file exists")
+	}
+
+	sm2.mu.RLock()
+	defer sm2.mu.RUnlock()
+
+	if sm2.lastUpdateTokens != 508494 {
+		t.Errorf("lastUpdateTokens: got %d, want 508494", sm2.lastUpdateTokens)
+	}
+	if sm2.lastUpdateTurn != 23 {
+		t.Errorf("lastUpdateTurn: got %d, want 23", sm2.lastUpdateTurn)
+	}
+	if sm2.lastSummarizedEntryID != "a3f7b201" {
+		t.Errorf("lastSummarizedEntryID: got %q, want %q", sm2.lastSummarizedEntryID, "a3f7b201")
+	}
+	if sm2.memory != "Session is deeply stuck with iOS theme issues." {
+		t.Errorf("memory: got %q, want %q", sm2.memory, "Session is deeply stuck with iOS theme issues.")
+	}
+}
+
+func TestSessionMemory_LoadMemoryWithoutFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSessionMemory("test-conv", dir, nil)
+
+	// Write a legacy memory file without front-matter.
+	content := "Session is deeply stuck with iOS theme issues."
+	if err := os.WriteFile(sm.memoryFilePath(), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sm2 := NewSessionMemory("test-conv", dir, nil)
+	if !sm2.LoadMemory() {
+		t.Fatal("LoadMemory should return true when file exists")
+	}
+
+	sm2.mu.RLock()
+	defer sm2.mu.RUnlock()
+
+	if sm2.lastUpdateTokens != 0 {
+		t.Errorf("lastUpdateTokens should be 0 for legacy files, got %d", sm2.lastUpdateTokens)
+	}
+	if sm2.lastSummarizedEntryID != "" {
+		t.Errorf("lastSummarizedEntryID should be empty for legacy files, got %q", sm2.lastSummarizedEntryID)
+	}
+	if sm2.memory != content {
+		t.Errorf("memory: got %q, want %q", sm2.memory, content)
+	}
+}
+
+func TestSessionMemory_PersistMemoryWritesFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSessionMemory("test-conv", dir, nil)
+	sm.Start()
+	defer sm.Stop()
+
+	sm.mu.Lock()
+	sm.lastUpdateTokens = 12345
+	sm.lastUpdateTurn = 7
+	sm.lastSummarizedEntryID = "beef1234"
+	sm.mu.Unlock()
+
+	sm.persistMemory("test summary content")
+
+	data, err := os.ReadFile(sm.memoryFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := string(data)
+	if !strings.HasPrefix(raw, "---\n") {
+		t.Error("persisted file should start with front-matter delimiter")
+	}
+	if !strings.Contains(raw, "lastUpdateTokens: 12345") {
+		t.Error("persisted file should contain lastUpdateTokens")
+	}
+	if !strings.Contains(raw, "lastUpdateTurn: 7") {
+		t.Error("persisted file should contain lastUpdateTurn")
+	}
+	if !strings.Contains(raw, "lastSummarizedEntryID: beef1234") {
+		t.Error("persisted file should contain lastSummarizedEntryID")
+	}
+	if !strings.Contains(raw, "updatedAt: ") {
+		t.Error("persisted file should contain updatedAt timestamp")
+	}
+	if !strings.HasSuffix(raw, "test summary content") {
+		t.Error("persisted file should end with the summary content")
+	}
+}
+
+func TestSessionMemory_GetLastSummarizedEntryID(t *testing.T) {
+	sm := NewSessionMemory("test-conv", t.TempDir(), nil)
+
+	// Initially empty.
+	if got := sm.GetLastSummarizedEntryID(); got != "" {
+		t.Errorf("initial: got %q, want empty", got)
+	}
+
+	// Set it.
+	sm.mu.Lock()
+	sm.lastSummarizedEntryID = "abc12345"
+	sm.mu.Unlock()
+
+	if got := sm.GetLastSummarizedEntryID(); got != "abc12345" {
+		t.Errorf("after set: got %q, want %q", got, "abc12345")
+	}
+}
+
+func TestSessionMemory_PersistAndReloadRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSessionMemory("test-conv", dir, nil)
+	sm.Start()
+	defer sm.Stop()
+
+	// Set state and persist.
+	sm.mu.Lock()
+	sm.memory = "round trip content"
+	sm.lastUpdateTokens = 99999
+	sm.lastUpdateTurn = 42
+	sm.lastSummarizedEntryID = "dead0000"
+	sm.mu.Unlock()
+	sm.persistMemory("round trip content")
+
+	// Reload into a fresh instance.
+	sm2 := NewSessionMemory("test-conv", dir, nil)
+	if !sm2.LoadMemory() {
+		t.Fatal("LoadMemory should succeed")
+	}
+
+	if sm2.GetMemory() != "round trip content" {
+		t.Errorf("memory: got %q", sm2.GetMemory())
+	}
+	sm2.mu.RLock()
+	defer sm2.mu.RUnlock()
+	if sm2.lastUpdateTokens != 99999 {
+		t.Errorf("lastUpdateTokens: got %d, want 99999", sm2.lastUpdateTokens)
+	}
+	if sm2.lastUpdateTurn != 42 {
+		t.Errorf("lastUpdateTurn: got %d, want 42", sm2.lastUpdateTurn)
+	}
+	if sm2.lastSummarizedEntryID != "dead0000" {
+		t.Errorf("lastSummarizedEntryID: got %q, want dead0000", sm2.lastSummarizedEntryID)
+	}
+}
+
+func TestSessionMemory_LowerDefaultThresholds(t *testing.T) {
+	// Verify the new default thresholds are lower than the old ones.
+	if DefaultMemoryUpdateThreshold != 5000 {
+		t.Errorf("DefaultMemoryUpdateThreshold: got %d, want 5000", DefaultMemoryUpdateThreshold)
+	}
+	if DefaultMemoryUpdateMinTurns != 3 {
+		t.Errorf("DefaultMemoryUpdateMinTurns: got %d, want 3", DefaultMemoryUpdateMinTurns)
 	}
 }

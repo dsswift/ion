@@ -236,6 +236,30 @@ When a comment describes behavior that the code does not implement (e.g. "This i
 
 Never silently delete an aspirational comment. A comment that describes unimplemented functionality is a bug report, not a false statement.
 
+## Solution quality — no cheap substitutes
+
+Every solution must solve the problem at its root cause. **Never trade correctness for implementation convenience.**
+
+### Rules
+
+1. **Never substitute a heuristic for a precise mechanism.** If the problem requires tracking identity, track identity — don't approximate it with a distance metric. If the problem requires a boundary marker, store a boundary marker — don't estimate freshness from a turn counter. Heuristics drift, precise mechanisms don't.
+
+2. **"Simpler to implement" is not a valid justification for a weaker solution.** The only acceptable reasons to choose a less rigorous approach are:
+   - It would break a published contract or require a backward-incompatible change to consumers.
+   - The architecture physically cannot support the approach (missing data, wrong layer, no stable identity).
+   - The problem domain genuinely doesn't require the precision (not just "it's probably fine").
+   
+   "It's easier" and "it's fewer lines of code" are never acceptable. If the proper solution requires more work, do the work.
+
+3. **Solve the root cause, not the symptom.** If data is stale because there's no coverage tracking, add coverage tracking — don't add a staleness heuristic that guesses whether the data is still good. If a threshold can go negative because compaction reduces token counts, reset the baseline — don't raise the threshold and hope for the best.
+
+4. **When proposing a simpler alternative, justify it rigorously.** If you believe a simpler approach is genuinely sufficient, the explanation must include:
+   - What failure modes the simpler approach introduces
+   - Why those failure modes are acceptable (with specifics, not hand-waving)
+   - What would need to change if the simpler approach proves insufficient
+   
+   If you can't articulate the failure modes, you haven't analyzed the problem deeply enough to justify the shortcut.
+
 ## Conversation storage
 
 Conversations are persisted as NDJSON file pairs under `~/.ion/conversations/`.

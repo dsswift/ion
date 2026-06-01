@@ -84,6 +84,10 @@ func (m *Manager) buildRunConfig(
 	if s.sessionMemory != nil {
 		sm := s.sessionMemory
 		runCfg.GetSessionMemory = sm.GetMemory
+		runCfg.GetLastSummarizedEntryID = sm.GetLastSummarizedEntryID
+		runCfg.ResetMemoryTracking = func(tokens int) {
+			sm.ResetUpdateTracking(tokens, sm.GetLastUpdateTurn())
+		}
 	}
 
 	// Wire OnPlanModeEnter unconditionally: it calls RequestPlanModeEnter on

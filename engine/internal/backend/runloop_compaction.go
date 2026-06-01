@@ -34,6 +34,16 @@ type compactParams struct {
 	// session memory is not available — the compaction flow skips to the
 	// next tier (LLM summary or regex facts).
 	getSessionMemory func() string
+
+	// getLastSummarizedEntryID returns the entry ID boundary of the most
+	// recent session memory summary. Used to determine whether the memory
+	// actually covers the messages being dropped during compaction.
+	getLastSummarizedEntryID func() string
+
+	// resetMemoryTracking resets the session memory debounce baselines
+	// to the given token count. Called after compaction completes so the
+	// growth threshold restarts from the post-compaction level.
+	resetMemoryTracking func(tokens int)
 }
 
 // buildCompactParams extracts compaction knobs from RunOptions, applying
@@ -74,6 +84,43 @@ func buildCompactParams(opts *types.RunOptions, convDir string) compactParams {
 	utils.Log("ApiBackend", fmt.Sprintf("buildCompactParams: targetPercent=%.1f microKeepTurns=%d minKeepTurns=%d estimationPadding=%.2f summaryEnabled=%v summaryModel=%q memoryEnabled=%v",
 		p.targetPercent, p.microKeepTurns, p.minKeepTurns, p.estimationPadding, p.summaryEnabled, p.summaryModel, p.memoryEnabled))
 	return p
+}
+
+// isMemoryCurrent checks whether the session memory covers the messages
+// that compaction will drop. It walks the conversation entries backwards
+// from the leaf to find the boundary entry ID. If the boundary is found
+// in the entry list, the memory covers everything up to that point.
+// Returns false when the boundary is empty, not found, or the entries
+// list is nil (no coverage information available).
+func isMemoryCurrent(conv *conversation.Conversation, boundaryEntryID string) bool {
+	if boundaryEntryID == "" || conv.Entries == nil || len(conv.Entries) == 0 {
+		utils.Debug("ApiBackend", fmt.Sprintf("isMemoryCurrent: no boundary or entries (boundary=%q entries=%d)",
+			boundaryEntryID, len(conv.Entries)))
+		return false
+	}
+
+	// Find the boundary entry's position in the entry list.
+	boundaryIdx := -1
+	for i, e := range conv.Entries {
+		if e.ID == boundaryEntryID {
+			boundaryIdx = i
+			break
+		}
+	}
+	if boundaryIdx < 0 {
+		utils.Debug("ApiBackend", fmt.Sprintf("isMemoryCurrent: boundary entry %s not found in %d entries", boundaryEntryID, len(conv.Entries)))
+		return false
+	}
+
+	// The memory is current if the boundary entry is in the latter half
+	// of the entry list (i.e., the memory covers most of the conversation).
+	// If the boundary is in the first half, the memory is stale — it only
+	// covers content that was already dropped or is about to be dropped.
+	midpoint := len(conv.Entries) / 2
+	isCurrent := boundaryIdx >= midpoint
+	utils.Debug("ApiBackend", fmt.Sprintf("isMemoryCurrent: boundary=%s at idx=%d midpoint=%d totalEntries=%d → current=%v",
+		boundaryEntryID, boundaryIdx, midpoint, len(conv.Entries), isCurrent))
+	return isCurrent
 }
 
 // compactIfNeeded performs proactive compaction when context usage exceeds
@@ -157,9 +204,29 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 		// Must generate summary BEFORE truncation drops the messages.
 		if cp.getSessionMemory != nil {
 			if mem := cp.getSessionMemory(); mem != "" {
-				summary = mem
-				sessionMemory = mem
-				utils.Log("ApiBackend", "proactive compact: using session memory as summary")
+				// Validate that the memory actually covers the messages being
+				// dropped. If the boundary entry is stale (deep in already-
+				// dropped content), fall through to a fresh LLM summary.
+				useMem := false
+				if cp.getLastSummarizedEntryID != nil {
+					entryID := cp.getLastSummarizedEntryID()
+					if entryID != "" && isMemoryCurrent(conv, entryID) {
+						useMem = true
+						utils.Log("ApiBackend", fmt.Sprintf("proactive compact: using session memory as summary (boundary=%s)", entryID))
+					} else {
+						utils.Log("ApiBackend", fmt.Sprintf("proactive compact: session memory exists but doesn't cover recent messages (boundary=%q), falling through to LLM summary", entryID))
+					}
+				} else {
+					// No boundary tracking available — use memory as-is for
+					// backward compatibility with sessions that predate the
+					// boundary tracking feature.
+					useMem = true
+					utils.Log("ApiBackend", "proactive compact: using session memory as summary (no boundary tracking)")
+				}
+				if useMem {
+					summary = mem
+					sessionMemory = mem
+				}
 			}
 		}
 		if summary == "" && cp.summaryEnabled {
@@ -254,6 +321,15 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 		utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: conversation saved successfully convID=%s", conv.ID))
 	}
 
+	// Reset session memory debounce baselines so the growth threshold
+	// restarts from the post-compaction token count. Without this, the
+	// threshold is unreachable because compaction reduced the token count
+	// below the previous baseline.
+	if cp.resetMemoryTracking != nil {
+		postTokens := conversation.EstimateTokens(conv.Messages)
+		cp.resetMemoryTracking(postTokens)
+	}
+
 	utils.Log("ApiBackend", fmt.Sprintf("compactIfNeeded COMPLETE: tokensBefore=%d msgsBefore=%d msgsAfter=%d dropped=%d summaryLen=%d clearedBlocks=%d strategy=auto convID=%s contextWindow=%d",
 		usage.Tokens, msgBefore, msgAfter, msgBefore-msgAfter, len(summary), cleared, conv.ID, contextWindow))
 
@@ -325,9 +401,24 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 	var sessionMemory string
 	if cp.getSessionMemory != nil {
 		if mem := cp.getSessionMemory(); mem != "" {
-			summary = mem
-			sessionMemory = mem
-			utils.Log("ApiBackend", "reactive compact: using session memory as summary")
+			// Validate coverage before using session memory.
+			useMem := false
+			if cp.getLastSummarizedEntryID != nil {
+				entryID := cp.getLastSummarizedEntryID()
+				if entryID != "" && isMemoryCurrent(conv, entryID) {
+					useMem = true
+					utils.Log("ApiBackend", fmt.Sprintf("reactive compact: using session memory as summary (boundary=%s)", entryID))
+				} else {
+					utils.Log("ApiBackend", fmt.Sprintf("reactive compact: session memory exists but doesn't cover recent messages (boundary=%q), falling through to LLM summary", entryID))
+				}
+			} else {
+				useMem = true
+				utils.Log("ApiBackend", "reactive compact: using session memory as summary (no boundary tracking)")
+			}
+			if useMem {
+				summary = mem
+				sessionMemory = mem
+			}
 		}
 	}
 	if summary == "" && cp.summaryEnabled {
@@ -416,6 +507,12 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 		utils.Log("ApiBackend", "failed to save after reactive compaction: "+err.Error())
 	} else {
 		utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: conversation saved successfully convID=%s", conv.ID))
+	}
+
+	// Reset session memory debounce baselines after reactive compaction.
+	if cp.resetMemoryTracking != nil {
+		postTokens := conversation.EstimateTokens(conv.Messages)
+		cp.resetMemoryTracking(postTokens)
 	}
 
 	utils.Log("ApiBackend", fmt.Sprintf("compactReactive COMPLETE: tokensBefore=%d msgsBefore=%d msgsAfter=%d dropped=%d summaryLen=%d clearedBlocks=%d strategy=reactive convID=%s contextWindow=%d",

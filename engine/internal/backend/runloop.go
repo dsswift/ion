@@ -271,6 +271,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		if run.cfg != nil && run.cfg.GetSessionMemory != nil {
 			cp.getSessionMemory = run.cfg.GetSessionMemory
 		}
+		if run.cfg != nil && run.cfg.GetLastSummarizedEntryID != nil {
+			cp.getLastSummarizedEntryID = run.cfg.GetLastSummarizedEntryID
+		}
+		if run.cfg != nil && run.cfg.ResetMemoryTracking != nil {
+			cp.resetMemoryTracking = run.cfg.ResetMemoryTracking
+		}
 		b.compactIfNeeded(ctx, run, conv, hooks, contextWindow, compactLimit, cp)
 
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)

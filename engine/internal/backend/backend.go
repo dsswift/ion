@@ -233,4 +233,13 @@ type RunConfig struct {
 	// as a zero-cost compaction summary. Set by the session layer from
 	// SessionMemory.GetMemory. Nil means session memory is not available.
 	GetSessionMemory func() string
+
+	// GetLastSummarizedEntryID returns the entry ID boundary of the most
+	// recent session memory summary. Used by the compaction system to
+	// validate that the memory covers the messages being dropped.
+	GetLastSummarizedEntryID func() string
+
+	// ResetMemoryTracking resets the session memory debounce baselines
+	// to the given token count after compaction reduces the message count.
+	ResetMemoryTracking func(tokens int)
 }
