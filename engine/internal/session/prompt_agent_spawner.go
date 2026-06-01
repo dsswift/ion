@@ -106,43 +106,38 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 
 		start := time.Now()
 
-		// When re-dispatching to an existing specialist, update the
-		// existing state entry instead of appending a duplicate row.
-		// The agent row is a living conversation view that accumulates
-		// all dispatches to the same specialist.
-		existingIdx := s.agents.FindStateIndex(agentName)
-		if existingIdx >= 0 {
-			s.agents.UpdateState(agentName, func(state *types.AgentStateUpdate) {
-				state.ID = agentID
-				state.Status = "running"
-				if state.Metadata == nil {
-					state.Metadata = map[string]interface{}{}
-				}
-				state.Metadata["task"] = prompt
-				state.Metadata["model"] = childModel
-				state.Metadata["startTime"] = start.Unix()
-				state.Metadata["lastWork"] = ""
-				delete(state.Metadata, "elapsed")
-			})
-		} else {
-			s.agents.AppendState(types.AgentStateUpdate{
-				Name:   agentName,
-				ID:     agentID,
-				Status: "running",
-				Metadata: map[string]interface{}{
-					"displayName": displayName,
-					"type":        "agent",
-					"visibility":  "sticky",
-					"invited":     true,
-					"task":        prompt,
-					"model":       childModel,
-					"startTime":   start.Unix(),
-				},
-			})
-		}
+		// Atomically update an existing specialist entry or append a new
+		// one. Using AppendOrUpdate prevents the TOCTOU race where two
+		// concurrent dispatches of the same specialist both see "not found"
+		// and both append, creating duplicate rows.
+		reused := s.agents.AppendOrUpdate(types.AgentStateUpdate{
+			Name:   agentName,
+			ID:     agentID,
+			Status: "running",
+			Metadata: map[string]interface{}{
+				"displayName": displayName,
+				"type":        "agent",
+				"visibility":  "sticky",
+				"invited":     true,
+				"task":        prompt,
+				"model":       childModel,
+				"startTime":   start.Unix(),
+			},
+		}, func(existing *types.AgentStateUpdate) {
+			existing.ID = agentID
+			existing.Status = "running"
+			if existing.Metadata == nil {
+				existing.Metadata = map[string]interface{}{}
+			}
+			existing.Metadata["task"] = prompt
+			existing.Metadata["model"] = childModel
+			existing.Metadata["startTime"] = start.Unix()
+			existing.Metadata["lastWork"] = ""
+			delete(existing.Metadata, "elapsed")
+		})
 		snapshot := s.agents.MergedSnapshot()
 
-		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=agent_start name=%s id=%s reuse=%v", capturedKey, len(snapshot), agentName, agentID, existingIdx >= 0))
+		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=agent_start name=%s id=%s reuse=%v", capturedKey, len(snapshot), agentName, agentID, reused))
 		m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
 		// Fire agent_start on the parent extension group so user observers

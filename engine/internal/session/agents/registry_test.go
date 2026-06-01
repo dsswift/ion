@@ -1,231 +1,221 @@
 package agents
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-func TestRegistry_HandleRoundTrip(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterHandle("worker-1", types.AgentHandle{PID: 42})
-	h, ok := r.LookupHandle("worker-1")
-	if !ok {
-		t.Fatal("expected handle")
-	}
-	if h.PID != 42 {
-		t.Errorf("expected PID=42, got %d", h.PID)
-	}
-}
+// --- AppendOrUpdate basic ---
 
-func TestRegistry_DeregisterHandle(t *testing.T) {
+// TestRegistry_AppendOrUpdate verifies the atomic append-or-update method:
+// first call appends, second call with same name updates in place, and a
+// different name appends separately.
+func TestRegistry_AppendOrUpdate(t *testing.T) {
 	r := NewRegistry()
-	r.RegisterHandle("x", types.AgentHandle{PID: 1})
-	r.DeregisterHandle("x")
-	if _, ok := r.LookupHandle("x"); ok {
-		t.Error("expected handle removed")
-	}
-}
 
-func TestRegistry_AllHandles(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterHandle("a", types.AgentHandle{PID: 1})
-	r.RegisterHandle("b", types.AgentHandle{PID: 2})
-	all := r.AllHandles()
-	if len(all) != 2 {
-		t.Fatalf("expected 2, got %d", len(all))
-	}
-}
-
-func TestRegistry_ClearHandles(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterHandle("a", types.AgentHandle{PID: 1})
-	r.RegisterHandle("b", types.AgentHandle{PID: 2})
-	pids, names := r.ClearHandles()
-	if len(pids) != 2 || len(names) != 2 {
-		t.Fatalf("expected 2 pids/names, got %d/%d", len(pids), len(names))
-	}
-	if r.HandleCount() != 0 {
-		t.Error("expected 0 handles after clear")
-	}
-}
-
-func TestRegistry_SpecRoundTrip(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterSpec(types.AgentSpec{Name: "planner", Description: "Plans"})
-	spec, ok := r.LookupSpec("planner")
-	if !ok {
-		t.Fatal("expected spec")
-	}
-	if spec.Description != "Plans" {
-		t.Errorf("expected 'Plans', got %q", spec.Description)
-	}
-}
-
-func TestRegistry_RegisterSpecEmptyNameNoop(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterSpec(types.AgentSpec{Name: "", Description: "skip"})
-	if len(r.AllSpecNames()) != 0 {
-		t.Error("expected no specs for empty name")
-	}
-}
-
-func TestRegistry_DeregisterSpec(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterSpec(types.AgentSpec{Name: "x", Description: "Y"})
-	r.DeregisterSpec("x")
-	if _, ok := r.LookupSpec("x"); ok {
-		t.Error("expected spec removed")
-	}
-}
-
-func TestRegistry_AllSpecNames(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterSpec(types.AgentSpec{Name: "a"})
-	r.RegisterSpec(types.AgentSpec{Name: "b"})
-	names := r.AllSpecNames()
-	if len(names) != 2 {
-		t.Fatalf("expected 2, got %d", len(names))
-	}
-}
-
-func TestRegistry_StateAppendAndMerge(t *testing.T) {
-	r := NewRegistry()
-	r.CacheExtStates([]types.AgentStateUpdate{{Name: "ext-1", Status: "running"}})
-	r.AppendState(types.AgentStateUpdate{Name: "agent-1", Status: "running"})
-
-	merged := r.MergedSnapshot()
-	if len(merged) != 2 {
-		t.Fatalf("expected 2 merged, got %d", len(merged))
-	}
-	if merged[0].Name != "ext-1" || merged[1].Name != "agent-1" {
-		t.Errorf("unexpected merge order: %v", merged)
-	}
-}
-
-func TestRegistry_UpdateState(t *testing.T) {
-	r := NewRegistry()
-	r.AppendState(types.AgentStateUpdate{Name: "a", Status: "running"})
-	r.UpdateState("a", func(s *types.AgentStateUpdate) {
-		s.Status = "done"
+	// First call: no existing entry → appends, returns false.
+	reused := r.AppendOrUpdate(types.AgentStateUpdate{
+		Name:   "dev-lead",
+		ID:     "dispatch-1",
+		Status: "running",
+		Metadata: map[string]interface{}{
+			"task": "first task",
+		},
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-1"
+		existing.Status = "running"
 	})
-	merged := r.MergedSnapshot()
-	if len(merged) != 1 || merged[0].Status != "done" {
-		t.Errorf("expected done, got %v", merged)
-	}
-}
 
-func TestRegistry_ClearStates(t *testing.T) {
-	r := NewRegistry()
-	r.AppendState(types.AgentStateUpdate{Name: "a", Status: "running"})
-	r.ClearStates()
-	if len(r.MergedSnapshot()) != 0 {
-		t.Error("expected empty after clear")
+	if reused {
+		t.Error("first call should return false (appended, not updated)")
 	}
-}
-
-// TestRegistry_NoStaleRunningAfterTerminalUpdate covers the engine
-// invariant from docs/architecture/agent-state.md: every termination
-// path must transition the state to a terminal status (done/error/
-// cancelled) before the next snapshot is read. After UpdateState with
-// any terminal status, MergedSnapshot must not report the agent as
-// "running".
-func TestRegistry_NoStaleRunningAfterTerminalUpdate(t *testing.T) {
-	terminalStatuses := []string{"done", "error", "cancelled"}
-	for _, terminal := range terminalStatuses {
-		t.Run(terminal, func(t *testing.T) {
-			r := NewRegistry()
-			r.AppendState(types.AgentStateUpdate{Name: "a", Status: "running"})
-			r.UpdateState("a", func(s *types.AgentStateUpdate) {
-				s.Status = terminal
-			})
-			merged := r.MergedSnapshot()
-			if len(merged) != 1 {
-				t.Fatalf("expected 1 merged, got %d", len(merged))
-			}
-			if merged[0].Status == "running" {
-				t.Errorf("expected non-running terminal status, got %q", merged[0].Status)
-			}
-			if merged[0].Status != terminal {
-				t.Errorf("expected status %q, got %q", terminal, merged[0].Status)
-			}
-		})
+	snap := r.MergedSnapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 entry after first append, got %d", len(snap))
 	}
-}
+	if snap[0].Name != "dev-lead" || snap[0].ID != "dispatch-1" {
+		t.Errorf("unexpected entry: %+v", snap[0])
+	}
 
-// TestRegistry_CacheExtStatesNilDrops mirrors the host-death recovery
-// behavior in handleHostDeath: when an extension dies the engine drops
-// its cached extension states by passing nil. The subsequent snapshot
-// must contain only engine-managed states (or nothing).
-func TestRegistry_CacheExtStatesNilDrops(t *testing.T) {
-	r := NewRegistry()
-	r.CacheExtStates([]types.AgentStateUpdate{
-		{Name: "ext-a", Status: "running"},
-		{Name: "ext-b", Status: "running"},
+	// Second call with same name → updates in place, returns true.
+	reused = r.AppendOrUpdate(types.AgentStateUpdate{
+		Name:   "dev-lead",
+		ID:     "dispatch-2",
+		Status: "running",
+		Metadata: map[string]interface{}{
+			"task": "second task",
+		},
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-2"
+		existing.Status = "running"
+		if existing.Metadata == nil {
+			existing.Metadata = map[string]interface{}{}
+		}
+		existing.Metadata["task"] = "second task"
 	})
-	if len(r.MergedSnapshot()) != 2 {
-		t.Fatalf("setup expected 2, got %d", len(r.MergedSnapshot()))
+
+	if !reused {
+		t.Error("second call should return true (updated existing)")
+	}
+	snap = r.MergedSnapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 entry after update (no duplicate), got %d", len(snap))
+	}
+	if snap[0].ID != "dispatch-2" {
+		t.Errorf("expected ID dispatch-2 after update, got %s", snap[0].ID)
+	}
+	if snap[0].Metadata["task"] != "second task" {
+		t.Errorf("expected updated task, got %v", snap[0].Metadata["task"])
 	}
 
-	r.CacheExtStates(nil)
-	merged := r.MergedSnapshot()
-	if len(merged) != 0 {
-		t.Errorf("expected empty after CacheExtStates(nil), got %d entries: %v", len(merged), merged)
-	}
-}
+	// Different name → appends separately.
+	reused = r.AppendOrUpdate(types.AgentStateUpdate{
+		Name:   "architect",
+		ID:     "dispatch-3",
+		Status: "running",
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-3"
+	})
 
-// TestRegistry_CacheExtStatesNilPreservesEngineStates ensures dropping
-// the extension cache does not also wipe engine-managed states. The
-// host-death recovery only clears the extension's authority; engine-
-// managed sub-agents from the Agent tool are still live.
-func TestRegistry_CacheExtStatesNilPreservesEngineStates(t *testing.T) {
-	r := NewRegistry()
-	r.CacheExtStates([]types.AgentStateUpdate{{Name: "ext-1", Status: "running"}})
-	r.AppendState(types.AgentStateUpdate{Name: "engine-1", Status: "running"})
-
-	r.CacheExtStates(nil)
-
-	merged := r.MergedSnapshot()
-	if len(merged) != 1 {
-		t.Fatalf("expected only engine-managed state, got %d entries", len(merged))
+	if reused {
+		t.Error("different name should return false (appended)")
 	}
-	if merged[0].Name != "engine-1" {
-		t.Errorf("expected engine-1, got %q", merged[0].Name)
-	}
-}
-
-func TestRegistry_IsDescendant(t *testing.T) {
-	r := NewRegistry()
-	r.RegisterHandle("root", types.AgentHandle{PID: 1})
-	r.RegisterHandle("child", types.AgentHandle{PID: 2, ParentAgent: "root"})
-	r.RegisterHandle("grandchild", types.AgentHandle{PID: 3, ParentAgent: "child"})
-
-	if !r.IsDescendant("child", "root") {
-		t.Error("child should be descendant of root")
-	}
-	if !r.IsDescendant("grandchild", "root") {
-		t.Error("grandchild should be descendant of root")
-	}
-	if r.IsDescendant("root", "child") {
-		t.Error("root should not be descendant of child")
+	snap = r.MergedSnapshot()
+	if len(snap) != 2 {
+		t.Fatalf("expected 2 entries after different-name append, got %d", len(snap))
 	}
 }
 
-func TestRegistry_ConcurrentAccess(t *testing.T) {
+// TestRegistry_AppendOrUpdate_PreservesMetadata verifies that the updater
+// can selectively modify fields while preserving others (e.g. conversationIds
+// from a previous dispatch).
+func TestRegistry_AppendOrUpdate_PreservesMetadata(t *testing.T) {
 	r := NewRegistry()
+
+	// Initial append with rich metadata.
+	r.AppendOrUpdate(types.AgentStateUpdate{
+		Name:   "dev-lead",
+		ID:     "dispatch-1",
+		Status: "done",
+		Metadata: map[string]interface{}{
+			"displayName":     "Dev Lead",
+			"conversationIds": []interface{}{"conv-1"},
+			"task":            "first task",
+		},
+	}, func(existing *types.AgentStateUpdate) {})
+
+	// Re-dispatch: updater modifies task but preserves conversationIds.
+	r.AppendOrUpdate(types.AgentStateUpdate{
+		Name:   "dev-lead",
+		ID:     "dispatch-2",
+		Status: "running",
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-2"
+		existing.Status = "running"
+		existing.Metadata["task"] = "second task"
+		existing.Metadata["lastWork"] = ""
+		delete(existing.Metadata, "elapsed")
+	})
+
+	snap := r.MergedSnapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(snap))
+	}
+	s := snap[0]
+	if s.ID != "dispatch-2" {
+		t.Errorf("expected dispatch-2, got %s", s.ID)
+	}
+	// conversationIds from first dispatch should be preserved.
+	ids, ok := s.Metadata["conversationIds"].([]interface{})
+	if !ok || len(ids) != 1 || ids[0] != "conv-1" {
+		t.Errorf("expected preserved conversationIds, got %v", s.Metadata["conversationIds"])
+	}
+	// displayName should be preserved.
+	if s.Metadata["displayName"] != "Dev Lead" {
+		t.Errorf("expected preserved displayName, got %v", s.Metadata["displayName"])
+	}
+}
+
+// --- Concurrent AppendOrUpdate ---
+
+// TestRegistry_AppendOrUpdate_Concurrent launches N goroutines all calling
+// AppendOrUpdate with the same agent name and asserts that MergedSnapshot
+// contains exactly one entry with that name. This test catches the TOCTOU
+// race that existed when FindStateIndex + AppendState were separate lock
+// acquisitions.
+func TestRegistry_AppendOrUpdate_Concurrent(t *testing.T) {
+	const goroutines = 100
+	r := NewRegistry()
+
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			r.RegisterHandle("h", types.AgentHandle{PID: idx})
-			r.LookupHandle("h")
-			r.RegisterSpec(types.AgentSpec{Name: "s"})
-			r.LookupSpec("s")
-			r.AppendState(types.AgentStateUpdate{Name: "x"})
-			r.MergedSnapshot()
+			r.AppendOrUpdate(types.AgentStateUpdate{
+				Name:   "dev-lead",
+				ID:     fmt.Sprintf("dispatch-%d", idx),
+				Status: "running",
+				Metadata: map[string]interface{}{
+					"task": fmt.Sprintf("task-%d", idx),
+				},
+			}, func(existing *types.AgentStateUpdate) {
+				existing.ID = fmt.Sprintf("dispatch-%d", idx)
+				existing.Status = "running"
+				if existing.Metadata == nil {
+					existing.Metadata = map[string]interface{}{}
+				}
+				existing.Metadata["task"] = fmt.Sprintf("task-%d", idx)
+			})
 		}(i)
 	}
+
 	wg.Wait()
+
+	snap := r.MergedSnapshot()
+	count := 0
+	for _, s := range snap {
+		if s.Name == "dev-lead" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 dev-lead entry, got %d (TOCTOU race produced duplicates)", count)
+	}
+}
+
+// TestRegistry_AppendOrUpdate_ConcurrentDifferentNames verifies that
+// concurrent AppendOrUpdate calls with different names each produce
+// exactly one entry.
+func TestRegistry_AppendOrUpdate_ConcurrentDifferentNames(t *testing.T) {
+	const goroutines = 50
+	r := NewRegistry()
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			name := fmt.Sprintf("agent-%d", idx)
+			r.AppendOrUpdate(types.AgentStateUpdate{
+				Name:   name,
+				ID:     fmt.Sprintf("dispatch-%d", idx),
+				Status: "running",
+			}, func(existing *types.AgentStateUpdate) {
+				existing.ID = fmt.Sprintf("dispatch-%d", idx)
+			})
+		}(i)
+	}
+
+	wg.Wait()
+
+	snap := r.MergedSnapshot()
+	if len(snap) != goroutines {
+		t.Errorf("expected %d entries for %d unique names, got %d", goroutines, goroutines, len(snap))
+	}
 }

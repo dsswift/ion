@@ -196,16 +196,11 @@ func (a *sessionAccessor) GetPlanModeState() (bool, string) {
 }
 
 func (a *sessionAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
-	idx := a.s.agents.FindStateIndex(state.Name)
-	if idx >= 0 {
-		a.s.agents.UpdateState(state.Name, func(existing *types.AgentStateUpdate) {
-			existing.ID = state.ID
-			existing.Status = state.Status
-			existing.Metadata = state.Metadata
-		})
-		return state.ID
-	}
-	a.s.agents.AppendState(state)
+	a.s.agents.AppendOrUpdate(state, func(existing *types.AgentStateUpdate) {
+		existing.ID = state.ID
+		existing.Status = state.Status
+		existing.Metadata = state.Metadata
+	})
 	return state.ID
 }
 

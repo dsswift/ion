@@ -121,6 +121,24 @@ func (r *Registry) AllSpecNames() []string {
 
 // --- States ---
 
+// AppendOrUpdate atomically finds an existing state by name and updates it,
+// or appends a new entry if none exists. Holds the write lock across the
+// entire check-then-act to prevent duplicate entries from concurrent
+// dispatches of the same specialist. Returns true if an existing entry was
+// updated, false if a new entry was appended.
+func (r *Registry) AppendOrUpdate(state types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.states {
+		if r.states[i].Name == state.Name {
+			updater(&r.states[i])
+			return true
+		}
+	}
+	r.states = append(r.states, state)
+	return false
+}
+
 // AppendState appends an agent state update.
 func (r *Registry) AppendState(state types.AgentStateUpdate) {
 	r.mu.Lock()
