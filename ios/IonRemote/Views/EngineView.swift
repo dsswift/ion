@@ -14,6 +14,7 @@ struct EngineView: View {
     @State private var forceScrollCounter = 0
     @State private var showFileExplorer = false
     @State private var showGitPane = false
+    @State private var showTerminal = false
     @State var pendingAttachments: [PendingAttachment] = []
     @State private var showAttachMenu = false
     @State private var showFilePicker = false
@@ -433,6 +434,11 @@ struct EngineView: View {
                     .font(.subheadline)
                     .foregroundStyle(theme.accent)
             }
+            Button { showTerminal = true } label: {
+                Image(systemName: "terminal")
+                    .font(.subheadline)
+                    .foregroundStyle(theme.accent)
+            }
             Button { viewModel.addEngineInstance(tabId: tabId) } label: {
                 Image(systemName: "plus.rectangle")
                     .foregroundStyle(theme.accent)
@@ -493,6 +499,10 @@ struct EngineView: View {
         }
         .fullScreenCover(isPresented: $showGitPane) {
             GitPaneView(tabId: tabId)
+                .environment(viewModel)
+        }
+        .fullScreenCover(isPresented: $showTerminal) {
+            ConversationTerminalView(tabId: tabId)
                 .environment(viewModel)
         }
         .task {
