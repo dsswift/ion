@@ -46,6 +46,30 @@ enum ThemeRegistry {
     }
 }
 
+// MARK: - ThemeManager (Observable)
+
+/// Observable wrapper that drives SwiftUI reactivity when the theme changes.
+/// Views read colors from `themeManager.current` and SwiftUI automatically
+/// re-renders when `selectedThemeId` changes.
+@Observable
+final class ThemeManager {
+    var selectedThemeId: String {
+        didSet {
+            current = ThemeRegistry.theme(for: selectedThemeId)
+            UserDefaults.standard.set(selectedThemeId, forKey: "selectedTheme")
+        }
+    }
+
+    /// The resolved theme. Read color tokens from this.
+    private(set) var current: any AppTheme
+
+    init() {
+        let saved = UserDefaults.standard.string(forKey: "selectedTheme") ?? "ion-default"
+        self.selectedThemeId = saved
+        self.current = ThemeRegistry.theme(for: saved)
+    }
+}
+
 // MARK: - Environment Key
 
 private struct AppThemeKey: EnvironmentKey {

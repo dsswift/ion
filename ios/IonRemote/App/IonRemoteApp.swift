@@ -4,12 +4,8 @@ import SwiftUI
 struct IonRemoteApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var viewModel = SessionViewModel()
+    @State private var themeManager = ThemeManager()
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("selectedTheme") private var themeId = "ion-default"
-
-    private var theme: any AppTheme {
-        ThemeRegistry.theme(for: themeId)
-    }
 
     init() {
         CrashReporter.install()
@@ -19,9 +15,10 @@ struct IonRemoteApp: App {
         WindowGroup {
             ContentView()
                 .environment(viewModel)
-                .environment(\.appTheme, theme)
-                .preferredColorScheme(theme.preferredColorScheme)
-                .tint(theme.accent)
+                .environment(themeManager)
+                .environment(\.appTheme, themeManager.current)
+                .preferredColorScheme(themeManager.current.preferredColorScheme)
+                .tint(themeManager.current.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
                 }

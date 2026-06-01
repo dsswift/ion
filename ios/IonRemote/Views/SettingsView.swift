@@ -2,9 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(ThemeManager.self) private var themeManager
     @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("selectedTheme") private var themeId = "ion-default"
     @State private var showPairingSheet = false
     @State private var elevenLabsKey: String = ""
     @State private var keySaved = false
@@ -68,8 +68,9 @@ struct SettingsView: View {
     // MARK: - Sections
 
     private var themeSection: some View {
-        Section {
-            Picker("Theme", selection: $themeId) {
+        @Bindable var tm = themeManager
+        return Section {
+            Picker("Theme", selection: $tm.selectedThemeId) {
                 ForEach(ThemeRegistry.themes, id: \.id) { t in
                     Text(t.displayName).tag(t.id)
                 }
