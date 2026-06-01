@@ -320,7 +320,7 @@ struct EngineView: View {
             if let prompt = viewModel.enginePinnedPrompt[compoundKey], !prompt.isEmpty {
                 HStack {
                     Text("> ")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(theme.accent)
                         .fontWeight(.semibold)
                     Text(prompt)
                         .lineLimit(1)
@@ -404,13 +404,16 @@ struct EngineView: View {
             Button { showFileExplorer = true } label: {
                 Image(systemName: "folder")
                     .font(.subheadline)
+                    .foregroundStyle(theme.accent)
             }
             Button { showGitPane = true } label: {
                 Image(systemName: "arrow.triangle.branch")
                     .font(.subheadline)
+                    .foregroundStyle(theme.accent)
             }
             Button { viewModel.addEngineInstance(tabId: tabId) } label: {
                 Image(systemName: "plus.rectangle")
+                    .foregroundStyle(theme.accent)
             }
         }
     }
@@ -437,6 +440,15 @@ struct EngineView: View {
         .navigationTitle(viewModel.tab(for: tabId)?.displayTitle ?? "Engine")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                if theme.backgroundView != nil {
+                    Text(viewModel.tab(for: tabId)?.displayTitle ?? "Engine")
+                        .font(.headline.bold())
+                        .foregroundStyle(theme.accent)
+                        .shadow(color: theme.accent.opacity(0.8), radius: 4)
+                        .shadow(color: theme.accent.opacity(0.4), radius: 10)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { toolbarButtons }
         }
         .task {
@@ -537,7 +549,7 @@ struct EngineView: View {
             Button { submitPrompt() } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(!cannotSend ? theme.accent : Color.gray)
             }
             .disabled(cannotSend)
         }
