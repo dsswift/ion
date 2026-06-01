@@ -19,6 +19,14 @@ import (
 // unreadable".
 var ErrNotFound = errors.New("conversation not found")
 
+// maxScanTokenSize is the maximum line size for JSONL scanners in the
+// conversation package. Set to 32 MB to accommodate large tool results,
+// assistant responses with embedded content, and base64-encoded images
+// (the image validator allows up to 20 MB images, which inflate to ~27 MB
+// in base64). The server and stream parsers use 8 MB; conversation lines
+// can be larger because they accumulate entire turn payloads.
+const maxScanTokenSize = 32 * 1024 * 1024
+
 // MigrateConversation upgrades a raw JSON map to the current schema version.
 func MigrateConversation(raw map[string]any) (*Conversation, error) {
 	if raw == nil {
@@ -571,10 +579,10 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 }
 
 // scanNonEmptyLines splits JSONL bytes into non-empty trimmed lines using a
-// buffered scanner with a 1 MB per-line limit.
+// buffered scanner with a 32 MB per-line limit (maxScanTokenSize).
 func scanNonEmptyLines(data []byte) ([]string, error) {
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 	var lines []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
