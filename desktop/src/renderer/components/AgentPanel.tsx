@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { CaretRight, SpinnerGap, ArrowsOutSimple, ArrowsInSimple, ArrowCircleRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { groupMessages, ToolGroup, AssistantMessage, MessageBubble } from './conversation'
-import { meta, isAgentVisible, sortAgents, getLabelBg, getStatusSuffix, formatDuration, getDispatches } from './agent-panel-helpers'
+import { meta, isAgentVisible, sortAgents, getLabelBg, getStatusSuffix, formatDuration, getDispatches, sliceMessagesForDispatch } from './agent-panel-helpers'
 import { DispatchPager } from './DispatchPager'
 import type { DispatchInfo } from './agent-panel-helpers'
 import type { AgentStateUpdate } from '../../shared/types'
@@ -272,13 +272,23 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
     }
   }, [convMessages])
 
-  /** Load the conversation for the selected dispatch of an agent. */
+  /** Load the conversation for the selected dispatch of an agent,
+   *  then lazily preload the remaining dispatches in the background. */
   const loadAgentDispatch = useCallback((agent: AgentStateUpdate) => {
     const dispatches = getDispatches(agent)
     if (dispatches.length === 0) return
     const idx = selectedDispatch.get(agent.name) ?? dispatches.length - 1
     const convId = dispatches[idx]?.conversationId
-    if (convId) loadSingleConversation(convId)
+    if (convId) {
+      // Load the selected dispatch first, then preload the rest.
+      loadSingleConversation(convId).then(() => {
+        for (const d of dispatches) {
+          if (d.conversationId && d.conversationId !== convId) {
+            loadSingleConversation(d.conversationId)
+          }
+        }
+      })
+    }
   }, [selectedDispatch, loadSingleConversation])
 
   // Re-fetch conversation when an expanded agent transitions to a terminal state
@@ -290,15 +300,26 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
     for (const agent of visible) {
       const isExpanded = agentExpanded.get(agent.name)
       const isTerminal = agent.status === 'done' || agent.status === 'error'
-      const hasAnyConvId = agent.metadata?.conversationId || (agent.metadata?.conversationIds as any[])?.length > 0
+      const hasAnyConvId = getDispatches(agent).some(d => d.conversationId)
       if (isExpanded && isTerminal && hasAnyConvId) {
         loadAgentDispatch(agent)
       }
     }
   }, [visible, agentExpanded, loadAgentDispatch])
 
+  /** Check if any conversation is currently loading for an agent. */
+  const isAgentLoading = useCallback((agent: AgentStateUpdate): boolean => {
+    const dispatches = getDispatches(agent)
+    return dispatches.some(d => d.conversationId && convLoading.get(d.conversationId))
+  }, [convLoading])
+
   const toggleAgent = (name: string, agent: AgentStateUpdate) => {
-    const willExpand = !agentExpanded.get(name)
+    const isCurrentlyExpanded = agentExpanded.get(name) || false
+    // If already expanded and a conversation is loading, ignore the click.
+    // This prevents the user from accidentally collapsing the panel and
+    // restarting the same slow fetch by clicking impatiently.
+    if (isCurrentlyExpanded && isAgentLoading(agent)) return
+    const willExpand = !isCurrentlyExpanded
     setAgentExpanded((prev) => {
       const next = new Map(prev)
       next.set(name, willExpand)
@@ -449,7 +470,13 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
               const dispatches = getDispatches(agent)
               const dispIdx = selectedDispatch.get(agent.name) ?? dispatches.length - 1
               const activeConvId = dispatches[dispIdx]?.conversationId || ''
-              const loadedMsgs = activeConvId ? convMessages.get(activeConvId) : undefined
+              const rawMsgs = activeConvId ? convMessages.get(activeConvId) : undefined
+              // When multiple dispatches share a conversationId (engine reuses
+              // the session), slice messages by startTime so each pager tab
+              // shows only its own work.
+              const activeDispatch = dispatches[dispIdx]
+              const sharesConvId = activeDispatch && dispatches.some(d => d.id !== activeDispatch.id && d.conversationId === activeConvId && activeConvId)
+              const loadedMsgs = rawMsgs && sharesConvId ? sliceMessagesForDispatch(rawMsgs, activeDispatch, dispatches) : rawMsgs
               const isLoading = activeConvId ? convLoading.get(activeConvId) || false : false
 
               return (

@@ -1,4 +1,5 @@
 import type { AgentStateUpdate } from '../../shared/types'
+import type { Message } from '../../shared/types'
 
 /** Structured dispatch info extracted from agent metadata. */
 export interface DispatchInfo {
@@ -19,8 +20,8 @@ export function meta<T>(agent: AgentStateUpdate, key: string, fallback: T): T {
 
 /**
  * Extract the structured dispatches array from agent metadata.
- * Falls back to a single-entry array built from top-level metadata
- * for backward compat with agents that don't have the dispatches array.
+ * `dispatches[]` is the single source of truth — no fallback to
+ * legacy `conversationId` / `conversationIds` metadata fields.
  */
 export function getDispatches(agent: AgentStateUpdate): DispatchInfo[] {
   const raw = agent.metadata?.dispatches
@@ -34,20 +35,6 @@ export function getDispatches(agent: AgentStateUpdate): DispatchInfo[] {
       status: String(d.status ?? ''),
       startTime: typeof d.startTime === 'number' ? d.startTime : undefined,
     }))
-  }
-  // Backward compat: build a single dispatch from top-level metadata
-  const convId = agent.metadata?.conversationId
-  const task = agent.metadata?.task
-  if (typeof convId === 'string' || typeof task === 'string') {
-    return [{
-      id: agent.id || '',
-      task: String(task ?? ''),
-      model: meta(agent, 'model', ''),
-      conversationId: String(convId ?? ''),
-      elapsed: typeof agent.metadata?.elapsed === 'number' ? agent.metadata.elapsed : undefined,
-      status: agent.status,
-      startTime: typeof agent.metadata?.startTime === 'number' ? agent.metadata.startTime : undefined,
-    }]
   }
   return []
 }
@@ -131,4 +118,33 @@ export function formatDuration(secs: number): string {
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
   return `${h}h ${m}m`
+}
+
+/**
+ * When multiple dispatches share a conversationId (engine reuses the
+ * session), slice the conversation messages by the dispatch's startTime
+ * boundary so each pager tab shows only its own work. Dispatch startTime
+ * is in seconds; message timestamps are in milliseconds.
+ */
+export function sliceMessagesForDispatch(
+  msgs: Message[],
+  dispatch: DispatchInfo,
+  allDispatches: DispatchInfo[],
+): Message[] {
+  if (!dispatch.startTime) return msgs
+  const startMs = dispatch.startTime * 1000
+
+  // Find the next dispatch sharing this conversationId that starts later.
+  const siblings = allDispatches
+    .filter(d => d.conversationId === dispatch.conversationId)
+    .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
+  const next = siblings.find(d => (d.startTime ?? 0) > dispatch.startTime!)
+  const endMs = next?.startTime ? next.startTime * 1000 : undefined
+
+  return msgs.filter(m => {
+    if (!m.timestamp) return true
+    if (m.timestamp < startMs) return false
+    if (endMs != null && m.timestamp >= endMs) return false
+    return true
+  })
 }

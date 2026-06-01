@@ -471,6 +471,14 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
             for (var [, agents] of agentStates) {
               for (var a of agents) {
                 var meta = a.metadata || {};
+                var dispatches = meta.dispatches || [];
+                for (var d of dispatches) {
+                  for (var cid of convIds) {
+                    if (d.conversationId === cid) return a.name;
+                  }
+                }
+                // Belt-and-suspenders: fall back to legacy fields in case
+                // dispatches[] is empty (e.g. stale renderer state).
                 var aConvId = meta.conversationId || '';
                 var aConvIds = meta.conversationIds || [];
                 for (var cid of convIds) {

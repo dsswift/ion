@@ -22,15 +22,16 @@ export function DispatchPager({ dispatches, selectedIndex, onSelect }: Props) {
 
   return (
     <div style={{ padding: '4px 12px 2px 148px' }}>
-      {/* Pill row */}
+      {/* Pill row — reversed so newest dispatch appears first (leftmost) */}
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 9, color: colors.textTertiary, marginRight: 2 }}>
           Dispatches:
         </span>
-        {dispatches.map((d, i) => {
-          // Display number: newest first. Dispatches array is chronological,
-          // so dispatch[0] is oldest = highest display number.
-          const displayNum = dispatches.length - i
+        {[...dispatches].reverse().map((d, ri) => {
+          // ri is the reversed index; map back to the original array index.
+          // Display number = chronological position (1 = first, N = most recent).
+          const i = dispatches.length - 1 - ri
+          const displayNum = i + 1
           const isActive = i === selectedIndex
           return (
             <button

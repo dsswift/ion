@@ -72,6 +72,9 @@ struct AgentBarRow: View {
             headerRow
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    // If already expanded and loading, ignore tap to prevent
+                    // the user from collapsing and restarting the same fetch.
+                    if isExpanded && isLoadingMessages { return }
                     withAnimation(.snappy(duration: 0.15)) { isExpanded.toggle() }
                     if isExpanded {
                         onExpand?()
@@ -225,15 +228,16 @@ struct AgentBarRow: View {
         }
     }
 
-    /// Horizontal pill row for switching between dispatches.
+    /// Horizontal pill row for switching between dispatches (newest first).
     private var dispatchPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 Text("Dispatches:")
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
-                ForEach(Array(agent.dispatches.enumerated()), id: \.element.id) { idx, d in
-                    let displayNum = agent.dispatches.count - idx
+                ForEach(Array(agent.dispatches.enumerated().reversed()), id: \.element.id) { idx, d in
+                    // Display number = chronological position (1 = first, N = most recent)
+                    let displayNum = idx + 1
                     let isActive = idx == (selectedDispatchIndex ?? agent.dispatches.count - 1)
                     Button {
                         selectedDispatchIndex = idx
