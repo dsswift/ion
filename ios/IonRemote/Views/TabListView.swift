@@ -36,6 +36,9 @@ struct TabListView: View {
         ZStack {
             if let bg = theme.backgroundView {
                 bg.ignoresSafeArea()
+                let _ = DiagnosticLog.log("THEME-BG: rendering backgroundView for theme \(theme.id)")
+            } else {
+                let _ = DiagnosticLog.log("THEME-BG: backgroundView is nil for theme \(theme.id)")
             }
             Group {
                 if sizeClass == .regular {
@@ -160,6 +163,7 @@ struct TabListView: View {
             List {
                 tabGroupSections(selectionStyle: .navigation)
             }
+            .scrollContentBackground(.hidden)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
             .navigationTitle("")
             .toolbar {
@@ -231,6 +235,7 @@ struct TabListView: View {
             List(selection: $selectedTabId) {
                 tabGroupSections(selectionStyle: .selection)
             }
+            .scrollContentBackground(.hidden)
             .refreshable {
                 Haptic.light()
                 viewModel.sync()

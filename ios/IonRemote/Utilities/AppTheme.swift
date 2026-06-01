@@ -66,9 +66,9 @@ final class ThemeManager: AppTheme {
     var selectedThemeId: String {
         didSet {
             guard selectedThemeId != oldValue else { return }
-            print("[ThemeManager] selectedThemeId changed: \(oldValue) -> \(selectedThemeId)")
+            DiagnosticLog.log("[ThemeManager] selectedThemeId changed: \(oldValue) -> \(selectedThemeId)")
             _currentTheme = ThemeRegistry.theme(for: selectedThemeId)
-            print("[ThemeManager] resolved theme id: \(_currentTheme.id)")
+            DiagnosticLog.log("[ThemeManager] resolved theme id: \(_currentTheme.id)")
             UserDefaults.standard.set(selectedThemeId, forKey: "selectedTheme")
         }
     }
@@ -77,7 +77,9 @@ final class ThemeManager: AppTheme {
         let saved = UserDefaults.standard.string(forKey: "selectedTheme") ?? "ion-default"
         self.selectedThemeId = saved
         self._currentTheme = ThemeRegistry.theme(for: saved)
-        print("[ThemeManager] init — loaded theme: \(saved)")
+        DiagnosticLog.log("[ThemeManager] init — loaded theme: \(saved)")
+        DiagnosticLog.log("[ThemeManager] init — accent color: \(self._currentTheme.accent)")
+        DiagnosticLog.log("[ThemeManager] init — _currentTheme type: \(type(of: self._currentTheme))")
     }
 
     // MARK: - AppTheme conformance (delegates to _currentTheme)

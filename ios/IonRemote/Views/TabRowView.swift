@@ -15,6 +15,7 @@ struct TabRowView: View {
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {
+        let _ = DiagnosticLog.log("[TabRowView] rendering with accent: \(theme.accent), theme id: \(theme.id)")
         HStack(spacing: 12) {
             Circle()
                 .fill(statusInfo.color)

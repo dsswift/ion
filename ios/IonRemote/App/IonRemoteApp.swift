@@ -20,6 +20,7 @@ struct IonRemoteApp: App {
                 .tint(themeManager.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
+                    DiagnosticLog.log("[IonRemoteApp] theme injected — id: \(themeManager.selectedThemeId), accent: \(themeManager.accent)")
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
