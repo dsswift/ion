@@ -103,10 +103,16 @@ type BeforePromptResult struct {
 **CompactionInfo**
 ```go
 type CompactionInfo struct {
-    Strategy       string
-    MessagesBefore int
-    MessagesAfter  int
-    Facts          []CompactionFact // structured facts extracted from compacted messages; may be empty
+    Strategy         string           // "auto" (proactive) or "reactive" (prompt_too_long)
+    MessagesBefore   int
+    MessagesAfter    int
+    Facts            []CompactionFact // structured facts extracted from compacted messages; may be empty
+    TokensBefore     int              // token count before compaction (proactive only; 0 for reactive)
+    TokenLimit       int              // absolute token limit that triggered compaction
+    TargetTokens     int              // post-compact target token budget
+    MicroCompactKeep int              // number of recent turns protected from micro-compaction
+    TokensAfter      int              // token count after compaction
+    SessionMemory    string           // session memory content used as summary (empty if not available)
 }
 ```
 
@@ -119,6 +125,8 @@ type CompactionFact struct {
 ```
 
 `Facts` is populated on `session_compact` only (not on `session_before_compact`), and may be empty when step-1 micro-compaction alone is sufficient and no fact patterns matched. Message indices are intentionally not exposed — by the time the hook fires, the source messages have been mutated or truncated.
+
+`SessionMemory` contains the background session memory content when it was used as the summary source (tier 1 of the three-tier fallback). Empty when session memory was not available and the summary came from LLM or regex extraction.
 
 **ForkInfo**
 ```go

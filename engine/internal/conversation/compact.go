@@ -177,6 +177,79 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 	return nil
 }
 
+// DefaultTargetPercent is the default post-compact target as a percentage of
+// the context window. 50% guarantees roughly half the window is free after
+// compaction, preventing immediate re-triggering.
+const DefaultTargetPercent = 50.0
+
+// DefaultMicroCompactKeep is the number of most-recent user turns whose
+// tool_result blocks are protected from micro-compaction clearing.
+const DefaultMicroCompactKeep = 3
+
+// DefaultMinKeepTurns is the safety floor — compaction never drops below
+// this many user turns, even if they exceed the token budget.
+const DefaultMinKeepTurns = 2
+
+// DefaultEstimationPadding is the multiplier applied to heuristic token
+// estimates during compaction decisions. A 33% buffer prevents under-
+// estimation from triggering immediate re-compaction.
+const DefaultEstimationPadding = 1.33
+
+// CompactToTokenBudget drops the oldest messages so the remaining
+// conversation fits within targetTokens (estimated). Unlike Compact which
+// keeps a fixed turn count, this function targets a token budget, ensuring
+// predictable post-compact headroom regardless of message size.
+//
+// The cut respects turn boundaries: it never orphans a tool_result from its
+// preceding tool_use, and never splits a user/assistant pair. minKeepTurns
+// is a safety floor — at least that many user turns are preserved even if
+// they exceed the budget. padding is applied to each message's token
+// estimate (e.g. 1.33 for 33% conservative buffer).
+func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, padding float64) {
+	if targetTokens <= 0 {
+		return
+	}
+	if minKeepTurns <= 0 {
+		minKeepTurns = DefaultMinKeepTurns
+	}
+	if padding <= 0 {
+		padding = DefaultEstimationPadding
+	}
+
+	// Walk backward, accumulating token estimates and counting user turns.
+	accumulated := 0
+	userTurns := 0
+	cutIdx := 0 // everything before cutIdx is dropped
+
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		est := int(float64(EstimateTokens(conv.Messages[i].Content)) * padding)
+		accumulated += est
+
+		if conv.Messages[i].Role == "user" {
+			userTurns++
+		}
+
+		// Once we've exceeded the budget and met the minimum turn floor,
+		// find the cut point. We cut at the current position so everything
+		// from i onward is kept.
+		if accumulated > targetTokens && userTurns >= minKeepTurns {
+			cutIdx = i
+			break
+		}
+	}
+
+	// Adjust cut point to a turn boundary: advance forward until we hit a
+	// "user" message so we don't orphan an assistant reply or tool_result.
+	for cutIdx < len(conv.Messages) && conv.Messages[cutIdx].Role != "user" {
+		cutIdx++
+	}
+
+	if cutIdx > 0 && cutIdx < len(conv.Messages) {
+		conv.Messages = conv.Messages[cutIdx:]
+		invalidateTokenCache(conv)
+	}
+}
+
 // MicroCompact progressively shrinks older messages to reduce context size.
 // Pass 1: replaces tool_result content >100 chars with "[cleared]".
 //

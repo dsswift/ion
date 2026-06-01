@@ -531,7 +531,20 @@ type RunOptions struct {
 	// The engine never imposes its own opinionated default beyond the
 	// one-line fallback.
 	EnterPlanModeDescription string       `json:"enterPlanModeDescription,omitempty"`
-	CompactThreshold        float64      `json:"compactThreshold,omitempty"`
+	CompactThreshold             float64  `json:"compactThreshold,omitempty"`
+	CompactTargetPercent         float64  `json:"compactTargetPercent,omitempty"`
+	CompactMicroKeepTurns        int      `json:"compactMicroKeepTurns,omitempty"`
+	CompactMinKeepTurns          int      `json:"compactMinKeepTurns,omitempty"`
+	CompactEstimationPadding     float64  `json:"compactEstimationPadding,omitempty"`
+	CompactEnabled               *bool    `json:"compactEnabled,omitempty"`
+	CompactSummaryEnabled        *bool    `json:"compactSummaryEnabled,omitempty"`
+	CompactSummaryModel          string   `json:"compactSummaryModel,omitempty"`
+	CompactSummaryMaxTokens      int      `json:"compactSummaryMaxTokens,omitempty"`
+	CompactMemoryEnabled         *bool    `json:"compactMemoryEnabled,omitempty"`
+	CompactMemoryModel           string   `json:"compactMemoryModel,omitempty"`
+	CompactMemoryUpdateThreshold int      `json:"compactMemoryUpdateThreshold,omitempty"`
+	CompactMemoryUpdateMinTurns  int      `json:"compactMemoryUpdateMinTurns,omitempty"`
+	CompactMemoryMaxTokens       int      `json:"compactMemoryMaxTokens,omitempty"`
 	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
 	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
 	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`

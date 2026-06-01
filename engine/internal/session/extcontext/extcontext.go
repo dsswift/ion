@@ -42,6 +42,15 @@ type SessionAccessor interface {
 	// that may have been compacted. Returns nil when no conversation is active.
 	SearchHistory(query string, maxResults int) []extension.HistoryMatch
 
+	// GetSessionMemory returns the current session memory content.
+	// Returns empty string when session memory is not active.
+	GetSessionMemory() string
+
+	// SetSessionMemory replaces the session memory with custom content
+	// and persists it to disk. Extensions can use this to provide their
+	// own summarization strategies.
+	SetSessionMemory(content string)
+
 	// TranslateEvent converts a NormalizedEvent to an EngineEvent. The
 	// implementation lives in the session package (translateToEngineEvent)
 	// so test coverage is unchanged.
@@ -139,6 +148,13 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {
 			matches := sa.SearchHistory(query, maxResults)
 			return matches, nil
+		},
+		GetSessionMemory: func() (string, error) {
+			return sa.GetSessionMemory(), nil
+		},
+		SetSessionMemory: func(content string) error {
+			sa.SetSessionMemory(content)
+			return nil
 		},
 		SetPlanMode: func(enabled bool, source string) {
 			sa.SetPlanMode(enabled, source)

@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,6 +88,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		return
 	}
 	run.conv = conv
+
+	// Resolve the conversations directory for post-compact .tree.jsonl path
+	// injection. Best-effort: an error just leaves the path empty.
+	convDir := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		convDir = filepath.Join(home, ".ion", "conversations")
+	}
 
 	// Emit the conversation/session ID early so the session manager can
 	// capture it before the first tool call or dispatch completes. Without
@@ -255,7 +264,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		if opts.CompactThreshold > 0 {
 			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
 		}
-		b.compactIfNeeded(run, conv, hooks, contextWindow, compactLimit)
+		cp := buildCompactParams(&opts, convDir)
+		if run.cfg != nil && run.cfg.GetSessionMemory != nil {
+			cp.getSessionMemory = run.cfg.GetSessionMemory
+		}
+		b.compactIfNeeded(ctx, run, conv, hooks, contextWindow, compactLimit, cp)
 
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
 		streamOpts := types.LlmStreamOptions{
@@ -392,7 +405,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 					return
 				}
-				b.compactReactive(run, conv, hooks, promptTooLongRetries)
+				b.compactReactive(ctx, run, conv, hooks, contextWindow, promptTooLongRetries, cp)
 				continue // retry the turn after compaction
 			}
 			cause := ""

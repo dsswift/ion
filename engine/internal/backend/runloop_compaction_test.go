@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/compaction"
@@ -20,19 +21,32 @@ func captureEvents(b *ApiBackend, requestID string) *[]types.NormalizedEvent {
 	return &captured
 }
 
+// testCompactParams returns a compactParams with sensible defaults for tests.
+func testCompactParams() compactParams {
+	return compactParams{
+		targetPercent:     conversation.DefaultTargetPercent,
+		microKeepTurns:    conversation.DefaultMicroCompactKeep,
+		minKeepTurns:      conversation.DefaultMinKeepTurns,
+		estimationPadding: conversation.DefaultEstimationPadding,
+		summaryEnabled:    true,
+	}
+}
+
 func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 	b := NewApiBackend()
 	events := captureEvents(b, "circuit-test")
 
 	conv := conversation.CreateConversation("circuit-test", "", "test-model")
-	// Provide enough messages for Compact to drop something but not collapse
-	// to empty. The actual content does not matter for this test.
+	// Provide enough messages for CompactToTokenBudget to drop something but
+	// not collapse to empty. The actual content does not matter for this test.
 	for i := 0; i < 12; i++ {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
 	}
 
 	run := &activeRun{requestID: "circuit-test", conv: conv}
+	ctx := context.Background()
+	cp := testCompactParams()
 
 	// Each iteration simulates a runloop pass where the reported token count
 	// is stuck above the limit (e.g. the model keeps returning a huge prompt
@@ -42,7 +56,7 @@ func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 	for i := 0; i < maxConsecutiveCompactions; i++ {
 		conv.LastInputTokens = 180_000
 		conv.LastInputTokensMsgCount = len(conv.Messages)
-		b.compactIfNeeded(run, conv, RunHooks{}, 200_000, 100_000)
+		b.compactIfNeeded(ctx, run, conv, RunHooks{}, 200_000, 100_000, cp)
 	}
 
 	if run.compactionsWithoutProgress != maxConsecutiveCompactions {
@@ -55,7 +69,7 @@ func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 	conv.LastInputTokens = 180_000
 	conv.LastInputTokensMsgCount = len(conv.Messages)
 	beforeCounter := run.compactionsWithoutProgress
-	b.compactIfNeeded(run, conv, RunHooks{}, 200_000, 100_000)
+	b.compactIfNeeded(ctx, run, conv, RunHooks{}, 200_000, 100_000, cp)
 
 	if run.compactionsWithoutProgress != beforeCounter {
 		t.Errorf("counter advanced past circuit breaker: %d -> %d",
@@ -85,14 +99,44 @@ func TestCompactIfNeeded_BelowLimitIsNoOp(t *testing.T) {
 	conv.LastInputTokensMsgCount = 1
 
 	run := &activeRun{requestID: "below-limit", conv: conv}
+	ctx := context.Background()
+	cp := testCompactParams()
 
-	b.compactIfNeeded(run, conv, RunHooks{}, 200_000, 100_000)
+	b.compactIfNeeded(ctx, run, conv, RunHooks{}, 200_000, 100_000, cp)
 
 	if run.compactionsWithoutProgress != 0 {
 		t.Errorf("counter advanced on no-op call: %d", run.compactionsWithoutProgress)
 	}
 	if len(*events) != 0 {
 		t.Errorf("expected no events on below-limit call, got %d", len(*events))
+	}
+}
+
+func TestCompactIfNeeded_DisabledByConfig(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "disabled-test")
+
+	conv := conversation.CreateConversation("disabled-test", "", "test-model")
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "hi"})
+	conv.LastInputTokens = 180_000
+	conv.LastInputTokensMsgCount = 1
+
+	disabled := false
+	run := &activeRun{
+		requestID: "disabled-test",
+		conv:      conv,
+		opts:      &types.RunOptions{CompactEnabled: &disabled},
+	}
+	ctx := context.Background()
+	cp := testCompactParams()
+
+	b.compactIfNeeded(ctx, run, conv, RunHooks{}, 200_000, 100_000, cp)
+
+	if run.compactionsWithoutProgress != 0 {
+		t.Errorf("counter advanced when compact disabled: %d", run.compactionsWithoutProgress)
+	}
+	if len(*events) != 0 {
+		t.Errorf("expected no events when compact disabled, got %d", len(*events))
 	}
 }
 
@@ -117,7 +161,7 @@ func TestCompactReactive_HookReceivesFacts(t *testing.T) {
 		types.LlmMessage{Role: "user", Content: "We decided to use SQLite for storage."},
 		types.LlmMessage{Role: "assistant", Content: "The build failed on darwin due to a linker error."},
 	)
-	// Pad so Compact (keepTurns=10) has something to truncate without
+	// Pad so CompactToTokenBudget has something to truncate without
 	// emptying the conversation.
 	for i := 0; i < 20; i++ {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "filler q"})
@@ -125,6 +169,8 @@ func TestCompactReactive_HookReceivesFacts(t *testing.T) {
 	}
 
 	run := &activeRun{requestID: "reactive-facts", conv: conv}
+	ctx := context.Background()
+	cp := testCompactParams()
 
 	var capturedInfo interface{}
 	var hookFired bool
@@ -135,7 +181,7 @@ func TestCompactReactive_HookReceivesFacts(t *testing.T) {
 		},
 	}
 
-	ok := b.compactReactive(run, conv, hooks, 1)
+	ok := b.compactReactive(ctx, run, conv, hooks, 200_000, 1, cp)
 	if !ok {
 		t.Fatalf("compactReactive returned false; expected true")
 	}
@@ -173,6 +219,31 @@ func TestCompactReactive_HookReceivesFacts(t *testing.T) {
 	if !sawError {
 		t.Errorf("expected an error fact in hook payload; got %d facts: %+v", len(rawFacts), rawFacts)
 	}
+
+	// Verify new CompactionInfo fields are present in the hook payload map.
+	if _, ok := m["tokensBefore"]; !ok {
+		t.Errorf("expected tokensBefore key in hook payload")
+	}
+	if _, ok := m["microCompactKeep"]; !ok {
+		t.Errorf("expected microCompactKeep key in hook payload")
+	}
+	if got, ok := m["microCompactKeep"].(int); !ok {
+		t.Errorf("microCompactKeep is not int: %T", m["microCompactKeep"])
+	} else if got != conversation.DefaultMicroCompactKeep {
+		t.Errorf("microCompactKeep = %d, want %d", got, conversation.DefaultMicroCompactKeep)
+	}
+	if _, ok := m["tokenLimit"]; !ok {
+		t.Errorf("expected tokenLimit key in hook payload")
+	}
+	if _, ok := m["targetTokens"]; !ok {
+		t.Errorf("expected targetTokens key in hook payload")
+	}
+	if _, ok := m["tokensAfter"]; !ok {
+		t.Errorf("expected tokensAfter key in hook payload")
+	}
+	if _, ok := m["sessionMemory"]; !ok {
+		t.Errorf("expected sessionMemory key in hook payload")
+	}
 }
 
 // TestCompactReactive_HookEmptyFactsWhenNoPatterns is the negative half of
@@ -188,13 +259,16 @@ func TestCompactReactive_HookEmptyFactsWhenNoPatterns(t *testing.T) {
 
 	conv := conversation.CreateConversation("reactive-no-facts", "", "test-model")
 	// Plain filler text — no decision, error, preference, or discovery
-	// language; no file paths. Padded to give Compact something to truncate.
+	// language; no file paths. Padded to give CompactToTokenBudget something
+	// to truncate.
 	for i := 0; i < 12; i++ {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
 	}
 
 	run := &activeRun{requestID: "reactive-no-facts", conv: conv}
+	ctx := context.Background()
+	cp := testCompactParams()
 
 	var capturedInfo interface{}
 	var hookFired bool
@@ -205,7 +279,7 @@ func TestCompactReactive_HookEmptyFactsWhenNoPatterns(t *testing.T) {
 		},
 	}
 
-	ok := b.compactReactive(run, conv, hooks, 1)
+	ok := b.compactReactive(ctx, run, conv, hooks, 200_000, 1, cp)
 	if !ok {
 		t.Fatalf("compactReactive returned false; expected true")
 	}

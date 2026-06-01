@@ -136,6 +136,11 @@ type engineSession struct {
 	// Initialized in StartSession, nil-safe (code that creates ext contexts
 	// passes it through variadic).
 	dispatchRegistry *extcontext.DispatchRegistry
+
+	// sessionMemory maintains a background summary of the conversation for
+	// zero-cost compaction recovery. Created in StartSession, nil when the
+	// feature is not enabled or the session has no conversation ID.
+	sessionMemory *SessionMemory
 }
 
 

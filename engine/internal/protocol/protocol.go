@@ -113,6 +113,13 @@ type ClientCommand struct {
 	// Additive optional field; omitted by clients that have no persisted
 	// plan file path.
 	PlanFilePath string `json:"planFilePath,omitempty"`
+
+	// Compaction overrides — per-prompt tuning of context compaction behavior.
+	CompactTargetPercent  float64 `json:"compactTargetPercent,omitempty"`
+	CompactMicroKeepTurns int     `json:"compactMicroKeepTurns,omitempty"`
+	CompactEnabled        *bool   `json:"compactEnabled,omitempty"`
+	CompactSummaryEnabled *bool   `json:"compactSummaryEnabled,omitempty"`
+	CompactMemoryEnabled  *bool   `json:"compactMemoryEnabled,omitempty"`
 }
 
 var validCommands = map[string]bool{

@@ -12,6 +12,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/featureflags"
@@ -129,6 +130,14 @@ func cmdServe() {
 	// Wire auth resolver into titling so it can resolve keychain-stored keys
 	// without depending on a prior regular prompt having called SetProviderKey.
 	titling.SetAuthResolver(func(providerName string) {
+		if key, err := resolver.ResolveKey(providerName); err == nil && key != "" {
+			providers.SetProviderKey(providerName, key)
+		}
+	})
+
+	// Wire auth resolver into compaction so LLM-based summarization can
+	// resolve keychain-stored keys (same pattern as titling above).
+	compaction.SetAuthResolver(func(providerName string) {
 		if key, err := resolver.ResolveKey(providerName); err == nil && key != "" {
 			providers.SetProviderKey(providerName, key)
 		}

@@ -45,6 +45,8 @@ func (a *agentDiscoveryTestAccessor) PermissionCheck(_ string, _ map[string]inte
 }
 func (a *agentDiscoveryTestAccessor) McpConnections() []*mcp.Connection             { return nil }
 func (a *agentDiscoveryTestAccessor) SearchHistory(_ string, _ int) []extension.HistoryMatch { return nil }
+func (a *agentDiscoveryTestAccessor) GetSessionMemory() string                              { return "" }
+func (a *agentDiscoveryTestAccessor) SetSessionMemory(_ string)                             {}
 func (a *agentDiscoveryTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }

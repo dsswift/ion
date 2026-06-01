@@ -53,6 +53,11 @@ type activeRun struct {
 	// sentinel so the throttle does not silence the first post-entry reminder.
 	planModeReminderTurn int
 
+	// opts captures the RunOptions for this run so compaction (and other
+	// cross-turn logic) can read config-driven knobs without plumbing opts
+	// through every internal call. Set once in StartRunWithConfig.
+	opts *types.RunOptions
+
 	// compactionsWithoutProgress counts proactive compactions that have fired
 	// without an intervening successful API response. Bounds the cascade if
 	// the conversation cannot be shrunk below the trigger limit so the run
@@ -176,6 +181,7 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		// buildSystemPrompt; RunOptions wins so we set it unconditionally
 		// and buildSystemPrompt only writes the hook value when this is empty.
 		planModeSparseReminderOverride: options.PlanModeSparseReminder,
+		opts:         &options,
 		cfg:          cfg,
 	}
 
@@ -272,6 +278,21 @@ func (b *ApiBackend) GetContextUsage(requestID string) *conversation.ContextUsag
 	}
 	usage := conversation.GetContextUsage(run.conv, contextWindow)
 	return &usage
+}
+
+// GetConversation returns the active run's conversation for the given request
+// ID. Returns nil when no matching run is active or the conversation has not
+// been initialized yet. The caller receives the live pointer — mutations are
+// visible to the runloop, so callers must treat the returned value as
+// read-only or copy what they need.
+func (b *ApiBackend) GetConversation(requestID string) *conversation.Conversation {
+	b.mu.Lock()
+	run, ok := b.activeRuns[requestID]
+	b.mu.Unlock()
+	if !ok || run.conv == nil {
+		return nil
+	}
+	return run.conv
 }
 
 // SearchHistory searches the active run's conversation history for the given

@@ -3,6 +3,8 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -43,6 +45,21 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		if s2, ok2 := m.sessions[key]; ok2 && s2.conversationID == "" {
 			s2.conversationID = init.SessionID
 			utils.Log("Session", fmt.Sprintf("captured conversationID=%s from SessionInitEvent key=%s", init.SessionID, key))
+
+			// Initialize session memory for the newly created conversation.
+			// On resumed sessions this is already done in StartSession; here
+			// we cover the fresh-conversation path where the backend assigns
+			// the conversation ID during the first run.
+			memoryDisabled := m.config != nil && m.config.Compaction != nil &&
+				m.config.Compaction.MemoryEnabled != nil && !*m.config.Compaction.MemoryEnabled
+			if s2.sessionMemory == nil && !memoryDisabled {
+				home, _ := os.UserHomeDir()
+				convDir := filepath.Join(home, ".ion", "conversations")
+				sm := NewSessionMemory(init.SessionID, convDir, nil)
+				sm.Start()
+				s2.sessionMemory = sm
+				utils.Log("Session", fmt.Sprintf("created session memory for new conv=%s key=%s", init.SessionID, key))
+			}
 		}
 		m.mu.Unlock()
 	}

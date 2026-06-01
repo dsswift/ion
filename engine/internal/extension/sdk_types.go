@@ -127,6 +127,16 @@ type Context struct {
 	// recover details from earlier in the conversation.
 	SearchHistory func(query string, maxResults int) ([]HistoryMatch, error)
 
+	// GetSessionMemory returns the current session memory content for this
+	// session. Returns empty string when session memory is not active or
+	// no summary has been generated yet.
+	GetSessionMemory func() (string, error)
+
+	// SetSessionMemory replaces the session memory with custom content and
+	// persists it to disk. Extensions can use this to provide their own
+	// summarization strategies, overriding the engine's background summarizer.
+	SetSessionMemory func(content string) error
+
 	// SetPlanMode imperatively enables or disables plan mode for this session.
 	// The engine flips session state, emits PlanModeChangedEvent so consumers
 	// can mirror the new state, and (when enabled) ensures a planFilePath is

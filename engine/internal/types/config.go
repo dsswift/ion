@@ -152,9 +152,24 @@ type McpOAuthConfig struct {
 
 // CompactionConfig controls context window compaction behavior.
 type CompactionConfig struct {
-	Strategy  string  `json:"strategy"`
-	KeepTurns int     `json:"keepTurns"`
-	Threshold float64 `json:"threshold"`
+	Strategy  string  `json:"strategy,omitempty"`
+	KeepTurns int     `json:"keepTurns,omitempty"`
+	Threshold float64 `json:"threshold,omitempty"`
+
+	TargetPercent     float64 `json:"targetPercent,omitempty"`
+	MicroCompactKeep  int     `json:"microCompactKeep,omitempty"`
+	EstimationPadding float64 `json:"estimationPadding,omitempty"`
+	Enabled           *bool   `json:"enabled,omitempty"`
+
+	SummaryEnabled   *bool  `json:"summaryEnabled,omitempty"`
+	SummaryModel     string `json:"summaryModel,omitempty"`
+	SummaryMaxTokens int    `json:"summaryMaxTokens,omitempty"`
+
+	MemoryEnabled         *bool  `json:"memoryEnabled,omitempty"`
+	MemoryModel           string `json:"memoryModel,omitempty"`
+	MemoryUpdateThreshold int    `json:"memoryUpdateThreshold,omitempty"`
+	MemoryUpdateMinTurns  int    `json:"memoryUpdateMinTurns,omitempty"`
+	MemoryMaxTokens       int    `json:"memoryMaxTokens,omitempty"`
 }
 
 // --- Security Config ---

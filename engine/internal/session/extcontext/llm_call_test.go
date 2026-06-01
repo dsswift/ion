@@ -62,6 +62,8 @@ func (a *llmCallTestAccessor) PermissionCheck(_ string, _ map[string]interface{}
 }
 func (a *llmCallTestAccessor) McpConnections() []*mcp.Connection             { return nil }
 func (a *llmCallTestAccessor) SearchHistory(_ string, _ int) []extension.HistoryMatch { return nil }
+func (a *llmCallTestAccessor) GetSessionMemory() string                              { return "" }
+func (a *llmCallTestAccessor) SetSessionMemory(_ string)                             {}
 func (a *llmCallTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }

@@ -123,16 +123,22 @@ sdk.FireAgentEnd(ctx, AgentInfo{Name: "worker", Task: "test"})
 ```go
 sdk.FireSessionBeforeCompact(ctx, CompactionInfo{...}) // returns (cancelled bool, error)
 
-// session_compact fires after compaction completes. CompactionInfo.Facts
-// carries structured snippets the engine extracted from the pre-compaction
-// message set ({Type, Content} pairs). Extensions maintaining external memory
-// (vector store, knowledge graph, SQLite) can persist these durably before
-// the source messages are discarded. Facts may be empty when no patterns
-// matched.
+// session_compact fires after compaction completes. CompactionInfo carries
+// token-level metrics (TokensBefore, TokenLimit, TargetTokens, TokensAfter),
+// the MicroCompactKeep setting, and structured Facts the engine extracted
+// from the pre-compaction message set ({Type, Content} pairs). Extensions
+// maintaining external memory (vector store, knowledge graph, SQLite) can
+// persist these durably before the source messages are discarded. Facts may
+// be empty when no patterns matched.
 sdk.FireSessionCompact(ctx, CompactionInfo{
-    Strategy:       "auto",
-    MessagesBefore: 50,
-    MessagesAfter:  10,
+    Strategy:         "auto",
+    MessagesBefore:   50,
+    MessagesAfter:    10,
+    TokensBefore:     180000,
+    TokenLimit:       100000,
+    TargetTokens:     100000,
+    MicroCompactKeep: 3,
+    TokensAfter:      95000,
     Facts: []CompactionFact{
         {Type: "decision", Content: "decided to use SQLite"},
         {Type: "file_mod", Content: "/Users/foo/project/main.go"},
@@ -324,6 +330,10 @@ type HistoryMatch struct {
 ```
 
 Searches the full persisted record (including pre-compaction messages), not just the currently-loaded context. Useful for recall commands and harness-side memory features.
+
+**`GetSessionMemory()`** -- returns the current session memory content. Empty string when not active.
+
+**`SetSessionMemory(content)`** -- replaces the session memory with custom content and persists it to disk.
 
 **`SetPlanMode(enabled, source)`** -- imperatively flip the session's plan mode on or off. `source` is a free-form audit string (`"slash_command"`, `"hook"`, `"user_approval"`, etc.) that is logged with the transition. Fires `engine_plan_mode_changed` as a state event — this is a confirmed transition, not a proposal. See [ADR-003](../architecture/adr/003-state-events-vs-workflow-events.md) for the state-vs-workflow distinction.
 

@@ -353,6 +353,31 @@ ion.registerCommand('recall', {
 
 Useful for: recovering details lost to compaction (the persisted log survives compaction; the in-context messages do not), implementing custom recall commands, and building harness-side memory features. Searches the full persisted record, not just the currently-loaded context.
 
+**`getSessionMemory()`** -- returns the current session memory content. Empty string when session memory is not active or no summary has been generated yet. Session memory is a structured summary of earlier conversation maintained in the background by the compaction system.
+
+```typescript
+ion.hook('session_compact', async (info, ctx) => {
+  const memory = await ctx.getSessionMemory()
+  if (memory) {
+    // Persist to external knowledge base
+    await externalDB.upsert('session-memory', memory)
+  }
+})
+```
+
+Useful for: reading the engine's conversation summary for external persistence, building custom compaction-aware features, and integrating with vector stores or knowledge graphs that need the full session context.
+
+**`setSessionMemory(content)`** -- replaces the session memory with custom content and persists it to disk. Use this to provide your own summarization strategy, overriding the engine's background summarizer.
+
+```typescript
+ion.hook('turn_end', async (info, ctx) => {
+  const customSummary = await myCustomSummarizer(ctx)
+  await ctx.setSessionMemory(customSummary)
+})
+```
+
+Useful for: replacing the engine's default summarization with a custom strategy (e.g. vector-store-backed, domain-specific extraction, or multi-modal summarization).
+
 **`elicit(opts)`** -- ask the user a structured question via the connected client. Resolves with the user's response (or a cancellation signal). The engine blocks the calling extension's hook until the user replies or the client times out.
 
 ```typescript

@@ -354,7 +354,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -367,6 +367,11 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				EnterPlanModeDescription: cmd.EnterPlanModeDescription,
 				PlanModeSparseReminder:   cmd.PlanModeSparseReminder,
 				PlanFilePath:             cmd.PlanFilePath,
+				CompactTargetPercent:     cmd.CompactTargetPercent,
+				CompactMicroKeepTurns:    cmd.CompactMicroKeepTurns,
+				CompactEnabled:           cmd.CompactEnabled,
+				CompactSummaryEnabled:    cmd.CompactSummaryEnabled,
+				CompactMemoryEnabled:     cmd.CompactMemoryEnabled,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)

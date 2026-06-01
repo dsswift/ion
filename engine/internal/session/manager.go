@@ -219,9 +219,16 @@ func (m *Manager) StopSession(key string) error {
 	sessionRecorder := s.recorder
 	toolServer := s.toolServer
 	fsWatcherRelease := s.fsWatcherRelease
+	sm := s.sessionMemory
 
 	delete(m.sessions, key)
 	m.mu.Unlock()
+
+	// Stop session memory background summarizer before other cleanup so
+	// any in-flight goroutine drains cleanly.
+	if sm != nil {
+		sm.Stop()
+	}
 
 	// Cleanup outside lock
 	if toolServer != nil {

@@ -228,4 +228,9 @@ type RunConfig struct {
 	// RunOptions fields take precedence over this; the
 	// before_early_stop_decision hook overrides both.
 	EarlyStopContinue *types.EarlyStopContinueConfig
+
+	// GetSessionMemory returns the current session memory content for use
+	// as a zero-cost compaction summary. Set by the session layer from
+	// SessionMemory.GetMemory. Nil means session memory is not available.
+	GetSessionMemory func() string
 }

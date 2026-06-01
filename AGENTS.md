@@ -226,12 +226,13 @@ Each conversation ID is `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c0
 
 ### File layout
 
-A conversation with ID `<id>` produces two files:
+A conversation with ID `<id>` produces up to three files:
 
 | File | Purpose |
 |------|---------|
 | `<id>.tree.jsonl` | Conversation tree for rendering and branching. Source of truth for the full message history with parent/child relationships. |
 | `<id>.llm.jsonl` | LLM-authoritative message history. Source of truth for what the model actually saw and for token/cost accounting. |
+| `<id>.memory.md` | Session memory summary. Background-generated Markdown summary used for zero-cost compaction and system prompt injection. Optional — only present after enough turns and token growth. |
 
 Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-migrates legacy files to the split format on the next save.
 
@@ -262,6 +263,7 @@ When given a conversation ID, glob for its files:
 
 - Read `{id}.tree.jsonl` for the full message history with branching structure.
 - Read `{id}.llm.jsonl` for the LLM-side view, system prompt, and token/cost accounting.
+- Read `{id}.memory.md` for the background session memory summary (if present).
 - If only `{id}.jsonl` or `{id}.json` exists, the conversation is in legacy format (pre-split).
 
 ### Key source files

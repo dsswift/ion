@@ -371,13 +371,43 @@ Telemetry collection and export.
 
 ## compaction
 
-Context window compaction controls how the engine manages conversation length.
+Context window compaction controls how the engine manages conversation length. The engine uses token-budget-based truncation with a three-tier summary fallback (session memory → LLM → regex). See [Compaction](../sessions/compaction.md) for the full flow and rationale.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `strategy` | string | `""` | Compaction strategy. |
-| `keepTurns` | int | `0` | Number of recent turns to preserve during compaction. |
-| `threshold` | float | `0` | Context utilization threshold that triggers compaction (0.0 to 1.0). |
+| `enabled` | bool (nullable) | `null` (enabled) | Global gate for proactive compaction. `false` disables proactive compaction; reactive compaction (triggered by provider `prompt_too_long` errors) still fires. |
+| `strategy` | string | `""` | Strategy name for the strategy registry. Empty means auto-select from preferred order. |
+| `keepTurns` | int | `2` | Minimum user turns to preserve during token-budget truncation (safety floor). |
+| `threshold` | float | `0` | Legacy context utilization threshold (0.0–1.0). Superseded by the token-limit-based trigger but still honored when set. |
+| `targetPercent` | float | `50.0` | Post-compact target as a percentage of the context window. |
+| `microCompactKeep` | int | `3` | Number of recent user turns whose tool results are protected from micro-compaction. |
+| `estimationPadding` | float | `1.33` | Conservative multiplier applied to heuristic token estimates to avoid immediate re-compaction. |
+| `summaryEnabled` | bool (nullable) | `null` (enabled) | Whether LLM-based summarization is used during compaction (tier 2 of the three-tier fallback). |
+| `summaryModel` | string | `""` | Model to use for LLM summarization. Empty uses the session's current model. |
+| `summaryMaxTokens` | int | `0` | Max output tokens for LLM summarization. `0` uses the provider default. |
+| `memoryEnabled` | bool (nullable) | `null` (enabled) | Whether the background session memory summarizer is active. When enabled, a `.memory.md` file is maintained alongside the conversation files and used as a zero-cost summary source during compaction. |
+| `memoryModel` | string | `""` | Model to use for background memory summarization. Empty uses the session's current model. |
+| `memoryUpdateThreshold` | int | `20000` | Token growth since last update before triggering a new background memory summary. |
+| `memoryUpdateMinTurns` | int | `5` | Minimum turns between background memory updates. |
+| `memoryMaxTokens` | int | `8192` | Max output tokens for the background memory summary. |
+
+```json
+{
+  "compaction": {
+    "enabled": true,
+    "targetPercent": 50,
+    "microCompactKeep": 3,
+    "keepTurns": 2,
+    "estimationPadding": 1.33,
+    "summaryEnabled": true,
+    "summaryModel": "",
+    "memoryEnabled": true,
+    "memoryUpdateThreshold": 20000,
+    "memoryUpdateMinTurns": 5,
+    "memoryMaxTokens": 8192
+  }
+}
+```
 
 ## security
 

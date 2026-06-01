@@ -246,6 +246,34 @@ Response:
 
 The `found` field is `true` when a running background dispatch was found and recalled, `false` otherwise.
 
+### ext/get_session_memory
+
+Returns the current session memory content.
+
+**Request:**
+```json
+{"jsonrpc":"2.0","id":1,"method":"ext/get_session_memory","params":{}}
+```
+
+**Response:**
+```json
+{"jsonrpc":"2.0","id":1,"result":{"content":"## Current Task\nWorking on..."}}
+```
+
+### ext/set_session_memory
+
+Replaces the session memory with custom content and persists it to disk.
+
+**Request:**
+```json
+{"jsonrpc":"2.0","id":1,"method":"ext/set_session_memory","params":{"content":"Custom summary..."}}
+```
+
+**Response:**
+```json
+{"jsonrpc":"2.0","id":1,"result":{}}
+```
+
 Your extension needs to handle both incoming requests (from engine) and incoming responses (to your outgoing requests) on the same stdin stream. Distinguish them by checking whether the message has a `method` field (incoming request) or not (response to your request).
 
 ## Dispatch lifecycle notifications

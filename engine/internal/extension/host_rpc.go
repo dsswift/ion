@@ -592,6 +592,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		utils.Debug("extension", fmt.Sprintf("ext/search_history: returning %d matches (query=%q max=%d)", len(matches), req.Params.Query, req.Params.MaxResults))
 		h.sendResponse(id, json.RawMessage(data), nil)
 
+	case "ext/get_session_memory":
+		h.handleGetSessionMemory(id, ctx)
+	case "ext/set_session_memory":
+		h.handleSetSessionMemory(id, raw, ctx)
+
 	case "ext/sandbox_wrap":
 		var req struct {
 			Params struct {

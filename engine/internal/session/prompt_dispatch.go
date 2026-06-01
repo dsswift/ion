@@ -52,6 +52,26 @@ type PromptOverrides struct {
 	// if missing it falls back to fresh allocation. Additive optional
 	// field; empty by default.
 	PlanFilePath string
+
+	// CompactTargetPercent overrides the post-compact target as a percentage of
+	// the context window. Zero means "use engine default".
+	CompactTargetPercent float64
+
+	// CompactMicroKeepTurns overrides the number of recent turns protected
+	// from micro-compaction. Zero means "use engine default".
+	CompactMicroKeepTurns int
+
+	// CompactEnabled overrides the auto-compact gate. nil means "use engine
+	// default"; false disables proactive compaction for this prompt.
+	CompactEnabled *bool
+
+	// CompactSummaryEnabled overrides whether LLM-based summarization is used
+	// during compaction. nil means "use engine default".
+	CompactSummaryEnabled *bool
+
+	// CompactMemoryEnabled overrides whether the background session memory
+	// summarizer is active. nil means "use engine default".
+	CompactMemoryEnabled *bool
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -141,6 +161,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	injectContextFiles(s, &opts)
 	m.injectExtensionContext(s, key, &opts)
 	injectGitContext(s, &opts)
+
+	// Inject session memory into the system prompt so the model has context
+	// from previously compacted conversation history. Only fires when memory
+	// is non-empty (i.e. a prior session generated a summary).
+	if s.sessionMemory != nil {
+		s.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
+	}
 
 	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: releasing lock, model=%s", key, opts.Model))
 

@@ -158,6 +158,27 @@ func (a *sessionAccessor) SearchHistory(query string, maxResults int) []extensio
 	return result
 }
 
+func (a *sessionAccessor) GetSessionMemory() string {
+	a.m.mu.RLock()
+	sm := a.s.sessionMemory
+	a.m.mu.RUnlock()
+	if sm == nil {
+		return ""
+	}
+	return sm.GetMemory()
+}
+
+func (a *sessionAccessor) SetSessionMemory(content string) {
+	a.m.mu.RLock()
+	sm := a.s.sessionMemory
+	a.m.mu.RUnlock()
+	if sm == nil {
+		utils.Log("Session", "SetSessionMemory: no session memory active, ignoring")
+		return
+	}
+	sm.SetMemory(content)
+}
+
 func (a *sessionAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	return translateToEngineEvent(ev, contextWindow)
 }
@@ -278,6 +299,28 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// task, conversationId, elapsed) win over the extension's idle entries.
 	if s.conversationID != "" {
 		m.rehydrateDispatchState(s, key)
+
+		// Initialize session memory for resumed conversations. The memory
+		// file (if it exists) is loaded from disk so the first compaction
+		// on this session can use the pre-existing summary as a zero-cost
+		// context restoration source. The memory updater starts via
+		// Start() and will be stopped by StopSession.
+		memoryDisabled := m.config != nil && m.config.Compaction != nil &&
+			m.config.Compaction.MemoryEnabled != nil && !*m.config.Compaction.MemoryEnabled
+		if !memoryDisabled {
+			home, _ := os.UserHomeDir()
+			convDir := filepath.Join(home, ".ion", "conversations")
+			sm := NewSessionMemory(s.conversationID, convDir, nil)
+			if sm.LoadMemory() {
+				utils.Log("Session", fmt.Sprintf("StartSession: key=%s loaded session memory for conv=%s", key, s.conversationID))
+			}
+			sm.Start()
+			m.mu.Lock()
+			s.sessionMemory = sm
+			m.mu.Unlock()
+		} else {
+			utils.Log("Session", fmt.Sprintf("StartSession: key=%s session memory disabled by config", key))
+		}
 	}
 
 	// Signal that session startup is in progress so consumers can mirror

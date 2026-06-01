@@ -79,6 +79,13 @@ func (m *Manager) buildRunConfig(
 	}
 	m.wireAgentSpawner(s, key, currentModel, spawnerExtGroup, runCfg)
 
+	// Wire session memory getter so compaction can use the pre-built
+	// summary as a zero-cost alternative to LLM summarization.
+	if s.sessionMemory != nil {
+		sm := s.sessionMemory
+		runCfg.GetSessionMemory = sm.GetMemory
+	}
+
 	// Wire OnPlanModeEnter unconditionally: it calls RequestPlanModeEnter on
 	// the manager which handles hook dispatch and session-state flipping
 	// internally. This callback is always needed so the runloop interception
@@ -151,6 +158,15 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	}
 	runCfg.Hooks.OnTurnEnd = func(_ string, turnNum int) {
 		extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
+
+		// Trigger background session memory update if wired. The session
+		// memory debounces internally (turn count + token growth), so this
+		// fires on every turn but only produces work when thresholds are met.
+		if s.sessionMemory != nil {
+			if conv := apiBackend.GetConversation(capturedRequestID); conv != nil {
+				s.sessionMemory.OnTurnEnd(conv, turnNum)
+			}
+		}
 	}
 
 	// Translate the backend's BeforeProviderRequestInfo into the extension
@@ -259,9 +275,17 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	runCfg.Hooks.OnSessionCompact = func(_ string, info interface{}) {
 		if ci, ok := info.(map[string]interface{}); ok {
 			payload := extension.CompactionInfo{
-				Strategy:       fmt.Sprintf("%v", ci["strategy"]),
-				MessagesBefore: toInt(ci["messagesBefore"]),
-				MessagesAfter:  toInt(ci["messagesAfter"]),
+				Strategy:         fmt.Sprintf("%v", ci["strategy"]),
+				MessagesBefore:   toInt(ci["messagesBefore"]),
+				MessagesAfter:    toInt(ci["messagesAfter"]),
+				TokensBefore:     toInt(ci["tokensBefore"]),
+				TokenLimit:       toInt(ci["tokenLimit"]),
+				TargetTokens:     toInt(ci["targetTokens"]),
+				MicroCompactKeep: toInt(ci["microCompactKeep"]),
+				TokensAfter:      toInt(ci["tokensAfter"]),
+			}
+			if sm, ok := ci["sessionMemory"].(string); ok {
+				payload.SessionMemory = sm
 			}
 			// Decode the typed facts slice. The producer
 			// (backend.compactIfNeeded / compactReactive) embeds

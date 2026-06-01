@@ -71,10 +71,16 @@ type CompactionFact struct {
 // string-pair — message indices are intentionally not exposed because they
 // reference messages that no longer exist after the hook fires.
 type CompactionInfo struct {
-	Strategy       string           `json:"strategy"`
-	MessagesBefore int              `json:"messagesBefore"`
-	MessagesAfter  int              `json:"messagesAfter"`
-	Facts          []CompactionFact `json:"facts,omitempty"`
+	Strategy         string           `json:"strategy"`
+	MessagesBefore   int              `json:"messagesBefore"`
+	MessagesAfter    int              `json:"messagesAfter"`
+	Facts            []CompactionFact `json:"facts,omitempty"`
+	TokensBefore     int              `json:"tokensBefore,omitempty"`
+	TokenLimit       int              `json:"tokenLimit,omitempty"`
+	TargetTokens     int              `json:"targetTokens,omitempty"`
+	MicroCompactKeep int              `json:"microCompactKeep,omitempty"`
+	TokensAfter      int              `json:"tokensAfter,omitempty"`
+	SessionMemory    string           `json:"sessionMemory,omitempty"`
 }
 
 // ForkInfo describes a session fork event.
