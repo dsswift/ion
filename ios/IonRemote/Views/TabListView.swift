@@ -166,7 +166,6 @@ struct TabListView: View {
                     tabGroupSections(selectionStyle: .navigation)
                 }
                 .scrollContentBackground(.hidden)
-                .listRowBackground(Color.clear)
                 .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
                 .navigationTitle("")
                 .toolbar {
@@ -274,7 +273,6 @@ struct TabListView: View {
                 tabGroupSections(selectionStyle: .selection)
             }
             .scrollContentBackground(.hidden)
-            .listRowBackground(Color.clear)
             .refreshable {
                 Haptic.light()
                 viewModel.sync()
