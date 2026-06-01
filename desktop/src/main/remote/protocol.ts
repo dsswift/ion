@@ -209,7 +209,7 @@ export type RemoteEvent =
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
   | { type: 'engine_instance_moved'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number; dedupKey?: string }> }
-  | { type: 'agent_conversation_history'; agentName: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
+  | { type: 'agent_conversation_history'; agentName: string; conversationId?: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   // ─── Desktop settings projection (Part 7) ───────────────────────────

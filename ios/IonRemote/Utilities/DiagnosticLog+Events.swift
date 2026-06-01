@@ -145,8 +145,8 @@ extension DiagnosticLog {
         case .engineConversationHistory(let tabId, let instId, let msgs):
             log("EVENT: engineConvHistory tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") msgs=\(msgs.count)")
 
-        case .agentConversationHistory(let agentName, let msgs):
-            log("EVENT: agentConvHistory agent=\(agentName) msgs=\(msgs.count)")
+        case .agentConversationHistory(let agentName, let convId, let msgs):
+            log("EVENT: agentConvHistory agent=\(agentName) convId=\(convId ?? "nil") msgs=\(msgs.count)")
 
         case .engineModelOverride(let tabId, let instId, let model):
             log("EVENT: engineModelOverride tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") model=\(model)")

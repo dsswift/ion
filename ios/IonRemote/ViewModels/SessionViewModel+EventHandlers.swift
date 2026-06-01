@@ -254,8 +254,8 @@ extension SessionViewModel {
             engineMessages[key] = filtered
             engineConversationLoaded.insert(key)
 
-        case .agentConversationHistory(let agentName, let messages):
-            handleAgentConversationHistory(agentName: agentName, messages: messages)
+        case .agentConversationHistory(let agentName, let conversationId, let messages):
+            handleAgentConversationHistory(agentName: agentName, conversationId: conversationId, messages: messages)
 
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
             handleEngineDead(tabId: tabId, instanceId: instanceId, exitCode: exitCode, signal: signal, stderrTail: stderrTail)

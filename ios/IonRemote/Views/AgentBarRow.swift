@@ -3,27 +3,58 @@ import SwiftUI
 /// A single agent bar row: compact header + expandable conversation body.
 struct AgentBarRow: View {
     let agent: AgentStateUpdate
+    /// Legacy: messages looked up by agent name (single-dispatch agents).
     let messages: [Message]?
+    /// Per-conversationId message cache for dispatch pager lookups.
+    let convMessageCache: [String: [Message]]
     let isLoadingMessages: Bool
     let onExpand: (() -> Void)?
     /// Called with a single conversationId to load a specific dispatch.
     let onLoadDispatch: ((String) -> Void)?
+    /// Called after the initial dispatch loads to preload the rest.
+    let onPreloadDispatches: ((String) -> Void)?
     @State private var isExpanded = false
     @State private var now = Date()
     @State private var selectedDispatchIndex: Int?
 
     init(
         agent: AgentStateUpdate,
-        messages: [Message]?,
+        messages: [Message]? = nil,
+        conversationMessages: [String: [Message]] = [:],
         isLoadingMessages: Bool,
         onExpand: (() -> Void)? = nil,
-        onLoadDispatch: ((String) -> Void)? = nil
+        onLoadDispatch: ((String) -> Void)? = nil,
+        onPreloadDispatches: ((String) -> Void)? = nil
     ) {
         self.agent = agent
         self.messages = messages
+        self.convMessageCache = conversationMessages
         self.isLoadingMessages = isLoadingMessages
         self.onExpand = onExpand
         self.onLoadDispatch = onLoadDispatch
+        self.onPreloadDispatches = onPreloadDispatches
+    }
+
+    /// Messages for the currently selected dispatch, or the legacy agent-name lookup.
+    private var activeMessages: [Message]? {
+        if let dispatch = activeDispatch, !dispatch.conversationId.isEmpty {
+            return convMessageCache[dispatch.conversationId]
+        }
+        // Single dispatch: try conversationId key first, fall back to agent name
+        if let convId = agent.dispatches.first?.conversationId, !convId.isEmpty {
+            return convMessageCache[convId]
+        }
+        return messages
+    }
+
+    /// Whether the active dispatch's conversation is currently loading.
+    private var isActiveLoading: Bool {
+        if isLoadingMessages { return true }
+        guard let dispatch = activeDispatch ?? agent.dispatches.last else { return false }
+        guard !dispatch.conversationId.isEmpty else { return false }
+        // Check if the conversationId is in the loading set — passed via isLoadingMessages
+        // from the parent. For dispatch pager, we rely on the parent checking the right key.
+        return false
     }
 
     // Live elapsed seconds from startTime (running) or final elapsed (done).
@@ -42,7 +73,13 @@ struct AgentBarRow: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     withAnimation(.snappy(duration: 0.15)) { isExpanded.toggle() }
-                    if isExpanded { onExpand?() }
+                    if isExpanded {
+                        onExpand?()
+                        // Preload remaining dispatches after the initial expand
+                        if let lastConvId = agent.dispatches.last?.conversationId, !lastConvId.isEmpty {
+                            onPreloadDispatches?(lastConvId)
+                        }
+                    }
                 }
             if isExpanded { expandedBody }
         }
@@ -153,7 +190,7 @@ struct AgentBarRow: View {
                     // When loaded, replaces fullOutput (matches desktop behavior).
                     // Skips user messages whose content matches the dispatch task
                     // already shown in the bubble above.
-                    if let msgs = messages, !msgs.isEmpty {
+                    if let msgs = activeMessages, !msgs.isEmpty {
                         ForEach(conversationMessages(msgs)) { msg in
                             conversationBubble(msg)
                         }

@@ -65,7 +65,8 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
     let color: String?
     let model: String?
     let startTime: Double?   // Unix timestamp in seconds
-    let conversationIds: [String]
+    /// Derived from `dispatches[]` — single source of truth for conversation IDs.
+    var conversationIds: [String] { dispatches.compactMap { $0.conversationId.isEmpty ? nil : $0.conversationId } }
     let dispatches: [DispatchInfo]
 
     /// Whether this agent should be shown in the UI based on visibility rules.
@@ -105,15 +106,6 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         } else {
             startTime = nil
         }
-        if let ids = meta["conversationIds"]?.value as? [AnyCodable] {
-            conversationIds = ids.compactMap { $0.value as? String }
-        } else if let id = meta["conversationId"]?.value as? String {
-            conversationIds = [id]
-        } else {
-            conversationIds = []
-        }
-
-        // Decode structured dispatches array from metadata.
         if let rawDispatches = meta["dispatches"]?.value as? [AnyCodable] {
             dispatches = rawDispatches.compactMap { item -> DispatchInfo? in
                 guard let dict = item.value as? [String: AnyCodable] else { return nil }
@@ -166,7 +158,6 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         if let color { meta["color"] = AnyCodable(color) }
         if let model { meta["model"] = AnyCodable(model) }
         if let startTime { meta["startTime"] = AnyCodable(startTime) }
-        if !conversationIds.isEmpty { meta["conversationIds"] = AnyCodable(conversationIds.map { AnyCodable($0) }) }
         // dispatches are read-only from the engine; no need to encode back
         try container.encode(meta, forKey: .metadata)
     }

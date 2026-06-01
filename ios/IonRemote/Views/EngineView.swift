@@ -273,10 +273,28 @@ struct EngineView: View {
                             AgentBarRow(
                                 agent: agent,
                                 messages: viewModel.agentConversationMessages[agent.name],
-                                isLoadingMessages: viewModel.agentConversationLoading.contains(agent.name),
-                                onExpand: { viewModel.loadAgentConversation(agent: agent) },
+                                conversationMessages: viewModel.agentConversationMessages,
+                                isLoadingMessages: viewModel.agentConversationLoading.contains(agent.name)
+                                    || agent.dispatches.contains { viewModel.agentConversationLoading.contains($0.conversationId) },
+                                onExpand: {
+                                    // When multiple dispatches exist, load only the most
+                                    // recent one (last in array) instead of concatenating
+                                    // all conversations into one flat stream.
+                                    if let lastDispatch = agent.dispatches.last,
+                                       !lastDispatch.conversationId.isEmpty {
+                                        viewModel.loadAgentDispatchConversation(
+                                            agent: agent,
+                                            conversationId: lastDispatch.conversationId
+                                        )
+                                    } else {
+                                        viewModel.loadAgentConversation(agent: agent)
+                                    }
+                                },
                                 onLoadDispatch: { convId in
                                     viewModel.loadAgentDispatchConversation(agent: agent, conversationId: convId)
+                                },
+                                onPreloadDispatches: { excludingConvId in
+                                    viewModel.preloadAgentDispatches(agent: agent, excluding: excludingConvId)
                                 }
                             )
                         }

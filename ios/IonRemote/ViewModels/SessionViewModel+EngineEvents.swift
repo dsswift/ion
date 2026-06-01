@@ -150,11 +150,20 @@ extension SessionViewModel {
     // MARK: - Agent conversation history
 
     @MainActor
-    func handleAgentConversationHistory(agentName: String, messages: [Message]) {
+    func handleAgentConversationHistory(agentName: String, conversationId: String?, messages: [Message]) {
         let filtered = messages.filter { $0.isInternal != true }
-        DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) count=\(messages.count) filtered=\(filtered.count)")
-        agentConversationMessages[agentName] = filtered
-        agentConversationLoading.remove(agentName)
+        // When a conversationId is present (single-dispatch load), cache
+        // under that key so each dispatch is cached independently.
+        if let convId = conversationId, !convId.isEmpty {
+            DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) convId=\(convId) count=\(messages.count) filtered=\(filtered.count)")
+            agentConversationMessages[convId] = filtered
+            agentConversationLoading.remove(convId)
+        } else {
+            // Legacy fallback: store under agent name for multi-convId loads
+            DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) (legacy) count=\(messages.count) filtered=\(filtered.count)")
+            agentConversationMessages[agentName] = filtered
+            agentConversationLoading.remove(agentName)
+        }
     }
 
     @MainActor
@@ -167,14 +176,29 @@ extension SessionViewModel {
     }
 
     /// Load a single dispatch's conversation by conversationId.
-    /// Used when the dispatch pager selects a specific dispatch.
     @MainActor
     func loadAgentDispatchConversation(agent: AgentStateUpdate, conversationId: String) {
         guard !conversationId.isEmpty else { return }
-        guard !agentConversationLoading.contains(agent.name) else { return }
+        // Already cached or in-flight — skip.
+        guard agentConversationMessages[conversationId] == nil else { return }
+        guard !agentConversationLoading.contains(conversationId) else { return }
         DiagnosticLog.log("ENGINE: loading dispatch conversation agent=\(agent.name) convId=\(conversationId)")
-        agentConversationLoading.insert(agent.name)
+        agentConversationLoading.insert(conversationId)
         send(.loadAgentConversation(conversationIds: [conversationId]))
+    }
+
+    /// Preload remaining dispatch conversations in the background after
+    /// the selected dispatch has loaded. Each fires independently so
+    /// switching pills is instant once preloading finishes.
+    @MainActor
+    func preloadAgentDispatches(agent: AgentStateUpdate, excluding conversationId: String) {
+        for d in agent.dispatches {
+            let convId = d.conversationId
+            guard !convId.isEmpty, convId != conversationId else { continue }
+            guard agentConversationMessages[convId] == nil else { continue }
+            guard !agentConversationLoading.contains(convId) else { continue }
+            loadAgentDispatchConversation(agent: agent, conversationId: convId)
+        }
     }
 
     // MARK: - Diagnostic log request

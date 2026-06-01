@@ -487,7 +487,10 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
     }
 
     log(`load_agent_conversation: resolved agentName=${agentName || '(unknown)'}, totalMessages=${allMessages.length}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName, messages: allMessages })
+    // Echo back the conversationId when loading a single dispatch so the
+    // iOS client can cache per-dispatch conversations independently.
+    const singleConvId = cmd.conversationIds.length === 1 ? cmd.conversationIds[0] : undefined
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName, conversationId: singleConvId, messages: allMessages })
   } catch (err) {
     log(`load_agent_conversation error: ${(err as Error).message}`)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName: '', messages: [] })
