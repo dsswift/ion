@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // --- MicroCompactStrategy ---
@@ -21,6 +22,7 @@ func (MicroCompactStrategy) CanHandle(messages []types.LlmMessage, _ *Compaction
 }
 
 func (MicroCompactStrategy) Compact(messages []types.LlmMessage, _ *CompactionOptions) ([]types.LlmMessage, *CompactionResult, error) {
+	utils.Debug("Compaction", fmt.Sprintf("MicroCompactStrategy.Compact: %d messages", len(messages)))
 	before := len(messages)
 	out := make([]types.LlmMessage, len(messages))
 
@@ -41,6 +43,7 @@ func (MicroCompactStrategy) Compact(messages []types.LlmMessage, _ *CompactionOp
 		out[i] = types.LlmMessage{Role: msg.Role, Content: cleaned}
 	}
 
+	utils.Debug("Compaction", fmt.Sprintf("MicroCompactStrategy.Compact: done before=%d after=%d", before, len(out)))
 	return out, &CompactionResult{
 		Strategy:       "micro-compact",
 		MessagesBefore: before,
@@ -62,6 +65,11 @@ func (SummaryCompactStrategy) CanHandle(messages []types.LlmMessage, opts *Compa
 }
 
 func (SummaryCompactStrategy) Compact(messages []types.LlmMessage, opts *CompactionOptions) ([]types.LlmMessage, *CompactionResult, error) {
+	keepTurnsLog := 0
+	if opts != nil {
+		keepTurnsLog = opts.KeepTurns
+	}
+	utils.Debug("Compaction", fmt.Sprintf("SummaryCompactStrategy.Compact: %d messages keepTurns=%d", len(messages), keepTurnsLog))
 	if opts == nil || opts.Summarize == nil {
 		return nil, nil, fmt.Errorf("summary-compact requires a Summarize callback")
 	}
@@ -107,6 +115,7 @@ func (SummaryCompactStrategy) Compact(messages []types.LlmMessage, opts *Compact
 	out = append(out, summaryMsg)
 	out = append(out, recent...)
 
+	utils.Debug("Compaction", fmt.Sprintf("SummaryCompactStrategy.Compact: done before=%d after=%d", before, len(out)))
 	return out, &CompactionResult{
 		Strategy:       "summary-compact",
 		MessagesBefore: before,
@@ -133,6 +142,7 @@ func (TruncateStrategy) Compact(messages []types.LlmMessage, opts *CompactionOpt
 	if opts != nil && opts.KeepTurns > 0 {
 		keepTurns = opts.KeepTurns
 	}
+	utils.Debug("Compaction", fmt.Sprintf("TruncateStrategy.Compact: %d messages keepTurns=%d", len(messages), keepTurns))
 
 	if keepTurns >= before {
 		out := make([]types.LlmMessage, before)
@@ -158,6 +168,7 @@ func (TruncateStrategy) Compact(messages []types.LlmMessage, opts *CompactionOpt
 
 // RegisterBuiltinStrategies registers the three built-in compaction strategies.
 func RegisterBuiltinStrategies() {
+	utils.Debug("Compaction", "RegisterBuiltinStrategies: registering micro-compact, summary-compact, truncate")
 	RegisterStrategy(MicroCompactStrategy{})
 	RegisterStrategy(SummaryCompactStrategy{})
 	RegisterStrategy(TruncateStrategy{})

@@ -71,6 +71,8 @@ func buildCompactParams(opts *types.RunOptions, convDir string) compactParams {
 	if opts.CompactMemoryEnabled != nil {
 		p.memoryEnabled = *opts.CompactMemoryEnabled
 	}
+	utils.Log("ApiBackend", fmt.Sprintf("buildCompactParams: targetPercent=%.1f microKeepTurns=%d minKeepTurns=%d estimationPadding=%.2f summaryEnabled=%v summaryModel=%q memoryEnabled=%v",
+		p.targetPercent, p.microKeepTurns, p.minKeepTurns, p.estimationPadding, p.summaryEnabled, p.summaryModel, p.memoryEnabled))
 	return p
 }
 
@@ -124,9 +126,11 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 
 	// Fire session_before_compact hook (can cancel)
 	if hooks.OnSessionBeforeCompact != nil && hooks.OnSessionBeforeCompact(run.requestID) {
+		utils.Log("ApiBackend", fmt.Sprintf("compactIfNeeded: proactive compaction cancelled by OnSessionBeforeCompact hook requestID=%s", run.requestID))
 		return
 	}
 
+	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: compactionsWithoutProgress %d -> %d", run.compactionsWithoutProgress, run.compactionsWithoutProgress+1))
 	run.compactionsWithoutProgress++
 
 	b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
@@ -144,7 +148,9 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 	var summary string
 	var sessionMemory string
 	targetTokens := int(float64(contextWindow) * cp.targetPercent / 100.0)
+	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: targetTokens formula: contextWindow=%d * targetPercent=%.1f%% = target=%d", contextWindow, cp.targetPercent, targetTokens))
 	usageAfterMicro := conversation.GetContextUsage(conv, contextWindow)
+	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: usageAfterMicro.Tokens=%d (limit=%d)", usageAfterMicro.Tokens, tokenLimit))
 	if usageAfterMicro.Tokens > tokenLimit {
 
 		// Three-tier summary fallback: session memory → LLM → regex.
@@ -172,6 +178,8 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 							},
 						}})
 					}
+				} else {
+					utils.Log("ApiBackend", fmt.Sprintf("proactive compact: LLM summary returned empty despite droppedText len=%d", len(droppedText)))
 				}
 			} else {
 				utils.Debug("ApiBackend", "proactive compact: no text content for LLM summary")
@@ -180,6 +188,9 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 		if summary == "" && len(facts) > 0 {
 			summary = compaction.FormatFactsSummary(facts)
 			utils.Log("ApiBackend", fmt.Sprintf("proactive compact: regex fact summary (%d facts)", len(facts)))
+		}
+		if summary == "" {
+			utils.Log("ApiBackend", "proactive compact: all three summary tiers produced nothing (session memory, LLM, regex)")
 		}
 
 		// Now truncate.
@@ -202,6 +213,7 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 		fmt.Fprintf(&compactNotice, "\n\n[Extracted facts from compacted context]:\n%s", summary)
 	}
 	recentFiles := compaction.ExtractRecentFiles(conv.Messages)
+	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: extracted %d recent files", len(recentFiles)))
 	if len(recentFiles) > 0 {
 		fmt.Fprintf(&compactNotice, "\n\nRecently modified files: %s", strings.Join(recentFiles, ", "))
 	}
@@ -230,12 +242,20 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 			FirstKeptEntryID: firstEntryID(conv),
 			TokensBefore:     usage.Tokens,
 		})
+		utils.Debug("ApiBackend", "compactIfNeeded: appended compaction entry to conversation tree")
+	} else {
+		utils.Debug("ApiBackend", "compactIfNeeded: conv.Entries is nil, skipping tree entry")
 	}
 
 	// Persist immediately so compaction survives mid-loop crashes.
 	if err := conversation.Save(conv, ""); err != nil {
 		utils.Log("ApiBackend", "failed to save after compaction: "+err.Error())
+	} else {
+		utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: conversation saved successfully convID=%s", conv.ID))
 	}
+
+	utils.Log("ApiBackend", fmt.Sprintf("compactIfNeeded COMPLETE: tokensBefore=%d msgsBefore=%d msgsAfter=%d dropped=%d summaryLen=%d clearedBlocks=%d strategy=auto convID=%s contextWindow=%d",
+		usage.Tokens, msgBefore, msgAfter, msgBefore-msgAfter, len(summary), cleared, conv.ID, contextWindow))
 
 	if hooks.OnSessionCompact != nil {
 		// Compute post-compaction token count before the hook fires.
@@ -270,6 +290,8 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 // ctx is threaded for LLM-based summarisation (tier 2 of the three-tier
 // summary fallback: session memory → LLM → regex).
 func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *conversation.Conversation, hooks RunHooks, contextWindow, attempt int, cp compactParams) bool {
+	utils.Log("ApiBackend", fmt.Sprintf("compactReactive: entry contextWindow=%d attempt=%d targetPercent=%.1f microKeepTurns=%d minKeepTurns=%d summaryEnabled=%v memoryEnabled=%v",
+		contextWindow, attempt, cp.targetPercent, cp.microKeepTurns, cp.minKeepTurns, cp.summaryEnabled, cp.memoryEnabled))
 	// Fire session_before_compact hook (can cancel)
 	if hooks.OnSessionBeforeCompact != nil && hooks.OnSessionBeforeCompact(run.requestID) {
 		utils.Log("ApiBackend", "reactive compaction cancelled by hook")
@@ -294,6 +316,8 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 	// Step 1: micro-compact (tool results, then assistant text)
 	cleared := conversation.MicroCompact(conv, cp.microKeepTurns)
 	utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long micro-compact cleared %d blocks (keepTurns=%d)", cleared, cp.microKeepTurns))
+	usageAfterMicro := conversation.GetContextUsage(conv, contextWindow)
+	utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: tokens after micro-compact=%d (pct=%d%%)", usageAfterMicro.Tokens, usageAfterMicro.Percent))
 
 	// Step 2: Three-tier summary fallback: session memory → LLM → regex.
 	// Must generate summary BEFORE step 3 truncation drops the messages.
@@ -322,6 +346,8 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 						},
 					}})
 				}
+			} else {
+				utils.Log("ApiBackend", fmt.Sprintf("reactive compact: LLM summary returned empty despite droppedText len=%d", len(droppedText)))
 			}
 		} else {
 			utils.Debug("ApiBackend", "reactive compact: no text content for LLM summary")
@@ -336,6 +362,7 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 
 	// Step 3: hard truncate using progressively smaller token budget on each retry.
 	escalatedPercent := cp.targetPercent / float64(attempt)
+	utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: escalatedPercent=%.1f%% (targetPercent=%.1f / attempt=%d)", escalatedPercent, cp.targetPercent, attempt))
 	targetTokens := int(float64(contextWindow) * escalatedPercent / 100.0)
 	conversation.CompactToTokenBudget(conv, targetTokens, cp.minKeepTurns, cp.estimationPadding)
 	utils.Log("ApiBackend", fmt.Sprintf("prompt_too_long hard-truncated to budget=%d (%.0f%% of %d), %d messages remain",
@@ -351,6 +378,7 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 		fmt.Fprintf(&compactNotice, "\n\n[Extracted facts from compacted context]:\n%s", summary)
 	}
 	recentFiles := compaction.ExtractRecentFiles(conv.Messages)
+	utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: extracted %d recent files", len(recentFiles)))
 	if len(recentFiles) > 0 {
 		fmt.Fprintf(&compactNotice, "\n\nRecently modified files: %s", strings.Join(recentFiles, ", "))
 	}
@@ -376,14 +404,22 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 		conversation.AppendEntry(conv, conversation.EntryCompaction, conversation.CompactionData{
 			Summary:          summary,
 			FirstKeptEntryID: firstEntryID(conv),
-			TokensBefore:     0, // not available for reactive compaction
+			TokensBefore:     tokensBefore,
 		})
+		utils.Debug("ApiBackend", "compactReactive: appended compaction entry to conversation tree")
+	} else {
+		utils.Debug("ApiBackend", "compactReactive: conv.Entries is nil, skipping tree entry")
 	}
 
 	// Persist immediately so compaction survives mid-loop crashes.
 	if err := conversation.Save(conv, ""); err != nil {
 		utils.Log("ApiBackend", "failed to save after reactive compaction: "+err.Error())
+	} else {
+		utils.Debug("ApiBackend", fmt.Sprintf("compactReactive: conversation saved successfully convID=%s", conv.ID))
 	}
+
+	utils.Log("ApiBackend", fmt.Sprintf("compactReactive COMPLETE: tokensBefore=%d msgsBefore=%d msgsAfter=%d dropped=%d summaryLen=%d clearedBlocks=%d strategy=reactive convID=%s contextWindow=%d",
+		tokensBefore, msgBefore, msgAfter, msgBefore-msgAfter, len(summary), cleared, conv.ID, contextWindow))
 
 	// Fire session_compact hook (observe)
 	if hooks.OnSessionCompact != nil {

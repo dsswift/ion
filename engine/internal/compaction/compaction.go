@@ -10,6 +10,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Fact is a structured piece of information extracted from conversation messages.
@@ -30,6 +31,7 @@ var (
 
 // ExtractFacts scans messages for patterns and returns structured facts.
 func ExtractFacts(messages []types.LlmMessage) []Fact {
+	utils.Debug("Compaction", fmt.Sprintf("ExtractFacts: scanning %d messages", len(messages)))
 	var facts []Fact
 
 	for i, msg := range messages {
@@ -78,6 +80,14 @@ func ExtractFacts(messages []types.LlmMessage) []Fact {
 		}
 	}
 
+	// Log fact counts by category.
+	counts := make(map[string]int)
+	for _, f := range facts {
+		counts[f.Type]++
+	}
+	utils.Debug("Compaction", fmt.Sprintf("ExtractFacts: done total=%d decisions=%d file_mods=%d errors=%d preferences=%d discoveries=%d",
+		len(facts), counts["decision"], counts["file_mod"], counts["error"], counts["preference"], counts["discovery"]))
+
 	return facts
 }
 
@@ -121,6 +131,7 @@ func FormatFactsSummary(facts []Fact) string {
 // CompactPartial removes entries from a conversation tree, keeping everything
 // after pivotEntryID. Direction is "before" (remove older) or "after" (remove newer).
 func CompactPartial(conv *conversation.Conversation, pivotEntryID string, direction string) error {
+	utils.Debug("Compaction", fmt.Sprintf("CompactPartial: pivotID=%s direction=%s entries=%d", pivotEntryID, direction, len(conv.Entries)))
 	if len(conv.Entries) == 0 {
 		return nil
 	}
@@ -133,6 +144,7 @@ func CompactPartial(conv *conversation.Conversation, pivotEntryID string, direct
 		}
 	}
 	if pivotIdx < 0 {
+		utils.Warn("Compaction", fmt.Sprintf("CompactPartial: pivot not found: %s", pivotEntryID))
 		return fmt.Errorf("pivot entry not found: %s", pivotEntryID)
 	}
 
@@ -148,6 +160,7 @@ func CompactPartial(conv *conversation.Conversation, pivotEntryID string, direct
 		return fmt.Errorf("invalid direction: %s (expected 'before' or 'after')", direction)
 	}
 
+	utils.Debug("Compaction", fmt.Sprintf("CompactPartial: complete direction=%s entriesAfter=%d", direction, len(conv.Entries)))
 	conv.Messages = conversation.BuildContextPath(conv)
 	return nil
 }
@@ -198,6 +211,7 @@ func ExtractRecentFiles(messages []types.LlmMessage) []string {
 		}
 	}
 
+	utils.Debug("Compaction", fmt.Sprintf("ExtractRecentFiles: found %d files from %d messages", len(files), len(messages)))
 	return files
 }
 

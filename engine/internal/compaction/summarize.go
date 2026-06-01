@@ -60,20 +60,24 @@ Be concise but specific. Preserve exact file paths, function names, error messag
 // call rather than substitute a built-in default.
 func resolveSummaryModel(explicitModel string) string {
 	if explicitModel != "" {
+		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: explicit=%s", explicitModel))
 		return explicitModel
 	}
 
 	// Check if user configured a "fast" tier in models.json.
 	if fast := modelconfig.ResolveTier("fast"); fast != "" && fast != "fast" {
+		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: fast-tier=%s", fast))
 		return fast
 	}
 
 	// Fall back to the user's defaultModel.
 	config := modelconfig.LoadModelsConfig()
 	if dm, ok := config["defaultModel"].(string); ok && dm != "" {
+		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: defaultModel=%s", dm))
 		return dm
 	}
 
+	utils.Debug("Compaction", "resolveSummaryModel: no model configured")
 	return ""
 }
 
@@ -175,7 +179,9 @@ func Summarize(ctx context.Context, text, model string, maxTokens int) (string, 
 // representation suitable for the summarization prompt. Each message is
 // prefixed with its role and non-empty text content is included.
 func FormatMessagesForSummary(messages []types.LlmMessage) string {
+	utils.Debug("Compaction", fmt.Sprintf("FormatMessagesForSummary: %d messages", len(messages)))
 	var parts []string
+	truncated := 0
 	for _, msg := range messages {
 		text := extractText(msg)
 		if text == "" {
@@ -185,8 +191,11 @@ func FormatMessagesForSummary(messages []types.LlmMessage) string {
 		// prompt within reasonable bounds.
 		if len(text) > 2000 {
 			text = text[:2000] + "... [truncated]"
+			truncated++
 		}
 		parts = append(parts, fmt.Sprintf("[%s]: %s", msg.Role, text))
 	}
-	return strings.Join(parts, "\n\n")
+	result := strings.Join(parts, "\n\n")
+	utils.Debug("Compaction", fmt.Sprintf("FormatMessagesForSummary: done totalLen=%d truncatedMsgs=%d", len(result), truncated))
+	return result
 }
