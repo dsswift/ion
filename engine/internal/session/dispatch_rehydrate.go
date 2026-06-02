@@ -94,6 +94,11 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) {
 			existing.Metadata["task"] = d.Task
 			existing.Metadata["model"] = d.Model
 			existing.Metadata["elapsed"] = d.Elapsed
+			// Later entries may carry a corrected displayName (e.g. "Comms Director"
+			// instead of the raw "comms-director" from an early buggy persist).
+			if d.DisplayName != "" && d.DisplayName != d.AgentName {
+				existing.Metadata["displayName"] = d.DisplayName
+			}
 			if d.ConversationID != "" {
 				existing.Metadata["conversationId"] = d.ConversationID
 			}
