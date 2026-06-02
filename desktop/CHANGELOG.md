@@ -10,6 +10,25 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.47.0](https://github.com/dsswift/ion/compare/desktop-v1.46.0...desktop-v1.47.0) (2026-06-02)
+
+### Features
+
+* **desktop:** add theme registry with HUD palette ([8527d67](https://github.com/dsswift/ion/commit/8527d67a6941e3bd59eafbfb5795077f247fa4a9))
+* **engine:** aggregate dispatches into pager with array model ([5d9cf05](https://github.com/dsswift/ion/commit/5d9cf057a46f69302699867adcca7241f94ebd17))
+* **ios:** dispatch conversation lookup with caching ([4512473](https://github.com/dsswift/ion/commit/45124737149e105d7819d53ef5031d2d8c82ab52))
+* **desktop:** dispatch pager conversation lookup and display ([992390d](https://github.com/dsswift/ion/commit/992390d4a191c294c34920bba17a3d8de74ef4b3))
+* **ios:** add copy session id to tab context menus ([cd58d11](https://github.com/dsswift/ion/commit/cd58d1110b78d7bc410bbf1296aeb31d174c0e82))
+* **desktop:** add agent panel default open setting ([990f676](https://github.com/dsswift/ion/commit/990f676125b5070c5d6cb6c0fe2e6ce7ed27d907))
+* **desktop:** agent panel with compact mode and geometry persistence ([85e5dbf](https://github.com/dsswift/ion/commit/85e5dbf6a6a0ee72d3425feeb537c501c2a82a0d))
+
+### Bug Fixes
+
+* **engine:** preserve background dispatch agent visibility on run exit ([884d853](https://github.com/dsswift/ion/commit/884d8530f66423256399500f396afdca06105623))
+* **engine:** cap tool result size, persist model override, improve memory quality ([387190d](https://github.com/dsswift/ion/commit/387190d6dd79780fb3c04ea8a9fd3c6b854581e0))
+* **engine:** seed lastModel from conversation on session resume ([74e324b](https://github.com/dsswift/ion/commit/74e324b6d1c2cda96c5e2c188a053509e7e36f32))
+* **desktop:** seal engine assistant messages at turn boundary ([fcd8834](https://github.com/dsswift/ion/commit/fcd88341ef6dfd5ffd9855f05fd59dc44644da94))
+
 ## [1.46.0](https://github.com/dsswift/ion/compare/desktop-v1.45.0...desktop-v1.46.0) (2026-06-01)
 
 ### Features

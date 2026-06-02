@@ -10,6 +10,28 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.34.0](https://github.com/dsswift/ion/compare/ios-v1.33.0...ios-v1.34.0) (2026-06-02)
+
+### Features
+
+* **ios:** add Jarvis arc reactor theme system ([6e2df40](https://github.com/dsswift/ion/commit/6e2df40a1ed91ca15c574255e7be3dfe71548936))
+* **ios:** unify conversation and engine rendering ([91aad3c](https://github.com/dsswift/ion/commit/91aad3ced3dd6eb5cf52ee3d653f3a3f4290d8aa))
+* **ios:** add device switch button in Settings ([2fd6c04](https://github.com/dsswift/ion/commit/2fd6c0433b2f597e54ebcf5a94d90cfb042c06a8))
+* **engine:** aggregate dispatches into pager with array model ([5d9cf05](https://github.com/dsswift/ion/commit/5d9cf057a46f69302699867adcca7241f94ebd17))
+* **ios:** add terminal button to engine view toolbar ([3accedd](https://github.com/dsswift/ion/commit/3accedd4dfc42a76635a204574c3761591a892f2))
+* **ios:** dispatch conversation lookup with caching ([4512473](https://github.com/dsswift/ion/commit/45124737149e105d7819d53ef5031d2d8c82ab52))
+* **desktop:** dispatch pager conversation lookup and display ([992390d](https://github.com/dsswift/ion/commit/992390d4a191c294c34920bba17a3d8de74ef4b3))
+* **ios:** add copy session id to tab context menus ([cd58d11](https://github.com/dsswift/ion/commit/cd58d1110b78d7bc410bbf1296aeb31d174c0e82))
+* **ios:** theme-aware glass styling for tool and agent rows ([74fc399](https://github.com/dsswift/ion/commit/74fc3998b0d0c70dd0da5c48211cb41c256fd8da))
+* **ios:** add full-screen agent detail view with dispatch support ([1b5b7e4](https://github.com/dsswift/ion/commit/1b5b7e4aa09615b97421e7ff84ff5e708b5d905d))
+
+### Bug Fixes
+
+* **engine:** preserve background dispatch agent visibility on run exit ([884d853](https://github.com/dsswift/ion/commit/884d8530f66423256399500f396afdca06105623))
+* **ios:** seal engine assistant messages at turn boundary ([055b279](https://github.com/dsswift/ion/commit/055b279c94be9c5eb786d8aea33e2636a28e1b46))
+* **ios:** use VStack for markdown content to fix cell sizing ([bc7eaf9](https://github.com/dsswift/ion/commit/bc7eaf9b27e611ecde781506ea26d49ba279f467))
+* **ios:** respect agent panel default open setting ([3ce23c4](https://github.com/dsswift/ion/commit/3ce23c4eeadb9ad471ab945515bbe8aff02875b5))
+
 ## [1.33.0](https://github.com/dsswift/ion/compare/ios-v1.32.0...ios-v1.33.0) (2026-05-31)
 
 ### Features

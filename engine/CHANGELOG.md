@@ -13,6 +13,29 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.34.0](https://github.com/dsswift/ion/compare/engine-v1.33.0...engine-v1.34.0) (2026-06-02)
+
+### Features
+
+* **engine:** aggregate dispatches into pager with array model ([5d9cf05](https://github.com/dsswift/ion/commit/5d9cf057a46f69302699867adcca7241f94ebd17))
+* **engine:** add dispatch conversation e2e test ([7465729](https://github.com/dsswift/ion/commit/74657294b60263f0a34ee072af997bef3ba4ffaf))
+* **engine:** support dynamic openai-compatible providers ([9274c88](https://github.com/dsswift/ion/commit/9274c88fb539f739ec57ee6e51cb158a48825276))
+* **engine:** add ext display name lookup for agents ([079e353](https://github.com/dsswift/ion/commit/079e353ae7d3fa55d036cd12bb09bbea8c862780))
+
+### Bug Fixes
+
+* **engine:** atomic AppendOrUpdate to prevent duplicate agent rows ([dd1eeef](https://github.com/dsswift/ion/commit/dd1eeef139540d45f1839bbf7909070cdb25457b))
+* **engine:** add compaction diagnostic logging and fix reactive TokensBefore bug ([f7b1783](https://github.com/dsswift/ion/commit/f7b17837d59245ded011230cf4276af512067cc9))
+* **engine:** bump conversation JSONL scanner limit from 1 MB to 32 MB ([f45f309](https://github.com/dsswift/ion/commit/f45f309e21bdd35844372e6adc2f27bd33b66473))
+* **engine:** fix stale session memory in compaction system ([8258794](https://github.com/dsswift/ion/commit/8258794518a9e2c7f5acf1eb6e0a342047aa85f7))
+* **engine:** preserve background dispatch agent visibility on run exit ([884d853](https://github.com/dsswift/ion/commit/884d8530f66423256399500f396afdca06105623))
+* **engine:** cap tool result size, persist model override, improve memory quality ([387190d](https://github.com/dsswift/ion/commit/387190d6dd79780fb3c04ea8a9fd3c6b854581e0))
+* **engine:** respect compaction boundaries in BuildContextPath ([2b8afc4](https://github.com/dsswift/ion/commit/2b8afc49f248d6e01d942ab2f484c2e003c160e3))
+* **engine:** seed lastModel from conversation on session resume ([74e324b](https://github.com/dsswift/ion/commit/74e324b6d1c2cda96c5e2c188a053509e7e36f32))
+* **engine:** prevent aggressive compaction on resumed conversations ([b5a58d7](https://github.com/dsswift/ion/commit/b5a58d7d6801780e63c85712f570e7c460032f6f))
+* **engine:** resolve planFilePath from session when ExitPlanMode runs outside plan mode ([79890a3](https://github.com/dsswift/ion/commit/79890a31cbb47f0867abd8b4e0cf280f2f4ddcab))
+* **engine:** restore provider registry after tests ([2e4b443](https://github.com/dsswift/ion/commit/2e4b44312a00869263953bb2ad0d624ece1e670a))
+
 ## [1.33.0](https://github.com/dsswift/ion/compare/engine-v1.32.0...engine-v1.33.0) (2026-06-01)
 
 ### Features
