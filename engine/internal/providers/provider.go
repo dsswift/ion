@@ -336,6 +336,13 @@ func ResetRegistries() {
 }
 
 func init() {
+	restoreInitRegistries()
+}
+
+// restoreInitRegistries registers all built-in providers and loads the
+// embedded model catalog. Called once from init() and again from tests
+// that call ResetRegistries() to avoid polluting later test cases.
+func restoreInitRegistries() {
 	// Register provider instances
 	RegisterProvider(NewAnthropicProvider(nil))
 	RegisterProvider(NewOpenAIProvider(nil))

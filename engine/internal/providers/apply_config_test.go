@@ -7,6 +7,10 @@ import (
 )
 
 func TestApplyConfig_CompatibleProviders(t *testing.T) {
+	// Each subtest calls ResetRegistries, so restore init() state when done
+	// to avoid polluting later tests in the same package.
+	t.Cleanup(func() { restoreInitRegistries() })
+
 	t.Run("known provider with baseURL override", func(t *testing.T) {
 		ResetRegistries()
 		// Register ollama with default URL (mimics init())
