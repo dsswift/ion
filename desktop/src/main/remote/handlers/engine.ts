@@ -333,7 +333,6 @@ export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, {
         return msgs.map(function(m) {
           var content = m.content || '';
           if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
-          else if (content.length > 10000) content = content.substring(0, 10000);
           // Carry dedupKey through to iOS so the data is available on
           // reconnect / history-replay. iOS does not yet act on the key,
           // but having it on the wire lets a future iOS-side dedup

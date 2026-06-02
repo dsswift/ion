@@ -317,7 +317,6 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
           var page = all.slice(startIdx, endIdx).map(function(m) {
             var content = m.content || '';
             if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
-            else if (content.length > 10000) content = content.substring(0, 10000);
             return {
               id: m.id, role: m.role, content: content,
               toolName: m.toolName, toolInput: m.toolInput,
