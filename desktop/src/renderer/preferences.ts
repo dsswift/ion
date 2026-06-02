@@ -44,6 +44,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   enableEarlyStopContinuation: saved.enableEarlyStopContinuation ?? false,
   showTodoList: saved.showTodoList,
   agentPanelDefaultOpen: saved.agentPanelDefaultOpen,
+  agentDetailPopup: saved.agentDetailPopup,
   aiGeneratedTitles: saved.aiGeneratedTitles,
   hideOnExternalLaunch: saved.hideOnExternalLaunch,
   keepExplorerOnCollapse: saved.keepExplorerOnCollapse,
@@ -257,6 +258,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setAgentPanelDefaultOpen: (enabled) => {
     set({ agentPanelDefaultOpen: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setAgentDetailPopup: (enabled) => {
+    set({ agentDetailPopup: enabled })
     saveSettings(getAllSettings(get))
   },
   setAiGeneratedTitles: (enabled) => {

@@ -7,6 +7,8 @@ interface Props {
   dispatches: DispatchInfo[]
   selectedIndex: number
   onSelect: (index: number) => void
+  /** When true, remove the left indent padding (used in popup/fullscreen mode) */
+  compact?: boolean
 }
 
 /**
@@ -14,14 +16,14 @@ interface Props {
  * single agent row. Pills are shown in reverse chronological order
  * (newest = #1), matching the user's mental model of "most recent first".
  */
-export function DispatchPager({ dispatches, selectedIndex, onSelect }: Props) {
+export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: Props) {
   const colors = useColors()
   if (dispatches.length <= 1) return null
 
   const selected = dispatches[selectedIndex]
 
   return (
-    <div style={{ padding: '4px 12px 2px 148px' }}>
+    <div style={{ padding: compact ? '4px 12px 2px 12px' : '4px 12px 2px 148px' }}>
       {/* Pill row — reversed so newest dispatch appears first (leftmost) */}
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 9, color: colors.textTertiary, marginRight: 2 }}>

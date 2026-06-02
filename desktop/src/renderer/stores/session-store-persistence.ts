@@ -165,7 +165,7 @@ function persistTabs(useSessionStore: Store): void {
     }
   }
 
-  const { isExpanded, fileEditorOpenDirs, editorGeometry, planGeometry } = useSessionStore.getState()
+  const { isExpanded, fileEditorOpenDirs, editorGeometry, planGeometry, agentDetailGeometry } = useSessionStore.getState()
 
   let activeTabIndex: number | null = null
   for (let i = 0; i < tabs.length; i++) {
@@ -181,6 +181,7 @@ function persistTabs(useSessionStore: Store): void {
     editorOpenDirs: fileEditorOpenDirs.size > 0 ? [...fileEditorOpenDirs] : undefined,
     editorGeometry,
     planGeometry,
+    agentDetailGeometry,
   }
   window.ion.saveTabs(data)
 
@@ -232,7 +233,7 @@ function scanForStuckTabs(useSessionStore: Store): void {
 export function setupPersistence(useSessionStore: Store): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
-    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes || state.engineDraftInputs !== prev.engineDraftInputs || state.enginePermissionDenied !== prev.enginePermissionDenied || state.engineModelOverrides !== prev.engineModelOverrides) {
+    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes || state.engineDraftInputs !== prev.engineDraftInputs || state.enginePermissionDenied !== prev.enginePermissionDenied || state.engineModelOverrides !== prev.engineModelOverrides) {
       // Flush immediately when permissionDenied changes on any tab — this
       // state must survive a crash or force-quit (e.g. the desktop is killed
       // while an engine run is in progress and the AskUserQuestion / ExitPlanMode

@@ -44,6 +44,7 @@ const initialState = {
   fileEditorStates: new Map(),
   editorGeometry: { x: 60, y: 80, w: 680, h: 480 },
   planGeometry: { x: 60, y: 80, w: 720, h: 420 },
+  agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
   tabsReady: false,
   initProgress: null,
   backend: 'api' as const,

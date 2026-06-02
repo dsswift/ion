@@ -1,217 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CaretRight, SpinnerGap, ArrowsOutSimple, ArrowsInSimple, ArrowCircleRight } from '@phosphor-icons/react'
+import { CaretRight, ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { groupMessages, ToolGroup, AssistantMessage, MessageBubble } from './conversation'
-import { meta, isAgentVisible, sortAgents, getLabelBg, getStatusSuffix, formatDuration, getDispatches, sliceMessagesForDispatch } from './agent-panel-helpers'
-import { DispatchPager } from './DispatchPager'
-import type { DispatchInfo } from './agent-panel-helpers'
+import { meta, isAgentVisible, sortAgents, getLabelBg, getStatusSuffix, getDispatches, sliceMessagesForDispatch } from './agent-panel-helpers'
+import { AgentExpandedView } from './AgentExpandedView'
+import { AgentDetailPanel } from './AgentDetailPanel'
 import type { AgentStateUpdate } from '../../shared/types'
 import type { Message } from '../../shared/types'
-
-function DurationDisplay({ startTime, elapsed, status }: { startTime?: number; elapsed?: number; status: string }) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    if (status !== 'running' || !startTime) return
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [status, startTime])
-
-  if (status === 'running' && startTime) {
-    const secs = Math.floor((now / 1000) - startTime)
-    return <span>{formatDuration(Math.max(0, secs))}</span>
-  }
-  if (elapsed != null) {
-    return <span>{formatDuration(Math.round(elapsed))}</span>
-  }
-  return null
-}
-
-// ─── Structured expanded view for agent history ───
-
-interface ExpandedViewProps {
-  agent: AgentStateUpdate
-  colors: ReturnType<typeof useColors>
-  loadedMessages?: Message[]
-  loading?: boolean
-  isFullscreen?: boolean
-  dispatches: DispatchInfo[]
-  selectedDispatch: number
-  onSelectDispatch: (index: number) => void
-}
-
-function AgentExpandedView({ agent, colors, loadedMessages, loading, isFullscreen, dispatches, selectedDispatch, onSelectDispatch }: ExpandedViewProps) {
-  const hasMultipleDispatches = dispatches.length > 1
-  // When pager is active, show the selected dispatch's info instead of top-level
-  const activeDispatch = hasMultipleDispatches ? dispatches[selectedDispatch] : undefined
-  const agentModel = activeDispatch?.model || meta<string>(agent, 'model', '')
-  const startTime = activeDispatch?.startTime ?? (agent.metadata?.startTime as number | undefined)
-  const elapsed = activeDispatch?.elapsed ?? (agent.metadata?.elapsed as number | undefined)
-  const activeStatus = activeDispatch?.status || agent.status
-  const showInfoBar = !hasMultipleDispatches && (agentModel || startTime != null || elapsed != null)
-  const dispatchTask = activeDispatch?.task || meta<string>(agent, 'task', '')
-
-  const infoBar = showInfoBar ? (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '4px 12px 4px 148px',
-        background: 'rgba(255,255,255,0.03)',
-        fontSize: 10,
-        color: colors.textTertiary,
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-      }}
-    >
-      {agentModel && <span>Model: {agentModel}</span>}
-      {agentModel && (startTime != null || elapsed != null) && <span style={{ opacity: 0.4 }}>|</span>}
-      {(startTime != null || elapsed != null) && (
-        <span>
-          Duration: <DurationDisplay startTime={startTime} elapsed={elapsed} status={activeStatus} />
-        </span>
-      )}
-    </div>
-  ) : null
-
-  // Dispatch task bubble — shows the orchestrator's instruction to this agent
-  const taskBubble = dispatchTask ? (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 6,
-        margin: '6px 12px 4px 148px',
-        padding: 8,
-        background: 'rgba(255, 165, 0, 0.06)',
-        borderRadius: 8,
-        border: '1px solid rgba(255, 165, 0, 0.12)',
-      }}
-    >
-      <ArrowCircleRight size={14} weight="fill" style={{ color: 'rgba(255, 165, 0, 0.7)', flexShrink: 0, marginTop: 1 }} />
-      <span style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.4, wordBreak: 'break-word' }}>
-        {dispatchTask}
-      </span>
-    </div>
-  ) : null
-
-  // Dispatch pager — shown when multiple dispatches exist
-  const pager = hasMultipleDispatches ? (
-    <DispatchPager dispatches={dispatches} selectedIndex={selectedDispatch} onSelect={onSelectDispatch} />
-  ) : null
-
-  if (loading) {
-    return (
-      <div style={{ background: 'rgba(255,255,255,0.03)' }}>
-        {infoBar}
-        {pager}
-        {taskBubble}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '8px 12px 8px 148px',
-            fontSize: 11,
-            color: colors.textTertiary,
-          }}
-        >
-          <SpinnerGap size={12} style={{ animation: 'spin 1s linear infinite' }} />
-          Loading conversation...
-        </div>
-      </div>
-    )
-  }
-
-  // Use loaded messages from engine, or fall back to metadata
-  const messages = loadedMessages || meta(agent, 'messages', [] as any[])
-  if (messages && messages.length > 0) {
-    const msgs: Message[] = loadedMessages
-      ? loadedMessages
-      : (messages as any[]).map((m: any, i: number) => ({
-          id: `${agent.name}-msg-${i}`,
-          role: m.role as any,
-          content: m.content,
-          toolName: m.toolName,
-          toolInput: '',
-          toolStatus: 'completed' as const,
-          timestamp: 0,
-        }))
-    const grouped = groupMessages(msgs, { includeUser: true })
-
-    return (
-      <div style={{ background: 'rgba(255,255,255,0.03)' }}>
-        {infoBar}
-        {pager}
-        {taskBubble}
-        <div
-          style={{
-            maxHeight: isFullscreen ? undefined : 200,
-            overflowY: 'auto',
-            padding: '8px 12px 8px 148px',
-          }}
-        >
-          {grouped.map((item, idx) => {
-            if (item.kind === 'user') {
-              return <MessageBubble key={item.message.id} message={item.message} skipMotion />
-            }
-            if (item.kind === 'assistant') {
-              return <AssistantMessage key={`a-${idx}`} message={item.message} skipMotion />
-            }
-            if (item.kind === 'tool-group') {
-              return <ToolGroup key={`tg-${idx}`} tools={item.messages} skipMotion />
-            }
-            return null
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  // Fallback to raw fullOutput
-  const fullOutput = meta(agent, 'fullOutput', '')
-  if (fullOutput) {
-    return (
-      <div style={{ background: 'rgba(255,255,255,0.03)' }}>
-        {infoBar}
-        {pager}
-        {taskBubble}
-        <div
-          style={{
-            maxHeight: isFullscreen ? undefined : 120,
-            overflowY: 'auto',
-            fontFamily: 'monospace',
-            fontSize: 11,
-            color: colors.textSecondary,
-            padding: '8px 12px 8px 148px',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-        >
-          {fullOutput}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ background: 'rgba(255,255,255,0.03)' }}>
-      {infoBar}
-      {pager}
-      {taskBubble}
-      <div
-        style={{
-          padding: '8px 12px 8px 148px',
-          fontSize: 11,
-          color: colors.textTertiary,
-        }}
-      >
-        {agent.status === 'running' ? 'Working...' : 'No conversation data available'}
-      </div>
-    </div>
-  )
-}
 
 const DEFAULT_PANEL_HEIGHT = 200
 const MIN_PANEL_HEIGHT = 80
@@ -230,6 +26,7 @@ interface Props {
 export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeight, onPanelHeightChange }: Props) {
   const colors = useColors()
   const agentPanelDefaultOpen = usePreferencesStore((s) => s.agentPanelDefaultOpen)
+  const agentDetailPopup = usePreferencesStore((s) => s.agentDetailPopup)
   const [agentExpanded, setAgentExpanded] = useState<Map<string, boolean>>(new Map())
   const [panelCollapsed, setPanelCollapsed] = useState(true)
   // Keyed by conversationId — each dispatch's conversation is loaded independently
@@ -237,6 +34,8 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
   const [convLoading, setConvLoading] = useState<Map<string, boolean>>(new Map())
   // Track which dispatch index is selected per agent name
   const [selectedDispatch, setSelectedDispatch] = useState<Map<string, number>>(new Map())
+  // Popup state — which agent (by name) is shown in the floating detail panel
+  const [popupAgentName, setPopupAgentName] = useState<string | null>(null)
   const prevVisibleCount = useRef(0)
   // Tracks whether the user manually toggled the panel this "session"
   // (since agents last appeared). Reset when agents go from 0→N so the
@@ -323,13 +122,58 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
     }
   }, [visible, agentExpanded, loadAgentDispatch])
 
+  // Auto-close popup when the agent disappears from the visible set
+  useEffect(() => {
+    if (popupAgentName && !visible.find(a => a.name === popupAgentName)) {
+      setPopupAgentName(null)
+    }
+  }, [visible, popupAgentName])
+
+  // Live streaming for popup — re-fetch when dispatch signature changes
+  const popupAgent = popupAgentName ? visible.find(a => a.name === popupAgentName) : null
+  const popupDispatchSig = popupAgent
+    ? `${getDispatches(popupAgent).map(d => d.conversationId).join(',')}|${popupAgent.status}|${getDispatches(popupAgent).length}`
+    : ''
+  useEffect(() => {
+    if (popupAgent) loadAgentDispatch(popupAgent)
+  }, [popupDispatchSig]) // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Check if any conversation is currently loading for an agent. */
   const isAgentLoading = useCallback((agent: AgentStateUpdate): boolean => {
     const dispatches = getDispatches(agent)
     return dispatches.some(d => d.conversationId && convLoading.get(d.conversationId))
   }, [convLoading])
 
+  /** Resolve dispatch data for a given agent (used by both inline and popup). */
+  const resolveDispatchData = useCallback((agent: AgentStateUpdate) => {
+    const dispatches = getDispatches(agent)
+    const dispIdx = selectedDispatch.get(agent.name) ?? dispatches.length - 1
+    const activeConvId = dispatches[dispIdx]?.conversationId || ''
+    const rawMsgs = activeConvId ? convMessages.get(activeConvId) : undefined
+    const activeDispatch = dispatches[dispIdx]
+    const sharesConvId = activeDispatch && dispatches.some(d => d.id !== activeDispatch.id && d.conversationId === activeConvId && activeConvId)
+    const slicedMsgs = rawMsgs && sharesConvId ? sliceMessagesForDispatch(rawMsgs, activeDispatch, dispatches) : rawMsgs
+    const isLoading = activeConvId ? convLoading.get(activeConvId) || false : false
+    return { dispatches, dispIdx, slicedMsgs, isLoading }
+  }, [selectedDispatch, convMessages, convLoading])
+
   const toggleAgent = (name: string, agent: AgentStateUpdate) => {
+    // Popup mode: open floating panel instead of inline expand
+    if (agentDetailPopup) {
+      const hasContent = getDispatches(agent).length > 0 || meta(agent, 'fullOutput', '') || agent.status === 'running'
+      if (hasContent) {
+        // Default to the most recent dispatch if not already selected
+        const dispatches = getDispatches(agent)
+        if (dispatches.length > 0 && !selectedDispatch.has(name)) {
+          setSelectedDispatch(prev => { const next = new Map(prev); next.set(name, dispatches.length - 1); return next })
+        }
+        setPopupAgentName(name)
+        loadAgentDispatch(agent)
+        return
+      }
+    }
+
+    // Inline expand mode (original behavior)
     const isCurrentlyExpanded = agentExpanded.get(name) || false
     // If already expanded and a conversation is loading, ignore the click.
     // This prevents the user from accidentally collapsing the panel and
@@ -383,6 +227,9 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
 
   const running = visible.filter(a => a.status === 'running').length
   const effectiveHeight = panelHeight ?? DEFAULT_PANEL_HEIGHT
+
+  // Resolve popup data (outside the render loop, using the same logic)
+  const popupData = popupAgent ? resolveDispatchData(popupAgent) : null
 
   return (
     <div
@@ -483,17 +330,7 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
             {visible.map((agent) => {
               const isExpanded = agentExpanded.get(agent.name) || false
               const suffix = getStatusSuffix(agent)
-              const dispatches = getDispatches(agent)
-              const dispIdx = selectedDispatch.get(agent.name) ?? dispatches.length - 1
-              const activeConvId = dispatches[dispIdx]?.conversationId || ''
-              const rawMsgs = activeConvId ? convMessages.get(activeConvId) : undefined
-              // When multiple dispatches share a conversationId (engine reuses
-              // the session), slice messages by startTime so each pager tab
-              // shows only its own work.
-              const activeDispatch = dispatches[dispIdx]
-              const sharesConvId = activeDispatch && dispatches.some(d => d.id !== activeDispatch.id && d.conversationId === activeConvId && activeConvId)
-              const loadedMsgs = rawMsgs && sharesConvId ? sliceMessagesForDispatch(rawMsgs, activeDispatch, dispatches) : rawMsgs
-              const isLoading = activeConvId ? convLoading.get(activeConvId) || false : false
+              const { dispatches, dispIdx, slicedMsgs: loadedMsgs, isLoading } = resolveDispatchData(agent)
 
               return (
                 <div key={agent.name}>
@@ -558,7 +395,7 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
                     </div>
                   </div>
 
-                  {/* Expanded output */}
+                  {/* Expanded output (inline mode only) */}
                   <AnimatePresence>
                     {isExpanded && (
                       <motion.div
@@ -591,6 +428,23 @@ export function AgentPanel({ agents, isFullscreen, onToggleFullscreen, panelHeig
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Floating detail panel (popup mode) */}
+      {popupAgent && popupData && (
+        <AgentDetailPanel
+          agent={popupAgent}
+          loadedMessages={popupData.slicedMsgs}
+          loading={popupData.isLoading}
+          dispatches={popupData.dispatches}
+          selectedDispatch={popupData.dispIdx}
+          onSelectDispatch={(idx) => {
+            setSelectedDispatch(prev => { const next = new Map(prev); next.set(popupAgent.name, idx); return next })
+            const convId = popupData.dispatches[idx]?.conversationId
+            if (convId) loadSingleConversation(convId)
+          }}
+          onClose={() => setPopupAgentName(null)}
+        />
+      )}
     </div>
   )
 }

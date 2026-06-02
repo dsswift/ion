@@ -374,6 +374,18 @@ export function useTabRestoration() {
           useSessionStore.setState({ planGeometry: clampedGeo })
         }
 
+        // Restore global agent detail popup geometry (clamped to current screen)
+        if (saved.agentDetailGeometry) {
+          const g = saved.agentDetailGeometry
+          const clampedGeo = {
+            x: Math.max(-200, Math.min(window.innerWidth - 100, g.x)),
+            y: Math.max(0, Math.min(window.innerHeight - 32, g.y)),
+            w: Math.max(280, g.w),
+            h: Math.max(180, g.h),
+          }
+          useSessionStore.setState({ agentDetailGeometry: clampedGeo })
+        }
+
         // Restore expanded/collapsed state, or fall back to setting
         const restoredExpanded = typeof saved.isExpanded === 'boolean'
           ? saved.isExpanded

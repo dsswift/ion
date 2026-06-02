@@ -108,4 +108,6 @@ export interface PersistedTabState {
   editorGeometry?: { x: number; y: number; w: number; h: number }
   /** Global plan preview window position and size */
   planGeometry?: { x: number; y: number; w: number; h: number }
+  /** Global agent detail popup position and size */
+  agentDetailGeometry?: { x: number; y: number; w: number; h: number }
 }
