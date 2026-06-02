@@ -272,3 +272,139 @@ func TestCompactReactive_DuplicationFirewall(t *testing.T) {
 		t.Errorf("duplication firewall leak: second boundary's Summary contains a fact from the first boundary: %q", latestBlocks[0].Summary)
 	}
 }
+
+// TestCompactIfNeeded_InjectsCompactBoundary is the proactive-path
+// counterpart to TestCompactReactive_InjectsCompactBoundary. The two
+// runloop sites (compactIfNeeded and compactReactive) inject the same
+// typed boundary via the shared injectCompactBoundary helper, but the
+// proactive path was uncovered until this test landed — a regression
+// that broke proactive injection while leaving reactive untouched would
+// ship green.
+//
+// Setup mirrors the reactive test: a seeded conversation with content
+// the regex extractor will pick up, plus enough filler that
+// CompactToTokenBudget actually drops messages. The two key knobs that
+// differ are LastInputTokens (so usage.Tokens > tokenLimit triggers the
+// proactive entry) and the explicit (contextWindow, tokenLimit) args
+// passed to compactIfNeeded (the reactive path infers these from
+// usageBefore on each retry).
+func TestCompactIfNeeded_InjectsCompactBoundary(t *testing.T) {
+	b := NewApiBackend()
+	_ = captureEvents(b, "proactive-boundary")
+
+	conv := conversation.CreateConversation("proactive-boundary", "", "test-model")
+	conv.Messages = append(conv.Messages,
+		types.LlmMessage{Role: "user", Content: "We decided to use SQLite for storage."},
+		types.LlmMessage{Role: "assistant", Content: "Acknowledged; build failed in passing."},
+	)
+	for i := 0; i < 20; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "filler q"})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "filler a"})
+	}
+	// Prime LastInputTokens above tokenLimit so usage.Tokens > tokenLimit
+	// at the top of compactIfNeeded; without this priming the function
+	// short-circuits before reaching the boundary-injection branch.
+	conv.LastInputTokens = 180_000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	run := &activeRun{requestID: "proactive-boundary", conv: conv}
+	cp := testCP()
+	cp.summaryEnabled = false // skip the LLM tier; we want the regex tail
+	b.compactIfNeeded(context.Background(), run, conv, RunHooks{}, 200_000, 100_000, cp)
+
+	if !conversation.IsCompactBoundary(conv.Messages[0]) {
+		t.Fatalf("first message after compaction is not a compact_boundary: %+v", conv.Messages[0])
+	}
+
+	boundaryCount := 0
+	for _, m := range conv.Messages {
+		if conversation.IsCompactBoundary(m) {
+			boundaryCount++
+		}
+	}
+	if boundaryCount != 1 {
+		t.Errorf("expected exactly 1 boundary block, got %d", boundaryCount)
+	}
+
+	blocks, _ := conv.Messages[0].Content.([]types.LlmContentBlock)
+	if blocks[0].Trigger != "auto" {
+		t.Errorf("boundary.Trigger = %q, want auto", blocks[0].Trigger)
+	}
+	if blocks[0].MessagesBefore == 0 {
+		t.Error("boundary.MessagesBefore should be populated")
+	}
+
+	// Same legacy-prose absence checks as the reactive test — the
+	// runloop must NEVER emit the old AddTransientUserMessage notices,
+	// regardless of which compaction trigger fires.
+	for _, m := range conv.Messages {
+		if conversation.IsCompactBoundary(m) {
+			continue
+		}
+		if s, ok := m.Content.(string); ok && strings.Contains(s, "[SYSTEM] Context compaction") {
+			t.Errorf("legacy [SYSTEM] Context compaction transient still present: %q", s)
+		}
+		if blocks, ok := m.Content.([]types.LlmContentBlock); ok {
+			for _, blk := range blocks {
+				if strings.Contains(blk.Text, "[SYSTEM] Context compaction") {
+					t.Errorf("legacy [SYSTEM] Context compaction transient still present in block: %q", blk.Text)
+				}
+				if strings.Contains(blk.Text, "[Post-compaction context restore]") {
+					t.Errorf("legacy [Post-compaction context restore] block still present: %q", blk.Text)
+				}
+				if strings.Contains(blk.Text, "[Extracted facts from compacted context]") {
+					t.Errorf("legacy [Extracted facts from compacted context] block still present: %q", blk.Text)
+				}
+			}
+		}
+	}
+}
+
+// TestCompactIfNeeded_HookPathReceivesAutoStrategy pins the
+// proactive-path counterpart to
+// TestCompactReactive_HookPathShortCircuitsRegex's strategy assertion.
+// compactIfNeeded must pass strategy="auto" to OnRequestCompactSummary,
+// or harness summarisers that branch on strategy will misfire.
+func TestCompactIfNeeded_HookPathReceivesAutoStrategy(t *testing.T) {
+	b := NewApiBackend()
+	_ = captureEvents(b, "proactive-hook-strategy")
+
+	conv := conversation.CreateConversation("proactive-hook-strategy", "", "test-model")
+	conv.Messages = append(conv.Messages,
+		types.LlmMessage{Role: "user", Content: "We decided to use Go."},
+	)
+	for i := 0; i < 22; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "filler q"})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "filler a"})
+	}
+	conv.LastInputTokens = 180_000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	gotStrategy := ""
+	hookCalls := 0
+	const hookSummary = "auto-strategy hook summary"
+	hooks := RunHooks{
+		OnRequestCompactSummary: func(_ string, strategy string, _ []types.LlmMessage) (string, bool) {
+			hookCalls++
+			gotStrategy = strategy
+			return hookSummary, true
+		},
+	}
+
+	run := &activeRun{requestID: "proactive-hook-strategy", conv: conv}
+	cp := testCP()
+	cp.summaryEnabled = false
+	b.compactIfNeeded(context.Background(), run, conv, hooks, 200_000, 100_000, cp)
+
+	if hookCalls != 1 {
+		t.Errorf("expected OnRequestCompactSummary to be called once, got %d", hookCalls)
+	}
+	if gotStrategy != "auto" {
+		t.Errorf("hook received strategy=%q, want %q (compactIfNeeded must always pass \"auto\")", gotStrategy, "auto")
+	}
+
+	blocks, _ := conv.Messages[0].Content.([]types.LlmContentBlock)
+	if blocks[0].Summary != hookSummary {
+		t.Errorf("boundary.Summary = %q, want harness-supplied %q", blocks[0].Summary, hookSummary)
+	}
+}
