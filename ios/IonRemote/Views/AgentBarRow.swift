@@ -3,11 +3,40 @@ import SwiftUI
 /// A single agent bar row: compact header + expandable conversation body.
 struct AgentBarRow: View {
     let agent: AgentStateUpdate
-    let messages: [EngineMessage]?
+    /// Legacy: messages looked up by agent name (single-dispatch agents).
+    let messages: [Message]?
+    /// Per-conversationId message cache for dispatch pager lookups.
+    let convMessageCache: [String: [Message]]
     let isLoadingMessages: Bool
     let onExpand: (() -> Void)?
+    /// Called with a single conversationId to load a specific dispatch.
+    let onLoadDispatch: ((String) -> Void)?
+    /// Called after the initial dispatch loads to preload the rest.
+    let onPreloadDispatches: ((String) -> Void)?
+    @Environment(\.appTheme) private var theme
+    let onTap: (() -> Void)?
     @State private var isExpanded = false
     @State private var now = Date()
+
+    init(
+        agent: AgentStateUpdate,
+        messages: [Message]? = nil,
+        conversationMessages: [String: [Message]] = [:],
+        isLoadingMessages: Bool,
+        onExpand: (() -> Void)? = nil,
+        onLoadDispatch: ((String) -> Void)? = nil,
+        onPreloadDispatches: ((String) -> Void)? = nil,
+        onTap: (() -> Void)? = nil
+    ) {
+        self.agent = agent
+        self.messages = messages
+        self.convMessageCache = conversationMessages
+        self.isLoadingMessages = isLoadingMessages
+        self.onExpand = onExpand
+        self.onLoadDispatch = onLoadDispatch
+        self.onPreloadDispatches = onPreloadDispatches
+        self.onTap = onTap
+    }
 
     // Live elapsed seconds from startTime (running) or final elapsed (done).
     private var elapsedSeconds: Int? {
@@ -24,12 +53,25 @@ struct AgentBarRow: View {
             headerRow
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    if let onTap {
+                        onTap()
+                        return
+                    }
+                    // If already expanded and loading, ignore tap to prevent
+                    // the user from collapsing and restarting the same fetch.
+                    if isExpanded && isLoadingMessages { return }
                     withAnimation(.snappy(duration: 0.15)) { isExpanded.toggle() }
-                    if isExpanded { onExpand?() }
+                    if isExpanded {
+                        onExpand?()
+                        // Preload remaining dispatches after the initial expand
+                        if let lastConvId = agent.dispatches.last?.conversationId, !lastConvId.isEmpty {
+                            onPreloadDispatches?(lastConvId)
+                        }
+                    }
                 }
             if isExpanded { expandedBody }
         }
-        .background(Color(.systemGray6).opacity(0.5))
+        .background(theme.surfaceElevated.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { t in
             if agent.status == "running" { now = t }
@@ -61,7 +103,7 @@ struct AgentBarRow: View {
             if let secs = elapsedSeconds {
                 Text(formatDuration(secs))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary.opacity(0.5))
                     .fixedSize()
             }
 
@@ -69,7 +111,7 @@ struct AgentBarRow: View {
             if let activity = activityText, !activity.isEmpty {
                 Text(activity)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -79,7 +121,7 @@ struct AgentBarRow: View {
             // Expand caret
             Image(systemName: "chevron.right")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textSecondary.opacity(0.5))
                 .rotationEffect(isExpanded ? .degrees(90) : .zero)
         }
         .padding(.horizontal, 10)
@@ -99,125 +141,16 @@ struct AgentBarRow: View {
             Divider().padding(.horizontal, 8)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Model tag
-                    if let model = agent.model, !model.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "cpu")
-                                .font(.caption2)
-                            Text(modelLabel(model))
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 12)
-                    }
-
-                    // Dispatch task (the orchestrator's instruction to the agent)
-                    if let task = agent.task, !task.isEmpty {
-                        dispatchBubble(task)
-                    }
-
-                    // Agent conversation history (loaded on expand).
-                    // When loaded, replaces fullOutput (matches desktop behavior).
-                    // Skips user messages whose content matches the dispatch task
-                    // already shown in the bubble above.
-                    if let msgs = messages, !msgs.isEmpty {
-                        ForEach(conversationMessages(msgs)) { msg in
-                            conversationBubble(msg)
-                        }
-                    } else if isLoadingMessages {
-                        HStack(spacing: 6) {
-                            ProgressView().scaleEffect(0.6)
-                            Text("Loading conversation…")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.horizontal, 12)
-                    } else if let fullOutput = agent.fullOutput, !fullOutput.isEmpty {
-                        // Fallback: show fullOutput only when no conversation loaded
-                        MarkdownContentView(
-                            blocks: MarkdownBlockCache.shared.blocks(for: fullOutput)
-                        )
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 12)
-                    } else if agent.status == "running" {
-                        HStack(spacing: 6) {
-                            ProgressView().scaleEffect(0.6)
-                            Text("Working…")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.horizontal, 12)
-                    }
-                }
-                .padding(.vertical, 6)
+                AgentExpandedContent(
+                    agent: agent,
+                    messages: messages,
+                    convMessageCache: convMessageCache,
+                    isLoadingMessages: isLoadingMessages,
+                    onLoadDispatch: onLoadDispatch,
+                    onPreloadDispatches: onPreloadDispatches
+                )
             }
             .frame(maxHeight: 240)
-        }
-    }
-
-    /// A visually distinct bubble for the orchestrator's dispatch instruction.
-    private func dispatchBubble(_ task: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "arrow.right.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.orange.opacity(0.7))
-                .padding(.top, 2)
-            Text(task)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 10)
-    }
-
-    // MARK: - Conversation rendering
-
-    /// Filters conversation messages: drops user messages whose content
-    /// matches the dispatch task (already shown in the bubble) and drops
-    /// tool/system messages (matches desktop's groupMessages behavior).
-    private func conversationMessages(_ msgs: [EngineMessage]) -> [EngineMessage] {
-        let task = agent.task ?? ""
-        return msgs.filter { msg in
-            guard msg.role == "assistant" || msg.role == "user" else { return false }
-            if msg.role == "user" && !task.isEmpty && msg.content.trimmingCharacters(in: .whitespacesAndNewlines) == task.trimmingCharacters(in: .whitespacesAndNewlines) {
-                return false
-            }
-            return !msg.content.isEmpty
-        }
-    }
-
-    /// Renders a single conversation message with role-appropriate styling.
-    @ViewBuilder
-    private func conversationBubble(_ msg: EngineMessage) -> some View {
-        if msg.role == "user" {
-            // User messages as a subtle bubble (distinct from dispatch)
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "person.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-                Text(msg.content)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.systemGray5).opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 10)
-        } else {
-            // Assistant messages as markdown
-            MarkdownContentView(
-                blocks: MarkdownBlockCache.shared.blocks(for: msg.content)
-            )
-            .textSelection(.enabled)
-            .padding(.horizontal, 12)
         }
     }
 
@@ -226,28 +159,21 @@ struct AgentBarRow: View {
     private var agentColor: Color {
         if let hex = agent.color { return Color(hex: hex) }
         switch agent.type {
-        case "chief": return .orange
-        case "specialist": return .blue
+        case "chief": return theme.statusRunning
+        case "specialist": return theme.statusPending
         case "staff": return .purple
-        case "consultant": return .green
-        default: return .gray
+        case "consultant": return theme.statusDone
+        default: return theme.textSecondary
         }
     }
 
     private var statusColor: Color {
         switch agent.status {
-        case "running": return .orange
-        case "done": return .green
-        case "error": return .red
-        default: return .gray
+        case "running": return theme.statusRunning
+        case "done": return theme.statusDone
+        case "error": return theme.statusError
+        default: return theme.textSecondary.opacity(0.5)
         }
-    }
-
-    private func modelLabel(_ model: String) -> String {
-        if model.contains("opus") { return "Opus" }
-        if model.contains("sonnet") { return "Sonnet" }
-        if model.contains("haiku") { return "Haiku" }
-        return model
     }
 
     private func formatDuration(_ secs: Int) -> String {

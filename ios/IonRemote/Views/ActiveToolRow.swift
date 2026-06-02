@@ -8,6 +8,7 @@ struct ActiveToolRow: View {
     let tabId: String
     let tool: ActiveToolInfo
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     @State private var now = Date()
     @State private var showAbortConfirm = false
 
@@ -27,18 +28,18 @@ struct ActiveToolRow: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(isLikelyStalled ? Color.red.opacity(0.85) : Color.orange.opacity(0.85))
+                .background(isLikelyStalled ? theme.statusError.opacity(0.85) : theme.statusRunning.opacity(0.85))
                 .clipShape(Capsule())
 
             // Elapsed time
             Text(formatElapsed(elapsed))
                 .font(.caption2.monospacedDigit())
-                .foregroundStyle(isLikelyStalled ? .red : .secondary)
+                .foregroundStyle(isLikelyStalled ? theme.statusError : theme.textSecondary)
 
             if isLikelyStalled {
                 Text("may be stuck")
                     .font(.caption2)
-                    .foregroundStyle(.red.opacity(0.8))
+                    .foregroundStyle(theme.statusError.opacity(0.8))
             }
 
             Spacer()
@@ -53,13 +54,13 @@ struct ActiveToolRow: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Color.red)
+                        .background(theme.statusError)
                         .clipShape(Capsule())
                 }
             } else {
                 // Pulsing activity dot
                 Circle()
-                    .fill(.orange)
+                    .fill(theme.statusRunning)
                     .frame(width: 6, height: 6)
                     .opacity(pulseOpacity)
                     .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: now)
@@ -68,8 +69,10 @@ struct ActiveToolRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            (isLikelyStalled ? Color.red : Color.orange)
-                .opacity(0.08)
+            theme.surfaceElevated.opacity(0.5)
+                .overlay(
+                    (isLikelyStalled ? theme.statusError : theme.statusRunning).opacity(0.06)
+                )
         )
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in

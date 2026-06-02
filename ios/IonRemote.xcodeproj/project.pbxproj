@@ -49,7 +49,9 @@
 		A1B2C3D4E5F600010000D0AA /* EngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D1AA /* EngineView.swift */; };
 		A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */; };
 		A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */; };
-		A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */; };
+		A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */; };
+		A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */; };
+
 		A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */; };
 		A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */; };
 		A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */; };
@@ -106,8 +108,7 @@
 		A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */; };
 		A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */; };
 		A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */; };
-		A1B2C3D4E5F60001000700AA /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000701AA /* MessageBubble.swift */; };
-		A1B2C3D4E5F60001000702AA /* ToolGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */; };
+
 		A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */; };
 		A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */; };
 		A1B2C3D4E5F60001005200AA /* VoicePlaybackBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */; };
@@ -139,11 +140,17 @@
 		A1B2C3D4E5F60001005118AA /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */; };
 		A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */; };
 		A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */; };
+		A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10001AA /* AppTheme.swift */; };
+		A1B2C3D4E5F60001F10004AA /* IonDefaultTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */; };
+		A1B2C3D4E5F60001F10006AA /* JarvisArcReactorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */; };
+		A1B2C3D4E5F60001F10008AA /* ArcReactorBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */; };
+		A1B2C3D4E5F60001F1000AAA /* ThinkingScanLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */; };
 		A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */; };
 		A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */; };
 		A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */; };
 		A1B2C3D4E5F60001009000AA /* TabSearchHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009001AA /* TabSearchHelper.swift */; };
 		A1B2C3D4E5F60001009D01AA /* SafeDecodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */; };
+		A1B2C3D4E5F60001009E01AA /* TabRowContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -203,7 +210,9 @@
 		A1B2C3D4E5F600010000D1AA /* EngineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnsiParser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarRow.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineFooterView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentExpandedContent.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailFullScreenView.swift; sourceTree = "<group>"; };
+
 		A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTerminalView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationAttachmentsSheet.swift; sourceTree = "<group>"; };
@@ -260,8 +269,6 @@
 		A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredSlashCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001101AA /* RemoteModelEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModelEntry.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandMenu.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001000701AA /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGrouping.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicatorView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackBar.swift; sourceTree = "<group>"; };
@@ -291,12 +298,18 @@
 		A1B2C3D4E5F60001005119AA /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOverlay.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10001AA /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonDefaultTheme.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisArcReactorTheme.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcReactorBackground.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingScanLine.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImagePreview.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001006001AA /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcher.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009001AA /* TabSearchHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSearchHelper.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeDecodable.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowContextMenu.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -415,6 +428,7 @@
 				A1B2C3D4E5F60001000018AA /* TabListView.swift */,
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
 				A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */,
+				A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */,
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F6000100001AAA /* ConversationView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
@@ -437,7 +451,8 @@
 				A1B2C3D4E5F600010000D1AA /* EngineView.swift */,
 				A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */,
 				A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */,
-				A1B2C3D4E5F600010000E3AA /* EngineFooterView.swift */,
+				A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */,
+				A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */,
 				A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */,
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
 				A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */,
@@ -450,8 +465,6 @@
 				A1B2C3D4E5F60001000408AA /* FileEditorView.swift */,
 				A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */,
 				A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */,
-				A1B2C3D4E5F60001000701AA /* MessageBubble.swift */,
-				A1B2C3D4E5F60001000703AA /* ToolGroupView.swift */,
 				A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */,
 				A1B2C3D4E5F60001005201AA /* VoicePlaybackBar.swift */,
 				A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */,
@@ -468,6 +481,8 @@
 					A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */,
 					A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */,
 					A1B2C3D4E5F60001006001AA /* ToastView.swift */,
+					A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */,
+					A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -539,6 +554,9 @@
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
+				A1B2C3D4E5F60001F10001AA /* AppTheme.swift */,
+				A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */,
+				A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */,
 				A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */,
 				A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */,
 				A1B2C3D4E5F60001009001AA /* TabSearchHelper.swift */,
@@ -699,6 +717,7 @@
 				A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */,
 				A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */,
 				A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */,
+				A1B2C3D4E5F60001009E01AA /* TabRowContextMenu.swift in Sources */,
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001000019AA /* ConversationView.swift in Sources */,
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
@@ -755,7 +774,8 @@
 				A1B2C3D4E5F600010000F4AA /* EngineInstanceBar.swift in Sources */,
 				A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */,
 				A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */,
-				A1B2C3D4E5F600010000E2AA /* EngineFooterView.swift in Sources */,
+				A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */,
+				A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */,
 				A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */,
 				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
 				A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */,
@@ -767,8 +787,6 @@
 				A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */,
 				A1B2C3D4E5F60001001100AA /* RemoteModelEntry.swift in Sources */,
 				A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */,
-				A1B2C3D4E5F60001000700AA /* MessageBubble.swift in Sources */,
-				A1B2C3D4E5F60001000702AA /* ToolGroupView.swift in Sources */,
 				A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */,
 				A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */,
 				A1B2C3D4E5F60001005200AA /* VoicePlaybackBar.swift in Sources */,
@@ -803,6 +821,11 @@
 				A1B2C3D4E5F60001005118AA /* SpeechRecognitionService.swift in Sources */,
 				A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */,
 				A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */,
+				A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */,
+				A1B2C3D4E5F60001F10004AA /* IonDefaultTheme.swift in Sources */,
+				A1B2C3D4E5F60001F10006AA /* JarvisArcReactorTheme.swift in Sources */,
+				A1B2C3D4E5F60001F10008AA /* ArcReactorBackground.swift in Sources */,
+				A1B2C3D4E5F60001F1000AAA /* ThinkingScanLine.swift in Sources */,
 				A1B2C3D4E5F60001009000AA /* TabSearchHelper.swift in Sources */,
 				A1B2C3D4E5F60001009D01AA /* SafeDecodable.swift in Sources */,
 			);

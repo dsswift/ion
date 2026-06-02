@@ -471,6 +471,14 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
             for (var [, agents] of agentStates) {
               for (var a of agents) {
                 var meta = a.metadata || {};
+                var dispatches = meta.dispatches || [];
+                for (var d of dispatches) {
+                  for (var cid of convIds) {
+                    if (d.conversationId === cid) return a.name;
+                  }
+                }
+                // Belt-and-suspenders: fall back to legacy fields in case
+                // dispatches[] is empty (e.g. stale renderer state).
                 var aConvId = meta.conversationId || '';
                 var aConvIds = meta.conversationIds || [];
                 for (var cid of convIds) {
@@ -487,7 +495,10 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
     }
 
     log(`load_agent_conversation: resolved agentName=${agentName || '(unknown)'}, totalMessages=${allMessages.length}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName, messages: allMessages })
+    // Echo back the conversationId when loading a single dispatch so the
+    // iOS client can cache per-dispatch conversations independently.
+    const singleConvId = cmd.conversationIds.length === 1 ? cmd.conversationIds[0] : undefined
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName, conversationId: singleConvId, messages: allMessages })
   } catch (err) {
     log(`load_agent_conversation error: ${(err as Error).message}`)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName: '', messages: [] })

@@ -163,6 +163,12 @@ export interface Message {
    */
   dedupKey?: string
   timestamp: number
+  /**
+   * Local UI state only -- NOT a wire protocol field, NOT persisted.
+   * Set to true by engine_message_end so the next engine_text_delta
+   * opens a fresh assistant message instead of appending to this one.
+   */
+  sealed?: boolean
 }
 
 export interface RunResult {

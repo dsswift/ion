@@ -62,6 +62,10 @@ export interface PersistedTab {
    * a crash mid-question doesn't lose the card.
    */
   engineDenials?: Record<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }>
+  /** Per-engine-instance model override, keyed by `instanceId`. Restored on
+   *  relaunch so the engine session resumes with the same model the user had
+   *  selected (instead of falling back to the hardcoded default). */
+  engineModelOverrides?: Record<string, string>
   terminalInstances?: TerminalInstance[]
   terminalBuffers?: Record<string, string>
   /** Wall-clock ms of the most recent engine event for this tab. Persisted so
@@ -104,4 +108,6 @@ export interface PersistedTabState {
   editorGeometry?: { x: number; y: number; w: number; h: number }
   /** Global plan preview window position and size */
   planGeometry?: { x: number; y: number; w: number; h: number }
+  /** Global agent detail popup position and size */
+  agentDetailGeometry?: { x: number; y: number; w: number; h: number }
 }

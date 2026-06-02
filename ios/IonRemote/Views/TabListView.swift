@@ -1,6 +1,8 @@
+// @file-size-exception: single-screen view; split deferred per file-organization.md decomposition phase
 import SwiftUI
 
 struct TabListView: View {
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -30,6 +32,7 @@ struct TabListView: View {
 
     // iPhone: path-based navigation
     @State private var navigationPath = NavigationPath()
+    @State private var flickerOpacity: Double = 1.0
 
     var body: some View {
         Group {
@@ -150,60 +153,104 @@ struct TabListView: View {
     // MARK: - iPhone Layout (NavigationStack)
 
     private var iPhoneLayout: some View {
-        NavigationStack(path: $navigationPath) {
-            List {
-                tabGroupSections(selectionStyle: .navigation)
+        ZStack {
+            if theme.backgroundView != nil {
+                Color(red: 4/255, green: 14/255, blue: 28/255).ignoresSafeArea()
             }
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
-            .navigationTitle("")
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+            if let bg = theme.backgroundView {
+                bg.ignoresSafeArea().opacity(0.9)
+                let _ = DiagnosticLog.log("THEME-BG: rendering backgroundView for theme \(theme.id)")
+            }
+            NavigationStack(path: $navigationPath) {
+                List {
+                    tabGroupSections(selectionStyle: .navigation)
                 }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 12) {
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
+                .scrollContentBackground(.hidden)
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
+                .navigationTitle("")
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        if theme.backgroundView != nil {
+                            Text("J A R V I S")
+                                .font(.headline.weight(.black))
+                                .kerning(4)
+                                .foregroundStyle(theme.accent)
+                                .shadow(color: theme.accent.opacity(0.9), radius: 4)
+                                .shadow(color: theme.accent.opacity(0.6), radius: 10)
+                                .shadow(color: theme.accent.opacity(0.3), radius: 20)
+                                .opacity(flickerOpacity)
+                        } else {
+                            DesktopPickerMenu(showPairingSheet: $showPairingSheet)
                         }
-                        ConnectionQualityView(compact: true)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    newTabButton
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HStack(spacing: 12) {
+                            Button {
+                                showSettings = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                            }
+                            ConnectionQualityView(compact: true)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        newTabButton
+                    }
                 }
-            }
-            .navigationDestination(for: String.self) { tabId in
-                destinationView(for: tabId)
-            }
-            .refreshable {
-                Haptic.light()
-                viewModel.sync()
-            }
-            .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
-                if let tabId {
-                    navigationPath.append(tabId)
-                    viewModel.pendingNavigationTabId = nil
+                .navigationDestination(for: String.self) { tabId in
+                    destinationView(for: tabId)
                 }
-            }
-            .overlay {
-                emptyStateOverlay
-            }
-            .overlay {
-                searchEmptyStateOverlay
-            }
-            .overlay(alignment: .top) {
-                if viewModel.voiceService.isSpeaking {
-                    VoicePlaybackBar(
-                        onSkip: { viewModel.voiceService.skip() },
-                        onStopAll: { viewModel.voiceService.stop() },
-                        hasPending: viewModel.voiceService.hasPending
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
+                .refreshable {
+                    Haptic.light()
+                    viewModel.sync()
+                }
+                .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
+                    if let tabId {
+                        navigationPath.append(tabId)
+                        viewModel.pendingNavigationTabId = nil
+                    }
+                }
+                .overlay {
+                    emptyStateOverlay
+                }
+                .overlay {
+                    searchEmptyStateOverlay
+                }
+                .overlay(alignment: .top) {
+                    if viewModel.voiceService.isSpeaking {
+                        VoicePlaybackBar(
+                            onSkip: { viewModel.voiceService.skip() },
+                            onStopAll: { viewModel.voiceService.stop() },
+                            hasPending: viewModel.voiceService.hasPending
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
+                    }
+                }
+                .toolbarBackground(
+                    theme.backgroundView != nil
+                        ? Color(red: 4/255, green: 14/255, blue: 28/255).opacity(0.95)
+                        : Color.clear,
+                    for: .navigationBar
+                )
+                .toolbarColorScheme(
+                    theme.backgroundView != nil ? .dark : nil,
+                    for: .navigationBar
+                )
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(Double.random(in: 3.0...9.0)))
+                        guard !Task.isCancelled else { break }
+                        withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 0.55 }
+                        try? await Task.sleep(for: .milliseconds(60))
+                        withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 1.0 }
+                        try? await Task.sleep(for: .milliseconds(90))
+                        withAnimation(.easeInOut(duration: 0.04)) { flickerOpacity = 0.75 }
+                        try? await Task.sleep(for: .milliseconds(50))
+                        withAnimation(.easeInOut(duration: 0.1)) { flickerOpacity = 1.0 }
+                    }
                 }
             }
         }
@@ -225,6 +272,7 @@ struct TabListView: View {
             List(selection: $selectedTabId) {
                 tabGroupSections(selectionStyle: .selection)
             }
+            .scrollContentBackground(.hidden)
             .refreshable {
                 Haptic.light()
                 viewModel.sync()
@@ -300,69 +348,13 @@ struct TabListView: View {
                             }
                             .tint(.orange)
                         }
-                        .contextMenu {
-                            Button {
-                                renameText = tab.displayTitle
-                                renamingTabId = tab.id
-                            } label: {
-                                Label("Rename", systemImage: "pencil")
-                            }
-                            // Pin/unpin and move-to-group-and-pin are irrelevant for
-                            // engine tabs — they are multiplexed (multiple sub-conversations)
-                            // and shouldn't auto-move between groups.
-                            if viewModel.tabGroupMode == "manual" && tab.isEngine != true {
-                                Button {
-                                    viewModel.toggleTabGroupPin(tabId: tab.id)
-                                } label: {
-                                    Label(
-                                        tab.groupPinned == true ? "Unpin from Group" : "Pin to Group",
-                                        systemImage: tab.groupPinned == true ? "pin.slash" : "pin"
-                                    )
-                                }
-                                let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
-                                if !targets.isEmpty {
-                                    Menu {
-                                        ForEach(targets) { target in
-                                            Button(target.label) {
-                                                viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
-                                            }
-                                        }
-                                    } label: {
-                                        Label("Move to Group", systemImage: "arrow.right.arrow.left")
-                                    }
-                                    // Combined "Move to Group AND Pin": same target list as the
-                                    // plain "Move to Group" submenu above, but each selection
-                                    // routes through moveTabToGroupAndPin which also sets
-                                    // groupPinned=true so the destination tab is protected from
-                                    // any subsequent auto-group-movement. Mirrors the desktop
-                                    // pattern (TabStripTabContextMenu's PushPin row).
-                                    Menu {
-                                        ForEach(targets) { target in
-                                            Button(target.label) {
-                                                viewModel.moveTabToGroupAndPin(tabId: tab.id, groupId: target.id)
-                                            }
-                                        }
-                                    } label: {
-                                        Label("Move to Group and Pin", systemImage: "pin")
-                                    }
-                                }
-                            } else if viewModel.tabGroupMode == "manual" && tab.isEngine == true {
-                                // Engine tabs: allow plain move-to-group (manual
-                                // organization) but skip pin/unpin and move-and-pin.
-                                let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
-                                if !targets.isEmpty {
-                                    Menu {
-                                        ForEach(targets) { target in
-                                            Button(target.label) {
-                                                viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
-                                            }
-                                        }
-                                    } label: {
-                                        Label("Move to Group", systemImage: "arrow.right.arrow.left")
-                                    }
-                                }
-                            }
-                        }
+                        // Context menu extracted to TabRowContextMenu.swift to keep
+                        // this file under the Swift 600-line cap.
+                        .modifier(TabRowContextMenu(
+                            tab: tab,
+                            renamingTabId: $renamingTabId,
+                            renameText: $renameText
+                        ))
                     }
                     .onDelete { offsets in
                         let ids = offsets.map { group.tabs[$0].id }
@@ -469,7 +461,7 @@ struct TabListView: View {
             VStack(spacing: 12) {
                 Image(systemName: "terminal")
                     .font(.system(size: 40))
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
                 Text("No Tabs")
                     .font(.title3.weight(.semibold))
                 Text("Tap + to create a new tab or pull to refresh.")

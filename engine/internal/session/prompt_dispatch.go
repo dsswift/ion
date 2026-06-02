@@ -158,6 +158,17 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	m.applyConfigDefaults(&opts)
 	resolveModelTier(&opts)
+
+	// When the resolved model is the engine default and the session has a
+	// conversation-seeded model, prefer the conversation's model. This
+	// preserves the model across desktop restarts where the tab UUID changes
+	// and the desktop loses its engineModelOverrides. The user can still
+	// explicitly override by selecting a different model in the picker.
+	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
+		utils.Log("Session", fmt.Sprintf("prompt_dispatch: key=%s overriding default model %s with conversation model %s", key, opts.Model, s.lastModel))
+		opts.Model = s.lastModel
+	}
+
 	injectContextFiles(s, &opts)
 	m.injectExtensionContext(s, key, &opts)
 	injectGitContext(s, &opts)

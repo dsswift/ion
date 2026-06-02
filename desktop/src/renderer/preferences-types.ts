@@ -5,6 +5,8 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 export interface PreferencesState {
   isDark: boolean
   themeMode: ThemeMode
+  /** Selected theme ID from the theme registry. Persisted in localStorage. */
+  selectedTheme: string
   soundEnabled: boolean
   expandedUI: boolean
   ultraWide: boolean
@@ -49,6 +51,10 @@ export interface PreferencesState {
   enableEarlyStopContinuation: boolean
   /** Show the todo/task list panel at the bottom of the conversation */
   showTodoList: boolean
+  /** Automatically expand the agent panel when agents are dispatched */
+  agentPanelDefaultOpen: boolean
+  /** Open agent details in a floating panel instead of expanding inline */
+  agentDetailPopup: boolean
   /** Use AI to generate descriptive tab titles from the first message */
   aiGeneratedTitles: boolean
   /** Hide Ion overlay when launching external apps (Finder, Terminal, VS Code, etc.) */
@@ -130,6 +136,7 @@ export interface PreferencesState {
   setTabRecoveryTimeoutSec: (sec: number) => void
   setIsDark: (isDark: boolean) => void
   setThemeMode: (mode: ThemeMode) => void
+  setSelectedTheme: (id: string) => void
   setSoundEnabled: (enabled: boolean) => void
   setExpandedUI: (expanded: boolean) => void
   setUltraWide: (enabled: boolean) => void
@@ -160,6 +167,8 @@ export interface PreferencesState {
   setEnableClaudeCompat: (enabled: boolean) => void
   setEnableEarlyStopContinuation: (enabled: boolean) => void
   setShowTodoList: (enabled: boolean) => void
+  setAgentPanelDefaultOpen: (enabled: boolean) => void
+  setAgentDetailPopup: (enabled: boolean) => void
   setAiGeneratedTitles: (enabled: boolean) => void
   setHideOnExternalLaunch: (enabled: boolean) => void
   setKeepExplorerOnCollapse: (enabled: boolean) => void
@@ -215,4 +224,4 @@ export interface PreferencesState {
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '' }
+export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '' }

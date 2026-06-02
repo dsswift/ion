@@ -29,6 +29,7 @@ type SessionAccessor interface {
 	RegisterAgentSpec(spec types.AgentSpec)
 	DeregisterAgentSpec(name string)
 	LookupAgentSpec(name string) (types.AgentSpec, bool)
+	LookupExtDisplayName(name string) string
 	ExtGroup() *extension.ExtensionGroup
 	ExtConfig() *extension.ExtensionConfig
 	ProcRegistry() *extension.ProcessRegistry

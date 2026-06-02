@@ -19,6 +19,14 @@ import (
 // unreadable".
 var ErrNotFound = errors.New("conversation not found")
 
+// maxScanTokenSize is the maximum line size for JSONL scanners in the
+// conversation package. Set to 32 MB to accommodate large tool results,
+// assistant responses with embedded content, and base64-encoded images
+// (the image validator allows up to 20 MB images, which inflate to ~27 MB
+// in base64). The server and stream parsers use 8 MB; conversation lines
+// can be larger because they accumulate entire turn payloads.
+const maxScanTokenSize = 32 * 1024 * 1024
+
 // MigrateConversation upgrades a raw JSON map to the current schema version.
 func MigrateConversation(raw map[string]any) (*Conversation, error) {
 	if raw == nil {
@@ -223,6 +231,19 @@ func saveSplit(conv *Conversation, dir string) error {
 		}
 	}
 
+	// When BuildContextPath reduces the message count below the cached
+	// token count's message baseline, the cache is stale (covers messages
+	// that are no longer in the LLM file). Zero it so the next load uses
+	// heuristic estimation instead of the inflated cached value.
+	if messagesToWrite != nil && conv.LastInputTokensMsgCount > 0 && len(messagesToWrite) < conv.LastInputTokensMsgCount {
+		utils.Log("Conversation", fmt.Sprintf("saveSplit: id=%s invalidating stale token cache: lastInputTokens=%d lastInputTokensMsgCount=%d but only %d messages after BuildContextPath",
+			conv.ID, conv.LastInputTokens, conv.LastInputTokensMsgCount, len(messagesToWrite)))
+		conv.LastInputTokens = 0
+		conv.LastInputTokensMsgCount = 0
+		llmHeader["lastInputTokens"] = 0
+		llmHeader["lastInputTokensMsgCount"] = 0
+	}
+
 	for _, msg := range messagesToWrite {
 		msgBytes, err := json.Marshal(msg)
 		if err != nil {
@@ -334,6 +355,58 @@ func writeFileSynced(path string, data []byte) error {
 		_ = dir.Close()
 	}
 	return nil
+}
+
+// LoadLlmHeaderModel reads only the model field from a conversation's
+// .llm.jsonl header without parsing any messages. This is a lightweight
+// alternative to Load when only the model name is needed (e.g. listing
+// conversations).
+func LoadLlmHeaderModel(id, dir string) (string, error) {
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, ".ion", "conversations")
+	}
+
+	llmPath := filepath.Join(dir, id+".llm.jsonl")
+	f, err := os.Open(llmPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("%w: %s", ErrNotFound, id)
+		}
+		return "", fmt.Errorf("open llm file %s: %w", llmPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
+
+	// Read only the first non-empty line (the header).
+	var headerLine string
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			headerLine = line
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("scan llm header %s: %w", llmPath, err)
+	}
+	if headerLine == "" {
+		return "", fmt.Errorf("empty llm file: %s", llmPath)
+	}
+
+	var header map[string]any
+	if err := json.Unmarshal([]byte(headerLine), &header); err != nil {
+		return "", fmt.Errorf("invalid llm header in %s: %w", llmPath, err)
+	}
+
+	model := jsonString(header, "model")
+	utils.Debug("Conversation", fmt.Sprintf("LoadLlmHeaderModel: id=%s model=%s", id, model))
+	return model, nil
 }
 
 // Load reads a conversation from disk. Probe order:
@@ -571,10 +644,10 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 }
 
 // scanNonEmptyLines splits JSONL bytes into non-empty trimmed lines using a
-// buffered scanner with a 1 MB per-line limit.
+// buffered scanner with a 32 MB per-line limit (maxScanTokenSize).
 func scanNonEmptyLines(data []byte) ([]string, error) {
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 	var lines []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

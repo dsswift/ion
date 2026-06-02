@@ -173,6 +173,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               groupId: t.groupId || null,
               modelOverride: t.modelOverride || null,
               groupPinned: t.groupPinned || false,
+              conversationId: t.conversationId || null,
               lastMessageContent: lastMsg,
               lastActivityTs: lastTs || 0,
             };
@@ -233,6 +234,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         groupId: t.groupId || null,
         modelOverride: t.modelOverride || null,
         groupPinned: t.groupPinned || false,
+        conversationId: t.conversationId || undefined,
         lastActivityAt: t.lastActivityTs || undefined,
       }))
 

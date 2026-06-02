@@ -185,6 +185,8 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		cfg:          cfg,
 	}
 
+	utils.Info("ApiBackend", fmt.Sprintf("StartRunWithConfig: runID=%s model=%s sessionID=%s planMode=%v", requestID, options.Model, options.SessionID, options.PlanMode))
+
 	b.mu.Lock()
 	b.activeRuns[requestID] = run
 	b.mu.Unlock()
@@ -320,6 +322,7 @@ func (b *ApiBackend) Steer(requestID, message string) bool {
 	case run.steerCh <- message:
 		return true
 	default:
+		utils.Warn("ApiBackend", fmt.Sprintf("Steer: channel full, message dropped: runID=%s msgLen=%d", requestID, len(message)))
 		return false // channel full
 	}
 }
@@ -339,6 +342,7 @@ func (b *ApiBackend) IsRunning(requestID string) bool {
 }
 
 func (b *ApiBackend) removeRun(requestID string) {
+	utils.Debug("ApiBackend", fmt.Sprintf("removeRun: runID=%s", requestID))
 	b.mu.Lock()
 	delete(b.activeRuns, requestID)
 	b.mu.Unlock()

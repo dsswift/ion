@@ -30,6 +30,7 @@ import {
   validateSettingValue,
 } from '../../projectable-settings'
 import { persistAndBroadcastSettings } from '../../settings-broadcast'
+import { broadcast } from '../../broadcast'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -63,6 +64,10 @@ export async function handleSetDesktopSetting(
   const next = { ...current, [cmd.key]: cmd.value }
   try {
     persistAndBroadcastSettings(next, current)
+    // Notify the renderer so its Zustand store picks up the change.
+    // Without this, iOS-originated writes only land on disk — the
+    // renderer keeps the stale in-memory value until the next restart.
+    broadcast('ion:settings-changed', cmd.key, cmd.value)
     log(`SETTINGS-CMD: applied ${tag}`)
   } catch (err) {
     log(`SETTINGS-CMD: write failed ${tag} err=${err}`)

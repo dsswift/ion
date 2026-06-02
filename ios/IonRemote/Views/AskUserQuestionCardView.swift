@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AskUserQuestionCardView: View {
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
     let request: PermissionRequest
@@ -57,7 +58,7 @@ struct AskUserQuestionCardView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "questionmark.circle.fill")
-                            .foregroundStyle(IonTheme.accent)
+                            .foregroundStyle(theme.accent)
                         Text("Question")
                             .font(.headline)
                         Spacer()
@@ -95,7 +96,7 @@ struct AskUserQuestionCardView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .clipShape(Capsule())
-                            .tint(IonTheme.accent)
+                            .tint(theme.accent)
                             .disabled(freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     } else {
@@ -114,7 +115,7 @@ struct AskUserQuestionCardView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .clipShape(Capsule())
-                                .tint(IonTheme.accent)
+                                .tint(theme.accent)
                             }
                         }
                     }

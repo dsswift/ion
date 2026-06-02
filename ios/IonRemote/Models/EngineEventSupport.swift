@@ -17,6 +17,32 @@ import Foundation
 
 // MARK: - AgentStateUpdate
 
+/// Structured dispatch info for a single agent dispatch.
+/// Decoded from the `dispatches` array inside agent metadata.
+struct DispatchInfo: Identifiable, Sendable {
+    let id: String
+    let task: String
+    let model: String
+    let conversationId: String
+    let elapsed: Double?
+    let status: String
+    let startTime: Double?
+
+    init(from dict: [String: Any]) {
+        id = dict["id"] as? String ?? ""
+        task = dict["task"] as? String ?? ""
+        model = dict["model"] as? String ?? ""
+        conversationId = dict["conversationId"] as? String ?? ""
+        status = dict["status"] as? String ?? ""
+        if let e = dict["elapsed"] as? Double { elapsed = e }
+        else if let e = dict["elapsed"] as? Int { elapsed = Double(e) }
+        else { elapsed = nil }
+        if let st = dict["startTime"] as? Double { startTime = st }
+        else if let st = dict["startTime"] as? Int { startTime = Double(st) }
+        else { startTime = nil }
+    }
+}
+
 /// Structured agent state sent from the desktop engine runtime.
 /// The wire format has `name`, `status`, and a `metadata` map containing
 /// all other fields (displayName, type, visibility, invited, etc.).
@@ -39,7 +65,17 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
     let color: String?
     let model: String?
     let startTime: Double?   // Unix timestamp in seconds
-    let conversationIds: [String]
+    /// Derived from `dispatches[]` — single source of truth for conversation IDs.
+    /// Deduplicated: when multiple dispatches share a session, the ID appears once.
+    var conversationIds: [String] {
+        var seen = Set<String>()
+        return dispatches.compactMap { d in
+            guard !d.conversationId.isEmpty, !seen.contains(d.conversationId) else { return nil }
+            seen.insert(d.conversationId)
+            return d.conversationId
+        }
+    }
+    let dispatches: [DispatchInfo]
 
     /// Whether this agent should be shown in the UI based on visibility rules.
     var isVisible: Bool {
@@ -78,12 +114,14 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         } else {
             startTime = nil
         }
-        if let ids = meta["conversationIds"]?.value as? [AnyCodable] {
-            conversationIds = ids.compactMap { $0.value as? String }
-        } else if let id = meta["conversationId"]?.value as? String {
-            conversationIds = [id]
+        if let rawDispatches = meta["dispatches"]?.value as? [AnyCodable] {
+            dispatches = rawDispatches.compactMap { item -> DispatchInfo? in
+                guard let dict = item.value as? [String: AnyCodable] else { return nil }
+                let plain = dict.mapValues { $0.value }
+                return DispatchInfo(from: plain)
+            }
         } else {
-            conversationIds = []
+            dispatches = []
         }
 
         // Bool and numeric values may arrive as various types
@@ -128,7 +166,7 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         if let color { meta["color"] = AnyCodable(color) }
         if let model { meta["model"] = AnyCodable(model) }
         if let startTime { meta["startTime"] = AnyCodable(startTime) }
-        if !conversationIds.isEmpty { meta["conversationIds"] = AnyCodable(conversationIds.map { AnyCodable($0) }) }
+        // dispatches are read-only from the engine; no need to encode back
         try container.encode(meta, forKey: .metadata)
     }
 }
@@ -149,6 +187,11 @@ struct StatusFields: Codable, Sendable {
     let permissionDenials: [PermissionDenialEntry]?
     /// Friendly display name broadcast by the extension (e.g. "Chief of Staff").
     let extensionName: String?
+    /// Number of background dispatch agents still running when the parent LLM
+    /// turn ends. When > 0, the engine is "idle" but background work is in
+    /// progress. Clients use this to keep the tab status active and the
+    /// interrupt button visible.
+    let backgroundAgents: Int?
 
     /// Returns a copy with the label replaced.
     func withLabel(_ newLabel: String) -> StatusFields {
@@ -171,52 +214,6 @@ struct PermissionDenialEntry: Codable, Sendable {
 struct EngineInstancePayload: Codable, Sendable {
     let id: String
     let label: String
-}
-
-// MARK: - EngineMessage
-
-/// A single message in the engine conversation history.
-/// Roles: "user", "assistant", "tool", "harness", "system".
-struct EngineMessage: Identifiable, Sendable {
-    let id: String
-    let role: String
-    var content: String
-    var toolName: String?
-    var toolId: String?
-    var toolStatus: String?
-    var timestamp: Double?
-    var isInternal: Bool?
-    /// View-only: number of consecutive bootstrap messages that were collapsed
-    /// into this one (not encoded/decoded — excluded from CodingKeys). Nil when
-    /// this message is displayed individually. When > 0 the harness row renders
-    /// a count badge showing the total occurrences (collapsed + 1).
-    var bootstrapCollapsedCount: Int?
-}
-
-extension EngineMessage: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case id, role, content, toolName, toolId, toolStatus, timestamp
-        case isInternal = "internal"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        // id: accept String or Int (coerce to String)
-        if let s = try? container.decode(String.self, forKey: .id) {
-            id = s
-        } else if let n = try? container.decode(Int.self, forKey: .id) {
-            id = String(n)
-        } else {
-            id = UUID().uuidString
-        }
-        role = try container.decodeIfPresent(String.self, forKey: .role) ?? "system"
-        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
-        toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
-        toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
-        toolStatus = try container.decodeIfPresent(String.self, forKey: .toolStatus)
-        timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp)
-        isInternal = try container.decodeIfPresent(Bool.self, forKey: .isInternal)
-    }
 }
 
 // MARK: - EngineMessageEndUsage

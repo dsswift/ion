@@ -53,6 +53,12 @@ func (m *Manager) buildRunConfig(
 		runCfg.EarlyStopContinue = m.config.EarlyStopContinue
 	}
 
+	// Thread tool-result size cap from engine.json compaction config so the
+	// runloop can persist oversized tool results to disk.
+	if m.config != nil && m.config.Compaction != nil && m.config.Compaction.MaxToolResultChars > 0 {
+		runCfg.MaxToolResultChars = m.config.Compaction.MaxToolResultChars
+	}
+
 	if permEng != nil {
 		runCfg.PermEngine = permEng
 	}
@@ -84,6 +90,10 @@ func (m *Manager) buildRunConfig(
 	if s.sessionMemory != nil {
 		sm := s.sessionMemory
 		runCfg.GetSessionMemory = sm.GetMemory
+		runCfg.GetLastSummarizedEntryID = sm.GetLastSummarizedEntryID
+		runCfg.ResetMemoryTracking = func(tokens int) {
+			sm.ResetUpdateTracking(tokens, sm.GetLastUpdateTurn())
+		}
 	}
 
 	// Wire OnPlanModeEnter unconditionally: it calls RequestPlanModeEnter on
@@ -101,6 +111,15 @@ func (m *Manager) buildRunConfig(
 	// Default when no extensions: auto-allow.
 	runCfg.Hooks.OnPlanModeExit = func(planFilePath string) (bool, string) {
 		return m.RequestPlanModeExit(capturedKey, planFilePath)
+	}
+
+	// Wire GetSessionPlanFilePath: lets the ExitPlanMode interception resolve
+	// the session-level planFilePath when the run's own planFilePath is empty.
+	// This covers the case where the model calls ExitPlanMode in a non-plan-mode
+	// run (prompt-level plan mode) after a prior plan-mode session set the path.
+	runCfg.Hooks.GetSessionPlanFilePath = func() string {
+		_, path := m.GetPlanModeState(capturedKey)
+		return path
 	}
 
 	return runCfg

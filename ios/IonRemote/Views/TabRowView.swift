@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - TabRowView
 
 struct TabRowView: View {
+    @Environment(\.appTheme) private var theme
     let tab: RemoteTabState
     var showDirectory: Bool = false
     var showGitInfo: Bool = false
@@ -14,6 +15,7 @@ struct TabRowView: View {
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {
+        let _ = DiagnosticLog.log("[TabRowView] rendering with accent: \(theme.accent), theme id: \(theme.id)")
         HStack(spacing: 12) {
             Circle()
                 .fill(statusInfo.color)
@@ -52,7 +54,7 @@ struct TabRowView: View {
             if isSpeaking {
                 Image(systemName: "speaker.wave.2.fill")
                     .font(.caption)
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
                     .symbolEffect(.variableColor.iterative)
             }
 
@@ -67,7 +69,7 @@ struct TabRowView: View {
                 if tab.status == .running || tab.status == .connecting {
                     Text("Running…")
                         .font(.caption2)
-                        .foregroundStyle(IonTheme.statusRunning)
+                        .foregroundStyle(theme.statusRunning)
                         .lineLimit(1)
                 } else if let since = idleSince, tab.isTerminalOnly != true {
                     TimelineView(.periodic(from: .now, by: 60)) { context in

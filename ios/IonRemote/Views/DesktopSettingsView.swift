@@ -25,6 +25,7 @@ import SwiftUI
 /// to bounce back to its prior state on the next snapshot. No optimistic
 /// state is maintained — the desktop is the source of truth.
 struct DesktopSettingsView: View {
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
 
     /// Display name for the desktop whose settings we're showing.
@@ -84,7 +85,7 @@ struct DesktopSettingsView: View {
             HStack(spacing: 12) {
                 Image(systemName: "desktopcomputer")
                     .font(.title3)
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
                     .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(desktopName)

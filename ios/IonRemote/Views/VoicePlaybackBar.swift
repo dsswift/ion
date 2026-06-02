@@ -4,6 +4,7 @@ import SwiftUI
 /// Reused in both ConversationView (pinned above input bar) and
 /// TabListView (global overlay at top of list).
 struct VoicePlaybackBar: View {
+    @Environment(\.appTheme) private var theme
     let onSkip: () -> Void
     let onStopAll: () -> Void
     var hasPending: Bool = false
@@ -13,7 +14,7 @@ struct VoicePlaybackBar: View {
             // Animated speaker icon
             Image(systemName: "speaker.wave.2.fill")
                 .font(.caption)
-                .foregroundStyle(IonTheme.accent)
+                .foregroundStyle(theme.accent)
                 .symbolEffect(.variableColor.iterative)
 
             Text("Voice playing…")

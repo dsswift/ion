@@ -330,10 +330,103 @@ export function syncTokensToCss(tokens: ColorPalette): void {
   }
 }
 
-export function applyTheme(isDark: boolean): void {
+export function applyTheme(themeIdOrDark: string | boolean): void {
+  if (typeof themeIdOrDark === 'boolean') {
+    const isDark = themeIdOrDark
+    document.documentElement.classList.toggle('dark', isDark)
+    document.documentElement.classList.toggle('light', !isDark)
+    syncTokensToCss(isDark ? darkColors : lightColors)
+    return
+  }
+  const theme = getTheme(themeIdOrDark)
+  const isDark = theme.forcedColorScheme !== 'light'
   document.documentElement.classList.toggle('dark', isDark)
   document.documentElement.classList.toggle('light', !isDark)
-  syncTokensToCss(isDark ? darkColors : lightColors)
+  syncTokensToCss(theme.colors)
+}
+
+// ─── HUD / Jarvis palette ───
+// Arc reactor cyan overrides on top of the dark base. Only keys that render
+// visibly brownish in HUD mode are replaced; everything else falls through.
+export const hudColors: ColorPalette = {
+  ...darkColors,
+
+  // Surfaces — deep navy instead of warm gray
+  containerBg: 'rgba(4, 12, 26, 0.96)',
+  containerBgCollapsed: 'rgba(4, 12, 26, 0.96)',
+  containerBorder: 'rgba(51, 195, 247, 0.18)',
+  containerShadow: '0 8px 28px rgba(0, 0, 0, 0.6)',
+
+  surfacePrimary: 'rgba(6, 18, 34, 0.98)',
+  surfaceSecondary: 'rgba(8, 22, 40, 0.98)',
+  surfaceHover: 'rgba(51, 195, 247, 0.06)',
+  surfaceActive: 'rgba(51, 195, 247, 0.10)',
+
+  inputBg: 'transparent',
+  inputBorder: 'rgba(51, 195, 247, 0.35)',
+  inputFocusBorder: 'rgba(51, 195, 247, 0.65)',
+  inputPillBg: 'rgba(10, 30, 50, 0.60)',
+
+  textPrimary: 'rgba(190, 235, 255, 0.92)',
+  textSecondary: 'rgba(130, 195, 235, 0.65)',
+  textTertiary: 'rgba(80, 150, 195, 0.55)',
+  textMuted: 'rgba(51, 195, 247, 0.10)',
+
+  // Accent — cyan replaces orange
+  accent: '#33C3F7',
+  accentLight: 'rgba(51, 195, 247, 0.10)',
+  accentSoft: 'rgba(51, 195, 247, 0.15)',
+  accentBorder: 'rgba(51, 195, 247, 0.19)',
+  accentBorderMedium: 'rgba(51, 195, 247, 0.25)',
+
+  statusRunning: '#33C3F7',
+  statusRunningBg: 'rgba(51, 195, 247, 0.10)',
+
+  tabActive: 'rgba(8, 22, 40, 0.95)',
+  tabActiveBorder: 'rgba(51, 195, 247, 0.30)',
+  tabInactive: 'transparent',
+  tabHover: 'rgba(51, 195, 247, 0.06)',
+
+  userBubble: 'rgba(6, 18, 34, 0.98)',
+  userBubbleBorder: 'rgba(51, 195, 247, 0.22)',
+  userBubbleText: 'rgba(190, 235, 255, 0.92)',
+
+  toolBg: 'rgba(6, 18, 34, 0.98)',
+  toolBorder: 'rgba(51, 195, 247, 0.18)',
+  toolRunningBorder: 'rgba(51, 195, 247, 0.35)',
+  toolRunningBg: 'rgba(51, 195, 247, 0.05)',
+
+  sendBg: '#33C3F7',
+  sendHover: '#22b3e7',
+  sendDisabled: 'rgba(51, 195, 247, 0.3)',
+
+  placeholder: 'rgba(80, 150, 195, 0.45)',
+
+  scrollThumb: 'rgba(51, 195, 247, 0.20)',
+  scrollThumbHover: 'rgba(51, 195, 247, 0.35)',
+
+  popoverBg: 'rgba(4, 14, 28, 0.98)',
+  popoverBorder: 'rgba(51, 195, 247, 0.22)',
+  popoverShadow: '0 4px 20px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3)',
+}
+
+// ─── Theme registry ───
+
+export interface ThemeDefinition {
+  id: string
+  displayName: string
+  colors: ColorPalette
+  forcedColorScheme?: 'light' | 'dark'
+}
+
+export const themes: ThemeDefinition[] = [
+  { id: 'ion-dark',   displayName: 'Ion Dark',   colors: darkColors },
+  { id: 'ion-light',  displayName: 'Ion Light',  colors: lightColors },
+  { id: 'jarvis-hud', displayName: 'Jarvis HUD', colors: hudColors, forcedColorScheme: 'dark' },
+]
+
+export function getTheme(id: string): ThemeDefinition {
+  return themes.find((t) => t.id === id) ?? themes[0]
 }
 
 // Legacy static export — components migrating to useColors() may still read this.

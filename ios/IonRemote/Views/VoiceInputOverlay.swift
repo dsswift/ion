@@ -6,6 +6,7 @@ import SwiftUI
 /// Shows animated waveform bars, a stop button (keep text), and a cancel button (discard).
 /// Text streams directly into the draft field — there is no staging buffer here.
 struct VoiceRecordingStrip: View {
+    @Environment(\.appTheme) private var theme
     let audioLevel: Float
     let onStop: () -> Void
     let onCancel: () -> Void
@@ -43,7 +44,7 @@ struct VoiceRecordingStrip: View {
             Button(action: onStop) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
             }
             .accessibilityLabel("Done — keep dictated text")
         }
@@ -58,6 +59,7 @@ struct VoiceRecordingStrip: View {
 // MARK: - WaveBar
 
 private struct WaveBar: View {
+    @Environment(\.appTheme) private var theme
     let audioLevel: Float
     let phase: Double
     let frequency: Double
@@ -73,7 +75,7 @@ private struct WaveBar: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 1.5)
-            .fill(IonTheme.accent)
+            .fill(theme.accent)
             .frame(width: 3, height: barHeight)
             .animation(.easeInOut(duration: 0.08), value: barHeight)
     }

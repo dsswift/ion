@@ -60,6 +60,7 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
   // conversation file immediately at startup instead of
   // waiting for engine_status to populate the map.
   const restoredEngineConversationIds = new Map(useSessionStore.getState().engineConversationIds)
+  const restoredEngineModelOverrides = new Map(useSessionStore.getState().engineModelOverrides)
 
   if (st.engineInstances && st.engineInstances.length > 0) {
     restoredPanes.set(tabId, {
@@ -133,6 +134,16 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
         const sid = st.engineSessionIds[inst.id]
         if (sid) {
           restoredEngineConversationIds.set(`${tabId}:${inst.id}`, [sid])
+        }
+      }
+    }
+
+    if (st.engineModelOverrides) {
+      for (const inst of st.engineInstances) {
+        const m = st.engineModelOverrides[inst.id]
+        if (m) {
+          restoredEngineModelOverrides.set(`${tabId}:${inst.id}`, m)
+          console.log(`[restore] engine model override for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} model=${m}`)
         }
       }
     }
@@ -220,6 +231,7 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
     engineDraftInputs: restoredEngineDraftInputs,
     enginePermissionDenied: restoredEnginePermissionDenied,
     engineConversationIds: restoredEngineConversationIds,
+    engineModelOverrides: restoredEngineModelOverrides,
   }))
   if (st.draftInput) console.log(`[restore] draft for engine tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
 

@@ -220,7 +220,7 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
             const messages = new Map(state.engineMessages)
             const msgs = [...(messages.get(key) || [])]
             const last = msgs[msgs.length - 1]
-            if (last && last.role === 'assistant') {
+            if (last && last.role === 'assistant' && !last.sealed) {
               msgs[msgs.length - 1] = { ...last, content: last.content + event.text }
             } else {
               msgs.push({ id: nextMsgId(), role: 'assistant', content: event.text, timestamp: Date.now() })
@@ -275,6 +275,19 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
               }
             }) : state.tabs
             return { engineUsage: usage, tabs }
+          })
+          // Seal the current assistant message so the next engine_text_delta
+          // creates a new message instead of appending to this one.
+          set((state) => {
+            const messages = new Map(state.engineMessages)
+            const msgs = [...(messages.get(key) || [])]
+            const last = msgs[msgs.length - 1]
+            if (last && last.role === 'assistant') {
+              msgs[msgs.length - 1] = { ...last, sealed: true }
+              messages.set(key, msgs)
+              return { engineMessages: messages }
+            }
+            return {}
           })
           break
         }

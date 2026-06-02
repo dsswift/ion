@@ -172,13 +172,20 @@ func TestPopulateFromDispatchRecords_FreshRosterDoesNotWipeHistory(t *testing.T)
 }
 
 // TestPopulateFromDispatchRecords_MultipleDispatches verifies that
-// multiple dispatch records for different agents (including
-// re-dispatches of the same agent) all populate correctly.
+// multiple dispatch records for the same agent are coalesced via
+// AppendOrUpdate (matching the real rehydration loop), so the
+// registry contains one entry per agent name with merged metadata.
 func TestPopulateFromDispatchRecords_MultipleDispatches(t *testing.T) {
 	r := NewRegistry()
 
-	// Agent-designer dispatched twice (two separate records from disk).
-	r.AppendState(types.AgentStateUpdate{
+	// First dispatch for agent-designer — AppendOrUpdate inserts.
+	dispatchEntry1 := map[string]interface{}{
+		"id":             "dispatch-ad-1",
+		"task":           "first task",
+		"status":         "done",
+		"conversationId": "conv-1",
+	}
+	r.AppendOrUpdate(types.AgentStateUpdate{
 		Name:   "agent-designer",
 		ID:     "dispatch-ad-1",
 		Status: "done",
@@ -186,11 +193,39 @@ func TestPopulateFromDispatchRecords_MultipleDispatches(t *testing.T) {
 			"task":            "first task",
 			"conversationId":  "conv-1",
 			"conversationIds": []interface{}{"conv-1"},
+			"dispatches":      []interface{}{dispatchEntry1},
 		},
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-ad-1"
+		existing.Status = "done"
+		if existing.Metadata == nil {
+			existing.Metadata = map[string]interface{}{}
+		}
+		existing.Metadata["task"] = "first task"
+		existing.Metadata["conversationId"] = "conv-1"
+		existingIDs, _ := existing.Metadata["conversationIds"].([]interface{})
+		seen := make(map[string]bool)
+		for _, id := range existingIDs {
+			if s, ok := id.(string); ok {
+				seen[s] = true
+			}
+		}
+		if !seen["conv-1"] {
+			existingIDs = append(existingIDs, "conv-1")
+		}
+		existing.Metadata["conversationIds"] = existingIDs
+		existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+		existing.Metadata["dispatches"] = append(existingDispatches, dispatchEntry1)
 	})
-	// In practice the rehydration loop appends every persisted record.
-	// The second dispatch for the same agent shows up as a second entry.
-	r.AppendState(types.AgentStateUpdate{
+
+	// Second dispatch for agent-designer — AppendOrUpdate coalesces.
+	dispatchEntry2 := map[string]interface{}{
+		"id":             "dispatch-ad-2",
+		"task":           "second task",
+		"status":         "done",
+		"conversationId": "conv-2",
+	}
+	r.AppendOrUpdate(types.AgentStateUpdate{
 		Name:   "agent-designer",
 		ID:     "dispatch-ad-2",
 		Status: "done",
@@ -198,36 +233,107 @@ func TestPopulateFromDispatchRecords_MultipleDispatches(t *testing.T) {
 			"task":            "second task",
 			"conversationId":  "conv-2",
 			"conversationIds": []interface{}{"conv-2"},
+			"dispatches":      []interface{}{dispatchEntry2},
 		},
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-ad-2"
+		existing.Status = "done"
+		if existing.Metadata == nil {
+			existing.Metadata = map[string]interface{}{}
+		}
+		existing.Metadata["task"] = "second task"
+		existing.Metadata["conversationId"] = "conv-2"
+		existingIDs, _ := existing.Metadata["conversationIds"].([]interface{})
+		seen := make(map[string]bool)
+		for _, id := range existingIDs {
+			if s, ok := id.(string); ok {
+				seen[s] = true
+			}
+		}
+		if !seen["conv-2"] {
+			existingIDs = append(existingIDs, "conv-2")
+		}
+		existing.Metadata["conversationIds"] = existingIDs
+		existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+		existing.Metadata["dispatches"] = append(existingDispatches, dispatchEntry2)
 	})
 
-	// Different agent.
-	r.AppendState(types.AgentStateUpdate{
+	// Different agent — single dispatch, AppendOrUpdate inserts.
+	caDispatchEntry := map[string]interface{}{
+		"id":     "dispatch-ca-1",
+		"task":   "review architecture",
+		"status": "error",
+	}
+	r.AppendOrUpdate(types.AgentStateUpdate{
 		Name:   "cloud-architect",
 		ID:     "dispatch-ca-1",
 		Status: "error",
 		Metadata: map[string]interface{}{
-			"task": "review architecture",
+			"task":       "review architecture",
+			"dispatches": []interface{}{caDispatchEntry},
 		},
+	}, func(existing *types.AgentStateUpdate) {
+		existing.ID = "dispatch-ca-1"
+		existing.Status = "error"
+		if existing.Metadata == nil {
+			existing.Metadata = map[string]interface{}{}
+		}
+		existing.Metadata["task"] = "review architecture"
+		existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+		existing.Metadata["dispatches"] = append(existingDispatches, caDispatchEntry)
 	})
 
 	merged := r.MergedSnapshot()
 
-	// All 3 entries should be present (no ext states to dedup against).
-	if len(merged) != 3 {
-		t.Fatalf("expected 3 entries, got %d: %v", len(merged), names(merged))
+	// 2 entries: agent-designer (coalesced) + cloud-architect.
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 entries, got %d: %v", len(merged), names(merged))
 	}
 
-	// Verify the second agent-designer entry is the one that appears
-	// when looking up by name (FindStateIndex returns first match,
-	// but all entries exist in the slice).
+	// Verify exactly 1 agent-designer entry (coalesced, not duplicated).
 	adCount := 0
 	for _, s := range merged {
 		if s.Name == "agent-designer" {
 			adCount++
+
+			// Latest dispatch fields should win.
+			if s.ID != "dispatch-ad-2" {
+				t.Errorf("agent-designer ID = %q, want dispatch-ad-2", s.ID)
+			}
+			if s.Metadata["task"] != "second task" {
+				t.Errorf("agent-designer task = %v, want second task", s.Metadata["task"])
+			}
+			if s.Metadata["conversationId"] != "conv-2" {
+				t.Errorf("agent-designer conversationId = %v, want conv-2", s.Metadata["conversationId"])
+			}
+
+			// conversationIds should contain both conv-1 and conv-2.
+			convIDs, ok := s.Metadata["conversationIds"].([]interface{})
+			if !ok {
+				t.Fatalf("agent-designer conversationIds is not []interface{}: %T", s.Metadata["conversationIds"])
+			}
+			if len(convIDs) != 2 {
+				t.Errorf("agent-designer conversationIds length = %d, want 2: %v", len(convIDs), convIDs)
+			}
+			idSet := map[string]bool{}
+			for _, id := range convIDs {
+				idSet[id.(string)] = true
+			}
+			if !idSet["conv-1"] || !idSet["conv-2"] {
+				t.Errorf("agent-designer conversationIds should contain conv-1 and conv-2, got %v", convIDs)
+			}
+
+			// dispatches array should have 2 entries.
+			dispatches, ok := s.Metadata["dispatches"].([]interface{})
+			if !ok {
+				t.Fatalf("agent-designer dispatches is not []interface{}: %T", s.Metadata["dispatches"])
+			}
+			if len(dispatches) != 2 {
+				t.Errorf("agent-designer dispatches length = %d, want 2", len(dispatches))
+			}
 		}
 	}
-	if adCount != 2 {
-		t.Errorf("expected 2 agent-designer entries, got %d", adCount)
+	if adCount != 1 {
+		t.Errorf("expected 1 agent-designer entry (coalesced), got %d", adCount)
 	}
 }

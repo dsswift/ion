@@ -209,3 +209,16 @@ func (r *DispatchRegistry) Count() int {
 	defer r.mu.Unlock()
 	return len(r.dispatches)
 }
+
+// ActiveNames returns the set of currently-active dispatch agent names.
+// Used by handleRunExit to decide which running agent states to preserve
+// (background agents still running) vs. clear (stale orphans).
+func (r *DispatchRegistry) ActiveNames() map[string]bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	names := make(map[string]bool, len(r.dispatches))
+	for name := range r.dispatches {
+		names[name] = true
+	}
+	return names
+}

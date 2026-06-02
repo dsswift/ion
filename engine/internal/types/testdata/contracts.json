@@ -249,6 +249,7 @@
       "id"
     ],
     "StatusFields": [
+      "backgroundAgents",
       "contextPercent",
       "contextWindow",
       "extensionName",

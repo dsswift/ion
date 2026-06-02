@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/session/pending"
@@ -82,6 +84,10 @@ func (a *sessionAccessor) DeregisterAgentSpec(name string) {
 
 func (a *sessionAccessor) LookupAgentSpec(name string) (types.AgentSpec, bool) {
 	return a.s.agents.LookupSpec(name)
+}
+
+func (a *sessionAccessor) LookupExtDisplayName(name string) string {
+	return a.s.agents.LookupExtDisplayName(name)
 }
 
 func (a *sessionAccessor) ExtGroup() *extension.ExtensionGroup { return a.s.extGroup }
@@ -196,16 +202,28 @@ func (a *sessionAccessor) GetPlanModeState() (bool, string) {
 }
 
 func (a *sessionAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
-	idx := a.s.agents.FindStateIndex(state.Name)
-	if idx >= 0 {
-		a.s.agents.UpdateState(state.Name, func(existing *types.AgentStateUpdate) {
-			existing.ID = state.ID
-			existing.Status = state.Status
-			existing.Metadata = state.Metadata
-		})
-		return state.ID
-	}
-	a.s.agents.AppendState(state)
+	a.s.agents.AppendOrUpdate(state, func(existing *types.AgentStateUpdate) {
+		// Preserve and merge the structured dispatches array from previous
+		// dispatches. When the incoming state carries new dispatch entries
+		// (e.g. a re-dispatch of the same agent name), merge them with any
+		// existing entries rather than replacing.
+		var prevDispatches []interface{}
+		if existing.Metadata != nil {
+			if pd, ok := existing.Metadata["dispatches"].([]interface{}); ok {
+				prevDispatches = pd
+			}
+		}
+		existing.ID = state.ID
+		existing.Status = state.Status
+		existing.Metadata = state.Metadata
+		if len(prevDispatches) > 0 && existing.Metadata != nil {
+			if newDisp, ok := existing.Metadata["dispatches"].([]interface{}); ok {
+				existing.Metadata["dispatches"] = append(prevDispatches, newDisp...)
+			} else {
+				existing.Metadata["dispatches"] = prevDispatches
+			}
+		}
+	})
 	return state.ID
 }
 
@@ -299,6 +317,26 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// task, conversationId, elapsed) win over the extension's idle entries.
 	if s.conversationID != "" {
 		m.rehydrateDispatchState(s, key)
+
+		// Seed lastModel from the conversation file so ReconcileState emits
+		// the correct model before any prompt dispatches. Without this, a
+		// resumed session emits model="" on reconcile, causing the desktop to
+		// fall back to its preference default (which may differ from the
+		// conversation's actual model). This also seeds lastContextWindow so
+		// the context-percent denominator is correct from the first status.
+		if convModel, err := conversation.LoadLlmHeaderModel(s.conversationID, ""); err == nil && convModel != "" {
+			ctxWindow := conversation.DefaultContext
+			if info := providers.GetModelInfo(convModel); info != nil {
+				ctxWindow = info.ContextWindow
+			}
+			m.mu.Lock()
+			s.lastModel = convModel
+			s.lastContextWindow = ctxWindow
+			m.mu.Unlock()
+			utils.Log("Session", fmt.Sprintf("StartSession: key=%s seeded lastModel=%s contextWindow=%d from conversation=%s", key, convModel, ctxWindow, s.conversationID))
+		} else if err != nil {
+			utils.Debug("Session", fmt.Sprintf("StartSession: key=%s could not load conversation model conv=%s err=%v", key, s.conversationID, err))
+		}
 
 		// Initialize session memory for resumed conversations. The memory
 		// file (if it exists) is loaded from disk so the first compaction

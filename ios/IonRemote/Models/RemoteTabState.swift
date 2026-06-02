@@ -25,6 +25,9 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// When true, auto-group movement is suppressed for this tab. Nil/absent decodes as false.
     var groupPinned: Bool?
     var modelOverride: String?
+    /// The current conversation/session ID for this tab. CLI tabs populate
+    /// this directly; engine tabs use `StatusFields.sessionId` instead.
+    var conversationId: String?
     /// Unix ms timestamp of the last status-changing activity (from desktop snapshot).
     var lastActivityAt: Double?
 

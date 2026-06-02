@@ -24,6 +24,10 @@ export function GeneralCategory() {
   const setSoundEnabled = usePreferencesStore((s) => s.setSoundEnabled)
   const showTodoList = usePreferencesStore((s) => s.showTodoList)
   const setShowTodoList = usePreferencesStore((s) => s.setShowTodoList)
+  const agentPanelDefaultOpen = usePreferencesStore((s) => s.agentPanelDefaultOpen)
+  const setAgentPanelDefaultOpen = usePreferencesStore((s) => s.setAgentPanelDefaultOpen)
+  const agentDetailPopup = usePreferencesStore((s) => s.agentDetailPopup)
+  const setAgentDetailPopup = usePreferencesStore((s) => s.setAgentDetailPopup)
   const aiGeneratedTitles = usePreferencesStore((s) => s.aiGeneratedTitles)
   const setAiGeneratedTitles = usePreferencesStore((s) => s.setAiGeneratedTitles)
 
@@ -178,6 +182,20 @@ export function GeneralCategory() {
         description="Display the agent's todo/task checklist at the bottom of the conversation while working."
         checked={showTodoList}
         onChange={setShowTodoList}
+      />
+
+      <SettingToggle
+        label="Agent Panel Open by Default"
+        description="Automatically expand the agent panel when agents are dispatched. Disable to keep it collapsed."
+        checked={agentPanelDefaultOpen}
+        onChange={setAgentPanelDefaultOpen}
+      />
+
+      <SettingToggle
+        label="Agent Detail Popup"
+        description="Click an agent row to open a floating detail panel instead of expanding inline."
+        checked={agentDetailPopup}
+        onChange={setAgentDetailPopup}
       />
 
       <SettingToggle

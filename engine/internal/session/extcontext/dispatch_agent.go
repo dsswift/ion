@@ -8,6 +8,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -65,7 +66,21 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		if spec, ok := sa.LookupAgentSpec(agentName); ok && spec.Description != "" {
 			displayName = spec.Description
 		}
+		// Fallback: inherit the display name from the extension's cached roster.
+		// Extensions provide displayName via roster metadata, not via AgentSpec.
+		if displayName == agentName {
+			if dn := sa.LookupExtDisplayName(agentName); dn != "" {
+				displayName = dn
+			}
+		}
 
+		newDispatch := map[string]interface{}{
+			"id":        agentID,
+			"task":      opts.Task,
+			"model":     model,
+			"status":    "running",
+			"startTime": start.Unix(),
+		}
 		sa.AppendOrUpdateAgentState(types.AgentStateUpdate{
 			Name:   agentName,
 			ID:     agentID,
@@ -78,6 +93,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				"task":        opts.Task,
 				"model":       model,
 				"startTime":   start.Unix(),
+				"dispatches":  []interface{}{newDispatch},
 			},
 		})
 		sa.EmitAgentSnapshot("dispatch_start")
@@ -380,6 +396,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 					state.Metadata["conversationIds"] = append(existing, childSessionID)
 					state.Metadata["conversationId"] = childSessionID
 				}
+				// Update the current dispatch entry in the structured dispatches array.
+				agents.UpdateDispatchEntry(state.Metadata, agentID, state.Status, elapsed, childSessionID)
 			})
 			sa.EmitAgentSnapshot("dispatch_end")
 

@@ -108,6 +108,25 @@ func (r *Registry) LookupSpec(name string) (types.AgentSpec, bool) {
 	return spec, ok
 }
 
+// LookupExtDisplayName searches the cached extension roster states for the
+// given agent name and returns the displayName metadata value. Returns ""
+// if no match or no displayName is set. This lets engine-managed code
+// (dispatch_agent) inherit the human-friendly name the extension provides
+// via its roster, even when no AgentSpec is registered.
+func (r *Registry) LookupExtDisplayName(name string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, ext := range r.lastExtStates {
+		if ext.Name == name {
+			if dn, ok := ext.Metadata["displayName"].(string); ok && dn != "" {
+				return dn
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
 // AllSpecNames returns the names of all registered specs.
 func (r *Registry) AllSpecNames() []string {
 	r.mu.RLock()
@@ -120,6 +139,24 @@ func (r *Registry) AllSpecNames() []string {
 }
 
 // --- States ---
+
+// AppendOrUpdate atomically finds an existing state by name and updates it,
+// or appends a new entry if none exists. Holds the write lock across the
+// entire check-then-act to prevent duplicate entries from concurrent
+// dispatches of the same specialist. Returns true if an existing entry was
+// updated, false if a new entry was appended.
+func (r *Registry) AppendOrUpdate(state types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.states {
+		if r.states[i].Name == state.Name {
+			updater(&r.states[i])
+			return true
+		}
+	}
+	r.states = append(r.states, state)
+	return false
+}
 
 // AppendState appends an agent state update.
 func (r *Registry) AppendState(state types.AgentStateUpdate) {
@@ -185,6 +222,22 @@ func (r *Registry) ClearRunningStates() {
 	kept := r.states[:0] // reuse backing array
 	for _, s := range r.states {
 		if s.Status != "running" {
+			kept = append(kept, s)
+		}
+	}
+	r.states = kept
+}
+
+// ClearRunningStatesExcept removes states with status "running" UNLESS their
+// name appears in the keepNames set. This is the dispatch-aware variant of
+// ClearRunningStates: background dispatch agents that are still legitimately
+// running are preserved while stale/orphaned running states are cleared.
+func (r *Registry) ClearRunningStatesExcept(keepNames map[string]bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	kept := r.states[:0] // reuse backing array
+	for _, s := range r.states {
+		if s.Status != "running" || keepNames[s.Name] {
 			kept = append(kept, s)
 		}
 	}

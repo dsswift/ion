@@ -201,3 +201,41 @@ func TestDispatchRegistry_ConcurrentAccess(t *testing.T) {
 	// Final cleanup — should not panic regardless of interleaving.
 	r.RecallAll("teardown")
 }
+
+// TestDispatchRegistry_ActiveNames verifies that ActiveNames returns the
+// correct set of currently-active dispatch names. Used by handleRunExit
+// to decide which running agent states to preserve.
+func TestDispatchRegistry_ActiveNames(t *testing.T) {
+	r := NewDispatchRegistry()
+
+	// Empty registry returns empty map.
+	names := r.ActiveNames()
+	if len(names) != 0 {
+		t.Fatalf("ActiveNames on empty registry = %v, want empty", names)
+	}
+
+	// Register two dispatches.
+	r.Register("agent-x", func() {}, nil, "sess-1")
+	r.Register("agent-y", func() {}, nil, "sess-1")
+
+	names = r.ActiveNames()
+	if len(names) != 2 {
+		t.Fatalf("ActiveNames after 2 registers = %d, want 2", len(names))
+	}
+	if !names["agent-x"] || !names["agent-y"] {
+		t.Errorf("ActiveNames missing expected entries: %v", names)
+	}
+
+	// Deregister one — ActiveNames should reflect the removal.
+	r.Deregister("agent-x")
+	names = r.ActiveNames()
+	if len(names) != 1 {
+		t.Fatalf("ActiveNames after deregister = %d, want 1", len(names))
+	}
+	if !names["agent-y"] {
+		t.Errorf("ActiveNames should contain agent-y, got %v", names)
+	}
+	if names["agent-x"] {
+		t.Error("ActiveNames should not contain deregistered agent-x")
+	}
+}

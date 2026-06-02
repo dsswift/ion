@@ -34,6 +34,7 @@ func (a *agentDiscoveryTestAccessor) DeregisterAgent(_ string)                  
 func (a *agentDiscoveryTestAccessor) RegisterAgentSpec(_ types.AgentSpec)              {}
 func (a *agentDiscoveryTestAccessor) DeregisterAgentSpec(_ string)                     {}
 func (a *agentDiscoveryTestAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) { return types.AgentSpec{}, false }
+func (a *agentDiscoveryTestAccessor) LookupExtDisplayName(_ string) string             { return "" }
 func (a *agentDiscoveryTestAccessor) ExtGroup() *extension.ExtensionGroup              { return a.extGroup }
 func (a *agentDiscoveryTestAccessor) ExtConfig() *extension.ExtensionConfig            { return nil }
 func (a *agentDiscoveryTestAccessor) ProcRegistry() *extension.ProcessRegistry         { return nil }

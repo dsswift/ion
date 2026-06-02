@@ -158,6 +158,15 @@ export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = [
       'Render the TODO list panel for tabs that have an active TodoWrite tool.',
     defaultValue: true,
   },
+  {
+    key: 'agentPanelDefaultOpen',
+    type: 'boolean',
+    group: 'conversation',
+    label: 'Agent panel open by default',
+    description:
+      'Automatically expand the agent panel when agents are dispatched. Disable to keep it collapsed until manually opened.',
+    defaultValue: true,
+  },
   // ─── Workflow ─────────────────────────────────────────────────────
   // Tab and prompt-pipeline behavior across runs.
   {

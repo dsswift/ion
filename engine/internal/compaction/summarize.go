@@ -49,6 +49,8 @@ Tasks explicitly requested but not yet completed. Include any user instructions 
 ## Important Context
 User preferences, project conventions, or constraints mentioned that should inform future work.
 
+Do NOT include text from system prompts, AGENTS.md/CLAUDE.md content, or agent task descriptions. These are injected automatically and should not be preserved in the summary.
+
 Be concise but specific. Preserve exact file paths, function names, error messages, and command outputs that would be needed to continue the work. Do not include preamble or meta-commentary about the summary itself.`
 
 // resolveSummaryModel determines which model to use for the summary call.
@@ -60,20 +62,24 @@ Be concise but specific. Preserve exact file paths, function names, error messag
 // call rather than substitute a built-in default.
 func resolveSummaryModel(explicitModel string) string {
 	if explicitModel != "" {
+		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: explicit=%s", explicitModel))
 		return explicitModel
 	}
 
 	// Check if user configured a "fast" tier in models.json.
 	if fast := modelconfig.ResolveTier("fast"); fast != "" && fast != "fast" {
+		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: fast-tier=%s", fast))
 		return fast
 	}
 
 	// Fall back to the user's defaultModel.
 	config := modelconfig.LoadModelsConfig()
 	if dm, ok := config["defaultModel"].(string); ok && dm != "" {
+		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: defaultModel=%s", dm))
 		return dm
 	}
 
+	utils.Debug("Compaction", "resolveSummaryModel: no model configured")
 	return ""
 }
 
@@ -174,19 +180,39 @@ func Summarize(ctx context.Context, text, model string, maxTokens int) (string, 
 // FormatMessagesForSummary formats a slice of LLM messages into a text
 // representation suitable for the summarization prompt. Each message is
 // prefixed with its role and non-empty text content is included.
+//
+// Tool results are truncated more aggressively (500 chars) than user/assistant
+// messages (2000 chars) because tool results often contain system prompt echoes,
+// verbose command output, and file content that the LLM should not memorize.
 func FormatMessagesForSummary(messages []types.LlmMessage) string {
+	utils.Debug("Compaction", fmt.Sprintf("FormatMessagesForSummary: %d messages", len(messages)))
 	var parts []string
+	truncated := 0
+	toolResultsTruncated := 0
 	for _, msg := range messages {
 		text := extractText(msg)
 		if text == "" {
 			continue
 		}
-		// Truncate very long individual messages to keep the summary
-		// prompt within reasonable bounds.
-		if len(text) > 2000 {
-			text = text[:2000] + "... [truncated]"
+
+		// Tool results get a shorter budget to reduce noise from system
+		// prompt echoes, verbose command output, and file content dumps.
+		isToolResult := msg.Role == "user" && hasToolResults(msg)
+		limit := 2000
+		if isToolResult {
+			limit = 500
+		}
+
+		if len(text) > limit {
+			text = text[:limit] + "... [truncated]"
+			truncated++
+			if isToolResult {
+				toolResultsTruncated++
+			}
 		}
 		parts = append(parts, fmt.Sprintf("[%s]: %s", msg.Role, text))
 	}
-	return strings.Join(parts, "\n\n")
+	result := strings.Join(parts, "\n\n")
+	utils.Debug("Compaction", fmt.Sprintf("FormatMessagesForSummary: done totalLen=%d truncatedMsgs=%d toolResultsTruncated=%d", len(result), truncated, toolResultsTruncated))
+	return result
 }

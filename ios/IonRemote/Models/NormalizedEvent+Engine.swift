@@ -136,13 +136,14 @@ extension RemoteEvent {
         case .engineConversationHistory:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let messages = try container.decode([EngineMessage].self, forKey: .messages)
+            let messages = try Message.decodeEngineArray(from: container, forKey: .messages)
             return .engineConversationHistory(tabId: tabId, instanceId: instanceId, messages: messages)
 
         case .agentConversationHistory:
             let agentName = try container.decode(String.self, forKey: .agentName)
-            let messages = try container.decode([EngineMessage].self, forKey: .messages)
-            return .agentConversationHistory(agentName: agentName, messages: messages)
+            let convId = try container.decodeIfPresent(String.self, forKey: .conversationId)
+            let messages = try Message.decodeEngineArray(from: container, forKey: .messages)
+            return .agentConversationHistory(agentName: agentName, conversationId: convId, messages: messages)
 
         case .engineModelOverride:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -417,9 +418,10 @@ extension RemoteEvent {
             try container.encode(messages, forKey: .messages)
             return true
 
-        case .agentConversationHistory(let agentName, let messages):
+        case .agentConversationHistory(let agentName, let conversationId, let messages):
             try container.encode(TypeKey.agentConversationHistory, forKey: .type)
             try container.encode(agentName, forKey: .agentName)
+            try container.encodeIfPresent(conversationId, forKey: .conversationId)
             try container.encode(messages, forKey: .messages)
             return true
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var showPairingSheet = false
     @State private var elevenLabsKey: String = ""
@@ -15,12 +16,14 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                themeSection
                 connectionSection
                 desktopSettingsSection
                 voiceSection
                 diagnosticsSection
                 newTabSection
                 tabListSection
+                agentPanelSection
                 modelsSection
                 tabGroupsSection
                 pairedDevicesSection
@@ -64,6 +67,30 @@ struct SettingsView: View {
 
     // MARK: - Sections
 
+    private var themeSection: some View {
+        Section {
+            Picker("Theme", selection: Binding(
+                get: { theme.selectedThemeId },
+                set: { newValue in
+                    theme.selectedThemeId = newValue
+                    DiagnosticLog.log("[SettingsView] theme picker set to: \(newValue)")
+                }
+            )) {
+                ForEach(ThemeRegistry.themes, id: \.id) { t in
+                    Text(t.displayName).tag(t.id)
+                }
+            }
+            .onChange(of: theme.selectedThemeId) { oldVal, newVal in
+                DiagnosticLog.log("[SettingsView] theme picker changed: \(oldVal) -> \(newVal)")
+                DiagnosticLog.log("[SettingsView] theme.accent is now: \(theme.accent)")
+            }
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Arc Reactor forces dark mode. Ion Default follows system settings.")
+        }
+    }
+
     private var voiceSection: some View {
         Section {
             Toggle(isOn: Binding(
@@ -98,7 +125,7 @@ struct SettingsView: View {
                         Spacer()
                     }
                 }
-                .foregroundStyle(keySaved ? .green : IonTheme.accent)
+                .foregroundStyle(keySaved ? .green : theme.accent)
             }
             Button {
                 voiceTestInProgress = true
@@ -232,7 +259,7 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "slider.horizontal.3")
                             .font(.body)
-                            .foregroundStyle(IonTheme.accent)
+                            .foregroundStyle(theme.accent)
                             .frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Desktop Settings")
@@ -306,6 +333,21 @@ struct SettingsView: View {
             Text("Tab List")
         } footer: {
             Text("Shows the current branch and commit counts on each tab.")
+        }
+    }
+
+    private var agentPanelSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { viewModel.agentPanelFullScreenPopup },
+                set: { viewModel.agentPanelFullScreenPopup = $0 }
+            )) {
+                Label("Full-Screen Agent Detail", systemImage: "rectangle.expand.vertical")
+            }
+        } header: {
+            Text("Agent Panel")
+        } footer: {
+            Text("When enabled, tapping an agent opens a full-screen detail view instead of expanding inline.")
         }
     }
 
@@ -386,7 +428,7 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: device.displayIcon)
                                 .font(.title3)
-                                .foregroundStyle(IonTheme.accent)
+                                .foregroundStyle(theme.accent)
                                 .frame(width: 28, height: 28)
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 6) {
@@ -430,6 +472,23 @@ struct SettingsView: View {
                                 }
                             }
                             Spacer()
+                            if !isActive {
+                                Button {
+                                    DiagnosticLog.log("[SettingsView] Connect tapped for device: \(device.id)")
+                                    viewModel.switchToDevice(id: device.id)
+                                    Haptic.success()
+                                    dismiss()
+                                } label: {
+                                    Text("Connect")
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(theme.accent.opacity(0.15))
+                                        .foregroundStyle(theme.accent)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.borderless)
+                            }
                             Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -445,10 +504,11 @@ struct SettingsView: View {
                             Button {
                                 viewModel.switchToDevice(id: device.id)
                                 Haptic.success()
+                                dismiss()
                             } label: {
                                 Label("Switch to", systemImage: "arrow.right.arrow.left")
                             }
-                            .tint(IonTheme.accent)
+                            .tint(theme.accent)
                         }
                     }
                 }
@@ -487,7 +547,7 @@ struct SettingsView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "bolt.shield.fill")
                         .font(.system(size: 40))
-                        .foregroundStyle(IonTheme.accent)
+                        .foregroundStyle(theme.accent)
                     Text("Ion Remote")
                         .font(.headline)
                     Text(appVersionString)

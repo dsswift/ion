@@ -149,12 +149,12 @@ final class SessionViewModel {
     var enginePinnedPrompt: [String: String] = [:]
     var engineModelOverrides: [String: String] = [:]             // compoundKey -> model override
     // Engine conversation messages (per compound key)
-    var engineMessages: [String: [EngineMessage]] = [:]         // compoundKey -> messages
+    var engineMessages: [String: [Message]] = [:]         // compoundKey -> messages
     var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history
     var engineTurnHasText: Set<String> = []                      // compoundKeys where current LLM sub-turn produced text
-    // Agent dispatch conversation history (per agent name)
-    var agentConversationMessages: [String: [EngineMessage]] = [:]  // agentName -> messages
-    var agentConversationLoading: Set<String> = []                   // agent names currently loading
+    // Agent dispatch conversation history (per conversationId for dispatch pager)
+    var agentConversationMessages: [String: [Message]] = [:]     // conversationId -> messages
+    var agentConversationLoading: Set<String> = []               // conversationIds currently loading
     // Engine instance state (per engine tab)
     var engineInstances: [String: [EngineInstanceInfo]] = [:]   // tabId -> instances
     var activeEngineInstance: [String: String] = [:]              // tabId -> active instanceId
@@ -289,6 +289,14 @@ final class SessionViewModel {
     var showGitInfoInTabList: Bool {
         get { UserDefaults.standard.bool(forKey: "showGitInfoInTabList") }
         set { UserDefaults.standard.set(newValue, forKey: "showGitInfoInTabList") }
+    }
+
+    /// Whether tapping an agent row opens a full-screen popup (on by default).
+    var agentPanelFullScreenPopup: Bool {
+        get { UserDefaults.standard.object(forKey: "agentPanelFullScreenPopup") == nil
+              ? true
+              : UserDefaults.standard.bool(forKey: "agentPanelFullScreenPopup") }
+        set { UserDefaults.standard.set(newValue, forKey: "agentPanelFullScreenPopup") }
     }
 
     /// APNs device token (set by AppDelegate on registration success).

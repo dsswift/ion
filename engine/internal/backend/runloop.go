@@ -263,10 +263,19 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
 		if opts.CompactThreshold > 0 {
 			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
+			utils.Debug("ApiBackend", fmt.Sprintf("compactLimit=%d source=legacy-override threshold=%.0f%% window=%d", compactLimit, opts.CompactThreshold, contextWindow))
+		} else {
+			utils.Debug("ApiBackend", fmt.Sprintf("compactLimit=%d source=auto maxTokens=%d window=%d", compactLimit, opts.MaxTokens, contextWindow))
 		}
 		cp := buildCompactParams(&opts, convDir)
 		if run.cfg != nil && run.cfg.GetSessionMemory != nil {
 			cp.getSessionMemory = run.cfg.GetSessionMemory
+		}
+		if run.cfg != nil && run.cfg.GetLastSummarizedEntryID != nil {
+			cp.getLastSummarizedEntryID = run.cfg.GetLastSummarizedEntryID
+		}
+		if run.cfg != nil && run.cfg.ResetMemoryTracking != nil {
+			cp.resetMemoryTracking = run.cfg.ResetMemoryTracking
 		}
 		b.compactIfNeeded(ctx, run, conv, hooks, contextWindow, compactLimit, cp)
 
@@ -395,6 +404,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			if (strings.Contains(errMsg, "prompt_too_long") || strings.Contains(errMsg, "prompt is too long") ||
 				strings.Contains(errMsg, "overloaded_error")) && turn > 0 {
 				promptTooLongRetries++
+				utils.Debug("ApiBackend", fmt.Sprintf("prompt_too_long: retry=%d/%d runID=%s turn=%d", promptTooLongRetries, maxPromptTooLongRetries, run.requestID, turn))
 				if promptTooLongRetries > maxPromptTooLongRetries {
 					utils.Error("ApiBackend", fmt.Sprintf("prompt_too_long: %d retries exhausted, giving up: runID=%s", maxPromptTooLongRetries, run.requestID))
 					b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
@@ -443,6 +453,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		// Stream succeeded with a valid stop reason -- reset retry counters.
+		if promptTooLongRetries > 0 || truncationRetries > 0 || run.compactionsWithoutProgress > 0 {
+			utils.Debug("ApiBackend", fmt.Sprintf("counters reset: promptTooLong=%d truncation=%d compactionsWithoutProgress=%d", promptTooLongRetries, truncationRetries, run.compactionsWithoutProgress))
+		}
 		promptTooLongRetries = 0
 		truncationRetries = 0
 		run.compactionsWithoutProgress = 0
@@ -566,6 +579,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 			if len(toolUseBlocks) == 0 {
 				// No tool calls despite tool_use stop reason; treat as end_turn
+				utils.Warn("ApiBackend", fmt.Sprintf("tool_use stop reason with zero tool blocks: runID=%s turn=%d", run.requestID, turn))
 				continue
 			}
 
@@ -617,8 +631,19 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				return
 			}
 
-			// Add tool results to conversation
-			conversation.AddToolResults(conv, results)
+			// Apply system-wide tool result size cap. Oversized results
+			// (dispatch transcripts, large file reads, verbose command
+			// output) are persisted to disk with a preview so the LLM
+			// retains access without consuming context window tokens.
+			maxToolResultChars := opts.MaxToolResultChars
+			if maxToolResultChars == 0 && run.cfg != nil && run.cfg.MaxToolResultChars > 0 {
+				maxToolResultChars = run.cfg.MaxToolResultChars
+			}
+			if convDir != "" && maxToolResultChars >= 0 {
+				conversation.AddToolResultsWithSizeCheck(conv, results, convDir, maxToolResultChars)
+			} else {
+				conversation.AddToolResults(conv, results)
+			}
 			// Persist immediately so tool history survives mid-multi-turn crashes.
 			if err := conversation.Save(conv, ""); err != nil {
 				utils.Log("ApiBackend", "failed to save conversation after AddToolResults: "+err.Error())

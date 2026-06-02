@@ -51,6 +51,7 @@ func (a *llmCallTestAccessor) DeregisterAgent(_ string)                         
 func (a *llmCallTestAccessor) RegisterAgentSpec(_ types.AgentSpec)              {}
 func (a *llmCallTestAccessor) DeregisterAgentSpec(_ string)                     {}
 func (a *llmCallTestAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) { return types.AgentSpec{}, false }
+func (a *llmCallTestAccessor) LookupExtDisplayName(_ string) string             { return "" }
 func (a *llmCallTestAccessor) ExtGroup() *extension.ExtensionGroup              { return a.extGroup }
 func (a *llmCallTestAccessor) ExtConfig() *extension.ExtensionConfig            { return nil }
 func (a *llmCallTestAccessor) ProcRegistry() *extension.ProcessRegistry         { return nil }

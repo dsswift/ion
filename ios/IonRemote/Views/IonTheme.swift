@@ -3,11 +3,18 @@ import SwiftUI
 // MARK: - IonTheme
 
 /// Centralized design tokens — single source of truth for the entire app.
+///
+/// Color tokens here reflect the Ion Default palette and are kept for
+/// backward compatibility with views that reference `IonTheme.accent`
+/// directly. Theme-aware views should read colors from the `appTheme`
+/// environment value instead (see `AppTheme.swift`).
 enum IonTheme {
 
     // MARK: Colors
+    // These also available via @Environment(\.appTheme) for theme-aware views.
 
     static let accent = Color(hex: 0x4ECDC4)
+    static let accentSubtle = Color(hex: 0x4ECDC4, opacity: 0.12)
     static let surfaceElevated = Color(.tertiarySystemBackground)
     static let codeBg = Color(.secondarySystemFill).opacity(0.7)
     static let userBubbleTint = Color(hex: 0x4ECDC4).opacity(0.08)

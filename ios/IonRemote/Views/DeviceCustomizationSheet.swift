@@ -8,6 +8,7 @@ import SwiftUI
 /// desktop. The desktop persists the value and broadcasts to every paired
 /// phone — so this same edit will appear on the user's other iPhones too.
 struct DeviceCustomizationSheet: View {
+    @Environment(\.appTheme) private var theme
     let device: PairedDevice
 
     @Environment(SessionViewModel.self) private var viewModel
@@ -135,13 +136,13 @@ struct DeviceCustomizationSheet: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? IonTheme.accent.opacity(0.18) : Color(.tertiarySystemBackground))
+                    .fill(isSelected ? theme.accent.opacity(0.18) : Color(.tertiarySystemBackground))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? IonTheme.accent : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? theme.accent : Color.clear, lineWidth: 2)
             )
-            .foregroundStyle(isSelected ? IonTheme.accent : .primary)
+            .foregroundStyle(isSelected ? theme.accent : .primary)
         }
         .buttonStyle(.plain)
         .disabled(saving)

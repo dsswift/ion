@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PairingView: View {
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -58,12 +59,12 @@ struct PairingView: View {
                 VStack(spacing: 16) {
                     ZStack {
                         Circle()
-                            .stroke(IonTheme.accent.opacity(0.3), lineWidth: 2)
+                            .stroke(theme.accent.opacity(0.3), lineWidth: 2)
                             .frame(width: 80, height: 80)
                             .scaleEffect(pulseScale)
                             .opacity(2 - pulseScale)
                         Circle()
-                            .stroke(IonTheme.accent.opacity(0.15), lineWidth: 2)
+                            .stroke(theme.accent.opacity(0.15), lineWidth: 2)
                             .frame(width: 80, height: 80)
                             .scaleEffect(pulseScale * 0.7 + 0.3)
                             .opacity(2 - pulseScale)
@@ -120,9 +121,9 @@ struct PairingView: View {
             HStack {
                 Image(systemName: icon)
                     .font(.caption)
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
                     .frame(width: 28, height: 28)
-                    .background(IonTheme.accent.opacity(0.12), in: Circle())
+                    .background(theme.accent.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(service.name)
                         .font(.headline)
@@ -153,7 +154,7 @@ struct PairingView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
                         .font(.system(size: 40))
-                        .foregroundStyle(IonTheme.accent)
+                        .foregroundStyle(theme.accent)
                     Text(service.name)
                         .font(.title2.bold())
                     Text("\(service.host):\(service.port)")
@@ -194,7 +195,7 @@ struct PairingView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "desktopcomputer")
                         .font(.system(size: 40))
-                        .foregroundStyle(IonTheme.accent)
+                        .foregroundStyle(theme.accent)
                     Text(service.name)
                         .font(.title2.bold())
                     Text("\(service.host):\(service.port)")
@@ -239,7 +240,7 @@ struct PairingView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.small))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: IonTheme.Radius.small)
-                                                .stroke(index == pairingCodeInput.count ? IonTheme.accent : Color(.separator), lineWidth: index == pairingCodeInput.count ? 2 : 1)
+                                                .stroke(index == pairingCodeInput.count ? theme.accent : Color(.separator), lineWidth: index == pairingCodeInput.count ? 2 : 1)
                                         )
                                 }
                             }
@@ -268,7 +269,7 @@ struct PairingView: View {
                                     .font(.caption)
                             }
                             .buttonStyle(.bordered)
-                            .tint(IonTheme.accent)
+                            .tint(theme.accent)
                         }
                     }
                     .onTapGesture { codeFieldFocused = true }
@@ -288,7 +289,7 @@ struct PairingView: View {
                             .padding(.vertical, 14)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(IonTheme.accent)
+                    .tint(theme.accent)
                     .disabled(pairingCodeInput.count != 6 || viewModel.pairingState.isConnecting)
                     .padding(.horizontal, 40)
 

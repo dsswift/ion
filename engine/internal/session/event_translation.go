@@ -257,13 +257,27 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	utils.Info("Session", fmt.Sprintf("handleRunExit: key=%s runID=%s code=%s signal=%s sessionID=%s", key, runID, codeStr, sigStr, sessionID))
 
 	var nextPrompt *pendingPrompt
+	var bgCount int
 	m.mu.Lock()
 	if s, ok := m.sessions[key]; ok {
 		s.requestID = ""
 		// Preserve completed agent states (done/error/cancelled) so their
 		// conversation history survives for post-run inspection and tab
-		// persistence. Only clear agents still stuck at "running" (stale).
-		s.agents.ClearRunningStates()
+		// persistence. Also preserve running states that correspond to active
+		// background dispatches — those agents are legitimately still running.
+		// Only clear running states that are stale (no live dispatch backing them).
+		if s.dispatchRegistry != nil {
+			activeNames := s.dispatchRegistry.ActiveNames()
+			bgCount = len(activeNames)
+			if bgCount > 0 {
+				utils.Log("Session", fmt.Sprintf("handleRunExit: preserving %d background dispatch agent(s): %v", bgCount, activeNames))
+				s.agents.ClearRunningStatesExcept(activeNames)
+			} else {
+				s.agents.ClearRunningStates()
+			}
+		} else {
+			s.agents.ClearRunningStates()
+		}
 		if sessionID != "" {
 			s.conversationID = sessionID
 		}
@@ -319,13 +333,21 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	}
 	m.mu.RUnlock()
 
+	// When background dispatches are still running, include the count so
+	// clients can keep the tab status active and interrupt button visible
+	// even though the parent LLM turn has ended.
+	idleFields := &types.StatusFields{
+		Label: key, State: "idle", SessionID: sessionID,
+		ContextPercent: idlePct, ContextWindow: idleCW,
+		Model: idleModel, TotalCostUsd: idleCost,
+		BackgroundAgents: bgCount,
+	}
+	if bgCount > 0 {
+		utils.Log("Session", fmt.Sprintf("handleRunExit: emitting idle with backgroundAgents=%d key=%s", bgCount, key))
+	}
 	m.emit(key, types.EngineEvent{
-		Type: "engine_status",
-		Fields: &types.StatusFields{
-			Label: key, State: "idle", SessionID: sessionID,
-			ContextPercent: idlePct, ContextWindow: idleCW,
-			Model: idleModel, TotalCostUsd: idleCost,
-		},
+		Type:   "engine_status",
+		Fields: idleFields,
 	})
 
 	if (code != nil && *code != 0) || signal != nil {

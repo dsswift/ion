@@ -3,6 +3,7 @@ import SwiftUI
 /// List of staged and unstaged file changes in a tree layout grouped by directory,
 /// with stage/unstage swipe actions and a commit bar.
 struct GitChangesListView: View {
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     let directory: String
     @State private var commitMessage = ""
@@ -39,7 +40,7 @@ struct GitChangesListView: View {
             VStack(spacing: 12) {
                 Image(systemName: "checkmark.circle")
                     .font(.system(size: 32))
-                    .foregroundStyle(IonTheme.accent)
+                    .foregroundStyle(theme.accent)
                 Text("Working tree clean")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -236,7 +237,7 @@ struct GitChangesListView: View {
                 Spacer()
                 if selectMode {
                     Image(systemName: selectedPaths.contains(file.path) ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selectedPaths.contains(file.path) ? IonTheme.accent : Color(.tertiaryLabel))
+                        .foregroundStyle(selectedPaths.contains(file.path) ? theme.accent : Color(.tertiaryLabel))
                         .onTapGesture {
                             if selectedPaths.contains(file.path) {
                                 selectedPaths.remove(file.path)
@@ -336,7 +337,7 @@ struct GitChangesListView: View {
                     .foregroundStyle(
                         commitMessage.trimmingCharacters(in: .whitespaces).isEmpty
                             ? .secondary
-                            : IonTheme.accent
+                            : theme.accent
                     )
             }
             .disabled(commitMessage.trimmingCharacters(in: .whitespaces).isEmpty)

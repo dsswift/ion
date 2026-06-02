@@ -164,6 +164,15 @@ type RunHooks struct {
 	// auto-approve (always allow the exit).
 	OnPlanModeExit func(planFilePath string) (allowed bool, reason string)
 
+	// GetSessionPlanFilePath retrieves the session-level planFilePath when
+	// the run's own planFilePath is empty. This happens when the model calls
+	// ExitPlanMode outside of engine plan mode (prompt-level plan mode) — the
+	// run was created with planMode=false and planFilePath="", but the session
+	// still retains the planFilePath from a prior plan-mode run. Without this
+	// fallback, the ExitPlanMode interception emits a plan_proposal with an
+	// empty planFilePath, which consumers cannot act on.
+	GetSessionPlanFilePath func() string
+
 	// OnSystemInject fires before each engine-injected steering message.
 	// Returns (text, suppress). If suppress is true, the message is not injected.
 	// If text is non-empty, it replaces the default.
@@ -233,4 +242,19 @@ type RunConfig struct {
 	// as a zero-cost compaction summary. Set by the session layer from
 	// SessionMemory.GetMemory. Nil means session memory is not available.
 	GetSessionMemory func() string
+
+	// GetLastSummarizedEntryID returns the entry ID boundary of the most
+	// recent session memory summary. Used by the compaction system to
+	// validate that the memory covers the messages being dropped.
+	GetLastSummarizedEntryID func() string
+
+	// ResetMemoryTracking resets the session memory debounce baselines
+	// to the given token count after compaction reduces the message count.
+	ResetMemoryTracking func(tokens int)
+
+	// MaxToolResultChars caps the character count of any single tool result
+	// added to the conversation. Threaded from engine.json compaction config.
+	// Zero means "use built-in default" (conversation.DefaultMaxToolResultChars).
+	// Per-run RunOptions.MaxToolResultChars takes precedence when non-zero.
+	MaxToolResultChars int
 }

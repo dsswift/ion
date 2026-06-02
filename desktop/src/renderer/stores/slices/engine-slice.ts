@@ -420,7 +420,10 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         return { enginePinnedPrompt: pinnedPrompt, engineMessages: messages, tabs, enginePermissionDenied }
       })
       const prefs = usePreferencesStore.getState()
-      const modelOverride = get().engineModelOverrides.get(key) || prefs.engineDefaultModel || prefs.preferredModel || undefined
+      const rawModel = get().engineModelOverrides.get(key) || prefs.engineDefaultModel || prefs.preferredModel || undefined
+      // Filter out invalid model values (e.g. "unknown" from stale state)
+      // so the engine's own defaultModel resolution handles the fallback.
+      const modelOverride = rawModel === 'unknown' ? undefined : rawModel
       window.ion.enginePrompt(key, text, modelOverride, appendSystemPrompt, imageAttachments, rawAttachments, implementationPhase).then((result) => {
         if (result && !result.ok) {
           set((state) => {

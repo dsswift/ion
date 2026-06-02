@@ -114,7 +114,7 @@ extension SessionViewModel {
         DiagnosticLog.log("VOICE-TTS: taskComplete tabId=\(tabId.prefix(8)) convLoaded=\(convLoaded) liveText=\(capturedLiveText?.count ?? -1) msgs=\(messages[tabId]?.count ?? -1) engineMsgs=\(engineMessages[key]?.count ?? -1)")
         let spokenInfo: (text: String, messageId: String?)? = {
             // 1. engineMessages (engine_text_delta path) — no stable message ID
-            if let last = engineMessages[key]?.last(where: { $0.role == "assistant" }),
+            if let last = engineMessages[key]?.last(where: { $0.role == .assistant }),
                !last.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return (last.content, nil)
             }

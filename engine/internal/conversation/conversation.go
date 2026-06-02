@@ -59,15 +59,16 @@ type ModelChangeData struct {
 
 // AgentDispatchData records a completed agent dispatch for persistence.
 type AgentDispatchData struct {
-	AgentName       string   `json:"agentName"`
-	AgentID         string   `json:"agentId"`
-	DisplayName     string   `json:"displayName,omitempty"`
-	Task            string   `json:"task,omitempty"`
-	Model           string   `json:"model,omitempty"`
-	Status          string   `json:"status"`
-	Elapsed         float64  `json:"elapsed,omitempty"`
-	ConversationID  string   `json:"conversationId,omitempty"`
-	ConversationIDs []string `json:"conversationIds,omitempty"`
+	AgentName       string                   `json:"agentName"`
+	AgentID         string                   `json:"agentId"`
+	DisplayName     string                   `json:"displayName,omitempty"`
+	Task            string                   `json:"task,omitempty"`
+	Model           string                   `json:"model,omitempty"`
+	Status          string                   `json:"status"`
+	Elapsed         float64                  `json:"elapsed,omitempty"`
+	ConversationID  string                   `json:"conversationId,omitempty"`
+	ConversationIDs []string                 `json:"conversationIds,omitempty"`
+	Dispatches      []map[string]interface{} `json:"dispatches,omitempty"`
 }
 
 // SessionEntry is a single node in the conversation tree.
@@ -237,6 +238,20 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		copy(entryCopy, blocks)
 		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy})
 	}
+}
+
+// AddToolResultsWithSizeCheck appends tool results with an automatic size cap.
+// Results exceeding maxChars are persisted to disk and replaced with a preview
+// containing the first 2K characters plus a file path the model can Read.
+// When maxChars <= 0, DefaultMaxToolResultChars is used.
+func AddToolResultsWithSizeCheck(conv *Conversation, results []ToolResultEntry, convDir string, maxChars int) {
+	for i := range results {
+		replaced, persisted := PersistAndPreview(results[i].Content, results[i].ToolUseID, convDir, conv.ID, maxChars)
+		if persisted {
+			results[i].Content = replaced
+		}
+	}
+	AddToolResults(conv, results)
 }
 
 // UpdateCost adds to the running cost total.

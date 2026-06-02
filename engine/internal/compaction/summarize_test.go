@@ -104,6 +104,46 @@ func TestFormatMessagesForSummary_MultipleLongMessages(t *testing.T) {
 	}
 }
 
+func TestFormatMessagesForSummary_ToolResultTruncation(t *testing.T) {
+	// Tool result messages (user role with tool_result content blocks)
+	// should be truncated at 500 chars, not 2000.
+	longResult := strings.Repeat("x", 1000)
+	msgs := []types.LlmMessage{
+		{Role: "user", Content: []types.LlmContentBlock{
+			{Type: "tool_result", ToolUseID: "t1", Content: longResult},
+		}},
+	}
+	result := FormatMessagesForSummary(msgs)
+
+	// With 500-char limit + "[user]: " prefix + "... [truncated]" suffix,
+	// the total should be well under 600 chars.
+	if len(result) > 600 {
+		t.Errorf("tool result should be truncated at 500 chars, got %d total chars", len(result))
+	}
+	if !strings.Contains(result, "... [truncated]") {
+		t.Error("expected truncation marker for tool result")
+	}
+}
+
+func TestFormatMessagesForSummary_ToolResultVsUserMessage(t *testing.T) {
+	// A 1000-char plain user message should NOT be truncated (under 2000 limit),
+	// but a 1000-char tool result SHOULD be truncated (over 500 limit).
+	text1000 := strings.Repeat("y", 1000)
+	msgs := []types.LlmMessage{
+		{Role: "user", Content: text1000},
+		{Role: "user", Content: []types.LlmContentBlock{
+			{Type: "tool_result", ToolUseID: "t1", Content: text1000},
+		}},
+	}
+	result := FormatMessagesForSummary(msgs)
+
+	// Only one truncation marker — the tool result.
+	count := strings.Count(result, "... [truncated]")
+	if count != 1 {
+		t.Errorf("expected 1 truncation marker (tool result only), got %d", count)
+	}
+}
+
 func TestSetAuthResolver(t *testing.T) {
 	// Verify SetAuthResolver doesn't panic and can set/clear the resolver.
 	original := authResolver

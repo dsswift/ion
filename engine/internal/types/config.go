@@ -170,6 +170,13 @@ type CompactionConfig struct {
 	MemoryUpdateThreshold int    `json:"memoryUpdateThreshold,omitempty"`
 	MemoryUpdateMinTurns  int    `json:"memoryUpdateMinTurns,omitempty"`
 	MemoryMaxTokens       int    `json:"memoryMaxTokens,omitempty"`
+
+	// MaxToolResultChars caps the character count of any single tool result
+	// added to the conversation. Results exceeding this limit are persisted
+	// to disk and replaced with a preview (first 2K chars) plus a file path
+	// the model can Read. Zero means use the built-in default (50 000).
+	// Set via engine.json: { "compaction": { "maxToolResultChars": 80000 } }
+	MaxToolResultChars int `json:"maxToolResultChars,omitempty"`
 }
 
 // --- Security Config ---

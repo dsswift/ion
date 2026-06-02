@@ -9,6 +9,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -59,6 +60,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			if matched, ok := m.resolveAgentSpec(s, key, requestedName); ok {
 				spec = matched
 				specMatched = true
+			} else {
+				utils.Debug("Session", fmt.Sprintf("agent spec not resolved: name=%q key=%s (continuing as unnamed)", requestedName, key))
 			}
 			// When resolution fails, continue with an unnamed agent rather
 			// than hard-failing. The model's intent was to parallelize work;
@@ -104,45 +107,53 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			childModel = capturedModel
 		}
 
+		utils.Debug("Session", fmt.Sprintf("child model resolved: requested=%q spec=%q parent=%q resolved=%q name=%s", model, func() string { if specMatched { return spec.Model }; return "" }(), capturedModel, childModel, agentName))
+
 		start := time.Now()
 
-		// When re-dispatching to an existing specialist, update the
-		// existing state entry instead of appending a duplicate row.
-		// The agent row is a living conversation view that accumulates
-		// all dispatches to the same specialist.
-		existingIdx := s.agents.FindStateIndex(agentName)
-		if existingIdx >= 0 {
-			s.agents.UpdateState(agentName, func(state *types.AgentStateUpdate) {
-				state.ID = agentID
-				state.Status = "running"
-				if state.Metadata == nil {
-					state.Metadata = map[string]interface{}{}
-				}
-				state.Metadata["task"] = prompt
-				state.Metadata["model"] = childModel
-				state.Metadata["startTime"] = start.Unix()
-				state.Metadata["lastWork"] = ""
-				delete(state.Metadata, "elapsed")
-			})
-		} else {
-			s.agents.AppendState(types.AgentStateUpdate{
-				Name:   agentName,
-				ID:     agentID,
-				Status: "running",
-				Metadata: map[string]interface{}{
-					"displayName": displayName,
-					"type":        "agent",
-					"visibility":  "sticky",
-					"invited":     true,
-					"task":        prompt,
-					"model":       childModel,
-					"startTime":   start.Unix(),
-				},
-			})
+		// Atomically update an existing specialist entry or append a new
+		// one. Using AppendOrUpdate prevents the TOCTOU race where two
+		// concurrent dispatches of the same specialist both see "not found"
+		// and both append, creating duplicate rows.
+		newDispatch := map[string]interface{}{
+			"id":        agentID,
+			"task":      prompt,
+			"model":     childModel,
+			"status":    "running",
+			"startTime": start.Unix(),
 		}
+		reused := s.agents.AppendOrUpdate(types.AgentStateUpdate{
+			Name:   agentName,
+			ID:     agentID,
+			Status: "running",
+			Metadata: map[string]interface{}{
+				"displayName": displayName,
+				"type":        "agent",
+				"visibility":  "sticky",
+				"invited":     true,
+				"task":        prompt,
+				"model":       childModel,
+				"startTime":   start.Unix(),
+				"dispatches":  []interface{}{newDispatch},
+			},
+		}, func(existing *types.AgentStateUpdate) {
+			existing.ID = agentID
+			existing.Status = "running"
+			if existing.Metadata == nil {
+				existing.Metadata = map[string]interface{}{}
+			}
+			existing.Metadata["task"] = prompt
+			existing.Metadata["model"] = childModel
+			existing.Metadata["startTime"] = start.Unix()
+			existing.Metadata["lastWork"] = ""
+			delete(existing.Metadata, "elapsed")
+			// Append new dispatch entry to the structured dispatches array.
+			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+			existing.Metadata["dispatches"] = append(existingDispatches, newDispatch)
+		})
 		snapshot := s.agents.MergedSnapshot()
 
-		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=agent_start name=%s id=%s reuse=%v", capturedKey, len(snapshot), agentName, agentID, existingIdx >= 0))
+		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=agent_start name=%s id=%s reuse=%v", capturedKey, len(snapshot), agentName, agentID, reused))
 		m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
 		// Fire agent_start on the parent extension group so user observers
@@ -223,6 +234,9 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				textAccum = "" // Reset text accumulator on new tool call
 				progressMu.Unlock()
 				emitProgress(fmt.Sprintf("Using %s...", e.ToolName))
+
+			default:
+				utils.Debug("Session", fmt.Sprintf("child event not forwarded: agentID=%s type=%T", agentID, ev.Data))
 			}
 		})
 		child.OnExit(func(_ string, _ *int, _ *string, _ string) {
@@ -301,6 +315,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				// Keep single-value key for backward compatibility
 				state.Metadata["conversationId"] = childConvID
 			}
+			// Update the current dispatch entry in the structured dispatches array.
+			agents.UpdateDispatchEntry(state.Metadata, agentID, state.Status, elapsed, childConvID)
 		})
 		snapshot2 := s.agents.MergedSnapshot()
 
@@ -322,6 +338,8 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		} else {
 			utils.Debug("Session", fmt.Sprintf("agent_end skipped: no extensions key=%s name=%s", capturedKey, agentName))
 		}
+
+		utils.Debug("Session", fmt.Sprintf("agent spawner returning: name=%s id=%s cancelled=%v err=%v resultLen=%d", agentName, agentID, cancelled, childErr, len(result)))
 
 		if cancelled {
 			return "", ctx.Err()

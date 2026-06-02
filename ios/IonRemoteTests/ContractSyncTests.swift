@@ -92,6 +92,7 @@ final class ContractSyncTests: XCTestCase {
                 ["toolName": "bash", "toolUseId": "tu-1"],
             ],
             "extensionName": "Chief of Staff",
+            "backgroundAgents": 2,
         ]
 
         let data = try JSONSerialization.data(withJSONObject: json)
@@ -105,7 +106,7 @@ final class ContractSyncTests: XCTestCase {
 
         // Verify we know about all Go fields (document any intentional gaps)
         let swiftHandled: Set<String> = [
-            "label", "state", "sessionId", "team", "model",
+            "backgroundAgents", "label", "state", "sessionId", "team", "model",
             "contextPercent", "contextWindow", "totalCostUsd",
             "permissionDenials", "extensionName",
         ]

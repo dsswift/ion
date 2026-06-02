@@ -90,6 +90,19 @@ struct EngineInstanceBar: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            // -- Clipboard actions --
+            let instanceKey = "\(tabId):\(instance.id)"
+            if let sessionId = viewModel.engineStatusFields[instanceKey]?.sessionId {
+                Button {
+                    UIPasteboard.general.string = sessionId
+                    viewModel.showToast(ToastMessage(style: .success, title: "Session ID copied"))
+                } label: {
+                    Label("Copy Session ID", systemImage: "doc.on.doc")
+                }
+                Divider()
+            }
+
+            // -- Instance management --
             Button {
                 renamingInstance = instance
                 renameText = instance.label
@@ -122,11 +135,12 @@ struct EngineInstanceBar: View {
 /// Small pulsing orange dot for running engine instances. Matches the
 /// pulse animation from `TabRowView` (1.5s easeInOut, opacity 1→0.3).
 private struct InstancePulsingDot: View {
+    @Environment(\.appTheme) private var theme
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {
         Circle()
-            .fill(IonTheme.statusRunning)
+            .fill(theme.statusRunning)
             .frame(width: 6, height: 6)
             .opacity(pulseOpacity)
             .onAppear {

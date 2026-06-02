@@ -144,6 +144,11 @@ type StatusFields struct {
 	// transitions so clients can show "Chief of Staff [idle]" instead of a
 	// GUID compound key. Empty means no extension name was broadcast.
 	ExtensionName string `json:"extensionName,omitempty"`
+	// BackgroundAgents is the number of background dispatch agents still running
+	// when the parent LLM turn ends. When > 0, the engine is "idle" (the parent
+	// isn't running) but background work is in progress. Clients use this to keep
+	// the tab status active and the interrupt button visible.
+	BackgroundAgents int `json:"backgroundAgents,omitempty"`
 }
 
 // --- Engine Events ---
@@ -545,6 +550,11 @@ type RunOptions struct {
 	CompactMemoryUpdateThreshold int      `json:"compactMemoryUpdateThreshold,omitempty"`
 	CompactMemoryUpdateMinTurns  int      `json:"compactMemoryUpdateMinTurns,omitempty"`
 	CompactMemoryMaxTokens       int      `json:"compactMemoryMaxTokens,omitempty"`
+	// MaxToolResultChars caps the character count of any single tool result
+	// for this run. Results exceeding this limit are persisted to disk and
+	// replaced with a preview. Zero means "inherit from engine.json or
+	// built-in default". Negative disables the cap entirely for this run.
+	MaxToolResultChars           int      `json:"maxToolResultChars,omitempty"`
 	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
 	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
 	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`

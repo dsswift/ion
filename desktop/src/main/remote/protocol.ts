@@ -33,6 +33,8 @@ export interface RemoteTabState {
   groupId?: string | null
   /** When true, auto-group movement is suppressed for this tab. */
   groupPinned?: boolean
+  /** The current conversation/session ID for this tab. Engine tabs use StatusFields.sessionId instead. */
+  conversationId?: string | null
   /** Unix ms timestamp of the last status-changing activity (message, status change). */
   lastActivityAt?: number
 }
@@ -209,7 +211,7 @@ export type RemoteEvent =
   | { type: 'engine_instance_removed'; tabId: string; instanceId: string }
   | { type: 'engine_instance_moved'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number; dedupKey?: string }> }
-  | { type: 'agent_conversation_history'; agentName: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
+  | { type: 'agent_conversation_history'; agentName: string; conversationId?: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   // ─── Desktop settings projection (Part 7) ───────────────────────────

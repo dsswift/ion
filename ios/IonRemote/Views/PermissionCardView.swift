@@ -19,6 +19,7 @@ struct PermissionCardView: View {
 // MARK: - Generic Permission Card
 
 struct PermissionCardGenericView: View {
+    @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
     let request: PermissionRequest
@@ -87,7 +88,7 @@ struct PermissionCardGenericView: View {
         if label.contains("deny") || label.contains("reject") || label.contains("no") {
             return .red
         }
-        return IonTheme.accent
+        return theme.accent
     }
 
     /// Finds the deny/reject/no option and responds with it, or dismisses the card.
