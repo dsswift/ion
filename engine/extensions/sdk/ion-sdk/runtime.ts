@@ -377,16 +377,24 @@ async function handleRequest(
       const payload = { ...params }
       delete payload._ctx
 
+      // The engine wraps non-object payloads (bare strings) as
+      // {_payload: value} because they can't be merged into the
+      // params map. Unwrap so handlers receive the bare value.
+      const payloadKeys = Object.keys(payload)
+      const unwrapped =
+        payloadKeys.length === 1 && payloadKeys[0] === '_payload'
+          ? payload._payload
+          : payloadKeys.length > 0
+            ? payload
+            : undefined
+
       // Use a local array to collect events. Save/restore the global so
       // reentrant hook calls (possible when handlers await) don't clobber.
       const savedEvents = activeEvents
       const localEvents: EngineEvent[] = []
       activeEvents = localEvents
       const ctx = buildContext(ctxData)
-      const result = await handler(
-        ctx,
-        Object.keys(payload).length > 0 ? payload : undefined,
-      )
+      const result = await handler(ctx, unwrapped)
       activeEvents = savedEvents
 
       // Wrap the handler return value with any accumulated events.
