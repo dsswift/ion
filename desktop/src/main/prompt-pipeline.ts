@@ -101,6 +101,7 @@ import { encodeImageAttachments } from './remote/attachment-encoder'
 import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 import { emitRemoteMessageAdded, insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
+import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
 
 export { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 
@@ -267,7 +268,80 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  * sessionPlane.submitPrompt; for the engine path we go through the engine
  * bridge directly.
  */
+/**
+ * Apply harness-owned system-prompt addenda to the in-flight prompt.
+ * Runs at the converging dispatch point so every prompt origin (desktop
+ * renderer + iOS CLI/engine, slash + non-slash, fresh + bouncing back
+ * from a remote→renderer→IPC roundtrip) gets the same treatment.
+ *
+ * Today the only addendum is `TURN_GROUPING_GUIDANCE` (see
+ * ./turn-grouping-guidance.ts for why). When future harness-level
+ * coaching is added, it goes here too — never inject from the
+ * renderer or from the slash-expansion path, both of which run on
+ * subsets of the prompt population.
+ *
+ * The append target is split across two fields:
+ *
+ *   - `p.appendSystemPrompt` — read by the engine-tab terminal
+ *     dispatch at `engineBridge.sendPrompt(...)`.
+ *   - `p.runOptions?.appendSystemPrompt` — read by the CLI desktop
+ *     terminal dispatch at `sessionPlane.submitPrompt(...)`.
+ *
+ * The slash-expansion path (`handleSlash`) writes both fields to keep
+ * them consistent (see lines 438–445), so we mirror that here.
+ *
+ * Idempotency
+ * ───────────
+ * The iOS engine path bounces through the renderer once: the first
+ * pipeline invocation (source='remote') appends the guidance to
+ * `p.appendSystemPrompt`, broadcasts via REMOTE_ENGINE_PROMPT (which
+ * forwards `appendSystemPrompt`), the renderer calls back into
+ * `window.ion.enginePrompt(...)`, IPC delivers it to the pipeline a
+ * second time (source='desktop'), and the helper runs again. Without
+ * an idempotency check, the guidance would be appended twice on
+ * iOS-originated engine prompts. The `.endsWith()` guard makes the
+ * helper safe to call any number of times on the same `p`.
+ *
+ * The iOS CLI path does not need the guard for its own bounce-back
+ * (REMOTE_USER_MESSAGE drops `appendSystemPrompt`), but the guard
+ * costs nothing and keeps the helper invariant uniform across paths.
+ */
+function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
+  const before = p.appendSystemPrompt?.length ?? 0
+  const beforeRun = p.runOptions?.appendSystemPrompt?.length ?? 0
+  let didAppendPrimary = false
+  let didAppendRun = false
+
+  if (!p.appendSystemPrompt || !p.appendSystemPrompt.endsWith(TURN_GROUPING_GUIDANCE)) {
+    p.appendSystemPrompt = p.appendSystemPrompt
+      ? `${p.appendSystemPrompt}\n\n${TURN_GROUPING_GUIDANCE}`
+      : TURN_GROUPING_GUIDANCE
+    didAppendPrimary = true
+  }
+  if (p.runOptions) {
+    const existing = p.runOptions.appendSystemPrompt
+    if (!existing || !existing.endsWith(TURN_GROUPING_GUIDANCE)) {
+      p.runOptions.appendSystemPrompt = existing
+        ? `${existing}\n\n${TURN_GROUPING_GUIDANCE}`
+        : TURN_GROUPING_GUIDANCE
+      didAppendRun = true
+    }
+  }
+
+  log(`pipeline: applyHarnessSystemPromptAddenda tab=${p.tabId} ` +
+      `engineField=${didAppendPrimary ? `appended (${before}→${p.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)'} ` +
+      `runOptionsField=${p.runOptions ? (didAppendRun ? `appended (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent'}`)
+}
+
 async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
+  // Harness-owned system-prompt addenda are applied here, at the single
+  // converging dispatch point. See applyHarnessSystemPromptAddenda for
+  // the full reasoning (idempotency, dual-field write, why-not-in-the-
+  // renderer). Both terminal dispatches below (engineBridge.sendPrompt
+  // for engine tabs, sessionPlane.submitPrompt for CLI tabs) read the
+  // updated fields.
+  applyHarnessSystemPromptAddenda(p)
+
   if (p.isEngineTab) {
     const key = engineKey(p)
     log(`pipeline: submit engine prompt key=${key} textLen=${p.text.length}`)

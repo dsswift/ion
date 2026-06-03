@@ -13,7 +13,7 @@ import { ArrowDown } from '@phosphor-icons/react'
 import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, HarnessMessage, MessageBubble,
-  CopyButton, InterruptButton, CompactionRow,
+  CopyButton, InterruptButton, CompactionRow, AgentTurnGroup,
 } from './conversation'
 
 // Stable empty refs to avoid creating new array/object references on every render.
@@ -86,6 +86,7 @@ export function EngineView({ tabId }: EngineViewProps) {
   const submitEnginePrompt = useSessionStore(s => s.submitEnginePrompt)
   const isTall = useSessionStore(s => s.tallViewTabId === tabId)
   const toggleTallView = useSessionStore(s => s.toggleTallView)
+  const unifiedTurnView = usePreferencesStore(s => s.unifiedTurnView)
   const engineModelOverride = useSessionStore(s => {
     const p = s.enginePanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
@@ -112,7 +113,7 @@ export function EngineView({ tabId }: EngineViewProps) {
 
   // Include all messages (user messages shown inline, plus pinned prompt header)
   const visibleMessages = messages
-  const grouped = useMemo(() => groupMessages(visibleMessages, { includeUser: true }), [visibleMessages])
+  const grouped = useMemo(() => groupMessages(visibleMessages, { includeUser: true, unifiedTurnView }), [visibleMessages, unifiedTurnView])
 
   const hasContent = visibleMessages.some(m => m.role === 'assistant' && (m.content || '').length > 0)
   const showThinking = isRunning && !hasContent && agentStates.filter(a => a.status === 'running').length === 0
@@ -381,6 +382,8 @@ export function EngineView({ tabId }: EngineViewProps) {
                     return <AssistantMessage key={item.message.id} message={item.message} skipMotion />
                   case 'tool-group':
                     return <ToolGroup key={`tg-${idx}`} tools={item.messages} skipMotion />
+                  case 'agent-turn':
+                    return <AgentTurnGroup key={`at-${idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} skipMotion />
                   case 'harness':
                     return <HarnessMessage key={item.message.id} message={item.message} skipMotion bootstrapCollapsedCount={item.bootstrapCollapsedCount} />
                   case 'system':

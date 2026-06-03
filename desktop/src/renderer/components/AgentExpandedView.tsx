@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { SpinnerGap, ArrowCircleRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
-import { groupMessages, ToolGroup, AssistantMessage, MessageBubble } from './conversation'
+import { usePreferencesStore } from '../preferences'
+import { groupMessages, ToolGroup, AssistantMessage, MessageBubble, AgentTurnGroup } from './conversation'
 import { meta, formatDuration } from './agent-panel-helpers'
 import { DispatchPager } from './DispatchPager'
 import type { DispatchInfo } from './agent-panel-helpers'
@@ -42,6 +43,7 @@ export interface ExpandedViewProps {
 export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFullscreen, dispatches, selectedDispatch, onSelectDispatch }: ExpandedViewProps) {
   // In popup/fullscreen mode, use normal padding; inline mode indents past the agent label
   const leftPad = isFullscreen ? 12 : 148
+  const unifiedTurnView = usePreferencesStore((s) => s.unifiedTurnView)
   const hasMultipleDispatches = dispatches.length > 1
   // When pager is active, show the selected dispatch's info instead of top-level
   const activeDispatch = hasMultipleDispatches ? dispatches[selectedDispatch] : undefined
@@ -138,7 +140,7 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
           toolStatus: 'completed' as const,
           timestamp: 0,
         }))
-    const grouped = groupMessages(msgs, { includeUser: true })
+    const grouped = groupMessages(msgs, { includeUser: true, unifiedTurnView })
 
     return (
       <div style={{ background: 'rgba(255,255,255,0.03)' }}>
@@ -161,6 +163,9 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
             }
             if (item.kind === 'tool-group') {
               return <ToolGroup key={`tg-${idx}`} tools={item.messages} skipMotion />
+            }
+            if (item.kind === 'agent-turn') {
+              return <AgentTurnGroup key={`at-${idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} skipMotion />
             }
             return null
           })}

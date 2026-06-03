@@ -167,6 +167,15 @@ export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = [
       'Automatically expand the agent panel when agents are dispatched. Disable to keep it collapsed until manually opened.',
     defaultValue: true,
   },
+  {
+    key: 'unifiedTurnView',
+    type: 'boolean',
+    group: 'conversation',
+    label: 'Unified turn view',
+    description:
+      'Group tool calls into a collapsible panel and show assistant text as a continuous block, instead of interleaving tool calls with text fragments.',
+    defaultValue: true,
+  },
   // ─── Workflow ─────────────────────────────────────────────────────
   // Tab and prompt-pipeline behavior across runs.
   {

@@ -21,6 +21,8 @@ export function AppearanceCategory() {
   const setSelectedTheme = usePreferencesStore((s) => s.setSelectedTheme)
   const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
   const setExpandToolResults = usePreferencesStore((s) => s.setExpandToolResults)
+  const unifiedTurnView = usePreferencesStore((s) => s.unifiedTurnView)
+  const setUnifiedTurnView = usePreferencesStore((s) => s.setUnifiedTurnView)
   const defaultTallConversation = usePreferencesStore((s) => s.defaultTallConversation)
   const setDefaultTallConversation = usePreferencesStore((s) => s.setDefaultTallConversation)
   const defaultTallTerminal = usePreferencesStore((s) => s.defaultTallTerminal)
@@ -127,6 +129,13 @@ export function AppearanceCategory() {
         description="Auto-expand file write and edit results inline."
         checked={expandToolResults}
         onChange={setExpandToolResults}
+      />
+
+      <SettingToggle
+        label="Unified Turn View"
+        description="Group tool calls into a collapsible panel and show assistant text as a continuous block, instead of interleaving tool calls with text."
+        checked={unifiedTurnView}
+        onChange={setUnifiedTurnView}
       />
 
       <SettingHeading>File Explorer</SettingHeading>

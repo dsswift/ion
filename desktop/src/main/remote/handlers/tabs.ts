@@ -314,6 +314,11 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
           } else {
             startIdx = Math.max(0, total - pageSize);
           }
+          // Snap startIdx backward to a turn boundary (user message) to avoid
+          // sending partial turns/tool-groups to iOS
+          while (startIdx > 0 && all[startIdx] && all[startIdx].role !== 'user') {
+            startIdx--;
+          }
           var page = all.slice(startIdx, endIdx).map(function(m) {
             var content = m.content || '';
             if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';

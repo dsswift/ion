@@ -134,6 +134,7 @@ vi.mock('../remote/attachment-encoder', () => ({
 // Pull in the SUT AFTER mocks are set up.
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { _resetAwaitersForTests } from '../command-await'
+import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test fixtures
@@ -269,7 +270,11 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
     expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review 138', '/proj', 'ion')
     // Pipeline should mutate runOptions and then submit it.
     expect(opts.prompt).toBe('expanded body')
-    expect(opts.appendSystemPrompt).toBe('sys')
+    // The CLI dispatch path runs applyHarnessSystemPromptAddenda, which
+    // appends the turn-grouping guidance to runOptions.appendSystemPrompt.
+    // The expansion-supplied "sys" remains as the prefix.
+    expect(opts.appendSystemPrompt).toMatch(/^sys\n\nTool calls are not rendered inline/)
+    expect(opts.appendSystemPrompt).toBe(`sys\n\n${TURN_GROUPING_GUIDANCE}`)
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
     expect(mocks.submitPromptMock).toHaveBeenCalledWith('tab-1', 'req-6', opts)
   })
@@ -457,6 +462,10 @@ describe('processIncomingPrompt — engine tab', () => {
     }))
   })
 })
+
+// Harness system-prompt addenda (turn-grouping guidance) tests live in
+// `prompt-pipeline-addenda.test.ts` to keep this file under the 600-line
+// TypeScript cap. See CLAUDE.md → "When a file exceeds the cap".
 
 describe('processIncomingPrompt — /clear with no engine session (unknown_command short-circuit)', () => {
   // Regression guard: /clear on a fresh tab (no prior prompt → no engine session)
