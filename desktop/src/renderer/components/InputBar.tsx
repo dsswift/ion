@@ -3,10 +3,11 @@ import { AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
 import { AttachmentChips } from './AttachmentChips'
-import { SlashCommandMenu, getFilteredCommandsWithExtras, type SlashCommand } from './SlashCommandMenu'
+import { SlashCommandMenu, getFilteredCommandsWithExtras, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { DiscoveredCommand } from '../../shared/types'
+import { getRendererExtensionCommands } from '../stores/slices/engine-event-slice'
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
@@ -89,12 +90,26 @@ export function InputBar() {
     return () => { cancelled = true }
   }, [workingDir])
 
-  const extraCommands: SlashCommand[] = discoveredCommands.map((dc) => ({
+  const discoveredExtra: SlashCommand[] = discoveredCommands.map((dc) => ({
     command: `/${dc.name}`,
     description: dc.description || `${dc.source}: ${dc.name}`,
     icon: <span className="text-[11px]">{dc.scope === 'project' ? '◆' : '✦'}</span>,
     group: dc.scope === 'project' ? 'project' as const : 'user' as const,
   }))
+
+  // Merge extension-registered commands from the engine's command registry.
+  // The key matches the engine session key used by engine-event-slice.ts.
+  const extensionKey = tab?.isEngine && activeInstanceId ? `${activeTabId}:${activeInstanceId}` : activeTabId
+  const extensionExtra: SlashCommand[] = extensionKey
+    ? getRendererExtensionCommands(extensionKey).map((ec) => ({
+      command: `/${ec.name}`,
+      description: ec.description || ec.name,
+      icon: <ExtensionCommandIcon />,
+      group: 'extension' as const,
+    }))
+    : []
+
+  const extraCommands: SlashCommand[] = [...discoveredExtra, ...extensionExtra]
 
   // ─── Per-tab draft input sync ───
   // Save current input to departing tab, restore arriving tab's draft
@@ -230,7 +245,7 @@ export function InputBar() {
 
   // ─── Slash command detection ───
   const updateSlashFilter = useCallback((value: string) => {
-    const match = value.match(/^(\/[a-zA-Z-]*)$/)
+    const match = value.match(/^(\/[a-zA-Z0-9_:-]*)$/)
     if (match) {
       setSlashFilter(match[1])
       setSlashIndex(0)

@@ -1,23 +1,27 @@
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Trash } from '@phosphor-icons/react'
+import { Trash, PuzzlePiece } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { fuzzyFilterAndSort } from '../../shared/fuzzy-match'
 
 export interface SlashCommand {
   command: string
   description: string
   icon: React.ReactNode
-  group?: 'builtin' | 'user' | 'project'
+  group?: 'builtin' | 'project' | 'extension' | 'user'
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/clear', description: 'Clear conversation history', icon: <Trash size={13} />, group: 'builtin' },
 ]
 
-const GROUP_ORDER: Record<string, number> = { builtin: 0, project: 1, user: 2 }
-const GROUP_LABELS: Record<string, string> = { project: 'Project', user: 'User' }
+/** Icon used for extension-registered commands in the slash menu. */
+export const ExtensionCommandIcon = () => <PuzzlePiece size={13} />
+
+const GROUP_ORDER: Record<string, number> = { builtin: 0, project: 1, extension: 2, user: 3 }
+const GROUP_LABELS: Record<string, string> = { project: 'Project', extension: 'Extension', user: 'User' }
 
 interface Props {
   filter: string
@@ -32,20 +36,13 @@ export function getFilteredCommands(filter: string): SlashCommand[] {
 }
 
 export function getFilteredCommandsWithExtras(filter: string, extraCommands: SlashCommand[]): SlashCommand[] {
-  const q = filter.toLowerCase()
   const merged: SlashCommand[] = [...SLASH_COMMANDS]
   for (const cmd of extraCommands) {
     if (!merged.some((c) => c.command === cmd.command)) {
       merged.push(cmd)
     }
   }
-  const filtered = merged.filter((c) => c.command.startsWith(q))
-  filtered.sort((a, b) => {
-    const groupDiff = (GROUP_ORDER[a.group || 'builtin'] || 0) - (GROUP_ORDER[b.group || 'builtin'] || 0)
-    if (groupDiff !== 0) return groupDiff
-    return a.command.localeCompare(b.command)
-  })
-  return filtered
+  return fuzzyFilterAndSort(filter, merged)
 }
 
 export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, extraCommands = [] }: Props) {
@@ -95,7 +92,7 @@ export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, 
           const showHeader = currentGroup !== 'builtin' && currentGroup !== prevGroup
 
           return (
-            <React.Fragment key={cmd.command}>
+            <React.Fragment key={`${cmd.command}-${cmd.group || 'builtin'}`}>
               {showHeader && (
                 <div
                   className="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider font-medium"
