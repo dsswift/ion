@@ -30,6 +30,10 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var conversationId: String?
     /// Unix ms timestamp of the last status-changing activity (from desktop snapshot).
     var lastActivityAt: Double?
+    /// Custom pill background color hex string (e.g. "#f08c4a"). Nil means use theme default.
+    var pillColor: String?
+    /// Custom pill icon key (e.g. "diamond", "star"). Nil means use the default status dot.
+    var pillIcon: String?
 
     var displayTitle: String {
         customTitle ?? title

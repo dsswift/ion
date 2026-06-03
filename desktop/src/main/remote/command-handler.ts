@@ -43,6 +43,8 @@ import {
   handleTerminalSelectInstance,
   handleRenameTab,
   handleRenameTerminalInstance,
+  handleSetPillColor,
+  handleSetPillIcon,
 } from './handlers/terminal'
 import {
   handleRewind,
@@ -117,6 +119,8 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'terminal_select_instance': await handleTerminalSelectInstance(cmd); break
     case 'rename_tab': handleRenameTab(cmd); break
     case 'rename_terminal_instance': handleRenameTerminalInstance(cmd); break
+    case 'set_pill_color': handleSetPillColor(cmd); break
+    case 'set_pill_icon': handleSetPillIcon(cmd); break
     case 'rewind': await handleRewind(cmd); break
     case 'fork_from_message': await handleForkFromMessage(cmd); break
     case 'set_tab_group_mode': await handleSetTabGroupMode(cmd); break

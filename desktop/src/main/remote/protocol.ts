@@ -37,6 +37,10 @@ export interface RemoteTabState {
   conversationId?: string | null
   /** Unix ms timestamp of the last status-changing activity (message, status change). */
   lastActivityAt?: number
+  /** Custom pill background color hex string (e.g. "#f08c4a"). Null means use theme default. */
+  pillColor?: string | null
+  /** Custom pill icon key (e.g. "diamond", "star"). Null means use the default status dot. */
+  pillIcon?: string | null
 }
 
 // ─── Terminal instance metadata ───
@@ -163,6 +167,8 @@ export type RemoteCommand =
   // than erroring — same forward-compat posture as the rest of the
   // RemoteCommand union.
   | { type: 'set_desktop_setting'; key: string; value: unknown }
+  | { type: 'set_pill_color'; tabId: string; pillColor: string | null }
+  | { type: 'set_pill_icon'; tabId: string; pillIcon: string | null }
 
 // ─── Ion → iOS events ───
 

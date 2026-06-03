@@ -389,6 +389,22 @@ extension SessionViewModel {
         send(.renameTab(tabId: tabId, customTitle: customTitle))
     }
 
+    func setPillColor(tabId: String, color: String?) {
+        // Optimistic local update — the snapshot will confirm on the next sync.
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].pillColor = color
+        }
+        send(.setPillColor(tabId: tabId, pillColor: color))
+    }
+
+    func setPillIcon(tabId: String, icon: String?) {
+        // Optimistic local update — the snapshot will confirm on the next sync.
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].pillIcon = icon
+        }
+        send(.setPillIcon(tabId: tabId, pillIcon: icon))
+    }
+
     func renameTerminalInstance(tabId: String, instanceId: String, label: String) {
         terminalInstanceLabels["\(tabId):\(instanceId)"] = label
         send(.renameTerminalInstance(tabId: tabId, instanceId: instanceId, label: label))

@@ -194,6 +194,8 @@ export const IPC = {
   REMOTE_RENAME_TAB: 'ion:remote-rename-tab',
   REMOTE_RENAME_TERMINAL_INSTANCE: 'ion:remote-rename-terminal-instance',
   REMOTE_ENGINE_PROMPT: 'ion:remote-engine-prompt',
+  REMOTE_SET_PILL_COLOR: 'ion:remote-set-pill-color',
+  REMOTE_SET_PILL_ICON: 'ion:remote-set-pill-icon',
   // Remote send (renderer → main → iOS, for forwarding results to remote)
   REMOTE_SEND: 'ion:remote-send',
   REMOTE_SET_LAN_DISABLED: 'ion:remote-set-lan-disabled',

@@ -204,6 +204,12 @@ extension DiagnosticLog {
             // Pairs with the SETTINGS-CMD line on the desktop side for
             // round-trip correlation.
             log("CMD: setDesktopSetting key=\(key)")
+
+        case .setPillColor(let tabId, let color):
+            log("CMD: setPillColor tabId=\(tabId.prefix(8)) color=\(color ?? "nil")")
+
+        case .setPillIcon(let tabId, let icon):
+            log("CMD: setPillIcon tabId=\(tabId.prefix(8)) icon=\(icon ?? "nil")")
         }
     }
 }

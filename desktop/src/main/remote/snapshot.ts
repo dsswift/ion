@@ -176,6 +176,8 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
               conversationId: t.conversationId || null,
               lastMessageContent: lastMsg,
               lastActivityTs: lastTs || 0,
+              pillColor: t.pillColor || null,
+              pillIcon: t.pillIcon || null,
             };
           });
         } catch(e) { return []; }
@@ -236,6 +238,8 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
         groupPinned: t.groupPinned || false,
         conversationId: t.conversationId || undefined,
         lastActivityAt: t.lastActivityTs || undefined,
+        pillColor: t.pillColor || null,
+        pillIcon: t.pillIcon || null,
       }))
 
     mapped.sort((a, b) => {

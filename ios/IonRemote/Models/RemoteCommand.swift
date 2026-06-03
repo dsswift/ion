@@ -113,6 +113,12 @@ enum RemoteCommand: Codable, Sendable {
     /// shape-agnostic so future string/number projections need no
     /// protocol change.
     case setDesktopSetting(key: String, value: AnyCodable)
+    /// Set the custom pill background color for a tab.
+    /// `pillColor` is a hex string (e.g. "#f08c4a") or nil to reset to the theme default.
+    case setPillColor(tabId: String, pillColor: String?)
+    /// Set the custom pill icon for a tab.
+    /// `pillIcon` is an icon key (e.g. "diamond", "star") or nil to reset to the default dot.
+    case setPillIcon(tabId: String, pillIcon: String?)
 
     // MARK: - Codable
 
@@ -181,6 +187,8 @@ enum RemoteCommand: Codable, Sendable {
         case diagnosticLogsResponse = "diagnostic_logs_response"
         case setRemoteDisplay = "set_remote_display"
         case setDesktopSetting = "set_desktop_setting"
+        case setPillColor = "set_pill_color"
+        case setPillIcon = "set_pill_icon"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -212,6 +220,8 @@ enum RemoteCommand: Codable, Sendable {
         // CodingKey above.
         case key
         case conversationIds
+        // setPillColor / setPillIcon payloads.
+        case pillColor, pillIcon
     }
 
     init(from decoder: Decoder) throws {
@@ -550,6 +560,16 @@ enum RemoteCommand: Codable, Sendable {
             let key = try container.decode(String.self, forKey: .key)
             let value = try container.decode(AnyCodable.self, forKey: .value)
             self = .setDesktopSetting(key: key, value: value)
+
+        case .setPillColor:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let pillColor = try container.decodeIfPresent(String.self, forKey: .pillColor)
+            self = .setPillColor(tabId: tabId, pillColor: pillColor)
+
+        case .setPillIcon:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let pillIcon = try container.decodeIfPresent(String.self, forKey: .pillIcon)
+            self = .setPillIcon(tabId: tabId, pillIcon: pillIcon)
         }
     }
 

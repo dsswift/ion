@@ -17,11 +17,13 @@ struct TabRowView: View {
     var body: some View {
         let _ = DiagnosticLog.log("[TabRowView] rendering with accent: \(theme.accent), theme id: \(theme.id)")
         HStack(spacing: 12) {
-            Circle()
-                .fill(statusInfo.color)
-                .frame(width: 8, height: 8)
+            // Status indicator: show a custom SF Symbol icon when pillIcon is set,
+            // otherwise fall back to the default Circle. Apply pillColor as a tint
+            // override when set, otherwise use the status-derived color.
+            let dotColor = pillColorOverride ?? statusInfo.color
+            pillIndicator(color: dotColor)
                 .opacity(statusInfo.pulse ? pulseOpacity : 1.0)
-                .shadow(color: statusInfo.pulse ? statusInfo.color.opacity(0.6) : .clear, radius: 3)
+                .shadow(color: statusInfo.pulse ? dotColor.opacity(0.6) : .clear, radius: 3)
                 .onChange(of: statusInfo.pulse) { _, shouldPulse in
                     if shouldPulse {
                         withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
@@ -233,6 +235,47 @@ struct TabRowView: View {
         if hours < 24 { return "\(hours)h ago" }
         let days = hours / 24
         return "\(days)d ago"
+    }
+
+    /// Resolve the custom pill color to a SwiftUI Color. Returns nil when
+    /// `tab.pillColor` is nil or cannot be parsed as a hex string.
+    private var pillColorOverride: Color? {
+        guard let hex = tab.pillColor, !hex.isEmpty else { return nil }
+        return Color(hex: hex)
+    }
+
+    /// Render the status dot as an SF Symbol icon when `tab.pillIcon` is set,
+    /// or as a plain Circle otherwise. Both are sized at 8×8 to match.
+    @ViewBuilder
+    private func pillIndicator(color: Color) -> some View {
+        if let icon = tab.pillIcon, let sfSymbol = Self.pillIconToSFSymbol(icon) {
+            Image(systemName: sfSymbol)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(color)
+                .frame(width: 8, height: 8)
+        } else {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+        }
+    }
+
+    /// Map a desktop pill icon key to the corresponding SF Symbol name.
+    /// Returns nil for unknown keys (falls back to Circle).
+    private static func pillIconToSFSymbol(_ icon: String) -> String? {
+        switch icon {
+        case "diamond":  return "diamond.fill"
+        case "square":   return "square.fill"
+        case "star":     return "star.fill"
+        case "triangle": return "triangle.fill"
+        case "heart":    return "heart.fill"
+        case "hexagon":  return "hexagon.fill"
+        case "lightning": return "bolt.fill"
+        case "mobile":   return "iphone"
+        case "desktop":  return "desktopcomputer"
+        case "gear":     return "gearshape.fill"
+        default:         return nil
+        }
     }
 
     /// Status color and pulse state matching desktop TabStrip priority order.

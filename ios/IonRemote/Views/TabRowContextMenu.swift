@@ -41,6 +41,39 @@ struct TabRowContextMenu: ViewModifier {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
+
+            // -- Pill appearance --
+            Menu("Color") {
+                Button {
+                    viewModel.setPillColor(tabId: tab.id, color: nil)
+                } label: {
+                    Label("Default", systemImage: "circle.slash")
+                }
+                pillColorButton(hex: "#f08c4a", label: "Orange", systemImage: "circle.fill")
+                pillColorButton(hex: "#4ece78", label: "Green",  systemImage: "circle.fill")
+                pillColorButton(hex: "#ef5350", label: "Red",    systemImage: "circle.fill")
+                pillColorButton(hex: "#42a5f5", label: "Blue",   systemImage: "circle.fill")
+                pillColorButton(hex: "#b06de8", label: "Purple", systemImage: "circle.fill")
+                pillColorButton(hex: "#f5c842", label: "Gold",   systemImage: "circle.fill")
+            }
+            Menu("Icon") {
+                Button {
+                    viewModel.setPillIcon(tabId: tab.id, icon: nil)
+                } label: {
+                    Label("Default", systemImage: "circle.fill")
+                }
+                pillIconButton(icon: "diamond",  label: "Diamond",  sfSymbol: "diamond.fill")
+                pillIconButton(icon: "square",   label: "Square",   sfSymbol: "square.fill")
+                pillIconButton(icon: "star",     label: "Star",     sfSymbol: "star.fill")
+                pillIconButton(icon: "triangle", label: "Triangle", sfSymbol: "triangle.fill")
+                pillIconButton(icon: "heart",    label: "Heart",    sfSymbol: "heart.fill")
+                pillIconButton(icon: "hexagon",  label: "Hexagon",  sfSymbol: "hexagon.fill")
+                pillIconButton(icon: "lightning",label: "Lightning",sfSymbol: "bolt.fill")
+                pillIconButton(icon: "mobile",   label: "Mobile",   sfSymbol: "iphone")
+                pillIconButton(icon: "desktop",  label: "Desktop",  sfSymbol: "desktopcomputer")
+                pillIconButton(icon: "gear",     label: "Gear",     sfSymbol: "gearshape.fill")
+            }
+
             // Pin/unpin and move-to-group-and-pin are irrelevant for
             // engine tabs — they are multiplexed (multiple sub-conversations)
             // and shouldn't auto-move between groups.
@@ -96,6 +129,27 @@ struct TabRowContextMenu: ViewModifier {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Pill helpers
+
+    @ViewBuilder
+    private func pillColorButton(hex: String, label: String, systemImage: String) -> some View {
+        Button {
+            viewModel.setPillColor(tabId: tab.id, color: hex)
+        } label: {
+            Label(label, systemImage: systemImage)
+                .foregroundStyle(Color(hex: hex))
+        }
+    }
+
+    @ViewBuilder
+    private func pillIconButton(icon: String, label: String, sfSymbol: String) -> some View {
+        Button {
+            viewModel.setPillIcon(tabId: tab.id, icon: icon)
+        } label: {
+            Label(label, systemImage: sfSymbol)
         }
     }
 }
