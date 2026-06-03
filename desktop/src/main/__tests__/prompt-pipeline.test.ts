@@ -41,9 +41,11 @@ const mocks = vi.hoisted(() => {
   const broadcastMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const expandSlashMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
-  // getTabStatusMock: returns a tab-like object. Default: no conversationId.
-  // Override in tests to simulate a loaded-but-not-started conversation.
-  const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null }) ?? function () { return { conversationId: null } }
+  // getTabStatusMock: returns a tab-like object. Default: fresh tab (no
+  // conversationId, no prompts since checkpoint). Override in tests to
+  // simulate a loaded-but-not-started conversation or a mid-checkpoint tab.
+  const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null, promptCountSinceCheckpoint: 0 }) ?? function () { return { conversationId: null, promptCountSinceCheckpoint: 0 } }
+  const notifyConversationClearedMock = (globalThis as any).vi?.fn?.() ?? function () {}
   return {
     bridgeListeners,
     sendCommandMock,
@@ -56,6 +58,7 @@ const mocks = vi.hoisted(() => {
     expandSlashMock,
     clearConversationFileMock,
     getTabStatusMock,
+    notifyConversationClearedMock,
   }
 })
 
@@ -70,7 +73,8 @@ mocks.executeJsMock = vi.fn().mockResolvedValue(null)
 mocks.broadcastMock = vi.fn()
 mocks.expandSlashMock = vi.fn().mockResolvedValue({ expanded: false })
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
-mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
+mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null, promptCountSinceCheckpoint: 0 })
+mocks.notifyConversationClearedMock = vi.fn()
 
 function emitBridgeEvent(key: string, event: any): void {
   const arr = mocks.bridgeListeners.get('event') ?? []
@@ -101,6 +105,11 @@ vi.mock('../state', () => {
       // getTabStatus delegates through getTabStatusMock so individual tests
       // can override the returned tab object (e.g. to set a conversationId).
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
+      // notifyConversationCleared is invoked by the /clear short-circuit and
+      // by event-wiring on engine-side /clear success. Most tests do not
+      // assert on it, but it must exist on the mock so /clear-related tests
+      // do not blow up on a missing function.
+      notifyConversationCleared: (...args: any[]) => mocks.notifyConversationClearedMock(...args),
     },
     engineBridge: mockEngineBridge,
     extensionCommandRegistry: new Map(),
@@ -153,7 +162,8 @@ beforeEach(() => {
   mocks.broadcastMock.mockReset()
   mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: false })
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
-  mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
+  mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null, promptCountSinceCheckpoint: 0 })
+  mocks.notifyConversationClearedMock.mockReset()
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
   mocks.sendCommandMock.mockImplementation((key: string, command: string, _args: string) => {
@@ -281,7 +291,7 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
 
   it('auto-switches permission mode to auto on .md expansion', async () => {
     // Explicitly set first-prompt state so the guard allows the switch.
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, conversationId: null })
+    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, conversationId: null })
     mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded' })
     await processIncomingPrompt({
       tabId: 'tab-1',

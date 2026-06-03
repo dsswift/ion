@@ -83,6 +83,7 @@ vi.mock('../state', () => {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
+      notifyConversationCleared: vi.fn(),
     },
     engineBridge: mockEngineBridge,
     extensionCommandRegistry: new Map(),

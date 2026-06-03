@@ -130,6 +130,68 @@ describe('EngineControlPlane', () => {
     })
   })
 
+  describe('notifyConversationCleared', () => {
+    // Regression: the slash-command plan→auto guard (slash-classify.ts
+    // isFirstPromptForTab) needs a way to recognise that /clear has restored
+    // "fresh blank session" status. The engine keeps s.conversationID set
+    // after /clear (it's a checkpoint, not a session restart), so dropping
+    // tab.conversationId here is wrong — but we DO need to advance the
+    // checkpoint counter the guard consults.
+
+    it('zeros promptCountSinceCheckpoint and sets clearedSinceLastPrompt while preserving promptCount and conversationId', async () => {
+      const tabId = cp.createTab()
+      // Submit a prompt to bump promptCount and promptCountSinceCheckpoint to 1.
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions({ prompt: 'hello' }))
+      const beforeStatus = cp.getTabStatus(tabId)!
+      expect(beforeStatus.promptCount).toBe(1)
+      expect(beforeStatus.promptCountSinceCheckpoint).toBe(1)
+      expect(beforeStatus.clearedSinceLastPrompt).toBe(false)
+      // Simulate the engine populating conversationId via engine_status
+      beforeStatus.conversationId = 'conv-checkpoint-test'
+
+      cp.notifyConversationCleared(tabId)
+
+      const afterStatus = cp.getTabStatus(tabId)!
+      // Checkpoint counter reset → next slash command is treated as first.
+      expect(afterStatus.promptCountSinceCheckpoint).toBe(0)
+      // Flag set → isFirstPromptForTab returns true even if renderer sends
+      // a stale runOptions.sessionId.
+      expect(afterStatus.clearedSinceLastPrompt).toBe(true)
+      // Lifetime counter and conversationId preserved — /clear is a
+      // checkpoint, not a session restart.
+      expect(afterStatus.promptCount).toBe(1)
+      expect(afterStatus.conversationId).toBe('conv-checkpoint-test')
+      // No engine session was stopped (unlike resetTabSession).
+      expect(mockBridge.stopSession).not.toHaveBeenCalled()
+    })
+
+    it('is a no-op when the tab does not exist', () => {
+      // Should not throw — guard the unknown-tab race gracefully.
+      expect(() => cp.notifyConversationCleared('nonexistent-tab')).not.toThrow()
+    })
+
+    it('advances the checkpoint repeatedly across multiple /clear calls', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-a', makeRunOptions({ prompt: 'one' }))
+      cp.notifyConversationCleared(tabId)
+      expect(cp.getTabStatus(tabId)!.promptCountSinceCheckpoint).toBe(0)
+      expect(cp.getTabStatus(tabId)!.promptCount).toBe(1)
+      expect(cp.getTabStatus(tabId)!.clearedSinceLastPrompt).toBe(true)
+
+      await cp.submitPrompt(tabId, 'req-b', makeRunOptions({ prompt: 'two' }))
+      // submitPrompt clears the flag.
+      expect(cp.getTabStatus(tabId)!.clearedSinceLastPrompt).toBe(false)
+      await cp.submitPrompt(tabId, 'req-c', makeRunOptions({ prompt: 'three' }))
+      expect(cp.getTabStatus(tabId)!.promptCountSinceCheckpoint).toBe(2)
+      expect(cp.getTabStatus(tabId)!.promptCount).toBe(3)
+
+      cp.notifyConversationCleared(tabId)
+      expect(cp.getTabStatus(tabId)!.promptCountSinceCheckpoint).toBe(0)
+      expect(cp.getTabStatus(tabId)!.promptCount).toBe(3)
+      expect(cp.getTabStatus(tabId)!.clearedSinceLastPrompt).toBe(true)
+    })
+  })
+
   describe('submitPrompt', () => {
     it('calls startSession then sendPrompt on first prompt', async () => {
       const tabId = cp.createTab()

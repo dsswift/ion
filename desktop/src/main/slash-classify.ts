@@ -44,27 +44,56 @@ function log(msg: string): void {
 
 /**
  * Returns true when it is safe to auto-switch the tab from plan→auto mode
- * because the slash command is the **first** prompt on a fresh tab.
+ * because the slash command is the **first** prompt on a fresh tab — where
+ * "fresh" means "since the last freshness checkpoint".
  *
  * The guard prevents mid-conversation `.md` expansion from silently leaving
- * plan mode: once the user has sent at least one prompt, or is resuming a
- * prior session, the current permission mode must be preserved.
+ * plan mode: once the user has sent at least one prompt within the current
+ * checkpoint, or is resuming a prior session, the current permission mode
+ * must be preserved.
  *
- * Two sources of "this is a resumed session":
+ * What counts as a checkpoint (i.e. what resets `promptCountSinceCheckpoint`
+ * back to 0, restoring "fresh" status):
+ *
+ *   - `EngineControlPlane.resetTabSession` — full session reset.
+ *   - `EngineControlPlane.notifyConversationCleared` — fired when `/clear`
+ *     succeeds (engine-side via event-wiring.ts, or desktop-side via the
+ *     prompt-pipeline.ts local short-circuit). The engine keeps the same
+ *     `conversationId` after `/clear` (it's a checkpoint, not a session
+ *     restart), so this guard CANNOT rely on `conversationId` being null
+ *     to recognize a freshly-cleared tab.
+ *
+ * Two sources of "this is a resumed session" — both still preserve plan mode:
  *   1. `runOptionsSessionId` — the renderer passes `runOptions.sessionId`
  *      when submitting a prompt against a previously-saved conversation. This
  *      is the only reliable signal for restored tabs: the engine-side
  *      `TabEntry.conversationId` is null until the engine emits engine_status,
- *      which happens AFTER this guard runs.
- *   2. `tab.conversationId` — populated after engine_status fires; covers the
- *      case where the engine has already started a session in this process
- *      lifetime (e.g. mid-conversation on the same app boot).
+ *      which happens AFTER this guard runs. The renderer always sends this
+ *      on resume (see prompt-pipeline-plan-mode.test.ts).
+ *   2. `promptCountSinceCheckpoint > 0` — at least one prompt has been
+ *      submitted in the current checkpoint window.
+ *
+ * Note the deliberate omission of `!tab.conversationId` from the predicate.
+ * Earlier versions of this guard included it as a belt-and-braces protection
+ * for resumed sessions; that protection now lives entirely in the
+ * `runOptionsSessionId` check. Reusing `conversationId` would incorrectly
+ * suppress the plan→auto switch on a freshly-cleared tab (where the engine
+ * keeps `conversationId` set even though the conversation is logically
+ * blank).
+ *
+ * `/clear` disambiguation: after `/clear`, `promptCountSinceCheckpoint` is
+ * 0 and `clearedSinceLastPrompt` is true. The renderer still sends its
+ * stale `conversationId` as `runOptions.sessionId` (it doesn't know about
+ * the clear-checkpoint). Without `clearedSinceLastPrompt`, the guard would
+ * see `runOptionsSessionId` set and incorrectly treat the tab as "resumed
+ * from disk". The flag distinguishes "cleared mid-session" (fresh) from
+ * "restored from disk" (resumed).
  *
  * Edge-cases:
  *   - `getTabStatus(tabId)` returns `undefined` → tab not yet registered,
  *     i.e. genuinely fresh. Allow the switch.
- *   - `promptCount > 0` → at least one prompt has already been submitted.
- *     Preserve plan mode.
+ *   - `promptCountSinceCheckpoint > 0` → at least one prompt has been
+ *     submitted since the last checkpoint. Preserve plan mode.
  *
  * @param tabId               The active tab id.
  * @param runOptionsSessionId The `sessionId` from `RunOptions` sent by the
@@ -73,9 +102,15 @@ function log(msg: string): void {
  *                            conversationId and forwards it to the engine).
  */
 export function isFirstPromptForTab(tabId: string, runOptionsSessionId?: string | null): boolean {
-  if (runOptionsSessionId) return false
   const tab = sessionPlane.getTabStatus(tabId)
-  return !tab || (tab.promptCount === 0 && !tab.conversationId)
+  // Tab not registered yet — genuinely fresh.
+  if (!tab) return true
+  // /clear just fired — treat as fresh even though the renderer still sends
+  // the stale conversationId. The flag is cleared by submitPrompt.
+  if (tab.clearedSinceLastPrompt) return true
+  // Renderer is resuming a saved conversation — not fresh.
+  if (runOptionsSessionId) return false
+  return tab.promptCountSinceCheckpoint === 0
 }
 
 /**
@@ -138,9 +173,11 @@ export async function dispatchExtensionCommand(
  * permission mode to `'auto'` and broadcasts the change to remote
  * consumers, matching the legacy `applySlashExpansion` semantics. The
  * mode flip is guarded by {@link isFirstPromptForTab}: it only fires
- * when the slash is the very first prompt on a fresh tab. Mid-conversation
- * expansions (promptCount > 0, resumed session, or conversationId already
- * set) preserve the current permission mode.
+ * when the slash is the first prompt of the current checkpoint window
+ * (a "checkpoint" is created by `resetTabSession` or by a successful
+ * `/clear`). Mid-conversation expansions
+ * (`promptCountSinceCheckpoint > 0` or resumed session via
+ * `runOptionsSessionId`) preserve the current permission mode.
  *
  * The orchestrator is responsible for actually re-entering the
  * submission path with the returned values — this helper does NOT
@@ -171,7 +208,7 @@ export async function tryExpandMarkdownSlash(
       sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
       broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
     } else {
-      log(`pipeline: skipping plan→auto switch for /${slash.command} — conversation already active (promptCount=${sessionPlane.getTabStatus(tabId)?.promptCount ?? '?'})`)
+      log(`pipeline: skipping plan→auto switch for /${slash.command} — conversation already active (promptCountSinceCheckpoint=${sessionPlane.getTabStatus(tabId)?.promptCountSinceCheckpoint ?? '?'}, runOptionsSessionId=${runOptionsSessionId ?? 'none'})`)
     }
     return {
       userPrompt: ionExpansion.userPrompt,
@@ -204,15 +241,17 @@ export async function tryExpandMarkdownSlash(
   // Putting the side effect at the source of the expansion keeps the
   // orchestrator's expansion-handling code branch a pure data flow.
   //
-  // Guard: only switch on the first prompt. If the conversation is already
-  // underway (promptCount > 0) or is a resumed session (conversationId set),
+  // Guard: only switch on the first prompt of the current checkpoint window.
+  // `promptCountSinceCheckpoint > 0` means at least one prompt has been
+  // submitted since the last `resetTabSession` / `/clear`; `runOptionsSessionId`
+  // means the renderer is resuming a saved conversation. In either case,
   // preserve the current permission mode so plan-mode conversations stay in
   // plan mode even when the user invokes a slash command mid-conversation.
   if (isFirstPromptForTab(tabId, runOptionsSessionId)) {
     sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
     broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
   } else {
-    log(`pipeline: skipping plan→auto switch for /${slash.command} — conversation already active (promptCount=${sessionPlane.getTabStatus(tabId)?.promptCount ?? '?'})`)
+    log(`pipeline: skipping plan→auto switch for /${slash.command} — conversation already active (promptCountSinceCheckpoint=${sessionPlane.getTabStatus(tabId)?.promptCountSinceCheckpoint ?? '?'}, runOptionsSessionId=${runOptionsSessionId ?? 'none'})`)
   }
 
   return {

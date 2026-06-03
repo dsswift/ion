@@ -34,6 +34,10 @@ const mocks = vi.hoisted(() => {
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
   // getTabStatusMock: returns tab-like object. Default: no conversationId.
   const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null }) ?? function () { return { conversationId: null } }
+  // notifyConversationClearedMock: called by the /clear local short-circuit
+  // path so the desktop's freshness checkpoint advances even when the engine
+  // returns unknown_command. Tests assert via the .mock.calls inspector.
+  const notifyConversationClearedMock = (globalThis as any).vi?.fn?.() ?? function () {}
   return {
     bridgeListeners,
     sendCommandMock,
@@ -45,6 +49,7 @@ const mocks = vi.hoisted(() => {
     expandSlashMock,
     clearConversationFileMock,
     getTabStatusMock,
+    notifyConversationClearedMock,
   }
 })
 
@@ -58,6 +63,7 @@ mocks.broadcastMock = vi.fn()
 mocks.expandSlashMock = vi.fn().mockResolvedValue({ expanded: false })
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
 mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
+mocks.notifyConversationClearedMock = vi.fn()
 
 function emitBridgeEvent(key: string, event: any): void {
   const arr = mocks.bridgeListeners.get('event') ?? []
@@ -84,6 +90,7 @@ vi.mock('../state', () => {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
+      notifyConversationCleared: (...args: any[]) => mocks.notifyConversationClearedMock(...args),
     },
     engineBridge: mockEngineBridge,
     extensionCommandRegistry: new Map(),
@@ -131,6 +138,7 @@ beforeEach(() => {
   mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: false })
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
   mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
+  mocks.notifyConversationClearedMock.mockReset()
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
   // Default: engine returns unknown_command for /clear (no session exists).
