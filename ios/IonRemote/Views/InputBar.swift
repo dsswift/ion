@@ -59,7 +59,34 @@ struct InputBar: View {
     }
 
     private var slashCommands: [DiscoveredSlashCommand] {
-        viewModel.discoveredCommands[workingDirectory] ?? []
+        var cmds = viewModel.discoveredCommands[workingDirectory] ?? []
+
+        // Inject the /clear builtin (matches desktop's SLASH_COMMANDS constant).
+        let clearCmd = DiscoveredSlashCommand(
+            name: "clear", description: "Clear conversation history",
+            scope: "builtin", source: "builtin"
+        )
+        if !cmds.contains(where: { $0.name == "clear" }) {
+            cmds.insert(clearCmd, at: 0)
+        }
+
+        // Merge extension-registered commands from engine_command_registry.
+        let tab = viewModel.tab(for: tabId)
+        let extKey: String? = {
+            guard let t = tab else { return nil }
+            return (t.isEngine == true) ? viewModel.engineCompoundKey(tabId: t.id) : t.id
+        }()
+        if let key = extKey, let extCmds = viewModel.extensionCommands[key] {
+            for ec in extCmds where !cmds.contains(where: { $0.name == ec.name }) {
+                cmds.append(DiscoveredSlashCommand(
+                    name: ec.name,
+                    description: ec.description ?? ec.name,
+                    scope: "extension",
+                    source: "extension"
+                ))
+            }
+        }
+        return cmds
     }
 
     private var hasUploading: Bool {

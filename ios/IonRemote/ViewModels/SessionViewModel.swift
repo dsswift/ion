@@ -223,6 +223,12 @@ final class SessionViewModel {
     // Discovered slash commands (per working directory)
     var discoveredCommands: [String: [DiscoveredSlashCommand]] = [:]
 
+    /// Extension-registered slash commands from engine_command_registry events.
+    /// Keyed by engine session key (tabId or "tabId:instanceId") — mirrors the
+    /// desktop's `extensionCommandsByKey` in engine-event-slice.ts.
+    /// Snapshot semantics: every event REPLACES the prior entry for that key.
+    var extensionCommands: [String: [EngineCommandListing]] = [:]
+
     // Upload attachment results (consumed by InputBar / EngineView)
     var pendingUploadResults: [UploadAttachmentResult] = []
 

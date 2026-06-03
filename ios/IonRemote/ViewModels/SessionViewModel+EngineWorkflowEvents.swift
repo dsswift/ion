@@ -82,20 +82,24 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleEngineCommandRegistry() {
-        // Complete snapshot of slash commands exposed by the session's
-        // loaded extensions. Desktop's prompt pipeline uses this as a
-        // routing-hint cache (engine-command names take precedence over
-        // local .md template lookups). iOS does not yet consume the
-        // registry for autocomplete — Phase 0.5 of the unified slash-
-        // pipeline plan intentionally left the iOS UI out of scope.
-        //
-        // Snapshot semantics: when iOS does start consuming this, the
-        // payload is a REPLACE-style snapshot, not an incremental
-        // update. Empty `commands: []` is the authoritative "no
-        // extension commands for this session" signal — not a no-op.
+    func handleEngineCommandRegistry(tabId: String, instanceId: String?, commands: [EngineCommandListing]) {
+        // Complete snapshot of slash commands exposed by the session's loaded
+        // extensions. Snapshot semantics: the payload is a REPLACE-style
+        // snapshot, not an incremental update. Empty `commands: []` is the
+        // authoritative "no extension commands for this session" signal.
         // See docs/architecture/agent-state.md for the canonical
         // snapshot-replace pattern.
+        let key: String
+        if let instId = instanceId, !instId.isEmpty {
+            key = "\(tabId):\(instId)"
+        } else {
+            key = tabId
+        }
+        if commands.isEmpty {
+            extensionCommands.removeValue(forKey: key)
+        } else {
+            extensionCommands[key] = commands
+        }
     }
 
     @MainActor

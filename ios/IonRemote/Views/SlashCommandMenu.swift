@@ -6,19 +6,29 @@ struct SlashCommandMenu: View {
     let commands: [DiscoveredSlashCommand]
     let onSelect: (DiscoveredSlashCommand) -> Void
 
+    private static let scopeOrder: [String: Int] = [
+        "builtin": 0, "project": 1, "extension": 2, "user": 3,
+    ]
+
+    private static let scopeLabels: [String: String] = [
+        "project": "Project", "extension": "Extension", "user": "User",
+    ]
+
     private var filteredCommands: [DiscoveredSlashCommand] {
-        let query = filter.lowercased()
-        let matches = commands.filter { cmd in
-            "/\(cmd.name)".lowercased().hasPrefix(query)
+        // Fuzzy-match and sort: score desc → scope order → alphabetical.
+        let results: [(cmd: DiscoveredSlashCommand, score: Int)] = commands.compactMap { cmd in
+            guard let score = FuzzyMatch.score(query: filter, candidate: "/\(cmd.name)") else {
+                return nil
+            }
+            return (cmd, score)
         }
-        // Sort: project commands first, then user, alphabetical within each group
-        return matches.sorted { a, b in
-            let scopeOrder = ["project": 0, "user": 1]
-            let aOrder = scopeOrder[a.scope] ?? 2
-            let bOrder = scopeOrder[b.scope] ?? 2
+        return results.sorted { a, b in
+            if a.score != b.score { return a.score > b.score }
+            let aOrder = Self.scopeOrder[a.cmd.scope] ?? 99
+            let bOrder = Self.scopeOrder[b.cmd.scope] ?? 99
             if aOrder != bOrder { return aOrder < bOrder }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }
+            return a.cmd.name.localizedCaseInsensitiveCompare(b.cmd.name) == .orderedAscending
+        }.map(\.cmd)
     }
 
     var body: some View {
@@ -29,7 +39,8 @@ struct SlashCommandMenu: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element.name) { index, cmd in
-                        let showHeader = index == 0 || items[index - 1].scope != cmd.scope
+                        let prevScope = index > 0 ? items[index - 1].scope : nil
+                        let showHeader = cmd.scope != "builtin" && cmd.scope != prevScope
 
                         if showHeader {
                             sectionHeader(cmd.scope)
@@ -50,7 +61,7 @@ struct SlashCommandMenu: View {
 
     @ViewBuilder
     private func sectionHeader(_ scope: String) -> some View {
-        Text(scope == "project" ? "Project" : "User")
+        Text(Self.scopeLabels[scope] ?? scope.capitalized)
             .font(.caption2)
             .fontWeight(.medium)
             .textCase(.uppercase)
@@ -65,7 +76,7 @@ struct SlashCommandMenu: View {
             onSelect(cmd)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: cmd.scope == "project" ? "folder.fill" : "person.fill")
+                Image(systemName: iconName(for: cmd.scope))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(width: 20, height: 20)
@@ -92,5 +103,15 @@ struct SlashCommandMenu: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+    }
+
+    private func iconName(for scope: String) -> String {
+        switch scope {
+        case "builtin": return "terminal.fill"
+        case "project": return "folder.fill"
+        case "extension": return "puzzlepiece.fill"
+        case "user": return "person.fill"
+        default: return "questionmark.circle"
+        }
     }
 }

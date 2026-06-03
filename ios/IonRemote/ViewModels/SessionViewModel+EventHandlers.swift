@@ -315,8 +315,8 @@ extension SessionViewModel {
         case .engineEarlyStopDecisionRequest:
             handleEngineEarlyStopDecisionRequest()
 
-        case .engineCommandRegistry:
-            handleEngineCommandRegistry()
+        case .engineCommandRegistry(let tabId, let instanceId, let commands):
+            handleEngineCommandRegistry(tabId: tabId, instanceId: instanceId, commands: commands)
 
         case .engineCommandResult:
             handleEngineCommandResult()
