@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -95,10 +96,11 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 	ts := backend.NewToolServer(key)
 	for _, tool := range extTools {
 		capturedTool := tool
-		ts.RegisterTool(capturedTool.Name, func(input map[string]interface{}) (*types.ToolResult, error) {
+		handler := func(input map[string]interface{}) (*types.ToolResult, error) {
 			ctx := m.newExtContext(s, key)
 			return capturedTool.Execute(input, ctx)
-		})
+		}
+		ts.RegisterTool(capturedTool.Name, handler, capturedTool.Description, capturedTool.Parameters)
 	}
 	if err := ts.Start(); err != nil {
 		utils.Log("Session", "ToolServer start failed: "+err.Error())
@@ -138,7 +140,21 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 		needsStart = true
 	}
 
-	ts.RegisterTool("ion_agent", m.buildAgentToolHandler(s, key))
+	// Source the description + input schema from the canonical Agent
+	// tool definition (engine/internal/tools/agent.go:AgentTool) rather
+	// than duplicating them inline. The MCP tool is exposed under the
+	// name "ion_agent" (per the CLI backend's MCP server prefix) but
+	// its behavior, description, and parameter shape are identical to
+	// the API-backend's Agent tool. Routing through tools.AgentTool()
+	// keeps the two backends in sync: a future field added to the
+	// canonical schema lands on both backends in one place. The
+	// pin test prompt_cli_hooks_agent_schema_test.go guards against
+	// the canonical schema accidentally dropping a property.
+	agentDef := tools.AgentTool()
+	ts.RegisterTool("ion_agent", m.buildAgentToolHandler(s, key),
+		agentDef.Description,
+		agentDef.InputSchema,
+	)
 
 	if needsStart {
 		if err := ts.Start(); err != nil {

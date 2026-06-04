@@ -12,14 +12,26 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// McpServerName is the MCP server name used in config and --allowedTools.
+// Shared between ToolServer (config generation) and CliBackend (allowlist).
+const McpServerName = "ion-extensions"
+
 // ToolServer exposes extension-registered tools as an MCP server
 // that backend processes can connect to.
 type ToolServer struct {
 	mu       sync.Mutex
 	listener net.Listener
-	tools    map[string]ToolHandler
+	tools    map[string]toolEntry
 	sockPath string
 	running  bool
+}
+
+// toolEntry stores a tool's handler alongside its MCP metadata so
+// tools/list can serve real descriptions and input schemas.
+type toolEntry struct {
+	handler     ToolHandler
+	description string
+	inputSchema map[string]interface{}
 }
 
 // ToolHandler executes a tool call and returns the result.
@@ -32,16 +44,21 @@ func NewToolServer(sessionID string) *ToolServer {
 	_ = os.MkdirAll(sockDir, 0o700)
 
 	return &ToolServer{
-		tools:    make(map[string]ToolHandler),
+		tools:    make(map[string]toolEntry),
 		sockPath: filepath.Join(sockDir, fmt.Sprintf("sock-%s", sessionID)),
 	}
 }
 
-// RegisterTool adds a tool to the server.
-func (ts *ToolServer) RegisterTool(name string, handler ToolHandler) {
+// RegisterTool adds a tool to the server with its full MCP metadata.
+func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description string, inputSchema map[string]interface{}) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	ts.tools[name] = handler
+	ts.tools[name] = toolEntry{
+		handler:     handler,
+		description: description,
+		inputSchema: inputSchema,
+	}
+	utils.Debug("ToolServer", fmt.Sprintf("registered tool %q (desc=%d chars, schema=%v)", name, len(description), inputSchema != nil))
 }
 
 // Start begins listening for MCP tool call requests.
@@ -89,7 +106,7 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 
 	config := map[string]interface{}{
 		"mcpServers": map[string]interface{}{
-			"ion-extensions": map[string]interface{}{
+			McpServerName: map[string]interface{}{
 				"type":    "stdio",
 				"command": "socat",
 				"args": []string{
@@ -146,21 +163,82 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			return
 		}
 
+		utils.Debug("ToolServer", fmt.Sprintf("received method=%s id=%v", req.Method, req.ID))
+
 		switch req.Method {
+		case "initialize":
+			// MCP handshake: echo protocol version, declare tools capability.
+			var params struct {
+				ProtocolVersion string `json:"protocolVersion"`
+			}
+			_ = json.Unmarshal(req.Params, &params)
+			utils.Log("ToolServer", fmt.Sprintf("MCP initialize: protocolVersion=%s", params.ProtocolVersion))
+			_ = encoder.Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"result": map[string]interface{}{
+					"protocolVersion": params.ProtocolVersion,
+					"capabilities": map[string]interface{}{
+						"tools": map[string]interface{}{},
+					},
+					"serverInfo": map[string]interface{}{
+						"name":    McpServerName,
+						"version": "1.0.0",
+					},
+				},
+			})
+
+		case "notifications/initialized":
+			// MCP notification: per JSON-RPC 2.0 §4.1 and the MCP spec,
+			// notifications MUST NOT carry an `id` field. A well-
+			// behaved client never sends one; if a client mistakenly
+			// does, log the protocol violation but still treat the
+			// message as a notification (no response). Returning an
+			// error response to a notification would itself be a
+			// protocol violation (responses go to requests, not
+			// notifications), so we cannot tell the bad client.
+			//
+			// req.ID is `interface{}`; JSON-decoded null and absent
+			// fields both leave it nil. A non-nil ID means the JSON
+			// payload carried a concrete value (number/string), which
+			// signals the violation.
+			if req.ID != nil {
+				utils.Log("ToolServer", fmt.Sprintf(
+					"protocol violation: notifications/initialized carried id=%v (JSON-RPC notifications must omit id). Ignoring id; no response sent.",
+					req.ID))
+			} else {
+				utils.Debug("ToolServer", "received notifications/initialized (no-op)")
+			}
+			continue
+
+		case "ping":
+			_ = encoder.Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"result":  map[string]interface{}{},
+			})
+
 		case "tools/list":
 			ts.mu.Lock()
 			var toolList []map[string]interface{}
-			for name := range ts.tools {
+			for name, entry := range ts.tools {
+				schema := entry.inputSchema
+				if schema == nil {
+					schema = map[string]interface{}{"type": "object"}
+				}
+				desc := entry.description
+				if desc == "" {
+					desc = "Extension tool: " + name
+				}
 				toolList = append(toolList, map[string]interface{}{
 					"name":        name,
-					"description": "Extension tool: " + name,
-					"inputSchema": map[string]interface{}{
-						"type": "object",
-					},
+					"description": desc,
+					"inputSchema": schema,
 				})
 			}
 			ts.mu.Unlock()
 
+			utils.Debug("ToolServer", fmt.Sprintf("tools/list: returning %d tools", len(toolList)))
 			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
@@ -175,10 +253,11 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			_ = json.Unmarshal(req.Params, &params)
 
 			ts.mu.Lock()
-			handler, exists := ts.tools[params.Name]
+			entry, exists := ts.tools[params.Name]
 			ts.mu.Unlock()
 
 			if !exists {
+				utils.Log("ToolServer", fmt.Sprintf("tool not found: %s", params.Name))
 				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
@@ -187,8 +266,10 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 				continue
 			}
 
-			result, err := handler(params.Arguments)
+			utils.Debug("ToolServer", fmt.Sprintf("tools/call: invoking %s", params.Name))
+			result, err := entry.handler(params.Arguments)
 			if err != nil {
+				utils.Log("ToolServer", fmt.Sprintf("tool %s error: %v", params.Name, err))
 				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
@@ -200,6 +281,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 					},
 				})
 			} else {
+				utils.Debug("ToolServer", fmt.Sprintf("tool %s completed (isError=%v)", params.Name, result.IsError))
 				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
@@ -213,6 +295,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			}
 
 		default:
+			utils.Log("ToolServer", fmt.Sprintf("unknown method: %s", req.Method))
 			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,

@@ -329,6 +329,12 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 			}
 		}
 	}
+	// When an MCP ToolServer is wired, add the wildcard allowlist entry so
+	// the CLI offers all tools from the ion-extensions MCP server to the model.
+	if opts.McpConfig != "" {
+		allowedTools = append(allowedTools, "mcp__"+McpServerName+"__*")
+		utils.Log("CliBackend", fmt.Sprintf("added MCP wildcard to allowedTools: mcp__%s__*", McpServerName))
+	}
 	args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
 
 	if opts.McpConfig != "" {
@@ -349,6 +355,15 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	}
 
 	cmd := exec.CommandContext(ctx, claudePath, args...)
+
+	// When MCP tools are wired, disable tool search so all bridged tools
+	// appear in the model's upfront tool list. ENABLE_TOOL_SEARCH defaults
+	// on in Claude Code, which hides MCP tools behind a lazy search step
+	// in headless (-p) mode.
+	if opts.McpConfig != "" {
+		cmd.Env = append(os.Environ(), "ENABLE_TOOL_SEARCH=false")
+		utils.Log("CliBackend", "set ENABLE_TOOL_SEARCH=false for MCP tools")
+	}
 
 	// Set working directory if specified
 	if opts.ProjectPath != "" {
