@@ -96,6 +96,36 @@ struct SettingsAppearanceView: View {
                 Text("When enabled, tapping an agent opens a full-screen detail view instead of expanding inline.")
             }
 
+            // ─── Keyboard Utility Bar ──────────────────────────────
+            //
+            // Per-view toggles for the keyboard utility bar (the strip
+            // above the keyboard with paste / select all / tab / new
+            // line / undo / redo / dismiss buttons). The bar's underlying
+            // implementation lives in InputBar.swift (CLI) and
+            // EngineView.swift (engine view); the toggles default to on
+            // and a previous iOS settings refactor (9b3d1e5f) lost the
+            // UI for these toggles when it deleted SettingsInterfaceView.
+            // Restored here under Appearance because the toggles control
+            // visible chrome, which is the right semantic group.
+            Section {
+                Toggle(isOn: Binding(
+                    get: { viewModel.showKeyboardUtilityBarInCLI },
+                    set: { viewModel.showKeyboardUtilityBarInCLI = $0 }
+                )) {
+                    Label("Show in Conversation View", systemImage: "keyboard")
+                }
+                Toggle(isOn: Binding(
+                    get: { viewModel.showKeyboardUtilityBarInEngine },
+                    set: { viewModel.showKeyboardUtilityBarInEngine = $0 }
+                )) {
+                    Label("Show in Engine View", systemImage: "keyboard")
+                }
+            } header: {
+                Text("Keyboard Utility Bar")
+            } footer: {
+                Text("Adds a toolbar above the keyboard with paste, select all, tab, new line, undo, redo, and dismiss-keyboard buttons. Toggle independently per view.")
+            }
+
             // Tab Groups are managed exclusively from the desktop side
             // now (Desktops & Connection → Desktop Settings → Tabs &
             // Panels). The full editor — grouping mode, group list with
