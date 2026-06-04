@@ -114,6 +114,19 @@ type ClientCommand struct {
 	// plan file path.
 	PlanFilePath string `json:"planFilePath,omitempty"`
 
+	// set_plan_mode: list of bash command prefixes that the engine
+	// allows in plan mode. Tri-valued:
+	//   - omitted (JSON nil)    → no change to existing allowlist
+	//   - []                    → clear; Bash blocked entirely
+	//   - ["gh", "git log", ...] → replace allowlist with this set
+	// Token-based prefix matching (whitespace-split, exact-token
+	// comparison) prevents false positives ("gh" matches "gh pr view"
+	// but not "ghost"). Existing clients (omitted or non-empty) keep
+	// their prior behavior; the empty-array case is the explicit-clear
+	// path. Additive optional field; omitted by clients that do not
+	// need to extend the plan-mode bash allowlist.
+	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
+
 	// Compaction overrides — per-prompt tuning of context compaction behavior.
 	CompactTargetPercent  float64 `json:"compactTargetPercent,omitempty"`
 	CompactMicroKeepTurns int     `json:"compactMicroKeepTurns,omitempty"`

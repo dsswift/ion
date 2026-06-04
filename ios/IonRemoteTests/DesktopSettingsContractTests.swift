@@ -96,7 +96,8 @@ final class DesktopSettingsContractTests: XCTestCase {
                     defaultValue: AnyCodable(false),
                     choices: nil,
                     range: nil,
-                    itemSchema: nil
+                    itemSchema: nil,
+                    itemType: nil
                 ),
                 DesktopSettingSchemaEntry(
                     key: "b",
@@ -107,7 +108,8 @@ final class DesktopSettingsContractTests: XCTestCase {
                     defaultValue: AnyCodable(true),
                     choices: nil,
                     range: nil,
-                    itemSchema: nil
+                    itemSchema: nil,
+                    itemType: nil
                 ),
                 DesktopSettingSchemaEntry(
                     key: "c",
@@ -118,7 +120,8 @@ final class DesktopSettingsContractTests: XCTestCase {
                     defaultValue: AnyCodable(false),
                     choices: nil,
                     range: nil,
-                    itemSchema: nil
+                    itemSchema: nil,
+                    itemType: nil
                 ),
             ],
             groups: [
@@ -337,5 +340,66 @@ final class DesktopSettingsContractTests: XCTestCase {
         XCTAssertEqual(entry?.range?.min, 0.5)
         XCTAssertEqual(entry?.range?.max, 2.0)
         XCTAssertEqual(entry?.range?.step, 0.1)
+    }
+
+    /// Primitive-list schema entries (`list` + `itemType`) decode the
+    /// itemType field and the value as a flat `[String]` (or `[Number]`,
+    /// `[Bool]` for the other primitive types). Mirrors the desktop's
+    /// `planModeAllowedBashCommands` projection shape.
+    ///
+    /// This pins the iOS half of the round-trip that the original
+    /// BLOCKER finding addressed: the desktop preference is `string[]`,
+    /// the projection declares `itemType: 'string'`, and iOS must
+    /// decode both halves so its primitive-list editor renders the
+    /// right control (TextField per row) and writes back an array
+    /// (not a CSV string).
+    func testDesktopSettingsPrimitiveListDecode() throws {
+        let json = """
+        {
+            "type": "desktop_settings_snapshot",
+            "settings": {
+                "planModeAllowedBashCommands": ["gh", "git log", "git diff"]
+            },
+            "schema": [
+                {
+                    "key": "planModeAllowedBashCommands",
+                    "type": "list",
+                    "itemType": "string",
+                    "group": "ai",
+                    "label": "Plan mode allowed Bash commands",
+                    "description": "Command prefixes the agent may invoke via Bash while in plan mode.",
+                    "defaultValue": ["gh"]
+                }
+            ],
+            "groups": [
+                { "id": "ai", "label": "AI & Models" }
+            ]
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .desktopSettingsSnapshot(let settings, let schema, _) = event else {
+            XCTFail("expected desktopSettingsSnapshot, got \(event)")
+            return
+        }
+        let entry = schema.first { $0.key == "planModeAllowedBashCommands" }
+        XCTAssertNotNil(entry, "primitive-list entry must decode")
+        XCTAssertEqual(entry?.type, .list, "primitive-list still uses the 'list' wire type")
+        XCTAssertEqual(entry?.itemType, .string, "itemType disambiguates record-list vs primitive-list")
+        XCTAssertNil(entry?.itemSchema, "primitive-list does not carry an itemSchema")
+
+        // Value decodes as an array of AnyCodable wrapping String.
+        let values = settings["planModeAllowedBashCommands"]?.value as? [AnyCodable]
+        XCTAssertEqual(values?.count, 3)
+        XCTAssertEqual(values?[0].value as? String, "gh")
+        XCTAssertEqual(values?[1].value as? String, "git log")
+        XCTAssertEqual(values?[2].value as? String, "git diff")
+
+        // Default value decodes as [AnyCodable] too, so the editor's
+        // fallback path (when the snapshot omits the key) renders the
+        // correct shape.
+        let defaultValues = entry?.defaultValue.value as? [AnyCodable]
+        XCTAssertEqual(defaultValues?.count, 1)
+        XCTAssertEqual(defaultValues?[0].value as? String, "gh")
     }
 }

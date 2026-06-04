@@ -142,7 +142,7 @@ beforeEach(() => {
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
   mocks.broadcastMock.mockReset()
-  mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded' })
+  mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded', frontmatter: {} })
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
   mocks.getTabStatusMock.mockReset().mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, conversationId: null })
   mocks.bridgeListeners.clear()

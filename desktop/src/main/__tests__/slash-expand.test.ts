@@ -33,7 +33,7 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-import { expandSlashCommand, stripFrontmatter } from '../cli-compat/slash-expand'
+import { expandSlashCommand, stripFrontmatter, parseFrontmatter } from '../cli-compat/slash-expand'
 
 // ─── Fixtures ───
 
@@ -184,6 +184,25 @@ describe('expandSlashCommand', () => {
     expect(result.systemPrompt).toBe('')
     expect(result.userPrompt).not.toContain('description:')
     expect(result.userPrompt).not.toContain('allowed-tools:')
+  })
+
+  // TC-SE-007b: frontmatter with allowed_bash_commands flows into expansion result
+  it('returns allowed_bash_commands from frontmatter in expansion result', async () => {
+    writeCommand(fakeHome, 'bash-test', [
+      '---',
+      'description: Test bash allowlist',
+      'allowed_bash_commands: [gh, git log]',
+      '---',
+      'Review the PR.',
+    ].join('\n'))
+
+    const result = await expandSlashCommand('/bash-test', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+
+    expect(result.userPrompt).toBe('Review the PR.')
+    expect(result.frontmatter.allowedBashCommands).toEqual(['gh', 'git log'])
+    expect(result.frontmatter.description).toBe('Test bash allowlist')
   })
 
   // TC-SE-008
@@ -518,5 +537,60 @@ describe('stripFrontmatter', () => {
   it('handles empty content after frontmatter', () => {
     const content = '---\nkey: value\n---\n'
     expect(stripFrontmatter(content)).toBe('')
+  })
+})
+
+describe('parseFrontmatter', () => {
+  it('returns empty meta and full body when no frontmatter', () => {
+    const { body, meta } = parseFrontmatter('hello\nworld')
+    expect(body).toBe('hello\nworld')
+    expect(meta).toEqual({})
+  })
+
+  it('parses description field', () => {
+    const content = '---\ndescription: My command\n---\nbody text'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe('body text')
+    expect(meta.description).toBe('My command')
+  })
+
+  it('strips quotes from description', () => {
+    const content = '---\ndescription: "Quoted desc"\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('Quoted desc')
+  })
+
+  it('parses inline allowed_bash_commands', () => {
+    const content = '---\nallowed_bash_commands: [gh, git log, git diff]\n---\nbody'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe('body')
+    expect(meta.allowedBashCommands).toEqual(['gh', 'git log', 'git diff'])
+  })
+
+  it('parses YAML list allowed_bash_commands', () => {
+    const content = '---\nallowed_bash_commands:\n  - gh\n  - git log\n  - git diff\n---\nbody'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe('body')
+    expect(meta.allowedBashCommands).toEqual(['gh', 'git log', 'git diff'])
+  })
+
+  it('parses both description and allowed_bash_commands', () => {
+    const content = '---\ndescription: Review PR\nallowed_bash_commands: [gh]\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('Review PR')
+    expect(meta.allowedBashCommands).toEqual(['gh'])
+  })
+
+  it('returns empty meta when no closing ---', () => {
+    const content = '---\nallowed_bash_commands: [gh]\nbody text'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe(content)
+    expect(meta).toEqual({})
+  })
+
+  it('filters empty entries from inline list', () => {
+    const content = '---\nallowed_bash_commands: [gh, , git log, ]\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.allowedBashCommands).toEqual(['gh', 'git log'])
   })
 })

@@ -223,17 +223,28 @@ Fork a session at a specific message index, creating a new session with conversa
 
 Toggle plan mode for a session. In plan mode, the agent plans without executing tools (or executes only allowed tools).
 
-| Field          | Type               | Required | Description                          |
-|----------------|--------------------|----------|--------------------------------------|
-| `cmd`          | `"set_plan_mode"`  | yes      | Command discriminator                |
-| `key`          | string             | yes      | Session key                          |
-| `enabled`      | boolean            | yes      | Enable or disable plan mode          |
-| `allowedTools` | string[]           | no       | Tools allowed during plan mode       |
-| `requestId`    | string             | no       | Correlates with ServerResult         |
+| Field                          | Type               | Required | Description                          |
+|--------------------------------|--------------------|----------|--------------------------------------|
+| `cmd`                          | `"set_plan_mode"`  | yes      | Command discriminator                |
+| `key`                          | string             | yes      | Session key                          |
+| `enabled`                      | boolean            | yes      | Enable or disable plan mode          |
+| `allowedTools`                 | string[]           | no       | Tools allowed during plan mode       |
+| `planModeAllowedBashCommands`  | string[]           | no       | Bash command prefixes allowed in plan mode. Tri-valued — see semantics below. |
+| `requestId`                    | string             | no       | Correlates with ServerResult         |
 
 ```json
-{"cmd":"set_plan_mode","key":"abc-123","enabled":true,"allowedTools":["Read","Glob"],"requestId":"r7"}
+{"cmd":"set_plan_mode","key":"abc-123","enabled":true,"allowedTools":["Read","Glob"],"planModeAllowedBashCommands":["gh","git log","git diff"],"requestId":"r7"}
 ```
+
+**`planModeAllowedBashCommands` semantics.** The field is tri-valued and uses JSON's nil-vs-empty distinction to disambiguate intent without a new wire field:
+
+| Wire value | Meaning |
+|---|---|
+| omitted (field absent) | **No change** to the session's existing allowlist. Use this on every `set_plan_mode` call that does not intend to touch the allowlist. |
+| `[]` (empty array, explicit) | **Clear** the allowlist. Bash is then blocked entirely in plan mode, regardless of any prior state. |
+| `["gh", "git log", …]` | **Replace** the allowlist with this set. |
+
+**Bash allowlist matching.** When the resolved allowlist is non-empty, the engine includes the `Bash` tool in the plan-mode tool list but gates each call against the allowlist at execution time. Matching is token-based: each command is split on whitespace and the first N tokens must match an entry exactly. `"gh"` matches `gh pr view 123` but not `ghost`; `"git log"` matches `git log --oneline -10` but not `git status`. Comparison is case-sensitive. A blocked call returns an `IsError: true` tool result; the model sees the failure and can adjust.
 
 **Response:** `ServerResult` with `ok: true`.
 

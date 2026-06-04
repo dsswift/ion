@@ -99,6 +99,7 @@ import { dispatchExtensionCommand, tryExpandMarkdownSlash } from './slash-classi
 import { handleLocalClearShortCircuit } from './slash-clear'
 import { encodeImageAttachments } from './remote/attachment-encoder'
 import type { ImageAttachmentPayload } from '../shared/types'
+import { resolveBashAllowlistFromSettings } from './plan-mode-bash-allowlist'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 import { emitRemoteMessageAdded, insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
 import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
@@ -439,6 +440,21 @@ async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void>
       p.appendSystemPrompt = p.appendSystemPrompt
         ? p.appendSystemPrompt + '\n\n' + expansion.systemPrompt
         : expansion.systemPrompt
+      // If the expansion specifies allowed bash commands, merge with global
+      // preference and update the engine's plan-mode bash allowlist.
+      if (expansion.allowedBashCommands && expansion.allowedBashCommands.length > 0) {
+        // Resolve the user's persisted allowlist via the shared helper so
+        // the read-failure / missing-key fallback path is consistent with
+        // engine-control-plane.ts:setPermissionMode. We only need the
+        // non-empty case here (slash-frontmatter additions are unioned with
+        // whatever the user has; "no global preference" is just an empty
+        // global set), so collapse undefined → [] at this call site.
+        const globalCmds = resolveBashAllowlistFromSettings() ?? []
+        const merged = [...new Set([...globalCmds, ...expansion.allowedBashCommands])]
+        const key = engineKey(p)
+        log(`pipeline: frontmatter bash allowlist merged=${merged.length} key=${key}`)
+        engineBridge.sendSetPlanMode(key, true, undefined, 'slash_frontmatter', merged)
+      }
       await submitAsPrompt(p)
       return
     }

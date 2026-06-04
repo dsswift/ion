@@ -57,6 +57,7 @@ Call this tool when the task at hand warrants careful planning before execution:
 
 Once called, the session switches to plan mode where:
 - Only read-only tools (Read, Grep, Glob, WebFetch, WebSearch) are available
+- If the user has configured allowed Bash commands, Bash is also available but restricted to those command prefixes only
 - You may write exclusively to the plan file to build your plan
 - Each turn must end with AskUserQuestion (for clarification) or ExitPlanMode (plan complete)
 - All code modifications are blocked until the user reviews and approves the plan

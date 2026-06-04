@@ -158,9 +158,14 @@ function isDynamicGroupIdKey(key: string): boolean {
  *     choice set depends on the live `tabGroups`, which is the
  *     projection layer's responsibility to reconcile (a write
  *     referencing a deleted group becomes "None" on the next snapshot).
- *   - list: value must be an array. Per-item schema is not enforced
- *     here; the iOS editor produces well-formed records and downstream
- *     consumers tolerate forward-compat extra fields on records.
+ *   - list: value must be an array. When `itemType` is declared on the
+ *     entry, every element is checked against that primitive type
+ *     (string/number/boolean) — this is the primitive-list shape used
+ *     by `string[]` preferences like `planModeAllowedBashCommands`.
+ *     When `itemType` is absent, the array is accepted as-is — this is
+ *     the record-list shape (`quickTools`, `tabGroups`) where per-record
+ *     schema enforcement is the iOS editor's responsibility and
+ *     downstream consumers tolerate forward-compat extra fields.
  */
 export function validateSettingValue(key: string, value: unknown): string | null {
   const entry = PROJECTABLE_BY_KEY[key]
@@ -188,6 +193,20 @@ export function validateSettingValue(key: string, value: unknown): string | null
       return `key ${key} expects enum string|null, got ${actualType}`
     case 'list':
       if (!Array.isArray(value)) return `key ${key} expects array, got ${actualType}`
+      // Primitive-list: every element must match the declared itemType.
+      // Record-list (itemType absent): per-element schema is not enforced
+      // here; the iOS editor produces well-formed records and downstream
+      // consumers tolerate forward-compat extra fields on records.
+      if (entry.itemType) {
+        const expected = entry.itemType
+        for (let i = 0; i < value.length; i++) {
+          const elem = value[i]
+          const elemType = typeof elem
+          if (elemType !== expected) {
+            return `key ${key} expects list of ${expected}, got ${elemType} at index ${i}`
+          }
+        }
+      }
       return null
   }
 }
@@ -290,6 +309,7 @@ export function projectableSchema(): ProjectableSettingSchema[] {
     }
     if (s.range) base.range = s.range
     if (s.itemSchema) base.itemSchema = s.itemSchema.map(itemToSchema)
+    if (s.itemType) base.itemType = s.itemType
     return base
   })
 }
@@ -312,6 +332,7 @@ function itemToSchema(s: ProjectableSetting): ProjectableSettingSchema {
   if (s.choices) out.choices = s.choices
   if (s.range) out.range = s.range
   if (s.itemSchema) out.itemSchema = s.itemSchema.map(itemToSchema)
+  if (s.itemType) out.itemType = s.itemType
   return out
 }
 

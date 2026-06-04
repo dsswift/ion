@@ -164,6 +164,15 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     description: 'Model to use when implementing a plan. Leave empty to use the conversation default.',
     defaultValue: '',
   },
+  {
+    key: 'planModeAllowedBashCommands',
+    type: 'list',
+    itemType: 'string',
+    group: 'ai',
+    label: 'Plan mode allowed Bash commands',
+    description: 'Command prefixes allowed in plan mode (e.g. "gh", "git log", "git diff"). Token-based prefix matching: "gh" matches "gh pr view" but not "ghost". Empty disables Bash entirely in plan mode.',
+    defaultValue: ['gh'],
+  },
 
   // ═══════════════════════════════════════════════════════════════════
   // APPEARANCE

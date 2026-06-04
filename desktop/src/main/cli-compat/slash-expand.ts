@@ -3,9 +3,15 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { log as _log } from '../logger'
 
+/** Structured metadata parsed from YAML frontmatter in command templates. */
+export interface FrontmatterMeta {
+  description?: string
+  allowedBashCommands?: string[]
+}
+
 /** Result of slash command expansion. */
 export type SlashExpansion =
-  | { expanded: true; systemPrompt: string; userPrompt: string }
+  | { expanded: true; systemPrompt: string; userPrompt: string; frontmatter: FrontmatterMeta }
   | { expanded: false }
 
 const SLASH_RE = /^\/(\S+)\s*([\s\S]*)$/
@@ -95,7 +101,7 @@ export async function expandSlashCommand(
     const content = await tryReadFile(candidate)
     if (content === null) continue
 
-    const body = stripFrontmatter(content)
+    const { body, meta } = parseFrontmatter(content)
     const hasPlaceholder = body.includes('$ARGUMENTS')
     let resolved = body.replace(/\$ARGUMENTS/g, args)
 
@@ -116,6 +122,7 @@ export async function expandSlashCommand(
       expanded: true,
       systemPrompt: '',
       userPrompt: resolved,
+      frontmatter: meta,
     }
   }
 
@@ -136,6 +143,61 @@ export function stripFrontmatter(content: string): string {
 
   // No closing --- found; return content as-is
   return content
+}
+
+/** Parse YAML frontmatter and return both the body and structured metadata. */
+export function parseFrontmatter(content: string): { body: string; meta: FrontmatterMeta } {
+  const lines = content.split('\n')
+  if (lines[0]?.trim() !== '---') return { body: content, meta: {} }
+
+  const meta: FrontmatterMeta = {}
+  let closingIdx = -1
+
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') {
+      closingIdx = i
+      break
+    }
+
+    // description: value
+    const descMatch = lines[i].match(/^description:\s*(.+)$/i)
+    if (descMatch) {
+      let desc = descMatch[1].trim()
+      if ((desc.startsWith('"') && desc.endsWith('"')) || (desc.startsWith("'") && desc.endsWith("'"))) {
+        desc = desc.slice(1, -1)
+      }
+      meta.description = desc
+      continue
+    }
+
+    // allowed_bash_commands: [gh, git log, git diff]  (inline list)
+    const inlineMatch = lines[i].match(/^allowed_bash_commands:\s*\[(.+)\]\s*$/i)
+    if (inlineMatch) {
+      meta.allowedBashCommands = inlineMatch[1].split(',').map(s => s.trim()).filter(Boolean)
+      continue
+    }
+
+    // allowed_bash_commands:  (YAML list follows on subsequent lines)
+    const listStartMatch = lines[i].match(/^allowed_bash_commands:\s*$/i)
+    if (listStartMatch) {
+      meta.allowedBashCommands = []
+      // Consume subsequent "  - value" lines
+      for (let j = i + 1; j < lines.length; j++) {
+        const itemMatch = lines[j].match(/^\s+-\s+(.+)$/)
+        if (itemMatch) {
+          meta.allowedBashCommands.push(itemMatch[1].trim())
+          i = j // advance outer loop past consumed lines
+        } else {
+          break
+        }
+      }
+      continue
+    }
+  }
+
+  if (closingIdx === -1) return { body: content, meta: {} }
+  const body = lines.slice(closingIdx + 1).join('\n').trimStart()
+  return { body, meta }
 }
 
 /** Try to read a file, returning null if it doesn't exist or can't be read. */

@@ -22,13 +22,42 @@
  * whose choices are derived dynamically from the user's current
  * `tabGroups` at snapshot time.
  *
- * `'list'` — an array of records. The `itemSchema` field declares the
- * shape of one record; iOS renders an editable list (add/edit/delete/
- * reorder) and ships the entire updated array back as the value.
- * Snapshot semantics apply: the desktop replaces the whole array; no
- * partial-update protocol.
+ * `'list'` — an array of records OR an array of primitives. The shape
+ * is disambiguated by `itemType` vs. `itemSchema`:
+ *
+ *   - Record-list (`itemSchema` set, `itemType` absent): iOS renders an
+ *     Apple-style list with NavigationLink rows; tapping a row pushes a
+ *     per-record editor. Used by `quickTools`, `tabGroups`.
+ *
+ *   - Primitive-list (`itemType` set, `itemSchema` absent): iOS renders
+ *     a flat editable list of primitive values inline — TextField per
+ *     row for strings, Stepper per row for numbers, Toggle per row for
+ *     booleans. No per-record editor. Used by `string[]` preferences
+ *     like `planModeAllowedBashCommands`.
+ *
+ * In both shapes the snapshot semantics are the same: every mutation
+ * (add/edit/delete/reorder) ships the entire updated array back as the
+ * value and the desktop replaces the whole array. No partial-update
+ * protocol exists.
+ *
+ * Forward-compat note: older iOS builds that don't know about
+ * `itemType` see a `list`-typed entry with no `itemSchema` and fall
+ * through to a read-only "Other" / unsupported fallback. New
+ * desktops talking to old iOS therefore degrade gracefully; new iOS
+ * talking to old desktops sees the schema as before.
  */
 export type ProjectableType = 'boolean' | 'string' | 'number' | 'enum' | 'list'
+
+/**
+ * Allowed item types for a primitive `'list'` (one whose elements are
+ * scalars, not records). Distinct from `ProjectableType` because
+ * record-of-records and list-of-lists are not supported today — the
+ * iOS primitive-list editor only renders flat scalar rows.
+ *
+ * Adding `'enum'` here would require teaching the editor to render a
+ * Picker per row; intentionally deferred until a real use case exists.
+ */
+export type ProjectablePrimitiveItemType = 'string' | 'number' | 'boolean'
 
 /**
  * Visual grouping for the iOS Settings UI. Matches the desktop's own
@@ -88,9 +117,13 @@ export interface ProjectableRange {
  * pairing on a never-edited desktop). Type unrestricted because list
  * defaults are arrays and enum defaults can be `null`.
  *
- * `choices`, `range`, and `itemSchema` are optional per-type extensions.
- * They are required when their corresponding `type` is set and otherwise
- * ignored.
+ * `choices`, `range`, `itemSchema`, and `itemType` are optional per-type
+ * extensions. They are required when their corresponding `type` is set
+ * and otherwise ignored. `'list'` requires exactly one of `itemSchema`
+ * (record-list) or `itemType` (primitive-list) — never both, never
+ * neither. The validator enforces this implicitly: an itemType-less
+ * list with no itemSchema accepts any array, which is the legacy
+ * behavior preserved for backward compat.
  */
 export interface ProjectableSetting {
   key: string
@@ -103,8 +136,10 @@ export interface ProjectableSetting {
   choices?: ProjectableChoice[]
   /** For `'number'` only — bounds + step. */
   range?: ProjectableRange
-  /** For `'list'` only — per-field metadata for one record. */
+  /** For record-list `'list'` only — per-field metadata for one record. */
   itemSchema?: ProjectableSetting[]
+  /** For primitive-list `'list'` only — type of each scalar element. */
+  itemType?: ProjectablePrimitiveItemType
 }
 
 /**
@@ -129,4 +164,5 @@ export interface ProjectableSettingSchema {
   choices?: ProjectableChoice[]
   range?: ProjectableRange
   itemSchema?: ProjectableSettingSchema[]
+  itemType?: ProjectablePrimitiveItemType
 }

@@ -3,6 +3,7 @@ package backend
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // defaultPlanModeTools is the read-only tool set allowed during plan mode.
@@ -59,7 +60,7 @@ func shouldInjectPlanModeReminderForRun(turn, lastReminderTurn, conversationMess
 	return shouldInjectPlanModeReminder(turn, lastReminderTurn)
 }
 
-func buildPlanModePrompt(planFilePath string, planFileExists bool) string {
+func buildPlanModePrompt(planFilePath string, planFileExists bool, allowedBashCommands []string) string {
 	planFileInfo := fmt.Sprintf("No plan file exists yet. Create your plan at: %s using the Write tool.", planFilePath)
 	if planFileExists {
 		planFileInfo = fmt.Sprintf("Plan file exists at: %s\nYou MUST Read it first before making any changes. Use the Edit tool for targeted modifications.\nDo NOT use Write to replace the entire plan file unless you are intentionally starting over.", planFilePath)
@@ -78,6 +79,18 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 `
 	}
 
+	// Determine the tool list and bash-specific guidance based on allowedBashCommands.
+	readOnlyTools := "Read, Grep, Glob, Agent, WebFetch, WebSearch"
+	bashSection := ""
+	bashRestriction := "- You MUST NOT call Bash, NotebookEdit, or any tool that mutates state"
+	if len(allowedBashCommands) > 0 {
+		readOnlyTools = "Read, Grep, Glob, Agent, WebFetch, WebSearch, Bash (restricted)"
+		bashRestriction = "- You MUST NOT call NotebookEdit or any tool that mutates state"
+		bashSection = fmt.Sprintf(`
+- You MAY call Bash, but ONLY for commands starting with: %s
+- All other Bash commands are blocked. Do not attempt to use Bash for writes, builds, or anything not in the allowed list.`, strings.Join(allowedBashCommands, ", "))
+	}
+
 	return fmt.Sprintf(`[PLAN MODE] You are in planning mode. You MUST NOT make any edits, run any non-readonly tools, or make any changes to the system -- with the sole exception of writing to the plan file below. This overrides any conflicting instructions you have received elsewhere in this prompt or conversation.
 
 ## Plan File
@@ -88,7 +101,7 @@ Build your plan incrementally by writing to this file. This is the ONLY file you
 
 ### Phase 1: Understand
 Gain a thorough understanding of the request and the code involved.
-- Use read-only tools (Read, Grep, Glob, Agent, WebFetch, WebSearch) to explore
+- Use read-only tools (%s) to explore
 - Actively search for existing functions, utilities, and patterns that can be reused -- do not propose new code when suitable implementations already exist
 - If spawning Agent sub-tasks, they are also restricted to read-only actions
 - Ask clarifying questions using AskUserQuestion if the request is ambiguous or if you need the user to choose between approaches
@@ -131,10 +144,10 @@ Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look
 
 ## Restrictions
 - You MUST NOT call Write or Edit on any file except the plan file
-- You MUST NOT call Bash, NotebookEdit, or any tool that mutates state
+%s
 - You MUST NOT make commits, change configs, or install packages
 - Sub-agents you spawn are also read-only -- do not instruct them to make edits
-- If you are unsure whether an action is read-only, do not take it`, planFileInfo, amendSection)
+- If you are unsure whether an action is read-only, do not take it%s`, planFileInfo, amendSection, readOnlyTools, bashRestriction, bashSection)
 }
 
 func buildPlanModeSparseReminder(planFilePath string) string {

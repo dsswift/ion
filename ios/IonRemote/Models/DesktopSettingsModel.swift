@@ -111,7 +111,19 @@ struct DesktopSettingRange: Codable, Sendable {
 /// render a row: the wire key, the value type, the visual group, the
 /// row label, the descriptive footer, the default value to fall back on,
 /// and per-type extensions (`choices` for enum, `range` for number,
-/// `itemSchema` for list).
+/// `itemSchema` for record-list, `itemType` for primitive-list).
+///
+/// List shape disambiguation
+/// ─────────────────────────
+/// A `list`-typed entry carries exactly one of:
+///   - `itemSchema`: record-list. iOS pushes a per-record editor view
+///     and renders rows as NavigationLinks (`DesktopSettingsListEditor`).
+///   - `itemType`: primitive-list. iOS renders a flat list of inline
+///     editors (`DesktopSettingsPrimitiveListEditor`) — TextField per
+///     row for `.string`, Stepper for `.number`, Toggle for `.boolean`.
+///
+/// Older desktop builds that don't know about `itemType` send neither;
+/// iOS falls through to a read-only fallback (forward-compat).
 struct DesktopSettingSchemaEntry: Codable, Sendable, Identifiable {
     /// Unique id for SwiftUI `ForEach` purposes — derived from `key`.
     var id: String { key }
@@ -134,10 +146,15 @@ struct DesktopSettingSchemaEntry: Codable, Sendable, Identifiable {
     let choices: [DesktopSettingChoice]?
     /// For `number`-typed entries: optional bounds.
     let range: DesktopSettingRange?
-    /// For `list`-typed entries: per-field metadata for one record.
-    /// Reuses the same `DesktopSettingSchemaEntry` recursively so the
-    /// editor renders nested rows with the same row renderers.
+    /// For record-list `list`-typed entries: per-field metadata for one
+    /// record. Reuses the same `DesktopSettingSchemaEntry` recursively so
+    /// the editor renders nested rows with the same row renderers.
     let itemSchema: [DesktopSettingSchemaEntry]?
+    /// For primitive-list `list`-typed entries: the scalar type of each
+    /// element. Mutually exclusive with `itemSchema`. When set, the
+    /// view dispatches to `DesktopSettingsPrimitiveListEditor` instead
+    /// of the record-list editor.
+    let itemType: DesktopSettingType?
 }
 
 /// Section descriptor. Pairs a stable group identifier with its

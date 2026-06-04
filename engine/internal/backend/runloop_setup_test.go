@@ -256,7 +256,7 @@ func TestWebSearchMode_DefaultsToAuto(t *testing.T) {
 // --- plan mode prompt tests ---
 
 func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", true)
+	prompt := buildPlanModePrompt("/tmp/plan.md", true, nil)
 
 	checks := []struct {
 		label    string
@@ -278,7 +278,7 @@ func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
 }
 
 func TestBuildPlanModePrompt_NewFile(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", false)
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
 
 	if !strings.Contains(prompt, "Create your plan at") {
 		t.Error("expected 'Create your plan at' for new file")
@@ -724,5 +724,104 @@ func TestLoadOrCreateConversation_NoSessionID_CreatesFresh(t *testing.T) {
 	}
 	if conv.ID == "" {
 		t.Error("expected fresh conversation to have a non-empty ID")
+	}
+}
+
+// --- plan mode Bash allowlist tests ---
+
+// TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet verifies that the
+// Bash tool appears in the plan-mode tool list when the session has a
+// non-empty PlanModeAllowedBashCommands.
+func TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "bash-allow", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{
+		PlanMode:                     true,
+		PlanFilePath:                 "/tmp/plan.md",
+		PlanModeAllowedBashCommands: []string{"gh", "git log"},
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	hasBash := false
+	for _, td := range toolDefs {
+		if td.Name == "Bash" {
+			hasBash = true
+			break
+		}
+	}
+	if !hasBash {
+		t.Error("expected Bash tool in plan mode when PlanModeAllowedBashCommands is set")
+	}
+	// Verify the allowlist was stored on the run.
+	if len(run.planModeAllowedBashCommands) != 2 {
+		t.Errorf("expected 2 bash allowlist entries on run, got %d", len(run.planModeAllowedBashCommands))
+	}
+}
+
+// TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty verifies that Bash is
+// excluded from plan-mode tools when no bash allowlist is configured.
+func TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "no-bash", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{
+		PlanMode:     true,
+		PlanFilePath: "/tmp/plan.md",
+		// PlanModeAllowedBashCommands is nil
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "Bash" {
+			t.Error("Bash tool should NOT appear in plan mode when no bash allowlist is set")
+		}
+	}
+}
+
+// TestBuildPlanModePrompt_BashAllowlist verifies that the plan mode prompt
+// includes bash-specific guidance when the allowlist is non-empty.
+func TestBuildPlanModePrompt_BashAllowlist(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh", "git log"})
+
+	if !strings.Contains(prompt, "Bash (restricted)") {
+		t.Error("expected 'Bash (restricted)' in Phase 1 tool list")
+	}
+	if !strings.Contains(prompt, "gh, git log") {
+		t.Error("expected allowed commands listed in prompt")
+	}
+	if !strings.Contains(prompt, "ONLY for commands starting with") {
+		t.Error("expected Bash restriction guidance in prompt")
+	}
+}
+
+// TestBuildPlanModePrompt_NoBashWithoutAllowlist verifies that the plan mode
+// prompt does NOT mention Bash when no allowlist is configured.
+func TestBuildPlanModePrompt_NoBashWithoutAllowlist(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
+
+	if strings.Contains(prompt, "Bash (restricted)") {
+		t.Error("should NOT contain 'Bash (restricted)' when no allowlist")
+	}
+	if strings.Contains(prompt, "ONLY for commands starting with") {
+		t.Error("should NOT contain bash restriction guidance when no allowlist")
+	}
+	// The restrictions section should still ban Bash entirely
+	if !strings.Contains(prompt, "MUST NOT call Bash") {
+		t.Error("should contain 'MUST NOT call Bash' when no allowlist is set")
+	}
+}
+
+// TestBuildPlanModePrompt_BashRestrictionLineChanges verifies that when an
+// allowlist IS set, the restrictions section no longer bans Bash entirely
+// but instead mentions the allowed command prefixes.
+func TestBuildPlanModePrompt_BashRestrictionLineChanges(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh"})
+
+	if strings.Contains(prompt, "MUST NOT call Bash") {
+		t.Error("should NOT contain 'MUST NOT call Bash' when allowlist is set — it's allowed (restricted)")
+	}
+	if !strings.Contains(prompt, "MUST NOT call NotebookEdit") {
+		t.Error("should still ban NotebookEdit when bash is allowed")
 	}
 }

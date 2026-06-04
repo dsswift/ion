@@ -446,9 +446,14 @@ export class EngineBridge extends EventEmitter {
   // Public escape hatch: forwards a fully-shaped ClientCommand to the engine. Companion modules use this to ship additional command/response helpers without growing the bridge file past its cap.
   sendRaw(payload: Record<string, unknown>): void { this._send(payload) }
 
-  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string): void {
-    log(`sendSetPlanMode: key=${key} enabled=${enabled} source=${source ?? 'unknown'}`)
-    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools, source })
+  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string, allowedBashCommands?: string[]): void {
+    // JSON.stringify renders `undefined` as the string "undefined" and `[]` as
+    // "[]" so the tri-valued projection (undefined / empty / non-empty) is
+    // visible at a glance in `~/.ion/desktop.log`. Length alone collapses
+    // undefined and [] (both → 0) and hides the user-clear case behind the
+    // no-change case, defeating the purpose of the log line.
+    log(`sendSetPlanMode: key=${key} enabled=${enabled} source=${source ?? 'unknown'} bashCmds=${JSON.stringify(allowedBashCommands)}`)
+    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools, source, planModeAllowedBashCommands: allowedBashCommands })
   }
 
   // ─── Conversation-data RPCs ───

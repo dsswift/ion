@@ -127,7 +127,7 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 		if planPrompt == "" {
 			// Use default plan mode prompt
 			_, err := os.Stat(opts.PlanFilePath)
-			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil)
+			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil, opts.PlanModeAllowedBashCommands)
 		}
 		// Prepend reentry guidance when returning to plan mode after a
 		// previous exit. This tells the LLM to read the existing plan and
@@ -200,6 +200,10 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// (plan-file-only gate in executeTools enforces the target restriction)
 		allowed["Write"] = true
 		allowed["Edit"] = true
+		// Include Bash when the session has an allowed-commands allowlist
+		if len(opts.PlanModeAllowedBashCommands) > 0 {
+			allowed["Bash"] = true
+		}
 		// AskUserQuestion is injected unconditionally above; keep it through
 		// the plan-mode filter so it is still available during plan mode.
 		allowed[tools.AskUserQuestionName] = true
@@ -224,6 +228,17 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// signal that the run is now in plan mode.
 		b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
 		utils.Info("PlanMode", fmt.Sprintf("run=%s tools_filtered=%d allowed=%v", run.requestID, len(toolDefs), planTools))
+		run.planModeAllowedBashCommands = opts.PlanModeAllowedBashCommands
+		// Log both sides of the conditional per AGENTS.md logging-policy.
+		// The bash-allowlist transition from RunOptions → activeRun is
+		// the boundary where session-level config becomes run-local
+		// state; if a future bug surfaces in the bash gate the log line
+		// here lets a developer confirm the list arrived intact.
+		if len(opts.PlanModeAllowedBashCommands) > 0 {
+			utils.Info("PlanMode", fmt.Sprintf("run=%s bash_allowlist=%v applied_to_run", run.requestID, opts.PlanModeAllowedBashCommands))
+		} else {
+			utils.Debug("PlanMode", fmt.Sprintf("run=%s no bash_allowlist (default-deny)", run.requestID))
+		}
 	} else {
 		// Inject EnterPlanMode sentinel in auto mode so the LLM can request
 		// a transition into plan mode when it judges the task warrants planning.

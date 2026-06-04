@@ -52,6 +52,13 @@ type activeRun struct {
 	// Reset to 0 whenever a run re-enters plan mode via the EnterPlanMode
 	// sentinel so the throttle does not silence the first post-entry reminder.
 	planModeReminderTurn int
+	// planModeAllowedBashCommands is the set of command prefixes that the
+	// Bash tool is allowed to execute during plan mode. When non-empty,
+	// Bash is included in the plan-mode tool list but gated at execution
+	// time — only commands whose leading token(s) match one of these
+	// prefixes are permitted. Set from RunOptions.PlanModeAllowedBashCommands
+	// in buildToolDefs.
+	planModeAllowedBashCommands []string
 
 	// opts captures the RunOptions for this run so compaction (and other
 	// cross-turn logic) can read config-driven knobs without plumbing opts

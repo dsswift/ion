@@ -98,6 +98,7 @@
 		A1B2C3D4E5F60001D80006AA /* DesktopSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */; };
 		A1B2C3D4E5F60001D90006AA /* DesktopSettingsListEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D90007AA /* DesktopSettingsListEditor.swift */; };
 		A1B2C3D4E5F60001DA0006AA /* DesktopSettingsListRecordEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001DA0007AA /* DesktopSettingsListRecordEditor.swift */; };
+		A1B2C3D4E5F60001DB0006AA /* DesktopSettingsPrimitiveListEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001DB0007AA /* DesktopSettingsPrimitiveListEditor.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
 		A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */; };
 		A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000304AA /* GitPaneView.swift */; };
@@ -274,6 +275,7 @@
 		A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopSettingsView.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001D90007AA /* DesktopSettingsListEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopSettingsListEditor.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001DA0007AA /* DesktopSettingsListRecordEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopSettingsListRecordEditor.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001DB0007AA /* DesktopSettingsPrimitiveListEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopSettingsPrimitiveListEditor.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Git.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000304AA /* GitPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPaneView.swift; sourceTree = "<group>"; };
@@ -479,6 +481,7 @@
 				A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */,
 				A1B2C3D4E5F60001D90007AA /* DesktopSettingsListEditor.swift */,
 				A1B2C3D4E5F60001DA0007AA /* DesktopSettingsListRecordEditor.swift */,
+				A1B2C3D4E5F60001DB0007AA /* DesktopSettingsPrimitiveListEditor.swift */,
 				A1B2C3D4E5F60001009300AA /* SettingsAppearanceView.swift */,
 				A1B2C3D4E5F60001009302AA /* SettingsDesktopsView.swift */,
 				A1B2C3D4E5F60001009304AA /* SettingsDiagnosticsView.swift */,
@@ -815,6 +818,7 @@
 				A1B2C3D4E5F60001D80006AA /* DesktopSettingsView.swift in Sources */,
 				A1B2C3D4E5F60001D90006AA /* DesktopSettingsListEditor.swift in Sources */,
 				A1B2C3D4E5F60001DA0006AA /* DesktopSettingsListRecordEditor.swift in Sources */,
+				A1B2C3D4E5F60001DB0006AA /* DesktopSettingsPrimitiveListEditor.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
 				A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */,

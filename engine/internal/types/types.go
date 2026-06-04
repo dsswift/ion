@@ -40,14 +40,14 @@ type EngineProfile struct {
 
 // EngineConfig configures a single engine session.
 type EngineConfig struct {
-	ProfileID        string            `json:"profileId"`
-	Extensions       []string          `json:"extensions"`
-	WorkingDirectory string            `json:"workingDirectory"`
-	SessionID        string            `json:"sessionId,omitempty"`
-	Model            string            `json:"model,omitempty"`
-	MaxTokens        int               `json:"maxTokens,omitempty"`
-	Thinking         *ThinkingConfig   `json:"thinking,omitempty"`
-	SystemHint       string            `json:"systemHint,omitempty"`
+	ProfileID        string          `json:"profileId"`
+	Extensions       []string        `json:"extensions"`
+	WorkingDirectory string          `json:"workingDirectory"`
+	SessionID        string          `json:"sessionId,omitempty"`
+	Model            string          `json:"model,omitempty"`
+	MaxTokens        int             `json:"maxTokens,omitempty"`
+	Thinking         *ThinkingConfig `json:"thinking,omitempty"`
+	SystemHint       string          `json:"systemHint,omitempty"`
 
 	// WorkspaceWatchIgnore overrides the engine's default ignore-glob list
 	// for the workspace_file_changed watcher. When nil/empty the engine uses
@@ -232,11 +232,11 @@ type EngineEvent struct {
 	StderrTail []string `json:"stderrTail,omitempty"`
 
 	// engine_permission_request
-	QuestionID      string          `json:"questionId,omitempty"`
-	PermToolName    string          `json:"permToolName,omitempty"`
-	PermToolDesc    string          `json:"permToolDescription,omitempty"`
-	PermToolInput   map[string]any  `json:"permToolInput,omitempty"`
-	PermOptions     []PermissionOpt `json:"permOptions,omitempty"`
+	QuestionID    string          `json:"questionId,omitempty"`
+	PermToolName  string          `json:"permToolName,omitempty"`
+	PermToolDesc  string          `json:"permToolDescription,omitempty"`
+	PermToolInput map[string]any  `json:"permToolInput,omitempty"`
+	PermOptions   []PermissionOpt `json:"permOptions,omitempty"`
 
 	// engine_plan_mode_changed
 	PlanModeEnabled  bool   `json:"planModeEnabled,omitempty"`
@@ -312,19 +312,19 @@ type EngineEvent struct {
 	// wire layer simply translates between EngineEvent (flat) and the typed
 	// extension struct. Adding a field here requires adding it on both sides
 	// of the protocol (types.go + Manager.emit path + ClientCommand response).
-	EarlyStopRequestID            string `json:"earlyStopRequestId,omitempty"`
-	EarlyStopRunID                string `json:"earlyStopRunId,omitempty"`
-	EarlyStopModel                string `json:"earlyStopModel,omitempty"`
-	EarlyStopTurnNumber           int    `json:"earlyStopTurnNumber,omitempty"`
-	EarlyStopStopReason           string `json:"earlyStopStopReason,omitempty"`
-	EarlyStopCumulativeOutput     int    `json:"earlyStopCumulativeOutput,omitempty"`
-	EarlyStopBudget               int    `json:"earlyStopBudget,omitempty"`
-	EarlyStopThresholdPct         int    `json:"earlyStopThresholdPct,omitempty"`
-	EarlyStopContinuationCount    int    `json:"earlyStopContinuationCount,omitempty"`
-	EarlyStopMaxContinuations     int    `json:"earlyStopMaxContinuations,omitempty"`
+	EarlyStopRequestID             string `json:"earlyStopRequestId,omitempty"`
+	EarlyStopRunID                 string `json:"earlyStopRunId,omitempty"`
+	EarlyStopModel                 string `json:"earlyStopModel,omitempty"`
+	EarlyStopTurnNumber            int    `json:"earlyStopTurnNumber,omitempty"`
+	EarlyStopStopReason            string `json:"earlyStopStopReason,omitempty"`
+	EarlyStopCumulativeOutput      int    `json:"earlyStopCumulativeOutput,omitempty"`
+	EarlyStopBudget                int    `json:"earlyStopBudget,omitempty"`
+	EarlyStopThresholdPct          int    `json:"earlyStopThresholdPct,omitempty"`
+	EarlyStopContinuationCount     int    `json:"earlyStopContinuationCount,omitempty"`
+	EarlyStopMaxContinuations      int    `json:"earlyStopMaxContinuations,omitempty"`
 	EarlyStopLastContinuationDelta int    `json:"earlyStopLastContinuationDelta,omitempty"`
-	EarlyStopWouldContinue        bool   `json:"earlyStopWouldContinue,omitempty"`
-	EarlyStopIsSubagent           bool   `json:"earlyStopIsSubagent,omitempty"`
+	EarlyStopWouldContinue         bool   `json:"earlyStopWouldContinue,omitempty"`
+	EarlyStopIsSubagent            bool   `json:"earlyStopIsSubagent,omitempty"`
 
 	// --- Async-trigger events (D-010 / D-011) ---
 	//
@@ -495,8 +495,9 @@ type RunOptions struct {
 	// set either inherit the engine defaults unchanged.
 	// See docs/protocol/client-commands.md for the three-layer precedence
 	// (RunOptions field → plan_mode_prompt hook → engine default).
-	PlanModeSparseReminder string          `json:"planModeSparseReminder,omitempty"`
-	PlanModeReentry    bool            `json:"planModeReentry,omitempty"`
+	PlanModeSparseReminder      string   `json:"planModeSparseReminder,omitempty"`
+	PlanModeReentry             bool     `json:"planModeReentry,omitempty"`
+	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
 	// ImplementationPhase tells the engine that this run is the "implement"
 	// half of a plan-then-implement flow — the user has already approved a
 	// plan and the model should execute it directly without proposing
@@ -517,7 +518,7 @@ type RunOptions struct {
 	// set this to true on the implementation run. The engine has no
 	// opinion on what counts as "implementation"; that's the harness's
 	// call.
-	ImplementationPhase     bool         `json:"implementationPhase,omitempty"`
+	ImplementationPhase bool `json:"implementationPhase,omitempty"`
 	// EnterPlanModeDescription is the harness-supplied prompt text for the
 	// EnterPlanMode sentinel tool injected during auto-mode runs. When this
 	// field is empty (the default), the engine falls back to a one-line
@@ -542,26 +543,26 @@ type RunOptions struct {
 	// might prefer minimal framing, for instance), it leaves this empty.
 	// The engine never imposes its own opinionated default beyond the
 	// one-line fallback.
-	EnterPlanModeDescription string       `json:"enterPlanModeDescription,omitempty"`
-	CompactThreshold             float64  `json:"compactThreshold,omitempty"`
-	CompactTargetPercent         float64  `json:"compactTargetPercent,omitempty"`
-	CompactMicroKeepTurns        int      `json:"compactMicroKeepTurns,omitempty"`
-	CompactMinKeepTurns          int      `json:"compactMinKeepTurns,omitempty"`
-	CompactEstimationPadding     float64  `json:"compactEstimationPadding,omitempty"`
-	CompactEnabled               *bool    `json:"compactEnabled,omitempty"`
-	CompactSummaryEnabled        *bool    `json:"compactSummaryEnabled,omitempty"`
-	CompactSummaryModel          string   `json:"compactSummaryModel,omitempty"`
-	CompactSummaryMaxTokens      int      `json:"compactSummaryMaxTokens,omitempty"`
-	CompactMemoryEnabled         *bool    `json:"compactMemoryEnabled,omitempty"`
-	CompactMemoryModel           string   `json:"compactMemoryModel,omitempty"`
-	CompactMemoryUpdateThreshold int      `json:"compactMemoryUpdateThreshold,omitempty"`
-	CompactMemoryUpdateMinTurns  int      `json:"compactMemoryUpdateMinTurns,omitempty"`
-	CompactMemoryMaxTokens       int      `json:"compactMemoryMaxTokens,omitempty"`
+	EnterPlanModeDescription     string  `json:"enterPlanModeDescription,omitempty"`
+	CompactThreshold             float64 `json:"compactThreshold,omitempty"`
+	CompactTargetPercent         float64 `json:"compactTargetPercent,omitempty"`
+	CompactMicroKeepTurns        int     `json:"compactMicroKeepTurns,omitempty"`
+	CompactMinKeepTurns          int     `json:"compactMinKeepTurns,omitempty"`
+	CompactEstimationPadding     float64 `json:"compactEstimationPadding,omitempty"`
+	CompactEnabled               *bool   `json:"compactEnabled,omitempty"`
+	CompactSummaryEnabled        *bool   `json:"compactSummaryEnabled,omitempty"`
+	CompactSummaryModel          string  `json:"compactSummaryModel,omitempty"`
+	CompactSummaryMaxTokens      int     `json:"compactSummaryMaxTokens,omitempty"`
+	CompactMemoryEnabled         *bool   `json:"compactMemoryEnabled,omitempty"`
+	CompactMemoryModel           string  `json:"compactMemoryModel,omitempty"`
+	CompactMemoryUpdateThreshold int     `json:"compactMemoryUpdateThreshold,omitempty"`
+	CompactMemoryUpdateMinTurns  int     `json:"compactMemoryUpdateMinTurns,omitempty"`
+	CompactMemoryMaxTokens       int     `json:"compactMemoryMaxTokens,omitempty"`
 	// MaxToolResultChars caps the character count of any single tool result
 	// for this run. Results exceeding this limit are persisted to disk and
 	// replaced with a preview. Zero means "inherit from engine.json or
 	// built-in default". Negative disables the cap entirely for this run.
-	MaxToolResultChars           int      `json:"maxToolResultChars,omitempty"`
+	MaxToolResultChars      int          `json:"maxToolResultChars,omitempty"`
 	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
 	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
 	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`

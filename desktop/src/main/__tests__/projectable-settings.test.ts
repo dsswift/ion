@@ -91,7 +91,26 @@ describe('projectable-settings allowlist', () => {
         }
         case 'list':
           expect(Array.isArray(entry.defaultValue), `entry ${entry.key}: list default must be array`).toBe(true)
-          expect(entry.itemSchema, `entry ${entry.key}: list requires itemSchema`).toBeTruthy()
+          // A list entry MUST carry exactly one of itemSchema (record-list)
+          // or itemType (primitive-list) — never both, never neither. The
+          // iOS view layer dispatches on this to pick the right editor
+          // (record-list pushes a per-record editor screen; primitive-list
+          // renders flat inline rows).
+          {
+            const hasSchema = !!entry.itemSchema
+            const hasItemType = !!entry.itemType
+            expect(hasSchema || hasItemType, `entry ${entry.key}: list requires itemSchema or itemType`).toBe(true)
+            expect(hasSchema && hasItemType, `entry ${entry.key}: list must not have both itemSchema and itemType`).toBe(false)
+            // When itemType is set, validate every default-array element
+            // matches the declared primitive type so the projection is
+            // self-consistent (we'd otherwise ship a bad default to iOS).
+            if (hasItemType) {
+              const expected = entry.itemType
+              for (const elem of entry.defaultValue as unknown[]) {
+                expect(typeof elem, `entry ${entry.key}: default element must be ${expected}`).toBe(expected)
+              }
+            }
+          }
           break
       }
     }
@@ -210,6 +229,20 @@ describe('projectableSchema / projectableGroups', () => {
     const quickTools = schema.find((e) => e.key === 'quickTools')
     expect(quickTools?.itemSchema, 'quickTools itemSchema').toBeTruthy()
     expect(quickTools?.itemSchema?.map((f) => f.key)).toEqual(['id', 'name', 'icon', 'command'])
+  })
+
+  it('primitive-list entries carry their itemType (not itemSchema)', () => {
+    // planModeAllowedBashCommands is the first primitive-list setting:
+    // type: 'list', itemType: 'string', defaultValue: ['gh']. The wire
+    // schema must carry itemType so iOS dispatches to the flat
+    // primitive editor instead of the record-list editor.
+    const schema = projectableSchema()
+    const cmds = schema.find((e) => e.key === 'planModeAllowedBashCommands')
+    expect(cmds, 'planModeAllowedBashCommands entry').toBeTruthy()
+    expect(cmds?.type).toBe('list')
+    expect(cmds?.itemType).toBe('string')
+    expect(cmds?.itemSchema).toBeUndefined()
+    expect(cmds?.defaultValue).toEqual(['gh'])
   })
 
   it('range is carried through for number entries that declare one', () => {
@@ -345,6 +378,41 @@ describe('validateSettingValue', () => {
     expect(validateSettingValue('quickTools', null)).not.toBeNull()
     expect(validateSettingValue('quickTools', {})).not.toBeNull()
     expect(validateSettingValue('quickTools', 'tools')).not.toBeNull()
+  })
+
+  // Primitive-list ('list' + itemType: 'string') round-trip tests.
+  // planModeAllowedBashCommands is the first primitive-list projectable
+  // setting. The defect this guards: before the projection used
+  // itemType, iOS sent the value back as a string and the desktop
+  // accepted it (declared type was 'string'), breaking the engine wire
+  // round-trip the next time the prompt pipeline read string[].
+  it('accepts a string[] for planModeAllowedBashCommands', () => {
+    expect(validateSettingValue('planModeAllowedBashCommands', [])).toBeNull()
+    expect(validateSettingValue('planModeAllowedBashCommands', ['gh'])).toBeNull()
+    expect(validateSettingValue('planModeAllowedBashCommands', ['gh', 'git log', 'git diff'])).toBeNull()
+  })
+
+  it('rejects a string (not array) for planModeAllowedBashCommands', () => {
+    // The original BLOCKER: iOS used to send "gh, git log" as a string.
+    // The validator must refuse so persistence cannot drift to the wrong
+    // shape. The engine expects []string on the wire.
+    const err = validateSettingValue('planModeAllowedBashCommands', 'gh, git log')
+    expect(err).not.toBeNull()
+    expect(err).toMatch(/expects array/)
+  })
+
+  it('rejects a list of non-strings for planModeAllowedBashCommands', () => {
+    const err = validateSettingValue('planModeAllowedBashCommands', ['gh', 42])
+    expect(err).not.toBeNull()
+    // Error message names the expected element type and the bad index
+    // so the iOS-side debugger can point at the offending row.
+    expect(err).toMatch(/expects list of string/)
+    expect(err).toMatch(/index 1/)
+  })
+
+  it('rejects null inside a primitive-list', () => {
+    const err = validateSettingValue('planModeAllowedBashCommands', ['gh', null])
+    expect(err).not.toBeNull()
   })
 })
 

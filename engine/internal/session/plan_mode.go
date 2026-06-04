@@ -181,6 +181,29 @@ func (m *Manager) RequestPlanModeExit(key string, planFilePath string) (allowed 
 	return a, r
 }
 
+// SetPlanModeBashAllowlist sets the allowed Bash command prefixes for plan mode.
+// When non-empty, the Bash tool is included in plan-mode runs and only commands
+// matching one of these prefixes are permitted. Called by the server after
+// SetPlanMode when the client supplies planModeAllowedBashCommands.
+func (m *Manager) SetPlanModeBashAllowlist(key string, cmds []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.sessions[key]
+	if !ok {
+		// The wire command targeted a session that does not exist.
+		// This is an invariant violation: the client should never
+		// reference an unknown session key. Logged at Error level per
+		// the logging-policy taxonomy ("unexpected failures, caught
+		// panics, invariant violations") so it always reaches the
+		// engine log and is searchable when investigating client bugs.
+		utils.Error("Session", fmt.Sprintf("SetPlanModeBashAllowlist: session %q not found (invariant violation — wire command targeted unknown session)", key))
+		return
+	}
+	s.planModeAllowedBashCommands = cmds
+	utils.Info("PlanMode", fmt.Sprintf("key=%s bash_allowlist=%v", key, cmds))
+}
+
 // GetPlanModeState returns the current plan mode state for a session.
 // Returns (planMode, planFilePath). Safe to call from any goroutine.
 func (m *Manager) GetPlanModeState(key string) (enabled bool, planFilePath string) {

@@ -21,18 +21,18 @@ type HookDef struct {
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
 type EnterpriseConfig struct {
-	AllowedModels    []string               `json:"allowedModels,omitempty"`
-	BlockedModels    []string               `json:"blockedModels,omitempty"`
-	AllowedProviders []string               `json:"allowedProviders,omitempty"`
-	RequiredHooks    []HookDef              `json:"requiredHooks,omitempty"`
-	McpAllowlist     []string               `json:"mcpAllowlist,omitempty"`
-	McpDenylist      []string               `json:"mcpDenylist,omitempty"`
-	ToolRestrictions *ToolRestrictions      `json:"toolRestrictions,omitempty"`
-	Permissions      *PermissionPolicy      `json:"permissions,omitempty"`
-	Telemetry        *TelemetryConfig       `json:"telemetry,omitempty"`
-	Network          *NetworkConfig         `json:"network,omitempty"`
+	AllowedModels    []string                 `json:"allowedModels,omitempty"`
+	BlockedModels    []string                 `json:"blockedModels,omitempty"`
+	AllowedProviders []string                 `json:"allowedProviders,omitempty"`
+	RequiredHooks    []HookDef                `json:"requiredHooks,omitempty"`
+	McpAllowlist     []string                 `json:"mcpAllowlist,omitempty"`
+	McpDenylist      []string                 `json:"mcpDenylist,omitempty"`
+	ToolRestrictions *ToolRestrictions        `json:"toolRestrictions,omitempty"`
+	Permissions      *PermissionPolicy        `json:"permissions,omitempty"`
+	Telemetry        *TelemetryConfig         `json:"telemetry,omitempty"`
+	Network          *NetworkConfig           `json:"network,omitempty"`
 	Sandbox          *SandboxEnterpriseConfig `json:"sandbox,omitempty"`
-	CustomFields     map[string]any         `json:"customFields,omitempty"`
+	CustomFields     map[string]any           `json:"customFields,omitempty"`
 }
 
 // ToolRestrictions defines tool allow/deny lists.
@@ -59,23 +59,23 @@ type DangerousPattern struct {
 
 // EngineRuntimeConfig is the fully merged engine configuration.
 type EngineRuntimeConfig struct {
-	Backend      string                        `json:"backend"`
-	DefaultModel string                        `json:"defaultModel"`
-	Providers    map[string]ProviderConfig     `json:"providers,omitempty"`
-	Limits       LimitsConfig                  `json:"limits"`
-	McpServers   map[string]McpServerConfig    `json:"mcpServers,omitempty"`
-	Profiles     []EngineProfileConfig         `json:"profiles,omitempty"`
-	Permissions  *PermissionPolicy             `json:"permissions,omitempty"`
-	Auth         *AuthConfig                   `json:"auth,omitempty"`
-	Network      *NetworkConfig                `json:"network,omitempty"`
-	Telemetry    *TelemetryConfig              `json:"telemetry,omitempty"`
-	Compaction   *CompactionConfig             `json:"compaction,omitempty"`
-	Security     *SecurityConfig               `json:"security,omitempty"`
-	Enterprise   *EnterpriseConfig             `json:"enterprise,omitempty"`
-	FeatureFlags *FeatureFlagsConfig           `json:"featureFlags,omitempty"`
-	Relay        *RelayConfig                  `json:"relay,omitempty"`
-	Timeouts     *TimeoutsConfig               `json:"timeouts,omitempty"`
-	WebSearch    *WebSearchConfig              `json:"webSearch,omitempty"`
+	Backend      string                     `json:"backend"`
+	DefaultModel string                     `json:"defaultModel"`
+	Providers    map[string]ProviderConfig  `json:"providers,omitempty"`
+	Limits       LimitsConfig               `json:"limits"`
+	McpServers   map[string]McpServerConfig `json:"mcpServers,omitempty"`
+	Profiles     []EngineProfileConfig      `json:"profiles,omitempty"`
+	Permissions  *PermissionPolicy          `json:"permissions,omitempty"`
+	Auth         *AuthConfig                `json:"auth,omitempty"`
+	Network      *NetworkConfig             `json:"network,omitempty"`
+	Telemetry    *TelemetryConfig           `json:"telemetry,omitempty"`
+	Compaction   *CompactionConfig          `json:"compaction,omitempty"`
+	Security     *SecurityConfig            `json:"security,omitempty"`
+	Enterprise   *EnterpriseConfig          `json:"enterprise,omitempty"`
+	FeatureFlags *FeatureFlagsConfig        `json:"featureFlags,omitempty"`
+	Relay        *RelayConfig               `json:"relay,omitempty"`
+	Timeouts     *TimeoutsConfig            `json:"timeouts,omitempty"`
+	WebSearch    *WebSearchConfig           `json:"webSearch,omitempty"`
 	// EarlyStopContinue configures the Claude-Code-style "keep working"
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
@@ -90,7 +90,7 @@ type EngineRuntimeConfig struct {
 	// omit the block; the scheduler is OFF by default and auto-starts
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
-	LogLevel     string                        `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
+	LogLevel   string            `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
 }
 
 // RelayConfig configures the WebSocket relay connection for mobile remote access.
@@ -119,12 +119,13 @@ type ProviderConfig struct {
 // LimitsConfig defines resource limits for a run.
 // Pointer fields distinguish "not set" (nil) from "explicitly zero".
 type LimitsConfig struct {
-	MaxTurns                *int     `json:"maxTurns,omitempty"`
-	MaxBudgetUsd            *float64 `json:"maxBudgetUsd,omitempty"`
-	SuppressSystemMessages  *bool    `json:"suppressSystemMessages,omitempty"`
-	DisablePlanModeReminder *bool    `json:"disablePlanModeReminder,omitempty"`
-	DisableTurnLimitWarning *bool    `json:"disableTurnLimitWarning,omitempty"`
-	DisableMaxTokenContinue *bool    `json:"disableMaxTokenContinue,omitempty"`
+	MaxTurns                    *int     `json:"maxTurns,omitempty"`
+	MaxBudgetUsd                *float64 `json:"maxBudgetUsd,omitempty"`
+	SuppressSystemMessages      *bool    `json:"suppressSystemMessages,omitempty"`
+	DisablePlanModeReminder     *bool    `json:"disablePlanModeReminder,omitempty"`
+	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
+	DisableTurnLimitWarning     *bool    `json:"disableTurnLimitWarning,omitempty"`
+	DisableMaxTokenContinue     *bool    `json:"disableMaxTokenContinue,omitempty"`
 }
 
 // McpServerConfig defines an MCP server connection.
@@ -295,29 +296,29 @@ type NetworkConfig struct {
 
 // TelemetryConfig controls telemetry collection and export.
 type TelemetryConfig struct {
-	Enabled        bool              `json:"enabled"`
-	Targets        []string          `json:"targets,omitempty"`
-	HttpEndpoint   string            `json:"httpEndpoint,omitempty"`
-	HttpHeaders    map[string]string `json:"httpHeaders,omitempty"`
-	FilePath       string            `json:"filePath,omitempty"`
-	PrivacyLevel   string            `json:"privacyLevel,omitempty"`
-	BatchSize      int               `json:"batchSize,omitempty"`
-	FlushIntervalMs int64            `json:"flushIntervalMs,omitempty"`
-	Otel           *OtelConfig       `json:"otel,omitempty"`
+	Enabled         bool              `json:"enabled"`
+	Targets         []string          `json:"targets,omitempty"`
+	HttpEndpoint    string            `json:"httpEndpoint,omitempty"`
+	HttpHeaders     map[string]string `json:"httpHeaders,omitempty"`
+	FilePath        string            `json:"filePath,omitempty"`
+	PrivacyLevel    string            `json:"privacyLevel,omitempty"`
+	BatchSize       int               `json:"batchSize,omitempty"`
+	FlushIntervalMs int64             `json:"flushIntervalMs,omitempty"`
+	Otel            *OtelConfig       `json:"otel,omitempty"`
 }
 
 // TelemetryEvent is a structured telemetry span or point event.
 type TelemetryEvent struct {
-	Name         string                 `json:"name"`
-	TraceID      string                 `json:"traceId"`
-	SpanID       string                 `json:"spanId"`
-	ParentSpanID string                 `json:"parentSpanId,omitempty"`
-	SessionID    string                 `json:"sessionId,omitempty"`
-	Timestamp    int64                  `json:"timestamp"`
-	DurationMs   *int64                 `json:"durationMs,omitempty"`
-	Attributes   map[string]any         `json:"attributes"`
-	Status       string                 `json:"status"`
-	ErrorMessage string                 `json:"errorMessage,omitempty"`
+	Name         string         `json:"name"`
+	TraceID      string         `json:"traceId"`
+	SpanID       string         `json:"spanId"`
+	ParentSpanID string         `json:"parentSpanId,omitempty"`
+	SessionID    string         `json:"sessionId,omitempty"`
+	Timestamp    int64          `json:"timestamp"`
+	DurationMs   *int64         `json:"durationMs,omitempty"`
+	Attributes   map[string]any `json:"attributes"`
+	Status       string         `json:"status"`
+	ErrorMessage string         `json:"errorMessage,omitempty"`
 }
 
 // OtelConfig configures OpenTelemetry export.

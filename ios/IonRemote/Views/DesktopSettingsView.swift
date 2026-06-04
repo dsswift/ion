@@ -143,7 +143,16 @@ struct DesktopSettingsView: View {
         case .enumType:
             enumRow(entry: entry, state: state)
         case .list:
-            listRow(entry: entry, state: state)
+            // Disambiguate record-list vs primitive-list. Record-lists
+            // push a NavigationLink to a per-record editor; primitive-
+            // lists render inline. The dispatch is on `itemType`: when
+            // present, the value is `[primitive]`; when absent (legacy
+            // record-list shape), the value is `[{record}]`.
+            if entry.itemType != nil {
+                DesktopSettingsPrimitiveListEditor(entry: entry, state: state)
+            } else {
+                listRow(entry: entry, state: state)
+            }
         }
     }
 

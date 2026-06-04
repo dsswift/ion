@@ -438,6 +438,17 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "set_plan_mode":
 		enabled := cmd.Enabled != nil && *cmd.Enabled
 		s.manager.SetPlanMode(cmd.Key, enabled, cmd.AllowedTools, cmd.Source)
+		// Tri-valued PlanModeAllowedBashCommands per the protocol doc:
+		//   - nil   (JSON omitted): no change to existing allowlist
+		//   - []    (JSON []):      clear allowlist
+		//   - [...] (non-empty):    replace allowlist
+		// Go's JSON decoder preserves the nil-vs-empty distinction on
+		// []string fields with omitempty, so this guard distinguishes
+		// "field absent" from "field present as []" without any new
+		// wire surface.
+		if cmd.PlanModeAllowedBashCommands != nil {
+			s.manager.SetPlanModeBashAllowlist(cmd.Key, cmd.PlanModeAllowedBashCommands)
+		}
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "branch":
