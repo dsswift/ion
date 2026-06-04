@@ -365,9 +365,11 @@ func TestNewApiBackendCreatesEmptyRuns(t *testing.T) {
 	b := NewApiBackend()
 	if b == nil {
 		t.Fatal("expected non-nil backend")
+		return
 	}
 	if b.activeRuns == nil {
 		t.Fatal("expected non-nil activeRuns map")
+		return
 	}
 	if len(b.activeRuns) != 0 {
 		t.Errorf("expected empty activeRuns, got %d", len(b.activeRuns))
