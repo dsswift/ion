@@ -89,7 +89,7 @@ export function EngineProfilePicker({ anchor, onSelect, onOpenSettings, onClose 
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}>
-            {profile.extensions.map(e => e.split('/').pop()).join(', ')}
+            {profile.extensions.map(e => e.split('/').slice(-2).join('/')).join(', ')}
           </span>
         </div>
       ))}
