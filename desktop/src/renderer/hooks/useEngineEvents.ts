@@ -28,20 +28,20 @@ export function useEngineEvents() {
 
       // Flush all accumulated text per tab in one go
       for (const [tabId, text] of buffer) {
-        console.log(`[DIAG] flushing text_chunk: tab=${tabId} flush_len=${text.length}`)
+        console.debug(`[DIAG] flushing text_chunk: tab=${tabId} flush_len=${text.length}`)
         handleNormalizedEvent(tabId, { type: 'text_chunk', text } as NormalizedEvent)
       }
       buffer.clear()
     }
 
-    console.log('[DIAG] useEngineEvents: registering onEvent handler')
+    console.debug('[DIAG] useEngineEvents: registering onEvent handler')
     const unsubEvent = window.ion.onEvent((tabId, event) => {
       if (event.type === 'text_chunk') {
         // Buffer text chunks and flush on next animation frame
         const buffer = chunkBufferRef.current
         const existing = buffer.get(tabId) || ''
         buffer.set(tabId, existing + (event as any).text)
-        console.log(`[DIAG] text_chunk buffered: tab=${tabId} chunk_len=${(event as any).text?.length} buffer_len=${buffer.get(tabId)?.length}`)
+        console.debug(`[DIAG] text_chunk buffered: tab=${tabId} chunk_len=${(event as any).text?.length} buffer_len=${buffer.get(tabId)?.length}`)
 
         if (!rafIdRef.current) {
           rafIdRef.current = requestAnimationFrame(flushChunks)
@@ -183,7 +183,7 @@ export function useEngineEvents() {
     window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
 
     return () => {
-      console.log('[DIAG] useEngineEvents: cleanup — removing handlers')
+      console.debug('[DIAG] useEngineEvents: cleanup — removing handlers')
       unsubEvent()
       unsubStatus()
       unsubError()

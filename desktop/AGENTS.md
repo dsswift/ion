@@ -88,15 +88,10 @@ Context-menu components already do this on their `motion.div`. The `ConfirmDialo
 
 To diagnose renderer-side state in a packaged build, use one of these instead:
 
-1. **Forward to the main logger.** The main process already pipes `[renderer]` lines to `~/.ion/desktop.log` (see entries like `[main] [renderer] ...`). For new diagnostics, add a `window.ion.log(...)` call (or equivalent IPC) so renderer state lands in `desktop.log` where it can be grepped.
-2. **Promote `console.log` to a logged IPC.** A temporary `console.log` in the renderer is invisible in packaged builds. Convert it to an IPC that writes via `main/logger.ts` before asking the user to reproduce.
+1. **Use `console.log` / `console.warn` / `console.error`.** All renderer console output is forwarded to `~/.ion/desktop.log` via the `console-message` handler in `window-manager.ts`. No allowlist — every log line is captured. Errors and warnings get distinct `[renderer:error]` and `[renderer:warn]` tags; everything else appears as `[renderer]`.
+2. **Use `console.debug()` for high-frequency diagnostics** (e.g., per-frame or per-chunk). These are still forwarded (at verbose level) but signal intent — if log volume ever needs trimming, verbose-level lines are the first candidates for filtering.
 3. **Inspect via the main-process snapshot.** `main/remote/snapshot.ts` polls renderer state through `executeJavaScript` and logs to `desktop.log`. Adding fields to that projection is the most reliable way to observe renderer store state from a packaged build.
 4. **Build and run in dev mode** (`cd desktop && npm run dev`) if you genuinely need live DevTools. This is the only way to use them.
-
-**The `console-message` allowlist.** `main/window-manager.ts` listens to renderer `console-message` events but only forwards messages whose text starts with one of a known set of prefixes (e.g. `[task_complete]`, `[App]`, `[FileE`, `[useFile`, `[event-slice]`, `[store]`). Errors (`level >= 2`) are always forwarded. **A `console.log('foo')` with no prefix lands nowhere in a packaged build.** When adding diagnostics:
-
-- Prefix the message with one of the allowlisted tags (or extend the allowlist).
-- Verify the prefix appears in the allowlist before relying on the log line.
 
 When investigating a renderer bug in a packaged build, **add the instrumentation first** (option 1, 2, or 3 above), ship a new build, then ask the user to reproduce. Asking the user to "check the console" is a wasted round-trip.
 
