@@ -28,7 +28,7 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 		}
 		// Resolve emit function: prefer active context, fall back to persistent emit
 		var emitFn func(types.EngineEvent)
-		if ctx := h.currentCtx.Load(); ctx != nil && ctx.Emit != nil {
+		if ctx := h.ctxStack.Current(); ctx != nil && ctx.Emit != nil {
 			emitFn = ctx.Emit
 		} else {
 			h.notifMu.RLock()
@@ -121,7 +121,7 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 // handleExtRequest processes extension-initiated JSON-RPC requests (messages
 // with both a method and id field). The engine sends a response back.
 func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
-	ctx := h.currentCtx.Load()
+	ctx := h.ctxStack.Current()
 	// Async-trigger registration RPCs live in host_rpc_async.go to keep
 	// this file under the 800-line cap. handleAsyncRPC returns true when
 	// it dispatched the method.

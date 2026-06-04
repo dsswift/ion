@@ -70,7 +70,7 @@ func sendPromptPayload(t *testing.T, text string) []byte {
 func TestExtSendPrompt_FallsBackToOnSendMessage_WhenNoHookCtx(t *testing.T) {
 	h := NewHost()
 	ch := attachStdout(h)
-	// currentCtx is nil by default -- simulates a timer-fired call with no active hook.
+	// ctxStack is empty by default -- simulates a timer-fired call with no active hook.
 
 	called := make(chan string, 1)
 	h.SetOnSendMessage(func(text string) {
@@ -113,7 +113,7 @@ func TestExtSendPrompt_UsesHookCtx_WhenActive(t *testing.T) {
 			return nil
 		},
 	}
-	h.currentCtx.Store(ctx)
+	h.ctxStack.Push(ctx)
 
 	h.SetOnSendMessage(func(_ string) {
 		t.Error("onSendMessage must not be called when hook ctx is active")

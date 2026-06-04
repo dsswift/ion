@@ -211,8 +211,8 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 			Description: t.Description,
 			Parameters:  t.Parameters,
 			Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
-				h.currentCtx.Store(ctx)
-				defer h.currentCtx.Store(nil)
+				h.ctxStack.Push(ctx)
+				defer h.ctxStack.Pop()
 				raw, err := h.call("tool/"+toolName, params)
 				if err != nil {
 					return &types.ToolResult{Content: err.Error(), IsError: true}, nil
@@ -235,8 +235,8 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		h.sdk.RegisterCommand(name, CommandDefinition{
 			Description: def.Description,
 			Execute: func(args string, ctx *Context) error {
-				h.currentCtx.Store(ctx)
-				defer h.currentCtx.Store(nil)
+				h.ctxStack.Push(ctx)
+				defer h.ctxStack.Pop()
 				_, err := h.call("command/"+cmdName, map[string]string{"args": args})
 				return err
 			},

@@ -60,8 +60,9 @@ type Host struct {
 	// Extension name returned from init handshake.
 	name string
 
-	// Bidirectional RPC: context for extension-initiated notifications.
-	currentCtx atomic.Pointer[Context]
+	// Bidirectional RPC: context stack for extension-initiated requests.
+	// Supports concurrent tool/hook/async-fire contexts on CliBackend.
+	ctxStack ctxStack
 
 	// notifMu guards the callbacks the readLoop reads when dispatching
 	// extension-initiated notifications (ext/emit, ext/send_message). Kept
