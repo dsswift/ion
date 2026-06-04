@@ -1,15 +1,22 @@
 import { IS_REMOTE } from './engine-bridge'
+import { engineBridge } from './state'
 import { log } from './logger'
 import type { EngineDirListing, EngineHostInfo } from '../shared/types'
 
-/** Lazy lookup of the bridge singleton. Avoids a static import of './state',
- *  which transitively imports EngineControlPlane and would create a circular
- *  load-order dependency (state -> control-plane -> engine-bridge-fs -> state).
- *  The first call after app boot is when the picker is opened, by which
- *  point state.ts has finished initializing. */
+/** Returns the bridge singleton.
+ *
+ *  The import cycle (state → control-plane → engine-bridge-fs → state) is
+ *  safe because the binding is read inside a function body, never at
+ *  module-eval time. The first call is when the directory picker opens — long
+ *  after all modules have finished initialising.
+ *
+ *  A runtime `require('./state')` would work in a multi-file Electron build
+ *  (Node resolves siblings at runtime), but it silently breaks when esbuild
+ *  produces a single-file bundle: there is no sibling `state.js` to require.
+ *  A static `import` is resolved by esbuild at bundle time and is safe for
+ *  both build modes. */
 function bridge(): import('./engine-bridge').EngineBridge {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('./state').engineBridge
+  return engineBridge
 }
 
 /**
