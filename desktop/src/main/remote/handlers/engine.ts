@@ -180,6 +180,45 @@ export function handleEngineAbort(cmd: Extract<RemoteCommand, { type: 'engine_ab
   engineBridge.sendAbort(hKey)
 }
 
+/**
+ * Reset an engine instance's session to a clean state without removing
+ * the instance pane. Stops the engine session keyed by `${tabId}:${instanceId}`
+ * and asks the renderer to wipe per-instance state Maps. Used by the
+ * iOS "Implement, clear context" flow on engine tabs — the engine-instance
+ * equivalent of `reset_tab_session` for the CLI session plane.
+ *
+ * `reset_tab_session` already exists and routes through `sessionPlane.resetTabSession`
+ * (which calls `bridge.stopSession(tabId)` with bare tabId). For engine
+ * tabs the engine session is keyed by the compound `${tabId}:${instanceId}`,
+ * so bare-tabId stop is silently a no-op. This handler closes that gap.
+ */
+export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { type: 'reset_engine_session' }>): Promise<void> {
+  const key = `${cmd.tabId}:${cmd.instanceId}`
+  log(`reset_engine_session: tabId=${cmd.tabId} instanceId=${cmd.instanceId} key=${key}`)
+  // Stop the engine session at the wire level. Same primitive
+  // engine-control-plane.resetTabSession uses for the CLI plane.
+  await engineBridge.stopSession(key)
+  log(`reset_engine_session: stopSession complete key=${key}`)
+  // Ask the renderer to wipe its per-instance state Maps (messages,
+  // status, agent-state, dialogs, etc.) and seed a fresh
+  // "Session started" divider. Mirrors the IPC pattern other engine
+  // handlers in this file use to mutate renderer state from main.
+  try {
+    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return;
+        store.getState().resetEngineInstance('${escapedTab}', '${escapedInst}');
+      })()
+    `)
+    log(`reset_engine_session: renderer state wiped key=${key}`)
+  } catch (err) {
+    log(`reset_engine_session: renderer wipe failed key=${key} err=${(err as Error).message}`)
+  }
+}
+
 export function handleEngineDialogResponse(cmd: Extract<RemoteCommand, { type: 'engine_dialog_response' }>): void {
   const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
   engineBridge.sendDialogResponse(hKey, cmd.dialogId, cmd.value)

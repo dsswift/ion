@@ -124,6 +124,15 @@ export function registerFilesIpc(): void {
     }
   })
 
+  ipcMain.handle(IPC.FS_EXISTS, async (_event, { targetPath }: { targetPath: string }) => {
+    if (!isValidProjectPath(targetPath)) return { exists: false }
+    try {
+      return { exists: existsSync(targetPath) }
+    } catch {
+      return { exists: false }
+    }
+  })
+
   ipcMain.handle(IPC.FS_WATCH_FILE, async (_event, { filePath }: { filePath: string }) => {
     if (!isValidProjectPath(filePath)) return { ok: false, error: 'Invalid path' }
     try {

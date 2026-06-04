@@ -25,10 +25,16 @@ struct SettingsInterfaceView: View {
                 )) {
                     Label("Show Git Info", systemImage: "arrow.triangle.branch")
                 }
+                Toggle(isOn: Binding(
+                    get: { viewModel.showTabColorInTabList },
+                    set: { viewModel.showTabColorInTabList = $0 }
+                )) {
+                    Label("Show Tab Colors", systemImage: "paintpalette")
+                }
             } header: {
                 Text("Tab List")
             } footer: {
-                Text("Shows the current branch and commit counts on each tab.")
+                Text("Git Info shows the current branch and commit counts. Tab Colors tints rows with the color set on desktop (desktop always shows color).")
             }
 
             Section {

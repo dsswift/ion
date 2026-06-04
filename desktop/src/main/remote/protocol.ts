@@ -37,6 +37,10 @@ export interface RemoteTabState {
   conversationId?: string | null
   /** Unix ms timestamp of the last status-changing activity (message, status change). */
   lastActivityAt?: number
+  /** Custom pill background color hex string (e.g. "#f08c4a"). Null means use theme default. */
+  pillColor?: string | null
+  /** Custom pill icon key (e.g. "diamond", "star"). Null means use the default status dot. */
+  pillIcon?: string | null
 }
 
 // ─── Terminal instance metadata ───
@@ -88,6 +92,14 @@ export type RemoteCommand =
   | { type: 'respond_permission'; tabId: string; questionId: string; optionId: string }
   | { type: 'set_permission_mode'; tabId: string; mode: 'auto' | 'plan' }
   | { type: 'reset_tab_session'; tabId: string }
+  // Engine-instance counterpart to reset_tab_session: stops the engine
+  // session keyed by `${tabId}:${instanceId}` and wipes the renderer-side
+  // per-instance state (messages, status, dialogs, etc.) without removing
+  // the instance pane itself. iOS sends this for engine tabs when the
+  // user picks "Implement, clear context" on the plan-approval card —
+  // `reset_tab_session` only addresses the CLI session plane and silently
+  // misses engine instances.
+  | { type: 'reset_engine_session'; tabId: string; instanceId: string }
   | { type: 'load_conversation'; tabId: string; before?: string }
   | { type: 'terminal_input'; tabId: string; instanceId: string; data: string }
   | { type: 'terminal_resize'; tabId: string; instanceId: string; cols: number; rows: number }
@@ -163,6 +175,8 @@ export type RemoteCommand =
   // than erroring — same forward-compat posture as the rest of the
   // RemoteCommand union.
   | { type: 'set_desktop_setting'; key: string; value: unknown }
+  | { type: 'set_pill_color'; tabId: string; pillColor: string | null }
+  | { type: 'set_pill_icon'; tabId: string; pillIcon: string | null }
 
 // ─── Ion → iOS events ───
 

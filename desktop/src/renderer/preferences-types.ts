@@ -55,6 +55,8 @@ export interface PreferencesState {
   agentPanelDefaultOpen: boolean
   /** Open agent details in a floating panel instead of expanding inline */
   agentDetailPopup: boolean
+  /** Group tool calls and assistant text into unified turn blocks */
+  unifiedTurnView: boolean
   /** Use AI to generate descriptive tab titles from the first message */
   aiGeneratedTitles: boolean
   /** Hide Ion overlay when launching external apps (Finder, Terminal, VS Code, etc.) */
@@ -127,6 +129,31 @@ export interface PreferencesState {
   planModeModel: string
   /** Model to use when implementing a plan (empty = use preferredModel) */
   implementModeModel: string
+  /**
+   * When true, reveals a second action on the plan-approval card:
+   * **"Implement, clear context"**. Clicking that button destroys the
+   * current engine session and starts a fresh conversation for the
+   * implement phase (the historical behavior). The regular **Implement**
+   * button always stays in the same conversation — the model retains
+   * everything it learned during planning, the plan-mode system prompt
+   * is dropped, and the EnterPlanMode sentinel tool is suppressed (via
+   * ClientCommand.ImplementationPhase) so it can't be re-proposed.
+   *
+   * Granularity is per-plan: the user decides at click-time whether
+   * they want a fresh conversation for this particular plan. There is
+   * no global "always clear context" toggle — that would force the
+   * behavior across every plan, every tab.
+   *
+   * Users can also manually clear context with `/clear` regardless of
+   * this preference.
+   *
+   * Engine-tab support: the opt-in reset path is not yet wired for
+   * engine tabs (no `engineResetSession` IPC exists). When the user
+   * clicks "Implement, clear context" on an engine tab, the renderer
+   * logs a warning and falls back to the no-reset path. CLI tabs and
+   * iOS-driven CLI tabs honor the action fully.
+   */
+  showImplementClearContext: boolean
   /** OS-reported dark mode -- used when themeMode is 'system' */
   _systemIsDark: boolean
   setDefaultTallConversation: (enabled: boolean) => void
@@ -169,6 +196,7 @@ export interface PreferencesState {
   setShowTodoList: (enabled: boolean) => void
   setAgentPanelDefaultOpen: (enabled: boolean) => void
   setAgentDetailPopup: (enabled: boolean) => void
+  setUnifiedTurnView: (enabled: boolean) => void
   setAiGeneratedTitles: (enabled: boolean) => void
   setHideOnExternalLaunch: (enabled: boolean) => void
   setKeepExplorerOnCollapse: (enabled: boolean) => void
@@ -218,10 +246,11 @@ export interface PreferencesState {
   setPlanModelSplitEnabled: (enabled: boolean) => void
   setPlanModeModel: (model: string) => void
   setImplementModeModel: (model: string) => void
+  setShowImplementClearContext: (enabled: boolean) => void
   /** Called by OS theme change listener -- updates system value */
   setSystemTheme: (isDark: boolean) => void
   /** Apply a settings preset (batch-set multiple fields at once) */
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '' }
+export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false }

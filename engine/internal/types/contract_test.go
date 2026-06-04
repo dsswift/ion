@@ -65,6 +65,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventStreamReset:       &StreamResetEvent{},
 		EventCompacting:        &CompactingEvent{},
 		EventToolStalled:       &ToolStalledEvent{},
+		EventSteerInjected:     &SteerInjectedEvent{},
 	}
 }
 

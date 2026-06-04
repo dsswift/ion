@@ -21,7 +21,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   recentBaseDirectories: saved.recentBaseDirectories,
   directoryUsageCounts: saved.directoryUsageCounts,
   preferredOpenWith: saved.preferredOpenWith,
-  // showImplementClearContext removed in 30dc41fd — no longer needed (Implement always clears context)
   defaultPermissionMode: saved.defaultPermissionMode,
   expandOnTabSwitch: saved.expandOnTabSwitch,
   bashCommandEntry: saved.bashCommandEntry,
@@ -45,6 +44,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   showTodoList: saved.showTodoList,
   agentPanelDefaultOpen: saved.agentPanelDefaultOpen,
   agentDetailPopup: saved.agentDetailPopup,
+  unifiedTurnView: saved.unifiedTurnView,
   aiGeneratedTitles: saved.aiGeneratedTitles,
   hideOnExternalLaunch: saved.hideOnExternalLaunch,
   keepExplorerOnCollapse: saved.keepExplorerOnCollapse,
@@ -80,6 +80,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   planModelSplitEnabled: saved.planModelSplitEnabled,
   planModeModel: saved.planModeModel,
   implementModeModel: saved.implementModeModel,
+  showImplementClearContext: saved.showImplementClearContext,
   _systemIsDark: true,
   setDefaultTallConversation: (enabled) => {
     set({ defaultTallConversation: enabled })
@@ -262,6 +263,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setAgentDetailPopup: (enabled) => {
     set({ agentDetailPopup: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setUnifiedTurnView: (enabled) => {
+    set({ unifiedTurnView: enabled })
     saveSettings(getAllSettings(get))
   },
   setAiGeneratedTitles: (enabled) => {
@@ -456,6 +461,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setImplementModeModel: (model) => {
     set({ implementModeModel: model })
+    saveSettings(getAllSettings(get))
+  },
+  setShowImplementClearContext: (enabled) => {
+    set({ showImplementClearContext: enabled })
     saveSettings(getAllSettings(get))
   },
   setSystemTheme: (isDark) => {

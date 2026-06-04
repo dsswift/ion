@@ -176,6 +176,16 @@ export interface State {
   respondEngineDialog: (tabId: string, dialogId: string, value: any) => void
   addEngineInstance: (tabId: string) => string
   removeEngineInstance: (tabId: string, instanceId: string) => void
+  /**
+   * Reset an engine instance's conversation to a fresh state without
+   * removing the instance itself. Wipes the per-instance message
+   * buffer, status, agent-state, working message, notifications,
+   * dialogs, usage, permission-denied, pinned prompt, and model-override
+   * Maps. Seeds a fresh "Session started" divider into engineMessages.
+   * Used by the iOS "Implement, clear context" flow for engine tabs —
+   * the engine-instance equivalent of resetTabSession on the CLI plane.
+   */
+  resetEngineInstance: (tabId: string, instanceId: string) => void
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
   reorderEngineInstances: (tabId: string, reordered: EngineInstance[]) => void

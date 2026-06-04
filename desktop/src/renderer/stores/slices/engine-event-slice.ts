@@ -1,6 +1,6 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
-import { formatClearDivider } from '../../../shared/clear-divider'
+import { formatClearDivider, formatPlanCreatedDivider, formatSteerAppliedDivider } from '../../../shared/clear-divider'
 import { handleEngineStatusEvent } from './engine-event-status'
 
 /**
@@ -476,6 +476,50 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
               return { engineWorkingMessages: workingMessages, engineMessages: messages }
             })
           }
+          break
+        }
+        case 'engine_plan_mode_changed': {
+          // Insert a "Plan created" divider into the engine conversation
+          // each time plan mode is entered. This fires on every entry
+          // (including re-entry after implementation), producing the
+          // repeating cycle: Session started → Plan created → Implementing
+          // → Plan created → Implementing → …
+          if (event.planModeEnabled) {
+            set((state) => {
+              const messages = new Map(state.engineMessages)
+              const msgs = [...(messages.get(key) || [])]
+              msgs.push({
+                id: nextMsgId(),
+                role: 'system' as const,
+                content: formatPlanCreatedDivider(new Date(), event.planSlug),
+                timestamp: Date.now(),
+                planFilePath: event.planFilePath,
+              })
+              messages.set(key, msgs)
+              return { engineMessages: messages }
+            })
+          }
+          break
+        }
+        case 'engine_steer_injected': {
+          // The engine drained a mid-turn steer message into the
+          // conversation as a user turn. Insert a divider so the user
+          // can see where their steer landed in the scrollback. The
+          // engine emits this from three checkpoints (between turns,
+          // before end_turn exit, after tool results) — each capture
+          // gets its own divider so the user sees the count.
+          set((state) => {
+            const messages = new Map(state.engineMessages)
+            const msgs = [...(messages.get(key) || [])]
+            msgs.push({
+              id: nextMsgId(),
+              role: 'system' as const,
+              content: formatSteerAppliedDivider(new Date(), event.steerMessageLength),
+              timestamp: Date.now(),
+            })
+            messages.set(key, msgs)
+            return { engineMessages: messages }
+          })
           break
         }
       }

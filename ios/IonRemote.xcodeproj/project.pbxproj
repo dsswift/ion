@@ -75,6 +75,7 @@
 		A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
 		A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */; };
+		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */; };
 		A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */; };
@@ -115,6 +116,7 @@
 		A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */; };
 		A1B2C3D4E5F60001E80006AA /* DesktopSettingsContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001E80007AA /* DesktopSettingsContractTests.swift */; };
 		A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */; };
+		A1B2C3D4E5F60001F00012AA /* RemoteCommandPillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */; };
 		A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */; };
 		A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */; };
 
@@ -135,12 +137,13 @@
 		A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */; };
 		A1B2C3D4E5F60001002000AA /* IonTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001002001AA /* IonTheme.swift */; };
 		A1B2C3D4E5F60001003000AA /* EngineToolGroupRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001003001AA /* EngineToolGroupRow.swift */; };
+		A1B2C3D4E5F60001003004AA /* AgentTurnRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001003005AA /* AgentTurnRow.swift */; };
 		A1B2C3D4E5F60001003002AA /* EngineDialogSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001003003AA /* EngineDialogSheet.swift */; };
-		A1B2C3D4E5F60001004000AA /* ActiveToolRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004001AA /* ActiveToolRow.swift */; };
 		A1B2C3D4E5F60001004002AA /* AttachmentChipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004003AA /* AttachmentChipsView.swift */; };
 		A1B2C3D4E5F60001004004AA /* FilePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */; };
 		A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001006001AA /* ToastView.swift */; };
 		A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */; };
+		A1B2C3D4E5F60001F00020AA /* EngineMessageRow+SlashBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00021AA /* EngineMessageRow+SlashBubble.swift */; };
 		A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005101AA /* VoiceService.swift */; };
 		A1B2C3D4E5F60001005110AA /* SpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005111AA /* SpeechEngine.swift */; };
 		A1B2C3D4E5F60001005112AA /* LegacySpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005113AA /* LegacySpeechEngine.swift */; };
@@ -245,6 +248,7 @@
 		A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+RemoteDisplay.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabGroupCommands.swift"; sourceTree = "<group>"; };
+		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConnectionEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineWorkflowEvents.swift"; sourceTree = "<group>"; };
@@ -284,6 +288,7 @@
 		A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001E80007AA /* DesktopSettingsContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSettingsContractTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncEngineEventsTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandPillTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredSlashCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001101AA /* RemoteModelEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModelEntry.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandMenu.swift; sourceTree = "<group>"; };
@@ -303,11 +308,12 @@
 		A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001002001AA /* IonTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonTheme.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001003001AA /* EngineToolGroupRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineToolGroupRow.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001003005AA /* AgentTurnRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTurnRow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001003003AA /* EngineDialogSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineDialogSheet.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001004001AA /* ActiveToolRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveToolRow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004003AA /* AttachmentChipsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentChipsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePickerSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineMessageRow.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001F00021AA /* EngineMessageRow+SlashBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+SlashBubble.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005101AA /* VoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005111AA /* SpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechEngine.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005113AA /* LegacySpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacySpeechEngine.swift; sourceTree = "<group>"; };
@@ -499,12 +505,13 @@
 					A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */,
 					A1B2C3D4E5F60001002001AA /* IonTheme.swift */,
 					A1B2C3D4E5F60001003001AA /* EngineToolGroupRow.swift */,
+					A1B2C3D4E5F60001003005AA /* AgentTurnRow.swift */,
 					A1B2C3D4E5F60001003003AA /* EngineDialogSheet.swift */,
-					A1B2C3D4E5F60001004001AA /* ActiveToolRow.swift */,
 					A1B2C3D4E5F60001004003AA /* AttachmentChipsView.swift */,
 					A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */,
 					A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */,
 					A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */,
+					A1B2C3D4E5F60001F00021AA /* EngineMessageRow+SlashBubble.swift */,
 					A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */,
 					A1B2C3D4E5F60001006001AA /* ToastView.swift */,
 					A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */,
@@ -522,6 +529,7 @@
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
 				A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */,
+				B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */,
 				A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */,
@@ -543,6 +551,7 @@
 				A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */,
 				A1B2C3D4E5F60001E80007AA /* DesktopSettingsContractTests.swift */,
 				A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */,
+				A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */,
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */,
 				A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */,
@@ -773,6 +782,7 @@
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
 				A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */,
+				B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */,
 				A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */,
@@ -841,14 +851,15 @@
 				A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */,
 				A1B2C3D4E5F60001002000AA /* IonTheme.swift in Sources */,
 				A1B2C3D4E5F60001003000AA /* EngineToolGroupRow.swift in Sources */,
+				A1B2C3D4E5F60001003004AA /* AgentTurnRow.swift in Sources */,
 				A1B2C3D4E5F60001003002AA /* EngineDialogSheet.swift in Sources */,
-				A1B2C3D4E5F60001004000AA /* ActiveToolRow.swift in Sources */,
 				A1B2C3D4E5F60001004002AA /* AttachmentChipsView.swift in Sources */,
 				A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */,
 				A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */,
 				A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */,
 				A1B2C3D4E5F60001004004AA /* FilePickerSheet.swift in Sources */,
 				A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */,
+				A1B2C3D4E5F60001F00020AA /* EngineMessageRow+SlashBubble.swift in Sources */,
 				A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */,
 				A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */,
 				A1B2C3D4E5F60001005110AA /* SpeechEngine.swift in Sources */,
@@ -880,6 +891,7 @@
 				A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */,
 				A1B2C3D4E5F60001E80006AA /* DesktopSettingsContractTests.swift in Sources */,
 				A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */,
+				A1B2C3D4E5F60001F00012AA /* RemoteCommandPillTests.swift in Sources */,
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */,
 				A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */,

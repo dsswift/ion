@@ -122,11 +122,17 @@ function registerTerminalLinks(terminal: Terminal, cwd: string, tabId: string): 
   return () => disposable.dispose()
 }
 
-function openTerminalFile(path: string, cwd: string, tabId: string): void {
+async function openTerminalFile(path: string, cwd: string, tabId: string): Promise<void> {
   const homeDir = useSessionStore.getState().staticInfo?.homePath
     || '/Users/' + (process.env.USER || 'user')
   const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
   const resolved = expanded.startsWith('/') ? expanded : cwd + '/' + expanded
+  const { exists } = await window.ion.fsExists(resolved)
+  if (!exists) {
+    console.log('[TerminalInstance] file does not exist, ignoring cmd-click', { rawPath: path, resolved })
+    return
+  }
+  console.log('[TerminalInstance] opening file', { resolved })
   const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
   if (EDITABLE_EXTS.has(ext)) {
     useSessionStore.getState().openFileInEditor(cwd, tabId, resolved)

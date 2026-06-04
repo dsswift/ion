@@ -26,6 +26,11 @@ extension RemoteCommand {
             try container.encode(TypeKey.resetTabSession, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
 
+        case .resetEngineSession(let tabId, let instanceId):
+            try container.encode(TypeKey.resetEngineSession, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
+
         case .prompt(let tabId, let text, let origin, let clientMsgId, let attachments, let implementationPhase):
             try container.encode(TypeKey.prompt, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -340,6 +345,27 @@ extension RemoteCommand {
             try container.encode(TypeKey.setDesktopSetting, forKey: .type)
             try container.encode(key, forKey: .key)
             try container.encode(value, forKey: .value)
+
+        case .setPillColor(let tabId, let pillColor):
+            try container.encode(TypeKey.setPillColor, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            // Encode null explicitly (not absent) so the desktop can distinguish
+            // "reset to default" from "field omitted" — matches the setRemoteDisplay
+            // null-encoding pattern.
+            if let pillColor {
+                try container.encode(pillColor, forKey: .pillColor)
+            } else {
+                try container.encodeNil(forKey: .pillColor)
+            }
+
+        case .setPillIcon(let tabId, let pillIcon):
+            try container.encode(TypeKey.setPillIcon, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            if let pillIcon {
+                try container.encode(pillIcon, forKey: .pillIcon)
+            } else {
+                try container.encodeNil(forKey: .pillIcon)
+            }
         }
     }
 }

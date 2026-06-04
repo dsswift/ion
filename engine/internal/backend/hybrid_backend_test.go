@@ -246,12 +246,14 @@ func TestHybrid_NewChild_PropagatesAuthResolver(t *testing.T) {
 	child := h.NewChild()
 	if child == nil {
 		t.Fatalf("NewChild returned nil")
+		return
 	}
 	if child == h {
 		t.Fatalf("NewChild returned parent (should be a fresh instance)")
 	}
 	if child.api.AuthResolver() == nil {
 		t.Fatalf("expected child's inner ApiBackend to have an auth resolver propagated")
+		return
 	}
 	if child.api.AuthResolver() != r {
 		t.Fatalf("expected child to share parent's resolver reference")
@@ -264,6 +266,7 @@ func TestHybrid_NewChild_NoResolver(t *testing.T) {
 	child := h.NewChild()
 	if child == nil {
 		t.Fatalf("NewChild returned nil")
+		return
 	}
 	if child.api.AuthResolver() != nil {
 		t.Fatalf("expected child to have nil resolver when parent has none")

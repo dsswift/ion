@@ -2,6 +2,7 @@ export { groupMessages, getToolDescription, toolSummary, type GroupedItem } from
 export { ToolIcon } from './ToolIcon'
 export { ToolRow } from './ToolRow'
 export { ToolGroup } from './ToolGroup'
+export { AgentTurnGroup } from './AgentTurnGroup'
 export { CompactionRow } from './CompactionRow'
 export { CopyButton } from './CopyButton'
 export { InterruptButton } from './InterruptButton'

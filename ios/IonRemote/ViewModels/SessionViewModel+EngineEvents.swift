@@ -6,6 +6,60 @@ import UIKit
 extension SessionViewModel {
 
     @MainActor
+    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String) {
+        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+        var msgs = engineMessages[key] ?? []
+        // Divider messages (session-start, implement, etc.) may be relayed
+        // from the desktop as engine_harness_message. Detect the `──` sentinel
+        // prefix and create a system-role message so they render with the
+        // proper divider visual treatment instead of the harness gear icon.
+        let role: MessageRole = message.hasPrefix("──") ? .system : .harness
+        msgs.append(Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000))
+        engineMessages[key] = msgs
+    }
+
+    @MainActor
+    func handleEnginePlanModeChanged(tabId: String, instanceId: String?, planModeEnabled: Bool, planSlug: String?) {
+        // Insert a "Plan created" lifecycle divider each time the engine
+        // enters plan mode. Mirrors the desktop's engine-event-slice.ts
+        // handler. planModeEnabled=false is a proposal (ExitPlanMode) and
+        // is intentionally ignored — the desktop handles the approval flow.
+        guard planModeEnabled else { return }
+        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+        var msgs = engineMessages[key] ?? []
+        let slug = planSlug ?? ""
+        let time = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        let timeStr = formatter.string(from: time)
+        let content = slug.isEmpty
+            ? "── Plan created at \(timeStr) ──"
+            : "── Plan created at \(timeStr) · \(slug) ──"
+        msgs.append(Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000))
+        engineMessages[key] = msgs
+    }
+
+    @MainActor
+    func handleEngineSteerInjected(tabId: String, instanceId: String?, messageLength: Int) {
+        // Engine drained a mid-turn steer into the conversation. Mirror
+        // the desktop's "Steer applied" divider so the user sees
+        // confirmation across both clients. messageLength is included so
+        // the user can tell a short nudge from a long steer at a glance.
+        // The engine may emit this multiple times per turn (between
+        // turns, before end_turn exit, after tool results); each capture
+        // produces its own divider so the count is visible.
+        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
+        var msgs = engineMessages[key] ?? []
+        let time = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        let timeStr = formatter.string(from: time)
+        let content = "── Steer applied at \(timeStr) · \(messageLength) chars ──"
+        msgs.append(Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000))
+        engineMessages[key] = msgs
+    }
+
+    @MainActor
     func handleEngineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String) {
         DiagnosticLog.log("ENGINE: tool-start tabId=\(tabId.prefix(8)) tool=\(toolName) toolId=\(toolId.prefix(8))")
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId

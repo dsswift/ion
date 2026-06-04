@@ -176,6 +176,14 @@ export type EngineEvent =
   | { type: 'engine_stream_reset' }
   | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string }
   | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }
+  // Mid-turn steer-drain confirmation. Engine emits this after the
+  // runloop drainSteer helper captures a steer message (queued via the
+  // steer channel) and injects it into the conversation as a user turn
+  // before the next LLM call. `steerMessageLength` is the character
+  // count; the body is not echoed back over the wire because it is
+  // already part of the conversation. See
+  // engine/internal/types/normalized_event.go (SteerInjectedEvent).
+  | { type: 'engine_steer_injected'; steerMessageLength: number }
   | { type: 'engine_extension_died'; extensionName: string; exitCode: number | null; signal: string | null }
   | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }
   | { type: 'engine_events_dropped'; count: number }

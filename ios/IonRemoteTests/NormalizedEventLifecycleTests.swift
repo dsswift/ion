@@ -370,4 +370,141 @@ final class NormalizedEventLifecycleTests: XCTestCase {
             XCTFail("Expected renameTab, got \(decoded)")
         }
     }
+
+    // MARK: - engine_plan_mode_changed (state event)
+
+    /// Round-trips engine_plan_mode_changed through JSON to lock in CodingKeys.
+    /// This is the typed signal iOS uses to render the "Plan created" divider
+    /// in engineMessages (see SessionViewModel+EngineEvents.handleEnginePlanModeChanged).
+    /// A regression here means the iOS receiver never fires when the engine
+    /// confirms a plan-mode entry.
+    func testDecodeEnginePlanModeChanged() throws {
+        let json = """
+        {
+            "type": "engine_plan_mode_changed",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "planModeEnabled": true,
+            "planFilePath": "/tmp/plan.md",
+            "planSlug": "my-plan"
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .enginePlanModeChanged(let tabId, let instanceId, let enabled, let filePath, let slug) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertTrue(enabled)
+            XCTAssertEqual(filePath, "/tmp/plan.md")
+            XCTAssertEqual(slug, "my-plan")
+        } else {
+            XCTFail("Expected enginePlanModeChanged, got \(event)")
+        }
+    }
+
+    func testRoundTripEnginePlanModeChanged() throws {
+        let original = RemoteEvent.enginePlanModeChanged(
+            tabId: "t1",
+            instanceId: "i1",
+            planModeEnabled: true,
+            planFilePath: "/tmp/plan.md",
+            planSlug: "my-plan"
+        )
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .enginePlanModeChanged(let tabId, let instanceId, let enabled, let filePath, let slug) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertTrue(enabled)
+            XCTAssertEqual(filePath, "/tmp/plan.md")
+            XCTAssertEqual(slug, "my-plan")
+        } else {
+            XCTFail("Round-trip enginePlanModeChanged failed")
+        }
+    }
+
+    /// planFilePath and planSlug are both optional in the Go-side
+    /// PlanModeChangedEvent (omitempty json tags). The iOS decoder must
+    /// accept their absence without throwing.
+    func testDecodeEnginePlanModeChangedWithoutOptionalFields() throws {
+        let json = """
+        {
+            "type": "engine_plan_mode_changed",
+            "tabId": "t1",
+            "planModeEnabled": false
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .enginePlanModeChanged(let tabId, let instanceId, let enabled, let filePath, let slug) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+            XCTAssertFalse(enabled)
+            XCTAssertNil(filePath)
+            XCTAssertNil(slug)
+        } else {
+            XCTFail("Expected enginePlanModeChanged, got \(event)")
+        }
+    }
+
+    // MARK: - engine_steer_injected (mid-turn steer drain confirmation)
+
+    /// Round-trips engine_steer_injected through JSON to lock in CodingKeys.
+    /// The Go-side EngineEvent uses json tag "steerMessageLength" (see
+    /// engine/internal/types/types.go SteerMessageLength field); the iOS
+    /// CodingKeys must match verbatim.
+    func testDecodeEngineSteerInjected() throws {
+        let json = """
+        {
+            "type": "engine_steer_injected",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "steerMessageLength": 42
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 42)
+        } else {
+            XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
+
+    func testRoundTripEngineSteerInjected() throws {
+        let original = RemoteEvent.engineSteerInjected(
+            tabId: "t1",
+            instanceId: "i1",
+            messageLength: 27
+        )
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 27)
+        } else {
+            XCTFail("Round-trip engineSteerInjected failed")
+        }
+    }
+
+    /// CLI tabs receive the event without an instanceId (the runloop
+    /// emits steer events at the run level; the instanceId is added by
+    /// the desktop's remote bridge for engine tabs).
+    func testDecodeEngineSteerInjectedWithoutInstanceId() throws {
+        let json = """
+        {
+            "type": "engine_steer_injected",
+            "tabId": "t1",
+            "steerMessageLength": 5
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+            XCTAssertEqual(messageLength, 5)
+        } else {
+            XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
 }

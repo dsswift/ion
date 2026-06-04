@@ -37,7 +37,7 @@ const {
 
 vi.mock('../state', () => ({
   state: mockState,
-  sessionPlane: { on: vi.fn(), emit: vi.fn() },
+  sessionPlane: { on: vi.fn(), emit: vi.fn(), notifyConversationCleared: vi.fn() },
   engineBridge: {
     on: vi.fn((event: string, handler: any) => {
       if (event === 'event') capturedHandler.fn = handler

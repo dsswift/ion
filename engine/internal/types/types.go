@@ -219,6 +219,13 @@ type EngineEvent struct {
 	// engine_tool_stalled
 	ToolElapsed float64 `json:"toolElapsed,omitempty"`
 
+	// engine_steer_injected — character count of a mid-turn steer
+	// message the engine drained into the conversation before the next
+	// LLM call. Clients use this to confirm a steer was captured without
+	// echoing the message body back over the wire. See
+	// SteerInjectedEvent for the underlying normalized variant.
+	SteerMessageLength int `json:"steerMessageLength,omitempty"`
+
 	// engine_dead
 	ExitCode   *int     `json:"exitCode,omitempty"`
 	Signal     *string  `json:"signal,omitempty"`

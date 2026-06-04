@@ -667,6 +667,14 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 	case *types.ToolStalledEvent:
 		return types.EngineEvent{Type: "engine_tool_stalled", ToolID: e.ToolID, ToolName: e.ToolName, ToolElapsed: e.Elapsed}
 
+	case *types.SteerInjectedEvent:
+		// Surface mid-turn steer captures as a typed engine event so
+		// clients can render a confirmation (divider, toast, log line).
+		// The character count is enough for the UI; the message body is
+		// already in the conversation as a user turn and does not need
+		// to be echoed back over the wire.
+		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
+
 	default:
 		return types.EngineEvent{}
 	}

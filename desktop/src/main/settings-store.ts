@@ -34,6 +34,16 @@ export const SETTINGS_DEFAULTS = {
   // See desktop/src/main/early-stop-policy.ts for the policy that consumes
   // this setting.
   enableEarlyStopContinuation: false,
+  // Show the secondary "Implement, clear context" button on the plan-
+  // approval card. Default OFF — the regular Implement button always
+  // preserves the engine conversation across the plan→implement
+  // boundary so the model retains what it learned during planning. The
+  // clear-context action is opt-in per-plan (per-click), not a global
+  // forced behavior. Users can also `/clear` manually at any time. See
+  // desktop/src/renderer/components/PermissionDeniedCard.tsx for the
+  // button reveal and usePermissionDeniedHandlers.ts::onImplement for
+  // the branching behavior.
+  showImplementClearContext: false,
 }
 
 export function readSettings(): Record<string, any> {

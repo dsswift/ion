@@ -166,6 +166,7 @@ export const IPC = {
   FS_SAVE_DIALOG: 'ion:fs-save-dialog',
   FS_REVEAL_IN_FINDER: 'ion:fs-reveal-in-finder',
   FS_OPEN_NATIVE: 'ion:fs-open-native',
+  FS_EXISTS: 'ion:fs-exists',
   FS_WATCH_FILE: 'ion:fs-watch-file',
   FS_UNWATCH_FILE: 'ion:fs-unwatch-file',
   FS_FILE_CHANGED: 'ion:fs-file-changed',
@@ -193,6 +194,8 @@ export const IPC = {
   REMOTE_RENAME_TAB: 'ion:remote-rename-tab',
   REMOTE_RENAME_TERMINAL_INSTANCE: 'ion:remote-rename-terminal-instance',
   REMOTE_ENGINE_PROMPT: 'ion:remote-engine-prompt',
+  REMOTE_SET_PILL_COLOR: 'ion:remote-set-pill-color',
+  REMOTE_SET_PILL_ICON: 'ion:remote-set-pill-icon',
   // Remote send (renderer → main → iOS, for forwarding results to remote)
   REMOTE_SEND: 'ion:remote-send',
   REMOTE_SET_LAN_DISABLED: 'ion:remote-set-lan-disabled',

@@ -2,6 +2,7 @@ import type { TabStatus, TabState, EngineInstance } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
+import { formatSessionStartDivider } from '../../../shared/clear-divider'
 
 export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -73,6 +74,21 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         ),
       }))
       const key = `${tabId}:${id}`
+      // Seed the session-start divider as the first message for this instance.
+      // This is the only place it is created — on tab restoration,
+      // addEngineInstance is skipped (instances already exist and
+      // engineMessages is pre-populated from persisted data), so no
+      // duplicate is produced.
+      set((state) => {
+        const messages = new Map(state.engineMessages)
+        messages.set(key, [{
+          id: nextMsgId(),
+          role: 'system' as const,
+          content: formatSessionStartDivider(new Date()),
+          timestamp: Date.now(),
+        }])
+        return { engineMessages: messages }
+      })
       // Eagerly set the model override so it's available for iOS sync
       const prefs = usePreferencesStore.getState()
       const initialModel = prefs.engineDefaultModel || prefs.preferredModel || ''
@@ -166,6 +182,56 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const engineModelOverrides = new Map(get().engineModelOverrides)
       engineModelOverrides.delete(key)
       set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineDraftInputs, engineModelOverrides, enginePermissionDenied })
+    },
+
+    resetEngineInstance: (tabId, instanceId) => {
+      // Engine-instance counterpart to resetTabSession: stop the engine
+      // session and wipe per-instance state, but keep the instance pane
+      // itself so the user stays on the same tab/sub-tab. Mirrors the
+      // CLI-side resetTabSession on engine-control-plane.ts which keeps
+      // the tab open and zeros out conversationId/promptCount.
+      const panes = new Map(get().enginePanes)
+      const pane = panes.get(tabId)
+      if (!pane) return
+      const instanceExists = pane.instances.some((i) => i.id === instanceId)
+      if (!instanceExists) return
+      const key = `${tabId}:${instanceId}`
+      // engineAbort tears down the engine session keyed by `${tabId}:${instanceId}`.
+      // Same primitive removeEngineInstance uses; here we keep the pane entry.
+      window.ion.engineAbort(key).catch(() => {})
+      // Wipe per-instance state Maps. Same list as removeEngineInstance —
+      // every Map keyed by `${tabId}:${instanceId}` must be cleared so the
+      // next prompt starts from a clean slate.
+      const engineMessages = new Map(get().engineMessages)
+      const engineAgentStates = new Map(get().engineAgentStates)
+      const engineStatusFields = new Map(get().engineStatusFields)
+      const engineWorkingMessages = new Map(get().engineWorkingMessages)
+      const engineNotifications = new Map(get().engineNotifications)
+      const engineDialogs = new Map(get().engineDialogs)
+      const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
+      const engineUsage = new Map(get().engineUsage)
+      const engineDraftInputs = new Map(get().engineDraftInputs)
+      const enginePermissionDenied = new Map(get().enginePermissionDenied)
+      engineMessages.delete(key)
+      engineAgentStates.delete(key)
+      engineStatusFields.delete(key)
+      engineWorkingMessages.delete(key)
+      engineNotifications.delete(key)
+      engineDialogs.delete(key)
+      enginePinnedPrompt.delete(key)
+      engineUsage.delete(key)
+      engineDraftInputs.delete(key)
+      enginePermissionDenied.delete(key)
+      // Seed a fresh "Session started" divider so the renderer shows the
+      // user where the reset boundary fell. Mirrors the seed in
+      // addEngineInstance — the same divider helper, the same insertion site.
+      engineMessages.set(key, [{
+        id: nextMsgId(),
+        role: 'system' as const,
+        content: formatSessionStartDivider(new Date()),
+        timestamp: Date.now(),
+      }])
+      set({ engineMessages, engineAgentStates, engineStatusFields, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, engineDraftInputs, enginePermissionDenied })
     },
 
     selectEngineInstance: (tabId, instanceId) => {

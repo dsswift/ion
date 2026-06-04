@@ -84,7 +84,6 @@
 
 import type { RunOptions } from '../shared/types'
 import { IPC } from '../shared/types'
-import { formatClearDivider, buildClearDividerRemoteEvent } from '../shared/clear-divider'
 
 /**
  * Attachment shape carried in remote `prompt`/`engine_prompt` commands.
@@ -97,10 +96,12 @@ import { state, sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { parseSlash, type ParsedSlash } from './slash-parse'
 import { dispatchExtensionCommand, tryExpandMarkdownSlash } from './slash-classify'
+import { handleLocalClearShortCircuit } from './slash-clear'
 import { encodeImageAttachments } from './remote/attachment-encoder'
 import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 import { emitRemoteMessageAdded, insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
+import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
 
 export { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 
@@ -179,58 +180,11 @@ function engineKey(p: IncomingPrompt): string {
 }
 
 /**
- * Resolve the conversationId for a tab from the strongest available source.
- *
- * Priority (first non-null wins):
- *   1. p.runOptions?.sessionId — desktop /clear carries this for free; no
- *      IPC roundtrip required.
- *   2. sessionPlane.getTabStatus(tabId)?.conversationId — the engine-side
- *      mirror populated by engine_status events. Available once any session
- *      has started on this tab. Kept as a defensive fallback for code paths
- *      that construct IncomingPrompt without runOptions.
- *   3. Renderer-store query via executeJavaScript — reads tab.conversationId
- *      directly from `window.__Ion_SESSION_STORE__` in the renderer process.
- *      This is the safety net for remote-source /clear (iOS) and any path
- *      where neither of the above has been populated yet (e.g. a tab loaded
- *      from disk but never used). Mirrors the resolveTabProjectPath pattern
- *      in remote/handlers/tabs.ts.
- *
- * Returns null when all three sources are null (the tab is truly fresh).
+ * Local `/clear` short-circuit + conversationId resolution live in
+ * `slash-clear.ts`. The seam is one-way (handleSlash → slash-clear →
+ * engine bridge / renderer helpers), matching the pattern used for
+ * `slash-classify.ts`.
  */
-async function resolveConversationId(p: IncomingPrompt): Promise<{ id: string; via: string } | null> {
-  // Priority 1: runOptions.sessionId (desktop path, already in the envelope).
-  const fromRunOptions = p.runOptions?.sessionId ?? null
-  if (fromRunOptions) {
-    return { id: fromRunOptions, via: 'runOptions' }
-  }
-
-  // Priority 2: engine-side mirror (populated after engine_status fires).
-  const fromSessionPlane = sessionPlane.getTabStatus(p.tabId)?.conversationId ?? null
-  if (fromSessionPlane) {
-    return { id: fromSessionPlane, via: 'sessionPlane' }
-  }
-
-  // Priority 3: renderer-store query (iOS / loaded-but-not-started tab).
-  if (!state.mainWindow) return null
-  try {
-    const escapedTab = p.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const fromRenderer = await state.mainWindow.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTab}'; });
-        return tab && tab.conversationId ? tab.conversationId : null;
-      })()
-    `)
-    if (fromRenderer) {
-      return { id: String(fromRenderer), via: 'renderer-store' }
-    }
-  } catch (err) {
-    log(`pipeline: resolveConversationId renderer-store query failed tab=${p.tabId} err=${String(err)}`)
-  }
-
-  return null
-}
 
 /**
  * Handle the `! bash` shortcut for CLI prompts coming from iOS.
@@ -267,7 +221,80 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  * sessionPlane.submitPrompt; for the engine path we go through the engine
  * bridge directly.
  */
+/**
+ * Apply harness-owned system-prompt addenda to the in-flight prompt.
+ * Runs at the converging dispatch point so every prompt origin (desktop
+ * renderer + iOS CLI/engine, slash + non-slash, fresh + bouncing back
+ * from a remote→renderer→IPC roundtrip) gets the same treatment.
+ *
+ * Today the only addendum is `TURN_GROUPING_GUIDANCE` (see
+ * ./turn-grouping-guidance.ts for why). When future harness-level
+ * coaching is added, it goes here too — never inject from the
+ * renderer or from the slash-expansion path, both of which run on
+ * subsets of the prompt population.
+ *
+ * The append target is split across two fields:
+ *
+ *   - `p.appendSystemPrompt` — read by the engine-tab terminal
+ *     dispatch at `engineBridge.sendPrompt(...)`.
+ *   - `p.runOptions?.appendSystemPrompt` — read by the CLI desktop
+ *     terminal dispatch at `sessionPlane.submitPrompt(...)`.
+ *
+ * The slash-expansion path (`handleSlash`) writes both fields to keep
+ * them consistent (see lines 438–445), so we mirror that here.
+ *
+ * Idempotency
+ * ───────────
+ * The iOS engine path bounces through the renderer once: the first
+ * pipeline invocation (source='remote') appends the guidance to
+ * `p.appendSystemPrompt`, broadcasts via REMOTE_ENGINE_PROMPT (which
+ * forwards `appendSystemPrompt`), the renderer calls back into
+ * `window.ion.enginePrompt(...)`, IPC delivers it to the pipeline a
+ * second time (source='desktop'), and the helper runs again. Without
+ * an idempotency check, the guidance would be appended twice on
+ * iOS-originated engine prompts. The `.endsWith()` guard makes the
+ * helper safe to call any number of times on the same `p`.
+ *
+ * The iOS CLI path does not need the guard for its own bounce-back
+ * (REMOTE_USER_MESSAGE drops `appendSystemPrompt`), but the guard
+ * costs nothing and keeps the helper invariant uniform across paths.
+ */
+function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
+  const before = p.appendSystemPrompt?.length ?? 0
+  const beforeRun = p.runOptions?.appendSystemPrompt?.length ?? 0
+  let didAppendPrimary = false
+  let didAppendRun = false
+
+  if (!p.appendSystemPrompt || !p.appendSystemPrompt.endsWith(TURN_GROUPING_GUIDANCE)) {
+    p.appendSystemPrompt = p.appendSystemPrompt
+      ? `${p.appendSystemPrompt}\n\n${TURN_GROUPING_GUIDANCE}`
+      : TURN_GROUPING_GUIDANCE
+    didAppendPrimary = true
+  }
+  if (p.runOptions) {
+    const existing = p.runOptions.appendSystemPrompt
+    if (!existing || !existing.endsWith(TURN_GROUPING_GUIDANCE)) {
+      p.runOptions.appendSystemPrompt = existing
+        ? `${existing}\n\n${TURN_GROUPING_GUIDANCE}`
+        : TURN_GROUPING_GUIDANCE
+      didAppendRun = true
+    }
+  }
+
+  log(`pipeline: applyHarnessSystemPromptAddenda tab=${p.tabId} ` +
+      `engineField=${didAppendPrimary ? `appended (${before}→${p.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)'} ` +
+      `runOptionsField=${p.runOptions ? (didAppendRun ? `appended (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent'}`)
+}
+
 async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
+  // Harness-owned system-prompt addenda are applied here, at the single
+  // converging dispatch point. See applyHarnessSystemPromptAddenda for
+  // the full reasoning (idempotency, dual-field write, why-not-in-the-
+  // renderer). Both terminal dispatches below (engineBridge.sendPrompt
+  // for engine tabs, sessionPlane.submitPrompt for CLI tabs) read the
+  // updated fields.
+  applyHarnessSystemPromptAddenda(p)
+
   if (p.isEngineTab) {
     const key = engineKey(p)
     log(`pipeline: submit engine prompt key=${key} textLen=${p.text.length}`)
@@ -391,43 +418,12 @@ async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void>
     // the semantics dispatchClear documents for the "never-talked-to" case.
     // All other unknown commands continue to the .md expansion path below.
     if (slash.command === 'clear') {
-      // If the tab has a tracked conversationId (loaded from disk but never
-      // sent a prompt), wipe the on-disk conversation file so the LLM does
-      // NOT see the prior history on the next prompt. Without this step the
-      // divider is only visual — the engine would still load and forward all
-      // 495+ messages on the next start_session.
-      //
-      // We consult three sources in priority order (see resolveConversationId)
-      // because the engine-side mirror (sessionPlane) is only populated after
-      // a session starts — a tab loaded from disk but never prompted has
-      // tab.conversationId in the renderer but NOT in the engine-control-plane.
-      const resolved = await resolveConversationId(p)
-      if (resolved) {
-        const { id: convId, via } = resolved
-        log(`pipeline: /clear conversationId resolved via=${via} id=${convId}`)
-        try {
-          await engineBridge.clearConversationFile(convId)
-          log(`pipeline: /clear on-disk wipe complete conversationId=${convId}`)
-        } catch (err) {
-          // Log and continue: the divider is still inserted so the user sees
-          // the expected UI feedback. The wipe failure is non-fatal — worse
-          // than the bug, but not a crash. The user can /clear again.
-          log(`pipeline: /clear on-disk wipe failed conversationId=${convId} err=${String(err)}`)
-        }
-      } else {
-        log(`pipeline: /clear no conversationId from any source — truly fresh tab`)
-      }
-      log(`pipeline: /clear unknown_command (no session) → inserting divider locally`)
-      const now = new Date()
-      const divider = formatClearDivider(now)
-      await insertRendererSystemMessage(p, divider)
-      state.remoteTransport?.send(buildClearDividerRemoteEvent(engineKey(p), now))
-      await clearConnectingStatus(p)
+      await handleLocalClearShortCircuit(p, engineKey(p))
       return
     }
 
     log(`pipeline: engine disclaimed /${slash.command} → trying .md expansion`)
-    const expansion = await tryExpandMarkdownSlash(p.tabId, slash, p.projectPath)
+    const expansion = await tryExpandMarkdownSlash(p.tabId, slash, p.projectPath, p.runOptions?.sessionId)
     if (expansion) {
       // Rewrite the in-flight prompt and re-enter submission. The
       // expansion helper returns the new user/system prompts but does

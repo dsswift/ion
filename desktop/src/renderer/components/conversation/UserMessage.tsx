@@ -4,6 +4,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PencilSimple } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { TableScrollWrapper, ImageCard } from './AssistantMessage'
 import { MessageActions } from './MessageActions'
@@ -13,9 +14,24 @@ import type { Message } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
 
+/**
+ * Parse a leading slash command from message content.
+ * Returns `{ command, args }` when content starts with `/cmd [args]`,
+ * or `null` when no slash command is detected.
+ *
+ * The regex requires the command to start with a letter so that paths
+ * like `/usr/bin/foo` (which contain multiple slashes) don't match.
+ */
+function parseSlashCommand(content: string): { command: string; args: string } | null {
+  const match = content.match(/^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/)
+  if (!match) return null
+  return { command: `/${match[1]}`, args: match[2] }
+}
+
 /** User message bubble (right-aligned). */
 export function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: boolean }) {
   const colors = useColors()
+  const enableClaudeCompat = usePreferencesStore((s) => s.enableClaudeCompat)
   const isBashCmd = !!message.userExecuted
   const { onOpenFile, onOpenUrl } = useNavigableText()
 
@@ -27,6 +43,9 @@ export function UserMessage({ message, skipMotion }: { message: Message; skipMot
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)
   const hasInlineImages = inlineImages.length > 0
   const hasAttachments = message.attachments && message.attachments.length > 0
+
+  // Detect slash command when claude compat is enabled
+  const slashParsed = enableClaudeCompat ? parseSlashCommand(displayContent) : null
 
   const userMarkdownComponents = useMemo(() => ({
     table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
@@ -63,11 +82,40 @@ export function UserMessage({ message, skipMotion }: { message: Message; skipMot
             borderRadius: '14px 14px 4px 14px',
           }}
         >
-          <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
-            <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
-              {displayContent}
-            </Markdown>
-          </div>
+          {slashParsed ? (
+            <div className="min-w-0 overflow-hidden">
+              {/* Command badge pill */}
+              <span
+                style={{
+                  display: 'inline-block',
+                  background: colors.accentSoft,
+                  color: colors.accent,
+                  borderRadius: 6,
+                  padding: '1px 7px',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  fontWeight: 500,
+                  marginBottom: slashParsed.args ? 4 : 0,
+                }}
+              >
+                {slashParsed.command}
+              </span>
+              {/* Args rendered via Markdown pipeline */}
+              {slashParsed.args && (
+                <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
+                  <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+                    {slashParsed.args}
+                  </Markdown>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
+              <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+                {displayContent}
+              </Markdown>
+            </div>
+          )}
           {hasNonImageAttachments && <MessageAttachments attachments={nonImageAttachments} />}
         </div>
       )}
@@ -98,6 +146,9 @@ export function UserMessage({ message, skipMotion }: { message: Message; skipMot
 /** Queued user message (waiting for previous turn to finish). */
 export function QueuedMessage({ content, onEdit }: { content: string; onEdit?: () => void }) {
   const colors = useColors()
+  const enableClaudeCompat = usePreferencesStore((s) => s.enableClaudeCompat)
+
+  const slashParsed = enableClaudeCompat ? parseSlashCommand(content) : null
 
   return (
     <motion.div
@@ -127,7 +178,28 @@ export function QueuedMessage({ content, onEdit }: { content: string; onEdit?: (
           opacity: 0.6,
         }}
       >
-        {content}
+        {slashParsed ? (
+          <span>
+            <span
+              style={{
+                display: 'inline-block',
+                background: colors.accentSoft,
+                color: colors.accent,
+                borderRadius: 6,
+                padding: '1px 7px',
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: 500,
+                marginRight: slashParsed.args ? 6 : 0,
+              }}
+            >
+              {slashParsed.command}
+            </span>
+            {slashParsed.args}
+          </span>
+        ) : (
+          content
+        )}
       </div>
     </motion.div>
   )

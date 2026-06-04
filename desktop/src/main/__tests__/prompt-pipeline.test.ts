@@ -41,9 +41,11 @@ const mocks = vi.hoisted(() => {
   const broadcastMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const expandSlashMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
-  // getTabStatusMock: returns a tab-like object. Default: no conversationId.
-  // Override in tests to simulate a loaded-but-not-started conversation.
-  const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null }) ?? function () { return { conversationId: null } }
+  // getTabStatusMock: returns a tab-like object. Default: fresh tab (no
+  // conversationId, no prompts since checkpoint). Override in tests to
+  // simulate a loaded-but-not-started conversation or a mid-checkpoint tab.
+  const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null, promptCountSinceCheckpoint: 0 }) ?? function () { return { conversationId: null, promptCountSinceCheckpoint: 0 } }
+  const notifyConversationClearedMock = (globalThis as any).vi?.fn?.() ?? function () {}
   return {
     bridgeListeners,
     sendCommandMock,
@@ -56,6 +58,7 @@ const mocks = vi.hoisted(() => {
     expandSlashMock,
     clearConversationFileMock,
     getTabStatusMock,
+    notifyConversationClearedMock,
   }
 })
 
@@ -70,7 +73,8 @@ mocks.executeJsMock = vi.fn().mockResolvedValue(null)
 mocks.broadcastMock = vi.fn()
 mocks.expandSlashMock = vi.fn().mockResolvedValue({ expanded: false })
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
-mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
+mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null, promptCountSinceCheckpoint: 0 })
+mocks.notifyConversationClearedMock = vi.fn()
 
 function emitBridgeEvent(key: string, event: any): void {
   const arr = mocks.bridgeListeners.get('event') ?? []
@@ -101,6 +105,11 @@ vi.mock('../state', () => {
       // getTabStatus delegates through getTabStatusMock so individual tests
       // can override the returned tab object (e.g. to set a conversationId).
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
+      // notifyConversationCleared is invoked by the /clear short-circuit and
+      // by event-wiring on engine-side /clear success. Most tests do not
+      // assert on it, but it must exist on the mock so /clear-related tests
+      // do not blow up on a missing function.
+      notifyConversationCleared: (...args: any[]) => mocks.notifyConversationClearedMock(...args),
     },
     engineBridge: mockEngineBridge,
     extensionCommandRegistry: new Map(),
@@ -134,6 +143,7 @@ vi.mock('../remote/attachment-encoder', () => ({
 // Pull in the SUT AFTER mocks are set up.
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { _resetAwaitersForTests } from '../command-await'
+import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test fixtures
@@ -152,7 +162,8 @@ beforeEach(() => {
   mocks.broadcastMock.mockReset()
   mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: false })
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
-  mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
+  mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null, promptCountSinceCheckpoint: 0 })
+  mocks.notifyConversationClearedMock.mockReset()
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
   mocks.sendCommandMock.mockImplementation((key: string, command: string, _args: string) => {
@@ -269,12 +280,18 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
     expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review 138', '/proj', 'ion')
     // Pipeline should mutate runOptions and then submit it.
     expect(opts.prompt).toBe('expanded body')
-    expect(opts.appendSystemPrompt).toBe('sys')
+    // The CLI dispatch path runs applyHarnessSystemPromptAddenda, which
+    // appends the turn-grouping guidance to runOptions.appendSystemPrompt.
+    // The expansion-supplied "sys" remains as the prefix.
+    expect(opts.appendSystemPrompt).toMatch(/^sys\n\nTool calls are not rendered inline/)
+    expect(opts.appendSystemPrompt).toBe(`sys\n\n${TURN_GROUPING_GUIDANCE}`)
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
     expect(mocks.submitPromptMock).toHaveBeenCalledWith('tab-1', 'req-6', opts)
   })
 
   it('auto-switches permission mode to auto on .md expansion', async () => {
+    // Explicitly set first-prompt state so the guard allows the switch.
+    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, conversationId: null })
     mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded' })
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -286,6 +303,9 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
     })
     expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
   })
+  // Additional plan→auto guard tests (active conversation, resumed session)
+  // live in prompt-pipeline-plan-mode.test.ts to keep this file under the
+  // 600-line cap.
 })
 
 describe('processIncomingPrompt — slash, engine reports unknown, no .md', () => {
@@ -452,6 +472,10 @@ describe('processIncomingPrompt — engine tab', () => {
     }))
   })
 })
+
+// Harness system-prompt addenda (turn-grouping guidance) tests live in
+// `prompt-pipeline-addenda.test.ts` to keep this file under the 600-line
+// TypeScript cap. See CLAUDE.md → "When a file exceeds the cap".
 
 describe('processIncomingPrompt — /clear with no engine session (unknown_command short-circuit)', () => {
   // Regression guard: /clear on a fresh tab (no prior prompt → no engine session)

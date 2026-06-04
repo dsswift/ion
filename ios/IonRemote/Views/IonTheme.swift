@@ -103,4 +103,18 @@ extension View {
     func cardStyle() -> some View {
         modifier(CardStyle())
     }
+
+    /// Applies a transform to this view only when `optional` is non-nil,
+    /// passing both the view and the unwrapped value to the closure.
+    /// When `optional` is nil the view is returned unchanged — unlike
+    /// a @ViewBuilder `if let` branch which would require two return paths
+    /// and can't be used inline in a modifier chain.
+    @ViewBuilder
+    func ifLet<T>(_ optional: T?, transform: (Self, T) -> some View) -> some View {
+        if let value = optional {
+            transform(self, value)
+        } else {
+            self
+        }
+    }
 }

@@ -13,6 +13,13 @@ enum RemoteCommand: Codable, Sendable {
     case createTerminalTab(workingDirectory: String?)
     case closeTab(tabId: String)
     case resetTabSession(tabId: String)
+    /// Engine-instance counterpart to `resetTabSession` — stops the engine
+    /// session keyed by `${tabId}:${instanceId}` and wipes the renderer-side
+    /// per-instance state (messages, status, dialogs, etc.). Used by the
+    /// "Implement, clear context" flow on engine tabs. `resetTabSession`
+    /// only addresses the CLI session plane and silently misses engine
+    /// instances, so engine tabs must send this variant instead.
+    case resetEngineSession(tabId: String, instanceId: String)
     /// User-typed prompt routed to the desktop's prompt pipeline.
     ///
     /// iOS does NOT carry the harness-supplied EnterPlanMode tool
@@ -113,6 +120,12 @@ enum RemoteCommand: Codable, Sendable {
     /// shape-agnostic so future string/number projections need no
     /// protocol change.
     case setDesktopSetting(key: String, value: AnyCodable)
+    /// Set the custom pill background color for a tab.
+    /// `pillColor` is a hex string (e.g. "#f08c4a") or nil to reset to the theme default.
+    case setPillColor(tabId: String, pillColor: String?)
+    /// Set the custom pill icon for a tab.
+    /// `pillIcon` is an icon key (e.g. "diamond", "star") or nil to reset to the default dot.
+    case setPillIcon(tabId: String, pillIcon: String?)
 
     // MARK: - Codable
 
@@ -122,6 +135,7 @@ enum RemoteCommand: Codable, Sendable {
         case createTerminalTab = "create_terminal_tab"
         case closeTab = "close_tab"
         case resetTabSession = "reset_tab_session"
+        case resetEngineSession = "reset_engine_session"
         case prompt
         case cancel
         case respondPermission = "respond_permission"
@@ -181,6 +195,8 @@ enum RemoteCommand: Codable, Sendable {
         case diagnosticLogsResponse = "diagnostic_logs_response"
         case setRemoteDisplay = "set_remote_display"
         case setDesktopSetting = "set_desktop_setting"
+        case setPillColor = "set_pill_color"
+        case setPillIcon = "set_pill_icon"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -212,6 +228,8 @@ enum RemoteCommand: Codable, Sendable {
         // CodingKey above.
         case key
         case conversationIds
+        // setPillColor / setPillIcon payloads.
+        case pillColor, pillIcon
     }
 
     init(from decoder: Decoder) throws {
@@ -239,6 +257,11 @@ enum RemoteCommand: Codable, Sendable {
         case .resetTabSession:
             let tabId = try container.decode(String.self, forKey: .tabId)
             self = .resetTabSession(tabId: tabId)
+
+        case .resetEngineSession:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            self = .resetEngineSession(tabId: tabId, instanceId: instanceId)
 
         case .prompt:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -550,6 +573,16 @@ enum RemoteCommand: Codable, Sendable {
             let key = try container.decode(String.self, forKey: .key)
             let value = try container.decode(AnyCodable.self, forKey: .value)
             self = .setDesktopSetting(key: key, value: value)
+
+        case .setPillColor:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let pillColor = try container.decodeIfPresent(String.self, forKey: .pillColor)
+            self = .setPillColor(tabId: tabId, pillColor: pillColor)
+
+        case .setPillIcon:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let pillIcon = try container.decodeIfPresent(String.self, forKey: .pillIcon)
+            self = .setPillIcon(tabId: tabId, pillIcon: pillIcon)
         }
     }
 

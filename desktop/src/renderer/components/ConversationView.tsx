@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { ArrowCounterClockwise } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
+import { usePreferencesStore } from '../preferences'
 import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { useColors } from '../theme'
@@ -12,7 +13,7 @@ import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, InterruptButton,
   UserMessage, QueuedMessage, MessageActions, EmptyState,
-  CompactionRow,
+  CompactionRow, AgentTurnGroup,
 } from './conversation'
 import { buildPermissionDeniedHandlers } from './conversation/usePermissionDeniedHandlers'
 
@@ -36,6 +37,7 @@ export function ConversationView() {
   const isNearBottomRef = useRef(true)
   const prevTabIdRef = useRef(activeTabId)
   const colors = useColors()
+  const unifiedTurnView = usePreferencesStore((s) => s.unifiedTurnView)
   const scrollToBottomCounter = useSessionStore((s) => s.scrollToBottomCounter)
 
   const tab = tabs.find((t) => t.id === activeTabId)
@@ -80,13 +82,24 @@ export function ConversationView() {
   // Group only the visible slice of messages
   const allMessages = tab?.messages ?? []
   const totalCount = allMessages.length
-  const startIndex = Math.max(0, totalCount - INITIAL_RENDER_CAP - renderOffset * PAGE_SIZE)
+  let startIndex = Math.max(0, totalCount - INITIAL_RENDER_CAP - renderOffset * PAGE_SIZE)
+
+  // When unified turn view is on, snap startIndex backward to the nearest
+  // user message so we never show a partial turn at the top of the visible window.
+  if (unifiedTurnView && startIndex > 0) {
+    let snapped = startIndex
+    while (snapped > 0 && allMessages[snapped]?.role !== 'user') {
+      snapped--
+    }
+    startIndex = snapped
+  }
+
   const visibleMessages = startIndex > 0 ? allMessages.slice(startIndex) : allMessages
   const hasOlder = startIndex > 0
 
   const grouped = useMemo(
-    () => groupMessages(visibleMessages),
-    [visibleMessages],
+    () => groupMessages(visibleMessages, { unifiedTurnView }),
+    [visibleMessages, unifiedTurnView],
   )
 
   const hiddenCount = totalCount - visibleMessages.length
@@ -188,6 +201,8 @@ export function ConversationView() {
                 return <AssistantMessage key={item.message.id} message={item.message} skipMotion={isHistorical} actions={<MessageActions message={item.message} variant="assistant" />} />
               case 'tool-group':
                 return <ToolGroup key={`tg-${item.messages[0].id}`} tools={item.messages} skipMotion={isHistorical} />
+              case 'agent-turn':
+                return <AgentTurnGroup key={`at-${item.tools[0]?.id ?? idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} skipMotion={isHistorical} />
               case 'compaction':
                 return <CompactionRow key={item.message.id} message={item.message} skipMotion={isHistorical} />
               case 'system':

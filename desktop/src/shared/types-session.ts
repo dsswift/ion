@@ -162,6 +162,14 @@ export interface Message {
    * docs/protocol/server-events.md for the well-known-keys table.
    */
   dedupKey?: string
+  /**
+   * Path to the plan file associated with a plan-created divider message.
+   * Populated only on `role: 'system'` messages whose content starts with
+   * `── Plan created`. The renderer uses it to make the plan slug clickable
+   * (opens the plan preview, same as clicking a plan in the attachment drawer).
+   * Client-only field — NOT part of the Go contract or wire protocol.
+   */
+  planFilePath?: string
   timestamp: number
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.

@@ -166,17 +166,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			return
 		}
 
-		// Check for steer messages
-		select {
-		case steerMsg := <-run.steerCh:
-			conversation.AddUserMessage(run.conv, steerMsg)
-			if err := conversation.Save(run.conv, ""); err != nil {
-				utils.Log("ApiBackend", "failed to save conversation after steer: "+err.Error())
-			}
-			utils.Log("ApiBackend", "steer message injected into conversation")
-		default:
-			// no steer message, continue normally
-		}
+		// Check for steer messages that arrived between turns.
+		b.drainSteer(run, conv)
 
 		// Increment turn counter before firing turn_start, so the first turn
 		// reports turn=1 (matching TS behavior).
@@ -551,6 +542,19 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				continue
 			}
 
+			// Check for a steer message that arrived while the model was
+			// streaming its final response. If present, inject it and
+			// continue the loop so the model reacts on its next turn
+			// rather than the message being treated as a new run by the
+			// session layer. This is the critical fix for "steer during
+			// end_turn is orphaned."
+			if b.drainSteer(run, conv) {
+				if err := conversation.Save(conv, ""); err != nil {
+					utils.Log("ApiBackend", "failed to save conversation after end_turn steer: "+err.Error())
+				}
+				continue
+			}
+
 			// Save conversation
 			if err := conversation.Save(conv, ""); err != nil {
 				utils.Log("ApiBackend", "failed to save conversation: "+err.Error())
@@ -648,6 +652,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			if err := conversation.Save(conv, ""); err != nil {
 				utils.Log("ApiBackend", "failed to save conversation after AddToolResults: "+err.Error())
 			}
+
+			// Check for a steer message that arrived during tool execution.
+			// Injecting it here (rather than waiting for the top-of-loop
+			// check) ensures it lands in the conversation before the very
+			// next LLM call, minimizing latency.
+			b.drainSteer(run, conv)
 
 			// Reset early-stop continuation counters on tool_use: the model
 			// is making forward progress through tools, so the next end_turn

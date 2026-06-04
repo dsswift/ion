@@ -176,6 +176,17 @@ export function wireEngineBridgeEvents(): void {
       // the same engine_command_result event, so desktop and iOS both
       // light up from a single engine signal.
       if (event.type === 'engine_command_result' && event.command === 'clear' && !event.commandError) {
+        // The engine successfully cleared the conversation. Advance the
+        // desktop's freshness checkpoint so the next slash command on this
+        // tab is treated as the first prompt of a blank conversation by
+        // `isFirstPromptForTab` in slash-classify.ts. The engine
+        // intentionally keeps `s.conversationID` set (/clear is a
+        // checkpoint, not a session restart) — without this notification
+        // the post-/clear slash would see `promptCountSinceCheckpoint > 0`
+        // and incorrectly preserve plan mode.
+        log(`engine_command_result clear: notifying conversationCleared tabId=${tabId}`)
+        sessionPlane.notifyConversationCleared(tabId)
+
         const divider = formatClearDivider(new Date())
         if (instanceId) {
           state.remoteTransport.send({

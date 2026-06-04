@@ -22,6 +22,8 @@ export function AIModelsCategory() {
   const setPlanModeModel = usePreferencesStore((s) => s.setPlanModeModel)
   const implementModeModel = usePreferencesStore((s) => s.implementModeModel)
   const setImplementModeModel = usePreferencesStore((s) => s.setImplementModeModel)
+  const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
+  const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
 
   const fetchModels = useModelStore((s) => s.fetchModels)
   const dynamicModels = useModelStore((s) => s.models)
@@ -164,6 +166,13 @@ export function AIModelsCategory() {
         description="Automatically switch models at the plan/implement boundary. Use a powerful model for planning and a faster one for implementation."
         checked={planModelSplitEnabled}
         onChange={setPlanModelSplitEnabled}
+      />
+
+      <SettingToggle
+        label={'Show "Implement, clear context" button'}
+        description="Reveal a second action on the plan-approval card that starts a fresh conversation for the implementation phase. The regular Implement button always preserves the conversation so the model keeps what it learned during planning. Use /clear to clear context manually at any time."
+        checked={showImplementClearContext}
+        onChange={setShowImplementClearContext}
       />
 
       {planModelSplitEnabled && (

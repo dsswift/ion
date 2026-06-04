@@ -25,6 +25,7 @@ const (
 	EventStreamReset       = "stream_reset"
 	EventCompacting        = "compacting"
 	EventToolStalled       = "tool_stalled"
+	EventSteerInjected     = "steer_injected"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -105,6 +106,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &CompactingEvent{}
 	case EventToolStalled:
 		target = &ToolStalledEvent{}
+	case EventSteerInjected:
+		target = &SteerInjectedEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -389,3 +392,16 @@ type ToolStalledEvent struct {
 }
 
 func (ToolStalledEvent) eventType() string { return EventToolStalled }
+
+// SteerInjectedEvent is emitted when a mid-turn steer message is injected into
+// the conversation before the next LLM call. Clients can use this to confirm
+// that a steer message sent while the agent was running was successfully
+// captured and will influence the model's next response.
+type SteerInjectedEvent struct {
+	// MessageLength is the character count of the injected steer message.
+	// Provided so clients can display a non-empty confirmation without
+	// echoing the full message back over the wire.
+	MessageLength int `json:"messageLength"`
+}
+
+func (SteerInjectedEvent) eventType() string { return EventSteerInjected }

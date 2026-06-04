@@ -297,6 +297,16 @@ final class SessionViewModel {
         set { UserDefaults.standard.set(newValue, forKey: "showGitInfoInTabList") }
     }
 
+    /// Whether to tint tab rows with their configured pill color (on by default).
+    /// iOS-only preference — does not affect desktop. When disabled the tab list
+    /// renders without any color tinting regardless of what the desktop has set.
+    var showTabColorInTabList: Bool {
+        get { UserDefaults.standard.object(forKey: "showTabColorInTabList") == nil
+              ? true
+              : UserDefaults.standard.bool(forKey: "showTabColorInTabList") }
+        set { UserDefaults.standard.set(newValue, forKey: "showTabColorInTabList") }
+    }
+
     /// Whether tapping an agent row opens a full-screen popup (on by default).
     var agentPanelFullScreenPopup: Bool {
         get { UserDefaults.standard.object(forKey: "agentPanelFullScreenPopup") == nil

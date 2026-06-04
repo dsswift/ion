@@ -261,6 +261,8 @@ Every solution must solve the problem at its root cause. **Never trade correctne
    
    If you can't articulate the failure modes, you haven't analyzed the problem deeply enough to justify the shortcut.
 
+5. **Never avoid expanding a surface to dodge work.** If a feature requires a new event type on iOS, a new protocol field, a new enum case, or a new handler — add it. Workarounds that relay, proxy, or approximate the proper mechanism to "keep the surface small" are the same anti-pattern as substituting a heuristic for a precise mechanism. API surfaces, event surfaces, and wire protocols are meant to grow as the product grows. A comment like "iOS does not yet act on this" is a gap waiting for its first consumer, not a reason to route around the gap.
+
 ## Conversation storage
 
 Conversations are persisted as NDJSON file pairs under `~/.ion/conversations/`.

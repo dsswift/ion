@@ -1,4 +1,4 @@
-// @file-size-exception: unified rendering component absorbing MessageBubble and ToolGroupView; decomposition deferred to Workstream C
+// @file-size-exception: unified rendering component absorbing MessageBubble and ToolGroupView; slash-bubble decomposed to EngineMessageRow+SlashBubble.swift; further decomposition deferred to Workstream C
 import SwiftUI
 
 // MARK: - EngineMessageRow
@@ -10,7 +10,7 @@ import SwiftUI
 /// rendering: timestamps, copy/share/rewind context menus, voice overlays,
 /// blinking cursor, and attachment previews.
 struct EngineMessageRow: View {
-    @Environment(\.appTheme) private var theme
+    @Environment(\.appTheme) var theme
     let message: Message
 
     // Conversation-view enrichment params (nil = engine-view compact mode)
@@ -161,11 +161,25 @@ struct EngineMessageRow: View {
 
                 if !segments.text.isEmpty {
                     let cap = UIScreen.main.bounds.width * 0.8
+                    let isBash = message.content.hasPrefix("! ")
+                    let slash = parseSlashCommand(segments.text)
                     ViewThatFits(in: .horizontal) {
-                        userBubbleContent(text: segments.text, isBash: message.content.hasPrefix("! "))
-                            .fixedSize(horizontal: true, vertical: true)
-                        userBubbleContent(text: segments.text, isBash: message.content.hasPrefix("! "))
-                            .fixedSize(horizontal: false, vertical: true)
+                        Group {
+                            if let slash {
+                                userBubbleContentWithSlash(command: slash.command, args: slash.args, isBash: isBash)
+                            } else {
+                                userBubbleContent(text: segments.text, isBash: isBash)
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: true)
+                        Group {
+                            if let slash {
+                                userBubbleContentWithSlash(command: slash.command, args: slash.args, isBash: isBash)
+                            } else {
+                                userBubbleContent(text: segments.text, isBash: isBash)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: cap, alignment: .trailing)
                 }
@@ -227,11 +241,24 @@ struct EngineMessageRow: View {
 
                 if !segments.text.isEmpty {
                     let cap = UIScreen.main.bounds.width * 0.8
+                    let slash = parseSlashCommand(segments.text)
                     ViewThatFits(in: .horizontal) {
-                        userBubbleContent(text: segments.text, isBash: false)
-                            .fixedSize(horizontal: true, vertical: true)
-                        userBubbleContent(text: segments.text, isBash: false)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Group {
+                            if let slash {
+                                userBubbleContentWithSlash(command: slash.command, args: slash.args, isBash: false)
+                            } else {
+                                userBubbleContent(text: segments.text, isBash: false)
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: true)
+                        Group {
+                            if let slash {
+                                userBubbleContentWithSlash(command: slash.command, args: slash.args, isBash: false)
+                            } else {
+                                userBubbleContent(text: segments.text, isBash: false)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: cap, alignment: .trailing)
                 }
@@ -269,6 +296,13 @@ struct EngineMessageRow: View {
                     : nil
             )
     }
+
+    /// Slash-command bubble: see EngineMessageRow+SlashBubble.swift for
+    /// the `userBubbleContentWithSlash` implementation and the
+    /// `parseSlashCommand` / `SlashCommandSegments` parser. The split
+    /// keeps this file under the size cap; the call sites above
+    /// (`conversationUserBubble`, `engineUserBubble`) invoke the
+    /// extension method by name.
 
     // MARK: - Assistant
 
@@ -613,14 +647,34 @@ struct EngineMessageRow: View {
         .padding(.vertical, 6)
     }
 
-    /// Engine-view system bubble: plain centered text, no dividers.
+    /// Engine-view system bubble: divider-flanked for lifecycle markers (`──`
+    /// prefix), plain centered text for errors/notifications/death messages.
     private var engineSystemBubble: some View {
-        HStack {
-            Spacer()
-            Text(message.content)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            Spacer()
+        Group {
+            if message.content.hasPrefix("──") {
+                // Lifecycle divider (session-start, plan-created, implementing)
+                // — render with horizontal rules matching conversationSystemBubble.
+                HStack(spacing: 8) {
+                    VStack { Divider() }
+                    Text(message.content)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .layoutPriority(1)
+                    VStack { Divider() }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 6)
+            } else {
+                HStack {
+                    Spacer()
+                    Text(message.content)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+            }
         }
     }
 }

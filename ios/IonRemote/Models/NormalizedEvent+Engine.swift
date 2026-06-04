@@ -53,6 +53,12 @@ extension RemoteEvent {
             let elapsed = try container.decode(Double.self, forKey: .elapsed)
             return .engineToolStalled(tabId: tabId, instanceId: instanceId, toolId: toolId, toolName: toolName, elapsed: elapsed)
 
+        case .engineSteerInjected:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
+            return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+
         case .engineError:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -154,6 +160,20 @@ extension RemoteEvent {
         case .engineProfiles:
             let profiles = try container.decode([EngineProfile].self, forKey: .profiles)
             return .engineProfiles(profiles: profiles)
+
+        case .enginePlanModeChanged:
+            // State event: the engine session has entered or exited plan mode.
+            // iOS uses planModeEnabled=true to insert a "Plan created" lifecycle
+            // divider into engineMessages. planModeEnabled=false is a proposal
+            // (ExitPlanMode) — the actual exit is gated by the desktop's
+            // user-approval chokepoint. Fields mirror the Go-side
+            // PlanModeChangedEvent: planModeEnabled, planFilePath, planSlug.
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let planModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .planModeEnabled) ?? false
+            let planFilePath = try container.decodeIfPresent(String.self, forKey: .planFilePath)
+            let planSlug = try container.decodeIfPresent(String.self, forKey: .planSlug)
+            return .enginePlanModeChanged(tabId: tabId, instanceId: instanceId, planModeEnabled: planModeEnabled, planFilePath: planFilePath, planSlug: planSlug)
 
         case .enginePlanProposal:
             // Workflow event: the model has proposed a plan-mode transition.
@@ -326,6 +346,13 @@ extension RemoteEvent {
             try container.encode(elapsed, forKey: .elapsed)
             return true
 
+        case .engineSteerInjected(let tabId, let instanceId, let messageLength):
+            try container.encode(TypeKey.engineSteerInjected, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(messageLength, forKey: .steerMessageLength)
+            return true
+
         case .engineError(let tabId, let instanceId, let message):
             try container.encode(TypeKey.engineError, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -435,6 +462,15 @@ extension RemoteEvent {
         case .engineProfiles(let profiles):
             try container.encode(TypeKey.engineProfiles, forKey: .type)
             try container.encode(profiles, forKey: .profiles)
+            return true
+
+        case .enginePlanModeChanged(let tabId, let instanceId, let planModeEnabled, let planFilePath, let planSlug):
+            try container.encode(TypeKey.enginePlanModeChanged, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(planModeEnabled, forKey: .planModeEnabled)
+            try container.encodeIfPresent(planFilePath, forKey: .planFilePath)
+            try container.encodeIfPresent(planSlug, forKey: .planSlug)
             return true
 
         case .enginePlanProposal(let tabId, let instanceId, let kind, let planFilePath, let planSlug):

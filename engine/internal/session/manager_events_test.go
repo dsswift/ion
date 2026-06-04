@@ -609,6 +609,11 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 			input:    types.NormalizedEvent{Data: &types.ToolStalledEvent{ToolID: "t1", ToolName: "Bash", Elapsed: 30.0}},
 			wantType: "engine_tool_stalled",
 		},
+		{
+			name:     "steer_injected",
+			input:    types.NormalizedEvent{Data: &types.SteerInjectedEvent{MessageLength: 17}},
+			wantType: "engine_steer_injected",
+		},
 	}
 
 	for _, tt := range tests {
@@ -698,6 +703,25 @@ func TestTranslateToEngineEvent_ToolStalled(t *testing.T) {
 	}
 	if result.ToolElapsed != 60.0 {
 		t.Errorf("expected ToolElapsed 60.0, got %f", result.ToolElapsed)
+	}
+}
+
+// TestTranslateToEngineEvent_SteerInjected verifies the engine translates
+// SteerInjectedEvent into a typed engine_steer_injected EngineEvent with
+// the message-length field populated. Before this case was wired,
+// SteerInjectedEvents emitted from the runloop drainSteer helper were
+// silently dropped at the session-manager translation gate because the
+// translation switch had no case for them, so no client ever saw the
+// confirmation the runloop intended to publish.
+func TestTranslateToEngineEvent_SteerInjected(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.SteerInjectedEvent{MessageLength: 42},
+	}, 200000)
+	if result.Type != "engine_steer_injected" {
+		t.Fatalf("expected engine_steer_injected, got %q", result.Type)
+	}
+	if result.SteerMessageLength != 42 {
+		t.Errorf("expected SteerMessageLength 42, got %d", result.SteerMessageLength)
 	}
 }
 

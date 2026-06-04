@@ -2,6 +2,7 @@ import type { TabStatus } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden, totalInputTokens, scheduleDoneGroupMove } from '../session-store-helpers'
+import { formatPlanCreatedDivider, formatSteerAppliedDivider } from '../../../shared/clear-divider'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -83,6 +84,22 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'tool_stalled':
               updated.currentActivity = `Running ${event.toolName} (${Math.round(event.elapsed)}s)...`
+              break
+
+            case 'steer_injected':
+              // Engine confirmed a mid-turn steer landed in the
+              // conversation as a user turn. Append a divider system
+              // message so the CLI scrollback shows the user where the
+              // steer fell. Mirrors the engine-event-slice.ts handler.
+              updated.messages = [
+                ...updated.messages,
+                {
+                  id: nextMsgId(),
+                  role: 'system' as const,
+                  content: formatSteerAppliedDivider(new Date(), event.messageLength),
+                  timestamp: Date.now(),
+                },
+              ]
               break
 
             case 'text_chunk': {
@@ -370,6 +387,20 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // guards against any future emitter.
               if ((event as any).planModeEnabled) {
                 updated.permissionMode = 'plan'
+                // Insert a "Plan created" divider into the CLI tab's
+                // conversation so the user can see when each plan phase
+                // started. Mirrors the engine-tab path in
+                // engine-event-slice.ts.
+                updated.messages = [
+                  ...updated.messages,
+                  {
+                    id: nextMsgId(),
+                    role: 'system' as const,
+                    content: formatPlanCreatedDivider(new Date(), (event as any).planSlug),
+                    timestamp: Date.now(),
+                    planFilePath: (event as any).planFilePath,
+                  },
+                ]
               }
               if ((event as any).planFilePath) {
                 updated.planFilePath = (event as any).planFilePath

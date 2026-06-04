@@ -170,6 +170,18 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
 
+    // Remote set pill color (from iOS)
+    const remoteSetPillColorHandler = (_e: any, tabId: string, color: string | null) => {
+      useSessionStore.getState().setTabPillColor(tabId, color)
+    }
+    window.ion.on(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
+
+    // Remote set pill icon (from iOS)
+    const remoteSetPillIconHandler = (_e: any, tabId: string, icon: string | null) => {
+      useSessionStore.getState().setTabPillIcon(tabId, icon)
+    }
+    window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
+
     return () => {
       console.log('[DIAG] useEngineEvents: cleanup — removing handlers')
       unsubEvent()
@@ -184,6 +196,8 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
       window.ion.off(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
       window.ion.off(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
+      window.ion.off(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
+      window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
       chunkBufferRef.current.clear()
     }

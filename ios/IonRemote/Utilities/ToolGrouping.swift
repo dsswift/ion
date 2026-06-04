@@ -11,6 +11,7 @@ enum ConversationItem: Identifiable {
     case system(Message)
     case toolGroup([Message])
     case compaction(Message)
+    case agentTurn(tools: [Message], assistantMessages: [Message], isActive: Bool)
 
     var id: String {
         switch self {
@@ -21,6 +22,9 @@ enum ConversationItem: Identifiable {
             // Stable ID based on the first tool in the group.
             return "tg-\(msgs.first?.id ?? "empty")"
         case .compaction(let m): return m.id
+        case .agentTurn(let tools, let assistants, _):
+            let anchor = tools.first?.id ?? assistants.first?.id ?? "empty"
+            return "at-\(anchor)"
         }
     }
 }
@@ -29,7 +33,19 @@ enum ConversationItem: Identifiable {
 
 /// Buffer-and-flush: accumulate consecutive `.tool` messages, flush them as a
 /// single `.toolGroup` whenever a non-tool message appears (or at the end).
-func groupConversationItems(_ messages: [Message]) -> [ConversationItem] {
+///
+/// When `unifiedTurnView` is true, groups tool + assistant messages between
+/// user boundaries into `.agentTurn` items (mirroring the desktop's
+/// turn-grouping algorithm).
+func groupConversationItems(_ messages: [Message], unifiedTurnView: Bool = false) -> [ConversationItem] {
+    if unifiedTurnView {
+        return groupConversationItemsUnified(messages)
+    }
+    return groupConversationItemsClassic(messages)
+}
+
+/// Classic grouping: consecutive tools → `.toolGroup`, everything else standalone.
+private func groupConversationItemsClassic(_ messages: [Message]) -> [ConversationItem] {
     var result: [ConversationItem] = []
     var toolBuf: [Message] = []
 
@@ -59,6 +75,54 @@ func groupConversationItems(_ messages: [Message]) -> [ConversationItem] {
         }
     }
     flushTools()
+    return result
+}
+
+/// Unified turn grouping: accumulate tool + assistant messages between user
+/// boundaries and emit `.agentTurn` when tools are present.
+private func groupConversationItemsUnified(_ messages: [Message]) -> [ConversationItem] {
+    var result: [ConversationItem] = []
+    var turnTools: [Message] = []
+    var turnAssistants: [Message] = []
+
+    func flushTurn() {
+        if !turnTools.isEmpty {
+            let isActive = turnTools.contains { $0.toolStatus == .running }
+            result.append(.agentTurn(tools: turnTools, assistantMessages: turnAssistants, isActive: isActive))
+        } else {
+            for m in turnAssistants {
+                result.append(.assistant(m))
+            }
+        }
+        turnTools = []
+        turnAssistants = []
+    }
+
+    for msg in messages {
+        // System messages and compaction markers flush the turn and emit standalone.
+        if msg.role == .system || msg.role == .harness || msg.content.hasPrefix("[Compaction]") {
+            flushTurn()
+            if msg.content.hasPrefix("[Compaction]") {
+                result.append(.compaction(msg))
+            } else {
+                result.append(.system(msg))
+            }
+            continue
+        }
+
+        if msg.role == .user {
+            flushTurn()
+            result.append(.user(msg))
+            continue
+        }
+
+        if msg.role == .tool {
+            turnTools.append(msg)
+        } else if msg.role == .assistant {
+            turnAssistants.append(msg)
+        }
+    }
+    flushTurn()
     return result
 }
 

@@ -15,6 +15,50 @@ export interface TabEntry {
   engineSessionStarted: boolean
   lastActivityAt: number
   promptCount: number
+  /**
+   * Number of prompts submitted since the last freshness checkpoint.
+   *
+   * A "checkpoint" is any event that semantically restores the tab to
+   * "fresh blank session" status for the purpose of the slash-command
+   * plan→auto auto-switch guard (`isFirstPromptForTab` in slash-classify.ts).
+   * Two events advance this checkpoint:
+   *
+   *   1. `resetTabSession` — full session reset (stops the engine session,
+   *      drops the conversation id). Zeros `promptCount` too.
+   *   2. `notifyConversationCleared` — `/clear` succeeded. The engine
+   *      session and conversation id intentionally stay alive (it's a
+   *      checkpoint, not a session restart), but the LLM-visible history
+   *      has been wiped, so the next slash command should be treated as
+   *      the first prompt of a blank conversation. `promptCount` is
+   *      preserved in that case because it remains a useful "total prompts
+   *      this app boot" counter for logging.
+   *
+   * Why a separate field rather than reusing `promptCount`: callers of
+   * `getTabStatus` may still want the total prompt count (e.g. logging),
+   * so we keep both. The guard consults this checkpoint-relative counter
+   * exclusively.
+   */
+  promptCountSinceCheckpoint: number
+  /**
+   * Set `true` by `notifyConversationCleared`, cleared by `submitPrompt`.
+   *
+   * This flag disambiguates two states that look identical to the
+   * `promptCountSinceCheckpoint` counter alone:
+   *
+   *   A. Tab just cleared (`/clear` fired) — `promptCountSinceCheckpoint`
+   *      is 0, but the renderer still sends its stale `conversationId` as
+   *      `runOptions.sessionId`. The guard should treat this as fresh.
+   *   B. Tab restored from disk (app restart) — `promptCountSinceCheckpoint`
+   *      is 0, and the renderer sends the restored `conversationId` as
+   *      `runOptions.sessionId`. The guard should treat this as resumed.
+   *
+   * Without this flag the guard cannot tell A from B — both have
+   * `promptCountSinceCheckpoint === 0` and `runOptionsSessionId` set.
+   * With the flag: A has `clearedSinceLastPrompt === true`, so the guard
+   * returns "fresh" and the plan→auto switch fires. B has the flag
+   * `false` (never set after a restore), so the guard returns "not fresh".
+   */
+  clearedSinceLastPrompt: boolean
   permissionMode: 'auto' | 'plan'
   approvedTools: string[]
   startedAt: number
@@ -207,6 +251,18 @@ export function handleEngineEvent(
         toolId: event.toolId,
         toolName: event.toolName,
         elapsed: event.toolElapsed,
+      } as NormalizedEvent)
+      break
+
+    case 'engine_steer_injected':
+      // Mid-turn steer-drain confirmation. The runloop captures a steer
+      // message between turns, inside the end_turn checkpoint, or after
+      // tool execution; this event tells consumers the steer landed in
+      // the conversation as a user turn before the next LLM call.
+      log(`steer_injected: tabId=${tabId} messageLength=${event.steerMessageLength}`)
+      ctx.emit('event', tabId, {
+        type: 'steer_injected',
+        messageLength: event.steerMessageLength,
       } as NormalizedEvent)
       break
 

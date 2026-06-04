@@ -136,3 +136,11 @@ export function handleRenameTab(cmd: Extract<RemoteCommand, { type: 'rename_tab'
 export function handleRenameTerminalInstance(cmd: Extract<RemoteCommand, { type: 'rename_terminal_instance' }>): void {
   broadcast(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, cmd.tabId, cmd.instanceId, cmd.label)
 }
+
+export function handleSetPillColor(cmd: Extract<RemoteCommand, { type: 'set_pill_color' }>): void {
+  broadcast(IPC.REMOTE_SET_PILL_COLOR, cmd.tabId, cmd.pillColor)
+}
+
+export function handleSetPillIcon(cmd: Extract<RemoteCommand, { type: 'set_pill_icon' }>): void {
+  broadcast(IPC.REMOTE_SET_PILL_ICON, cmd.tabId, cmd.pillIcon)
+}

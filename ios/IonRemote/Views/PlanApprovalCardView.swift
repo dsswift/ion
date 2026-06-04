@@ -30,6 +30,23 @@ struct PlanApprovalCardView: View {
         tab?.groupPinned == true && tab?.isEngine != true
     }
 
+    /// Reveals a secondary "Implement, clear context" button below the
+    /// primary Implement row. Mirrors the desktop's
+    /// `showImplementClearContext` preference (read from the projected
+    /// settings snapshot). Default false. The regular Implement button
+    /// always preserves the planning conversation; this opt-in action
+    /// starts a fresh conversation for the implement phase. See
+    /// SessionViewModel+ImplementPlan.swift::implementPlan for the
+    /// branching behavior.
+    private var showClearContextOption: Bool {
+        guard let settings = viewModel.desktopSettings,
+              let val = settings.currentValue(for: "showImplementClearContext"),
+              let on = val.value as? Bool else {
+            return false
+        }
+        return on
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
@@ -151,6 +168,25 @@ struct PlanApprovalCardView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                 }
+
+                // Secondary "Implement, clear context" action — revealed
+                // only when the desktop's `showImplementClearContext`
+                // preference is on. Per-click opt-in to a fresh
+                // conversation for the implement phase; the regular
+                // Implement button above always preserves context.
+                if showClearContextOption {
+                    Button {
+                        Haptic.medium()
+                        implement(clearContext: true)
+                    } label: {
+                        Text("Implement, clear context")
+                            .font(.footnote.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+                }
             }
         }
         .padding()
@@ -173,7 +209,7 @@ struct PlanApprovalCardView: View {
         }
     }
 
-    private func implement() {
+    private func implement(clearContext: Bool = false) {
         let prompt: String
         if let content = planContent, !content.isEmpty {
             prompt = "Implement the following plan:\n\n\(content)"
@@ -181,14 +217,14 @@ struct PlanApprovalCardView: View {
             prompt = "Implement the plan."
         }
         viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-        viewModel.implementPlan(tabId: tabId, prompt: prompt)
+        viewModel.implementPlan(tabId: tabId, prompt: prompt, clearContext: clearContext)
     }
 
-    private func implementAndUnpin() {
+    private func implementAndUnpin(clearContext: Bool = false) {
         // Unpin first so the desktop's auto-move guard fires when
         // implementPlan switches the tab to auto mode.
         viewModel.toggleTabGroupPin(tabId: tabId)
-        implement()
+        implement(clearContext: clearContext)
     }
 
     @ViewBuilder

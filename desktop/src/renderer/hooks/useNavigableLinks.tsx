@@ -136,10 +136,16 @@ export function useNavigableText() {
     return tab?.workingDirectory || '~'
   })
 
-  const onOpenFile = useCallback((path: string) => {
+  const onOpenFile = useCallback(async (path: string) => {
     const homeDir = useSessionStore.getState().staticInfo?.homePath || '/Users/' + (process.env.USER || 'user')
     const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
     const resolved = expanded.startsWith('/') ? expanded : workingDir + '/' + expanded
+    const { exists } = await window.ion.fsExists(resolved)
+    if (!exists) {
+      console.log('[NavigableLinks] file does not exist, ignoring cmd-click', { rawPath: path, resolved })
+      return
+    }
+    console.log('[NavigableLinks] opening file', { resolved })
     const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
       useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)

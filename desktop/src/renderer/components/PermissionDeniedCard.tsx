@@ -18,9 +18,19 @@ interface Props {
   /** When true, shows the "Implement and unpin" button on the Plan Ready card. */
   tabGroupPinned?: boolean
   onDismiss: () => void
-  onImplement?: () => void
-  /** Called when the user clicks "Implement and unpin" — unpins the tab then implements. */
-  onImplementAndUnpin?: () => void
+  /**
+   * Called when the user clicks Implement (or "Implement, clear context").
+   * `clearContext` defaults to false — the regular Implement button
+   * preserves the engine conversation across the plan→implement boundary.
+   * When `clearContext = true`, the handler runs the historical
+   * reset-and-archive path. See usePermissionDeniedHandlers.ts.
+   */
+  onImplement?: (clearContext?: boolean) => void
+  /**
+   * Called when the user clicks "Implement and unpin" — unpins the tab
+   * then implements. `clearContext` mirrors the onImplement contract.
+   */
+  onImplementAndUnpin?: (clearContext?: boolean) => void
   onAnswer?: (answer: string) => void
   onApprove?: (toolNames: string[]) => void
 }
@@ -28,6 +38,11 @@ interface Props {
 export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
   const colors = useColors()
   const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
+  // Reveals the secondary "Implement, clear context" action on the
+  // plan-approval card. Default off — only users who explicitly want
+  // per-plan opt-in to a fresh conversation enable this. See
+  // preferences-types.ts for the field comment.
+  const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
 
   // Extract planFilePath: tab state (from engine event), denial toolInput, messages
@@ -192,6 +207,22 @@ export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, mes
               >
                 Implement
               </button>
+              {showImplementClearContext && (
+                <button
+                  onClick={() => onImplement(true)}
+                  title="Start a fresh conversation for the implementation phase — the model will not see the planning conversation."
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
+                  style={{
+                    background: colors.surfaceHover,
+                    color: colors.textTertiary,
+                    border: `1px solid ${colors.surfaceSecondary}`,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.surfaceActive }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = colors.surfaceHover }}
+                >
+                  Implement, clear context
+                </button>
+              )}
               {planFilePath && <button
                 onClick={handleViewPlan}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"

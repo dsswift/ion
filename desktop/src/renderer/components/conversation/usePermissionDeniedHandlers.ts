@@ -8,19 +8,44 @@ interface Handlers {
   onDismiss: () => void
   onAnswer: (answer: string) => void
   onApprove: (toolNames: string[]) => void
-  onImplement: () => Promise<void>
-  onImplementAndUnpin: () => Promise<void>
+  onImplement: (clearContext?: boolean) => Promise<void>
+  onImplementAndUnpin: (clearContext?: boolean) => Promise<void>
 }
 
 /**
  * Build the four PermissionDeniedCard callbacks for the active tab.
  *
- * onImplement starts a fresh engine session (to exit plan mode cleanly),
- * reads the plan file, and sends "Implement the following plan:\n\n<content>"
- * as the first message of the new session. The planning conversation history
- * is preserved visually with a divider inserted between the planning and
- * implementation phases — the plan file is the complete artifact of the
- * planning session and is all the model needs to implement it.
+ * onImplement takes a `clearContext` parameter (default `false`) that
+ * the plan-approval card supplies per-click:
+ *
+ *   - `clearContext = false` (the regular **Implement** button): the
+ *     engine session is preserved. Plan mode is flipped off via
+ *     `setPermissionMode('auto', ...)`, which routes a
+ *     `set_plan_mode(false)` to the engine and clears the plan-mode
+ *     system prompt + restricted tool list without destroying the
+ *     conversation. The implement prompt is sent with
+ *     `implementationPhase=true` so the engine suppresses EnterPlanMode
+ *     tool injection (the model can't re-propose plan mode against the
+ *     user's intent). The model retains everything it learned during
+ *     planning — no re-reading of files, no lost context.
+ *
+ *   - `clearContext = true` (the **"Implement, clear context"** button,
+ *     revealed only when `showImplementClearContext` is enabled): the
+ *     historical behavior — a fresh engine session is started via
+ *     `resetTabSession`, the prior conversation ID is archived into
+ *     `historicalSessionIds`, and the implement prompt is sent as the
+ *     first message of a brand-new conversation. The plan file is the
+ *     complete artifact of the planning session.
+ *
+ * Both branches insert the visual `── Implementing plan at <time> ──`
+ * divider so the user can see where planning ended and implementation
+ * began.
+ *
+ * Granularity is per-plan: the user decides at click-time whether they
+ * want a fresh conversation for this particular plan. There is no
+ * global "always clear context" toggle. Users can also manually clear
+ * context with `/clear` at any time regardless of which button they
+ * clicked.
  */
 export function buildPermissionDeniedHandlers(
   tab: TabState,
@@ -53,7 +78,7 @@ export function buildPermissionDeniedHandlers(
     sendMessage('The denied tools have been approved. Please retry the operation.')
   }
 
-  const onImplement = async () => {
+  const onImplement = async (clearContext: boolean = false) => {
     dismissPermissionDenied()
     // Switch to auto mode for implementation
     useSessionStore.getState().setPermissionMode('auto', 'plan_approved')
@@ -96,43 +121,84 @@ export function buildPermissionDeniedHandlers(
       }
     }
 
-    // Start a fresh session to break out of plan mode. This destroys the
-    // engine session (clearing planMode, injected plan-mode system prompts,
-    // and the restricted tool list) so the implementation run starts clean.
-    window.ion.resetTabSession(tab.id)
+    // Branch on the per-click `clearContext` argument. Default (false)
+    // keeps the engine session alive so the model retains its planning
+    // context; true (opt-in via the "Implement, clear context" button)
+    // runs the historical reset-and-archive behavior.
+    console.log(`[onImplement] tab=${tab.id.slice(0, 8)} clearContext=${clearContext} planFilePath=${planFilePath ?? '<none>'} planContentLen=${planContent?.length ?? 0}`)
 
-    // Preserve conversation history and insert a visual divider so the user
-    // can see where planning ended and implementation began.
-    useSessionStore.setState((s) => ({
-      tabs: s.tabs.map((t) =>
-        t.id === tab.id
-          ? {
-              ...t,
-              messages: [
-                ...t.messages,
-                {
-                  id: nextMsgId(),
-                  role: 'system' as const,
-                  content: formatImplementDivider(new Date()),
-                  timestamp: Date.now(),
-                },
-              ],
-              historicalSessionIds: [
-                ...t.historicalSessionIds,
-                ...(t.conversationId && !t.historicalSessionIds.includes(t.conversationId)
-                  ? [t.conversationId] : []),
-              ],
-              conversationId: null,
-              planFilePath: null,
-              lastResult: null,
-              currentActivity: '',
-              permissionQueue: [],
-              permissionDenied: null,
-              queuedPrompts: [],
-            }
-          : t
-      ),
-    }))
+    if (clearContext) {
+      // Opt-in: destroy the engine session so the implementation run
+      // starts clean. This clears the conversation, the plan-mode
+      // system prompt, and the restricted tool list. The prior
+      // conversation ID is archived into historicalSessionIds so the
+      // user can still navigate back to it via session history.
+      console.log(`[onImplement] tab=${tab.id.slice(0, 8)} clearing context — resetTabSession + archive conversationId`)
+      window.ion.resetTabSession(tab.id)
+
+      useSessionStore.setState((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === tab.id
+            ? {
+                ...t,
+                messages: [
+                  ...t.messages,
+                  {
+                    id: nextMsgId(),
+                    role: 'system' as const,
+                    content: formatImplementDivider(new Date()),
+                    timestamp: Date.now(),
+                  },
+                ],
+                historicalSessionIds: [
+                  ...t.historicalSessionIds,
+                  ...(t.conversationId && !t.historicalSessionIds.includes(t.conversationId)
+                    ? [t.conversationId] : []),
+                ],
+                conversationId: null,
+                planFilePath: null,
+                lastResult: null,
+                currentActivity: '',
+                permissionQueue: [],
+                permissionDenied: null,
+                queuedPrompts: [],
+              }
+            : t
+        ),
+      }))
+    } else {
+      // Default: preserve the engine session. The setPermissionMode call
+      // above already flipped plan mode off on the engine side (which
+      // also drops the plan-mode system prompt and the restricted tool
+      // list — see engine/internal/session/plan_mode.go:23-41). The
+      // conversationId stays put so the LLM history is preserved across
+      // the plan→implement boundary.
+      console.log(`[onImplement] tab=${tab.id.slice(0, 8)} preserving conversation — staying in conversationId=${tab.conversationId ?? '<none>'}`)
+      useSessionStore.setState((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === tab.id
+            ? {
+                ...t,
+                messages: [
+                  ...t.messages,
+                  {
+                    id: nextMsgId(),
+                    role: 'system' as const,
+                    content: formatImplementDivider(new Date()),
+                    timestamp: Date.now(),
+                  },
+                ],
+                planFilePath: null,
+                lastResult: null,
+                currentActivity: '',
+                permissionQueue: [],
+                permissionDenied: null,
+                queuedPrompts: [],
+              }
+            : t
+        ),
+      }))
+    }
 
     // Structured signal to the engine that this run is the implement
     // half of a plan-then-implement flow. The engine maps this onto
@@ -148,6 +214,10 @@ export function buildPermissionDeniedHandlers(
     // paraphrasing) and bled UI/harness policy into engine-visible
     // prompt text. The boolean is the mechanical equivalent and lives
     // on the structured wire contract.
+    //
+    // The flag is set regardless of the clearContext branch because the
+    // engine-side concern (don't let the model re-enter plan mode)
+    // applies identically whether we reset or preserve the conversation.
     const implementPrompt = planContent
       ? `Implement the following plan:\n\n${planContent}`
       : 'Implement the plan.'
@@ -162,12 +232,12 @@ export function buildPermissionDeniedHandlers(
     sendMessage(implementPrompt, tab.workingDirectory, planAttachment, undefined, true)
   }
 
-  const onImplementAndUnpin = async (): Promise<void> => {
+  const onImplementAndUnpin = async (clearContext: boolean = false): Promise<void> => {
     // Unpin first so the auto-move guard fires when onImplement switches
     // the tab to auto mode — tab will then move to in-progress as expected.
     useSessionStore.getState().toggleTabGroupPin(tab.id)
-    console.log(`[tab-pin] implement-and-unpin: tab=${tab.id.slice(0, 8)} — pin cleared, handing off to onImplement`)
-    await onImplement()
+    console.log(`[tab-pin] implement-and-unpin: tab=${tab.id.slice(0, 8)} clearContext=${clearContext} — pin cleared, handing off to onImplement`)
+    await onImplement(clearContext)
   }
 
   return { onDismiss, onAnswer, onApprove, onImplement, onImplementAndUnpin }

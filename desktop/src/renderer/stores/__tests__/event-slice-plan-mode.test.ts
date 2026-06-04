@@ -124,6 +124,46 @@ describe('event-slice — engine_plan_mode_changed', () => {
 
     expect(state.tabs[0].permissionMode).toBe('plan')
   })
+
+  it('appends a "Plan created" divider system message on planModeEnabled=true', () => {
+    // Regression test: the event-slice handler also seeds a divider into
+    // the CLI tab's messages so the user can see when the plan phase
+    // started. The earlier test only verified permissionMode; this one
+    // pins the divider-insertion path that engine-event-slice.ts mirrors
+    // for the engine-tab path.
+    const { state, slice } = buildHarness()
+    const messagesBefore = state.tabs[0].messages.length
+
+    slice.handleNormalizedEvent!('tab1', {
+      type: 'engine_plan_mode_changed' as any,
+      planModeEnabled: true,
+      planFilePath: '/tmp/plan.md',
+      planSlug: 'my-plan',
+    } as any)
+
+    expect(state.tabs[0].messages.length).toBe(messagesBefore + 1)
+    const last = state.tabs[0].messages.at(-1)!
+    expect(last.role).toBe('system')
+    expect(last.content).toMatch(/^── Plan created at /)
+    expect(last.content).toContain('my-plan')
+    expect(last.planFilePath).toBe('/tmp/plan.md')
+  })
+
+  it('does NOT append a divider on planModeEnabled=false', () => {
+    // The false branch is a proposal (ExitPlanMode) — the desktop's
+    // user-approval gate is the authoritative chokepoint, so the
+    // proposal must not insert a divider into the scrollback.
+    const { state, slice } = buildHarness()
+    const messagesBefore = state.tabs[0].messages.length
+
+    slice.handleNormalizedEvent!('tab1', {
+      type: 'engine_plan_mode_changed' as any,
+      planModeEnabled: false,
+      planFilePath: '/tmp/plan.md',
+    } as any)
+
+    expect(state.tabs[0].messages.length).toBe(messagesBefore)
+  })
 })
 
 describe('event-slice — task_complete with ExitPlanMode denial', () => {

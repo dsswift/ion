@@ -9,6 +9,7 @@ import { expandSlashCommand } from '../cli-compat/slash-expand'
 import { readSettings, SETTINGS_DEFAULTS } from '../settings-store'
 import { broadcast } from '../broadcast'
 import { processIncomingPrompt } from '../prompt-pipeline'
+import { isFirstPromptForTab } from '../slash-classify'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -40,9 +41,18 @@ async function applySlashExpansion(tabId: string, options: RunOptions): Promise<
     options.appendSystemPrompt = options.appendSystemPrompt
       ? options.appendSystemPrompt + '\n\n' + expansion.systemPrompt
       : expansion.systemPrompt
-    // Auto-switch plan → auto so expanded commands execute immediately
-    sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
-    broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
+    // Auto-switch plan → auto only for the first prompt. Retries inherently
+    // have promptCount > 0 (the original prompt was already submitted), so
+    // this guard always prevents the switch on the retry path — which is
+    // correct: a retry should preserve whatever permission mode the tab is
+    // currently in rather than forcing it back to auto.
+    // Also blocked when options.sessionId is set (resumed conversation).
+    if (isFirstPromptForTab(tabId, options.sessionId)) {
+      sessionPlane.setPermissionMode(tabId, 'auto', 'slash_command')
+      broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId, mode: 'auto' })
+    } else {
+      log(`slashExpand: skipping plan→auto switch for tabId=${tabId} — conversation already active (promptCount=${sessionPlane.getTabStatus(tabId)?.promptCount ?? '?'})`)
+    }
   } else {
     log(`slashExpand: no expansion for "${options.prompt.substring(0, 50)}"`)
   }

@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { Diamond, Square, StarFour, Triangle, Heart, Hexagon, Lightning, Terminal } from '@phosphor-icons/react'
+import { Diamond, Square, StarFour, Triangle, Heart, Hexagon, Lightning, Terminal, DeviceMobile, Monitor, Gear } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import type { useColors } from '../theme'
@@ -29,6 +29,9 @@ export const PILL_ICON_PRESETS = [
   { icon: 'heart', label: 'Heart' },
   { icon: 'hexagon', label: 'Hexagon' },
   { icon: 'lightning', label: 'Lightning' },
+  { icon: 'mobile', label: 'Mobile' },
+  { icon: 'desktop', label: 'Desktop' },
+  { icon: 'gear', label: 'Gear' },
 ] as const
 
 /** Maps the persisted `pillIcon` string to a Phosphor icon component. */
@@ -41,6 +44,11 @@ export const PILL_ICON_MAP: Record<string, React.ComponentType<any>> = {
   hexagon: Hexagon,
   lightning: Lightning,
   Terminal,
+  // Note: `Monitor` is used instead of `Desktop` to avoid collision with the
+  // reserved JS keyword; the persisted icon string remains "desktop".
+  mobile: DeviceMobile,
+  desktop: Monitor,
+  gear: Gear,
 }
 
 /** Adjust viewport rect to zoomed coordinate space for fixed positioning.

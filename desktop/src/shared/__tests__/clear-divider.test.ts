@@ -1,8 +1,11 @@
 /**
- * Tests for the shared /clear divider helpers.
+ * Tests for the shared scrollback divider helpers.
  *
- * `formatClearDivider`, `isClearDivider`, and `buildClearDividerRemoteEvent`
- * are the contract surface that keeps the four /clear paths
+ * `formatClearDivider`, `isClearDivider`, `formatSessionStartDivider`,
+ * `formatPlanCreatedDivider`, `isPlanCreatedDivider`,
+ * `formatSteerAppliedDivider`, `isSteerAppliedDivider`,
+ * `buildClearDividerRemoteEvent`, and `buildDividerRemoteEvent`
+ * are the contract surface that keeps divider paths
  * (desktop CLI, desktop engine, iOS CLI, iOS engine) producing the same
  * UX. Drift between processes would silently break the divider.
  */
@@ -12,7 +15,13 @@ import {
   formatClearDivider,
   isClearDivider,
   formatImplementDivider,
+  formatSessionStartDivider,
+  formatPlanCreatedDivider,
+  isPlanCreatedDivider,
+  formatSteerAppliedDivider,
+  isSteerAppliedDivider,
   buildClearDividerRemoteEvent,
+  buildDividerRemoteEvent,
 } from '../clear-divider'
 
 describe('formatClearDivider', () => {
@@ -100,5 +109,118 @@ describe('buildClearDividerRemoteEvent', () => {
       expect(ev.message.timestamp).toBe(at.getTime())
       expect(ev.message.id).toBe(`clear-${at.getTime()}`)
     })
+  })
+})
+
+describe('formatSessionStartDivider', () => {
+  it('emits the `── Session started at <time> ──` sentinel shape', () => {
+    const out = formatSessionStartDivider(new Date('2024-01-01T15:42:00'))
+    expect(out.startsWith('── Session started at ')).toBe(true)
+    expect(out.endsWith(' ──')).toBe(true)
+  })
+
+  it('starts with the generic `──` prefix used for divider rendering', () => {
+    expect(formatSessionStartDivider(new Date()).startsWith('──')).toBe(true)
+  })
+
+  it('is not detected as a clear divider or plan-created divider', () => {
+    const out = formatSessionStartDivider(new Date())
+    expect(isClearDivider(out)).toBe(false)
+    expect(isPlanCreatedDivider(out)).toBe(false)
+  })
+})
+
+describe('formatPlanCreatedDivider', () => {
+  it('emits the `── Plan created at <time> ──` shape without slug', () => {
+    const out = formatPlanCreatedDivider(new Date('2024-01-01T15:42:00'))
+    expect(out.startsWith('── Plan created at ')).toBe(true)
+    expect(out.endsWith(' ──')).toBe(true)
+    expect(out.includes(' · ')).toBe(false)
+  })
+
+  it('includes the slug when provided', () => {
+    const out = formatPlanCreatedDivider(new Date('2024-01-01T15:42:00'), 'frosty-twirling-finch')
+    expect(out.startsWith('── Plan created at ')).toBe(true)
+    expect(out.includes(' · frosty-twirling-finch')).toBe(true)
+    expect(out.endsWith(' ──')).toBe(true)
+  })
+
+  it('is detected by isPlanCreatedDivider', () => {
+    expect(isPlanCreatedDivider(formatPlanCreatedDivider(new Date()))).toBe(true)
+    expect(isPlanCreatedDivider(formatPlanCreatedDivider(new Date(), 'slug'))).toBe(true)
+  })
+})
+
+describe('isPlanCreatedDivider', () => {
+  it('rejects unrelated dividers and system messages', () => {
+    expect(isPlanCreatedDivider(formatClearDivider(new Date()))).toBe(false)
+    expect(isPlanCreatedDivider(formatImplementDivider(new Date()))).toBe(false)
+    expect(isPlanCreatedDivider(formatSessionStartDivider(new Date()))).toBe(false)
+    expect(isPlanCreatedDivider('Error: something')).toBe(false)
+    expect(isPlanCreatedDivider('')).toBe(false)
+  })
+})
+
+describe('formatSteerAppliedDivider', () => {
+  it('emits the `── Steer applied at <time> · <N> chars ──` shape', () => {
+    const out = formatSteerAppliedDivider(new Date('2024-01-01T15:42:00'), 27)
+    expect(out.startsWith('── Steer applied at ')).toBe(true)
+    expect(out.includes(' · 27 chars ──')).toBe(true)
+  })
+
+  it('starts with the generic `──` prefix used for divider rendering', () => {
+    expect(formatSteerAppliedDivider(new Date(), 1).startsWith('──')).toBe(true)
+  })
+
+  it('is detected by isSteerAppliedDivider', () => {
+    expect(isSteerAppliedDivider(formatSteerAppliedDivider(new Date(), 42))).toBe(true)
+  })
+
+  it('is not detected as a clear/plan-created/session-start divider', () => {
+    const out = formatSteerAppliedDivider(new Date(), 42)
+    expect(isClearDivider(out)).toBe(false)
+    expect(isPlanCreatedDivider(out)).toBe(false)
+  })
+})
+
+describe('isSteerAppliedDivider', () => {
+  it('rejects unrelated dividers and system messages', () => {
+    expect(isSteerAppliedDivider(formatClearDivider(new Date()))).toBe(false)
+    expect(isSteerAppliedDivider(formatImplementDivider(new Date()))).toBe(false)
+    expect(isSteerAppliedDivider(formatSessionStartDivider(new Date()))).toBe(false)
+    expect(isSteerAppliedDivider(formatPlanCreatedDivider(new Date()))).toBe(false)
+    expect(isSteerAppliedDivider('Error: something')).toBe(false)
+    expect(isSteerAppliedDivider('')).toBe(false)
+  })
+})
+
+describe('buildDividerRemoteEvent', () => {
+  const at = new Date('2024-06-15T10:30:00')
+
+  it('produces engine_harness_message for engine-tab keys', () => {
+    const content = '── Session started at 10:30 AM ──'
+    const ev = buildDividerRemoteEvent('tab-abc:inst-xyz', content, at)
+    expect(ev.type).toBe('engine_harness_message')
+    if (ev.type !== 'engine_harness_message') return
+    expect(ev.tabId).toBe('tab-abc')
+    expect(ev.instanceId).toBe('inst-xyz')
+    expect(ev.message).toBe(content)
+  })
+
+  it('produces message_added for CLI-tab keys', () => {
+    const content = '── Implementing plan at 10:30 AM ──'
+    const ev = buildDividerRemoteEvent('tab-cli', content, at)
+    expect(ev.type).toBe('message_added')
+    if (ev.type !== 'message_added') return
+    expect(ev.tabId).toBe('tab-cli')
+    expect(ev.message.role).toBe('system')
+    expect(ev.message.content).toBe(content)
+  })
+
+  it('buildClearDividerRemoteEvent delegates to buildDividerRemoteEvent', () => {
+    // Both should produce identical structure for the same key
+    const legacy = buildClearDividerRemoteEvent('tab-abc:inst-xyz', at)
+    const general = buildDividerRemoteEvent('tab-abc:inst-xyz', formatClearDivider(at), at)
+    expect(legacy).toEqual(general)
   })
 })

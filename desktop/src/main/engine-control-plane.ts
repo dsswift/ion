@@ -95,6 +95,10 @@ export class EngineControlPlane extends EventEmitter {
     tab.conversationId = null
     tab.engineSessionStarted = false
     tab.promptCount = 0
+    // Full session reset advances the freshness checkpoint: the next
+    // slash command on this tab is the first prompt of a blank session.
+    tab.promptCountSinceCheckpoint = 0
+    tab.clearedSinceLastPrompt = false
     tab.activeRequestId = null
     tab.status = 'idle'         // Prevent stale events from the dying session
     tab.startedAt = 0           // from triggering task_complete synthesis
@@ -106,6 +110,34 @@ export class EngineControlPlane extends EventEmitter {
     log(`closeTab: tabId=${tabId}`)
     this.bridge.stopSession(tabId)
     this.tabs.delete(tabId)
+  }
+
+  /**
+   * Mark the tab's conversation as cleared (the engine's `/clear` command
+   * has succeeded, or the desktop short-circuited a `/clear` locally for a
+   * never-started session).
+   *
+   * Unlike `resetTabSession`, this does NOT stop the engine session, drop
+   * `conversationId`, or zero `promptCount`. `/clear` is a checkpoint, not a
+   * session restart — the engine keeps the same `conversationID` and the
+   * on-disk file (now empty) is reused. The only thing that changes from the
+   * desktop's perspective is the freshness checkpoint that the slash-command
+   * plan→auto guard consults: the next slash command should behave as if
+   * it's the first prompt of a blank conversation.
+   *
+   * This is intentionally a narrow sibling of `resetTabSession` — it only
+   * resets `promptCountSinceCheckpoint`. See the TabEntry doc comment in
+   * engine-control-plane-events.ts for the full semantic distinction.
+   */
+  notifyConversationCleared(tabId: string): void {
+    const tab = this.tabs.get(tabId)
+    if (!tab) {
+      log(`notifyConversationCleared: tabId=${tabId} (no such tab — ignoring)`)
+      return
+    }
+    log(`notifyConversationCleared: tabId=${tabId} promptCount=${tab.promptCount} promptCountSinceCheckpoint=${tab.promptCountSinceCheckpoint}→0 clearedSinceLastPrompt→true conversationId=${tab.conversationId ?? 'null'} (preserved)`)
+    tab.promptCountSinceCheckpoint = 0
+    tab.clearedSinceLastPrompt = true
   }
 
   setPermissionMode(tabId: string, mode: 'auto' | 'plan', source?: string): void {
@@ -132,13 +164,18 @@ export class EngineControlPlane extends EventEmitter {
       return
     }
 
-    log(`submitPrompt: tabId=${tabId} requestId=${requestId} model=${options.model ?? 'default'} sessionId=${options.sessionId ?? 'new'} promptCount=${tab.promptCount + 1}`)
+    log(`submitPrompt: tabId=${tabId} requestId=${requestId} model=${options.model ?? 'default'} sessionId=${options.sessionId ?? 'new'} promptCount=${tab.promptCount + 1} promptCountSinceCheckpoint=${tab.promptCountSinceCheckpoint + 1}`)
     tab.activeRequestId = requestId
     tab.lastActivityAt = Date.now()
     tab.startedAt = Date.now()
     tab.toolCallCount = 0
     tab.sawPermissionRequest = false
     tab.promptCount++
+    // Mirror increment: the freshness checkpoint moves with every prompt
+    // submission. The two counters only diverge when /clear advances the
+    // checkpoint without resetting the lifetime prompt counter.
+    tab.promptCountSinceCheckpoint++
+    tab.clearedSinceLastPrompt = false
 
     this._setStatus(tabId, 'connecting')
 
@@ -384,6 +421,8 @@ function makeEmptyTab(tabId: string): TabEntry {
     engineSessionStarted: false,
     lastActivityAt: Date.now(),
     promptCount: 0,
+    promptCountSinceCheckpoint: 0,
+    clearedSinceLastPrompt: false,
     permissionMode: 'auto',
     approvedTools: [],
     startedAt: 0,

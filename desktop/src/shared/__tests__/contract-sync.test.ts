@@ -85,6 +85,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   stream_reset: [],
   compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
+  steer_injected: ['messageLength'],
 }
 
 // ─── TS SharedTypes field map ───

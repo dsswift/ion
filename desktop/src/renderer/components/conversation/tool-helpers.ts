@@ -8,6 +8,7 @@ export type GroupedItem =
   | { kind: 'system'; message: Message }
   | { kind: 'harness'; message: Message; bootstrapCollapsedCount?: number }
   | { kind: 'tool-group'; messages: Message[] }
+  | { kind: 'agent-turn'; tools: Message[]; assistantMessages: Message[]; isActive: boolean }
   | { kind: 'compaction'; message: Message }
 
 // ─── Hidden system messages ───
@@ -23,6 +24,7 @@ const BOOTSTRAP_PREFIX = 'Session bootstrapped'
 interface GroupOptions {
   includeUser?: boolean
   hiddenMessages?: string[]
+  unifiedTurnView?: boolean
 }
 
 export function groupMessages(messages: Message[], opts?: GroupOptions): GroupedItem[] {
@@ -30,6 +32,10 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   const hidden = opts?.hiddenMessages ?? HIDDEN_MESSAGES
 
   console.log(`[ENGINE-BOOTSTRAP] groupMessages entry total=${messages.length}`)
+
+  if (opts?.unifiedTurnView) {
+    return groupMessagesUnified(messages, includeUser, hidden)
+  }
 
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
@@ -97,6 +103,98 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
 
   console.log(
     `[ENGINE-BOOTSTRAP] groupMessages done runs=${totalRunsFlushed} suppressed=${totalSuppressed} output=${result.length}`
+  )
+  return result
+}
+
+// ─── Unified turn-grouping (agent-turn mode) ───
+
+function groupMessagesUnified(
+  messages: Message[],
+  includeUser: boolean,
+  hidden: string[],
+): GroupedItem[] {
+  const result: GroupedItem[] = []
+  let turnTools: Message[] = []
+  let turnAssistant: Message[] = []
+  let bootstrapBuf: Message[] = []
+  let totalRunsFlushed = 0
+  let totalSuppressed = 0
+
+  const flushBootstrap = () => {
+    if (bootstrapBuf.length === 0) return
+    const suppressed = bootstrapBuf.length - 1
+    const representative = bootstrapBuf[bootstrapBuf.length - 1]
+    console.log(
+      `[ENGINE-BOOTSTRAP] flush run count=${bootstrapBuf.length} kept=${representative.id} suppressed=${suppressed}`
+    )
+    result.push({
+      kind: 'harness',
+      message: representative,
+      bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
+    })
+    totalRunsFlushed++
+    totalSuppressed += suppressed
+    bootstrapBuf = []
+  }
+
+  const flushTurn = () => {
+    if (turnTools.length > 0) {
+      const isActive = turnTools.some((t) => t.toolStatus === 'running')
+      result.push({
+        kind: 'agent-turn',
+        tools: [...turnTools],
+        assistantMessages: [...turnAssistant],
+        isActive,
+      })
+    } else {
+      // No tools — emit each assistant message as a standalone item
+      for (const m of turnAssistant) {
+        result.push({ kind: 'assistant', message: m })
+      }
+    }
+    turnTools = []
+    turnAssistant = []
+  }
+
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
+
+    if (msg.role === 'user') {
+      flushTurn()
+      flushBootstrap()
+      if (includeUser) result.push({ kind: 'user', message: msg })
+    } else if (msg.role === 'tool') {
+      flushBootstrap()
+      turnTools.push(msg)
+    } else if (msg.role === 'assistant') {
+      flushBootstrap()
+      turnAssistant.push(msg)
+    } else if (msg.role === 'harness') {
+      if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
+        console.log(`[ENGINE-BOOTSTRAP] enqueue id=${msg.id} buf=${bootstrapBuf.length + 1}`)
+        bootstrapBuf.push(msg)
+      } else {
+        flushTurn()
+        flushBootstrap()
+        result.push({ kind: 'harness', message: msg })
+      }
+    } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
+      flushTurn()
+      flushBootstrap()
+      result.push({ kind: 'compaction', message: msg })
+    } else {
+      flushTurn()
+      flushBootstrap()
+      result.push({ kind: 'system', message: msg })
+    }
+  }
+
+  flushTurn()
+  flushBootstrap()
+
+  console.log(
+    `[ENGINE-BOOTSTRAP] groupMessages(unified) done runs=${totalRunsFlushed} suppressed=${totalSuppressed} output=${result.length}`
   )
   return result
 }

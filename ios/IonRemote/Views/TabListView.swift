@@ -339,6 +339,19 @@ struct TabListView: View {
                                 .tag(tab.id)
                             }
                         }
+                        // Apply a tinted cell background only when this tab has a
+                        // pill color and the setting is enabled. We resolve the color
+                        // before calling .listRowBackground so we never pass nil/EmptyView
+                        // to it — doing so would strip the List's default cell material
+                        // from uncolored rows, leaving them solid black.
+                        .ifLet(activePillColor(for: tab)) { view, color in
+                            view.listRowBackground(
+                                color.opacity(0.12)
+                                    .overlay(alignment: .leading) {
+                                        color.opacity(0.65).frame(width: 3)
+                                    }
+                            )
+                        }
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             Button {
                                 renameText = tab.displayTitle
@@ -369,8 +382,17 @@ struct TabListView: View {
         }
     }
 
+    /// Returns the resolved Color for a tab's pill color when the Show Tab Colors
+    /// setting is enabled and the tab has a non-empty pillColor string. Returns nil
+    /// otherwise so the caller can skip applying listRowBackground entirely (passing
+    /// nil or EmptyView to listRowBackground strips the default cell material).
+    private func activePillColor(for tab: RemoteTabState) -> Color? {
+        guard viewModel.showTabColorInTabList,
+              let hex = tab.pillColor, !hex.isEmpty else { return nil }
+        return Color(hex: hex)
+    }
+
     private func groupHeader(_ group: (label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])) -> some View {
-        // Body extracted to TabListGroupHeader.swift to keep this file
         // under the Swift 600-line cap. See CLAUDE.md → "When a file
         // exceeds the cap". The wrapper function is kept so existing
         // callers (the List's `header:` parameter) don't need to change.

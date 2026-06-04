@@ -34,8 +34,17 @@ struct ConversationView: View {
         countConversationAttachments(conversationMessages, desktopCache: viewModel.tabAttachmentCache[tabId])
     }
 
+    private var unifiedTurnView: Bool {
+        if let settings = viewModel.desktopSettings,
+           let val = settings.currentValue(for: "unifiedTurnView"),
+           let flag = val.value as? Bool {
+            return flag
+        }
+        return true
+    }
+
     private var groupedItems: [ConversationItem] {
-        groupConversationItems(conversationMessages)
+        groupConversationItems(conversationMessages, unifiedTurnView: unifiedTurnView)
     }
 
     private var isLoading: Bool {
@@ -579,6 +588,9 @@ struct ConversationView: View {
 
         case .compaction(let message):
             CompactionRowView(message: message)
+
+        case .agentTurn(let tools, let assistantMessages, let isActive):
+            AgentTurnRow(tools: tools, assistantMessages: assistantMessages, isActive: isActive)
         }
     }
 }

@@ -83,9 +83,6 @@ struct EngineView: View {
         visibleAgents.filter { $0.status == "running" }.count
     }
 
-    private var activeToolsList: [ActiveToolInfo] {
-        (viewModel.activeTools[compoundKey] ?? [:]).values.sorted { $0.startTime < $1.startTime }
-    }
     private var engineMsgs: [Message] {
         viewModel.engineMessages[compoundKey] ?? []
     }
@@ -94,16 +91,29 @@ struct EngineView: View {
         case single(Message)
         case toolGroup([Message])
         case compaction(Message)
+        case agentTurn(tools: [Message], assistantMessages: [Message], isActive: Bool)
         var id: String {
             switch self {
             case .single(let msg): return msg.id
             case .toolGroup(let msgs): return "tg-\(msgs.first?.id ?? "")"
             case .compaction(let msg): return "cp-\(msg.id)"
+            case .agentTurn(let tools, let assistants, _):
+                let anchor = tools.first?.id ?? assistants.first?.id ?? ""
+                return "at-\(anchor)"
             }
         }
     }
 
     private static let bootstrapPrefix = "Session bootstrapped"
+
+    private var unifiedTurnView: Bool {
+        if let settings = viewModel.desktopSettings,
+           let val = settings.currentValue(for: "unifiedTurnView"),
+           let flag = val.value as? Bool {
+            return flag
+        }
+        return true
+    }
 
     private var groupedMessages: [GroupedItem] {
         DiagnosticLog.log("ENGINE-BOOTSTRAP: groupedMessages entry total=\(engineMsgs.count)")
@@ -112,6 +122,60 @@ struct EngineView: View {
         var bootstrapBuf: [Message] = []
         var totalRunsFlushed = 0
         var totalSuppressed = 0
+
+        // When unified turn view is active, use the shared turn-grouping
+        // algorithm then map ConversationItems back into GroupedItems.
+        if unifiedTurnView {
+            // First, collapse bootstrap messages, then feed into unified grouping.
+            var preprocessed: [Message] = []
+            for msg in engineMsgs {
+                if msg.role == .harness && msg.content.hasPrefix(Self.bootstrapPrefix) {
+                    bootstrapBuf.append(msg)
+                } else {
+                    if !bootstrapBuf.isEmpty {
+                        var representative = bootstrapBuf.last!
+                        let suppressed = bootstrapBuf.count - 1
+                        if suppressed > 0 {
+                            representative.bootstrapCollapsedCount = suppressed
+                        }
+                        preprocessed.append(representative)
+                        totalRunsFlushed += 1
+                        totalSuppressed += suppressed
+                        bootstrapBuf = []
+                    }
+                    preprocessed.append(msg)
+                }
+            }
+            if !bootstrapBuf.isEmpty {
+                var representative = bootstrapBuf.last!
+                let suppressed = bootstrapBuf.count - 1
+                if suppressed > 0 {
+                    representative.bootstrapCollapsedCount = suppressed
+                }
+                preprocessed.append(representative)
+                totalRunsFlushed += 1
+                totalSuppressed += suppressed
+                bootstrapBuf = []
+            }
+
+            let items = groupConversationItems(preprocessed, unifiedTurnView: true)
+            for item in items {
+                switch item {
+                case .user(let m), .assistant(let m), .system(let m):
+                    result.append(.single(m))
+                case .toolGroup(let tools):
+                    result.append(.toolGroup(tools))
+                case .compaction(let m):
+                    result.append(.compaction(m))
+                case .agentTurn(let tools, let assistants, let isActive):
+                    result.append(.agentTurn(tools: tools, assistantMessages: assistants, isActive: isActive))
+                }
+            }
+            DiagnosticLog.log(
+                "ENGINE-BOOTSTRAP: groupedMessages done runs=\(totalRunsFlushed) suppressed=\(totalSuppressed) output=\(result.count)"
+            )
+            return result
+        }
 
         let flushBootstrap = {
             guard !bootstrapBuf.isEmpty else { return }
@@ -212,6 +276,8 @@ struct EngineView: View {
                         EngineToolGroupRow(tools: tools)
                     case .compaction(let msg):
                         CompactionRowView(message: msg)
+                    case .agentTurn(let tools, let assistants, let isActive):
+                        AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive)
                     }
                 }
             }
@@ -443,16 +509,6 @@ struct EngineView: View {
             } else {
                 conversationScroll
                     .frame(height: 100)
-            }
-
-            if !activeToolsList.isEmpty {
-                VStack(spacing: 4) {
-                    ForEach(activeToolsList) { tool in
-                        ActiveToolRow(tabId: tabId, tool: tool)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
             }
 
             if let request = pendingPermission {

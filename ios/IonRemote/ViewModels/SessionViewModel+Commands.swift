@@ -184,54 +184,9 @@ extension SessionViewModel {
         send(.setPermissionMode(tabId: tabId, mode: mode))
     }
 
-    /// Switch to auto mode and send the implementation prompt in a single
-    /// ordered Task so the mode change is guaranteed to arrive at the desktop
-    /// before the prompt. Without this, two separate `Task {}` blocks can
-    /// race and the prompt may arrive while the engine is still in plan mode.
-    ///
-    /// Engine tabs route through `.enginePrompt` (which the desktop dispatches
-    /// to `handleEnginePrompt` → the engine instance), not `.prompt` (which
-    /// goes to `handlePrompt` → the CLI session plane). Without this split,
-    /// tapping "Implement" on an engine-view plan card sends a CLI prompt
-    /// that never reaches the engine instance — the card disappears but
-    /// nothing happens.
-    func implementPlan(tabId: String, prompt: String) {
-        let isEngine = tabs.first(where: { $0.id == tabId })?.isEngine == true
-        let instanceId = isEngine ? activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id : nil
-        // Optimistic local update for responsive UI
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].permissionMode = .auto
-            tabs[idx].status = .connecting
-        }
-        guard let transport else {
-            Task { @MainActor [weak self] in
-                self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
-            }
-            return
-        }
-        Task { [weak self] in
-            do {
-                // 1. Reset the engine session (clears plan mode, conversation
-                //    history, and restricted tool list) so the implementation
-                //    run starts clean — matching desktop's onImplement flow.
-                try await transport.send(.resetTabSession(tabId: tabId))
-                // 2. Set permission mode to auto on the fresh session.
-                try await transport.send(.setPermissionMode(tabId: tabId, mode: .auto))
-                // 3. Send the implementation prompt with implementationPhase
-                //    flag so the engine suppresses EnterPlanMode injection.
-                if isEngine {
-                    try await transport.send(.enginePrompt(tabId: tabId, text: prompt, instanceId: instanceId, implementationPhase: true))
-                } else {
-                    try await transport.send(.prompt(tabId: tabId, text: prompt, implementationPhase: true))
-                }
-            } catch {
-                let detail = error.localizedDescription
-                await MainActor.run {
-                    self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
-                }
-            }
-        }
-    }
+    // The plan→implement flow (`implementPlan`) lives in
+    // SessionViewModel+ImplementPlan.swift to keep this file under the
+    // Swift size cap. See CLAUDE.md → "When a file exceeds the cap".
 
     // Tab-group commands (setTabGroupMode, moveTabToGroup,
     // moveTabToGroupAndPin, toggleTabGroupPin, reorderTabGroups) live in
@@ -387,6 +342,22 @@ extension SessionViewModel {
             tabs[idx].customTitle = customTitle
         }
         send(.renameTab(tabId: tabId, customTitle: customTitle))
+    }
+
+    func setPillColor(tabId: String, color: String?) {
+        // Optimistic local update — the snapshot will confirm on the next sync.
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].pillColor = color
+        }
+        send(.setPillColor(tabId: tabId, pillColor: color))
+    }
+
+    func setPillIcon(tabId: String, icon: String?) {
+        // Optimistic local update — the snapshot will confirm on the next sync.
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].pillIcon = icon
+        }
+        send(.setPillIcon(tabId: tabId, pillIcon: icon))
     }
 
     func renameTerminalInstance(tabId: String, instanceId: String, label: String) {
