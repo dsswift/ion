@@ -238,6 +238,23 @@ When a comment describes behavior that the code does not implement (e.g. "This i
 
 Never silently delete an aspirational comment. A comment that describes unimplemented functionality is a bug report, not a false statement.
 
+### The rule applies to plans, not just code
+
+The Aspirational-comments rule extends to **planning artifacts**: any fix-plan, design doc, ADR draft, or PR description that resolves a finding by *documenting* the defect instead of fixing it is itself an aspirational artifact and is subject to the same rule.
+
+Specifically forbidden as plan resolutions for *any* finding you can fix in the same branch:
+
+- "Add a `TODO` / `FIXME` / `HACK` / `XXX` comment" — the repository forbids these markers in code; planning them is the same anti-pattern with extra steps.
+- "Add a narrative comment establishing the intentional scope of a known fragility" — same anti-pattern as the TODO marker, with the marker stripped.
+- "Open a follow-up issue / file a tracking ticket" as the resolution — deferring the work without doing it.
+- "Add a `console.warn` / `log.Warn` when the bad case happens" without preventing the bad case.
+- "Mark this for the next decomposition phase" / "address in Phase N" without doing the phase work.
+- "Flag this in the PR description so reviewers know" as the only resolution.
+
+A valid plan resolution is one of: change code, change a contract, delete code, add a test that pins behavior, or explicitly decide to do nothing with a stated rationale. "Document the problem" is not a resolution.
+
+The `ion--review-changes.md` and `ion--align.md` commands enforce this rule at plan-generation time. Reviewers should reject any plan that violates it.
+
 ## Solution quality — no cheap substitutes
 
 Every solution must solve the problem at its root cause. **Never trade correctness for implementation convenience.**

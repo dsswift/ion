@@ -1,5 +1,7 @@
 # Desktop (Electron + React + Zustand)
 
+> **Plan resolution rule (applies to all fix plans for this area):** documenting a defect is not a resolution. See root [`AGENTS.md`](../AGENTS.md) § "Aspirational comments" → "The rule applies to plans, not just code".
+
 ## Commands
 
 ```bash
