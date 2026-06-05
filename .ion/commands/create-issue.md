@@ -1,6 +1,11 @@
 ---
 description: Open a GitHub issue on the Ion engine repo for a bug or feature request derived from the current conversation, with consumer project details scrubbed.
 allowed-tools: Bash(gh issue create:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(ls:*), Read, Edit
+allowed_bash_commands:
+  - gh issue create
+  - gh issue list
+  - gh issue view
+model: smart
 ---
 
 Open a GitHub issue on the `dsswift/ion` repository based on the current conversation. The issue must contain enough context for Ion engine developers to understand what to implement and how it should behave — without leaking any details about the consumer project that surfaced the need.
