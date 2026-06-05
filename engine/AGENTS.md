@@ -6,6 +6,8 @@ Single static binary. Communicates over `~/.ion/engine.sock` (NDJSON).
 
 > **Plan resolution rule (applies to all fix plans for this area):** documenting a defect is not a resolution. See root [`AGENTS.md`](../AGENTS.md) § "Aspirational comments" → "The rule applies to plans, not just code".
 
+> **Role in the consumer landscape.** This package is **the product**. It is consumed by external SDK users, custom harnesses, third-party clients, and the in-repo reference implementations (`desktop/`, `ios/`, `relay/`) — in that order of priority. When making engine changes, the relevant question is *would any plausible external consumer want this?*, not *does desktop use this?* See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers" for the canonical framing.
+
 ## Commands
 
 ```bash

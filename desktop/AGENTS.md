@@ -2,6 +2,8 @@
 
 > **Plan resolution rule (applies to all fix plans for this area):** documenting a defect is not a resolution. See root [`AGENTS.md`](../AGENTS.md) § "Aspirational comments" → "The rule applies to plans, not just code".
 
+> **Role in the consumer landscape.** This application is **a reference implementation** of how to consume the Ion Engine — one careful interpretation, not the canonical consumer set. The engine's real consumers are external SDK users, custom harnesses, and third-party clients. The desktop demonstrates engine features at the highest quality bar so external developers can learn from it; it does not demonstrate every engine feature, nor should it. When the engine ships a hook, field, or event variant the desktop does not consume, that is the expected default. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers".
+
 ## Commands
 
 ```bash
