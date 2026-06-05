@@ -25,6 +25,42 @@ function resolveRelativePath(baseDir: string, href: string): string {
 }
 
 /**
+ * Split a markdown document into YAML frontmatter (raw, unparsed) and body.
+ *
+ * Mirrors `stripFrontmatter` semantics from
+ * `desktop/src/main/cli-compat/slash-expand.ts:147` (first line must be
+ * exactly `---`, scan downward for the next standalone `---` line; if no
+ * closing fence is found, treat the file as having no frontmatter rather
+ * than swallowing the entire document).
+ *
+ * Reimplemented inline rather than imported because the main and renderer
+ * processes are separate bundles and the logic is small enough that
+ * duplication is cheaper than restructuring the module graph. The
+ * behavior is pinned to the existing helper's contract.
+ *
+ * Returns the *raw* frontmatter block (without the fence lines) so the
+ * preview can render it verbatim — we deliberately do not parse the YAML
+ * here because the goal is to show the user exactly what is in the file,
+ * not a re-serialized projection of it.
+ */
+function splitFrontmatter(content: string): { frontmatterRaw: string | null; body: string } {
+  const lines = content.split('\n')
+  if (lines[0]?.trim() !== '---') return { frontmatterRaw: null, body: content }
+
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') {
+      const frontmatterRaw = lines.slice(1, i).join('\n')
+      const body = lines.slice(i + 1).join('\n').trimStart()
+      return { frontmatterRaw, body }
+    }
+  }
+
+  // Unclosed fence — treat as no frontmatter so we don't accidentally
+  // hide the whole document behind a collapsible section.
+  return { frontmatterRaw: null, body: content }
+}
+
+/**
  * Markdown preview pane. Resolves relative links against the active file's
  * directory and routes editable files back into the editor; everything else
  * opens in the OS default handler.
@@ -37,6 +73,19 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
       ? activeFile.filePath.replace(/\/[^/]+$/, '')
       : dir
   }, [activeFile?.filePath, dir])
+
+  // Split frontmatter off the body before handing the content to
+  // react-markdown. Without this, `remark-gfm` sees the closing `---`
+  // fence as a setext H2 underline, which (a) renders the first
+  // frontmatter line as a giant heading, (b) consumes the fence as an
+  // <hr>, and (c) corrupts parser state so the first real heading below
+  // the frontmatter renders as body text. Splitting here keeps the
+  // metadata visible (in its own collapsible section above the preview)
+  // while letting the markdown parser see a clean document.
+  const { frontmatterRaw, body } = useMemo(
+    () => splitFrontmatter(activeFile.content),
+    [activeFile.content],
+  )
 
   const markdownComponents = useMemo(() => ({
     a: ({ href, children }: any) => (
@@ -111,9 +160,49 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
         padding: '12px 16px',
       }}
     >
+      {frontmatterRaw !== null && (
+        <details
+          style={{
+            marginBottom: 12,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            background: 'transparent',
+          }}
+        >
+          <summary
+            style={{
+              cursor: 'pointer',
+              padding: '6px 10px',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+              color: colors.textSecondary,
+              userSelect: 'none',
+            }}
+          >
+            Frontmatter
+          </summary>
+          <pre
+            style={{
+              margin: 0,
+              padding: '8px 12px',
+              borderTop: `1px solid ${colors.containerBorder}`,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              fontSize: 12,
+              lineHeight: 1.5,
+              color: colors.textSecondary,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {frontmatterRaw}
+          </pre>
+        </details>
+      )}
       <div className="text-[13px] leading-[1.6] prose-cloud" style={{ color: colors.textSecondary }}>
         <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
-          {activeFile.content}
+          {body}
         </Markdown>
       </div>
     </div>

@@ -129,11 +129,7 @@ struct FileEditorView: View {
     private var previewView: some View {
         ScrollView {
             if isMarkdown {
-                MarkdownContentView(blocks: MarkdownFormatter.parse(editedContent))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                markdownPreview
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     // Line number gutter
@@ -159,6 +155,67 @@ struct FileEditorView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Markdown Preview (with frontmatter handling)
+
+    /// Markdown preview body. Splits any YAML frontmatter off the top of
+    /// the document before handing the content to `MarkdownFormatter`,
+    /// then renders the frontmatter (if present) in a dedicated collapsible
+    /// section above the parsed markdown body.
+    ///
+    /// Why split: swift-markdown (CommonMark + GFM) does not recognize
+    /// YAML frontmatter and parses the closing `---` fence as a setext
+    /// H2 underline, which mangles the first frontmatter key into a giant
+    /// heading and corrupts parser state so the first real heading below
+    /// is rendered as body text. See `FrontmatterSplitter` for the full
+    /// rationale; this mirrors the desktop renderer's behavior so the two
+    /// reference clients render frontmatter-bearing markdown identically.
+    private var markdownPreview: some View {
+        let split = FrontmatterSplitter.split(editedContent)
+        return VStack(alignment: .leading, spacing: 12) {
+            if let frontmatter = split.frontmatterRaw {
+                frontmatterSection(frontmatter)
+            }
+            MarkdownContentView(blocks: MarkdownFormatter.parse(split.body))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Collapsible section that shows the raw frontmatter YAML verbatim.
+    /// Default state: collapsed, so the preview reads cleanly. iOS's
+    /// `DisclosureGroup` is the native equivalent of the desktop
+    /// `<details>` element used in `FileEditorPreview.tsx`.
+    private func frontmatterSection(_ raw: String) -> some View {
+        DisclosureGroup {
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(raw)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color(.secondarySystemFill).opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } label: {
+            Text("Frontmatter")
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .kerning(0.4)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(.separator), lineWidth: 0.5)
+        )
     }
 
     // MARK: - Editor View

@@ -52,6 +52,8 @@
 		A1B2C3D4E5F60001FF0003AA /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60001FF0001AA /* Markdown */; };
 		A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */; };
 		A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */; };
+		A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */; };
+		A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */; };
 		A1B2C3D4E5F600010000C0AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000C1AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf */; };
 		A1B2C3D4E5F600010000C2AA /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000C3AA /* OFL.txt */; };
 		A1B2C3D4E5F600010000D0AA /* EngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D1AA /* EngineView.swift */; };
@@ -216,6 +218,8 @@
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterFixtures.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitter.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitterTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -573,6 +577,7 @@
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */,
 				A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */,
+				A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
 			);
@@ -617,6 +622,7 @@
 				A1B2C3D4E5F60001009001AA /* TabSearchHelper.swift */,
 				A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */,
 				A1B2C3D4E5F60001F1000CAA /* FuzzyMatch.swift */,
+				A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -850,6 +856,7 @@
 				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
 				A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */,
 				A1B2C3D4E5F600010000F6AA /* MarkdownFormatter.swift in Sources */,
+				A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */,
 				A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */,
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
 				A1B2C3D4E5F60001000501AA /* ConnectionQuality.swift in Sources */,
@@ -919,6 +926,7 @@
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */,
 				A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */,
+				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
 			);
