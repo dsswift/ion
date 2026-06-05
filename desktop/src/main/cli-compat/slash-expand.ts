@@ -1,6 +1,7 @@
 import { readFile, access } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
+import yaml from 'js-yaml'
 import { log as _log } from '../logger'
 
 /** Structured metadata parsed from YAML frontmatter in command templates. */
@@ -145,58 +146,65 @@ export function stripFrontmatter(content: string): string {
   return content
 }
 
-/** Parse YAML frontmatter and return both the body and structured metadata. */
+/**
+ * Parse YAML frontmatter and return both the body and structured metadata.
+ *
+ * Uses `js-yaml` (the de-facto Node ecosystem YAML parser) so the
+ * frontmatter scanner handles the full YAML 1.2 surface: inline lists,
+ * indent-block lists, quoted scalars, multiline strings, anchors,
+ * nested mappings, and so on. Replaces the previous hand-rolled regex
+ * cluster which only handled `description` (single-line) and
+ * `allowed_bash_commands` (inline / indent list) and was fragile under
+ * quoted scalars, nested mappings, or any YAML construct the regex
+ * cluster didn't anticipate.
+ *
+ * Empty / malformed frontmatter falls back to an empty meta map; the
+ * body is the original content minus the frontmatter block. YAML
+ * load errors (`yaml.load` throws on syntactically invalid YAML) are
+ * caught and logged at debug, matching the rest of the slash-expand
+ * "best-effort frontmatter" stance.
+ */
 export function parseFrontmatter(content: string): { body: string; meta: FrontmatterMeta } {
   const lines = content.split('\n')
   if (lines[0]?.trim() !== '---') return { body: content, meta: {} }
 
-  const meta: FrontmatterMeta = {}
   let closingIdx = -1
-
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].trim() === '---') {
       closingIdx = i
       break
     }
+  }
+  if (closingIdx === -1) return { body: content, meta: {} }
 
-    // description: value
-    const descMatch = lines[i].match(/^description:\s*(.+)$/i)
-    if (descMatch) {
-      let desc = descMatch[1].trim()
-      if ((desc.startsWith('"') && desc.endsWith('"')) || (desc.startsWith("'") && desc.endsWith("'"))) {
-        desc = desc.slice(1, -1)
-      }
-      meta.description = desc
-      continue
-    }
+  const frontmatterText = lines.slice(1, closingIdx).join('\n')
+  const body = lines.slice(closingIdx + 1).join('\n').trimStart()
 
-    // allowed_bash_commands: [gh, git log, git diff]  (inline list)
-    const inlineMatch = lines[i].match(/^allowed_bash_commands:\s*\[(.+)\]\s*$/i)
-    if (inlineMatch) {
-      meta.allowedBashCommands = inlineMatch[1].split(',').map(s => s.trim()).filter(Boolean)
-      continue
-    }
-
-    // allowed_bash_commands:  (YAML list follows on subsequent lines)
-    const listStartMatch = lines[i].match(/^allowed_bash_commands:\s*$/i)
-    if (listStartMatch) {
-      meta.allowedBashCommands = []
-      // Consume subsequent "  - value" lines
-      for (let j = i + 1; j < lines.length; j++) {
-        const itemMatch = lines[j].match(/^\s+-\s+(.+)$/)
-        if (itemMatch) {
-          meta.allowedBashCommands.push(itemMatch[1].trim())
-          i = j // advance outer loop past consumed lines
-        } else {
-          break
-        }
-      }
-      continue
-    }
+  let raw: unknown
+  try {
+    raw = yaml.load(frontmatterText)
+  } catch (err) {
+    _log('slash-expand', `parseFrontmatter: yaml.load failed (treating as empty meta): ${err}`)
+    return { body, meta: {} }
   }
 
-  if (closingIdx === -1) return { body: content, meta: {} }
-  const body = lines.slice(closingIdx + 1).join('\n').trimStart()
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { body, meta: {} }
+  }
+
+  const meta: FrontmatterMeta = {}
+  const obj = raw as Record<string, unknown>
+
+  if (typeof obj.description === 'string') {
+    meta.description = obj.description
+  }
+  if (Array.isArray(obj.allowed_bash_commands)) {
+    meta.allowedBashCommands = obj.allowed_bash_commands
+      .filter((v): v is string => typeof v === 'string')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
   return { body, meta }
 }
 

@@ -589,8 +589,79 @@ describe('parseFrontmatter', () => {
   })
 
   it('filters empty entries from inline list', () => {
-    const content = '---\nallowed_bash_commands: [gh, , git log, ]\n---\nbody'
+    // With well-formed YAML 1.2 inline lists, the previous hand-rolled
+    // regex parser was lenient with consecutive commas; the js-yaml
+    // parser correctly rejects them as a syntax error. Use a well-
+    // formed inline list with quoted empty strings to exercise the
+    // "filter empty entries" branch of parseFrontmatter (the
+    // .filter(Boolean) pass after the typeof-string narrowing).
+    const content = '---\nallowed_bash_commands: ["gh", "", "git log", ""]\n---\nbody'
     const { meta } = parseFrontmatter(content)
     expect(meta.allowedBashCommands).toEqual(['gh', 'git log'])
+  })
+
+  it('rejects malformed YAML inline lists with empty positional entries', () => {
+    // [gh, , git log, ] is not valid YAML 1.2 (consecutive commas
+    // produce an "expected node content" syntax error). The previous
+    // hand-rolled regex parser was lenient about this; the js-yaml
+    // swap restores strict YAML 1.2 semantics. The whole frontmatter
+    // block is treated as malformed and meta returns empty (the body
+    // is still extracted).
+    const content = '---\nallowed_bash_commands: [gh, , git log, ]\n---\nbody'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe('body')
+    expect(meta).toEqual({})
+  })
+
+  it('round-trips quoted scalars correctly', () => {
+    // The previous regex stripped only outermost single/double quotes
+    // (no escape handling); js-yaml handles the full YAML 1.2 quoted-
+    // scalar surface including embedded commas, escape sequences, and
+    // unicode.
+    const content = '---\ndescription: "Hello, world (with embedded \\"quoted\\" punctuation)"\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('Hello, world (with embedded "quoted" punctuation)')
+  })
+
+  it('handles YAML block-scalar (|) multiline description', () => {
+    // The previous regex matched on `description:\s*(.+)$` and so
+    // only captured the first line of any multi-line value. js-yaml
+    // handles block scalars (| literal, > folded) per the YAML 1.2 spec.
+    const content = ['---', 'description: |', '  hello', '  world', '---', 'body'].join('\n')
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('hello\nworld\n')
+  })
+
+  it('ignores nested mappings without crashing', () => {
+    // Nested mappings (`metadata: { author: foo }`) were impossible to
+    // parse with the regex cluster; js-yaml decodes them as a nested
+    // object. parseFrontmatter narrows to {description, allowed_bash_commands}
+    // and silently ignores other keys, so nested mappings on unknown
+    // keys are no-ops rather than crashes.
+    const content = ['---', 'description: hi', 'metadata:', '  author: jdoe', '  version: 1', '---', 'body'].join('\n')
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('hi')
+    expect(meta.allowedBashCommands).toBeUndefined()
+  })
+
+  it('returns empty meta on syntactically malformed YAML', () => {
+    // Hard YAML syntax error — duplicate colons. The previous regex
+    // would have silently matched some of the lines; js-yaml rejects
+    // the whole document and parseFrontmatter falls back to empty meta
+    // while still returning the body.
+    const content = '---\ndescription: : :\n---\nbody'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe('body')
+    expect(meta).toEqual({})
+  })
+
+  it('handles YAML anchors and references without crashing', () => {
+    // YAML 1.2 anchor / reference syntax was impossible with the regex
+    // parser; js-yaml decodes &anchor / *ref correctly. parseFrontmatter
+    // narrows the result so unknown shapes are no-ops; we just need to
+    // confirm no exception escapes.
+    const content = ['---', 'description: &d "with anchor"', 'other: *d', '---', 'body'].join('\n')
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('with anchor')
   })
 })
