@@ -2,6 +2,10 @@
 
 iPhone companion (Ion Remote) for Ion Desktop. LAN (Bonjour/mDNS) + relay (WebSocket).
 
+> **Plan resolution rule (applies to all fix plans for this area):** documenting a defect is not a resolution. See root [`AGENTS.md`](../AGENTS.md) § "Aspirational comments" → "The rule applies to plans, not just code".
+
+> **Role in the consumer landscape.** This application is **a reference implementation** for mobile companion clients of the Ion Engine. It is not the canonical mobile client — third-party developers may build their own. The engine's real consumers are external. When the engine ships a feature iOS does not consume, that is the expected default; we extend iOS coverage when there is a UX or parity reason, not to validate engine surface. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers".
+
 ## Commands
 
 ```bash

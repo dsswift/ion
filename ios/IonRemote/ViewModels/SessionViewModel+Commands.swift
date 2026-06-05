@@ -201,60 +201,10 @@ extension SessionViewModel {
         send(.createTerminalTab(workingDirectory: dir))
     }
 
-    // MARK: - Engine Commands
-
-    func createEngineTab(workingDirectory: String? = nil, profileId: String? = nil) {
-        let dir = workingDirectory ?? defaultBaseDirectory
-        awaitingLocalTabCreation = true
-        send(.createEngineTab(workingDirectory: dir, profileId: profileId))
-    }
-
-    func submitEnginePrompt(tabId: String, text: String, attachments: [CommandAttachment]? = nil) {
-        let key = engineCompoundKey(tabId: tabId)
-        enginePinnedPrompt[key] = text
-        // Set tab running
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].status = .running
-        }
-        let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
-        send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId, attachments: attachments))
-    }
-
-    func setTabModel(tabId: String, model: String) {
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].modelOverride = model
-        }
-        send(.setTabModel(tabId: tabId, model: model))
-    }
-
-    func setPreferredModelDefault(_ model: String) {
-        preferredModel = model
-        send(.setPreferredModel(model: model))
-    }
-
-    func setEngineDefaultModelDefault(_ model: String) {
-        engineDefaultModel = model
-        send(.setEngineDefaultModel(model: model))
-    }
-
-    func setEngineModel(tabId: String, model: String) {
-        let key = engineCompoundKey(tabId: tabId)
-        engineModelOverrides[key] = model
-        let instanceId = activeEngineInstance[tabId]
-        send(.engineSetModel(tabId: tabId, model: model, instanceId: instanceId))
-    }
-
-    func abortEngine(tabId: String) {
-        let instanceId = activeEngineInstance[tabId]
-        send(.engineAbort(tabId: tabId, instanceId: instanceId))
-    }
-
-    func respondEngineDialog(tabId: String, dialogId: String, value: String) {
-        let key = engineCompoundKey(tabId: tabId)
-        engineDialogs[key] = nil
-        let instanceId = activeEngineInstance[tabId]
-        send(.engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value, instanceId: instanceId))
-    }
+    // Engine Commands live in SessionViewModel+EngineCommands.swift to keep
+    // this file under the Swift 600-line cap after submitEnginePrompt grew
+    // an optimistic-insert block. See CLAUDE.md → "When a file exceeds the
+    // cap".
 
     // MARK: - Engine Instance Commands
 

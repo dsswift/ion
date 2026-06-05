@@ -347,8 +347,10 @@ Out-of-tree paths are not covered. Extensions that need to watch files outside t
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `task_created` | Task spawned | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
-| `task_completed` | Task finished | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
+| `task_created` | Turn starts (every backend) | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
+| `task_completed` | Turn ends (every backend) | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
+
+> **Contract — TaskID format.** `TaskID` is `<session-key>-t<turn-number>` on every engine backend (`ApiBackend`, `CliBackend`, `HybridBackend`). Consumers join `task_created` and `task_completed` on `(SessionKey, TaskID)` and correlate with the adjacent `turn_start` / `turn_end` hooks via `TurnInfo.TurnNumber`. **The format is a public contract.** Changing it requires an ADR documenting the rationale and migration impact, following the precedent of [ADR-003](../architecture/adr/003-state-events-vs-workflow-events.md) for the `engine_plan_mode_changed` trigger removal. Adding new components to the right of `-t<turn-number>` is non-breaking (consumers parse left-anchored); removing or reordering existing components is breaking.
 
 ### Payload Types
 

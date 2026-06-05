@@ -1,0 +1,307 @@
+// Package types — EngineEvent is the tagged-union outbound event surface
+// of the engine. Lives in its own file because the struct grew to ~290
+// lines as more fields were added to support new event variants; the
+// shared types.go (sessions, agents, providers, plan-mode) keeps a
+// smaller surface this way.
+package types
+
+import "encoding/json"
+
+// --- Engine Events ---
+
+// EngineEvent is a tagged union of all engine-emitted events.
+// Populate the fields relevant to the specific Type.
+type EngineEvent struct {
+	Type string `json:"type"`
+
+	// engine_agent_state
+	Agents []AgentStateUpdate `json:"agents"`
+
+	// engine_status
+	Fields *StatusFields `json:"fields,omitempty"`
+
+	// engine_working_message, engine_notify, engine_error, engine_harness_message
+	EventMessage  string `json:"message,omitempty"`
+	Level         string `json:"level,omitempty"`
+	ErrorCode     string `json:"errorCode,omitempty"`
+	ErrorCategory string `json:"errorCategory,omitempty"`
+	Retryable     bool   `json:"retryable,omitempty"`
+	RetryAfterMs  int64  `json:"retryAfterMs,omitempty"`
+	HttpStatus    int    `json:"httpStatus,omitempty"`
+
+	// engine_harness_message
+	HarnessSource string `json:"source,omitempty"`
+
+	// Metadata is an opaque harness-defined map carried verbatim by the
+	// engine to clients. The engine attaches no semantics — it forwards the
+	// map unchanged in JSON marshal/unmarshal. Clients (desktop renderer,
+	// iOS, custom harnesses) may honor specific conventions defined on the
+	// consumer side; e.g. the desktop honors `metadata.dedupKey` on
+	// `engine_harness_message` to suppress repeated emissions within an
+	// engine-instance scrollback. The convention is documented in
+	// docs/protocol/server-events.md (well-known metadata keys), not
+	// enforced here. Intended for small structured hints, not state
+	// transfer — reviewers should push back on multi-kilobyte payloads.
+	// Mirrors AgentStateUpdate.Metadata's shape and serialization.
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+
+	// engine_dialog
+	DialogID      string   `json:"dialogId,omitempty"`
+	Method        string   `json:"method,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	DialogOptions []string `json:"options,omitempty"`
+	DefaultValue  string   `json:"defaultValue,omitempty"`
+
+	// engine_text_delta
+	TextDelta string `json:"text,omitempty"`
+
+	// engine_message_end
+	EndUsage *MessageEndUsage `json:"usage,omitempty"`
+
+	// engine_tool_start
+	ToolName string `json:"toolName,omitempty"`
+	ToolID   string `json:"toolId,omitempty"`
+
+	// engine_tool_update
+	ToolPartialInput string `json:"partialInput,omitempty"`
+
+	// engine_tool_complete (pointer avoids zero-value omission for index 0)
+	ToolIndex *int `json:"index,omitempty"`
+
+	// engine_tool_end
+	ToolResult  string `json:"result,omitempty"`
+	ToolIsError bool   `json:"isError,omitempty"`
+
+	// engine_tool_stalled
+	ToolElapsed float64 `json:"toolElapsed,omitempty"`
+
+	// engine_steer_injected — character count of a mid-turn steer
+	// message the engine drained into the conversation before the next
+	// LLM call. Clients use this to confirm a steer was captured without
+	// echoing the message body back over the wire. See
+	// SteerInjectedEvent for the underlying normalized variant.
+	SteerMessageLength int `json:"steerMessageLength,omitempty"`
+
+	// engine_dead
+	ExitCode   *int     `json:"exitCode,omitempty"`
+	Signal     *string  `json:"signal,omitempty"`
+	StderrTail []string `json:"stderrTail,omitempty"`
+
+	// engine_permission_request
+	QuestionID    string          `json:"questionId,omitempty"`
+	PermToolName  string          `json:"permToolName,omitempty"`
+	PermToolDesc  string          `json:"permToolDescription,omitempty"`
+	PermToolInput map[string]any  `json:"permToolInput,omitempty"`
+	PermOptions   []PermissionOpt `json:"permOptions,omitempty"`
+
+	// engine_plan_mode_changed
+	PlanModeEnabled  bool   `json:"planModeEnabled,omitempty"`
+	PlanModeFilePath string `json:"planFilePath,omitempty"`
+	// PlanModeSlug mirrors PlanModeChangedEvent.PlanSlug: the basename of
+	// the plan file without the ".md" extension, surfaced so clients can
+	// render a human-readable plan identifier. See PlanModeChangedEvent
+	// for the legacy-hex round-trip note.
+	PlanModeSlug string `json:"planSlug,omitempty"`
+
+	// engine_plan_proposal — workflow-level signal emitted when the model
+	// proposes a plan-mode transition that requires user approval. Distinct
+	// from engine_plan_mode_changed, which fires only on confirmed *state*
+	// transitions. PlanProposalKind discriminates the proposal ("exit"
+	// initially; future kinds may include "enter", "amend"). PlanFilePath
+	// and PlanModeSlug are shared with engine_plan_mode_changed since the
+	// shape is identical; only the discriminator differs. See
+	// docs/architecture/adr/003-state-events-vs-workflow-events.md.
+	PlanProposalKind string `json:"planProposalKind,omitempty"`
+
+	// engine_compacting
+	CompactingActive         bool   `json:"active,omitempty"`
+	CompactingSummary        string `json:"summary,omitempty"`
+	CompactingMessagesBefore int    `json:"messagesBefore,omitempty"`
+	CompactingMessagesAfter  int    `json:"messagesAfter,omitempty"`
+	CompactingClearedBlocks  int    `json:"clearedBlocks,omitempty"`
+	CompactingStrategy       string `json:"strategy,omitempty"`
+
+	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent
+	ExtensionName string `json:"extensionName,omitempty"`
+	AttemptNumber int    `json:"attemptNumber,omitempty"`
+
+	// engine_elicitation_request, engine_elicitation_response
+	// RequestID identifies the elicitation; clients echo it back via the
+	// elicitation_response command. Schema, Url, and Mode describe what to
+	// render. Response/Cancelled describe the user's reply (engine_elicitation_response).
+	ElicitRequestID string                 `json:"requestId,omitempty"`
+	ElicitSchema    map[string]interface{} `json:"schema,omitempty"`
+	ElicitURL       string                 `json:"url,omitempty"`
+	ElicitMode      string                 `json:"elicitMode,omitempty"`
+	ElicitResponse  map[string]interface{} `json:"response,omitempty"`
+	ElicitCancelled bool                   `json:"cancelled,omitempty"`
+
+	// engine_command_registry — complete snapshot of slash commands exposed by
+	// the session's currently-loaded extensions. Emitted at session_start (after
+	// extensions wire up) and on every subsequent change to the command map
+	// (RegisterCommand from inside a hook, extension hot reload, etc.). Consumers
+	// REPLACE their cached set with this payload; never merge. An empty slice is
+	// the authoritative "no extension commands" signal.
+	Commands []EngineCommandListing `json:"commands,omitempty"`
+
+	// engine_command_result — `Command` carries the bare name (e.g. "clear",
+	// "ion--review-changes") so a consumer can switch on it without reparsing
+	// EventMessage prose. `CommandError` is set when the result is a failure
+	// (extension error, unknown command). Together these let consumers
+	// distinguish "ran fine" from "engine disclaims this name" and route to
+	// whatever fallback they own.
+	Command      string `json:"command,omitempty"`
+	CommandError string `json:"commandError,omitempty"`
+
+	// engine_early_stop_decision_request — request/response wire protocol for
+	// the before_early_stop_decision hook. Promotes the hook to the socket so
+	// socket-only harnesses can participate without running
+	// a subprocess extension. Mirrors the permission_request / elicitation_request
+	// patterns: engine emits this event carrying the full decision payload, then
+	// blocks briefly on a channel; consumers reply via the early_stop_decision_response
+	// client command. Extension-side subprocess hooks (registered via the TS/Go
+	// SDK) fire first and take precedence — the wire event only emits when no
+	// extension expressed an opinion. A short timeout (default 100ms) prevents
+	// a missing or slow consumer from stalling the run.
+	//
+	// Field semantics mirror extension.EarlyStopDecisionInfo verbatim; the
+	// wire layer simply translates between EngineEvent (flat) and the typed
+	// extension struct. Adding a field here requires adding it on both sides
+	// of the protocol (types.go + Manager.emit path + ClientCommand response).
+	EarlyStopRequestID             string `json:"earlyStopRequestId,omitempty"`
+	EarlyStopRunID                 string `json:"earlyStopRunId,omitempty"`
+	EarlyStopModel                 string `json:"earlyStopModel,omitempty"`
+	EarlyStopTurnNumber            int    `json:"earlyStopTurnNumber,omitempty"`
+	EarlyStopStopReason            string `json:"earlyStopStopReason,omitempty"`
+	EarlyStopCumulativeOutput      int    `json:"earlyStopCumulativeOutput,omitempty"`
+	EarlyStopBudget                int    `json:"earlyStopBudget,omitempty"`
+	EarlyStopThresholdPct          int    `json:"earlyStopThresholdPct,omitempty"`
+	EarlyStopContinuationCount     int    `json:"earlyStopContinuationCount,omitempty"`
+	EarlyStopMaxContinuations      int    `json:"earlyStopMaxContinuations,omitempty"`
+	EarlyStopLastContinuationDelta int    `json:"earlyStopLastContinuationDelta,omitempty"`
+	EarlyStopWouldContinue         bool   `json:"earlyStopWouldContinue,omitempty"`
+	EarlyStopIsSubagent            bool   `json:"earlyStopIsSubagent,omitempty"`
+
+	// --- Async-trigger events (D-010 / D-011) ---
+	//
+	// Webhook fire events: engine_webhook_received, engine_webhook_authenticated,
+	// engine_webhook_handler_error, engine_webhook_responded.
+	// Webhook lifecycle events: engine_webhook_registered, engine_webhook_deregistered.
+	// Schedule fire events: engine_schedule_fired, engine_schedule_skipped,
+	// engine_schedule_failed.
+	// Schedule lifecycle events: engine_schedule_registered, engine_schedule_deregistered.
+	// Shared error: engine_async_fire_dropped.
+	//
+	// All of these are observation-only — the engine emits them so the
+	// desktop / iOS can render a "what's registered" panel and an
+	// audit log of fires. Consumers MUST NOT depend on these for
+	// state machines; they are advisory.
+	//
+	// AsyncKind is "webhook" or "schedule" — discriminator for the
+	// engine_*_registered / engine_*_deregistered and engine_async_fire_dropped
+	// events. Carried as a free-form string so future kinds (e.g. queue
+	// listeners) don't force a wire break.
+	AsyncKind string `json:"asyncKind,omitempty"`
+	// AsyncID is the declaration's stable id within its kind (webhook
+	// path or schedule job id). Carried on every async event so a
+	// consumer can correlate received → authenticated → responded by
+	// (kind, id, requestId).
+	AsyncID string `json:"asyncId,omitempty"`
+	// AsyncOrigin is "init" or "runtime" — set on lifecycle events
+	// only. Lets the operator distinguish bulk init declarations from
+	// dynamic post-init add/remove.
+	AsyncOrigin string `json:"asyncOrigin,omitempty"`
+	// AsyncReason discriminates the cause for negative-path async
+	// events: engine_webhook_handler_error ("auth", "body_size",
+	// "handler_failed", "timeout"); engine_schedule_skipped
+	// ("disabled"); engine_schedule_failed (free-form);
+	// engine_async_fire_dropped ("no_session", "cap_exceeded",
+	// "subprocess_dead", "unregistered").
+	AsyncReason string `json:"asyncReason,omitempty"`
+	// AsyncDecl carries the declaration JSON for engine_*_registered /
+	// engine_*_deregistered events so a renderer can show "registered
+	// /webhook/foo via init handshake" without keeping its own table.
+	// Auth secrets are NEVER included — only the auth shape and the
+	// opaque TokenRefName.
+	AsyncDecl json.RawMessage `json:"asyncDecl,omitempty"`
+	// AsyncRequestID correlates a single webhook request from received
+	// → authenticated → handler_error/responded for downstream tracing.
+	// Schedule fires omit this (each fire is its own event).
+	AsyncRequestID string `json:"asyncRequestId,omitempty"`
+	// AsyncMethod / AsyncPath / AsyncStatus describe an engine_webhook_*
+	// event's HTTP layer. Method is "POST" / "GET" / …; Path mirrors
+	// AsyncID for symmetry; Status is the response status code
+	// (engine_webhook_responded, engine_webhook_handler_error).
+	AsyncMethod string `json:"asyncMethod,omitempty"`
+	AsyncPath   string `json:"asyncPath,omitempty"`
+	AsyncStatus int    `json:"asyncStatus,omitempty"`
+	// AsyncDurationMs is the elapsed time of a fire from receipt to
+	// response (webhook) or fire to handler-return (schedule).
+	AsyncDurationMs int64 `json:"asyncDurationMs,omitempty"`
+
+	// --- engine_llm_call ---
+	//
+	// Emitted exactly once when ctx.LLMCall completes successfully. This is
+	// the lightweight-inference counterpart to the rich telemetry the agent
+	// loop emits via engine_message_end / engine_status: LLMCall does not
+	// produce a streamed conversation, so consumers need a single
+	// observability event carrying the post-call metadata in one place.
+	//
+	// The event NEVER carries the prompt text or the response content —
+	// LLMCall is often used for sensitive extraction / classification
+	// prompts (private-memory recall, intent routing) and the engine
+	// refuses to put that material on the wire. Consumers that want to log
+	// content must do so inside the extension that owns the call.
+	//
+	// Field set:
+	//   - LlmCallModel:        model name the call resolved to
+	//   - LlmCallProvider:     provider id ("anthropic", "openai", "ollama", …)
+	//   - LlmCallLatencyMs:    elapsed wall-clock time of the call
+	//   - LlmCallInputTokens:  prompt tokens reported by the provider
+	//   - LlmCallOutputTokens: completion tokens reported by the provider
+	//   - LlmCallCost:         USD cost estimate via the model registry
+	//   - LlmCallJsonMode:     true when the call requested JSON output
+	//
+	// No event is emitted on the error path; LLMCall returns (nil, error)
+	// and the caller decides whether to surface a harness-level event.
+	LlmCallModel        string  `json:"llmCallModel,omitempty"`
+	LlmCallProvider     string  `json:"llmCallProvider,omitempty"`
+	LlmCallLatencyMs    int64   `json:"llmCallLatencyMs,omitempty"`
+	LlmCallInputTokens  int     `json:"llmCallInputTokens,omitempty"`
+	LlmCallOutputTokens int     `json:"llmCallOutputTokens,omitempty"`
+	LlmCallCost         float64 `json:"llmCallCost,omitempty"`
+	LlmCallJsonMode     bool    `json:"llmCallJsonMode,omitempty"`
+
+	// --- engine_dispatch_start / engine_dispatch_end ---
+	//
+	// Emitted on the parent session's event stream when an extension-initiated
+	// dispatch begins and ends. These are factual telemetry events — not agent
+	// state (which the harness owns via engine_agent_state). With these events,
+	// harnesses can persist dispatch records or surface dispatch status in UIs
+	// without hand-rolling plumbing.
+	//
+	// engine_dispatch_start fields:
+	//   - DispatchAgent:     the dispatched agent name
+	//   - DispatchTask:      the task string passed to the agent
+	//   - DispatchModel:     the resolved model for the dispatch
+	//   - DispatchSessionID: the child session's request ID
+	//
+	// engine_dispatch_end fields:
+	//   - DispatchAgent:       the dispatched agent name
+	//   - DispatchExitCode:    0=success, 1=error, 2=recalled
+	//   - DispatchElapsed:     wall-clock seconds
+	//   - DispatchCost:        USD cost of the dispatch
+	//   - DispatchInputTokens: total input tokens
+	//   - DispatchOutputTokens: total output tokens
+	//   - DispatchToolCount:   number of tool calls made during dispatch
+	DispatchAgent        string  `json:"dispatchAgent,omitempty"`
+	DispatchTask         string  `json:"dispatchTask,omitempty"`
+	DispatchModel        string  `json:"dispatchModel,omitempty"`
+	DispatchSessionID    string  `json:"dispatchSessionId,omitempty"`
+	DispatchExitCode     int     `json:"dispatchExitCode,omitempty"`
+	DispatchElapsed      float64 `json:"dispatchElapsed,omitempty"`
+	DispatchCost         float64 `json:"dispatchCost,omitempty"`
+	DispatchInputTokens  int     `json:"dispatchInputTokens,omitempty"`
+	DispatchOutputTokens int     `json:"dispatchOutputTokens,omitempty"`
+	DispatchToolCount    int     `json:"dispatchToolCount,omitempty"`
+}

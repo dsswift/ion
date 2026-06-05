@@ -5,6 +5,7 @@ import { engineIsRemote, getEngineHostInfo, listEngineDirectory } from './engine
 import { log as _log, warn as _warn, error as _error } from './logger'
 import { handleEngineEvent, type TabEntry, type EventEmitterContext } from './engine-control-plane-events'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { resolveBashAllowlistFromSettings } from './plan-mode-bash-allowlist'
 import type {
   EngineConfig,
   EngineEvent,
@@ -144,7 +145,16 @@ export class EngineControlPlane extends EventEmitter {
     this.ensureTab(tabId)
     const tab = this.tabs.get(tabId)!
     tab.permissionMode = mode
-    this.bridge.sendSetPlanMode(tabId, mode === 'plan', undefined, source)
+    // Tri-valued bash-allowlist projection per docs/protocol/client-commands.md
+    // § set_plan_mode:
+    //   - undefined        → "no change" to engine's existing allowlist
+    //   - []               → "clear" allowlist; Bash blocked entirely
+    //   - ["gh", ...]      → "replace" allowlist with this set
+    // The helper preserves the empty-array case end-to-end. The previous
+    // inline guard collapsed [] to undefined, which silently demoted an
+    // explicit user clear to a no-op on the engine side.
+    const bashCmds = mode === 'plan' ? resolveBashAllowlistFromSettings() : undefined
+    this.bridge.sendSetPlanMode(tabId, mode === 'plan', undefined, source, bashCmds)
   }
 
   approveToolsForTab(tabId: string, toolNames: string[]): void {

@@ -103,7 +103,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
 
             case 'text_chunk': {
-              console.log(`[DIAG] text_chunk: tab=${tabId} len=${(event as any).text?.length} prev_msg_len=${updated.messages[updated.messages.length - 1]?.content?.length ?? 'N/A'}`)
+              console.debug(`[DIAG] text_chunk: tab=${tabId} len=${(event as any).text?.length} prev_msg_len=${updated.messages[updated.messages.length - 1]?.content?.length ?? 'N/A'}`)
               updated.currentActivity = 'Writing...'
               const lastMsg = updated.messages[updated.messages.length - 1]
               if (lastMsg?.role === 'assistant' && !lastMsg.toolName) {

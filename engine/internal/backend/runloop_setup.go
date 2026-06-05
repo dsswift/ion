@@ -13,6 +13,52 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// effectiveBashAllowlist computes the run-time bash allowlist as the
+// de-duplicated union of:
+//
+//   - opts.PlanModeAllowedBashCommands           (session-scoped override)
+//   - opts.BashAllowlistAdditionsForThisPrompt   (per-prompt additions)
+//
+// The order is preserved: session entries first (in their original
+// order), then per-prompt additions that aren't already present. The
+// result drives both the system-prompt prose (`buildPlanModePrompt`)
+// and the run-time gate (`run.planModeAllowedBashCommands` consulted
+// by `applyPlanModeBashGate` in runloop_plan_mode_gates.go).
+//
+// Crucially this function returns a new slice — neither input is
+// mutated, and the session-level `engineSession.planModeAllowedBashCommands`
+// is never touched. The per-prompt additions live for exactly one
+// run; the engine drops them when the activeRun goroutine ends and
+// they have no effect on subsequent prompts in the same session.
+// See docs/protocol/client-commands.md § set_plan_mode for the
+// three-layer configuration model (engine config → session override
+// → per-prompt additions).
+func effectiveBashAllowlist(opts types.RunOptions) []string {
+	if len(opts.BashAllowlistAdditionsForThisPrompt) == 0 {
+		// Hot path: most runs carry no per-prompt additions; return the
+		// session allowlist as-is so the caller can compare lengths
+		// without allocating.
+		return opts.PlanModeAllowedBashCommands
+	}
+	seen := make(map[string]struct{}, len(opts.PlanModeAllowedBashCommands)+len(opts.BashAllowlistAdditionsForThisPrompt))
+	out := make([]string, 0, len(opts.PlanModeAllowedBashCommands)+len(opts.BashAllowlistAdditionsForThisPrompt))
+	for _, cmd := range opts.PlanModeAllowedBashCommands {
+		if _, dup := seen[cmd]; dup {
+			continue
+		}
+		seen[cmd] = struct{}{}
+		out = append(out, cmd)
+	}
+	for _, cmd := range opts.BashAllowlistAdditionsForThisPrompt {
+		if _, dup := seen[cmd]; dup {
+			continue
+		}
+		seen[cmd] = struct{}{}
+		out = append(out, cmd)
+	}
+	return out
+}
+
 // resolveProvider resolves the provider for the given model and injects the
 // provider's API key (if available) into the global provider key registry.
 // Returns nil if no provider supports the model.
@@ -125,9 +171,13 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 			}
 		}
 		if planPrompt == "" {
-			// Use default plan mode prompt
+			// Use default plan mode prompt. The bash allowlist passed into
+			// the prompt prose is the EFFECTIVE allowlist (session ∪ per-
+			// prompt additions, de-duplicated), so when a slash command
+			// declares additional commands in its frontmatter the model
+			// sees them in the prompt-time tool list.
 			_, err := os.Stat(opts.PlanFilePath)
-			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil)
+			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil, effectiveBashAllowlist(*opts))
 		}
 		// Prepend reentry guidance when returning to plan mode after a
 		// previous exit. This tells the LLM to read the existing plan and
@@ -200,6 +250,17 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// (plan-file-only gate in executeTools enforces the target restriction)
 		allowed["Write"] = true
 		allowed["Edit"] = true
+		// Compute the effective allowlist (session ∪ per-prompt additions,
+		// de-duplicated) so the Bash-tool-inclusion gate, the run-time
+		// gate state, and the system-prompt prose all agree on what Bash
+		// commands are permitted for this run.
+		effectiveAllowlist := effectiveBashAllowlist(opts)
+		// Include Bash when the effective allowlist is non-empty (either
+		// the session has an allowlist, or the prompt carries per-prompt
+		// additions, or both).
+		if len(effectiveAllowlist) > 0 {
+			allowed["Bash"] = true
+		}
 		// AskUserQuestion is injected unconditionally above; keep it through
 		// the plan-mode filter so it is still available during plan mode.
 		allowed[tools.AskUserQuestionName] = true
@@ -224,6 +285,32 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// signal that the run is now in plan mode.
 		b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
 		utils.Info("PlanMode", fmt.Sprintf("run=%s tools_filtered=%d allowed=%v", run.requestID, len(toolDefs), planTools))
+		// Install the EFFECTIVE allowlist on the run so applyPlanModeBashGate
+		// (executed per-tool-call in runloop_plan_mode_gates.go) sees the
+		// same set the system prompt advertised and the tool-list gate
+		// included Bash for. The per-prompt additions live ONLY in this
+		// run's activeRun.planModeAllowedBashCommands and never persist
+		// to the session-level engineSession.planModeAllowedBashCommands.
+		run.planModeAllowedBashCommands = effectiveAllowlist
+		// Log both sides of the conditional per AGENTS.md logging-policy.
+		// The bash-allowlist transition from RunOptions → activeRun is
+		// the boundary where session-level config + per-prompt additions
+		// become run-local state; if a future bug surfaces in the bash gate
+		// the log line here lets a developer confirm the list arrived intact.
+		// When per-prompt additions are present, log the breakdown so an
+		// operator can distinguish session-level entries from per-prompt
+		// additions when investigating "why was this command allowed?"
+		if len(effectiveAllowlist) > 0 {
+			if len(opts.BashAllowlistAdditionsForThisPrompt) > 0 {
+				utils.Info("PlanMode", fmt.Sprintf(
+					"run=%s bash_allowlist=%v applied_to_run (session=%v + per_prompt_additions=%v)",
+					run.requestID, effectiveAllowlist, opts.PlanModeAllowedBashCommands, opts.BashAllowlistAdditionsForThisPrompt))
+			} else {
+				utils.Info("PlanMode", fmt.Sprintf("run=%s bash_allowlist=%v applied_to_run", run.requestID, effectiveAllowlist))
+			}
+		} else {
+			utils.Debug("PlanMode", fmt.Sprintf("run=%s no bash_allowlist (default-deny)", run.requestID))
+		}
 	} else {
 		// Inject EnterPlanMode sentinel in auto mode so the LLM can request
 		// a transition into plan mode when it judges the task warrants planning.

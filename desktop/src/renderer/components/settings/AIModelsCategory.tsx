@@ -6,6 +6,7 @@ import { SettingHeading } from './SettingHeading'
 import { SettingToggle } from './SettingToggle'
 import { EngineCategory } from './EngineCategory'
 import { ProvidersCategory } from './ProvidersCategory'
+import { BashAllowlistEditor } from './BashAllowlistEditor'
 import { AVAILABLE_MODELS, getModelDisplayLabel } from '../../stores/model-labels'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
@@ -24,6 +25,8 @@ export function AIModelsCategory() {
   const setImplementModeModel = usePreferencesStore((s) => s.setImplementModeModel)
   const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
+  const planModeAllowedBashCommands = usePreferencesStore((s) => s.planModeAllowedBashCommands)
+  const setPlanModeAllowedBashCommands = usePreferencesStore((s) => s.setPlanModeAllowedBashCommands)
 
   const fetchModels = useModelStore((s) => s.fetchModels)
   const dynamicModels = useModelStore((s) => s.models)
@@ -258,6 +261,18 @@ export function AIModelsCategory() {
           </SettingSection>
         </>
       )}
+
+      <SettingHeading>Plan Mode</SettingHeading>
+
+      <SettingSection
+        label="Allowed Bash commands in plan mode"
+        description="Command prefixes the agent may invoke via Bash while in plan mode. Token-based prefix matching: &quot;gh&quot; matches &quot;gh pr view&quot; but not &quot;ghost&quot;. Empty list = Bash blocked entirely. iOS edits the same list via the projected setting in Desktop Settings → AI & Models."
+      >
+        <BashAllowlistEditor
+          value={planModeAllowedBashCommands}
+          onChange={setPlanModeAllowedBashCommands}
+        />
+      </SettingSection>
 
       <ProvidersCategory />
 

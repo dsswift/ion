@@ -53,6 +53,17 @@ type PromptOverrides struct {
 	// field; empty by default.
 	PlanFilePath string
 
+	// BashAllowlistAdditionsForThisPrompt are per-prompt additions to
+	// the plan-mode Bash allowlist. The engine unions these with the
+	// session-scoped allowlist (engineSession.planModeAllowedBashCommands)
+	// when building the run-time tool list, then drops them at run end —
+	// the session-level allowlist is NEVER mutated. Intended carrier:
+	// slash-command frontmatter that needs a one-turn permission
+	// extension. See types.RunOptions.BashAllowlistAdditionsForThisPrompt
+	// for the wire-side contract. Additive optional field; nil/empty
+	// for prompts that don't need per-prompt additions.
+	BashAllowlistAdditionsForThisPrompt []string
+
 	// CompactTargetPercent overrides the post-compact target as a percentage of
 	// the context window. Zero means "use engine default".
 	CompactTargetPercent float64

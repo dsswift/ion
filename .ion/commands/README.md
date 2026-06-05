@@ -1,0 +1,25 @@
+# Ion Project Commands
+
+This directory contains project-level slash commands for Ion development. These commands are available to anyone who clones the repo.
+
+## How commands work
+
+Type `/{filename}` (without `.md` extension) in any Ion session with this repo as the working directory. The engine resolves project-level commands from `.ion/commands/` automatically.
+
+## Commands
+
+### `/align`
+
+Context-aware alignment gate. In plan mode (after `/spec`): audits the current plan against Ion's architectural principles before any code is written. Outside plan mode: reviews all branch changes against Ion quality standards as a pre-PR gate. Supports PR mode (`in PR #N`), branch mode (`in branch <name>`), and optional focus narrowing. Analyze-only — never edits source files.
+
+### `/create-pr`
+
+Push the current feature branch and open a pull request into `main`. Generates a structured PR title and description derived from the branch's commits and issue references. Validates the branch is not `main`, checks for uncommitted work, and handles existing open PRs gracefully.
+
+### `/create-issue`
+
+Open a GitHub issue on the `dsswift/ion` repository based on the current conversation. Handles confidentiality scrubbing to ensure no consumer project details leak into the public issue. Presents a draft for review before creating. Includes plan-mode integration to partition engine work from other plan items when an issue is filed mid-plan.
+
+### `/squash`
+
+Collapse the current branch's commits into clean conventional commits. Creates a backup branch first, analyzes commit messages to identify logical groupings, presents a squash plan for review, then executes the rebase. Does not push.

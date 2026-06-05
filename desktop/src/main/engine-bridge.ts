@@ -6,6 +6,7 @@ import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
 import { spawnEngineServer } from './engine-bridge-spawn'
 import { startSession as startSessionImpl } from './engine-bridge-start-session'
+import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import * as conv from './engine-bridge-conversations'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload } from '../shared/types'
 
@@ -359,43 +360,15 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string): Promise<{ ok: boolean; error?: string }> {
-    const attCount = imageAttachments?.length ?? 0
-    const descLen = enterPlanModeDescription?.length ?? 0
-    const reminderLen = planModeSparseReminder?.length ?? 0
-    log(`sendPrompt: key=${key} len=${text.length} model=${model ?? 'default'} hasSysPrompt=${!!appendSystemPrompt} images=${attCount} implementationPhase=${implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${planFilePath ?? 'none'}`)
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[]): Promise<{ ok: boolean; error?: string }> {
+    // Message construction and the diagnostic log line live in
+    // engine-bridge-prompts.ts so this file stays under the 600-line cap
+    // as the send_prompt wire surface grows. See that sibling for the
+    // per-field omitempty pattern and the bash-additions log convention.
+    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt }
+    log(buildSendPromptLogLine(args))
     await this.connect()
-    const msg: Record<string, unknown> = { cmd: 'send_prompt', key, text }
-    if (model) msg.model = model
-    if (appendSystemPrompt) msg.appendSystemPrompt = appendSystemPrompt
-    if (imageAttachments && imageAttachments.length > 0) {
-      msg.attachments = imageAttachments.map((a) => ({
-        media_type: a.mediaType,
-        data: a.data,
-        path: a.path,
-      }))
-    }
-    // Tells the engine to suppress EnterPlanMode injection for this run.
-    // Only sent when truthy so the wire format stays minimal for the
-    // common case. The engine's ClientCommand.ImplementationPhase field
-    // is omitempty, so this round-trips cleanly. See ADR-003 framing in
-    // the plan-mode docs for why structured flags beat prompt prose.
-    if (implementationPhase) msg.implementationPhase = true
-    // Harness-supplied EnterPlanMode tool description (ADR-004). The
-    // engine's RunOptions.EnterPlanModeDescription field is omitempty —
-    // only send when non-empty so the wire format stays minimal. The
-    // engine forwards the string verbatim to the model as the tool
-    // description; empty / missing falls back to the engine's one-line
-    // neutral default (which the desktop deliberately avoids by always
-    // sending its full prose on auto-mode prompts).
-    if (enterPlanModeDescription) msg.enterPlanModeDescription = enterPlanModeDescription
-    // Harness-supplied sparse plan-mode reminder text. Only sent when
-    // non-empty so the wire format stays minimal for the common case.
-    // Mirrors enterPlanModeDescription: the engine uses this verbatim
-    // instead of buildPlanModeSparseReminder when present.
-    if (planModeSparseReminder) msg.planModeSparseReminder = planModeSparseReminder
-    if (planFilePath) msg.planFilePath = planFilePath
-    return this._sendWithResult(msg)
+    return this._sendWithResult(buildSendPromptMessage(args))
   }
 
   sendAbort(key: string): void {
@@ -446,9 +419,14 @@ export class EngineBridge extends EventEmitter {
   // Public escape hatch: forwards a fully-shaped ClientCommand to the engine. Companion modules use this to ship additional command/response helpers without growing the bridge file past its cap.
   sendRaw(payload: Record<string, unknown>): void { this._send(payload) }
 
-  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string): void {
-    log(`sendSetPlanMode: key=${key} enabled=${enabled} source=${source ?? 'unknown'}`)
-    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools, source })
+  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string, allowedBashCommands?: string[]): void {
+    // JSON.stringify renders `undefined` as the string "undefined" and `[]` as
+    // "[]" so the tri-valued projection (undefined / empty / non-empty) is
+    // visible at a glance in `~/.ion/desktop.log`. Length alone collapses
+    // undefined and [] (both → 0) and hides the user-clear case behind the
+    // no-change case, defeating the purpose of the log line.
+    log(`sendSetPlanMode: key=${key} enabled=${enabled} source=${source ?? 'unknown'} bashCmds=${JSON.stringify(allowedBashCommands)}`)
+    this._send({ cmd: 'set_plan_mode', key, enabled, allowedTools, source, planModeAllowedBashCommands: allowedBashCommands })
   }
 
   // ─── Conversation-data RPCs ───

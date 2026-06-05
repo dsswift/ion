@@ -9,6 +9,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -105,6 +106,21 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		}
 		if childModel == "" {
 			childModel = capturedModel
+		}
+
+		// Resolve tier aliases (e.g. "standard" → "claude-sonnet-4-6") so child
+		// runs get a concrete model ID. Without this, tier names from agent specs
+		// pass through as literal model strings and fail provider resolution.
+		var childFallbacks []string
+		if childModel != "" {
+			resolved, fallbacks := modelconfig.ResolveTierChain(childModel)
+			if resolved != childModel {
+				utils.Log("Session", fmt.Sprintf("agent tier resolved: %s -> %s (fallbacks=%v) name=%s", childModel, resolved, fallbacks, agentName))
+				childModel = resolved
+			} else {
+				utils.Debug("Session", fmt.Sprintf("agent tier passthrough: model=%s name=%s", childModel, agentName))
+			}
+			childFallbacks = fallbacks
 		}
 
 		utils.Debug("Session", fmt.Sprintf("child model resolved: requested=%q spec=%q parent=%q resolved=%q name=%s", model, func() string { if specMatched { return spec.Model }; return "" }(), capturedModel, childModel, agentName))
@@ -259,6 +275,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 			// dispatch path, but supported).
 			IsSubagent: true,
 		}
+		runOpts.FallbackChain = childFallbacks
 		if specMatched {
 			if spec.SystemPrompt != "" {
 				runOpts.SystemPrompt = spec.SystemPrompt

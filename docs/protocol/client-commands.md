@@ -66,6 +66,7 @@ Send a user message to an active session.
 | `implementationPhase`       | boolean  | no       | Suppresses the `EnterPlanMode` sentinel-tool injection. Set on the "implement" half of a plan-then-implement flow so the model cannot re-propose plan-mode entry. See ADR-004. |
 | `enterPlanModeDescription`  | string   | no       | Harness-supplied description prose for the `EnterPlanMode` sentinel tool. When non-empty, the engine forwards it verbatim as the tool description. Empty falls back to the engine's one-line neutral default. Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md). |
 | `planModeSparseReminder`    | string   | no       | Harness-supplied text for the per-turn plan-mode sparse reminder. When non-empty, the engine injects this verbatim instead of building the reminder from the plan file. Empty inherits the engine default (`buildPlanModeSparseReminder`). See [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides). |
+| `bashAllowlistAdditionsForThisPrompt` | string[] | no | Per-prompt additions to the plan-mode Bash command allowlist. The engine unions these with the session-scoped allowlist (`set_plan_mode.planModeAllowedBashCommands`) when building the run-time tool list, then drops them at run end — the session allowlist is never mutated. Intended carrier: slash commands whose YAML frontmatter declares additional bash permissions for one turn (e.g. `/ion--review-changes` needing `gh pr diff`). See § [`set_plan_mode` → Configuration layers](#set_plan_mode) for the three-layer composition model. |
 | `compactTargetPercent`      | number   | no       | Post-compact target as a percentage of the context window. Overrides `engine.json` `compaction.targetPercent` for this prompt. |
 | `compactMicroKeepTurns`     | number   | no       | Number of recent turns protected from micro-compaction. Overrides `compaction.microCompactKeep`. |
 | `compactEnabled`            | boolean  | no       | Gate for proactive compaction on this prompt. `false` disables proactive compaction; reactive compaction still fires on provider errors. |
@@ -223,17 +224,38 @@ Fork a session at a specific message index, creating a new session with conversa
 
 Toggle plan mode for a session. In plan mode, the agent plans without executing tools (or executes only allowed tools).
 
-| Field          | Type               | Required | Description                          |
-|----------------|--------------------|----------|--------------------------------------|
-| `cmd`          | `"set_plan_mode"`  | yes      | Command discriminator                |
-| `key`          | string             | yes      | Session key                          |
-| `enabled`      | boolean            | yes      | Enable or disable plan mode          |
-| `allowedTools` | string[]           | no       | Tools allowed during plan mode       |
-| `requestId`    | string             | no       | Correlates with ServerResult         |
+| Field                          | Type               | Required | Description                          |
+|--------------------------------|--------------------|----------|--------------------------------------|
+| `cmd`                          | `"set_plan_mode"`  | yes      | Command discriminator                |
+| `key`                          | string             | yes      | Session key                          |
+| `enabled`                      | boolean            | yes      | Enable or disable plan mode          |
+| `allowedTools`                 | string[]           | no       | Tools allowed during plan mode       |
+| `planModeAllowedBashCommands`  | string[]           | no       | Bash command prefixes allowed in plan mode. Tri-valued — see semantics below. |
+| `requestId`                    | string             | no       | Correlates with ServerResult         |
 
 ```json
-{"cmd":"set_plan_mode","key":"abc-123","enabled":true,"allowedTools":["Read","Glob"],"requestId":"r7"}
+{"cmd":"set_plan_mode","key":"abc-123","enabled":true,"allowedTools":["Read","Glob"],"planModeAllowedBashCommands":["gh","git log","git diff"],"requestId":"r7"}
 ```
+
+**`planModeAllowedBashCommands` semantics.** The field is tri-valued and uses JSON's nil-vs-empty distinction to disambiguate intent without a new wire field:
+
+| Wire value | Meaning |
+|---|---|
+| omitted (field absent) | **No change** to the session's existing allowlist. Use this on every `set_plan_mode` call that does not intend to touch the allowlist. |
+| `[]` (empty array, explicit) | **Clear** the allowlist. Bash is then blocked entirely in plan mode, regardless of any prior state. |
+| `["gh", "git log", …]` | **Replace** the allowlist with this set. |
+
+**Bash allowlist matching.** When the resolved allowlist is non-empty, the engine includes the `Bash` tool in the plan-mode tool list but gates each call against the allowlist at execution time. Matching is token-based: each command is split on whitespace and the first N tokens must match an entry exactly. `"gh"` matches `gh pr view 123` but not `ghost`; `"git log"` matches `git log --oneline -10` but not `git status`. Comparison is case-sensitive. A blocked call returns an `IsError: true` tool result; the model sees the failure and can adjust.
+
+**Configuration layers (three sources, lowest-to-highest precedence for the same scope, unioned for additions).** The Bash allowlist is composed from three sources at run time:
+
+| Layer | Source | Scope | Semantics |
+|---|---|---|---|
+| 1. Engine config | `engine.json` → `limits.planModeAllowedBashCommands` | Session-wide default | Loaded at session start. Acts as the initial value of the session-scoped allowlist when no `set_plan_mode` call has overridden it. |
+| 2. `set_plan_mode` wire command | `planModeAllowedBashCommands` field above | Session-wide override | Tri-valued per the table above (omitted = no change; `[]` = clear; non-empty = replace). The engine treats this layer as authoritative for the session — subsequent runs in the same session see whatever this layer last established (or the engine-config default if never set). |
+| 3. Per-prompt additions | `send_prompt` → `bashAllowlistAdditionsForThisPrompt` | One prompt only | Transient. The engine unions these with the session-level result of layers 1 and 2 (de-duplicated, session-first order) for exactly one run. The session allowlist is **never** mutated by this layer; subsequent prompts see only the session-level result. Intended carrier: slash-command YAML frontmatter `allowed_bash_commands`. |
+
+This separation lets harnesses (a) install a default fleet allowlist via `engine.json`, (b) carry user preferences via `set_plan_mode` from the desktop / iOS / wherever, and (c) grant per-turn permissions via slash commands without leaking those grants into the user's session state.
 
 **Response:** `ServerResult` with `ok: true`.
 

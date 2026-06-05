@@ -130,6 +130,8 @@ export interface ExpansionResult {
    * this to any existing `appendSystemPrompt` rather than replacing it.
    */
   systemPrompt: string
+  /** Allowed Bash command prefixes from the template's frontmatter. */
+  allowedBashCommands?: string[]
 }
 
 /**
@@ -213,6 +215,7 @@ export async function tryExpandMarkdownSlash(
     return {
       userPrompt: ionExpansion.userPrompt,
       systemPrompt: ionExpansion.systemPrompt,
+      allowedBashCommands: ionExpansion.frontmatter.allowedBashCommands,
     }
   }
 
@@ -221,7 +224,13 @@ export async function tryExpandMarkdownSlash(
   try {
     const s = readSettings()
     claudeCompat = s.enableClaudeCompat ?? claudeCompat
-  } catch { /* default */ }
+  } catch (err) {
+    // Per desktop/AGENTS.md "no silent catch": log the fallback so a
+    // disk read failure does not silently flip Claude-compat to its
+    // default (which controls whether .claude/commands and .claude/
+    // skills are picked up).
+    log(`pipeline: readSettings failed reading enableClaudeCompat; defaulting to ${claudeCompat}: ${err}`)
+  }
   if (!claudeCompat) {
     log(`pipeline: .md expansion skipped (.claude/ gated off), name=${slash.command}`)
     return null
@@ -257,5 +266,6 @@ export async function tryExpandMarkdownSlash(
   return {
     userPrompt: claudeExpansion.userPrompt,
     systemPrompt: claudeExpansion.systemPrompt,
+    allowedBashCommands: claudeExpansion.frontmatter.allowedBashCommands,
   }
 }

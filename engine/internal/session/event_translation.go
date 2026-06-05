@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -401,109 +400,6 @@ func (m *Manager) handleRunError(runID string, err error) {
 	// Reap descendants so a dispatched child does not continue running
 	// (and billing model time) after the parent loop has died.
 	m.abortAllDescendants(key, fmt.Sprintf("parent run error: %s", err.Error()))
-}
-
-// fireCliTurnHooks fires turn_start / turn_end extension hooks for CLI
-// backend runs. No-op when the backend is not CliBackend or when the
-// session has no extension group.
-//
-// Turn boundaries are derived from the normalised event stream:
-//   - turn_start: first TextChunkEvent or ToolCallEvent after run start
-//     or after the previous turn ended.
-//   - turn_end: TaskUpdateEvent (completed assistant message) signals that
-//     the model finished responding and tools (if any) have been executed.
-//   - TaskCompleteEvent: final result; close any active turn before the
-//     run finishes.
-//
-// Under HybridBackend, the resolved backend for the *current* run depends
-// on the model that started it. We use s.lastModel (set in prompt_dispatch
-// when StartRun is called) to drive the resolution. If lastModel is empty
-// (no run yet), this is a no-op — matching the pre-hybrid behavior of
-// returning early when the backend wasn't CliBackend.
-func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event types.NormalizedEvent) {
-	if _, isCli := m.resolvedBackend(s.lastModel).(*backend.CliBackend); !isCli {
-		return
-	}
-	if !sOk || s.extGroup == nil || s.extGroup.IsEmpty() {
-		return
-	}
-
-	switch e := event.Data.(type) {
-	case *types.TextChunkEvent:
-		// Accumulate assistant text for message_update hook.
-		m.mu.Lock()
-		s.cliTextBuf += e.Text
-		alreadyActive := s.cliTurnActive
-		if !alreadyActive {
-			s.cliTurnNumber++
-			s.cliTurnActive = true
-		}
-		turnNum := s.cliTurnNumber
-		m.mu.Unlock()
-
-		if !alreadyActive {
-			ctx := m.newExtContext(s, key)
-			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
-		}
-
-	case *types.ToolCallEvent:
-		_ = e // suppress unused
-		m.mu.Lock()
-		alreadyActive := s.cliTurnActive
-		if !alreadyActive {
-			s.cliTurnNumber++
-			s.cliTurnActive = true
-		}
-		turnNum := s.cliTurnNumber
-		m.mu.Unlock()
-
-		if !alreadyActive {
-			ctx := m.newExtContext(s, key)
-			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
-		}
-
-	case *types.TaskUpdateEvent:
-		_ = e // suppress unused
-		m.mu.Lock()
-		wasActive := s.cliTurnActive
-		s.cliTurnActive = false
-		turnNum := s.cliTurnNumber
-		accum := s.cliTextBuf
-		s.cliTextBuf = ""
-		m.mu.Unlock()
-
-		if wasActive {
-			ctx := m.newExtContext(s, key)
-			if accum != "" {
-				_ = s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{
-					Role:    "assistant",
-					Content: accum,
-				})
-			}
-			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
-		}
-
-	case *types.TaskCompleteEvent:
-		_ = e // suppress unused
-		m.mu.Lock()
-		wasActive := s.cliTurnActive
-		s.cliTurnActive = false
-		turnNum := s.cliTurnNumber
-		accum := s.cliTextBuf
-		s.cliTextBuf = ""
-		m.mu.Unlock()
-
-		if wasActive {
-			ctx := m.newExtContext(s, key)
-			if accum != "" {
-				_ = s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{
-					Role:    "assistant",
-					Content: accum,
-				})
-			}
-			s.extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
-		}
-	}
 }
 
 // classifyErrorCategory maps an error code to an extension ErrorCategory.

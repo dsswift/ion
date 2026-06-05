@@ -80,3 +80,19 @@ func (m *Manager) TestBuildAgentToolHandler(key string) backend.ToolHandler {
 	}
 	return m.buildAgentToolHandler(s, key)
 }
+
+// TestGetPlanModeBashAllowlist returns the session's bash allowlist
+// (the engine-side state set by SetPlanModeBashAllowlist). Returns
+// (nil, false) when the session does not exist. The first return value
+// follows the same nil-vs-empty distinction the wire field uses: nil
+// means "never set", empty slice means "explicitly cleared". Exported
+// for the tri-valued dispatch tests in `server/server_set_plan_mode_test.go`.
+func (m *Manager) TestGetPlanModeBashAllowlist(key string) (cmds []string, ok bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, exists := m.sessions[key]
+	if !exists {
+		return nil, false
+	}
+	return s.planModeAllowedBashCommands, true
+}

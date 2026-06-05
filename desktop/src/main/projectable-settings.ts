@@ -10,283 +10,116 @@
  * view and edit the currently-paired desktop's settings from iOS without
  * affecting other paired desktops on their network.
  *
- * Most settings in `SETTINGS_DEFAULTS` are NOT projectable to iOS for one
- * of three reasons:
+ * The allowlist is generous: every user-editable preference that is
+ * meaningful remotely is projected. Exclusions fall into three buckets:
  *
- *   1. They are local-machine concerns that have no meaning on a phone
- *      (`terminalFontFamily`, `gitPanelSplitRatio`, `editorFontSize`,
- *      window-state booleans like `keepExplorerOnCollapse`).
+ *   1. Local-machine concerns that have no meaning on a phone (font
+ *      sizes, split ratios, window-state booleans).
+ *   2. Local-filesystem paths iOS cannot interact with
+ *      (`defaultBaseDirectory`, `worktreeBranchDefaults`, …).
+ *   3. Secrets / transport (`relayApiKey`, `pairedDevices`, `relayUrl`,
+ *      `lanServerPort`, `remoteDisplay`) and model picks that already
+ *      have a dedicated iOS picker (`engineDefaultModel`,
+ *      `preferredModel`).
  *
- *   2. They depend on local-filesystem resources iOS does not have access
- *      to (`defaultBaseDirectory`, `recentBaseDirectories`,
- *      `worktreeBranchDefaults`).
+ * The actual allowlist data lives in `projectable-settings-data.ts`;
+ * shared types live in `projectable-settings-types.ts`; list-typed
+ * itemSchemas live in `projectable-settings-items.ts`. This file
+ * contains only the runtime API (validators, schema builders, value
+ * projection) plus the group metadata.
  *
- *   3. They are user secrets or transport configuration that has its own
- *      pairing UI and must not appear here (`relayApiKey`, `pairedDevices`,
- *      `engineDefaultModel`, `preferredModel` — the model picks have a
- *      dedicated picker in the snapshot already).
- *
- * What IS projectable is a curated list of behavior toggles that make
- * sense to flip from a phone: "should the model nudge keep working?",
- * "should the tab be auto-grouped after completion?", "should the AI
- * generate titles?", etc.
- *
- * Per-desktop scoping (ADR cross-reference)
- * ─────────────────────────────────────────
- * Option (i) — iOS shows settings for the currently-connected desktop
- * only. To edit another paired desktop the user switches transports
- * first (already a one-tap action). This module is therefore concerned
- * exclusively with the values stored in *this* desktop's
- * `~/.ion/settings.json`; iOS-side per-desktop scoping is enforced by
- * the iOS UI reading from the active pairing only.
+ * Per-desktop scoping
+ * ───────────────────
+ * iOS shows settings for the currently-connected desktop only. To edit
+ * another paired desktop the user switches transports first (one tap
+ * from the iOS Settings page). This module concerns itself exclusively
+ * with the values stored in *this* desktop's `~/.ion/settings.json`.
  *
  * Wire shape
  * ──────────
- * The projection rides on two wire types added to
+ * Projected through two wire types in
  * `desktop/src/main/remote/protocol.ts`:
  *
- *   - `RemoteEvent.desktop_settings_snapshot { settings }` — emitted on
- *     initial pairing snapshot and on every local change to a
- *     projectable key. Carries the complete projection map as a
- *     **snapshot** (consumers REPLACE their cached view; do not merge,
- *     do not preserve absent entries — same semantics as
- *     `engine_agent_state`). Missing keys mean "this key has its default
- *     value" rather than "this key is unchanged."
+ *   - `RemoteEvent.desktop_settings_snapshot { settings, schema, groups }`
+ *     — emitted on initial pairing and on every projectable-key change.
+ *     **Snapshot semantics** — consumers REPLACE their cached view;
+ *     never merge.
  *
  *   - `RemoteCommand.set_desktop_setting { key, value }` — iOS sends
- *     this to write a setting on the currently-connected desktop. The
- *     handler validates against this module's allowlist, validates the
- *     value type matches the declared type, calls `writeSettings`, and
- *     re-emits `desktop_settings_snapshot` to all paired devices.
+ *     this to write a setting. The handler validates against the
+ *     allowlist, validates the value matches the declared type, calls
+ *     `writeSettings`, and re-emits `desktop_settings_snapshot` to all
+ *     paired devices.
  *
- * Unknown keys are rejected (silent log + no write). Wrong-type values
- * are rejected. The handler does not partially-apply: either the whole
- * write succeeds or nothing changes.
+ * Forward-compat
+ * ──────────────
+ * New types and groups are **additive only**. Old iOS clients render
+ * unknown group IDs under a fallback "Other" section and unknown type
+ * IDs as a read-only string fallback. Adding a new type or group is
+ * therefore wire-compatible with every shipped iOS build.
  */
 
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { SETTINGS_DEFAULTS as RENDERER_SETTINGS_DEFAULTS } from '../renderer/preferences-types'
+import { PROJECTABLE_SETTINGS_DATA } from './projectable-settings-data'
+import type {
+  ProjectableChoice,
+  ProjectableGroup,
+  ProjectableSetting,
+  ProjectableSettingSchema,
+} from './projectable-settings-types'
 
-/** Allowed value types for projectable settings. */
-export type ProjectableType = 'boolean' | 'string' | 'number'
+// Re-export the shared types so external consumers can keep importing
+// them from this canonical entry point.
+export type {
+  ProjectableChoice,
+  ProjectableGroup,
+  ProjectableRange,
+  ProjectableSetting,
+  ProjectableSettingSchema,
+  ProjectableType,
+} from './projectable-settings-types'
 
 /**
- * Visual grouping for the iOS Settings UI. The iOS Settings detail view
- * renders one List section per group, with the section's `Text` header
- * derived from this string. Groups are ordered top-to-bottom following
- * Apple's Settings-app convention of placing the most-flipped settings
- * first. Adding a new group is an additive change (any unknown group on
- * the iOS side renders under a fallback "Other" section).
+ * The allowlist. Order = render order on iOS.
  *
- * The grouping is metadata-only — settings can be re-grouped without a
- * wire-protocol change because the schema rides on the snapshot.
+ * Defined in `projectable-settings-data.ts` to keep this file under
+ * the 600-line TS cap. Adding a new entry only requires touching the
+ * data file (and the test, to cover any new type-specific branches).
  */
-export type ProjectableGroup = 'conversation' | 'workflow' | 'fileEditing' | 'appBehavior'
+export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = PROJECTABLE_SETTINGS_DATA
 
 /**
- * One entry in the projectable-settings allowlist. The `key` matches the
- * top-level field name on the settings JSON; `type` is the value's wire
- * type; `label` and `description` are the user-facing strings the iOS
- * Settings tab renders. `group` is the visual section the iOS UI
- * places this row in.
+ * Ordered list of group identifiers — matches the desktop SettingsDialog
+ * CATEGORIES array, except:
+ *   - `remote` is not projected (pairing + transport is iOS-local).
+ *   - `advanced` is not projected today (its desktop subsections —
+ *     Presets, Migration, Developer — are not yet meaningful as remote
+ *     surfaces; adding `applyPreset` here is the obvious follow-up).
  *
- * The `defaultValue` field is the value the desktop uses when the
- * settings file omits this key. It is duplicated here (rather than read
- * dynamically from `SETTINGS_DEFAULTS`) so the iOS UI can pre-populate
- * the row even if the snapshot is empty (e.g. a fresh pairing on a
- * never-edited desktop).
- */
-export interface ProjectableSetting {
-  key: string
-  type: ProjectableType
-  group: ProjectableGroup
-  label: string
-  description: string
-  defaultValue: unknown
-}
-
-/**
- * The allowlist. Adding a new entry requires:
- *
- *   1. The key must exist in either `SETTINGS_DEFAULTS` (main-process) or
- *      the renderer-side `SETTINGS_DEFAULTS` map. The unit test in
- *      `projectable-settings.test.ts` enforces this so the allowlist
- *      can't drift from the canonical settings shape.
- *   2. The type must match the actual value type at runtime.
- *   3. The setting must be one that makes sense to flip from a phone
- *      (not a path, not a font, not a window-state boolean).
- *
- * Order is the order the iOS UI renders the rows — keep the most
- * commonly-flipped settings near the top.
- */
-export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = [
-  // ─── Conversation ─────────────────────────────────────────────────
-  // Behavior of the conversation view + the LLM-facing transcript.
-  {
-    key: 'enableEarlyStopContinuation',
-    type: 'boolean',
-    group: 'conversation',
-    label: 'Early-stop continuation nudge',
-    description:
-      'When the model emits end_turn below the configured token budget, ask it to keep working instead of completing the run.',
-    defaultValue: false,
-  },
-  {
-    key: 'aiGeneratedTitles',
-    type: 'boolean',
-    group: 'conversation',
-    label: 'AI-generated tab titles',
-    description:
-      'After the first user message, ask the model to generate a short title for the tab.',
-    defaultValue: true,
-  },
-  {
-    key: 'expandToolResults',
-    type: 'boolean',
-    group: 'conversation',
-    label: 'Expand tool results',
-    description:
-      'Render tool result blocks expanded in the conversation view. Disable to collapse them by default.',
-    defaultValue: false,
-  },
-  {
-    key: 'showTodoList',
-    type: 'boolean',
-    group: 'conversation',
-    label: 'Show TODO list panel',
-    description:
-      'Render the TODO list panel for tabs that have an active TodoWrite tool.',
-    defaultValue: true,
-  },
-  {
-    key: 'agentPanelDefaultOpen',
-    type: 'boolean',
-    group: 'conversation',
-    label: 'Agent panel open by default',
-    description:
-      'Automatically expand the agent panel when agents are dispatched. Disable to keep it collapsed until manually opened.',
-    defaultValue: true,
-  },
-  {
-    key: 'unifiedTurnView',
-    type: 'boolean',
-    group: 'conversation',
-    label: 'Unified turn view',
-    description:
-      'Group tool calls into a collapsible panel and show assistant text as a continuous block, instead of interleaving tool calls with text fragments.',
-    defaultValue: true,
-  },
-  // ─── Workflow ─────────────────────────────────────────────────────
-  // Tab and prompt-pipeline behavior across runs.
-  {
-    key: 'enableClaudeCompat',
-    type: 'boolean',
-    group: 'workflow',
-    label: 'Claude Code commands',
-    description:
-      'Resolve .claude/commands/*.md and .claude/skills/ templates when a slash command does not match a registered extension command. Commands in .ion/commands/ are always available.',
-    defaultValue: true,
-  },
-  {
-    key: 'showImplementClearContext',
-    type: 'boolean',
-    group: 'workflow',
-    label: 'Show "Implement, clear context" button',
-    description:
-      'Reveal a second button on the plan-approval card that starts a fresh conversation for the implementation phase. The regular Implement button always preserves the conversation so the model retains what it learned during planning. Use /clear to clear context manually at any time.',
-    defaultValue: false,
-  },
-  {
-    key: 'bashCommandEntry',
-    type: 'boolean',
-    group: 'workflow',
-    label: 'Bash command entry (! prefix)',
-    description:
-      'Allow `!command` in the prompt input to execute a shell command before the prompt is sent.',
-    defaultValue: false,
-  },
-  {
-    key: 'autoGroupMovement',
-    type: 'boolean',
-    group: 'workflow',
-    label: 'Auto-group movement',
-    description:
-      'Automatically move tabs between the Planning, In Progress, and Done groups based on permission mode and completion state.',
-    defaultValue: false,
-  },
-  {
-    key: 'expandOnTabSwitch',
-    type: 'boolean',
-    group: 'workflow',
-    label: 'Scroll to bottom on tab switch',
-    description:
-      'When switching to a tab, automatically scroll the conversation to the bottom so the latest message is visible.',
-    defaultValue: true,
-  },
-  // ─── File Editing ─────────────────────────────────────────────────
-  // Explorer + editor behavior on the desktop.
-  {
-    key: 'closeExplorerOnFileOpen',
-    type: 'boolean',
-    group: 'fileEditing',
-    label: 'Close explorer on file open',
-    description:
-      'When opening a file from the explorer, collapse the explorer panel automatically.',
-    defaultValue: true,
-  },
-  {
-    key: 'openMarkdownInPreview',
-    type: 'boolean',
-    group: 'fileEditing',
-    label: 'Open Markdown in preview',
-    description:
-      'When opening a Markdown file from the explorer, open it in the preview pane instead of the editor.',
-    defaultValue: true,
-  },
-  {
-    key: 'editorWordWrap',
-    type: 'boolean',
-    group: 'fileEditing',
-    label: 'Editor word-wrap',
-    description: 'Wrap long lines in the file editor.',
-    defaultValue: true,
-  },
-  // ─── App Behavior ─────────────────────────────────────────────────
-  // Desktop-wide behavior toggles that don't fit the categories above.
-  {
-    key: 'hideOnExternalLaunch',
-    type: 'boolean',
-    group: 'appBehavior',
-    label: 'Hide window on external launch',
-    description:
-      'Hide the Ion window when an external app (e.g. terminal, VS Code) is launched from a tab.',
-    defaultValue: true,
-  },
-]
-
-/**
- * Ordered list of group identifiers, in the order the iOS UI renders
- * them. iOS reads this from the snapshot to drive section ordering, so
- * re-ordering or adding a group requires no iOS code change.
+ * iOS renders one section per group in this order.
  */
 export const PROJECTABLE_GROUP_ORDER: readonly ProjectableGroup[] = [
-  'conversation',
-  'workflow',
-  'fileEditing',
-  'appBehavior',
+  'general',
+  'ai',
+  'appearance',
+  'tabs',
+  'git',
+  'quicktools',
 ]
 
 /**
- * Human-readable section titles for each group. Matches the comment
- * banners above each group block in `PROJECTABLE_SETTINGS`. Kept
- * separate from the per-entry `group` field so a group rename doesn't
- * require touching every entry.
+ * Human-readable section titles for each group. Matches the desktop
+ * SettingsDialog labels verbatim.
  */
 export const PROJECTABLE_GROUP_LABELS: Record<ProjectableGroup, string> = {
-  conversation: 'Conversation',
-  workflow: 'Workflow',
-  fileEditing: 'File Editing',
-  appBehavior: 'App Behavior',
+  general: 'General',
+  ai: 'AI & Models',
+  appearance: 'Appearance',
+  tabs: 'Tabs & Panels',
+  git: 'Git',
+  quicktools: 'Quick Tools',
+  advanced: 'Advanced',
 }
 
 /** Map from key to allowlist entry, for O(1) lookups. */
@@ -299,31 +132,83 @@ export function isProjectableKey(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(PROJECTABLE_BY_KEY, key)
 }
 
+/** Names of the three keys whose enum choices depend on live tabGroups. */
+const DYNAMIC_GROUP_ID_KEYS = new Set([
+  'planningGroupId',
+  'inProgressGroupId',
+  'doneGroupId',
+])
+
+/** Returns true when `key` is one of the dynamic group-id enums. */
+function isDynamicGroupIdKey(key: string): boolean {
+  return DYNAMIC_GROUP_ID_KEYS.has(key)
+}
+
 /**
  * Validate that `value` matches the declared type for `key`. Returns
  * `null` on success or an error message on failure. Unknown keys return
  * an error (the caller should always gate on `isProjectableKey` first).
  *
- * The handler in `command-handler.ts` uses this to reject malformed iOS
- * writes before they reach `writeSettings`. The validation is strict —
- * we don't coerce a number into a boolean or vice versa — because a
- * cross-platform contract benefits from explicit type discipline more
- * than it benefits from accommodating client mistakes.
+ * Type rules:
+ *   - boolean/string/number: strict `typeof` match. NaN is rejected
+ *     even though `typeof NaN === 'number'`.
+ *   - enum: value must be one of the declared `choices` (including
+ *     `null` for nullable enums). For the three dynamic group-id keys
+ *     we accept any string OR null at validation time — the canonical
+ *     choice set depends on the live `tabGroups`, which is the
+ *     projection layer's responsibility to reconcile (a write
+ *     referencing a deleted group becomes "None" on the next snapshot).
+ *   - list: value must be an array. When `itemType` is declared on the
+ *     entry, every element is checked against that primitive type
+ *     (string/number/boolean) — this is the primitive-list shape used
+ *     by `string[]` preferences like `planModeAllowedBashCommands`.
+ *     When `itemType` is absent, the array is accepted as-is — this is
+ *     the record-list shape (`quickTools`, `tabGroups`) where per-record
+ *     schema enforcement is the iOS editor's responsibility and
+ *     downstream consumers tolerate forward-compat extra fields.
  */
 export function validateSettingValue(key: string, value: unknown): string | null {
   const entry = PROJECTABLE_BY_KEY[key]
   if (!entry) return `unknown projectable key: ${key}`
   const actualType = typeof value
-  if (entry.type === 'boolean' && actualType !== 'boolean') {
-    return `key ${key} expects boolean, got ${actualType}`
+  switch (entry.type) {
+    case 'boolean':
+      if (actualType !== 'boolean') return `key ${key} expects boolean, got ${actualType}`
+      return null
+    case 'string':
+      if (actualType !== 'string') return `key ${key} expects string, got ${actualType}`
+      return null
+    case 'number':
+      if (actualType !== 'number' || Number.isNaN(value)) {
+        return `key ${key} expects number, got ${actualType}`
+      }
+      return null
+    case 'enum':
+      if (value === null || actualType === 'string') {
+        if (isDynamicGroupIdKey(key)) return null
+        const choices = entry.choices ?? []
+        const ok = choices.some((c) => c.value === value)
+        return ok ? null : `key ${key} value ${JSON.stringify(value)} not in enum choices`
+      }
+      return `key ${key} expects enum string|null, got ${actualType}`
+    case 'list':
+      if (!Array.isArray(value)) return `key ${key} expects array, got ${actualType}`
+      // Primitive-list: every element must match the declared itemType.
+      // Record-list (itemType absent): per-element schema is not enforced
+      // here; the iOS editor produces well-formed records and downstream
+      // consumers tolerate forward-compat extra fields on records.
+      if (entry.itemType) {
+        const expected = entry.itemType
+        for (let i = 0; i < value.length; i++) {
+          const elem = value[i]
+          const elemType = typeof elem
+          if (elemType !== expected) {
+            return `key ${key} expects list of ${expected}, got ${elemType} at index ${i}`
+          }
+        }
+      }
+      return null
   }
-  if (entry.type === 'string' && actualType !== 'string') {
-    return `key ${key} expects string, got ${actualType}`
-  }
-  if (entry.type === 'number' && (actualType !== 'number' || Number.isNaN(value))) {
-    return `key ${key} expects number, got ${actualType}`
-  }
-  return null
 }
 
 /**
@@ -331,11 +216,14 @@ export function validateSettingValue(key: string, value: unknown): string | null
  * once, picks out every projectable key, and falls back to the entry's
  * declared default when the file omits it.
  *
- * The result is the payload of `desktop_settings_snapshot`. Snapshot
- * contract: every projectable key appears in the map; missing keys
- * indicate the projection is broken (a bug, not a meaningful "default"
- * signal). Consumers REPLACE their cached view with this payload — no
- * merging.
+ * Snapshot contract: every projectable key appears in the map.
+ * Consumers REPLACE their cached view with this payload — no merging.
+ *
+ * Self-healing for dynamic group-id pointers: if `planningGroupId`,
+ * `inProgressGroupId`, or `doneGroupId` references a group that no
+ * longer exists in `tabGroups`, we surface it as `null` ("None") on
+ * the wire. The on-disk value is left untouched so the user can rename
+ * the group back; iOS just sees None until the group reappears.
  */
 export function projectCurrentSettings(): Record<string, unknown> {
   const saved = readSettings()
@@ -347,6 +235,17 @@ export function projectCurrentSettings(): Record<string, unknown> {
       out[entry.key] = entry.defaultValue
     }
   }
+  // Reconcile dynamic group-id pointers against the live tabGroups.
+  const groups = (out.tabGroups as Array<{ id?: string }>) ?? []
+  const liveIds = new Set(
+    groups.map((g) => g.id).filter((id): id is string => typeof id === 'string'),
+  )
+  for (const key of DYNAMIC_GROUP_ID_KEYS) {
+    const v = out[key]
+    if (typeof v === 'string' && !liveIds.has(v)) {
+      out[key] = null
+    }
+  }
   return out
 }
 
@@ -355,9 +254,9 @@ export function projectCurrentSettings(): Record<string, unknown> {
  * must exist in *some* `SETTINGS_DEFAULTS` map. Returns the list of
  * projectable keys that have no corresponding entry on either side.
  *
- * This is a structural assertion: if the renderer renames or removes a
- * setting, the allowlist must be updated in the same change so the
- * cross-platform contract stays coherent.
+ * Structural assertion — if the renderer renames or removes a setting,
+ * the allowlist must be updated in the same change so the cross-
+ * platform contract stays coherent.
  */
 export function projectableKeysWithoutDefault(): string[] {
   const main = SETTINGS_DEFAULTS as Record<string, unknown>
@@ -372,39 +271,69 @@ export function projectableKeysWithoutDefault(): string[] {
 }
 
 /**
- * Wire-format representation of a single allowlist entry. Sent alongside
- * the values in `desktop_settings_snapshot` so iOS can auto-render the
- * Settings detail view without hardcoding the schema.
+ * Build the schema array as it appears on the wire.
  *
- * Schema-on-the-wire (rather than hardcoded on iOS) means adding a new
- * setting requires zero iOS code changes: append an entry to
- * `PROJECTABLE_SETTINGS` and iOS picks it up on the next snapshot. The
- * iOS UI renders unknown groups under a fallback "Other" section to
- * stay forward-compatible.
+ * Dynamic-choice injection: for the three group-id keys
+ * (`planningGroupId`, `inProgressGroupId`, `doneGroupId`), we replace
+ * the placeholder `[{ value: null, label: 'None' }]` with the current
+ * list of tab groups (read from `settings.json`) prefixed by None. This
+ * gives iOS a live picker that reflects the user's groups without
+ * needing a separate wire round-trip.
+ *
+ * The recursion through `itemSchema` is shallow: list-typed entries
+ * declare nested schemas, but those nested schemas are not themselves
+ * dynamic today.
  */
-export interface ProjectableSettingSchema {
-  key: string
-  type: ProjectableType
-  group: ProjectableGroup
-  label: string
-  description: string
-  defaultValue: unknown
+export function projectableSchema(): ProjectableSettingSchema[] {
+  const saved = readSettings()
+  const groups = (saved.tabGroups as Array<{ id?: string; label?: string }>) ?? []
+  const groupChoices: ProjectableChoice[] = [
+    { value: null, label: 'None' },
+    ...groups
+      .filter((g) => typeof g.id === 'string' && typeof g.label === 'string')
+      .map((g) => ({ value: g.id as string, label: g.label as string })),
+  ]
+  return PROJECTABLE_SETTINGS.map((s) => {
+    const base: ProjectableSettingSchema = {
+      key: s.key,
+      type: s.type,
+      group: s.group,
+      label: s.label,
+      description: s.description,
+      defaultValue: s.defaultValue,
+    }
+    if (isDynamicGroupIdKey(s.key)) {
+      base.choices = groupChoices
+    } else if (s.choices) {
+      base.choices = s.choices
+    }
+    if (s.range) base.range = s.range
+    if (s.itemSchema) base.itemSchema = s.itemSchema.map(itemToSchema)
+    if (s.itemType) base.itemType = s.itemType
+    return base
+  })
 }
 
 /**
- * The full schema as a JSON-friendly array. iOS consumes this verbatim
- * and uses it to drive section ordering, row labels, footer text, and
- * default-value fallback when the values map omits a key.
+ * Convert one `ProjectableSetting` into its wire-format schema shape.
+ * Used to convert nested `itemSchema` entries on list-typed fields.
+ * Mirrors the structure of `projectableSchema` but skips the dynamic-
+ * choices injection (item-level fields are not dynamic today).
  */
-export function projectableSchema(): ProjectableSettingSchema[] {
-  return PROJECTABLE_SETTINGS.map((s) => ({
+function itemToSchema(s: ProjectableSetting): ProjectableSettingSchema {
+  const out: ProjectableSettingSchema = {
     key: s.key,
     type: s.type,
     group: s.group,
     label: s.label,
     description: s.description,
     defaultValue: s.defaultValue,
-  }))
+  }
+  if (s.choices) out.choices = s.choices
+  if (s.range) out.range = s.range
+  if (s.itemSchema) out.itemSchema = s.itemSchema.map(itemToSchema)
+  if (s.itemType) out.itemType = s.itemType
+  return out
 }
 
 /**

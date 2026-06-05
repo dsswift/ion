@@ -186,6 +186,25 @@ describe('expandSlashCommand', () => {
     expect(result.userPrompt).not.toContain('allowed-tools:')
   })
 
+  // TC-SE-007b: frontmatter with allowed_bash_commands flows into expansion result
+  it('returns allowed_bash_commands from frontmatter in expansion result', async () => {
+    writeCommand(fakeHome, 'bash-test', [
+      '---',
+      'description: Test bash allowlist',
+      'allowed_bash_commands: [gh, git log]',
+      '---',
+      'Review the PR.',
+    ].join('\n'))
+
+    const result = await expandSlashCommand('/bash-test', projectDir)
+    expect(result.expanded).toBe(true)
+    if (!result.expanded) return
+
+    expect(result.userPrompt).toBe('Review the PR.')
+    expect(result.frontmatter.allowedBashCommands).toEqual(['gh', 'git log'])
+    expect(result.frontmatter.description).toBe('Test bash allowlist')
+  })
+
   // TC-SE-008
   it('replaces all $ARGUMENTS occurrences', async () => {
     writeCommand(fakeHome, 'multi', 'First: $ARGUMENTS\nSecond: $ARGUMENTS')
@@ -520,3 +539,4 @@ describe('stripFrontmatter', () => {
     expect(stripFrontmatter(content)).toBe('')
   })
 })
+

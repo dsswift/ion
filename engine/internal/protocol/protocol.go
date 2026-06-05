@@ -114,6 +114,42 @@ type ClientCommand struct {
 	// plan file path.
 	PlanFilePath string `json:"planFilePath,omitempty"`
 
+	// set_plan_mode: list of bash command prefixes that the engine
+	// allows in plan mode. Tri-valued:
+	//   - omitted (JSON nil)    → no change to existing allowlist
+	//   - []                    → clear; Bash blocked entirely
+	//   - ["gh", "git log", ...] → replace allowlist with this set
+	// Token-based prefix matching (whitespace-split, exact-token
+	// comparison) prevents false positives ("gh" matches "gh pr view"
+	// but not "ghost"). Existing clients (omitted or non-empty) keep
+	// their prior behavior; the empty-array case is the explicit-clear
+	// path. Additive optional field; omitted by clients that do not
+	// need to extend the plan-mode bash allowlist.
+	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
+
+	// send_prompt: per-prompt bash-allowlist additions. Distinct from
+	// PlanModeAllowedBashCommands above (which is a SESSION-scoped
+	// override carried on set_plan_mode). The additions here are
+	// **transient**: the engine unions them with the session allowlist
+	// when building the prompt's run-time tool list, then drops them at
+	// run end. They never persist on engineSession.planModeAllowedBashCommands.
+	//
+	// Use case: slash commands whose YAML frontmatter declares an
+	// `allowed_bash_commands` list (e.g. `/ion--review-changes` needing
+	// `gh pr diff` for that turn only). The harness attaches the
+	// frontmatter list here so the engine grants the additional
+	// permissions for exactly one run; subsequent prompts in the same
+	// session run against the unmodified session allowlist.
+	//
+	// Set semantics (union with session allowlist, de-duplicated,
+	// order-preserved): the engine computes the effective allowlist for
+	// the run as session ∪ additions. Duplicates are dropped; the
+	// session-side entries win position-wise. Additive optional field;
+	// omitted by clients that do not need per-prompt additions. The
+	// session allowlist itself is never mutated by this field — that
+	// invariant is the entire point of the field's existence.
+	BashAllowlistAdditionsForThisPrompt []string `json:"bashAllowlistAdditionsForThisPrompt,omitempty"`
+
 	// Compaction overrides — per-prompt tuning of context compaction behavior.
 	CompactTargetPercent  float64 `json:"compactTargetPercent,omitempty"`
 	CompactMicroKeepTurns int     `json:"compactMicroKeepTurns,omitempty"`

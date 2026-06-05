@@ -465,6 +465,11 @@ struct EngineView: View {
     }
 
     private var footerSection: some View {
+        // The keyboard utility bar — its `@State keyboardVisible`, the
+        // keyboard-show/hide observers, and the animation modifier all
+        // live inside EngineKeyboardUtilityBarOverlay (sibling file).
+        // The host only forwards the user's toggle preference and the
+        // two action bindings (dismiss + draft text) the bar needs.
         VStack(spacing: 0) {
             Divider()
             if let fields = viewModel.engineStatusFields[compoundKey] {
@@ -499,6 +504,11 @@ struct EngineView: View {
             }
             engineInputBar
         }
+        .engineKeyboardUtilityBar(
+            isEnabled: viewModel.showKeyboardUtilityBarInEngine,
+            onDismiss: { isInputFocused = false },
+            promptText: promptTextBinding
+        )
     }
 
     private var mainContent: some View {

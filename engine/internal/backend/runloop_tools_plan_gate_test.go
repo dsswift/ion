@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -349,5 +350,203 @@ func TestPlanGate_ExitPlanModeAutoModeNoPlanFile(t *testing.T) {
 		if _, ok := ev.Data.(*types.PlanProposalEvent); ok {
 			t.Error("expected no PlanProposalEvent when planFilePath is empty")
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Plan-mode Bash allowlist gate
+// ─────────────────────────────────────────────────────────────────────
+//
+// The Bash gate at engine/internal/backend/runloop_tools.go:258-300
+// short-circuits before executing the Bash tool when the run is in
+// plan mode and the command does not match an allowlist prefix.
+// Structural twin of the Write gate above; tests here mirror the Write
+// gate tests in shape.
+//
+// Token-based matching is the load-bearing piece of behavior: the
+// commit message specifically calls out the `gh` vs `ghost` collision,
+// and the gate splits commands on whitespace so a prefix entry must
+// match a full leading token (not a substring). These tests pin that
+// guarantee.
+//
+// All tests use `tools.BashName` for the tool name where the actual
+// Bash tool would also be registered; the gate fires before tool
+// execution so we never need to actually run a shell command in the
+// test. When the gate allows the command through, the test asserts the
+// gate emitted no IsError result; the *subsequent* tool execution
+// would either succeed or fail based on the registered Bash handler,
+// which is out of scope for the gate test.
+
+// bashGateHelper is the Bash-gate twin of planGateHelper. Adds an
+// allowlist on the activeRun so the gate has something to enforce.
+func bashGateHelper(t *testing.T, allowedBashCommands []string) (*ApiBackend, *activeRun, *[]types.NormalizedEvent) {
+	t.Helper()
+	b, run, emitted := planGateHelper(t, true, "")
+	run.planModeAllowedBashCommands = allowedBashCommands
+	return b, run, emitted
+}
+
+// runBashGate runs executeTools with a single Bash invocation and
+// returns the results plus whether the result was an IsError block.
+// Helper exists because every test below follows the same shape:
+// build a one-block call list, run executeTools, inspect results[0].
+func runBashGate(t *testing.T, b *ApiBackend, run *activeRun, command string) (results []conversation.ToolResultEntry, isError bool) {
+	t.Helper()
+	blocks := []types.LlmContentBlock{{
+		Name:  "Bash",
+		ID:    "bash-gate-test",
+		Input: map[string]interface{}{"command": command},
+	}}
+	res, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatalf("executeTools returned error: %v", err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(res))
+	}
+	return res, res[0].IsError
+}
+
+// Exact-prefix match: `gh` matches `gh pr view 123`. The gate must
+// allow the call through to the Bash tool. Because Bash actually
+// executes when allowed, we use a command that returns quickly and
+// successfully on a Unix-like CI (printing "ok" via `echo`) — but the
+// allowlist is `echo`, not `gh`, so the test does not depend on `gh`
+// being installed. The assertion is that the gate did NOT short-
+// circuit with an IsError plan-mode block; downstream execution
+// success is a happy bonus.
+func TestPlanGate_BashAllowlist_ExactPrefixAllowed(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"echo"})
+	results, isErr := runBashGate(t, b, run, "echo ok")
+	if isErr && strings.Contains(results[0].Content, "Plan mode: Bash command") {
+		t.Errorf("expected gate to allow 'echo ok' against allowlist [echo], got blocked: %s", results[0].Content)
+	}
+}
+
+// Token-boundary rejection: `gh` does NOT match `ghost`. This is the
+// headline claim from the commit message — the gate splits on
+// whitespace and matches tokens exactly, so a substring like `gh` in
+// `ghost` is correctly rejected.
+//
+// Uses a command that the surrounding tool layer would not execute
+// even if the gate let it through (no such command), so the only
+// observable signal is the gate's own short-circuit IsError result.
+func TestPlanGate_BashAllowlist_TokenBoundaryRejected(t *testing.T) {
+	b, run, emitted := bashGateHelper(t, []string{"gh"})
+	results, isErr := runBashGate(t, b, run, "ghost --foo")
+	if !isErr {
+		t.Fatalf("expected 'ghost --foo' to be blocked against allowlist [gh]")
+	}
+	if !strings.Contains(results[0].Content, "not in the allowed list") {
+		t.Errorf("expected blocked-command message, got: %s", results[0].Content)
+	}
+	if !strings.Contains(results[0].Content, "ghost --foo") {
+		t.Errorf("expected blocked message to quote the offending command, got: %s", results[0].Content)
+	}
+	// The gate must also emit a ToolResultEvent so the engine observer
+	// stream sees the block (consumers may render it). Mirror the
+	// Write gate's event-emission test pattern.
+	foundEvent := false
+	for _, ev := range *emitted {
+		if tre, ok := ev.Data.(*types.ToolResultEvent); ok && tre.IsError {
+			foundEvent = true
+			if !strings.Contains(tre.Content, "ghost") {
+				t.Errorf("expected emitted ToolResultEvent to contain command, got: %s", tre.Content)
+			}
+		}
+	}
+	if !foundEvent {
+		t.Error("expected an IsError ToolResultEvent to be emitted for the blocked Bash call")
+	}
+}
+
+// Multi-token prefix: `git log` allows `git log --oneline -10` because
+// both leading tokens of the command match both prefix tokens.
+func TestPlanGate_BashAllowlist_MultiTokenPrefixAllowed(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"git log"})
+	results, isErr := runBashGate(t, b, run, "git log --oneline -10")
+	if isErr && strings.Contains(results[0].Content, "Plan mode: Bash command") {
+		t.Errorf("expected gate to allow 'git log --oneline -10' against allowlist [git log], got blocked: %s", results[0].Content)
+	}
+}
+
+// Multi-token prefix mismatch: `git log` does NOT match `git status`
+// because the second token differs even though the first matches.
+// Pins that the gate matches *every* prefix token, not just the first.
+func TestPlanGate_BashAllowlist_MultiTokenPrefixMismatch(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"git log"})
+	results, isErr := runBashGate(t, b, run, "git status --short")
+	if !isErr {
+		t.Fatalf("expected 'git status --short' to be blocked against allowlist [git log]")
+	}
+	if !strings.Contains(results[0].Content, "not in the allowed list") {
+		t.Errorf("expected blocked-command message, got: %s", results[0].Content)
+	}
+}
+
+// Empty allowlist: when run.planModeAllowedBashCommands is nil/empty,
+// the gate is a no-op — the surrounding tool execution proceeds as
+// usual. In practice Bash isn't in the plan-mode tool list when the
+// allowlist is empty, but the gate code path must still no-op safely
+// because someone could call executeTools with a Bash block and an
+// empty allowlist (e.g. a misconfigured run).
+//
+// The observable signal: no plan-mode block message in the result. We
+// pick a command (`echo`) that, if executed, would just return; the
+// assertion is on the absence of the plan-mode block, not on tool
+// execution success.
+func TestPlanGate_BashAllowlist_EmptyAllowlist_NoGate(t *testing.T) {
+	b, run, _ := bashGateHelper(t, nil)
+	results, isErr := runBashGate(t, b, run, "echo no-gate")
+	if isErr && strings.Contains(results[0].Content, "Plan mode: Bash command") {
+		t.Errorf("expected empty allowlist to skip the gate (no plan-mode block), got: %s", results[0].Content)
+	}
+}
+
+// Case sensitivity: `gh` does NOT match `GH pr view`. The gate uses
+// strings.Fields + exact-string token comparison, which is case-
+// sensitive. Documenting this so a future change that relaxes case
+// matching has to update this test deliberately rather than slip
+// through unnoticed.
+func TestPlanGate_BashAllowlist_CaseSensitive(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"gh"})
+	results, isErr := runBashGate(t, b, run, "GH pr view 1")
+	if !isErr {
+		t.Fatalf("expected 'GH pr view 1' to be blocked against allowlist [gh] (case-sensitive matching)")
+	}
+	if !strings.Contains(results[0].Content, "not in the allowed list") {
+		t.Errorf("expected blocked-command message, got: %s", results[0].Content)
+	}
+}
+
+// Bash gate only fires in plan mode: when run.planMode is false, even
+// an empty allowlist must not produce a plan-mode block. Documents
+// that the gate's plan-mode predicate is load-bearing.
+func TestPlanGate_BashAllowlist_NotInPlanMode_NoGate(t *testing.T) {
+	b, run, _ := planGateHelper(t, false, "")
+	run.planModeAllowedBashCommands = []string{"gh"}
+	results, isErr := runBashGate(t, b, run, "echo not-in-plan-mode")
+	if isErr && strings.Contains(results[0].Content, "Plan mode: Bash command") {
+		t.Errorf("expected non-plan-mode run to skip the gate, got: %s", results[0].Content)
+	}
+}
+
+// Lowercase `bash` tool name (the gate accepts both "Bash" and
+// "bash"). Some providers emit lowercased tool names; the gate must
+// fire for both. Pins the `block.Name == "Bash" || block.Name == "bash"`
+// disjunction in the gate.
+func TestPlanGate_BashAllowlist_LowercaseBashName(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"gh"})
+	blocks := []types.LlmContentBlock{{
+		Name:  "bash",
+		ID:    "lowercase-bash",
+		Input: map[string]interface{}{"command": "ghost foo"},
+	}}
+	res, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res[0].IsError || !strings.Contains(res[0].Content, "not in the allowed list") {
+		t.Errorf("expected lowercase 'bash' to also be gated, got: %s", res[0].Content)
 	}
 }

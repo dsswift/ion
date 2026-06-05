@@ -4,8 +4,8 @@
 //   - kind/id: identifies which registered handler to dispatch
 //     (must match a current entry in the host's asyncreg).
 //   - ctx: a fresh extension Context built by the session manager via
-//     extcontext.NewExtContext for this fire. The host pins ctx as
-//     currentCtx for the duration of the call so ext/* RPCs from
+//     extcontext.NewExtContext for this fire. The host pushes ctx onto
+//     the ctxStack for the duration of the call so ext/* RPCs from
 //     inside the handler (dispatchAgent, sendPrompt, emit, …) resolve
 //     normally.
 //   - payload: kind-specific data (webhook: request envelope; schedule:
@@ -66,14 +66,13 @@ func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload in
 		Payload:    payload,
 	}
 
-	// Pin ctx as currentCtx so ext/* RPCs from inside the handler
+	// Pin ctx onto the context stack so ext/* RPCs from inside the handler
 	// (dispatchAgent / sendPrompt / emit / …) resolve normally. This
 	// is the single piece that retires the cache-a-ctx workaround from
-	// #132 — the handler runs under the same currentCtx discipline as
+	// #132 — the handler runs under the same ctxStack discipline as
 	// a real hook.
-	prev := h.currentCtx.Load()
-	h.currentCtx.Store(ctx)
-	defer h.currentCtx.Store(prev)
+	h.ctxStack.Push(ctx)
+	defer h.ctxStack.Pop()
 
 	utils.Debug("extension", fmt.Sprintf("FireAsync: ext=%s kind=%s id=%q timeout=%s", h.name, kind, id, timeout))
 	resp, err := h.callWithTimeout("engine/fire_async", envelope, timeout)

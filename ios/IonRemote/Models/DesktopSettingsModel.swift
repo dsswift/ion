@@ -15,31 +15,115 @@ import Foundation
 //
 // Schema-on-the-wire (Apple-Settings-style UX)
 // ────────────────────────────────────────────
-// The desktop emits both values and metadata (label, description, group)
-// in every snapshot. iOS auto-renders the Settings detail view from this
-// metadata — there is no hardcoded per-key Swift code. Adding a new
-// projectable setting on the desktop is a one-line allowlist entry; iOS
-// picks it up on the next snapshot. The view falls back to a generic
-// "Other" section when it sees an unknown `group` identifier so future
-// desktop changes never crash older iOS builds.
+// The desktop emits both values and metadata (label, description, group,
+// choices, range, itemSchema) in every snapshot. iOS auto-renders the
+// Settings detail view from this metadata — there is no hardcoded
+// per-key Swift code. Adding a new projectable setting on the desktop
+// is a one-line allowlist entry; iOS picks it up on the next snapshot.
+// The view falls back to a generic "Other" section when it sees an
+// unknown `group` identifier and a read-only string row when it sees an
+// unknown `type` value, so future desktop changes never crash older iOS
+// builds.
+//
+// Type system
+// ───────────
+// Five wire types: `boolean`, `string`, `number`, `enum`, `list`.
+//   - `boolean` → Toggle.
+//   - `string` → TextField.
+//   - `number` → Stepper (clamped by the optional `range` field).
+//   - `enum` → Picker with `choices`. `value` may be `null` for nullable
+//             enums (the "None" choice).
+//   - `list` → NavigationLink to a per-record editor screen
+//             (DesktopSettingsListEditor). The list's `itemSchema`
+//             declares the per-record fields; the editor reuses the
+//             same row renderers recursively.
 //
 // The structs in this file are deliberately small and Codable-friendly
 // so JSONDecoder can populate them directly off the wire payload.
 
 /// Allowed value types for a projected setting. Mirrors the desktop's
 /// `ProjectableType`. The view layer switches on this to decide which
-/// SwiftUI control to render (Toggle for boolean, TextField for string,
-/// Stepper for number).
+/// SwiftUI control to render.
+///
+/// Adding a new case here is wire-compatible with older builds because
+/// the desktop's `desktop_settings_snapshot` event already tolerates
+/// unknown types in its forward-compat fallback (read-only string row).
 enum DesktopSettingType: String, Codable, Sendable {
     case boolean
     case string
     case number
+    case enumType = "enum"
+    case list
+}
+
+/// One choice in an enum-typed projectable setting. Mirrors the desktop's
+/// `ProjectableChoice`. `value` is the JSON value written back over the
+/// wire when this choice is selected; `label` is the user-facing string.
+///
+/// `value` is `AnyCodable` (not optional) so the wire's `null` round-
+/// trips end-to-end as `AnyCodable(NSNull())`. This matters because
+/// SwiftUI Pickers can't use optional tags directly — we route through
+/// `selectionKey` below to translate between the wire value and a
+/// string-typed Picker selection.
+struct DesktopSettingChoice: Codable, Sendable, Identifiable, Hashable {
+    /// Stable identifier for SwiftUI ForEach. Derived from `label` —
+    /// labels are unique within a single enum's choice set (the
+    /// desktop guarantees this by construction).
+    var id: String { label }
+
+    let value: AnyCodable
+    let label: String
+
+    /// String form of `value` for use as a SwiftUI Picker selection
+    /// tag. JSON null (`NSNull()` under AnyCodable) becomes the empty
+    /// string; this is reversed back to `null` when writing the value
+    /// over the wire. Apple's Picker doesn't accept optional values as
+    /// tags, so we route through this intermediate string representation.
+    var selectionKey: String {
+        if value.value is NSNull { return "" }
+        if let s = value.value as? String { return s }
+        return String(describing: value.value)
+    }
+
+    static func == (lhs: DesktopSettingChoice, rhs: DesktopSettingChoice) -> Bool {
+        // Equality is structural over the wire value + label. AnyCodable
+        // doesn't conform to Equatable so we compare the underlying
+        // representations via `selectionKey`.
+        return lhs.label == rhs.label && lhs.selectionKey == rhs.selectionKey
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(label)
+        hasher.combine(selectionKey)
+    }
+}
+
+/// Optional numeric bounds carried by `number`-typed entries. Used by
+/// the Stepper renderer to clamp +/- and pick a sensible step. Absent
+/// → the view falls back to a permissive `0...10000` step-1 default.
+struct DesktopSettingRange: Codable, Sendable {
+    let min: Double
+    let max: Double
+    let step: Double
 }
 
 /// One entry in the projection schema. Carries everything iOS needs to
 /// render a row: the wire key, the value type, the visual group, the
-/// row label, the descriptive footer, and the default value to fall
-/// back on when `settings` omits the key.
+/// row label, the descriptive footer, the default value to fall back on,
+/// and per-type extensions (`choices` for enum, `range` for number,
+/// `itemSchema` for record-list, `itemType` for primitive-list).
+///
+/// List shape disambiguation
+/// ─────────────────────────
+/// A `list`-typed entry carries exactly one of:
+///   - `itemSchema`: record-list. iOS pushes a per-record editor view
+///     and renders rows as NavigationLinks (`DesktopSettingsListEditor`).
+///   - `itemType`: primitive-list. iOS renders a flat list of inline
+///     editors (`DesktopSettingsPrimitiveListEditor`) — TextField per
+///     row for `.string`, Stepper for `.number`, Toggle for `.boolean`.
+///
+/// Older desktop builds that don't know about `itemType` send neither;
+/// iOS falls through to a read-only fallback (forward-compat).
 struct DesktopSettingSchemaEntry: Codable, Sendable, Identifiable {
     /// Unique id for SwiftUI `ForEach` purposes — derived from `key`.
     var id: String { key }
@@ -53,9 +137,24 @@ struct DesktopSettingSchemaEntry: Codable, Sendable, Identifiable {
     let label: String
     let description: String
     /// Default value the desktop uses when settings.json omits the
-    /// key. AnyCodable holds the underlying Bool/String/Double; the
-    /// view reads it as a typed fallback when `settings[key]` is nil.
+    /// key. AnyCodable holds the underlying Bool/String/Double/null/
+    /// array; the view reads it as a typed fallback when `settings[key]`
+    /// is nil.
     let defaultValue: AnyCodable
+    /// For `enum`-typed entries: the available choices in render order.
+    /// Includes the "None" choice for nullable enums.
+    let choices: [DesktopSettingChoice]?
+    /// For `number`-typed entries: optional bounds.
+    let range: DesktopSettingRange?
+    /// For record-list `list`-typed entries: per-field metadata for one
+    /// record. Reuses the same `DesktopSettingSchemaEntry` recursively so
+    /// the editor renders nested rows with the same row renderers.
+    let itemSchema: [DesktopSettingSchemaEntry]?
+    /// For primitive-list `list`-typed entries: the scalar type of each
+    /// element. Mutually exclusive with `itemSchema`. When set, the
+    /// view dispatches to `DesktopSettingsPrimitiveListEditor` instead
+    /// of the record-list editor.
+    let itemType: DesktopSettingType?
 }
 
 /// Section descriptor. Pairs a stable group identifier with its

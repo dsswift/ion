@@ -1,11 +1,18 @@
 import { readFile, access } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
+import yaml from 'js-yaml'
 import { log as _log } from '../logger'
+
+/** Structured metadata parsed from YAML frontmatter in command templates. */
+export interface FrontmatterMeta {
+  description?: string
+  allowedBashCommands?: string[]
+}
 
 /** Result of slash command expansion. */
 export type SlashExpansion =
-  | { expanded: true; systemPrompt: string; userPrompt: string }
+  | { expanded: true; systemPrompt: string; userPrompt: string; frontmatter: FrontmatterMeta }
   | { expanded: false }
 
 const SLASH_RE = /^\/(\S+)\s*([\s\S]*)$/
@@ -95,7 +102,7 @@ export async function expandSlashCommand(
     const content = await tryReadFile(candidate)
     if (content === null) continue
 
-    const body = stripFrontmatter(content)
+    const { body, meta } = parseFrontmatter(content)
     const hasPlaceholder = body.includes('$ARGUMENTS')
     let resolved = body.replace(/\$ARGUMENTS/g, args)
 
@@ -116,6 +123,7 @@ export async function expandSlashCommand(
       expanded: true,
       systemPrompt: '',
       userPrompt: resolved,
+      frontmatter: meta,
     }
   }
 
@@ -136,6 +144,68 @@ export function stripFrontmatter(content: string): string {
 
   // No closing --- found; return content as-is
   return content
+}
+
+/**
+ * Parse YAML frontmatter and return both the body and structured metadata.
+ *
+ * Uses `js-yaml` (the de-facto Node ecosystem YAML parser) so the
+ * frontmatter scanner handles the full YAML 1.2 surface: inline lists,
+ * indent-block lists, quoted scalars, multiline strings, anchors,
+ * nested mappings, and so on. Replaces the previous hand-rolled regex
+ * cluster which only handled `description` (single-line) and
+ * `allowed_bash_commands` (inline / indent list) and was fragile under
+ * quoted scalars, nested mappings, or any YAML construct the regex
+ * cluster didn't anticipate.
+ *
+ * Empty / malformed frontmatter falls back to an empty meta map; the
+ * body is the original content minus the frontmatter block. YAML
+ * load errors (`yaml.load` throws on syntactically invalid YAML) are
+ * caught and logged at debug, matching the rest of the slash-expand
+ * "best-effort frontmatter" stance.
+ */
+export function parseFrontmatter(content: string): { body: string; meta: FrontmatterMeta } {
+  const lines = content.split('\n')
+  if (lines[0]?.trim() !== '---') return { body: content, meta: {} }
+
+  let closingIdx = -1
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') {
+      closingIdx = i
+      break
+    }
+  }
+  if (closingIdx === -1) return { body: content, meta: {} }
+
+  const frontmatterText = lines.slice(1, closingIdx).join('\n')
+  const body = lines.slice(closingIdx + 1).join('\n').trimStart()
+
+  let raw: unknown
+  try {
+    raw = yaml.load(frontmatterText)
+  } catch (err) {
+    _log('slash-expand', `parseFrontmatter: yaml.load failed (treating as empty meta): ${err}`)
+    return { body, meta: {} }
+  }
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { body, meta: {} }
+  }
+
+  const meta: FrontmatterMeta = {}
+  const obj = raw as Record<string, unknown>
+
+  if (typeof obj.description === 'string') {
+    meta.description = obj.description
+  }
+  if (Array.isArray(obj.allowed_bash_commands)) {
+    meta.allowedBashCommands = obj.allowed_bash_commands
+      .filter((v): v is string => typeof v === 'string')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  return { body, meta }
 }
 
 /** Try to read a file, returning null if it doesn't exist or can't be read. */

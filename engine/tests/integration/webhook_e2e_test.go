@@ -91,7 +91,7 @@ func (b *eventBus) ofType(t string) []types.EngineEvent {
 // The session resolver returns a stub Context with just SessionKey set
 // — this matches the real prod behavior for handlers that only call
 // dispatchAgent / emit / etc. through subsequent ext/* RPCs (which
-// pick up currentCtx via Host.FireAsync's atomic.Pointer store).
+// pick up the context via Host.FireAsync's ctxStack push).
 func setupWebhookE2E(t *testing.T) *e2eEnv {
 	t.Helper()
 	requireEsbuild(t)

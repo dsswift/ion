@@ -354,7 +354,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -367,11 +367,18 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				EnterPlanModeDescription: cmd.EnterPlanModeDescription,
 				PlanModeSparseReminder:   cmd.PlanModeSparseReminder,
 				PlanFilePath:             cmd.PlanFilePath,
-				CompactTargetPercent:     cmd.CompactTargetPercent,
-				CompactMicroKeepTurns:    cmd.CompactMicroKeepTurns,
-				CompactEnabled:           cmd.CompactEnabled,
-				CompactSummaryEnabled:    cmd.CompactSummaryEnabled,
-				CompactMemoryEnabled:     cmd.CompactMemoryEnabled,
+				// Per-prompt bash-allowlist additions. Forwarded to
+				// runloop_setup.buildToolDefs which unions them with the
+				// session allowlist for this run only. See
+				// docs/protocol/client-commands.md § set_plan_mode for the
+				// three-layer configuration model (engine config → session
+				// override → per-prompt additions).
+				BashAllowlistAdditionsForThisPrompt: cmd.BashAllowlistAdditionsForThisPrompt,
+				CompactTargetPercent:                cmd.CompactTargetPercent,
+				CompactMicroKeepTurns:               cmd.CompactMicroKeepTurns,
+				CompactEnabled:                      cmd.CompactEnabled,
+				CompactSummaryEnabled:               cmd.CompactSummaryEnabled,
+				CompactMemoryEnabled:                cmd.CompactMemoryEnabled,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
@@ -438,6 +445,17 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "set_plan_mode":
 		enabled := cmd.Enabled != nil && *cmd.Enabled
 		s.manager.SetPlanMode(cmd.Key, enabled, cmd.AllowedTools, cmd.Source)
+		// Tri-valued PlanModeAllowedBashCommands per the protocol doc:
+		//   - nil   (JSON omitted): no change to existing allowlist
+		//   - []    (JSON []):      clear allowlist
+		//   - [...] (non-empty):    replace allowlist
+		// Go's JSON decoder preserves the nil-vs-empty distinction on
+		// []string fields with omitempty, so this guard distinguishes
+		// "field absent" from "field present as []" without any new
+		// wire surface.
+		if cmd.PlanModeAllowedBashCommands != nil {
+			s.manager.SetPlanModeBashAllowlist(cmd.Key, cmd.PlanModeAllowedBashCommands)
+		}
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "branch":

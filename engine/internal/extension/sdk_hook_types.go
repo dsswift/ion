@@ -246,6 +246,12 @@ type WorkspaceFileChangedInfo struct {
 
 // TaskLifecycleInfo carries details about a task event.
 type TaskLifecycleInfo struct {
+	// TaskID is `<session-key>-t<turn-number>` on every engine backend.
+	// The format is a public contract; consumers join task_created and
+	// task_completed on (SessionKey, TaskID) and correlate with the
+	// adjacent turn_start / turn_end hooks via TurnInfo.TurnNumber.
+	// Changes to the format require an ADR per
+	// docs/hooks/reference.md § Task Lifecycle.
 	TaskID string                 `json:"task_id"`
 	Name   string                 `json:"name,omitempty"`
 	Status string                 `json:"status,omitempty"`

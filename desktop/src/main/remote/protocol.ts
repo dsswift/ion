@@ -8,6 +8,33 @@
 
 import type { NormalizedEvent, TabStatus, PermissionRequest, AgentStateUpdate, StatusFields } from '../../shared/types'
 
+/**
+ * Wire shape for one entry in `desktop_settings_snapshot.schema`.
+ *
+ * Mirrors `ProjectableSettingSchema` from
+ * `desktop/src/main/projectable-settings-types.ts`. Declared here as a
+ * named interface (rather than inlined) so the recursive `itemSchema`
+ * reference can name itself — TS forbids self-references inside
+ * anonymous object types.
+ *
+ * The recursion supports list-typed settings whose records contain
+ * sub-fields. Today the per-record schemas describe only scalar leaves
+ * (boolean/string/number/enum), but the wire type allows arbitrary
+ * nesting so a future list-of-list shape would not require a protocol
+ * bump.
+ */
+export interface DesktopSettingsSchemaEntry {
+  key: string
+  type: 'boolean' | 'string' | 'number' | 'enum' | 'list'
+  group: string
+  label: string
+  description: string
+  defaultValue: unknown
+  choices?: Array<{ value: string | null; label: string }>
+  range?: { min: number; max: number; step: number }
+  itemSchema?: DesktopSettingsSchemaEntry[]
+}
+
 // ─── Remote Tab State (lightweight projection for mobile clients) ───
 
 export interface RemoteTabState {
@@ -259,14 +286,7 @@ export type RemoteEvent =
   | {
       type: 'desktop_settings_snapshot'
       settings: Record<string, unknown>
-      schema: Array<{
-        key: string
-        type: 'boolean' | 'string' | 'number'
-        group: string
-        label: string
-        description: string
-        defaultValue: unknown
-      }>
+      schema: Array<DesktopSettingsSchemaEntry>
       groups: Array<{ id: string; label: string }>
     }
   | { type: 'heartbeat'; seq: number; ts: number; buffered: number }

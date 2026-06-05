@@ -12,14 +12,15 @@ import (
 
 func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) types.RunOptions {
 	opts := types.RunOptions{
-		Prompt:        text,
-		ProjectPath:   s.config.WorkingDirectory,
-		SessionID:     s.conversationID,
-		MaxTokens:     s.config.MaxTokens,
-		Thinking:      s.config.Thinking,
-		PlanMode:      s.planMode,
-		PlanModeTools: s.planModeTools,
-		PlanFilePath:  s.planFilePath,
+		Prompt:                      text,
+		ProjectPath:                 s.config.WorkingDirectory,
+		SessionID:                   s.conversationID,
+		MaxTokens:                   s.config.MaxTokens,
+		Thinking:                    s.config.Thinking,
+		PlanMode:                    s.planMode,
+		PlanModeTools:               s.planModeTools,
+		PlanFilePath:                s.planFilePath,
+		PlanModeAllowedBashCommands: s.planModeAllowedBashCommands,
 	}
 
 	if overrides != nil {
@@ -58,6 +59,16 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		// Empty string means "use buildPlanModeSparseReminder default".
 		if overrides.PlanModeSparseReminder != "" {
 			opts.PlanModeSparseReminder = overrides.PlanModeSparseReminder
+		}
+		// Forward the per-prompt bash-allowlist additions. The field is
+		// transient by design: opts.BashAllowlistAdditionsForThisPrompt is
+		// unioned with the session allowlist when runloop_setup builds the
+		// run-time tool list (see buildToolDefs). The session-level
+		// engineSession.planModeAllowedBashCommands is NOT mutated by this
+		// field — that invariant is the point of having a separate field
+		// rather than a session-scoped mutation here.
+		if len(overrides.BashAllowlistAdditionsForThisPrompt) > 0 {
+			opts.BashAllowlistAdditionsForThisPrompt = overrides.BashAllowlistAdditionsForThisPrompt
 		}
 		// Compaction overrides — per-prompt tuning of context compaction.
 		if overrides.CompactTargetPercent > 0 {
@@ -148,6 +159,9 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	}
 	if m.config.Limits.DisablePlanModeReminder != nil && *m.config.Limits.DisablePlanModeReminder {
 		opts.DisablePlanModeReminder = true
+	}
+	if len(opts.PlanModeAllowedBashCommands) == 0 && len(m.config.Limits.PlanModeAllowedBashCommands) > 0 {
+		opts.PlanModeAllowedBashCommands = m.config.Limits.PlanModeAllowedBashCommands
 	}
 	if m.config.Limits.DisableTurnLimitWarning != nil && *m.config.Limits.DisableTurnLimitWarning {
 		opts.DisableTurnLimitWarning = true

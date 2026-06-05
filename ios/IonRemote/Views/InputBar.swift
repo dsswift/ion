@@ -107,7 +107,7 @@ struct InputBar: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            if keyboardVisible {
+            if keyboardVisible && viewModel.showKeyboardUtilityBarInCLI {
                 KeyboardUtilityBar(
                     onDismiss: { isFocused = false },
                     promptText: promptTextBinding

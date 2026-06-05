@@ -174,9 +174,31 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 
 	runCfg.Hooks.OnTurnStart = func(_ string, turnNum int) {
 		extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		// Fire task_created in tandem with turn_start so the hook surface
+		// is consistent across backends. The CLI backend fires both from
+		// fireCliTurnHooks (see event_translation.go); the ApiBackend
+		// path mirrors that here using the same TaskID format
+		// (<session-key>-t<turn-number>) so external consumers observe
+		// identical TaskIDs regardless of which backend serviced the run.
+		taskID := fmt.Sprintf("%s-t%d", key, turnNum)
+		utils.Debug("Session", fmt.Sprintf("ApiBackend OnTurnStart: task_created taskID=%s turn=%d", taskID, turnNum))
+		_ = extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
+			TaskID: taskID,
+			Name:   fmt.Sprintf("turn-%d", turnNum),
+			Status: "running",
+		})
 	}
 	runCfg.Hooks.OnTurnEnd = func(_ string, turnNum int) {
 		extGroup.FireTurnEnd(ctx, extension.TurnInfo{TurnNumber: turnNum})
+		// Fire task_completed at turn end. Same TaskID format as the
+		// matching task_created above.
+		taskID := fmt.Sprintf("%s-t%d", key, turnNum)
+		utils.Debug("Session", fmt.Sprintf("ApiBackend OnTurnEnd: task_completed taskID=%s turn=%d", taskID, turnNum))
+		_ = extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{
+			TaskID: taskID,
+			Name:   fmt.Sprintf("turn-%d", turnNum),
+			Status: "completed",
+		})
 
 		// Trigger background session memory update if wired. The session
 		// memory debounces internally (turn count + token growth), so this

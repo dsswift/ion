@@ -216,7 +216,7 @@ export function EngineCategory() {
   )
 
   const profileSubtitle = (p: EngineProfile) =>
-    (p.extensions || []).map(e => e.split('/').pop()).join(', ')
+    (p.extensions || []).map(e => e.split('/').slice(-2).join('/')).join(', ')
 
   return (
     <>

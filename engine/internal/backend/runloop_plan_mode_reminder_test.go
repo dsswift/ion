@@ -125,7 +125,7 @@ func TestShouldInjectPlanModeReminderForRun_ThresholdBoundary(t *testing.T) {
 // full plan-mode prompt includes the negative-example callout for anti-pattern
 // phrases. Guards against silent regression of Fix 1.
 func TestBuildPlanModePrompt_ContainsForbiddenProseCallout(t *testing.T) {
-	result := buildPlanModePrompt("/tmp/test-plan.md", false)
+	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
 	phrases := []string{
 		"Should I proceed",
 		"ExitPlanMode",

@@ -256,7 +256,7 @@ func TestWebSearchMode_DefaultsToAuto(t *testing.T) {
 // --- plan mode prompt tests ---
 
 func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", true)
+	prompt := buildPlanModePrompt("/tmp/plan.md", true, nil)
 
 	checks := []struct {
 		label    string
@@ -278,7 +278,7 @@ func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
 }
 
 func TestBuildPlanModePrompt_NewFile(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", false)
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
 
 	if !strings.Contains(prompt, "Create your plan at") {
 		t.Error("expected 'Create your plan at' for new file")
@@ -724,5 +724,250 @@ func TestLoadOrCreateConversation_NoSessionID_CreatesFresh(t *testing.T) {
 	}
 	if conv.ID == "" {
 		t.Error("expected fresh conversation to have a non-empty ID")
+	}
+}
+
+// --- plan mode Bash allowlist tests ---
+
+// TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet verifies that the
+// Bash tool appears in the plan-mode tool list when the session has a
+// non-empty PlanModeAllowedBashCommands.
+func TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "bash-allow", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{
+		PlanMode:                     true,
+		PlanFilePath:                 "/tmp/plan.md",
+		PlanModeAllowedBashCommands: []string{"gh", "git log"},
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	hasBash := false
+	for _, td := range toolDefs {
+		if td.Name == "Bash" {
+			hasBash = true
+			break
+		}
+	}
+	if !hasBash {
+		t.Error("expected Bash tool in plan mode when PlanModeAllowedBashCommands is set")
+	}
+	// Verify the allowlist was stored on the run.
+	if len(run.planModeAllowedBashCommands) != 2 {
+		t.Errorf("expected 2 bash allowlist entries on run, got %d", len(run.planModeAllowedBashCommands))
+	}
+}
+
+// TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty verifies that Bash is
+// excluded from plan-mode tools when no bash allowlist is configured.
+func TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "no-bash", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{
+		PlanMode:     true,
+		PlanFilePath: "/tmp/plan.md",
+		// PlanModeAllowedBashCommands is nil
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "Bash" {
+			t.Error("Bash tool should NOT appear in plan mode when no bash allowlist is set")
+		}
+	}
+}
+
+// TestBuildPlanModePrompt_BashAllowlist verifies that the plan mode prompt
+// includes bash-specific guidance when the allowlist is non-empty.
+func TestBuildPlanModePrompt_BashAllowlist(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh", "git log"})
+
+	if !strings.Contains(prompt, "Bash (restricted)") {
+		t.Error("expected 'Bash (restricted)' in Phase 1 tool list")
+	}
+	if !strings.Contains(prompt, "gh, git log") {
+		t.Error("expected allowed commands listed in prompt")
+	}
+	if !strings.Contains(prompt, "ONLY for commands starting with") {
+		t.Error("expected Bash restriction guidance in prompt")
+	}
+}
+
+// TestBuildPlanModePrompt_NoBashWithoutAllowlist verifies that the plan mode
+// prompt does NOT mention Bash when no allowlist is configured.
+func TestBuildPlanModePrompt_NoBashWithoutAllowlist(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
+
+	if strings.Contains(prompt, "Bash (restricted)") {
+		t.Error("should NOT contain 'Bash (restricted)' when no allowlist")
+	}
+	if strings.Contains(prompt, "ONLY for commands starting with") {
+		t.Error("should NOT contain bash restriction guidance when no allowlist")
+	}
+	// The restrictions section should still ban Bash entirely
+	if !strings.Contains(prompt, "MUST NOT call Bash") {
+		t.Error("should contain 'MUST NOT call Bash' when no allowlist is set")
+	}
+}
+
+// TestBuildPlanModePrompt_BashRestrictionLineChanges verifies that when an
+// allowlist IS set, the restrictions section no longer bans Bash entirely
+// but instead mentions the allowed command prefixes.
+func TestBuildPlanModePrompt_BashRestrictionLineChanges(t *testing.T) {
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh"})
+
+	if strings.Contains(prompt, "MUST NOT call Bash") {
+		t.Error("should NOT contain 'MUST NOT call Bash' when allowlist is set — it's allowed (restricted)")
+	}
+	if !strings.Contains(prompt, "MUST NOT call NotebookEdit") {
+		t.Error("should still ban NotebookEdit when bash is allowed")
+	}
+}
+
+// --- per-prompt bash allowlist additions ---
+
+// TestEffectiveBashAllowlist_NoAdditions returns the session allowlist
+// untouched (hot path, no allocation when there are no per-prompt
+// additions).
+func TestEffectiveBashAllowlist_NoAdditions(t *testing.T) {
+	opts := types.RunOptions{
+		PlanModeAllowedBashCommands: []string{"gh", "git log"},
+	}
+	got := effectiveBashAllowlist(opts)
+	want := []string{"gh", "git log"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d entries, got %d (%v)", len(want), len(got), got)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestEffectiveBashAllowlist_AdditionsOnly returns just the additions when
+// the session allowlist is empty. Pins that a fresh slash command (no
+// session allowlist set) can still grant per-prompt permissions.
+func TestEffectiveBashAllowlist_AdditionsOnly(t *testing.T) {
+	opts := types.RunOptions{
+		BashAllowlistAdditionsForThisPrompt: []string{"gh pr diff"},
+	}
+	got := effectiveBashAllowlist(opts)
+	if len(got) != 1 || got[0] != "gh pr diff" {
+		t.Errorf("expected [\"gh pr diff\"], got %v", got)
+	}
+}
+
+// TestEffectiveBashAllowlist_UnionDedupe pins the session-first ordering
+// and the de-duplication rule: entries present in both lists appear once,
+// in the session-allowlist position. New entries appear in the order they
+// were declared in the per-prompt additions list.
+func TestEffectiveBashAllowlist_UnionDedupe(t *testing.T) {
+	opts := types.RunOptions{
+		PlanModeAllowedBashCommands:         []string{"gh", "git log"},
+		BashAllowlistAdditionsForThisPrompt: []string{"git log", "gh pr diff", "gh"},
+	}
+	got := effectiveBashAllowlist(opts)
+	want := []string{"gh", "git log", "gh pr diff"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d entries, got %d (%v)", len(want), len(got), got)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: got %q want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+// TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState verifies that
+// per-prompt additions land on `activeRun.planModeAllowedBashCommands`
+// alongside (after de-dup) the session-level entries. This is the gate
+// state consulted by applyPlanModeBashGate per-tool-call, so without
+// this assertion the per-prompt additions would be silently denied at
+// runtime even though they appeared in the system prompt.
+func TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "per-prompt", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{
+		PlanMode:                            true,
+		PlanFilePath:                        "/tmp/plan.md",
+		PlanModeAllowedBashCommands:         []string{"gh"},
+		BashAllowlistAdditionsForThisPrompt: []string{"git diff"},
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	hasBash := false
+	for _, td := range toolDefs {
+		if td.Name == "Bash" {
+			hasBash = true
+			break
+		}
+	}
+	if !hasBash {
+		t.Error("expected Bash in tool list when per-prompt additions extend the session allowlist")
+	}
+	// Effective allowlist on the run: ["gh", "git diff"], de-duplicated and
+	// session-first.
+	got := run.planModeAllowedBashCommands
+	want := []string{"gh", "git diff"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v on run, got %v", want, got)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestBuildToolDefs_PerPromptBashAdditionsDoNotPersist pins the BLOCKER
+// contract from Fix 7: per-prompt additions live only for one run and
+// MUST NOT mutate the session-level engineSession.planModeAllowedBashCommands.
+// We simulate two consecutive runs in the same session by reusing the
+// same activeRun and inspecting opts.PlanModeAllowedBashCommands (the
+// session-level source) across the boundary.
+//
+// The buildToolDefs path is the engine surface this test exercises;
+// the activeRun.planModeAllowedBashCommands change is run-local. The
+// real persistence check is done at the session layer (Fix 7's session
+// allowlist remains the source of truth across prompts).
+func TestBuildToolDefs_PerPromptBashAdditionsDoNotPersist(t *testing.T) {
+	b := NewApiBackend()
+
+	// Prompt 1: session allowlist ["gh"], per-prompt additions ["git diff"].
+	// The effective allowlist for this run is ["gh", "git diff"]. Crucially,
+	// the input opts.PlanModeAllowedBashCommands is NOT mutated — the per-
+	// prompt additions live on the activeRun, not on the session source.
+	run1 := &activeRun{requestID: "run-1", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts1 := types.RunOptions{
+		PlanMode:                            true,
+		PlanFilePath:                        "/tmp/plan.md",
+		PlanModeAllowedBashCommands:         []string{"gh"},
+		BashAllowlistAdditionsForThisPrompt: []string{"git diff"},
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+	_, _ = b.buildToolDefs(run1, opts1, provider)
+
+	if len(opts1.PlanModeAllowedBashCommands) != 1 || opts1.PlanModeAllowedBashCommands[0] != "gh" {
+		t.Errorf("session-level allowlist mutated by per-prompt additions: got %v, want [gh]", opts1.PlanModeAllowedBashCommands)
+	}
+
+	// Prompt 2: same session allowlist ["gh"], no per-prompt additions.
+	// The effective allowlist must be ["gh"] only — "git diff" from the
+	// prior prompt must NOT carry over.
+	run2 := &activeRun{requestID: "run-2", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts2 := types.RunOptions{
+		PlanMode:                    true,
+		PlanFilePath:                "/tmp/plan.md",
+		PlanModeAllowedBashCommands: []string{"gh"},
+	}
+	_, _ = b.buildToolDefs(run2, opts2, provider)
+
+	got := run2.planModeAllowedBashCommands
+	if len(got) != 1 || got[0] != "gh" {
+		t.Errorf("per-prompt additions leaked into a subsequent run: got %v, want [gh]", got)
 	}
 }

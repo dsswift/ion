@@ -265,7 +265,7 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
   })
 
   it('expands via .md and submits the expansion as a normal prompt', async () => {
-    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded body' })
+    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded body', frontmatter: {} })
     const opts: any = { prompt: '/ion--review 138', projectPath: '/proj' }
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -292,7 +292,7 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
   it('auto-switches permission mode to auto on .md expansion', async () => {
     // Explicitly set first-prompt state so the guard allows the switch.
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, conversationId: null })
-    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded' })
+    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded', frontmatter: {} })
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: '/ion--review 138',
@@ -413,7 +413,7 @@ describe('processIncomingPrompt — engine reports unknown_command, .md template
     mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
       setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
     })
-    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'Review changes', userPrompt: 'Please review PRs 138, 139' })
+    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'Review changes', userPrompt: 'Please review PRs 138, 139', frontmatter: {} })
   })
 
   it('passes projectPath through to expandSlashCommand', async () => {

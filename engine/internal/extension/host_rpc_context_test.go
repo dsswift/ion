@@ -38,7 +38,7 @@ func TestExtGetContextUsage_ReturnsValueFromCtx(t *testing.T) {
 			return &ContextUsage{Percent: 42, Tokens: 84000, Cost: 0.123}
 		},
 	}
-	h.currentCtx.Store(ctx)
+	h.ctxStack.Push(ctx)
 
 	h.handleExtRequest("ext/get_context_usage", 1, contextUsagePayload(t))
 
@@ -99,7 +99,7 @@ func TestExtGetContextUsage_ReturnsNullWhenGetterReturnsNil(t *testing.T) {
 			return nil
 		},
 	}
-	h.currentCtx.Store(ctx)
+	h.ctxStack.Push(ctx)
 
 	h.handleExtRequest("ext/get_context_usage", 1, contextUsagePayload(t))
 
@@ -152,7 +152,7 @@ func TestExtSearchHistory_PassesThroughResults(t *testing.T) {
 			}, nil
 		},
 	}
-	h.currentCtx.Store(ctx)
+	h.ctxStack.Push(ctx)
 
 	h.handleExtRequest("ext/search_history", 1, searchHistoryPayload(t, "api", 25))
 
@@ -232,7 +232,7 @@ func TestExtSearchHistory_EmptyArrayWhenSearcherUnset(t *testing.T) {
 	// ctx without SearchHistory wired -- mimics partial wiring (e.g. before
 	// extcontext.NewExtContext ran).
 	ctx := &Context{Cwd: "/tmp"}
-	h.currentCtx.Store(ctx)
+	h.ctxStack.Push(ctx)
 
 	h.handleExtRequest("ext/search_history", 1, searchHistoryPayload(t, "anything", 5))
 
@@ -263,7 +263,7 @@ func TestExtSearchHistory_NilSliceMarshalsAsEmptyArray(t *testing.T) {
 			return nil, nil
 		},
 	}
-	h.currentCtx.Store(ctx)
+	h.ctxStack.Push(ctx)
 
 	h.handleExtRequest("ext/search_history", 1, searchHistoryPayload(t, "x", 0))
 
