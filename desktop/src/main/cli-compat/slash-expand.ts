@@ -8,6 +8,18 @@ import { log as _log } from '../logger'
 export interface FrontmatterMeta {
   description?: string
   allowedBashCommands?: string[]
+  /**
+   * Model identifier hint from the slash-command frontmatter. May be a
+   * tier alias (resolved via `~/.ion/models.json` `tiers` section by
+   * the engine's `modelconfig.ResolveTierChain`), a literal model name,
+   * or anything in between. The desktop does NOT attempt resolution
+   * itself — the field is forwarded onto `RunOptions.Model` and the
+   * engine walks the chain (tier → literal → `defaultModel` from
+   * `engine.json`). An explicit per-prompt override on the desktop
+   * side takes precedence over this hint; see `prompt-pipeline.ts`
+   * for the no-stomp policy.
+   */
+  model?: string
 }
 
 /** Result of slash command expansion. */
@@ -203,6 +215,18 @@ export function parseFrontmatter(content: string): { body: string; meta: Frontma
       .filter((v): v is string => typeof v === 'string')
       .map((s) => s.trim())
       .filter(Boolean)
+  }
+  // Optional `model` hint. Accepted only as a string; anything else
+  // (number, array, object, null) is ignored — the field's contract
+  // is "a tier alias or model id", neither of which is meaningful as
+  // a non-string. Whitespace is trimmed so `model: '  smart  '` →
+  // `'smart'`; an empty/whitespace-only value collapses to undefined
+  // so it doesn't appear in logs as a spurious-looking blank hint.
+  if (typeof obj.model === 'string') {
+    const trimmed = obj.model.trim()
+    if (trimmed.length > 0) {
+      meta.model = trimmed
+    }
   }
 
   return { body, meta }

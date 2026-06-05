@@ -474,6 +474,39 @@ async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void>
         log(`pipeline: frontmatter bash allowlist additions=${expansion.allowedBashCommands.length} key=${key} (per-prompt, no session mutation)`)
         p.bashAllowlistAdditionsForThisPrompt = expansion.allowedBashCommands
       }
+      // If the expansion specifies a model hint (frontmatter `model:`),
+      // apply it onto the appropriate model field. The engine resolves
+      // the value through tier → literal → `defaultModel` (see
+      // `engine/internal/session/prompt_options.go:resolveModelTier`
+      // and `engine/internal/backend/runloop.go:56-65`); the desktop
+      // does not pre-resolve it.
+      //
+      // No-stomp policy: an explicit per-prompt model override (set by
+      // the renderer via `runOptions.model`, or by an engine-tab caller
+      // via `p.model`) takes precedence over the frontmatter hint.
+      // Matches the precedent set by `enterPlanModeDescription` /
+      // `planModeSparseReminder` in `submitAsPrompt`.
+      //
+      // Both branches log (apply + skip-because-already-set) per
+      // `desktop/AGENTS.md` § Logging — operators investigating "why
+      // did the wrong model run?" can replay the decision from
+      // `~/.ion/desktop.log` without attaching a debugger.
+      if (expansion.model) {
+        if (p.runOptions) {
+          if (!p.runOptions.model) {
+            log(`pipeline: frontmatter model applied target=runOptions value=${expansion.model} key=${engineKey(p)}`)
+            p.runOptions.model = expansion.model
+          } else {
+            log(`pipeline: frontmatter model skipped target=runOptions reason=explicit-override existing=${p.runOptions.model} frontmatter=${expansion.model} key=${engineKey(p)}`)
+          }
+        }
+        if (!p.model) {
+          log(`pipeline: frontmatter model applied target=p value=${expansion.model} key=${engineKey(p)}`)
+          p.model = expansion.model
+        } else {
+          log(`pipeline: frontmatter model skipped target=p reason=explicit-override existing=${p.model} frontmatter=${expansion.model} key=${engineKey(p)}`)
+        }
+      }
       await submitAsPrompt(p)
       return
     }

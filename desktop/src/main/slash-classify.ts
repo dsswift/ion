@@ -132,6 +132,16 @@ export interface ExpansionResult {
   systemPrompt: string
   /** Allowed Bash command prefixes from the template's frontmatter. */
   allowedBashCommands?: string[]
+  /**
+   * Optional model hint from the template's frontmatter `model:` key.
+   * Forwarded as-is to the engine; the engine walks
+   * tier → literal → `defaultModel` (see `modelconfig.ResolveTierChain`
+   * and `runloop.go`'s unknown-model fallback). The desktop does not
+   * resolve this value; it only chooses whether to apply it to
+   * `RunOptions.Model` (no-stomp policy — explicit per-prompt
+   * overrides take precedence). See `prompt-pipeline.ts:handleSlash`.
+   */
+  model?: string
 }
 
 /**
@@ -216,6 +226,7 @@ export async function tryExpandMarkdownSlash(
       userPrompt: ionExpansion.userPrompt,
       systemPrompt: ionExpansion.systemPrompt,
       allowedBashCommands: ionExpansion.frontmatter.allowedBashCommands,
+      model: ionExpansion.frontmatter.model,
     }
   }
 
@@ -267,5 +278,6 @@ export async function tryExpandMarkdownSlash(
     userPrompt: claudeExpansion.userPrompt,
     systemPrompt: claudeExpansion.systemPrompt,
     allowedBashCommands: claudeExpansion.frontmatter.allowedBashCommands,
+    model: claudeExpansion.frontmatter.model,
   }
 }

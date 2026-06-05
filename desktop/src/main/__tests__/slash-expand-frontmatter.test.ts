@@ -146,4 +146,71 @@ describe('parseFrontmatter', () => {
     const { meta } = parseFrontmatter(content)
     expect(meta.description).toBe('with anchor')
   })
+
+  // ── model frontmatter field ───────────────────────────────────────
+  // The `model:` key is forwarded verbatim onto `RunOptions.Model`
+  // and the engine resolves it through tier → literal → defaultModel.
+  // parseFrontmatter's job is only to extract a non-empty trimmed
+  // string; non-string values are rejected to keep the contract
+  // ("a tier alias or a model id") clean.
+
+  it('parses model field as a string', () => {
+    const content = '---\nmodel: smart\n---\nbody'
+    const { body, meta } = parseFrontmatter(content)
+    expect(body).toBe('body')
+    expect(meta.model).toBe('smart')
+  })
+
+  it('leaves meta.model undefined when frontmatter has no model key', () => {
+    const content = '---\ndescription: hi\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.model).toBeUndefined()
+  })
+
+  it('ignores non-string model values', () => {
+    // YAML `model: 123` decodes to a number, not a string. The type
+    // guard in parseFrontmatter rejects it so meta.model stays
+    // undefined. This pins the guard against future refactors that
+    // might forget the `typeof === 'string'` check.
+    const content = '---\nmodel: 123\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.model).toBeUndefined()
+  })
+
+  it('trims whitespace from model value', () => {
+    // Quoted scalar preserves the leading/trailing spaces; the parser
+    // must trim them so downstream code never sees a padded value.
+    const content = '---\nmodel: "  smart  "\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.model).toBe('smart')
+  })
+
+  it('treats whitespace-only model value as absent', () => {
+    // After trim, an empty string is meaningless as a model hint;
+    // collapsing it to undefined keeps the field semantics binary
+    // (present-and-useful, or absent) so downstream pipeline logs
+    // don't show spurious-looking blank hints.
+    const content = '---\nmodel: "   "\n---\nbody'
+    const { meta } = parseFrontmatter(content)
+    expect(meta.model).toBeUndefined()
+  })
+
+  it('parses model alongside description and allowed_bash_commands', () => {
+    // Integration case: a real-world frontmatter block carrying all
+    // three currently-parsed keys. Confirms parseFrontmatter doesn't
+    // drop the model field when the surrounding fields are present.
+    const content = [
+      '---',
+      'description: Open a GitHub issue',
+      'allowed_bash_commands:',
+      '  - gh issue create',
+      'model: smart',
+      '---',
+      'body',
+    ].join('\n')
+    const { meta } = parseFrontmatter(content)
+    expect(meta.description).toBe('Open a GitHub issue')
+    expect(meta.allowedBashCommands).toEqual(['gh issue create'])
+    expect(meta.model).toBe('smart')
+  })
 })
