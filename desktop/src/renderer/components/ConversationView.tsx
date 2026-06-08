@@ -94,7 +94,7 @@ export function ConversationView() {
     startIndex = snapped
   }
 
-  const visibleMessages = startIndex > 0 ? allMessages.slice(startIndex) : allMessages
+  const visibleMessages = useMemo(() => startIndex > 0 ? allMessages.slice(startIndex) : allMessages, [allMessages, startIndex])
   const hasOlder = startIndex > 0
 
   const grouped = useMemo(

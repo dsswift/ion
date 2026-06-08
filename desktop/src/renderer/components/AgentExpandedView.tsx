@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { SpinnerGap, ArrowCircleRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -140,7 +140,7 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
           toolStatus: 'completed' as const,
           timestamp: 0,
         }))
-    const grouped = groupMessages(msgs, { includeUser: true, unifiedTurnView })
+    const grouped = useMemo(() => groupMessages(msgs, { includeUser: true, unifiedTurnView }), [msgs, unifiedTurnView])
 
     return (
       <div style={{ background: 'rgba(255,255,255,0.03)' }}>

@@ -32,8 +32,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   const includeUser = opts?.includeUser ?? true
   const hidden = opts?.hiddenMessages ?? HIDDEN_MESSAGES
 
-  console.log(`[ENGINE-BOOTSTRAP] groupMessages entry total=${messages.length}`)
-
   if (opts?.unifiedTurnView) {
     return groupMessagesUnified(messages, includeUser, hidden)
   }
@@ -60,9 +58,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
       message: representative,
       bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
     }
-    console.log(
-      `[ENGINE-BOOTSTRAP] flush run count=${bootstrapBuf.length} kept=${representative.id} suppressed=${suppressed}`
-    )
     result.push(item)
     totalRunsFlushed++
     totalSuppressed += suppressed
@@ -87,7 +82,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
           flushBootstrap()
           result.push({ kind: 'intercept', message: msg })
         } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
-          console.log(`[ENGINE-BOOTSTRAP] enqueue id=${msg.id} buf=${bootstrapBuf.length + 1}`)
           bootstrapBuf.push(msg)
         } else {
           flushBootstrap()
@@ -105,9 +99,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   flushTools()
   flushBootstrap()
 
-  console.log(
-    `[ENGINE-BOOTSTRAP] groupMessages done runs=${totalRunsFlushed} suppressed=${totalSuppressed} output=${result.length}`
-  )
   return result
 }
 
@@ -129,9 +120,6 @@ function groupMessagesUnified(
     if (bootstrapBuf.length === 0) return
     const suppressed = bootstrapBuf.length - 1
     const representative = bootstrapBuf[bootstrapBuf.length - 1]
-    console.log(
-      `[ENGINE-BOOTSTRAP] flush run count=${bootstrapBuf.length} kept=${representative.id} suppressed=${suppressed}`
-    )
     result.push({
       kind: 'harness',
       message: representative,
@@ -180,7 +168,6 @@ function groupMessagesUnified(
         flushBootstrap()
         result.push({ kind: 'intercept', message: msg })
       } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
-        console.log(`[ENGINE-BOOTSTRAP] enqueue id=${msg.id} buf=${bootstrapBuf.length + 1}`)
         bootstrapBuf.push(msg)
       } else {
         flushTurn()
@@ -201,9 +188,6 @@ function groupMessagesUnified(
   flushTurn()
   flushBootstrap()
 
-  console.log(
-    `[ENGINE-BOOTSTRAP] groupMessages(unified) done runs=${totalRunsFlushed} suppressed=${totalSuppressed} output=${result.length}`
-  )
   return result
 }
 
