@@ -32,6 +32,7 @@ func cmdServe() {
 	home, _ := os.UserHomeDir()
 	ionDir := filepath.Join(home, ".ion")
 	_ = os.MkdirAll(ionDir, 0o700)
+	utils.Log("main", fmt.Sprintf("=== engine process start pid=%d version=%s ===", os.Getpid(), version))
 
 	cfg := config.LoadConfig("")
 	utils.Log("main", fmt.Sprintf("config loaded: backend=%s model=%s providers=%d mcp=%d",

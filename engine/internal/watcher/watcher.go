@@ -23,6 +23,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -123,6 +124,7 @@ func New(root string, ignores []string) (*Watcher, error) {
 		}
 	}
 	utils.Info("watcher", "New: constructed root="+abs+" ignores="+countStr(len(ignores)))
+	utils.Info("watcher", "New: ignore patterns root="+abs+" patterns=["+strings.Join(ignores, ", ")+"]")
 	return &Watcher{
 		root:    abs,
 		ignores: ignores,

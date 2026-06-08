@@ -88,6 +88,9 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 	if len(s.config.WorkspaceWatchIgnore) > 0 {
 		source = "harness_override"
 	}
+	if source == "harness_override" {
+		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: harness override patterns key=%s patterns=%v", key, ignores))
+	}
 
 	onEvent := func(info watcher.Info) {
 		ctx := m.newExtContext(s, key)
