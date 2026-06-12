@@ -43,13 +43,36 @@ export function registerEngineIpc(): void {
     const [tabId, instanceId] = key.includes(':') ? key.split(':', 2) : [key, null]
     const reqId = `desktop-engine-${Date.now()}`
 
+    // Resolve the tab's working directory from the renderer store so the
+    // pipeline can find project-scoped `.ion/commands/*.md` templates.
+    // Mirrors the same query in remote/handlers/engine.ts:123-134 — that
+    // path already threads projectPath through; this is the desktop IPC
+    // equivalent. Without it, `{project}/.ion/commands/align.md` is never
+    // probed (expandSlashCommand skips the project candidate when
+    // projectPath is undefined) and any project-scoped slash command that
+    // is not also registered via registerCommand returns "Unknown command".
+    const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    let projectPath: string | undefined
+    try {
+      const cwd = await state.mainWindow?.webContents.executeJavaScript(`
+        (function() {
+          var store = window.__Ion_SESSION_STORE__;
+          if (!store) return null;
+          var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTab}'; });
+          return tab && tab.workingDirectory ? tab.workingDirectory : null;
+        })()
+      `)
+      projectPath = cwd || undefined
+    } catch (err) {
+      log(`IPC ENGINE_PROMPT: projectPath query failed key=${key}: ${(err as Error).message}`)
+    }
+
     // Resolve planFilePath from the renderer store so the engine can
     // restore the plan file after a desktop restart instead of
-    // allocating a fresh slug. Mirrors the projectPath resolution
-    // pattern in remote/handlers/engine.ts.
+    // allocating a fresh slug. Same executeJavaScript pattern as
+    // projectPath above.
     let planFilePath: string | undefined
     try {
-      const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const pfp = await state.mainWindow?.webContents.executeJavaScript(`
         (function() {
           var store = window.__Ion_SESSION_STORE__;
@@ -75,6 +98,7 @@ export function registerEngineIpc(): void {
         model,
         imageAttachments: resolvedImageAttachments,
         implementationPhase,
+        projectPath,
         planFilePath,
       })
       return { ok: true }
