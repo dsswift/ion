@@ -120,6 +120,12 @@ struct EngineInstanceInfo: Codable, Identifiable, Sendable {
     /// idle. `EngineInstanceBar` renders a ⚠ glyph when non-nil; tap
     /// to reveal the requested + fallback model names.
     var modelFallback: EngineInstanceModelFallback? = nil
+    /// Historical conversation IDs accumulated across engine restarts,
+    /// projected from the desktop snapshot. Used as a fallback for "Copy
+    /// Session ID" when `statusFields?.sessionId` is nil (e.g. restored
+    /// tabs before the engine reconnects, or tabs where an extension
+    /// failed at startup before any prompt was sent).
+    var conversationIds: [String]? = nil
 
     // Non-Codable conversation state — populated by ConversationInstance,
     // not decoded from the snapshot JSON.
@@ -137,6 +143,7 @@ struct EngineInstanceInfo: Codable, Identifiable, Sendable {
         case isRunning
         case runningAgentCount
         case modelFallback
+        case conversationIds
     }
 }
 

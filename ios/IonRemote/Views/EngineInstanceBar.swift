@@ -106,6 +106,18 @@ struct EngineInstanceBar: View {
         }
     }
 
+    /// Merges live `statusFields.sessionId` with historical `conversationIds`
+    /// for the given engine instance. Returns all IDs (historical first,
+    /// live appended if not already present). Matches the desktop
+    /// SettingsPopover merge logic.
+    private func mergedSessionIds(for instance: EngineInstanceInfo) -> [String] {
+        var ids = instance.conversationIds ?? []
+        if let current = instance.statusFields?.sessionId, !ids.contains(current) {
+            ids.append(current)
+        }
+        return ids
+    }
+
     @ViewBuilder
     private func instanceButton(_ instance: EngineInstanceInfo) -> some View {
         Button {
@@ -190,9 +202,14 @@ struct EngineInstanceBar: View {
         .buttonStyle(.plain)
         .contextMenu {
             // -- Clipboard actions --
-            if let sessionId = instance.statusFields?.sessionId {
+            // Merge live sessionId with historical conversationIds (same
+            // logic as desktop SettingsPopover). This ensures the button
+            // is available for restored tabs before the engine reconnects
+            // and for tabs where an extension failed at startup.
+            let allIds = mergedSessionIds(for: instance)
+            if !allIds.isEmpty {
                 Button {
-                    UIPasteboard.general.string = sessionId
+                    UIPasteboard.general.string = allIds.joined(separator: "\n")
                     viewModel.showToast(ToastMessage(style: .success, title: "Session ID copied"))
                 } label: {
                     Label("Copy Session ID", systemImage: "doc.on.doc")

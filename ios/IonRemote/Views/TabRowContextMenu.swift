@@ -10,14 +10,29 @@ struct TabRowContextMenu: ViewModifier {
     @Binding var renameText: String
     @Environment(SessionViewModel.self) private var viewModel
 
+    /// Merges live `statusFields.sessionId` with historical `conversationIds`
+    /// for the active engine instance. Returns all IDs (historical first,
+    /// live appended if not already present). Matches the desktop
+    /// SettingsPopover merge logic.
+    private var engineSessionIds: [String] {
+        guard tab.isEngine == true else { return [] }
+        let instanceId = viewModel.activeEngineInstance[tab.id]
+        let inst = viewModel.engineInstance(tabId: tab.id, instanceId: instanceId)
+        let liveId = inst?.statusFields?.sessionId
+        var ids = inst?.conversationIds ?? []
+        if let current = liveId, !ids.contains(current) {
+            ids.append(current)
+        }
+        return ids
+    }
+
     func body(content: Content) -> some View {
         content.contextMenu {
             // -- Clipboard actions --
             if tab.isEngine == true {
-                let instanceId = viewModel.activeEngineInstance[tab.id]
-                if let sessionId = viewModel.engineInstance(tabId: tab.id, instanceId: instanceId)?.statusFields?.sessionId {
+                if !engineSessionIds.isEmpty {
                     Button {
-                        UIPasteboard.general.string = sessionId
+                        UIPasteboard.general.string = engineSessionIds.joined(separator: "\n")
                         viewModel.showToast(ToastMessage(style: .success, title: "Session ID copied"))
                     } label: {
                         Label("Copy Session ID", systemImage: "doc.on.doc")
