@@ -98,6 +98,17 @@ enum RemoteEvent: Codable, Sendable {
     /// that gates approval. See
     /// docs/architecture/adr/003-state-events-vs-workflow-events.md.
     case enginePlanProposal(tabId: String, instanceId: String?, kind: String, planFilePath: String?, planSlug: String?)
+    /// engine_plan_mode_auto_exit fires when the engine deterministically
+    /// synthesizes an ExitPlanMode call at end-of-turn because the model
+    /// ended a plan-mode run without invoking ExitPlanMode or
+    /// AskUserQuestion (issue #187). Sibling to enginePlanProposal —
+    /// both surface the plan-approval card, but this event additionally
+    /// tells consumers the exit was engine-driven rather than
+    /// model-driven, enabling telemetry on prompt quality and optional
+    /// subtle UI hints. iOS does not act on this event today; the
+    /// desktop is the authoritative consumer that gates approval. Wire
+    /// protocol stays uniform by decoding cleanly here.
+    case enginePlanModeAutoExit(tabId: String, instanceId: String?, stopReason: String, planFilePath: String?, planSlug: String?, reason: String?, sessionId: String?, runId: String?)
     /// Engine ↔ harness wire-protocol request emitted when the engine wants
     /// an external opinion on whether to nudge a model that has stopped
     /// below the configured output-token budget. The desktop is the
@@ -177,6 +188,37 @@ enum RemoteEvent: Codable, Sendable {
         message: String?,
         command: String?,
         commandError: String?
+    )
+    /// Resource snapshot: emitted when a client subscribes to a resource kind.
+    /// Consumers replace their local collection with the items payload.
+    /// iOS observes this event but does not act on it in Phase 1 — decoding
+    /// keeps the wire uniform across consumers.
+    case engineResourceSnapshot(
+        tabId: String,
+        instanceId: String?,
+        resourceKind: String,
+        resourceSubId: String,
+        resourceItems: [[String: AnyCodable]]
+    )
+    /// Resource delta: emitted when a producer publishes a change.
+    /// iOS observes this event but does not act on it in Phase 1.
+    case engineResourceDelta(
+        tabId: String,
+        instanceId: String?,
+        resourceKind: String,
+        resourceSubId: String,
+        resourceDelta: [String: AnyCodable]
+    )
+    /// Notification from extension ctx.notify(). The relay handles APNs
+    /// push delivery; iOS observes for diagnostic visibility.
+    case engineNotification(
+        tabId: String,
+        instanceId: String?,
+        notifyKind: String,
+        notifyTitle: String,
+        notifyBody: String,
+        notifySound: String?,
+        notifyScope: String?
     )
     /// Desktop user-preferences projection. Emitted on initial pairing
     /// and on every subsequent change to a projectable setting (either
@@ -278,9 +320,13 @@ enum RemoteEvent: Codable, Sendable {
         case engineProfiles = "engine_profiles"
         case enginePlanModeChanged = "engine_plan_mode_changed"
         case enginePlanProposal = "engine_plan_proposal"
+        case enginePlanModeAutoExit = "engine_plan_mode_auto_exit"
         case engineEarlyStopDecisionRequest = "engine_early_stop_decision_request"
         case engineCommandRegistry = "engine_command_registry"
         case engineCommandResult = "engine_command_result"
+        case engineResourceSnapshot = "engine_resource_snapshot"
+        case engineResourceDelta = "engine_resource_delta"
+        case engineNotification = "engine_notification"
         case desktopSettingsSnapshot = "desktop_settings_snapshot"
         case gitChangesResponse = "git_changes_response"
         case gitGraphResponse = "git_graph_response"
@@ -340,6 +386,17 @@ enum RemoteEvent: Codable, Sendable {
         // is always at the tab level, not per-instance).
         // planFilePath and planSlug are shared with engine_plan_mode_changed.
         case planProposalKind, planFilePath, planSlug
+        // engine_plan_mode_auto_exit — sibling to engine_plan_proposal,
+        // fires when the engine deterministically synthesizes an
+        // ExitPlanMode call at end-of-turn (issue #187). Field names
+        // mirror the Go-side EngineEvent json tags verbatim
+        // (planModeAutoExit* prefix to avoid colliding with other
+        // event variants that share field name primitives — StopReason
+        // in particular collides with early-stop, which already uses
+        // earlyStopStopReason). planFilePath and planSlug are reused
+        // from above since the shape is identical.
+        case planModeAutoExitStopReason, planModeAutoExitReason
+        case planModeAutoExitSessionId, planModeAutoExitRunId
         // engine_early_stop_decision_request — wire-protocol request the
         // engine emits when it wants an external opinion on continuation.
         // The desktop responds; iOS only decodes for diagnostic visibility.
@@ -360,6 +417,13 @@ enum RemoteEvent: Codable, Sendable {
         // is the failure reason or "unknown_command" when the engine
         // disclaims the name.
         case command, commandError
+        // engine_resource_snapshot / engine_resource_delta — resource
+        // subsystem events (D-007). iOS observes but does not act on
+        // these in Phase 1. Field names mirror the Go-side json tags.
+        case resourceKind, resourceSubId, resourceItems, resourceDelta
+        // engine_notification — notification pipeline event (D-009).
+        // The relay handles APNs push; iOS decodes for diagnostic visibility.
+        case notifyKind, notifyTitle, notifyBody, notifySound, notifyScope
         // desktop_settings_snapshot — Part 7 wire event.
         // `settings` is the value map; `schema` carries per-key
         // metadata (type, group, label, description, defaultValue);
@@ -402,6 +466,10 @@ enum RemoteEvent: Codable, Sendable {
             self = event
             return
         }
+        if let event = try Self.decodeResource(type: type, container: container) {
+            self = event
+            return
+        }
         if let event = try Self.decodeGit(type: type, container: container) {
             self = event
             return
@@ -428,6 +496,7 @@ enum RemoteEvent: Codable, Sendable {
         if try encodePermission(into: &container) { return }
         if try encodeTerminal(into: &container) { return }
         if try encodeEngine(into: &container) { return }
+        if try encodeResource(into: &container) { return }
         if try encodeGit(into: &container) { return }
         if try encodeFiles(into: &container) { return }
         // Unreachable: every case must be encoded by exactly one family.

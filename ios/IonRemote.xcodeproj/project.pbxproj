@@ -111,6 +111,11 @@
 		A1B2C3D4E5F60001000311AA /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000310AA /* GitDiffView.swift */; };
 		A1B2C3D4E5F60001000401AA /* FileTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000400AA /* FileTypes.swift */; };
 		A1B2C3D4E5F60001000403AA /* NormalizedEvent+Files.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */; };
+		A1B2C3D4E5F60001009F01AA /* NormalizedEvent+Resource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */; };
+		A1B2C3D4E5F600010010A1AA /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010010A0AA /* NotificationsView.swift */; };
+		A1B2C3D4E5F600010010B1AA /* ResourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */; };
+		A1B2C3D4E5F6000100A101AA /* NormalizedEvent+PlanModeAutoExit.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */; };
+		A1B2C3D4E5F6000100A201AA /* SessionViewModel+UploadEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */; };
 		A1B2C3D4E5F60001000405AA /* FileExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */; };
 		A1B2C3D4E5F60001000407AA /* FileExplorerRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */; };
 		A1B2C3D4E5F60001000409AA /* FileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000408AA /* FileEditorView.swift */; };
@@ -291,6 +296,11 @@
 		A1B2C3D4E5F60001000310AA /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000400AA /* FileTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Files.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Resource.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010010A0AA /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+PlanModeAutoExit.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+UploadEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000408AA /* FileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorView.swift; sourceTree = "<group>"; };
@@ -423,6 +433,8 @@
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
 				A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */,
+				A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */,
+				A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */,
 				A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */,
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
@@ -535,6 +547,7 @@
 					A1B2C3D4E5F60001006001AA /* ToastView.swift */,
 					A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */,
 					A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */,
+					A1B2C3D4E5F600010010A0AA /* NotificationsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -544,6 +557,7 @@
 			children = (
 				A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */,
 				A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */,
+				A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */,
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
@@ -558,6 +572,7 @@
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
 				A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */,
+				A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -838,6 +853,11 @@
 				A1B2C3D4E5F60001000311AA /* GitDiffView.swift in Sources */,
 				A1B2C3D4E5F60001000401AA /* FileTypes.swift in Sources */,
 				A1B2C3D4E5F60001000403AA /* NormalizedEvent+Files.swift in Sources */,
+				A1B2C3D4E5F60001009F01AA /* NormalizedEvent+Resource.swift in Sources */,
+				A1B2C3D4E5F600010010A1AA /* NotificationsView.swift in Sources */,
+				A1B2C3D4E5F600010010B1AA /* ResourceStore.swift in Sources */,
+				A1B2C3D4E5F6000100A101AA /* NormalizedEvent+PlanModeAutoExit.swift in Sources */,
+				A1B2C3D4E5F6000100A201AA /* SessionViewModel+UploadEvents.swift in Sources */,
 				A1B2C3D4E5F60001000405AA /* FileExplorerView.swift in Sources */,
 				A1B2C3D4E5F60001000407AA /* FileExplorerRowView.swift in Sources */,
 				A1B2C3D4E5F60001000409AA /* FileEditorView.swift in Sources */,

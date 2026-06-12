@@ -167,6 +167,14 @@ extension DiagnosticLog {
             // events.
             log("EVENT: enginePlanProposal tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") kind=\(kind) path=\(path?.suffix(40) ?? "nil")")
 
+        case .enginePlanModeAutoExit(let tabId, let instId, let stopReason, let path, _, _, _, let runId):
+            // Engine-synthesized ExitPlanMode safety net (issue #187).
+            // iOS does not act on this; the desktop is the authoritative
+            // consumer that renders the approval card. Log the runId
+            // and stopReason so the diagnostic stream can correlate the
+            // synthesis with the engine.log entry that produced it.
+            log("EVENT: enginePlanModeAutoExit tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") runId=\(runId?.prefix(12) ?? "nil") stopReason=\(stopReason) path=\(path?.suffix(40) ?? "nil")")
+
         case .engineEarlyStopDecisionRequest(let tabId, let instId, let reqId, _, _, let turn, _, let cumOut, let budget, let pct, _, _, _, let would, _):
             // Engine ↔ harness wire-protocol request. The desktop is the
             // authoritative responder; iOS only observes for diagnostic
@@ -260,6 +268,15 @@ extension DiagnosticLog {
 
         case .requestDiagnosticLogs:
             log("EVENT: requestDiagnosticLogs")
+
+        case .engineResourceSnapshot(let tabId, _, let kind, let subId, let items):
+            log("EVENT: engineResourceSnapshot tab=\(tabId.prefix(8)) kind=\(kind) sub=\(subId.prefix(8)) items=\(items.count)")
+
+        case .engineResourceDelta(let tabId, _, let kind, let subId, _):
+            log("EVENT: engineResourceDelta tab=\(tabId.prefix(8)) kind=\(kind) sub=\(subId.prefix(8))")
+
+        case .engineNotification(let tabId, _, let kind, let title, _, _, _):
+            log("EVENT: engineNotification tab=\(tabId.prefix(8)) kind=\(kind) title=\(title)")
         }
     }
 }

@@ -152,6 +152,72 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         )
     }
 
+    // MARK: - PlanModeAutoExitEvent decode
+
+    /// The engine emits engine_plan_mode_auto_exit when it
+    /// deterministically synthesizes an ExitPlanMode call at end-of-turn
+    /// because the model misrouted plan exit (issue #187). Sibling to
+    /// engine_plan_proposal — both surface the plan-approval card, but
+    /// this event additionally tells consumers the exit was
+    /// engine-driven rather than model-driven. iOS does not act on this
+    /// event today (the desktop is the authoritative consumer), but
+    /// decoding cleanly here keeps the wire protocol uniform across
+    /// consumers and lets a future iOS surface (e.g. a "Plan surfaced
+    /// automatically" hint) read the full payload without contract
+    /// changes.
+    func testPlanModeAutoExitDecode() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["plan_mode_auto_exit"] else {
+            XCTFail("plan_mode_auto_exit not found in Go manifest")
+            return
+        }
+
+        let json = """
+        {
+            "type": "engine_plan_mode_auto_exit",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "planModeAutoExitStopReason": "end_turn",
+            "planFilePath": "/home/user/.ion/plans/happy-jumping-rabbit.md",
+            "planSlug": "happy-jumping-rabbit",
+            "planModeAutoExitReason": "engine-synthesized: run ended in plan mode without ExitPlanMode call",
+            "planModeAutoExitSessionId": "sess-42",
+            "planModeAutoExitRunId": "run-99"
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .enginePlanModeAutoExit(let tabId, let instanceId, let stopReason, let path, let slug, let reason, let sessionId, let runId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(stopReason, "end_turn")
+            XCTAssertEqual(path, "/home/user/.ion/plans/happy-jumping-rabbit.md")
+            XCTAssertEqual(slug, "happy-jumping-rabbit")
+            XCTAssertEqual(reason, "engine-synthesized: run ended in plan mode without ExitPlanMode call")
+            XCTAssertEqual(sessionId, "sess-42")
+            XCTAssertEqual(runId, "run-99")
+        } else {
+            XCTFail("Expected enginePlanModeAutoExit, got \(event)")
+        }
+
+        // Swift tracks the NormalizedEvent variant field names verbatim
+        // (the manifest's `plan_mode_auto_exit` entry uses the un-prefixed
+        // tags from the PlanModeAutoExitEvent struct). The iOS wire-side
+        // CodingKeys use planModeAutoExit* prefixes for collision-free
+        // decoding, but the contract manifest tracks the variant struct
+        // — which is what consumers reason about logically.
+        let swiftHandled: Set<String> = [
+            "stopReason", "planFilePath", "planSlug",
+            "reason", "sessionId", "runId",
+        ]
+        let goSet = Set(goFields ?? [])
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go plan_mode_auto_exit has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
     // MARK: - EarlyStopDecisionRequest decode
 
     /// The engine emits engine_early_stop_decision_request as the wire-

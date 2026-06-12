@@ -315,6 +315,9 @@ extension SessionViewModel {
         case .enginePlanProposal:
             handleEnginePlanProposal()
 
+        case .enginePlanModeAutoExit:
+            handleEnginePlanModeAutoExit()
+
         case .engineEarlyStopDecisionRequest:
             handleEngineEarlyStopDecisionRequest()
 
@@ -429,14 +432,19 @@ extension SessionViewModel {
         // Diagnostic log request from desktop
         case .requestDiagnosticLogs:
             handleRequestDiagnosticLogs()
+
+        // Resource events (D-007)
+        case .engineResourceSnapshot(_, _, let kind, _, let rawItems):
+            resourceStore.applySnapshot(kind: kind, rawItems: rawItems)
+        case .engineResourceDelta(_, _, let kind, _, let rawDelta):
+            resourceStore.applyDelta(kind: kind, rawDelta: rawDelta)
+        case .engineNotification:
+            break
         }
     }
 
     // MARK: - Connection events
-    //
-    // `handleUnpair` and `handleRelayConfig` live in
-    // SessionViewModel+ConnectionEvents.swift to keep this file under the
-    // 600-line cap. The dispatch above just calls them.
+    // handleUnpair and handleRelayConfig live in SessionViewModel+ConnectionEvents.swift.
 
     // MARK: - Permission/message events
 
@@ -584,13 +592,8 @@ extension SessionViewModel {
         return result
     }
 
-    @MainActor
-    private func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?) {
-        if let error, !error.isEmpty {
-            pendingUploadResults.append(UploadAttachmentResult(id: "", name: name, path: "", correlationId: correlationId, error: error))
-        } else {
-            pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: nil))
-        }
-    }
+    // `handleUploadAttachmentResult` lives in
+    // SessionViewModel+UploadEvents.swift to keep this file under the
+    // 600-line cap. The dispatch above just calls it.
 
 }

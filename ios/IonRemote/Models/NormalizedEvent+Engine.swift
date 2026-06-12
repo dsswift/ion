@@ -189,6 +189,12 @@ extension RemoteEvent {
             let planSlug = try container.decodeIfPresent(String.self, forKey: .planSlug)
             return .enginePlanProposal(tabId: tabId, instanceId: instanceId, kind: kind, planFilePath: planFilePath, planSlug: planSlug)
 
+        case .enginePlanModeAutoExit:
+            // Decoder lives in NormalizedEvent+PlanModeAutoExit.swift to
+            // keep this file under the per-file size cap. See ADR-007 and
+            // issue #187.
+            return try decodeEnginePlanModeAutoExit(container: container)
+
         case .engineEarlyStopDecisionRequest:
             // Engine ↔ harness wire-protocol request. iOS does not act on
             // this event — the desktop's early-stop-policy.ts is the
@@ -482,6 +488,22 @@ extension RemoteEvent {
             try container.encodeIfPresent(planSlug, forKey: .planSlug)
             return true
 
+        case .enginePlanModeAutoExit(
+            let tabId, let instanceId, let stopReason,
+            let planFilePath, let planSlug,
+            let reason, let sessionId, let runId
+        ):
+            // Encoder lives in NormalizedEvent+PlanModeAutoExit.swift to
+            // keep this file under the per-file size cap. See ADR-007 and
+            // issue #187.
+            try encodeEnginePlanModeAutoExit(
+                container: &container,
+                tabId: tabId, instanceId: instanceId, stopReason: stopReason,
+                planFilePath: planFilePath, planSlug: planSlug,
+                reason: reason, sessionId: sessionId, runId: runId
+            )
+            return true
+
         case .engineEarlyStopDecisionRequest(let tabId, let instanceId, let requestId, let runId, let model, let turnNumber, let stopReason, let cumulativeOutput, let budget, let thresholdPct, let continuationCount, let maxContinuations, let lastContinuationDelta, let wouldContinue, let isSubagent):
             // Encoder mirror of the decoder above. iOS never originates
             // this event in practice (the engine emits it, iOS observes),
@@ -536,6 +558,16 @@ extension RemoteEvent {
             try container.encodeIfPresent(command, forKey: .command)
             try container.encodeIfPresent(commandError, forKey: .commandError)
             return true
+
+        case .engineResourceSnapshot(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceItems):
+            // Handled by NormalizedEvent+Resource.swift.
+            _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceSubId; _ = resourceItems
+            return false
+
+        case .engineResourceDelta(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceDelta):
+            // Handled by NormalizedEvent+Resource.swift.
+            _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceSubId; _ = resourceDelta
+            return false
 
         case .desktopSettingsSnapshot(let settings, let schema, let groups):
             try container.encode(TypeKey.desktopSettingsSnapshot, forKey: .type)
