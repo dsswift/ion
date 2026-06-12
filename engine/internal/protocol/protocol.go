@@ -167,6 +167,11 @@ type ClientCommand struct {
 	// resource_publish: operation and item for client-side resource publishing.
 	ResourceOp   string              `json:"resourceOp,omitempty"`
 	ResourceItem *types.ResourceItem `json:"resourceItem,omitempty"`
+
+	// delete_stored_sessions: cleanup stale conversation files.
+	MaxAgeDays int      `json:"maxAgeDays,omitempty"`
+	ExcludeIDs []string `json:"excludeIds,omitempty"`
+	DryRun     bool     `json:"dryRun,omitempty"`
 }
 
 var validCommands = map[string]bool{
@@ -209,6 +214,9 @@ var validCommands = map[string]bool{
 	// session is running against it (so dispatchClear cannot be used).
 	// Non-breaking additive command. Requires key (sessionId).
 	"clear_conversation_file": true,
+	// delete_stored_sessions: removes stale conversation files from disk.
+	// All fields optional with sane defaults (maxAgeDays=14, dryRun=false).
+	"delete_stored_sessions": true,
 	// resource_subscribe / resource_unsubscribe: client-side resource
 	// collection management. resource_subscribe attaches a live subscription
 	// to a resource kind; the engine streams snapshot + delta events back
@@ -397,6 +405,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "clear_conversation_file":
 		// key carries the sessionId (conversationId) to wipe. Required and non-empty.
 		return hasNonEmptyString(raw, "key")
+	case "delete_stored_sessions":
+		return true // all fields are optional with sane defaults
 	case "resource_subscribe":
 		// Global subscriptions (resourceGlobal: true) use key="" intentionally —
 		// they target the Manager-level broker, not a per-session broker. Require
