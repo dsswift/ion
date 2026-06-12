@@ -137,6 +137,62 @@ final class ContractSyncTests: XCTestCase {
         )
     }
 
+    // MARK: - SessionStatus decode (Phase 3 of state-management overhaul)
+
+    /// Mirrors `testStatusFieldsDecode` for the new SessionStatus type
+    /// added in Phase 3. Pins the wire contract so any drift between
+    /// the Go struct and the Swift mirror fails at PR time.
+    func testSessionStatusDecode() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["SessionStatus"] else {
+            XCTFail("SessionStatus not found in Go manifest")
+            return
+        }
+
+        let json: [String: Any] = [
+            "key": "tab-1:inst-2",
+            "state": "running",
+            "stateSince": 1_780_000_000_000,
+            "lastEmittedAt": 1_780_000_005_000,
+            "hasInflightRun": true,
+            "backgroundAgentCount": 3,
+            "permissionDenialsPending": [
+                ["toolName": "AskUserQuestion", "toolUseId": "tu-99"],
+            ],
+            "model": "claude-4",
+            "contextPercent": 42,
+            "contextWindow": 200_000,
+            "totalCostUsd": 1.23,
+            "sessionId": "conv-abc",
+            "extensionName": "Chief of Staff",
+        ]
+
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let status = try decoder.decode(SessionStatus.self, from: data)
+        XCTAssertEqual(status.key, "tab-1:inst-2")
+        XCTAssertEqual(status.state, "running")
+        XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
+        XCTAssertEqual(status.hasInflightRun, true)
+        XCTAssertEqual(status.backgroundAgentCount, 3)
+        XCTAssertEqual(status.sessionId, "conv-abc")
+        XCTAssertEqual(status.extensionName, "Chief of Staff")
+
+        // Verify we know about all Go fields (any intentional gap is
+        // documented in the assertion message — there should be none).
+        let swiftHandled: Set<String> = [
+            "backgroundAgentCount", "contextPercent", "contextWindow",
+            "extensionName", "hasInflightRun", "key", "lastEmittedAt",
+            "model", "permissionDenialsPending", "sessionId", "state",
+            "stateSince", "totalCostUsd",
+        ]
+        let goSet = Set(goFields)
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go SessionStatus has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
     // MARK: - EngineEvent decode (engine_status with StatusFields)
 
     func testEngineStatusDecode() throws {
@@ -163,6 +219,120 @@ final class ContractSyncTests: XCTestCase {
         } else {
             XCTFail("Expected engineStatus, got \(event)")
         }
+    }
+
+    // MARK: - engine_session_status (Phase 3 typed event) decode + round-trip
+
+    /// Pins the wire decode for the Phase 3 engine_session_status event.
+    /// The engine emits this in parallel with engine_status; iOS reads
+    /// it via the dispatcher in SessionViewModel+SessionStatus.swift.
+    func testEngineSessionStatusDecode() throws {
+        let json = """
+        {
+            "type": "engine_session_status",
+            "tabId": "t1",
+            "instanceId": "inst-2",
+            "sessionStatus": {
+                "key": "t1:inst-2",
+                "state": "running",
+                "lastEmittedAt": 1780000005000,
+                "hasInflightRun": true,
+                "backgroundAgentCount": 1,
+                "model": "claude-4",
+                "contextPercent": 42,
+                "contextWindow": 200000,
+                "totalCostUsd": 1.23,
+                "sessionId": "conv-abc"
+            }
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSessionStatus(let tabId, let instanceId, let status, _) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "inst-2")
+            XCTAssertEqual(status.key, "t1:inst-2")
+            XCTAssertEqual(status.state, "running")
+            XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
+            XCTAssertEqual(status.hasInflightRun, true)
+            XCTAssertEqual(status.backgroundAgentCount, 1)
+            XCTAssertEqual(status.model, "claude-4")
+            XCTAssertEqual(status.contextPercent, 42)
+            XCTAssertEqual(status.totalCostUsd, 1.23)
+            XCTAssertEqual(status.sessionId, "conv-abc")
+        } else {
+            XCTFail("Expected engineSessionStatus, got \(event)")
+        }
+    }
+
+    /// Round-trip the engine_session_status event through encode + decode
+    /// to pin the wire-symmetric behavior. If a future change to
+    /// NormalizedEvent+Engine.swift drops a field on encode, this test
+    /// fails — preventing an iOS-originated event from losing data when
+    /// echoed back to the desktop (e.g. for a relay-replay debug path).
+    func testEngineSessionStatusRoundTrip() throws {
+        let original: RemoteEvent = .engineSessionStatus(
+            tabId: "t1",
+            instanceId: "inst-2",
+            sessionStatus: SessionStatus(
+                key: "t1:inst-2",
+                state: "idle",
+                stateSince: nil,
+                lastEmittedAt: 1_780_000_005_000,
+                hasInflightRun: false,
+                backgroundAgentCount: nil,
+                permissionDenialsPending: nil,
+                model: "claude-4",
+                contextPercent: 12,
+                contextWindow: 200_000,
+                totalCostUsd: 0.5,
+                sessionId: "conv-x",
+                extensionName: nil
+            ),
+            metadata: nil
+        )
+
+        let encoded = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: encoded)
+        if case .engineSessionStatus(let tabId, let instId, let status, _) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instId, "inst-2")
+            XCTAssertEqual(status.key, "t1:inst-2")
+            XCTAssertEqual(status.state, "idle")
+            XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
+            XCTAssertEqual(status.hasInflightRun, false)
+            XCTAssertEqual(status.model, "claude-4")
+            XCTAssertEqual(status.contextPercent, 12)
+            XCTAssertEqual(status.sessionId, "conv-x")
+        } else {
+            XCTFail("Round-trip expected engineSessionStatus, got \(decoded)")
+        }
+    }
+
+    /// Documents the Phase 3 dual-emit contract: when the engine ships
+    /// engine_status it also ships engine_session_status carrying the
+    /// same authoritative state. This test does not invoke the engine;
+    /// it asserts that both event shapes decode and discriminate
+    /// correctly on the same iOS decoder so a downstream consumer can
+    /// trust both routes.
+    func testEngineStatusAndSessionStatusBothDecode() throws {
+        let legacyJSON = """
+        {"type":"engine_status","tabId":"t1","fields":{"label":"","state":"running","model":"","contextPercent":0,"contextWindow":0}}
+        """.data(using: .utf8)!
+        let typedJSON = """
+        {"type":"engine_session_status","tabId":"t1","sessionStatus":{"key":"t1","state":"running","lastEmittedAt":1}}
+        """.data(using: .utf8)!
+
+        let legacy = try decoder.decode(RemoteEvent.self, from: legacyJSON)
+        let typed = try decoder.decode(RemoteEvent.self, from: typedJSON)
+
+        guard case .engineStatus(_, _, let legacyFields, _) = legacy,
+              case .engineSessionStatus(_, _, let typedStatus, _) = typed else {
+            XCTFail("Expected both events to decode to their respective cases")
+            return
+        }
+        XCTAssertEqual(legacyFields.state, "running")
+        XCTAssertEqual(typedStatus.state, "running")
     }
 
     // MARK: - EngineEvent variants decode

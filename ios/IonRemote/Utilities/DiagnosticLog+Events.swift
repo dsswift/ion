@@ -97,6 +97,9 @@ extension DiagnosticLog {
         case .engineStatus(let tabId, let instId, _, _):
             log("EVENT: engineStatus tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
 
+        case .engineSessionStatus(let tabId, let instId, let ss, _):
+            log("EVENT: engineSessionStatus tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") state=\(ss.state) inflight=\(ss.hasInflightRun ?? false)")
+
         case .engineWorkingMessage(let tabId, let instId, _, _):
             log("EVENT: engineWorkingMessage tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
 

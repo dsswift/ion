@@ -25,6 +25,14 @@ extension RemoteEvent {
             try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
+        case .engineSessionStatus(let tabId, let instanceId, let sessionStatus, let metadata):
+            try container.encode(TypeKey.engineSessionStatus, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(sessionStatus, forKey: .sessionStatus)
+            try container.encodeIfPresent(metadata, forKey: .metadata)
+            return true
+
         case .engineWorkingMessage(let tabId, let instanceId, let message, let metadata):
             try container.encode(TypeKey.engineWorkingMessage, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

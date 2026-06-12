@@ -206,6 +206,15 @@ extension SessionViewModel {
             let resolvedId = resolveInstanceId(tabId: tabId, instanceId: instanceId)
             mutateEngineInstance(tabId: tabId, instanceId: resolvedId) { $0.statusFields = fields }
 
+        case .engineSessionStatus(let tabId, let instanceId, let sessionStatus, _):
+            // Phase 3 of the state-management overhaul. The typed
+            // engine_session_status arrives alongside engine_status;
+            // the dispatcher in SessionViewModel+SessionStatus.swift
+            // applies it via the same path so readers see consistent
+            // state. Phase 4 makes this the sole writer.
+            let resolvedId = resolveInstanceId(tabId: tabId, instanceId: instanceId)
+            applyEngineSessionStatus(tabId: tabId, instanceId: resolvedId, status: sessionStatus)
+
         case .engineWorkingMessage(let tabId, let instanceId, let message, _):
             let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
             engineWorkingMessages[key] = message
@@ -458,135 +467,13 @@ extension SessionViewModel {
     // handleUnpair and handleRelayConfig live in SessionViewModel+ConnectionEvents.swift.
 
     // MARK: - Permission/message events
-
-    @MainActor
-    private func handlePermissionRequest(tabId: String, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption]) {
-        let inputKeys = toolInput?.keys.sorted() ?? []
-        let inputSummary = toolInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
-        let isEngine = tabs.first(where: { $0.id == tabId })?.isEngine == true
-        DiagnosticLog.log("PERM: handlePermissionRequest: tabId=\(tabId.prefix(8)) questionId=\(questionId.prefix(16)) toolName=\(toolName) inputKeys=\(inputKeys) inputTypes=[\(inputSummary)] options=\(options.map(\.label)) isEngine=\(isEngine)")
-
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            // Normalize AnyCodable toolInput to Foundation types so the
-            // card views can parse with simple `as?` casts. The Codable
-            // decoder wraps nested values as [AnyCodable]/[String: AnyCodable],
-            // but the card views expect Foundation types (NSArray/NSDictionary)
-            // which is what JSONSerialization produces.
-            var normalizedInput = toolInput
-            if let input = toolInput,
-               let data = try? JSONEncoder().encode(input),
-               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                normalizedInput = dict.mapValues { AnyCodable($0) }
-                let normalizedSummary = normalizedInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
-                DiagnosticLog.log("PERM: handlePermissionRequest: normalized toolInput types=[\(normalizedSummary)]")
-            } else {
-                DiagnosticLog.log("PERM: handlePermissionRequest: normalization failed or skipped, using raw toolInput")
-            }
-            let request = PermissionRequest(
-                questionId: questionId,
-                toolName: toolName,
-                toolInput: normalizedInput,
-                options: options
-            )
-            DiagnosticLog.log("PERM: handlePermissionRequest: queued request for tabId=\(tabId.prefix(8)) queueSize=\(self.tabs[idx].permissionQueue.count + 1)")
-            tabs[idx].permissionQueue.append(request)
-        } else {
-            DiagnosticLog.log("PERM: handlePermissionRequest: tab \(tabId.prefix(8)) not found, dropping permission request")
-        }
-    }
-
-    @MainActor
-    private func handleConversationHistory(tabId: String, newMessages: [Message], hasMore: Bool, cursor: String?) {
-        cancelLoadTimer(tabId: tabId)
-        conversationLoadFailed.remove(tabId)
-        loadingConversation.remove(tabId)
-        conversationLoaded.insert(tabId)
-        liveText.removeValue(forKey: tabId)
-        conversationHasMore[tabId] = hasMore
-        conversationCursor[tabId] = cursor
-
-        // Deduplicate by message ID, keeping last occurrence (most recent version).
-        let deduped = deduplicateMessages(newMessages)
-
-        if cursor != nil {
-            suppressScrollToBottom = true
-            messages[tabId] = deduped + (messages[tabId] ?? [])
-        } else {
-            messages[tabId] = deduped
-        }
-        messageCountByTab[tabId] = messages[tabId]?.count ?? 0
-
-        // Log the last 3 messages for diagnostics (permission card restoration depends on message content).
-        let allMsgs = messages[tabId] ?? []
-        let tail = allMsgs.suffix(3)
-        let tailSummary = tail.map { "role=\($0.role.rawValue) toolName=\($0.toolName ?? "nil") isTool=\($0.isTool) toolInput=\($0.toolInput?.prefix(60) ?? "nil")" }.joined(separator: " | ")
-        DiagnosticLog.log("CONV-HIST: tabId=\(tabId.prefix(8)) total=\(allMsgs.count) hasMore=\(hasMore) cursor=\(cursor?.prefix(8) ?? "nil") tail=[\(tailSummary)]")
-    }
-
-    @MainActor
-    private func handleMessageAdded(tabId: String, message: Message) {
-        // Always update tab preview for user/assistant messages (even if conversation isn't loaded)
-        if message.role == .user || message.role == .assistant {
-            if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-                tabs[idx].lastMessage = String(message.content.prefix(64))
-                    .replacingOccurrences(of: "\n", with: " ")
-            }
-        }
-        guard conversationLoaded.contains(tabId) else { return }
-        if var existing = messages[tabId] {
-            // ID-based reconciliation: if a message with this ID already exists
-            // (optimistic insert), replace it with the canonical version from desktop.
-            if let existingIdx = existing.firstIndex(where: { $0.id == message.id }) {
-                existing[existingIdx] = message
-            } else {
-                existing.append(message)
-            }
-            messages[tabId] = existing
-        } else {
-            messages[tabId] = [message]
-        }
-        messageCountByTab[tabId] = messages[tabId]?.count ?? 0
-    }
-
-    @MainActor
-    private func handleMessageUpdated(tabId: String, messageId: String, content: String?, toolStatus: ToolStatus?, toolInput: String?) {
-        guard conversationLoaded.contains(tabId),
-              var msgs = messages[tabId],
-              let idx = msgs.firstIndex(where: { $0.id == messageId })
-        else { return }
-
-        if let content {
-            msgs[idx].content = content
-        }
-        if let toolStatus {
-            // Meta-tools report as errors but should show as completed (not error, not stuck running)
-            let toolName = msgs[idx].toolName
-            if toolName == "ExitPlanMode" || toolName == "AskUserQuestion" {
-                msgs[idx].toolStatus = .completed
-            } else {
-                msgs[idx].toolStatus = toolStatus
-            }
-        }
-        if let toolInput {
-            msgs[idx].toolInput = toolInput
-        }
-        messages[tabId] = msgs
-    }
-
-    @MainActor
-    private func handleInputPrefill(tabId: String, text: String, switchTo: Bool) {
-        pendingInputByTab[tabId] = text
-        if switchTo {
-            pendingNavigationTabId = tabId
-        } else {
-            // Rewind: reload the conversation for this tab
-            conversationLoaded.remove(tabId)
-            messages.removeValue(forKey: tabId)
-            messageCountByTab.removeValue(forKey: tabId)
-            conversationLoadFailed.remove(tabId)
-            loadConversation(tabId: tabId)
-        }
-    }
+    //
+    // handlePermissionRequest, handleConversationHistory,
+    // handleMessageAdded, handleMessageUpdated, and handleInputPrefill
+    // live in SessionViewModel+PermissionMessageEvents.swift to keep
+    // this file under the 600-line cap. They are members of the same
+    // `extension SessionViewModel` so the dispatch in handleEvent
+    // above resolves them without further wiring.
 
     // MARK: - Upload attachment result
 

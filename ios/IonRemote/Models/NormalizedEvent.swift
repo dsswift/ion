@@ -53,6 +53,14 @@ enum RemoteEvent: Codable, Sendable {
     // Engine events (structured)
     case engineAgentState(tabId: String, instanceId: String?, agents: [AgentStateUpdate])
     case engineStatus(tabId: String, instanceId: String?, fields: StatusFields, metadata: [String: AnyCodable]?)
+    /// Phase 3 of the state-management overhaul: engine_session_status
+    /// is the typed-payload counterpart to engine_status. The engine
+    /// emits both events for every status transition during the
+    /// transition window; consumers may read either. SessionStatus
+    /// carries `lastEmittedAt` (freshness contract) and
+    /// `hasInflightRun` (the engine's cross-checked answer to "is
+    /// there a live run") that the legacy event does not.
+    case engineSessionStatus(tabId: String, instanceId: String?, sessionStatus: SessionStatus, metadata: [String: AnyCodable]?)
     case engineWorkingMessage(tabId: String, instanceId: String?, message: String, metadata: [String: AnyCodable]?)
     case engineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String)
     case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool)
@@ -333,6 +341,7 @@ enum RemoteEvent: Codable, Sendable {
         case terminalSnapshot = "terminal_snapshot"
         case engineAgentState = "engine_agent_state"
         case engineStatus = "engine_status"
+        case engineSessionStatus = "engine_session_status"
         case engineWorkingMessage = "engine_working_message"
         case engineToolStart = "engine_tool_start"
         case engineToolEnd = "engine_tool_end"
@@ -400,6 +409,10 @@ enum RemoteEvent: Codable, Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
+        // Phase 3 of the state-management overhaul: engine_session_status
+        // carries a typed SessionStatus payload under the `sessionStatus`
+        // wire key (mirrors EngineEvent.SessionStatus in Go).
+        case sessionStatus
         case signal, stderrTail, label, profiles, elapsed, usage, model
         case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount

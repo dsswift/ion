@@ -90,6 +90,8 @@
 		A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
 		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
+		A1B2C3D4E5F60001000980AA /* SessionViewModel+SessionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */; };
+		A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */; };
 		A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */; };
 		A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */; };
 		A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */; };
@@ -132,6 +134,7 @@
 		A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */; };
 		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
 		A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */; };
+		A1B2C3D4E5F60001000A00AA /* SessionStatusSynthesisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */; };
 		A1B2C3D4E5F60001E80006AA /* DesktopSettingsContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001E80007AA /* DesktopSettingsContractTests.swift */; };
 		A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */; };
 		A1B2C3D4E5F60001F00012AA /* RemoteCommandPillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */; };
@@ -281,6 +284,8 @@
 		A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineKeys.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Snapshot.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+SessionStatus.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+PermissionMessageEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+OnConnected.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Send.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Receive.swift"; sourceTree = "<group>"; };
@@ -322,6 +327,7 @@
 		A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFallbackSnapshotTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatusSynthesisTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001E80007AA /* DesktopSettingsContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSettingsContractTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncEngineEventsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandPillTests.swift; sourceTree = "<group>"; };
@@ -586,6 +592,8 @@
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
 				A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */,
+				A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */,
+				A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */,
 				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
 				A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */,
 			);
@@ -600,6 +608,7 @@
 				A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */,
 				A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */,
 				A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */,
+				A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */,
 				A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */,
 				A1B2C3D4E5F60001E80007AA /* DesktopSettingsContractTests.swift */,
 				A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */,
@@ -848,6 +857,8 @@
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,
 				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
 				A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */,
+				A1B2C3D4E5F60001000980AA /* SessionViewModel+SessionStatus.swift in Sources */,
+				A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */,
 				A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */,
 				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
@@ -960,6 +971,7 @@
 				A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */,
 				A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */,
 				A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */,
+				A1B2C3D4E5F60001000A00AA /* SessionStatusSynthesisTests.swift in Sources */,
 				A1B2C3D4E5F60001E80006AA /* DesktopSettingsContractTests.swift in Sources */,
 				A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */,
 				A1B2C3D4E5F60001F00012AA /* RemoteCommandPillTests.swift in Sources */,

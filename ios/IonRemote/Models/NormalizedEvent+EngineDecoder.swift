@@ -28,6 +28,13 @@ extension RemoteEvent {
             let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
             return .engineStatus(tabId: tabId, instanceId: instanceId, fields: fields, metadata: metadata)
 
+        case .engineSessionStatus:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let sessionStatus = try container.decode(SessionStatus.self, forKey: .sessionStatus)
+            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
+            return .engineSessionStatus(tabId: tabId, instanceId: instanceId, sessionStatus: sessionStatus, metadata: metadata)
+
         case .engineWorkingMessage:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)

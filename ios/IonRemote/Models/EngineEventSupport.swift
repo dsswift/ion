@@ -208,6 +208,44 @@ struct PermissionDenialEntry: Codable, Sendable {
     let toolInput: [String: AnyCodable]?
 }
 
+/// Phase 3 of the state-management overhaul. Typed counterpart to
+/// `StatusFields` that carries the engine's authoritative per-session
+/// status in one payload. Mirrors `types.SessionStatus` in Go;
+/// `desktop/src/shared/types-engine.ts` SessionStatus is the desktop
+/// mirror.
+///
+/// Why a new type exists. The legacy `engine_status` event packs
+/// state + costs + denials + model into `StatusFields`, and consumers
+/// must infer "is this session running" from `state` alone. The new
+/// type adds:
+///   - `lastEmittedAt`: freshness contract; consumers can tell engine
+///     silence apart from stable idle.
+///   - `hasInflightRun`: distinguishes "engine has no live run" from
+///     "no event received yet". The engine cross-checks this against
+///     its backend's run set so the flag cannot drift.
+///   - `stateSince`: reserved for the Phase 5 state-machine; currently
+///     emitted as zero.
+///
+/// Wire identity: emitted via `engine_session_status` events alongside
+/// the legacy `engine_status`. Both events carry the same authoritative
+/// state; Phase 4 removes the legacy emission once every in-repo
+/// consumer has migrated to read this type.
+struct SessionStatus: Codable, Sendable {
+    let key: String
+    let state: String
+    let stateSince: Int64?
+    let lastEmittedAt: Int64
+    let hasInflightRun: Bool?
+    let backgroundAgentCount: Int?
+    let permissionDenialsPending: [PermissionDenialEntry]?
+    let model: String?
+    let contextPercent: Int?
+    let contextWindow: Int?
+    let totalCostUsd: Double?
+    let sessionId: String?
+    let extensionName: String?
+}
+
 // MARK: - EngineInstancePayload
 
 /// Wire type for engine instance added/removed events.
