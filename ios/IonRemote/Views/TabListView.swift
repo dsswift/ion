@@ -551,12 +551,11 @@ struct TabListView: View {
 
         return viewModel.displayGroups.compactMap { group in
             let matchingTabs = group.tabs.filter { tab in
-                let compoundKey = viewModel.engineCompoundKey(tabId: tab.id)
                 return TabSearchHelper.matches(
                     tab: tab,
                     query: query,
                     messages: viewModel.messages[tab.id],
-                    engineMessages: viewModel.engineMessages[compoundKey],
+                    engineMessages: viewModel.engineInstance(tabId: tab.id, instanceId: viewModel.activeEngineInstance[tab.id])?.messages,
                     attachments: viewModel.tabAttachmentCache[tab.id]
                 )
             }

@@ -146,14 +146,9 @@ final class SessionViewModel {
     /// Local display name overrides for terminal instances (keyed by "tabId:instanceId").
     var terminalInstanceLabels: [String: String] = [:]
     // Engine state (per engine tab)
-    var engineAgentStates: [String: [AgentStateUpdate]] = [:]  // compoundKey -> agents
-    var engineStatusFields: [String: StatusFields] = [:]        // compoundKey -> status fields
     var engineWorkingMessages: [String: String] = [:]           // compoundKey -> working message
     var engineDialogs: [String: EngineDialogInfo?] = [:]
     var enginePinnedPrompt: [String: String] = [:]
-    var engineModelOverrides: [String: String] = [:]             // compoundKey -> model override
-    // Engine conversation messages (per compound key)
-    var engineMessages: [String: [Message]] = [:]         // compoundKey -> messages
     var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history
     var engineTurnHasText: Set<String> = []                      // compoundKeys where current LLM sub-turn produced text
     // Agent dispatch conversation history (per conversationId for dispatch pager)

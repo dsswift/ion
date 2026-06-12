@@ -14,8 +14,8 @@ struct TabRowContextMenu: ViewModifier {
         content.contextMenu {
             // -- Clipboard actions --
             if tab.isEngine == true {
-                let compoundKey = viewModel.engineCompoundKey(tabId: tab.id)
-                if let sessionId = viewModel.engineStatusFields[compoundKey]?.sessionId {
+                let instanceId = viewModel.activeEngineInstance[tab.id]
+                if let sessionId = viewModel.engineInstance(tabId: tab.id, instanceId: instanceId)?.statusFields?.sessionId {
                     Button {
                         UIPasteboard.general.string = sessionId
                         viewModel.showToast(ToastMessage(style: .success, title: "Session ID copied"))

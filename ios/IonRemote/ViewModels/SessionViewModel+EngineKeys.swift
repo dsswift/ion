@@ -3,18 +3,27 @@ import Foundation
 // MARK: - Engine compound-key helpers
 //
 // Engine events are keyed by `tabId:instanceId` (the "compound key"). This
-// file holds the two helpers SessionViewModel+EventHandlers uses to keep
-// that keying consistent with how the view layer looks state up:
+// file holds the helpers SessionViewModel+EventHandlers uses to keep that
+// keying consistent with how the view layer looks state up:
 //
 //   - resolveEngineKey: builds the compound key for an incoming event,
 //     falling back to the active instance when the engine omits instanceId.
 //
-//   - rekeyEngineMaps: when an engine instance moves between tabs, walks
-//     every compound-keyed dictionary and rewrites entries so the agent
-//     panel / status bar / working banner / tool state follow the instance
-//     to its new tab.
+//   - engineInstance(tabId:instanceId:): read-only lookup of an
+//     EngineInstanceInfo by (tabId, instanceId).
 //
-// Both helpers live on SessionViewModel via extension. They are intentionally
+//   - mutateEngineInstance(tabId:instanceId:_:): write path — finds the
+//     instance by index and applies a mutating closure in place. The 4
+//     conversation fields (messages, agentStates, statusFields,
+//     modelOverride) live on the struct so this is the single write site.
+//
+//   - rekeyEngineMaps: when an engine instance moves between tabs, walks
+//     every remaining compound-keyed dictionary (working message, dialogs,
+//     pinned prompt, active tools) so they follow the instance to its new
+//     tab. The 4 conversation fields are NOT rekeyed here — they travel
+//     with the EngineInstanceInfo struct when engineInstances is updated.
+//
+// All helpers live on SessionViewModel via extension. They are intentionally
 // in a separate file because EventHandlers.swift is near the 600-line cap;
 // see .file-size-allowlist.yml and docs/architecture/file-organization.md.
 
@@ -46,16 +55,52 @@ extension SessionViewModel {
         return tabId
     }
 
-    /// Rekey every compound-keyed dictionary from `oldKey` to `newKey`.
-    /// Called when an engine instance moves between tabs so the agent
-    /// panel, status bar, working banner, dialogs, and active tools
-    /// follow the instance rather than orphaning under the old key.
+    /// Resolve `instanceId` the same way `resolveEngineKey` does, then
+    /// return the matching `EngineInstanceInfo` (if any). Used by write
+    /// sites that need the actual instanceId string after nil-resolution
+    /// before calling `mutateEngineInstance`.
+    @MainActor
+    func resolveInstanceId(tabId: String, instanceId: String?) -> String? {
+        if let id = instanceId { return id }
+        return activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+    }
+
+    /// Return the `EngineInstanceInfo` for a given (tabId, instanceId) pair,
+    /// or nil when no matching instance is registered. Pass nil for
+    /// `instanceId` to look up the active instance.
+    @MainActor
+    func engineInstance(tabId: String, instanceId: String?) -> EngineInstanceInfo? {
+        let id = instanceId ?? activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+        guard let id else { return nil }
+        return engineInstances[tabId]?.first(where: { $0.id == id })
+    }
+
+    /// Mutate the `EngineInstanceInfo` identified by (tabId, instanceId)
+    /// in place. Pass nil for `instanceId` to target the active instance.
+    /// No-ops silently when the instance is not found (defensive — mirrors
+    /// the dict-write pattern that simply overwrites an absent key).
+    @MainActor
+    func mutateEngineInstance(tabId: String, instanceId: String?, _ body: (inout EngineInstanceInfo) -> Void) {
+        let id = instanceId ?? activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+        guard let id,
+              let idx = engineInstances[tabId]?.firstIndex(where: { $0.id == id })
+        else { return }
+        body(&engineInstances[tabId]![idx])
+    }
+
+    /// Rekey every remaining compound-keyed dictionary from `oldKey` to
+    /// `newKey`. Called when an engine instance moves between tabs.
     ///
-    /// The canonical set of maps is the one already cleaned up in
-    /// `handleTabClosed` (SessionViewModel+TabEventHandlers.swift). Any
-    /// new compound-keyed map added to SessionViewModel must be added
-    /// to BOTH that cleanup and this helper, or instance moves and tab
-    /// closes will silently leak state.
+    /// Note: the 4 conversation fields (messages, agentStates, statusFields,
+    /// modelOverride) are NOT in this list — they live on EngineInstanceInfo
+    /// and travel with the struct when engineInstances is updated in the
+    /// `.engineInstanceMoved` handler. Only the maps that still live as
+    /// standalone dictionaries on SessionViewModel are rekeyed here.
+    ///
+    /// The canonical set of maps is the one cleaned up in `handleTabClosed`
+    /// (SessionViewModel+TabEventHandlers.swift). Any new compound-keyed map
+    /// added to SessionViewModel must be added to BOTH that cleanup and this
+    /// helper, or instance moves and tab closes will silently leak state.
     ///
     /// Mirrors desktop's `engine-slice.ts:200-230` rekey<V> helper.
     @MainActor
@@ -67,13 +112,9 @@ extension SessionViewModel {
                 moved.append(name)
             }
         }
-        move("engineAgentStates", &engineAgentStates)
-        move("engineStatusFields", &engineStatusFields)
         move("engineWorkingMessages", &engineWorkingMessages)
         move("engineDialogs", &engineDialogs)
         move("enginePinnedPrompt", &enginePinnedPrompt)
-        move("engineModelOverrides", &engineModelOverrides)
-        move("engineMessages", &engineMessages)
         move("activeTools", &activeTools)
         // Sets need bespoke handling.
         if engineConversationLoaded.contains(oldKey) {

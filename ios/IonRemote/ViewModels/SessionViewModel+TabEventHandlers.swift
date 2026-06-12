@@ -14,12 +14,6 @@ extension SessionViewModel {
         // Clean up all engine state for this tab
         engineInstances.removeValue(forKey: tabId)
         activeEngineInstance.removeValue(forKey: tabId)
-        for key in engineAgentStates.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineAgentStates.removeValue(forKey: key)
-        }
-        for key in engineStatusFields.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineStatusFields.removeValue(forKey: key)
-        }
         for key in engineWorkingMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
             engineWorkingMessages.removeValue(forKey: key)
         }
@@ -28,9 +22,6 @@ extension SessionViewModel {
         }
         for key in enginePinnedPrompt.keys where key == tabId || key.hasPrefix("\(tabId):") {
             enginePinnedPrompt.removeValue(forKey: key)
-        }
-        for key in engineMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            engineMessages.removeValue(forKey: key)
         }
         for key in activeTools.keys where key.hasPrefix("\(tabId):") || key == tabId {
             activeTools.removeValue(forKey: key)
@@ -108,13 +99,13 @@ extension SessionViewModel {
         }
         tabIdleSince[tabId] = Date()
 
-        // TTS: try engineMessages → conversation messages → liveText
-        let key = engineCompoundKey(tabId: tabId)
+        // TTS: try instance messages → conversation messages → liveText
         let convLoaded = conversationLoaded.contains(tabId)
-        DiagnosticLog.log("VOICE-TTS: taskComplete tabId=\(tabId.prefix(8)) convLoaded=\(convLoaded) liveText=\(capturedLiveText?.count ?? -1) msgs=\(messages[tabId]?.count ?? -1) engineMsgs=\(engineMessages[key]?.count ?? -1)")
+        let engineMsgCount = engineInstance(tabId: tabId, instanceId: activeEngineInstance[tabId])?.messages.count ?? -1
+        DiagnosticLog.log("VOICE-TTS: taskComplete tabId=\(tabId.prefix(8)) convLoaded=\(convLoaded) liveText=\(capturedLiveText?.count ?? -1) msgs=\(messages[tabId]?.count ?? -1) engineMsgs=\(engineMsgCount)")
         let spokenInfo: (text: String, messageId: String?)? = {
-            // 1. engineMessages (engine_text_delta path) — no stable message ID
-            if let last = engineMessages[key]?.last(where: { $0.role == .assistant }),
+            // 1. instance.messages (engine_text_delta path) — no stable message ID
+            if let last = engineInstance(tabId: tabId, instanceId: activeEngineInstance[tabId])?.messages.last(where: { $0.role == .assistant }),
                !last.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return (last.content, nil)
             }

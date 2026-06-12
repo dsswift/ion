@@ -18,6 +18,7 @@ extension SessionViewModel {
         send(.createEngineTab(workingDirectory: dir, profileId: profileId))
     }
 
+    @MainActor
     func submitEnginePrompt(tabId: String, text: String, attachments: [CommandAttachment]? = nil) {
         let key = engineCompoundKey(tabId: tabId)
         enginePinnedPrompt[key] = text
@@ -87,9 +88,7 @@ extension SessionViewModel {
                 source: .remote
             )
             optimistic.attachments = optimisticAttachments
-            var msgs = engineMessages[key] ?? []
-            msgs.append(optimistic)
-            engineMessages[key] = msgs
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(optimistic) }
         }
 
         send(.enginePrompt(tabId: tabId, text: text, instanceId: instanceId, attachments: attachments))
@@ -112,10 +111,10 @@ extension SessionViewModel {
         send(.setEngineDefaultModel(model: model))
     }
 
+    @MainActor
     func setEngineModel(tabId: String, model: String) {
-        let key = engineCompoundKey(tabId: tabId)
-        engineModelOverrides[key] = model
         let instanceId = activeEngineInstance[tabId]
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.modelOverride = model }
         send(.engineSetModel(tabId: tabId, model: model, instanceId: instanceId))
     }
 

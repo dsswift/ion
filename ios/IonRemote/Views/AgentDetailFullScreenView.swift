@@ -13,7 +13,11 @@ struct AgentDetailFullScreenView: View {
 
     /// Live agent from the view model's agent state array.
     private var agent: AgentStateUpdate? {
-        (viewModel.engineAgentStates[compoundKey] ?? [])
+        // compoundKey is "tabId:instanceId"; parse to extract both parts.
+        let parts = compoundKey.split(separator: ":", maxSplits: 1)
+        let tabId = parts.count >= 1 ? String(parts[0]) : compoundKey
+        let instanceId = parts.count >= 2 ? String(parts[1]) : nil
+        return (viewModel.engineInstance(tabId: tabId, instanceId: instanceId)?.agentStates ?? [])
             .first { $0.id == agentId }
     }
 

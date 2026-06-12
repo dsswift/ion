@@ -192,20 +192,19 @@ extension SessionViewModel {
             // state with the payload, full stop — no merging, no historical
             // preservation. See docs/architecture/agent-state.md.
             //
-            // Compound-key resolution: when the engine omits instanceId we
+            // Instance resolution: when the engine omits instanceId we
             // resolve to the active engine instance so the event lands
-            // under the same key the EngineView reads. The desktop bridge
+            // on the same instance the EngineView reads. The desktop bridge
             // always sends an instanceId today, but this guards against a
-            // future emitter (or test harness) that sends nil and matches
-            // how engineCompoundKey(tabId:) builds keys for view lookup.
-            let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
+            // future emitter (or test harness) that sends nil.
+            let resolvedId = resolveInstanceId(tabId: tabId, instanceId: instanceId)
             let statuses = agents.map { "\($0.name):\($0.status)" }.joined(separator: ",")
-            DiagnosticLog.log("ENGINE: agent_state key=\(key) count=\(agents.count) statuses=[\(statuses)]")
-            engineAgentStates[key] = agents
+            DiagnosticLog.log("ENGINE: agent_state tabId=\(tabId.prefix(8)) instId=\(resolvedId?.prefix(8) ?? "nil") count=\(agents.count) statuses=[\(statuses)]")
+            mutateEngineInstance(tabId: tabId, instanceId: resolvedId) { $0.agentStates = agents }
 
         case .engineStatus(let tabId, let instanceId, let fields, _):
-            let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
-            engineStatusFields[key] = fields
+            let resolvedId = resolveInstanceId(tabId: tabId, instanceId: instanceId)
+            mutateEngineInstance(tabId: tabId, instanceId: resolvedId) { $0.statusFields = fields }
 
         case .engineWorkingMessage(let tabId, let instanceId, let message, _):
             let key = resolveEngineKey(tabId: tabId, instanceId: instanceId)
@@ -254,7 +253,7 @@ extension SessionViewModel {
             let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
             let filtered = messages.filter { $0.isInternal != true }
             ionLog.info("engineConversationHistory: key=\(key), messageCount=\(messages.count), filtered=\(filtered.count)")
-            engineMessages[key] = filtered
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages = filtered }
             engineConversationLoaded.insert(key)
 
         case .agentConversationHistory(let agentName, let conversationId, let messages):
@@ -306,8 +305,9 @@ extension SessionViewModel {
             }
 
         case .engineModelOverride(let tabId, let instanceId, let model):
-            let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-            engineModelOverrides[key] = model.isEmpty ? nil : model
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
+                $0.modelOverride = model.isEmpty ? nil : model
+            }
 
         case .engineProfiles(let profiles):
             engineProfiles = profiles

@@ -66,7 +66,7 @@ struct EngineView: View {
     }
 
     private var visibleAgents: [AgentStateUpdate] {
-        (viewModel.engineAgentStates[compoundKey] ?? [])
+        (viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.agentStates ?? [])
             .filter(\.isVisible)
             .sorted { a, b in
                 let statusOrder: [String: Int] = ["running": 0, "done": 1, "error": 1, "cancelled": 1, "idle": 2]
@@ -86,7 +86,7 @@ struct EngineView: View {
     }
 
     private var engineMsgs: [Message] {
-        viewModel.engineMessages[compoundKey] ?? []
+        viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.messages ?? []
     }
 
     private enum GroupedItem: Identifiable {
@@ -455,7 +455,7 @@ struct EngineView: View {
 
     private var headerSection: some View {
         VStack(spacing: 0) {
-            if let fields = viewModel.engineStatusFields[compoundKey] {
+            if let fields = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.statusFields {
                 GeometryReader { geo in
                     Rectangle()
                         .fill(contextBarColor(fields.contextPercent))
@@ -517,9 +517,9 @@ struct EngineView: View {
         // two action bindings (dismiss + draft text) the bar needs.
         VStack(spacing: 0) {
             Divider()
-            if let fields = viewModel.engineStatusFields[compoundKey] {
+            if let fields = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.statusFields {
                 ConversationStatusBar(
-                    modelOverride: viewModel.engineModelOverrides[compoundKey],
+                    modelOverride: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.modelOverride,
                     preferredModel: fields.model,
                     contextPercent: fields.contextPercent,
                     contextTokens: nil,

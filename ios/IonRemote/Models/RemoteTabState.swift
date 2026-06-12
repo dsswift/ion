@@ -120,6 +120,24 @@ struct EngineInstanceInfo: Codable, Identifiable, Sendable {
     /// idle. `EngineInstanceBar` renders a ⚠ glyph when non-nil; tap
     /// to reveal the requested + fallback model names.
     var modelFallback: EngineInstanceModelFallback? = nil
+
+    // Non-Codable conversation state — populated by ConversationInstance,
+    // not decoded from the snapshot JSON.
+    var messages: [Message] = []
+    var agentStates: [AgentStateUpdate] = []
+    var statusFields: StatusFields? = nil
+    var modelOverride: String? = nil
+
+    // Explicit CodingKeys so the four fields above are excluded from
+    // JSON encoding/decoding and don't break snapshot deserialization.
+    enum CodingKeys: String, CodingKey {
+        case id
+        case label
+        case waitingState
+        case isRunning
+        case runningAgentCount
+        case modelFallback
+    }
 }
 
 // MARK: - PermissionMode

@@ -18,8 +18,6 @@ extension SessionViewModel {
         // Content format mirrors the desktop: bold title line prefixed with
         // "Conversation redirected: " for redirect level, then the body.
         DiagnosticLog.log("ENGINE: intercept tabId=\(tabId.prefix(8)) level=\(level) title=\(title.prefix(60))")
-        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-        var msgs = engineMessages[key] ?? []
         let levelPrefix = level == "redirect" ? "Conversation redirected: " : ""
         let content = "**\(levelPrefix)\(title)**\n\n\(message)"
         var msg = Message(
@@ -29,20 +27,18 @@ extension SessionViewModel {
             timestamp: Date().timeIntervalSince1970 * 1000
         )
         msg.interceptLevel = level
-        msgs.append(msg)
-        engineMessages[key] = msgs
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
-    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String) {        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-        var msgs = engineMessages[key] ?? []
+    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String) {
         // Divider messages (session-start, implement, etc.) may be relayed
         // from the desktop as engine_harness_message. Detect the `──` sentinel
         // prefix and create a system-role message so they render with the
         // proper divider visual treatment instead of the harness gear icon.
         let role: MessageRole = message.hasPrefix("──") ? .system : .harness
-        msgs.append(Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
@@ -52,8 +48,6 @@ extension SessionViewModel {
         // handler. planModeEnabled=false is a proposal (ExitPlanMode) and
         // is intentionally ignored — the desktop handles the approval flow.
         guard planModeEnabled else { return }
-        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-        var msgs = engineMessages[key] ?? []
         let slug = planSlug ?? ""
         let time = Date()
         let formatter = DateFormatter()
@@ -62,8 +56,8 @@ extension SessionViewModel {
         let content = slug.isEmpty
             ? "── Plan created at \(timeStr) ──"
             : "── Plan created at \(timeStr) · \(slug) ──"
-        msgs.append(Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
@@ -75,15 +69,13 @@ extension SessionViewModel {
         // The engine may emit this multiple times per turn (between
         // turns, before end_turn exit, after tool results); each capture
         // produces its own divider so the count is visible.
-        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-        var msgs = engineMessages[key] ?? []
         let time = Date()
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         let timeStr = formatter.string(from: time)
         let content = "── Steer applied at \(timeStr) · \(messageLength) chars ──"
-        msgs.append(Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
@@ -93,9 +85,8 @@ extension SessionViewModel {
         let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
         activeTools[key, default: [:]][toolId] = info
         // Add tool message to conversation
-        var msgs = engineMessages[key] ?? []
-        msgs.append(Message(id: toolId, role: .tool, content: "", toolName: toolName, toolId: toolId, toolStatus: .running, timestamp: Date().timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: toolId, role: .tool, content: "", toolName: toolName, toolId: toolId, toolStatus: .running, timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
@@ -107,24 +98,20 @@ extension SessionViewModel {
             activeTools.removeValue(forKey: key)
         }
         // Update tool message status in conversation
-        if var msgs = engineMessages[key],
-           let idx = msgs.lastIndex(where: { $0.toolId == toolId }) {
-            msgs[idx].toolStatus = isError ? .error : .completed
-            if let result = result {
-                msgs[idx].content = result
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if let idx = inst.messages.lastIndex(where: { $0.toolId == toolId }) {
+                inst.messages[idx].toolStatus = isError ? .error : .completed
+                if let result { inst.messages[idx].content = result }
             }
-            engineMessages[key] = msgs
         }
     }
 
     @MainActor
     func handleEngineError(tabId: String, instanceId: String?, message: String) {
         DiagnosticLog.log("ENGINE: error tabId=\(tabId.prefix(8)) msg=\(message.prefix(80))")
-        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         // Add error as system message in conversation
-        var msgs = engineMessages[key] ?? []
-        msgs.append(Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
         // Reset tab to idle so user can retry
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
         if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -135,24 +122,22 @@ extension SessionViewModel {
     @MainActor
     func handleEngineNotify(tabId: String, instanceId: String?, message: String, level: String?) {
         DiagnosticLog.log("ENGINE: notify tabId=\(tabId.prefix(8)) level=\(level ?? "info") msg=\(message.prefix(60))")
-        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
         // Surface notifications as system messages in the conversation
-        var msgs = engineMessages[key] ?? []
         let prefix = level == "warning" ? "⚠️ " : level == "error" ? "❌ " : ""
-        msgs.append(Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
     func handleEngineTextDelta(tabId: String, instanceId: String?, text: String) {
         let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-        var msgs = engineMessages[key] ?? []
-        if let last = msgs.last, last.role == .assistant, !last.sealed {
-            msgs[msgs.count - 1].content += text
-        } else {
-            msgs.append(Message(id: UUID().uuidString, role: .assistant, content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if let last = inst.messages.last, last.role == .assistant, !last.sealed {
+                inst.messages[inst.messages.count - 1].content += text
+            } else {
+                inst.messages.append(Message(id: UUID().uuidString, role: .assistant, content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+            }
         }
-        engineMessages[key] = msgs
         engineTurnHasText.insert(key)
         // Set tab running if this is the active instance
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
@@ -177,10 +162,10 @@ extension SessionViewModel {
         }
 
         // Seal the last assistant message so the next text delta starts fresh.
-        var engineMsgs = engineMessages[key] ?? []
-        if let lastIdx = engineMsgs.indices.last, engineMsgs[lastIdx].role == .assistant {
-            engineMsgs[lastIdx].sealed = true
-            engineMessages[key] = engineMsgs
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if let lastIdx = inst.messages.indices.last, inst.messages[lastIdx].role == .assistant {
+                inst.messages[lastIdx].sealed = true
+            }
         }
 
         engineTurnHasText.remove(key)
@@ -200,13 +185,11 @@ extension SessionViewModel {
             }
         }
         // Add a system message about the death
-        let key = instanceId != nil ? "\(tabId):\(instanceId!)" : tabId
-        var msgs = engineMessages[key] ?? []
         var deathMsg = "Engine process died (exit code \(exitCode))"
         if let signal { deathMsg += ", signal: \(signal)" }
         if !stderrTail.isEmpty { deathMsg += "\n" + stderrTail.suffix(5).joined(separator: "\n") }
-        msgs.append(Message(id: UUID().uuidString, role: .system, content: deathMsg, timestamp: Date().timeIntervalSince1970 * 1000))
-        engineMessages[key] = msgs
+        let msg = Message(id: UUID().uuidString, role: .system, content: deathMsg, timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
     }
 
     @MainActor
@@ -215,15 +198,15 @@ extension SessionViewModel {
         if activeEngineInstance[tabId] == instanceId {
             activeEngineInstance[tabId] = engineInstances[tabId]?.first?.id
         }
-        // Clean up compound-keyed state for removed instance
+        // Clean up compound-keyed state for removed instance.
+        // Note: messages, agentStates, statusFields, and modelOverride lived
+        // on the EngineInstanceInfo struct and are gone with the instance.
+        // Only the standalone compound-keyed maps need explicit cleanup here.
         let removedKey = "\(tabId):\(instanceId)"
-        engineAgentStates.removeValue(forKey: removedKey)
-        engineStatusFields.removeValue(forKey: removedKey)
         engineWorkingMessages.removeValue(forKey: removedKey)
         engineDialogs.removeValue(forKey: removedKey)
         enginePinnedPrompt.removeValue(forKey: removedKey)
         activeTools.removeValue(forKey: removedKey)
-        engineMessages.removeValue(forKey: removedKey)
         engineConversationLoaded.remove(removedKey)
         engineTurnHasText.remove(removedKey)
     }
