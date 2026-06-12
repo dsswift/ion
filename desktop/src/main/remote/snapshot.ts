@@ -84,12 +84,16 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                 var pdTools = pdEntry && pdEntry.tools;
                 if (pdTools && pdTools.length > 0) {
                   for (var pdi = 0; pdi < pdTools.length; pdi++) {
+                    // instanceId scopes the promoted entry to the engine
+                    // sub-tab that produced it so iOS can hide the card
+                    // when the user views a sibling sub-conversation.
                     queue.push({
                       questionId: 'denied-' + pdTools[pdi].toolUseId,
                       toolName: pdTools[pdi].toolName,
                       toolTitle: pdTools[pdi].toolName,
                       toolInput: pdTools[pdi].toolInput,
                       options: [],
+                      instanceId: activeInstId2,
                     });
                   }
                 }
@@ -390,6 +394,10 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               kind: o.kind,
               label: o.label,
             })),
+            // Carry the engine-instance scoping through the main-process
+            // mapping so it survives onto the wire. Undefined for CLI
+            // tabs and for renderer queue entries that predate the field.
+            instanceId: p.instanceId || undefined,
           }
           // Enrich ExitPlanMode entries with planContent by reading the plan file
           if (entry.toolName === 'ExitPlanMode' && entry.toolInput?.planFilePath && !entry.toolInput?.planContent) {

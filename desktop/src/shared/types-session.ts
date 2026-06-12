@@ -24,6 +24,11 @@ export interface PermissionRequest {
   toolDescription?: string
   toolInput?: Record<string, unknown>
   options: Array<{ optionId: string; kind?: string; label: string }>
+  /** Engine instance (sub-tab) this request belongs to. Set for engine-view
+   * denials promoted into the tab-level queue so clients can scope the
+   * card to the owning sub-conversation. Absent for CLI tabs and for
+   * requests that predate this field (additive, non-breaking). */
+  instanceId?: string
 }
 
 export interface FileAttachment {
