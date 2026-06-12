@@ -13,7 +13,7 @@ import { ArrowDown } from '@phosphor-icons/react'
 import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, HarnessMessage, MessageBubble,
-  CopyButton, InterruptButton, CompactionRow, AgentTurnGroup,
+  CopyButton, InterruptButton, CompactionRow, AgentTurnGroup, InterceptBanner,
 } from './conversation'
 
 // Stable empty refs to avoid creating new array/object references on every render.
@@ -386,6 +386,8 @@ export function EngineView({ tabId }: EngineViewProps) {
                     return <AgentTurnGroup key={`at-${idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} skipMotion />
                   case 'harness':
                     return <HarnessMessage key={item.message.id} message={item.message} skipMotion bootstrapCollapsedCount={item.bootstrapCollapsedCount} />
+                  case 'intercept':
+                    return <InterceptBanner key={item.message.id} message={item.message} skipMotion />
                   case 'system':
                     return <SystemMessage key={item.message.id} message={item.message} skipMotion />
                   case 'compaction':

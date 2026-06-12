@@ -282,6 +282,15 @@ export function handleEngineEvent(
       )
       ctx.emit('engine_early_stop_decision_request', tabId, event)
       break
+
+    case 'engine_intercept':
+      // Fire-and-forget signal: bubble up via ctx.emit so event-wiring.ts's
+      // wireSessionPlaneEvents can call handleInterceptEvent without creating
+      // a circular import through state.ts. The event carries the raw payload
+      // and tabId; the wiring layer in event-wiring.ts does the routing.
+      log(`intercept: tabId=${tabId} level=${event.interceptLevel} title=${event.interceptTitle}`)
+      ctx.emit('engine_intercept', tabId, event)
+      break
   }
 }
 

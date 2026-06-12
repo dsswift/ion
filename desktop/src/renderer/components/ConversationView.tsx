@@ -13,7 +13,7 @@ import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, InterruptButton,
   UserMessage, QueuedMessage, MessageActions, EmptyState,
-  CompactionRow, AgentTurnGroup,
+  CompactionRow, AgentTurnGroup, InterceptBanner,
 } from './conversation'
 import { buildPermissionDeniedHandlers } from './conversation/usePermissionDeniedHandlers'
 
@@ -207,6 +207,8 @@ export function ConversationView() {
                 return <CompactionRow key={item.message.id} message={item.message} skipMotion={isHistorical} />
               case 'system':
                 return <SystemMessage key={item.message.id} message={item.message} skipMotion={isHistorical} />
+              case 'intercept':
+                return <InterceptBanner key={item.message.id} message={item.message} skipMotion={isHistorical} />
               default:
                 return null
             }

@@ -7,6 +7,7 @@ export type GroupedItem =
   | { kind: 'assistant'; message: Message }
   | { kind: 'system'; message: Message }
   | { kind: 'harness'; message: Message; bootstrapCollapsedCount?: number }
+  | { kind: 'intercept'; message: Message }
   | { kind: 'tool-group'; messages: Message[] }
   | { kind: 'agent-turn'; tools: Message[]; assistantMessages: Message[]; isActive: boolean }
   | { kind: 'compaction'; message: Message }
@@ -82,7 +83,10 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
         flushBootstrap()
         result.push({ kind: 'assistant', message: msg })
       } else if (msg.role === 'harness') {
-        if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
+        if (msg.interceptLevel) {
+          flushBootstrap()
+          result.push({ kind: 'intercept', message: msg })
+        } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
           console.log(`[ENGINE-BOOTSTRAP] enqueue id=${msg.id} buf=${bootstrapBuf.length + 1}`)
           bootstrapBuf.push(msg)
         } else {
@@ -171,7 +175,11 @@ function groupMessagesUnified(
       flushBootstrap()
       turnAssistant.push(msg)
     } else if (msg.role === 'harness') {
-      if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
+      if (msg.interceptLevel) {
+        flushTurn()
+        flushBootstrap()
+        result.push({ kind: 'intercept', message: msg })
+      } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
         console.log(`[ENGINE-BOOTSTRAP] enqueue id=${msg.id} buf=${bootstrapBuf.length + 1}`)
         bootstrapBuf.push(msg)
       } else {

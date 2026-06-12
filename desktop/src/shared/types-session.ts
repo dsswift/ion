@@ -170,6 +170,15 @@ export interface Message {
    * Client-only field — NOT part of the Go contract or wire protocol.
    */
   planFilePath?: string
+  /**
+   * Intercept level carried from `engine_intercept.interceptLevel`.
+   * Populated only on `role: 'harness'` messages pushed by the
+   * `engine_intercept` handler in engine-event-slice.ts.
+   * Values: "banner" (informational) | "redirect" (urgent, run aborted).
+   * The InterceptBanner component reads this to choose its visual weight.
+   * Client-only field — NOT part of the Go contract or wire protocol.
+   */
+  interceptLevel?: string
   timestamp: number
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.

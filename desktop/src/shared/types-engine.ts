@@ -412,3 +412,23 @@ export type EngineEvent =
       notifySound?: string
       notifyScope?: string
     }
+  // ─── engine_intercept ───
+  //
+  // Fire-and-forget signal emitted when an extension calls ctx.intercept().
+  // The engine routes the event to the target session's stream and attaches no
+  // further semantics. Clients decide how to render and whether to act on the
+  // level hint:
+  //   "banner"   — informational, non-disruptive inline display
+  //   "redirect" — urgent; client may abort the active run and re-prompt with message
+  //
+  // There is no "current intercept state" to query — this event fires exactly
+  // once per ctx.intercept() call. Consumers must not accumulate or replace
+  // state from it. See docs/protocol/server-events.md for the full field table.
+  | {
+      type: 'engine_intercept'
+      interceptLevel: string
+      interceptTitle: string
+      interceptMessage: string
+      interceptSource?: string
+      interceptMetadata?: Record<string, unknown>
+    }

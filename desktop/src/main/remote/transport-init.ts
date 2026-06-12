@@ -1,6 +1,6 @@
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
-import { state, modelCache } from '../state'
+import { state, modelCache, deviceFocusMap } from '../state'
 import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
 import { readSettings } from '../settings-store'
 import { RemoteTransport } from './transport'
@@ -110,6 +110,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   state.remoteTransport.on('device-unpaired', (deviceId: string) => {
     log(`[Remote] device ${deviceId} unpaired via close code`)
+    deviceFocusMap.delete(deviceId)
     revokeDeviceLocally(deviceId)
   })
 

@@ -110,6 +110,20 @@ export const modelCache = {
 export const extensionCommandRegistry = new Map<string, Set<string>>()
 
 /**
+ * Per-device iOS focus and intercept-preference state.
+ *
+ * Keyed by deviceId. iOS sends `report_focus` whenever the focused tab changes,
+ * the app foregrounds/backgrounds, or the intercept preference toggles. The
+ * desktop reads this map in `event-wiring-intercept.ts` when an
+ * `engine_intercept` event arrives to decide which devices to forward it to
+ * and whether to perform abort + re-prompt for "redirect" level events.
+ *
+ * tabId null means the iOS device is backgrounded or has no tab focused.
+ * Entries are removed when the device disconnects (see transport-init.ts).
+ */
+export const deviceFocusMap = new Map<string, { tabId: string | null; interceptEnabled: boolean }>()
+
+/**
  * Dedupe set for AskUserQuestion / ExitPlanMode `permission_request`
  * envelopes synthesized from engine-view `engine_status.permissionDenials`
  * and forwarded to iOS. The engine emits engine_status repeatedly

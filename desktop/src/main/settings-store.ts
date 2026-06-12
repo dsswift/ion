@@ -44,6 +44,13 @@ export const SETTINGS_DEFAULTS = {
   // button reveal and usePermissionDeniedHandlers.ts::onImplement for
   // the branching behavior.
   showImplementClearContext: false,
+  // Whether the desktop acts on "redirect" level engine_intercept events —
+  // aborting the active run and re-prompting with the intercept message.
+  // Default ON. When false, redirect-level intercepts are downgraded to
+  // banner (the event still renders in the conversation but the run is not
+  // interrupted). Banner-level intercepts are always displayed regardless.
+  // iOS has its own independent preference stored in UserDefaults.
+  interceptEnabled: true,
 }
 
 export function readSettings(): Record<string, any> {
