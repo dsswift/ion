@@ -89,6 +89,7 @@ func buildManifest() contractManifest {
 	// Shared types used across language boundaries
 	shared := map[string]reflect.Type{
 		"StatusFields":     reflect.TypeOf(StatusFields{}),
+		"SessionStatus":    reflect.TypeOf(SessionStatus{}),
 		"EngineConfig":     reflect.TypeOf(EngineConfig{}),
 		"MessageEndUsage":  reflect.TypeOf(MessageEndUsage{}),
 		"PermissionOpt":    reflect.TypeOf(PermissionOpt{}),

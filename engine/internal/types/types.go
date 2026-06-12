@@ -151,6 +151,83 @@ type StatusFields struct {
 	BackgroundAgents int `json:"backgroundAgents,omitempty"`
 }
 
+// SessionStatus is the Phase 3 typed status payload that consolidates
+// every "is this session running" signal into one engine-owned snapshot.
+// Emitted via the engine_session_status event variant alongside the
+// legacy engine_status during the transition window. Phase 4 of the
+// state-management overhaul removes the legacy event.
+//
+// Why a typed snapshot replaces the field-on-EngineEvent shape:
+//
+//   - Authoritative state computation lives in exactly one place
+//     (Manager.currentSessionStatus). The wire payload is the
+//     verbatim output of that function plus the auxiliary fields that
+//     vary mid-run (context %, cost, model). Consumers therefore can
+//     never disagree with the engine — they receive exactly what the
+//     engine computed.
+//
+//   - StateSince and LastEmittedAt give every consumer a freshness
+//     contract. A cache that needs to decide "is the running indicator
+//     I'm showing fresh enough to trust?" reads LastEmittedAt; a cache
+//     that needs to render "running for 3m 12s" reads StateSince.
+//     Without these, every consumer had to maintain its own clock.
+//
+//   - HasInflightRun and BackgroundAgentCount let consumers
+//     distinguish "the LLM turn is running" from "the LLM turn ended
+//     but dispatched agents are still running" without re-deriving it
+//     from inst.agentStates. Today's renderer keeps a separate
+//     `anyInstanceHasRunningChildren` projection just to recover this.
+//
+// Contract stability note: this type is additive. Once published it
+// follows the same backwards-compatibility rules as every other shared
+// type — new fields are zero-default and additive, no field is removed
+// or renamed without a major version. See CLAUDE.md "Contract stability".
+type SessionStatus struct {
+	// Key is the session key (tabId or tabId:instanceId). Always set.
+	Key string `json:"key"`
+	// State is the authoritative running/idle/etc state computed by
+	// Manager.currentSessionStatus. Mirrors StatusFields.State values
+	// exactly so this field is a drop-in for any consumer that reads
+	// StatusFields.State today. Values: "idle", "running",
+	// "starting", "waiting_user", "compacting", "dead", "failed".
+	// Only "idle" and "running" are emitted today; the other values
+	// are reserved for future phases.
+	State string `json:"state"`
+	// StateSince is the unix-ms timestamp at which the session entered
+	// the current State. Zero means "unknown / not tracked yet".
+	StateSince int64 `json:"stateSince,omitempty"`
+	// LastEmittedAt is the unix-ms timestamp at which the engine last
+	// emitted any session-status event for this key. Consumers use it
+	// to detect engine silence (>2× heartbeat interval suggests the
+	// transport is unhealthy or the engine has died). Always set on
+	// outbound events.
+	LastEmittedAt int64 `json:"lastEmittedAt"`
+	// HasInflightRun is true iff the backend has a live run for this
+	// key. Mirrors the Phase 1 cross-check on Manager.currentSessionStatus.
+	HasInflightRun bool `json:"hasInflightRun,omitempty"`
+	// BackgroundAgentCount is the number of background dispatch agents
+	// still running. Same semantics as StatusFields.BackgroundAgents.
+	BackgroundAgentCount int `json:"backgroundAgentCount,omitempty"`
+	// PermissionDenialsPending mirrors StatusFields.PermissionDenials.
+	// Same retention contract — unresolved AskUserQuestion / ExitPlanMode
+	// entries surface here so a re-attaching consumer sees them.
+	PermissionDenialsPending []PermissionDenial `json:"permissionDenialsPending,omitempty"`
+	// Model is the model the most recent run resolved to. Empty when
+	// the session has never dispatched a prompt.
+	Model string `json:"model,omitempty"`
+	// ContextPercent is the most recent context-window usage percent.
+	ContextPercent int `json:"contextPercent,omitempty"`
+	// ContextWindow is the model's context window in tokens.
+	ContextWindow int `json:"contextWindow,omitempty"`
+	// TotalCostUsd is the cumulative cost of the conversation in USD.
+	TotalCostUsd float64 `json:"totalCostUsd,omitempty"`
+	// SessionID is the conversation id (matches the file basename in
+	// ~/.ion/conversations/<id>.tree.jsonl).
+	SessionID string `json:"sessionId,omitempty"`
+	// ExtensionName mirrors StatusFields.ExtensionName.
+	ExtensionName string `json:"extensionName,omitempty"`
+}
+
 
 // MessageEndUsage reports token usage at the end of a message.
 type MessageEndUsage struct {

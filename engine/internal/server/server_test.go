@@ -163,7 +163,7 @@ func startSession(t *testing.T, conn net.Conn, key, requestID string) {
 		},
 		"requestId": requestID,
 	})
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("startSession %q: no result received; lines=%v", key, lines)
@@ -257,7 +257,7 @@ func TestServerStartSession(t *testing.T) {
 
 	var resultFound bool
 	var lines []string
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 8; i++ {
 		if !scanner.Scan() {
 			break
 		}
@@ -327,7 +327,7 @@ func TestMultiClientBroadcast(t *testing.T) {
 	})
 
 	// conn1 must receive its result.
-	lines1 := readLines(t, conn1, 5, 2*time.Second)
+	lines1 := readLines(t, conn1, 8, 2*time.Second)
 	r1 := findResult(t, lines1)
 	if r1 == nil || !r1.OK {
 		errMsg := ""
@@ -338,7 +338,7 @@ func TestMultiClientBroadcast(t *testing.T) {
 	}
 
 	// conn2 should receive at least one broadcast (the engine_status event).
-	lines2 := readLines(t, conn2, 3, 2*time.Second)
+	lines2 := readLines(t, conn2, 8, 2*time.Second)
 	hasEvent := false
 	for _, l := range lines2 {
 		if strings.Contains(l, `"event"`) && strings.Contains(l, "broadcast-test") {
@@ -380,7 +380,7 @@ func TestClientDisconnectCleanup(t *testing.T) {
 		"requestId": "req-dc",
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil || !r.OK {
 		errMsg := ""
@@ -468,7 +468,7 @@ func TestStopSessionCommand(t *testing.T) {
 		"requestId": "req-stop",
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("no result for stop_session; lines=%v", lines)
@@ -485,7 +485,7 @@ func TestStopSessionCommand(t *testing.T) {
 		"cmd":       "list_sessions",
 		"requestId": "req-list",
 	})
-	listLines := readLines(t, conn, 5, 2*time.Second)
+	listLines := readLines(t, conn, 8, 2*time.Second)
 	listResult := findResult(t, listLines)
 	if listResult == nil {
 		t.Fatalf("no result for list_sessions; lines=%v", listLines)
@@ -522,7 +522,7 @@ func TestStopByPrefix(t *testing.T) {
 		"requestId": "req-prefix",
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("no result for stop_by_prefix; lines=%v", lines)
@@ -536,7 +536,7 @@ func TestStopByPrefix(t *testing.T) {
 		"cmd":       "list_sessions",
 		"requestId": "req-list2",
 	})
-	listLines := readLines(t, conn, 5, 2*time.Second)
+	listLines := readLines(t, conn, 8, 2*time.Second)
 	listResult := findResult(t, listLines)
 	if listResult == nil {
 		t.Fatalf("no result for list_sessions; lines=%v", listLines)
@@ -582,7 +582,7 @@ func TestForkSessionError(t *testing.T) {
 		"requestId":    "req-fork",
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("no result for fork_session; lines=%v", lines)
@@ -641,7 +641,7 @@ func TestListSessionsWithRequestID(t *testing.T) {
 		"requestId": "req-list",
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("no result frame for list_sessions with requestId; lines=%v", lines)
@@ -719,7 +719,7 @@ func TestStopNonExistentSession(t *testing.T) {
 		"requestId": "req-ghost",
 	})
 
-	lines := readLines(t, conn, 3, 2*time.Second)
+	lines := readLines(t, conn, 5, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("no result for stop_session on non-existent key; lines=%v", lines)
@@ -777,7 +777,7 @@ func TestDispatchPanicRecovery(t *testing.T) {
 	srv.dispatch(serverConn, cmd)
 
 	// Read the error result sent by the recovery guard.
-	lines := readLines(t, clientConn, 3, 2*time.Second)
+	lines := readLines(t, clientConn, 5, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("expected error result from panic recovery; lines=%v", lines)
@@ -799,7 +799,7 @@ func TestDispatchPanicRecovery(t *testing.T) {
 		"cmd":       "list_sessions",
 		"requestId": "req-after-panic",
 	})
-	afterLines := readLines(t, conn, 3, 2*time.Second)
+	afterLines := readLines(t, conn, 5, 2*time.Second)
 	rAfter := findResult(t, afterLines)
 	if rAfter == nil {
 		t.Fatalf("server unresponsive after panic; lines=%v", afterLines)
@@ -838,7 +838,7 @@ func TestDispatchPanicRecoveryRelayPath(t *testing.T) {
 		"cmd":       "list_sessions",
 		"requestId": "req-after-relay-panic",
 	})
-	lines := readLines(t, conn, 3, 2*time.Second)
+	lines := readLines(t, conn, 5, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("server unresponsive after relay panic; lines=%v", lines)
@@ -871,7 +871,7 @@ func TestDispatchPanicRecoveryServerSurvives(t *testing.T) {
 	srv.dispatch(serverConn, cmd)
 
 	// Drain the error result from the pipe client.
-	readLines(t, clientConn, 3, 1*time.Second)
+	readLines(t, clientConn, 5, 1*time.Second)
 
 	// Socket client should be completely unaffected.
 	startSession(t, conn2, "survivor", "req-survivor")
@@ -881,7 +881,7 @@ func TestDispatchPanicRecoveryServerSurvives(t *testing.T) {
 		"cmd":       "list_sessions",
 		"requestId": "req-list-survive",
 	})
-	lines := readLines(t, conn2, 5, 2*time.Second)
+	lines := readLines(t, conn2, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("conn2 unresponsive after panic; lines=%v", lines)
@@ -931,7 +931,7 @@ func TestDuplicateStartSession(t *testing.T) {
 		"requestId": "req-second",
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResult(t, lines)
 	if r == nil {
 		t.Fatalf("no result for duplicate start_session; lines=%v", lines)

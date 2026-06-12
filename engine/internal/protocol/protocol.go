@@ -201,6 +201,12 @@ var validCommands = map[string]bool{
 	"early_stop_decision_response": true,
 	"health":                true,
 	"reconcile_state":       true,
+	// query_session_status: on-demand counterpart to reconcile_state that
+	// emits ONLY the engine_status snapshot (no agent state). Used by
+	// freshly-reconnected clients to learn current status for a key
+	// without waiting for the next heartbeat tick or paying the cost of
+	// a full reconcile. Phase 2 of the state-management overhaul.
+	"query_session_status":   true,
 	"migrate_conversation":  true,
 	"list_models":           true,
 	"store_credential":      true,
@@ -388,6 +394,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		// are optional; an empty response is a valid "no opinion" reply.
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "earlyStopRequestId")
 	case "reconcile_state":
+		return hasNonEmptyString(raw, "key")
+	case "query_session_status":
 		return hasNonEmptyString(raw, "key")
 	case "migrate_conversation":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")

@@ -20,6 +20,16 @@ type EngineEvent struct {
 	// engine_status
 	Fields *StatusFields `json:"fields,omitempty"`
 
+	// engine_session_status — Phase 3 of the state-management overhaul.
+	// Typed counterpart to engine_status that carries a SessionStatus
+	// payload. Emitted in parallel with engine_status during the
+	// transition window. Once Phase 4 lands and the legacy
+	// engine_status emission is removed (a deliberate contract break
+	// gated on the published deprecation policy), this is the sole
+	// authoritative status surface. See types.SessionStatus for the
+	// payload's per-field contract.
+	SessionStatus *SessionStatus `json:"sessionStatus,omitempty"`
+
 	// engine_working_message, engine_notify, engine_error, engine_harness_message
 	EventMessage  string `json:"message,omitempty"`
 	Level         string `json:"level,omitempty"`

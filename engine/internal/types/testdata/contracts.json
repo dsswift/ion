@@ -225,6 +225,7 @@
     "runStalledDuration",
     "runStalledLastActivity",
     "schema",
+    "sessionStatus",
     "signal",
     "source",
     "stderrTail",
@@ -316,6 +317,21 @@
       "baseURL",
       "hasAuth",
       "id"
+    ],
+    "SessionStatus": [
+      "backgroundAgentCount",
+      "contextPercent",
+      "contextWindow",
+      "extensionName",
+      "hasInflightRun",
+      "key",
+      "lastEmittedAt",
+      "model",
+      "permissionDenialsPending",
+      "sessionId",
+      "state",
+      "stateSince",
+      "totalCostUsd"
     ],
     "StatusFields": [
       "backgroundAgents",

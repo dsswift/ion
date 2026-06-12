@@ -364,9 +364,11 @@ func TestServerDuplicateSession(t *testing.T) {
 		"requestId": "req-2",
 	})
 
-	// Drain up to 3 lines and find the {"cmd":"result"} response. The engine
-	// may emit one or more state events alongside the result.
-	lines := readLines(t, conn, 3, 2*time.Second)
+	// Drain up to 5 lines and find the {"cmd":"result"} response. The engine
+	// may emit one or more state events alongside the result. (Phase 3 of
+	// the state-management overhaul mirrors every engine_status into an
+	// engine_session_status, doubling status traffic on every emission.)
+	lines := readLines(t, conn, 5, 2*time.Second)
 	var result protocol.ServerResult
 	found := false
 	for _, l := range lines {

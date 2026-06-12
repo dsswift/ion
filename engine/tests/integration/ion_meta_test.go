@@ -122,7 +122,7 @@ func TestIonServeAndPrompt(t *testing.T) {
 		},
 	})
 
-	lines := readLines(t, conn, 5, 2*time.Second)
+	lines := readLines(t, conn, 8, 2*time.Second)
 	r := findResultLine(t, lines)
 	if r == nil {
 		t.Fatalf("no result response for start_session; lines=%v", lines)
@@ -174,7 +174,7 @@ func TestIonServeAndPrompt(t *testing.T) {
 	// List sessions
 	conn2 := dialSocket(t, sockPath)
 	sendCmd(t, conn2, map[string]interface{}{"cmd": "list_sessions"})
-	listLines := readLines(t, conn2, 3, 2*time.Second)
+	listLines := readLines(t, conn2, 5, 2*time.Second)
 	sl := findSessionList(t, listLines)
 	if sl == nil {
 		t.Fatalf("no session_list response; lines=%v", listLines)
@@ -545,7 +545,7 @@ func TestIonServeWithMetaExtension(t *testing.T) {
 		},
 	})
 
-	lines := readLines(t, conn, 5, 3*time.Second)
+	lines := readLines(t, conn, 8, 3*time.Second)
 	r := findResultLine(t, lines)
 	if r == nil {
 		t.Fatalf("no result for start_session; lines=%v", lines)

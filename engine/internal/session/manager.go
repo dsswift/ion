@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -40,6 +41,18 @@ type Manager struct {
 	// Production callers must never set this -- it has no setter on the
 	// public API.
 	childBackendOverride func() backend.RunBackend
+
+	// Status-heartbeat fields. heartbeatStop is closed by Shutdown to
+	// terminate the per-Manager goroutine that periodically re-emits
+	// engine_status for every attached session. Lifecycle is tied to
+	// NewManager / Shutdown: the goroutine starts in NewManager (so any
+	// Manager that hosts sessions has heartbeats by default) and
+	// terminates in Shutdown. heartbeatInterval is configurable so tests
+	// can opt into a short cadence without busy-waiting on a 30 s ticker.
+	// See manager_heartbeat.go for the implementation.
+	heartbeatStop     chan struct{}
+	heartbeatStopOnce sync.Once
+	heartbeatInterval time.Duration
 
 	// Async-trigger subsystems. Lazily allocated on first
 	// ensureAsyncSubsystems call. Shared across every session managed
@@ -82,20 +95,48 @@ func (m *Manager) GetTelemetryConfig() *types.TelemetryConfig {
 }
 
 
+// DefaultSessionStatusHeartbeatInterval is the cadence at which Manager
+// re-emits engine_status for every attached session. The value is
+// large enough that the per-session ~50-byte payload contributes
+// negligible bandwidth (typical Ion deployment: 10–20 active sessions,
+// ~1 kB / 30 s = ~33 B/s), and small enough that a missed organic
+// status event (transient socket flap, dropped frame) converges to
+// authoritative state within one cadence.
+//
+// Override via Manager.SetHeartbeatInterval for tests. The interval is
+// not currently exposed via engine.json; the public override knob is
+// reserved for a future Phase 2.1 if production load testing surfaces
+// a need to tune cadence per deployment.
+const DefaultSessionStatusHeartbeatInterval = 30 * time.Second
+
 // NewManager creates a Manager wired to the given backend.
 // It registers normalized/exit/error listeners on the backend so that
 // events are translated and forwarded through OnEvent.
+//
+// Lifecycle note: NewManager spawns the per-Manager status-heartbeat
+// goroutine. Every caller that creates a Manager must call Shutdown
+// when done — leaking a Manager leaks the goroutine. Tests that load
+// extensions via StartSession already register Shutdown with
+// t.Cleanup; the heartbeat addition does not change that contract.
 func NewManager(b backend.RunBackend) *Manager {
 	m := &Manager{
-		sessions:     make(map[string]*engineSession),
-		backend:      b,
-		watchers:     newWatcherPool(),
-		globalBroker: resource.NewBroker(),
+		sessions:          make(map[string]*engineSession),
+		backend:           b,
+		watchers:          newWatcherPool(),
+		globalBroker:      resource.NewBroker(),
+		heartbeatStop:     make(chan struct{}),
+		heartbeatInterval: DefaultSessionStatusHeartbeatInterval,
 	}
 
 	b.OnNormalized(m.handleNormalizedEvent)
 	b.OnExit(m.handleRunExit)
 	b.OnError(m.handleRunError)
+
+	// Start the status-heartbeat goroutine. The goroutine reads
+	// heartbeatInterval atomically (via a snapshot in runStatusHeartbeat)
+	// so SetHeartbeatInterval calls before the first tick take effect.
+	// See manager_heartbeat.go.
+	go m.runStatusHeartbeat()
 
 	return m
 }
@@ -118,10 +159,68 @@ func (m *Manager) emit(key string, event types.EngineEvent) {
 			event.Fields.ExtensionName = s.extensionName
 		}
 	}
+	// Phase 3 of the state-management overhaul. Every engine_status
+	// emission is mirrored as an engine_session_status emission so
+	// consumers that have migrated to the new typed surface receive
+	// one event per state transition, not zero. The mirror is built
+	// from the same StatusFields the legacy event carries (and from
+	// the session struct for fields the legacy event drops, like
+	// HasInflightRun + SessionID + LastEmittedAt). Phase 4 removes the
+	// legacy emission; today this dual-emit keeps both consumer
+	// generations in sync without forcing every per-site emitter to
+	// know about both event shapes.
+	var mirror *types.EngineEvent
+	if event.Type == "engine_status" && event.Fields != nil {
+		mirror = buildSessionStatusMirror(key, event.Fields, m.sessions[key])
+	}
 	fn := m.onEvent
 	m.mu.RUnlock()
 	if fn != nil {
 		fn(key, event)
+		if mirror != nil {
+			fn(key, *mirror)
+		}
+	}
+}
+
+// buildSessionStatusMirror constructs an engine_session_status event
+// from a legacy engine_status StatusFields. Pure helper extracted
+// because both emit-from-helper and emit-from-call-site paths need
+// the same construction. Session pointer is allowed to be nil — when
+// nil the mirror carries only what's in StatusFields (the call
+// arrived after StopSession dropped the session struct).
+//
+// Tested via TestEmit_MirrorsEngineStatusToSessionStatus in
+// manager_session_status_event_test.go.
+func buildSessionStatusMirror(key string, f *types.StatusFields, s *engineSession) *types.EngineEvent {
+	var hasInflight bool
+	var convID string
+	if s != nil {
+		hasInflight = s.requestID != ""
+		convID = s.conversationID
+	}
+	// SessionID precedence: StatusFields.SessionID wins (the engine
+	// stamps it on session-lifecycle status events at task complete /
+	// run exit) so the mirror tracks the legacy event verbatim.
+	if f.SessionID != "" {
+		convID = f.SessionID
+	}
+	return &types.EngineEvent{
+		Type: "engine_session_status",
+		SessionStatus: &types.SessionStatus{
+			Key:                      key,
+			State:                    f.State,
+			LastEmittedAt:            time.Now().UnixMilli(),
+			HasInflightRun:           hasInflight,
+			BackgroundAgentCount:     f.BackgroundAgents,
+			Model:                    f.Model,
+			ContextPercent:           f.ContextPercent,
+			ContextWindow:            f.ContextWindow,
+			TotalCostUsd:             f.TotalCostUsd,
+			PermissionDenialsPending: f.PermissionDenials,
+			SessionID:                convID,
+			ExtensionName:            f.ExtensionName,
+		},
 	}
 }
 
@@ -313,7 +412,17 @@ func (m *Manager) StopAll() error {
 // started. Tests that load extensions via StartSession should
 // register this with t.Cleanup so a leaked listener cannot bleed
 // the default port across subsequent tests.
+//
+// Also terminates the per-Manager status-heartbeat goroutine started
+// in NewManager. The stop is idempotent (sync.Once-guarded) so
+// multi-call Shutdown is safe.
 func (m *Manager) Shutdown() {
+	// Stop the heartbeat before tearing down sessions so the goroutine
+	// cannot observe a partially-shutdown Manager.
+	m.heartbeatStopOnce.Do(func() {
+		close(m.heartbeatStop)
+	})
+
 	_ = m.StopAll()
 	m.asyncMu.Lock()
 	srv := m.webhookServer
@@ -330,19 +439,80 @@ func (m *Manager) Shutdown() {
 }
 
 // IsRunning reports whether the named session has an active run.
+//
+// Uses the same backend cross-check as currentSessionStatus so a stale
+// requestID (run terminated abnormally without flowing through
+// handleRunExit) does not produce a "running" answer indefinitely. The
+// cross-check both reports correctly *and* clears the lingering field
+// so a subsequent SendPrompt does not refuse with "session already
+// running".
 func (m *Manager) IsRunning(key string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	s, ok := m.sessions[key]
-	return ok && s.requestID != ""
+	if !ok {
+		return false
+	}
+	return m.currentSessionStatus(s) == "running"
 }
 
 // sessionState returns "running" or "idle" for the given session.
+//
+// This is a thin wrapper around currentSessionStatus that exists for
+// backwards-compatibility with the StatusFields.State field shape. New
+// callers should use currentSessionStatus directly so they get the
+// authoritative state value (with the backend cross-check applied).
 func (m *Manager) sessionState(s *engineSession) string {
-	if s.requestID != "" {
-		return "running"
+	return m.currentSessionStatus(s)
+}
+
+// currentSessionStatus computes the authoritative "running" / "idle"
+// state for a session by cross-checking the in-memory requestID against
+// the backend's live-run set.
+//
+// Why the cross-check exists. The naive predicate "requestID != ''
+// means running" is the original implementation and the reason an
+// engine session can report "running" indefinitely: if a run terminates
+// abnormally without flowing through handleRunExit / StopSession (e.g.
+// extension panic, watchdog kill, host crash mid-stream), the backend
+// drops the run from its live-run map but s.requestID stays populated.
+// Every subsequent ReconcileState / engine_status emission then
+// publishes "running" forever and downstream caches (desktop tab status,
+// iOS pulse) cannot recover without operator intervention.
+//
+// The cross-check resolves this at the single computation site. If the
+// in-memory requestID exists but the backend disclaims ownership of it,
+// we treat the field as stale, clear it defensively, and report idle.
+// A defensive log line fires so investigations can confirm the path is
+// hot when it triggers.
+//
+// Caller contract. Must be invoked with m.mu held (read or write). The
+// defensive clear writes to s.requestID; callers that hold only a read
+// lock will not corrupt state because the assignment is to a field on
+// a struct the read lock keeps pinned, and a parallel goroutine that
+// holds the write lock is the only other writer (StopSession / the
+// run-exit handler). Concurrent stale-clears converge on the same
+// "empty string" value so a race produces no observable difference.
+//
+// Return values mirror StatusFields.State exactly so the function is a
+// drop-in replacement for the prior sessionState body.
+func (m *Manager) currentSessionStatus(s *engineSession) string {
+	if s.requestID == "" {
+		return "idle"
 	}
-	return "idle"
+	// requestID is set — confirm the backend actually still owns the
+	// run. If not, the field has lingered after a non-graceful run
+	// termination and we treat the session as idle.
+	if m.backend != nil && !m.backend.IsRunning(s.requestID) {
+		stale := s.requestID
+		s.requestID = ""
+		utils.Warn("Session", fmt.Sprintf(
+			"currentSessionStatus: clearing stale requestID key=%s runID=%s (backend disclaims run); reporting state=idle",
+			s.key, stale,
+		))
+		return "idle"
+	}
+	return "running"
 }
 
 // ClearConversationFile wipes the LLM-visible history on a stored conversation
@@ -439,28 +609,11 @@ func (m *Manager) ReconcileState(key string) {
 	utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=reconcile", key, len(snapshot)))
 	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
-	// Re-emit status. Read retained fields under the session lock so we
-	// observe a coherent snapshot (denials + cost + context together).
-	m.mu.RLock()
-	pendingDenials := s.lastPermissionDenials
-	lastPct := s.lastContextPct
-	lastWindow := s.lastContextWindow
-	lastModel := s.lastModel
-	lastCost := s.lastTotalCost
-	sessionState := m.sessionState(s)
-	m.mu.RUnlock()
-
-	utils.Log("Session", fmt.Sprintf("reconcile_status_emitted key=%s state=%s pendingDenials=%d model=%s contextPct=%d", key, sessionState, len(pendingDenials), lastModel, lastPct))
-	m.emit(key, types.EngineEvent{
-		Type: "engine_status",
-		Fields: &types.StatusFields{
-			State:             sessionState,
-			ContextPercent:    lastPct,
-			ContextWindow:     lastWindow,
-			Model:             lastModel,
-			TotalCostUsd:      lastCost,
-			PermissionDenials: pendingDenials,
-		},
-	})
+	// Re-emit status via the shared snapshot helper so the legacy
+	// engine_status and the Phase 3 engine_session_status both ship
+	// from one site. Phase 4 will collapse this when the legacy event
+	// retires; today the helper guarantees both events carry the same
+	// authoritative state computed by currentSessionStatus.
+	m.emitStatusSnapshot(key, "reconcile")
 }
 

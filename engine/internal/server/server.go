@@ -542,6 +542,16 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.manager.ReconcileState(cmd.Key)
 		s.sendResult(conn, cmd, nil, nil)
 
+	case "query_session_status":
+		// Phase 2: on-demand engine_status snapshot. The status payload
+		// is emitted via the manager's normal event bus (not as the RPC
+		// result) so it reaches every attached consumer, not just the
+		// one that asked. The RPC result is empty — the caller subscribes
+		// via OnEvent / the WebSocket stream and observes the emission
+		// through that channel.
+		s.manager.QuerySessionStatus(cmd.Key)
+		s.sendResult(conn, cmd, nil, nil)
+
 	case "migrate_conversation":
 		// Implementation in dispatch_data.go.
 		s.dispatchMigrateConversation(conn, cmd)
