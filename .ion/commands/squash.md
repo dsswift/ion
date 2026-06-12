@@ -12,6 +12,7 @@ You are running the `/squash` command. Your job is to collapse the current branc
 - Preserve the full unsquashed history in the backup branch before squashing.
 - Never fabricate commit messages. Every squashed commit message must be grounded in the actual commits being squashed.
 - The squashed commits must follow conventional commit format exactly.
+- **Every result commit must touch exactly one scope's directory tree.** A commit scoped `engine` must only contain files under `engine/`. A commit scoped `desktop` must only contain files under `desktop/`. And so on for `ios`, `relay`, `docs`. Commits scoped `repo` may only contain root-level files (`.github/`, `Makefile`, `AGENTS.md`, `scripts/`, `.ion/`, `README.md`, etc.) — they must **not** contain files under `engine/`, `desktop/`, `ios/`, `relay/`, or `docs/`. This rule exists because the CI/CD release pipeline (Release Damnit) uses commit scopes to detect which components changed and trigger version bumps. A single commit that bundles `engine/` and `desktop/` files under any scope will cause one component's version bump to be missed.
 
 ---
 
@@ -114,6 +115,30 @@ Analyze the commits and identify logical groupings. A logical group is a set of 
 - Unrelated changes stay in separate groups.
 - The order of groups should be chronological (oldest first).
 
+### Scope enforcement
+
+After grouping by feature, enforce the one-scope-per-commit rule. Each logical group produces **one result commit per scope directory** it touches, not one combined commit:
+
+- If a group contains only `engine/` commits, it produces one `feat(engine)` commit.
+- If a group contains `engine/`, `desktop/`, and `ios/` commits, it produces three result commits: `feat(engine)`, `feat(desktop)`, `feat(ios)`.
+- If a group contains `engine/` commits and `docs/` commits, it produces `feat(engine)` + `docs(docs)`.
+- Root-level files (`AGENTS.md`, `Makefile`, `.github/`, `scripts/`, `.ion/`, `README.md`) get their own `chore(repo)` or `docs(repo)` commit — they must not be bundled into a component scope commit.
+
+To verify, run this check against every commit on the branch (including commits that won't be squashed):
+
+```bash
+for sha in $(git log main..HEAD --format="%H"); do
+  subject=$(git log -1 --format="%s" $sha)
+  scope=$(echo "$subject" | sed 's/[^(]*(\([^)]*\)).*/\1/')
+  dirs=$(git diff-tree --no-commit-id --name-only -r $sha | awk -F/ '{print $1}' | sort -u | tr '\n' ',' | sed 's/,$//')
+  echo "$scope | $dirs | $(echo $sha | cut -c1-8) $subject"
+done
+```
+
+Flag any commit where the directories don't match the scope. Existing `repo`-scoped commits that touch component directories (`engine/`, `desktop/`, `ios/`, `relay/`, `docs/`) must be split during the rebase — they are not exempt.
+
+The plan must list every result commit with its scope and the directories it will contain. No result commit may mix directories across scopes.
+
 For each logical group, propose a clean conventional commit:
 - `type(scope): description (#N)` — the conventional commit subject
 - Body: a concise description of what this group of changes does and why
@@ -159,6 +184,22 @@ After the rebase, amend each resulting commit to use the clean conventional mess
 
 If the rebase produces conflicts, resolve them using the source commits as ground truth. Do not invent code — resolve conflicts by understanding what each commit was trying to do.
 
+### Splitting multi-scope commits
+
+Any commit that touches files from multiple scope directories must be split during the rebase. Mark it as `edit` instead of `pick`. When the rebase stops:
+
+1. `git reset HEAD~1` — unstage all changes from that commit
+2. Stage and commit files for each scope separately, in this order:
+   - `git add engine/ && git commit -m "type(engine): ..."` — engine-only files
+   - `git add desktop/ && git commit -m "type(desktop): ..."` — desktop-only files
+   - `git add ios/ && git commit -m "type(ios): ..."` — iOS-only files
+   - `git add docs/ && git commit -m "type(docs): ..."` — docs-only files
+   - `git add relay/ && git commit -m "type(relay): ..."` — relay-only files
+   - `git add . && git commit -m "type(repo): ..."` — any remaining root-level files
+3. `git rebase --continue`
+
+Issue references (`(#N)`) stay on all split children so GitHub cross-links work. `Closes #N` / `Fixes #N` trailers go only on the primary child (usually the engine commit).
+
 ---
 
 ## Step 8: Verify
@@ -176,6 +217,31 @@ git log main..HEAD --format=fuller
 ```
 
 Verify trailers are present on each commit that had an issue association.
+
+### Verify scope isolation
+
+Run the scope check against every result commit:
+
+```bash
+for sha in $(git log main..HEAD --format="%H"); do
+  subject=$(git log -1 --format="%s" $sha)
+  scope=$(echo "$subject" | sed 's/[^(]*(\([^)]*\)).*/\1/')
+  dirs=$(git diff-tree --no-commit-id --name-only -r $sha | awk -F/ '{print $1}' | sort -u | tr '\n' ',' | sed 's/,$//')
+  echo "$scope | $dirs | $(echo $sha | cut -c1-8) $subject"
+done
+```
+
+Every commit must satisfy: the directories it touches are consistent with its declared scope. If any commit violates scope isolation, the squash is not complete — go back and split it.
+
+### Verify tree identity
+
+The final tree must be identical to the pre-squash tree:
+
+```bash
+git diff backup--{branch_name}
+```
+
+If this produces any output, the squash changed the code — which is a bug. Abort and investigate.
 
 ---
 
