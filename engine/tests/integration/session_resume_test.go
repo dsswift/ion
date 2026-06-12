@@ -106,11 +106,15 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 	}
 	firstRunID := keys[0]
 
-	// First run had no sessionID.
+	// First run carries the pre-minted conversation ID (assigned at session
+	// start since the conversationId-on-context feature). Before that change,
+	// this was empty — the ID only appeared on the second run after the
+	// backend returned one via EmitExit.
 	opts1, _ := mb.GetStarted(firstRunID)
-	if opts1.SessionID != "" {
-		t.Errorf("expected empty SessionID on first run, got %q", opts1.SessionID)
+	if opts1.SessionID == "" {
+		t.Errorf("expected pre-minted SessionID on first run, got empty")
 	}
+	preMinted := opts1.SessionID
 
 	// Simulate exit with a sessionID returned by the backend.
 	mb.EmitExit(firstRunID, nil, nil, "conv-abc")
@@ -158,6 +162,9 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 	}
 	if opts2.SessionID != "conv-abc" {
 		t.Errorf("expected SessionID='conv-abc' on second run, got %q", opts2.SessionID)
+	}
+	if opts2.SessionID == preMinted {
+		t.Errorf("second run should use backend-provided ID, not pre-minted %q", preMinted)
 	}
 }
 
