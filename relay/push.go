@@ -30,6 +30,8 @@ type pushRequest struct {
 	deviceToken string
 	title       string
 	body        string
+	kind        string // resource kind for deep-link routing on the client
+	resourceId  string // resource ID for deep-link routing on the client
 }
 
 // APNsPusher sends push notifications via Apple's HTTP/2 APNs API.
@@ -113,7 +115,9 @@ func (p *APNsPusher) getToken() (string, error) {
 }
 
 type apnsPayload struct {
-	Aps apsPayload `json:"aps"`
+	Aps           apsPayload `json:"aps"`
+	IonKind       string     `json:"ionKind,omitempty"`
+	IonResourceId string     `json:"ionResourceId,omitempty"`
 }
 
 type apsPayload struct {
@@ -128,9 +132,9 @@ type apsAlert struct {
 	Body  string `json:"body"`
 }
 
-func (p *APNsPusher) Send(deviceToken, title, body string) {
+func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId string) {
 	select {
-	case p.queue <- pushRequest{deviceToken: deviceToken, title: title, body: body}:
+	case p.queue <- pushRequest{deviceToken: deviceToken, title: title, body: body, kind: kind, resourceId: resourceId}:
 	default:
 		log.Printf("APNs push queue full, dropping notification")
 	}
@@ -140,12 +144,12 @@ func (p *APNsPusher) Send(deviceToken, title, body string) {
 func (p *APNsPusher) Start() {
 	go func() {
 		for req := range p.queue {
-			p.sendAsync(req.deviceToken, req.title, req.body)
+			p.sendAsync(req)
 		}
 	}()
 }
 
-func (p *APNsPusher) sendAsync(deviceToken, title, body string) {
+func (p *APNsPusher) sendAsync(req pushRequest) {
 	token, err := p.getToken()
 	if err != nil {
 		log.Printf("APNs token error: %v", err)
@@ -155,13 +159,15 @@ func (p *APNsPusher) sendAsync(deviceToken, title, body string) {
 	payload := apnsPayload{
 		Aps: apsPayload{
 			Alert: apsAlert{
-				Title: title,
-				Body:  body,
+				Title: req.title,
+				Body:  req.body,
 			},
 			Sound:            "default",
 			Category:         "PERMISSION_REQUEST",
 			ContentAvailable: 1,
 		},
+		IonKind:       req.kind,
+		IonResourceId: req.resourceId,
 	}
 
 	data, err := json.Marshal(payload)
@@ -170,19 +176,19 @@ func (p *APNsPusher) sendAsync(deviceToken, title, body string) {
 		return
 	}
 
-	url := fmt.Sprintf("%s/3/device/%s", p.baseURL, deviceToken)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	url := fmt.Sprintf("%s/3/device/%s", p.baseURL, req.deviceToken)
+	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(data))
 	if err != nil {
 		log.Printf("APNs request error: %v", err)
 		return
 	}
 
-	req.Header.Set("Authorization", "bearer "+token)
-	req.Header.Set("apns-topic", apnsTopic)
-	req.Header.Set("apns-push-type", "alert")
-	req.Header.Set("apns-priority", "10")
+	httpReq.Header.Set("Authorization", "bearer "+token)
+	httpReq.Header.Set("apns-topic", apnsTopic)
+	httpReq.Header.Set("apns-push-type", "alert")
+	httpReq.Header.Set("apns-priority", "10")
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		log.Printf("APNs send error: %v", err)
 		return
