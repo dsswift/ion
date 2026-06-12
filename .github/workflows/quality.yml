@@ -23,6 +23,19 @@ jobs:
       - name: Check file-size caps
         run: bash scripts/check-file-sizes.sh
 
+  status-writers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check status-writer chokepoints
+        # Phase 4 of the state-management overhaul. Prohibits new direct
+        # writes to tab.status / inst.statusFields outside the
+        # dispatcher chokepoints whitelisted in the script. A failure
+        # here is intentional — add your call site to the whitelist
+        # only if you have reviewed and approved the engine-vs-client
+        # state-ownership rule documented in CLAUDE.md.
+        run: bash scripts/check-status-writers.sh
+
   engine-test:
     strategy:
       fail-fast: false

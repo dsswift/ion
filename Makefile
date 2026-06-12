@@ -1,4 +1,4 @@
-.PHONY: default desktop engine relay relay-local ios ios-check ios-test desktop-test engine-test test test-all clean check-file-sizes check-contracts claude-symlinks hooks
+.PHONY: default desktop engine relay relay-local ios ios-check ios-test desktop-test engine-test test test-all clean check-file-sizes check-contracts check-status-writers claude-symlinks hooks
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -49,7 +49,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts engine-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers engine-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 clean:
@@ -59,6 +59,12 @@ clean:
 # File-architecture guardrails (see docs/architecture/file-organization.md)
 check-file-sizes:
 	@bash scripts/check-file-sizes.sh
+
+# Phase 4 of the state-management overhaul. Prohibits new direct writes
+# to tab.status / inst.statusFields outside the dispatcher chokepoints
+# whitelisted in scripts/check-status-writers.sh.
+check-status-writers:
+	@bash scripts/check-status-writers.sh
 
 # Cross-language contract drift detection.
 # Asserts the Go-generated contracts.json is up to date; TS and Swift tests
