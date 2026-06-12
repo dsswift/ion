@@ -923,6 +923,107 @@ func TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState(t *testing.T) {
 	}
 }
 
+// --- PlanModeSafe external tool tests ---
+
+// TestBuildToolDefs_PlanModeSafe_SurvivesFilter verifies that an external tool
+// with PlanModeSafe=true passes through the plan-mode filter even when its name
+// is not in the default plan-mode allowlist.
+func TestBuildToolDefs_PlanModeSafe_SurvivesFilter(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID: "plan-safe-survives",
+		planMode:  true,
+		planFilePath: "/tmp/plan.md",
+		cfg: &RunConfig{
+			ExternalTools: []types.LlmToolDef{
+				{Name: "my_safe_tool", Description: "A plan-mode-safe extension tool", PlanModeSafe: true},
+			},
+		},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	found := false
+	for _, td := range toolDefs {
+		if td.Name == "my_safe_tool" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected PlanModeSafe=true tool to survive plan-mode filtering")
+	}
+}
+
+// TestBuildToolDefs_PlanModeSafe_UnsafeFiltered verifies that an external tool
+// WITHOUT PlanModeSafe is still excluded in plan mode.
+func TestBuildToolDefs_PlanModeSafe_UnsafeFiltered(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID: "plan-safe-filtered",
+		planMode:  true,
+		planFilePath: "/tmp/plan.md",
+		cfg: &RunConfig{
+			ExternalTools: []types.LlmToolDef{
+				{Name: "my_unsafe_tool", Description: "Not safe in plan mode", PlanModeSafe: false},
+			},
+		},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "my_unsafe_tool" {
+			t.Error("expected non-PlanModeSafe tool to be filtered out in plan mode")
+		}
+	}
+}
+
+// TestBuildToolDefs_PlanModeSafe_AdditiveToDefaultTools verifies that
+// PlanModeSafe tools appear alongside the normally-allowed plan-mode tools
+// (Write, Edit, AskUserQuestion, ExitPlanMode) rather than replacing them.
+func TestBuildToolDefs_PlanModeSafe_AdditiveToDefaultTools(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID: "plan-safe-additive",
+		planMode:  true,
+		planFilePath: "/tmp/plan.md",
+		cfg: &RunConfig{
+			ExternalTools: []types.LlmToolDef{
+				{Name: "my_safe_tool", Description: "Plan-mode-safe tool", PlanModeSafe: true},
+			},
+		},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	foundSafe := false
+	foundExit := false
+	foundAsk := false
+	for _, td := range toolDefs {
+		switch td.Name {
+		case "my_safe_tool":
+			foundSafe = true
+		case "ExitPlanMode":
+			foundExit = true
+		case "AskUserQuestion":
+			foundAsk = true
+		}
+	}
+	if !foundSafe {
+		t.Error("expected PlanModeSafe tool in plan mode tool list")
+	}
+	if !foundExit {
+		t.Error("expected ExitPlanMode to remain in plan mode tool list alongside PlanModeSafe tools")
+	}
+	if !foundAsk {
+		t.Error("expected AskUserQuestion to remain in plan mode tool list alongside PlanModeSafe tools")
+	}
+}
+
 // TestBuildToolDefs_PerPromptBashAdditionsDoNotPersist pins the BLOCKER
 // contract from Fix 7: per-prompt additions live only for one run and
 // MUST NOT mutate the session-level engineSession.planModeAllowedBashCommands.

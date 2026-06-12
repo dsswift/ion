@@ -737,6 +737,7 @@ export interface ToolDef {
   name: string
   description: string
   parameters: any // JSON Schema
+  planModeSafe?: boolean
   execute: (params: any, ctx: IonContext) => Promise<{ content: string; isError?: boolean }>
 }
 

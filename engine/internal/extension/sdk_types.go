@@ -493,10 +493,11 @@ type ExtensionConfig struct {
 
 // ToolDefinition describes a tool registered by an extension.
 type ToolDefinition struct {
-	Name        string
-	Description string
-	Parameters  map[string]interface{}
-	Execute     func(params interface{}, ctx *Context) (*types.ToolResult, error)
+	Name         string
+	Description  string
+	Parameters   map[string]interface{}
+	PlanModeSafe bool
+	Execute      func(params interface{}, ctx *Context) (*types.ToolResult, error)
 }
 
 // CommandDefinition describes a slash command registered by an extension.

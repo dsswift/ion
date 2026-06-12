@@ -111,9 +111,10 @@ type ImageAttachment struct {
 
 // LlmToolDef defines a tool available to the LLM provider.
 type LlmToolDef struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"input_schema"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	InputSchema  map[string]any `json:"input_schema"`
+	PlanModeSafe bool           `json:"planModeSafe,omitempty"`
 }
 
 // LlmUsage tracks token counts from the LLM provider.

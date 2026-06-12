@@ -385,3 +385,51 @@ func TestContext_FunctionalGetters(t *testing.T) {
 }
 
 // --- Lifecycle hooks ---
+
+// TestSDK_RegisterTool_PlanModeSafe verifies that the PlanModeSafe flag is
+// preserved through RegisterTool and returned via Tools(). This is the
+// propagation contract: the SDK must not drop the field so the engine can
+// forward it through LlmToolDef to the plan-mode filter.
+func TestSDK_RegisterTool_PlanModeSafe(t *testing.T) {
+	sdk := NewSDK()
+
+	sdk.RegisterTool(ToolDefinition{
+		Name:         "safe_tool",
+		Description:  "Available in plan mode",
+		Parameters:   map[string]interface{}{"param": "string"},
+		PlanModeSafe: true,
+		Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
+			return &types.ToolResult{Content: "ok"}, nil
+		},
+	})
+	sdk.RegisterTool(ToolDefinition{
+		Name:         "unsafe_tool",
+		Description:  "Not available in plan mode",
+		Parameters:   map[string]interface{}{},
+		PlanModeSafe: false,
+		Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
+			return &types.ToolResult{Content: "ok"}, nil
+		},
+	})
+
+	tools := sdk.Tools()
+	if len(tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(tools))
+	}
+
+	for _, tool := range tools {
+		switch tool.Name {
+		case "safe_tool":
+			if !tool.PlanModeSafe {
+				t.Error("expected PlanModeSafe=true to be preserved for safe_tool")
+			}
+		case "unsafe_tool":
+			if tool.PlanModeSafe {
+				t.Error("expected PlanModeSafe=false to be preserved for unsafe_tool")
+			}
+		default:
+			t.Errorf("unexpected tool name: %s", tool.Name)
+		}
+	}
+}
+

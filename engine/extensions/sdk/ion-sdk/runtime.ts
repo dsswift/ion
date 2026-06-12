@@ -356,6 +356,7 @@ async function handleRequest(
           name: t.name,
           description: t.description,
           parameters: t.parameters,
+          ...(t.planModeSafe && { planModeSafe: true }),
         })),
         commands: Object.fromEntries(
           Array.from(commands.entries()).map(([name, def]) => [

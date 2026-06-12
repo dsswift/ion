@@ -518,6 +518,42 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				continue
 			}
 
+			// Plan-mode auto-exit safety net (issue #187). When the
+			// model ends a plan-mode turn without invoking ExitPlanMode
+			// or AskUserQuestion, the engine deterministically
+			// synthesizes the exit so consumers reliably see the
+			// plan-approval card. Returns true only when synthesis
+			// fired (all preconditions met and no hook suppressed it);
+			// in that case we fall through to a wrap-up branch that
+			// emits TaskCompleteEvent carrying the synthesized
+			// PermissionDenial, mirroring the model-driven exit path
+			// in the tool_use case below. See
+			// runloop_plan_mode_auto_exit.go for the precondition list
+			// and the resolved-defaults precedence chain.
+			if b.maybeSynthesizeExitPlanMode(run, conv, hooks, assistantBlocks, stopReason, turn) {
+				if err := conversation.Save(conv, ""); err != nil {
+					utils.Log("ApiBackend", "failed to save conversation after plan-mode auto-exit: "+err.Error())
+				}
+				elapsed := time.Since(run.startTime).Milliseconds()
+				run.mu.Lock()
+				denials := run.permissionDenials
+				run.mu.Unlock()
+				utils.Info("ApiBackend", fmt.Sprintf(
+					"plan mode auto-exited: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s",
+					run.requestID, turn, run.totalCost, elapsed, conv.ID,
+				))
+				b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+					Result:            "Plan mode auto-exited.",
+					CostUsd:           run.totalCost,
+					DurationMs:        elapsed,
+					NumTurns:          turn,
+					SessionID:         conv.ID,
+					PermissionDenials: denials,
+				}})
+				b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
+				return
+			}
+
 			// Check for a steer message that arrived while the model was
 			// streaming its final response. If present, inject it and
 			// continue the loop so the model reacts on its next turn

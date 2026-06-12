@@ -558,6 +558,79 @@ type BeforePlanModeExitResult struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// BeforePlanModeAutoExitInfo is the payload for the
+// before_plan_mode_auto_exit hook. Fired immediately before the engine
+// synthesizes an ExitPlanMode call at end-of-turn — i.e. when a plan-mode
+// run ends with stop reason end_turn / stop but the assistant never
+// invoked ExitPlanMode or AskUserQuestion.
+//
+// The hook lets harnesses observe, suppress, or rewrite the synthesized
+// exit. Common uses: telemetry on how often the model misroutes plan
+// exit; opting out for tightly-controlled automation pipelines that
+// prefer the run to park rather than auto-surface; substituting a
+// canonical PlanFilePath when the harness stages plans in a temporary
+// location before promoting them on approval.
+//
+// Field stability: new fields may be added with zero-value defaults;
+// existing fields must not be removed or renamed.
+type BeforePlanModeAutoExitInfo struct {
+	// SessionID is the engine session ID for this run.
+	SessionID string `json:"sessionId"`
+	// RunID is the engine-issued request ID for this run.
+	RunID string `json:"runId"`
+	// StopReason is the provider stop reason ("end_turn" or "stop") that
+	// triggered the synthesis decision. Other stop reasons (tool_use,
+	// max_tokens) never reach this hook.
+	StopReason string `json:"stopReason"`
+	// PlanFilePath is the resolved plan file path the synthesized
+	// PermissionDenial will reference. Resolved from
+	// RunOptions.PlanFilePath, falling back to the session-level
+	// planFilePath. Never empty when this hook fires — the engine
+	// short-circuits synthesis (without firing the hook) when no path
+	// is resolvable.
+	PlanFilePath string `json:"planFilePath"`
+	// AssistantText is the concatenated text content of the final
+	// assistant turn that triggered synthesis. Useful for telemetry —
+	// e.g. detecting "the model said 'ready for review' but emitted no
+	// ExitPlanMode tool call."
+	AssistantText string `json:"assistantText"`
+	// EmittedTools is the list of tool names the assistant did emit on
+	// this turn. Empty when the turn ended with text-only content.
+	// Non-empty when the model called other tools (e.g. ["Bash"]) but
+	// none of them were ExitPlanMode / AskUserQuestion.
+	EmittedTools []string `json:"emittedTools,omitempty"`
+}
+
+// BeforePlanModeAutoExitResult is the optional return value from a
+// before_plan_mode_auto_exit handler. nil (the default) means "no
+// opinion — proceed with synthesis using the engine's defaults."
+//
+// Merge semantics across multiple handlers: last non-nil field wins.
+// A handler that only sets PlanFilePath leaves an earlier handler's
+// Suppress decision intact, matching the BeforePlanModeExit /
+// BeforeEarlyStopDecision precedent.
+//
+// Field stability: new fields may be added with zero-value defaults;
+// existing fields must not be removed or renamed.
+type BeforePlanModeAutoExitResult struct {
+	// Suppress, when true, blocks the synthesis. The run completes as a
+	// normal end_turn with no PermissionDenial appended and no
+	// engine_plan_mode_auto_exit event emitted; the conversation stays
+	// parked in plan mode. Use this for harnesses that want strict
+	// model-driven exit semantics.
+	Suppress bool `json:"suppress,omitempty"`
+	// PlanFilePath, when non-empty, overrides the resolved plan file
+	// path used in the synthesized PermissionDenial and in the
+	// engine_plan_mode_auto_exit event. Empty means "no change."
+	PlanFilePath string `json:"planFilePath,omitempty"`
+	// Reason, when non-empty, replaces the engine's default reason
+	// string in the synthesized PermissionDenial. Empty means "use the
+	// engine default phrasing." The default is set in the runloop
+	// synthesis branch; consumers that surface the reason in their
+	// approval UI may want to localize or rephrase it.
+	Reason string `json:"reason,omitempty"`
+}
+
 // EarlyStopContinuedInfo describes a continuation that was just injected
 // into the conversation. Fires after the engine has decided to continue,
 // the message has been written, and the loop is about to start a new turn.

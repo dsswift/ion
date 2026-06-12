@@ -36,6 +36,9 @@ func (h *Host) registerHookForwarders() {
 		// Async-trigger deregistration hooks (observation-only;
 		// veto would let one extension trap another's resources).
 		HookWebhookDeregistered, HookScheduleDeregistered,
+		// Cross-session messaging: forward the session_message hook
+		// to the subprocess so ion.on('session_message', ...) fires.
+		HookSessionMessage,
 	}
 	for _, hook := range noOpHooks {
 		h.registerNoOpForwarder(hook)
@@ -57,6 +60,7 @@ func (h *Host) registerHookForwarders() {
 	h.registerBeforePromptForwarder()
 	h.registerBeforePlanModeEnterForwarder()
 	h.registerBeforePlanModeExitForwarder()
+	h.registerBeforePlanModeAutoExitForwarder()
 
 	// Block-checking hooks: parse result.block and result.reason.
 	h.registerBlockForwarder(HookToolCall)
@@ -457,5 +461,49 @@ func (h *Host) registerBeforePlanModeExitForwarder() {
 			return nil, nil
 		}
 		return &BeforePlanModeExitResult{Allow: result.Allow, Reason: result.Reason}, nil
+	})
+}
+
+// registerBeforePlanModeAutoExitForwarder registers a handler for
+// before_plan_mode_auto_exit that parses
+// {"suppress": bool, "planFilePath": "string", "reason": "string"}.
+//
+// All fields are optional. An entirely empty / null result means "no
+// opinion; proceed with synthesis using engine defaults." A handler
+// that only sets one field leaves the others untouched — the SDK fire
+// method (FireBeforePlanModeAutoExit) resolves multi-handler conflicts
+// per-field via last-writer-wins.
+func (h *Host) registerBeforePlanModeAutoExitForwarder() {
+	h.sdk.On(HookBeforePlanModeAutoExit, func(ctx *Context, payload interface{}) (interface{}, error) {
+		raw, err := h.callHook("hook/"+HookBeforePlanModeAutoExit, ctx, payload)
+		if err != nil {
+			logHookErr(HookBeforePlanModeAutoExit, err)
+			return nil, nil
+		}
+		emitHookEvents(ctx, raw)
+		if len(raw) == 0 || string(raw) == "null" {
+			return nil, nil
+		}
+		var result struct {
+			Suppress     bool   `json:"suppress"`
+			PlanFilePath string `json:"planFilePath"`
+			Reason       string `json:"reason"`
+		}
+		if err := json.Unmarshal(raw, &result); err != nil {
+			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", HookBeforePlanModeAutoExit, err))
+			return nil, nil
+		}
+		// Skip returning a result when every field is zero — saves the
+		// SDK fire method an iteration of "is anything set?" work and
+		// keeps the no-opinion fast path symmetric with the other
+		// plan-mode forwarders above.
+		if !result.Suppress && result.PlanFilePath == "" && result.Reason == "" {
+			return nil, nil
+		}
+		return &BeforePlanModeAutoExitResult{
+			Suppress:     result.Suppress,
+			PlanFilePath: result.PlanFilePath,
+			Reason:       result.Reason,
+		}, nil
 	})
 }

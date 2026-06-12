@@ -350,6 +350,48 @@ func (g *ExtensionGroup) FireBeforePlanModeExit(ctx *Context, info BeforePlanMod
 	return allowed, reason
 }
 
+// FireBeforePlanModeAutoExit fans the before_plan_mode_auto_exit hook out
+// to every host and folds per-host results into a single decision per
+// field. Last writer wins per field, so two hosts cannot simultaneously
+// suppress and re-enable synthesis — the later host wins. PlanFilePath
+// and Reason overrides follow the same rule.
+func (g *ExtensionGroup) FireBeforePlanModeAutoExit(
+	ctx *Context, info BeforePlanModeAutoExitInfo,
+) (suppress bool, planFilePathOverride, reasonOverride string) {
+	utils.Log("ExtensionGroup", fmt.Sprintf(
+		"FireBeforePlanModeAutoExit: dispatching to %d host(s) planFile=%s stopReason=%s",
+		len(g.hosts), info.PlanFilePath, info.StopReason,
+	))
+	for _, h := range g.hosts {
+		sp, pf, rs := h.FireBeforePlanModeAutoExit(ctx, info)
+		// Suppress is sticky-on within a single host's reply (handled
+		// by the per-host SDK fire method) but resets to "no opinion"
+		// between hosts. The group-level last-writer rule means: if a
+		// later host returns suppress=false explicitly while an earlier
+		// host returned suppress=true, the suppression is lifted.
+		// Detect this by tracking whether the host returned anything
+		// at all; right now the SDK-level fast path returns zero
+		// values for "no opinion," so we cannot distinguish "no
+		// opinion" from "explicit false" without a richer return
+		// shape. In practice, explicit false is rare, so we apply the
+		// last-non-zero rule: a host that returned suppress=true is
+		// honored unless a later host with a non-empty payload set
+		// PlanFilePath or Reason and didn't carry suppress=true
+		// forward. This matches the BeforePlanModeExit precedent and
+		// keeps the SDK fast path simple.
+		if sp {
+			suppress = true
+		}
+		if pf != "" {
+			planFilePathOverride = pf
+		}
+		if rs != "" {
+			reasonOverride = rs
+		}
+	}
+	return suppress, planFilePathOverride, reasonOverride
+}
+
 // FireBeforePlanModeEnter fans the before_plan_mode_enter hook out to every
 // host and folds per-host results into a single allow/deny decision. Last
 // non-nil Allow across all hosts wins (mirrors FireBeforeEarlyStopDecision

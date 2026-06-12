@@ -179,9 +179,10 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 	var result struct {
 		Name  string `json:"name"`
 		Tools []struct {
-			Name        string                 `json:"name"`
-			Description string                 `json:"description"`
-			Parameters  map[string]interface{} `json:"parameters"`
+			Name         string                 `json:"name"`
+			Description  string                 `json:"description"`
+			Parameters   map[string]interface{} `json:"parameters"`
+			PlanModeSafe bool                   `json:"planModeSafe"`
 		} `json:"tools"`
 		Commands map[string]struct {
 			Description string `json:"description"`
@@ -210,9 +211,10 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 	for _, t := range result.Tools {
 		toolName := t.Name // capture for closure
 		h.sdk.RegisterTool(ToolDefinition{
-			Name:        t.Name,
-			Description: t.Description,
-			Parameters:  t.Parameters,
+			Name:         t.Name,
+			Description:  t.Description,
+			Parameters:   t.Parameters,
+			PlanModeSafe: t.PlanModeSafe,
 			Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
 				h.ctxStack.Push(ctx)
 				defer h.ctxStack.Pop()

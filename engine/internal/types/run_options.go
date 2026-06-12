@@ -45,6 +45,21 @@ type RunOptions struct {
 	PlanModeSparseReminder      string   `json:"planModeSparseReminder,omitempty"`
 	PlanModeReentry             bool     `json:"planModeReentry,omitempty"`
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
+	// PlanModeAutoExit is the per-run override for the
+	// LimitsConfig.PlanModeAutoExitOnEndTurn safety-net behaviour. nil
+	// (the default) means "inherit the engine config". &true forces
+	// auto-exit synthesis when the model ends a plan-mode turn without
+	// calling ExitPlanMode / AskUserQuestion. &false disables the
+	// synthesis even when the config has it enabled — useful for
+	// tightly-controlled automation harnesses that want plan-mode
+	// runs to park rather than auto-surface when the model misroutes.
+	//
+	// Precedence (highest wins):
+	//   1. before_plan_mode_auto_exit hook (Suppress: true)
+	//   2. RunOptions.PlanModeAutoExit (this field)
+	//   3. LimitsConfig.PlanModeAutoExitOnEndTurn (engine.json)
+	//   4. Built-in default (true)
+	PlanModeAutoExit *bool `json:"planModeAutoExit,omitempty"`
 	// BashAllowlistAdditionsForThisPrompt are per-prompt additions
 	// unioned with PlanModeAllowedBashCommands when the engine builds
 	// the run-time tool list. The additions live only for this run;

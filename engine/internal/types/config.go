@@ -126,6 +126,27 @@ type LimitsConfig struct {
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
 	DisableTurnLimitWarning     *bool    `json:"disableTurnLimitWarning,omitempty"`
 	DisableMaxTokenContinue     *bool    `json:"disableMaxTokenContinue,omitempty"`
+	// PlanModeAutoExitOnEndTurn controls the engine's "deterministic
+	// plan-mode exit" safety net. When a plan-mode run terminates with
+	// stop reason end_turn / stop and the assistant did not invoke
+	// ExitPlanMode or AskUserQuestion, the engine synthesizes the
+	// ExitPlanMode call so consumers reliably see the plan-approval
+	// card instead of leaving the conversation parked in plan mode.
+	//
+	// Nil (the default) means "use the built-in default (true)". &true
+	// is equivalent (auto-exit enabled). &false disables the synthesis
+	// entirely; the run completes as a normal end_turn with the
+	// conversation parked in plan mode.
+	//
+	// Per-run RunOptions.PlanModeAutoExit overrides this. The
+	// before_plan_mode_auto_exit extension hook overrides both.
+	//
+	// Default rationale: the contract "produce a plan, then surface it
+	// via ExitPlanMode" is part of plan mode's published behaviour. The
+	// stuck-in-plan-mode failure mode this field defends against is
+	// strictly worse than the (extremely cheap, idempotent) synthesis
+	// path, so the engine ships with the safety net enabled.
+	PlanModeAutoExitOnEndTurn *bool `json:"planModeAutoExitOnEndTurn,omitempty"`
 }
 
 // McpServerConfig defines an MCP server connection.

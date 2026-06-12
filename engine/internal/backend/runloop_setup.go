@@ -266,7 +266,7 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		allowed[tools.AskUserQuestionName] = true
 		var filtered []types.LlmToolDef
 		for _, td := range toolDefs {
-			if allowed[td.Name] {
+			if allowed[td.Name] || td.PlanModeSafe {
 				filtered = append(filtered, td)
 			}
 		}

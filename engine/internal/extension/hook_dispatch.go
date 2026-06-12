@@ -58,6 +58,14 @@ func (h *Host) FireBeforePlanModeExit(ctx *Context, info BeforePlanModeExitInfo)
 	return h.sdk.FireBeforePlanModeExit(ctx, info)
 }
 
+// FireBeforePlanModeAutoExit fires the before_plan_mode_auto_exit hook on
+// this host.
+func (h *Host) FireBeforePlanModeAutoExit(
+	ctx *Context, info BeforePlanModeAutoExitInfo,
+) (suppress bool, planFilePathOverride, reasonOverride string) {
+	return h.sdk.FireBeforePlanModeAutoExit(ctx, info)
+}
+
 func (h *Host) FireSystemInject(ctx *Context, info SystemInjectInfo) (string, bool) {
 	return h.sdk.FireSystemInject(ctx, info)
 }

@@ -60,6 +60,21 @@ type activeRun struct {
 	// in buildToolDefs.
 	planModeAllowedBashCommands []string
 
+	// planModeAutoExitEnabled records the effective auto-exit setting for
+	// this run, resolved at run setup from (in precedence order):
+	//   1. RunOptions.PlanModeAutoExit (per-run pointer)
+	//   2. LimitsConfig.PlanModeAutoExitOnEndTurn (engine.json)
+	//   3. Built-in default (true)
+	//
+	// When false, the end-of-turn synthesis safety net is disabled and a
+	// plan-mode run that ends without an ExitPlanMode / AskUserQuestion
+	// tool call completes as a normal end_turn with the conversation
+	// parked in plan mode (today's behaviour pre-#187).
+	//
+	// The before_plan_mode_auto_exit hook can still suppress synthesis
+	// even when this is true; the hook runs last in the precedence chain.
+	planModeAutoExitEnabled bool
+
 	// opts captures the RunOptions for this run so compaction (and other
 	// cross-turn logic) can read config-driven knobs without plumbing opts
 	// through every internal call. Set once in StartRunWithConfig.
@@ -188,11 +203,12 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		// buildSystemPrompt; RunOptions wins so we set it unconditionally
 		// and buildSystemPrompt only writes the hook value when this is empty.
 		planModeSparseReminderOverride: options.PlanModeSparseReminder,
-		opts:         &options,
-		cfg:          cfg,
+		planModeAutoExitEnabled:        resolvePlanModeAutoExit(&options, cfg),
+		opts:                           &options,
+		cfg:                            cfg,
 	}
 
-	utils.Info("ApiBackend", fmt.Sprintf("StartRunWithConfig: runID=%s model=%s sessionID=%s planMode=%v", requestID, options.Model, options.SessionID, options.PlanMode))
+	utils.Info("ApiBackend", fmt.Sprintf("StartRunWithConfig: runID=%s model=%s sessionID=%s planMode=%v planModeAutoExit=%v", requestID, options.Model, options.SessionID, options.PlanMode, run.planModeAutoExitEnabled))
 
 	b.mu.Lock()
 	b.activeRuns[requestID] = run

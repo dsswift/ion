@@ -53,6 +53,15 @@ func (m *Manager) buildRunConfig(
 		runCfg.EarlyStopContinue = m.config.EarlyStopContinue
 	}
 
+	// Thread the plan-mode auto-exit safety-net setting from engine.json
+	// (LimitsConfig.PlanModeAutoExitOnEndTurn) so the runloop can resolve
+	// it without reaching back to the full engine config. Nil means
+	// "use the built-in default (true)" — see resolvePlanModeAutoExit
+	// in engine/internal/backend/runloop_plan_mode_auto_exit.go.
+	if m.config != nil && m.config.Limits.PlanModeAutoExitOnEndTurn != nil {
+		runCfg.PlanModeAutoExitOnEndTurn = m.config.Limits.PlanModeAutoExitOnEndTurn
+	}
+
 	// Thread tool-result size cap from engine.json compaction config so the
 	// runloop can persist oversized tool results to disk.
 	if m.config != nil && m.config.Compaction != nil && m.config.Compaction.MaxToolResultChars > 0 {
@@ -111,6 +120,25 @@ func (m *Manager) buildRunConfig(
 	// Default when no extensions: auto-allow.
 	runCfg.Hooks.OnPlanModeExit = func(planFilePath string) (bool, string) {
 		return m.RequestPlanModeExit(capturedKey, planFilePath)
+	}
+
+	// Wire OnPlanModeAutoExit: fires before_plan_mode_auto_exit hook so
+	// extensions can observe, suppress, or override the runloop's
+	// end-of-turn ExitPlanMode synthesis (issue #187). Default when no
+	// extensions: no opinion (proceed with the engine's defaults). The
+	// translation from backend.PlanModeAutoExitHookInfo to
+	// extension.BeforePlanModeAutoExitInfo is a one-for-one field copy —
+	// they have identical shape; the duplication exists because the
+	// backend package deliberately does not import extension.
+	runCfg.Hooks.OnPlanModeAutoExit = func(info backend.PlanModeAutoExitHookInfo) (bool, string, string) {
+		return m.RequestPlanModeAutoExit(capturedKey, extension.BeforePlanModeAutoExitInfo{
+			SessionID:     info.SessionID,
+			RunID:         info.RunID,
+			StopReason:    info.StopReason,
+			PlanFilePath:  info.PlanFilePath,
+			AssistantText: info.AssistantText,
+			EmittedTools:  info.EmittedTools,
+		})
 	}
 
 	// Wire GetSessionPlanFilePath: lets the ExitPlanMode interception resolve
@@ -448,9 +476,10 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 		for _, tool := range extTools {
 			utils.Log("Session", fmt.Sprintf("SendPrompt[%s]:   tool: %s", key, tool.Name))
 			combinedToolDefs = append(combinedToolDefs, types.LlmToolDef{
-				Name:        tool.Name,
-				Description: tool.Description,
-				InputSchema: tool.Parameters,
+				Name:         tool.Name,
+				Description:  tool.Description,
+				InputSchema:  tool.Parameters,
+				PlanModeSafe: tool.PlanModeSafe,
 			})
 		}
 	} else {

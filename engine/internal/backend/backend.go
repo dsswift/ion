@@ -104,6 +104,26 @@ type EarlyStopContinuedInfo struct {
 	InjectedText           string
 }
 
+// PlanModeAutoExitHookInfo mirrors extension.BeforePlanModeAutoExitInfo
+// for the backend layer. The backend deliberately does not import
+// extension (to keep the agent loop independent of hook dispatch
+// concerns), so we duplicate the shape and let the session layer
+// translate between the two.
+//
+// Field semantics are identical to extension.BeforePlanModeAutoExitInfo
+// — see that type for documentation. New fields added here must also be
+// added there (and vice versa); the translation in
+// session/prompt_runconfig.go fails loudly at the call site if shapes
+// drift.
+type PlanModeAutoExitHookInfo struct {
+	SessionID     string
+	RunID         string
+	StopReason    string
+	PlanFilePath  string
+	AssistantText string
+	EmittedTools  []string
+}
+
 // TelemetryCollector is an optional interface for telemetry injection.
 type TelemetryCollector interface {
 	Event(name string, payload map[string]interface{}, ctx map[string]interface{})
@@ -163,6 +183,22 @@ type RunHooks struct {
 	// reason is returned to the LLM in the tool result. Nil callback means
 	// auto-approve (always allow the exit).
 	OnPlanModeExit func(planFilePath string) (allowed bool, reason string)
+
+	// OnPlanModeAutoExit is called immediately before the runloop
+	// synthesizes a deterministic ExitPlanMode at end-of-turn (the
+	// safety net for "model ended plan-mode turn without calling
+	// ExitPlanMode"). The callback fires the before_plan_mode_auto_exit
+	// hook so extensions can suppress the synthesis, override the
+	// PlanFilePath used in the synthesized PermissionDenial, or override
+	// the human-readable Reason recorded on the denial / emitted on
+	// PlanModeAutoExitEvent.
+	//
+	// Returns (suppress, planFilePathOverride, reasonOverride). When
+	// suppress=true the engine skips synthesis entirely. When the
+	// override strings are non-empty, the engine substitutes them for
+	// its own defaults. Nil callback (or no extensions wired) means
+	// "no opinion — proceed with defaults."
+	OnPlanModeAutoExit func(info PlanModeAutoExitHookInfo) (suppress bool, planFilePathOverride, reasonOverride string)
 
 	// GetSessionPlanFilePath retrieves the session-level planFilePath when
 	// the run's own planFilePath is empty. This happens when the model calls
@@ -265,6 +301,15 @@ type RunConfig struct {
 	// RunOptions fields take precedence over this; the
 	// before_early_stop_decision hook overrides both.
 	EarlyStopContinue *types.EarlyStopContinueConfig
+
+	// PlanModeAutoExitOnEndTurn captures
+	// EngineRuntimeConfig.Limits.PlanModeAutoExitOnEndTurn so the runloop
+	// can resolve the synthesis safety-net setting without reaching back
+	// to the full engine config. Nil means "use the built-in default
+	// (true)"; &true / &false make the choice explicit. Per-run
+	// RunOptions.PlanModeAutoExit overrides this; the
+	// before_plan_mode_auto_exit hook overrides both.
+	PlanModeAutoExitOnEndTurn *bool
 
 	// GetSessionMemory returns the current session memory content for use
 	// as a zero-cost compaction summary. Set by the session layer from

@@ -181,6 +181,51 @@ func (m *Manager) RequestPlanModeExit(key string, planFilePath string) (allowed 
 	return a, r
 }
 
+// RequestPlanModeAutoExit is called by the runloop just before it
+// synthesizes a deterministic ExitPlanMode at end-of-turn (the safety
+// net for "model ended plan-mode turn without calling ExitPlanMode").
+// It fires the before_plan_mode_auto_exit hook so SDK extensions can
+// observe the synthesis decision, suppress it, override the
+// PlanFilePath used in the synthesized PermissionDenial, or override
+// the human-readable Reason recorded on the denial / emitted on
+// PlanModeAutoExitEvent.
+//
+// Returns (suppress, planFilePathOverride, reasonOverride). When the
+// session is unknown or has no extensions wired, returns
+// (false, "", "") so the engine proceeds with its defaults.
+func (m *Manager) RequestPlanModeAutoExit(
+	key string, info extension.BeforePlanModeAutoExitInfo,
+) (suppress bool, planFilePathOverride, reasonOverride string) {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	if !ok {
+		m.mu.RUnlock()
+		utils.Debug("Session", fmt.Sprintf("RequestPlanModeAutoExit: session %q not found — proceeding with defaults", key))
+		return false, "", ""
+	}
+	extGroup := s.extGroup
+	m.mu.RUnlock()
+
+	if extGroup == nil || extGroup.IsEmpty() {
+		utils.Debug("Session", fmt.Sprintf("RequestPlanModeAutoExit: key=%s no extensions — proceeding with defaults", key))
+		return false, "", ""
+	}
+
+	ctx := m.newExtContextForKey(key)
+	sp, pf, rs := extGroup.FireBeforePlanModeAutoExit(ctx, info)
+	if sp {
+		utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeAutoExit: key=%s synthesis suppressed by hook", key))
+	} else if pf != "" || rs != "" {
+		utils.Info("PlanMode", fmt.Sprintf(
+			"RequestPlanModeAutoExit: key=%s hook overrides path=%q reason=%q",
+			key, pf, rs,
+		))
+	} else {
+		utils.Debug("Session", fmt.Sprintf("RequestPlanModeAutoExit: key=%s no hook opinion", key))
+	}
+	return sp, pf, rs
+}
+
 // SetPlanModeBashAllowlist sets the allowed Bash command prefixes for plan mode.
 // When non-empty, the Bash tool is included in plan-mode runs and only commands
 // matching one of these prefixes are permitted. Called by the server after
