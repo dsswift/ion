@@ -160,6 +160,13 @@ struct PermissionRequest: Codable, Identifiable, Sendable {
     let toolName: String
     let toolInput: [String: AnyCodable]?
     let options: [PermissionOption]
+    /// Engine instance (sub-tab) this request belongs to. Populated by the
+    /// desktop for engine-view denials (both the live `permission_request`
+    /// event and the snapshot queue promotion) so `EngineView` can scope
+    /// the plan/question card to the owning sub-conversation. Nil for CLI
+    /// tabs and for payloads from older desktops — nil passes the
+    /// active-instance filter for backward compatibility.
+    var instanceId: String? = nil
 
     var id: String { questionId }
 }

@@ -72,10 +72,23 @@ extension SessionViewModel {
             // queue if the user already dismissed the card on this tab.
             // The 5-second snapshot polling can re-inject stale entries
             // from the desktop's permissionDenied before it's cleared.
-            if dismissedLiveSpecialTabs.contains(tabId) {
-                merged[i].permissionQueue.removeAll {
-                    $0.toolName == "ExitPlanMode" || $0.toolName == "AskUserQuestion"
+            //
+            // Dismissals come in two scopes (see dismissSpecialPermission):
+            //   - bare tabId — CLI tabs and legacy entries without
+            //     instance identity; strips every special entry on the tab.
+            //   - "tabId:instanceId" — engine sub-tab dismissals; strips
+            //     only entries owned by that instance so a sibling
+            //     sub-tab's pending card survives the sweep.
+            merged[i].permissionQueue.removeAll { entry in
+                guard entry.toolName == "ExitPlanMode" || entry.toolName == "AskUserQuestion" else {
+                    return false
                 }
+                if dismissedLiveSpecialTabs.contains(tabId) { return true }
+                if let instanceId = entry.instanceId,
+                   dismissedLiveSpecialTabs.contains("\(tabId):\(instanceId)") {
+                    return true
+                }
+                return false
             }
 
             if let existing = tabs.first(where: { $0.id == tabId }),

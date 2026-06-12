@@ -285,21 +285,35 @@ struct EngineView: View {
         viewModel.discoverCommands(directory: dir)
     }
 
-    /// First pending permission request for this engine tab.
+    /// First pending permission request for this engine tab that belongs to
+    /// the *active* engine instance (sub-tab).
     /// Engine tabs don't need the restored-card logic from ConversationView —
     /// the desktop forwards engine denials via the per-instance Map into
     /// `permissionQueue` on the tab snapshot, so the queue is the single
     /// source of truth.
+    ///
+    /// Instance scoping: each queue entry may carry the `instanceId` of the
+    /// engine sub-conversation that produced it (stamped by the desktop's
+    /// event-wiring live path and snapshot promotion). Entries from a
+    /// sibling instance are skipped so a plan/question card never lingers
+    /// when the user switches sub-tabs. Entries with a nil `instanceId`
+    /// (older desktops that predate the field) pass the filter — legacy
+    /// behavior is "show on the whole tab", which is strictly better than
+    /// hiding a card the user must act on.
     private var pendingPermission: PermissionRequest? {
         let tab = viewModel.tab(for: tabId)
         let queue = tab?.permissionQueue ?? []
         let status = tab?.status
-        if let request = queue.first {
+        for request in queue {
+            if let owner = request.instanceId, owner != activeInstanceId {
+                DiagnosticLog.log("ENGINE-PERM: pendingPermission: skipping \(request.toolName) questionId=\(request.questionId.prefix(16)) — owned by instance \(owner.prefix(8)), active is \(activeInstanceId.prefix(8))")
+                continue
+            }
             let inputKeys = request.toolInput?.keys.sorted() ?? []
-            DiagnosticLog.log("ENGINE-PERM: pendingPermission: from queue — toolName=\(request.toolName) questionId=\(request.questionId) inputKeys=\(inputKeys) status=\(status?.rawValue ?? "nil")")
+            DiagnosticLog.log("ENGINE-PERM: pendingPermission: from queue — toolName=\(request.toolName) questionId=\(request.questionId) instanceId=\(request.instanceId?.prefix(8) ?? "nil") inputKeys=\(inputKeys) status=\(status?.rawValue ?? "nil")")
             return request
         }
-        DiagnosticLog.log("ENGINE-PERM: pendingPermission: nil (queueSize=\(queue.count) status=\(status?.rawValue ?? "nil") tabId=\(tabId.prefix(8)))")
+        DiagnosticLog.log("ENGINE-PERM: pendingPermission: nil (queueSize=\(queue.count) status=\(status?.rawValue ?? "nil") tabId=\(tabId.prefix(8)) activeInstance=\(activeInstanceId.prefix(8)))")
         return nil
     }
 

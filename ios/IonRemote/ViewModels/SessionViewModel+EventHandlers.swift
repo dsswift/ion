@@ -135,8 +135,8 @@ extension SessionViewModel {
         case .taskComplete(let tabId, _, _):
             handleTaskComplete(tabId: tabId)
 
-        case .permissionRequest(let tabId, let questionId, let toolName, let toolInput, let options):
-            handlePermissionRequest(tabId: tabId, questionId: questionId, toolName: toolName, toolInput: toolInput, options: options)
+        case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, let toolInput, let options):
+            handlePermissionRequest(tabId: tabId, instanceId: instanceId, questionId: questionId, toolName: toolName, toolInput: toolInput, options: options)
 
         case .permissionResolved(let tabId, let questionId):
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {

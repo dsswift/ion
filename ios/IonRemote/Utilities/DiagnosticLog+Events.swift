@@ -36,8 +36,8 @@ extension DiagnosticLog {
         case .taskComplete(let tabId, _, let costUsd):
             log("EVENT: taskComplete tabId=\(tabId.prefix(8)) cost=\(costUsd)")
 
-        case .permissionRequest(let tabId, let qId, let toolName, _, let options):
-            log("EVENT: permissionRequest tabId=\(tabId.prefix(8)) qId=\(qId.prefix(8)) tool=\(toolName) opts=\(options.count)")
+        case .permissionRequest(let tabId, let instanceId, let qId, let toolName, _, let options):
+            log("EVENT: permissionRequest tabId=\(tabId.prefix(8)) instanceId=\(instanceId?.prefix(8) ?? "nil") qId=\(qId.prefix(8)) tool=\(toolName) opts=\(options.count)")
 
         case .permissionResolved(let tabId, let qId):
             log("EVENT: permissionResolved tabId=\(tabId.prefix(8)) qId=\(qId.prefix(8))")

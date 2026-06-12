@@ -77,13 +77,25 @@ extension SessionViewModel {
     /// Dismiss a special permission card (AskUserQuestion/ExitPlanMode) without
     /// sending respond_permission -- the tool was already auto-allowed on desktop.
     func dismissSpecialPermission(tabId: String, questionId: String) {
+        // Capture the entry's engine-instance scoping before removal so the
+        // dismissal suppression can be keyed per sub-tab. Dismissing one
+        // sub-tab's plan card must not block a sibling sub-tab's future
+        // cards from rendering.
+        var instanceId: String? = nil
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            instanceId = tabs[idx].permissionQueue.first(where: { $0.questionId == questionId })?.instanceId
             tabs[idx].permissionQueue.removeAll { $0.questionId == questionId }
         }
         if questionId.hasPrefix("restored-") {
             dismissedRestoredCards.insert(questionId)
+        } else if let instanceId {
+            // Live engine-instance card dismissed -- suppress snapshot
+            // re-injection for this sub-tab only ("tabId:instanceId" key).
+            DiagnosticLog.log("PERM: dismissSpecialPermission: tabId=\(tabId.prefix(8)) instance-scoped dismissal instanceId=\(instanceId.prefix(8))")
+            dismissedLiveSpecialTabs.insert("\(tabId):\(instanceId)")
         } else {
             // Live card dismissed -- block restoredSpecialCard from re-triggering
+            DiagnosticLog.log("PERM: dismissSpecialPermission: tabId=\(tabId.prefix(8)) tab-scoped dismissal (no instanceId)")
             dismissedLiveSpecialTabs.insert(tabId)
         }
     }

@@ -90,9 +90,25 @@ final class ChatCollectionVC<Payload, RowContent: View>:
 
     private var pendingSnapshot: (items: [ChatItem<Payload>], isNearBottom: Bool, forceScroll: Bool)?
     private var hasAppliedInitialSnapshot = false
-    private var userIsInteracting = false
     private let spacing: CGFloat
     private let horizontalInset: CGFloat
+
+    /// Live user-interaction state read directly from the scroll view.
+    ///
+    /// Replaces a hand-tracked `userIsInteracting` flag that was set in
+    /// `scrollViewWillBeginDragging` and cleared in `scrollViewDidEndDragging`
+    /// / `scrollViewDidEndDecelerating`. That flag could stick `true` forever:
+    /// if the user flicked to the bottom (ending the drag with
+    /// `willDecelerate=true`) and a non-animated programmatic scroll from a
+    /// snapshot apply interrupted the deceleration,
+    /// `scrollViewDidEndDecelerating` never fired — permanently disabling
+    /// auto-tail. UIKit's own properties cannot drift: during programmatic
+    /// non-animated scrolls all three are `false`, so the "don't flip
+    /// near→far on content growth" guard still holds.
+    private var isUserInteracting: Bool {
+        guard let cv = collectionView else { return false }
+        return cv.isTracking || cv.isDragging || cv.isDecelerating
+    }
 
     init(
         rowContent: @escaping (Payload) -> RowContent,
@@ -119,6 +135,12 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         collectionView.keyboardDismissMode = .interactive
         collectionView.contentInsetAdjustmentBehavior = .always
         collectionView.clipsToBounds = true
+        // Hosted SwiftUI cells whose content grows internally (streaming
+        // text, markdown re-render) proactively invalidate their size
+        // instead of waiting for the next reconfigure pass. Without this,
+        // a reconfigured cell keeps its stale height until something else
+        // forces a layout pass (e.g. the user scrolling).
+        collectionView.selfSizingInvalidation = .enabledIncludingConstraints
         view.addSubview(collectionView)
 
         let reg = UICollectionView.CellRegistration<UICollectionViewCell, ChatItem<Payload>> {
@@ -199,11 +221,17 @@ final class ChatCollectionVC<Payload, RowContent: View>:
             guard let self else { return }
             if isInitial || forceScroll {
                 self.scrollToBottom(animated: false)
-            } else if isNearBottom && !self.userIsInteracting {
-                // Auto-tail only when the user is near the bottom AND
-                // not actively scrolling. If they're dragging/decelerating
-                // through history we must not yank them back down.
-                self.scrollToBottom(animated: false)
+            } else if isNearBottom {
+                if self.isUserInteracting {
+                    // Auto-tail only when the user is near the bottom AND
+                    // not actively scrolling. If they're dragging/decelerating
+                    // through history we must not yank them back down.
+                    // Logged so a wedged-interaction state is visible in
+                    // diagnostics instead of silently suppressing the tail.
+                    DiagnosticLog.log("CHAT-SCROLL: tail skipped, interacting (tracking=\(self.collectionView.isTracking) dragging=\(self.collectionView.isDragging) decelerating=\(self.collectionView.isDecelerating))")
+                } else {
+                    self.scrollToBottom(animated: false)
+                }
             }
         }
     }
@@ -211,12 +239,36 @@ final class ChatCollectionVC<Payload, RowContent: View>:
     // MARK: - Scroll
 
     func scrollToBottom(animated: Bool) {
-        let snapshot = dataSource.snapshot()
-        let allItems = snapshot.itemIdentifiers(inSection: .main)
-        guard let last = allItems.last,
-              let indexPath = dataSource.indexPath(for: last)
-        else { return }
-        collectionView.scrollToItem(at: indexPath, at: .bottom, animated: animated)
+        // Resolve any pending self-sizing from reconfigured cells so
+        // contentSize reflects the streamed content before we compute the
+        // target offset. The previous implementation used
+        // `scrollToItem(at:.bottom)`, which consults the layout's stale
+        // estimated frame for the last item — during streaming (reconfigure-
+        // only snapshots, no structural diff) that frame already appeared
+        // fully visible, so the call was a no-op and the view stalled at the
+        // old bottom until a user-initiated scroll forced re-measurement.
+        let sizeBefore = collectionView.contentSize.height
+        collectionView.layoutIfNeeded()
+        let bottom = max(
+            collectionView.contentSize.height - collectionView.bounds.height
+                + collectionView.adjustedContentInset.bottom,
+            -collectionView.adjustedContentInset.top
+        )
+        collectionView.setContentOffset(CGPoint(x: 0, y: bottom), animated: animated)
+        guard !animated else { return }
+        // Second pass: the offset change may bring unmeasured cells on
+        // screen, growing contentSize again. Re-resolve and snap once more
+        // so a single scrollToBottom converges on the true bottom.
+        collectionView.layoutIfNeeded()
+        let newBottom = max(
+            collectionView.contentSize.height - collectionView.bounds.height
+                + collectionView.adjustedContentInset.bottom,
+            -collectionView.adjustedContentInset.top
+        )
+        if abs(newBottom - bottom) > 1 {
+            DiagnosticLog.log("CHAT-SCROLL: second-pass correction delta=\(newBottom - bottom) sizeBefore=\(sizeBefore) sizeAfter=\(collectionView.contentSize.height)")
+            collectionView.setContentOffset(CGPoint(x: 0, y: newBottom), animated: false)
+        }
     }
 
     // MARK: - UIScrollViewDelegate
@@ -234,25 +286,11 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         // Only flip near→far when the user is actively scrolling.
         // Content growth (streaming) pushes the bottom further away,
         // but the user hasn't scrolled — keep them pinned.
-        if nearBottom && !near && !userIsInteracting { return }
+        if nearBottom && !near && !isUserInteracting { return }
 
         if nearBottom != near {
             nearBottom = near
             onNearBottomChanged?(near)
         }
-    }
-
-    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        userIsInteracting = true
-    }
-
-    func scrollViewDidEndDragging(
-        _ scrollView: UIScrollView, willDecelerate: Bool
-    ) {
-        if !willDecelerate { userIsInteracting = false }
-    }
-
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        userIsInteracting = false
     }
 }

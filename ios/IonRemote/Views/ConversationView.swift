@@ -389,6 +389,7 @@ struct ConversationView: View {
         }
         .task {
             viewModel.loadConversation(tabId: tabId)
+            viewModel.requestLoadAttachments(tabId: tabId)
             cachedRestoredCard = computeRestoredSpecialCard()
         }
         .onChange(of: viewModel.messageCountByTab[tabId]) {
@@ -430,6 +431,7 @@ struct ConversationView: View {
                 DiagnosticLog.log("RESUME-SYNC: ConversationView reloading tabId=\(tabId.prefix(8))")
                 pendingScrollAfterReload = true
                 viewModel.loadConversation(tabId: tabId)
+                viewModel.requestLoadAttachments(tabId: tabId)
             }
         }
         .onChange(of: viewModel.tabIds) { _, newIds in

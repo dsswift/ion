@@ -19,7 +19,7 @@ enum RemoteEvent: Codable, Sendable {
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
     case taskComplete(tabId: String, result: String, costUsd: Double)
-    case permissionRequest(tabId: String, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption])
+    case permissionRequest(tabId: String, instanceId: String?, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption])
     case permissionResolved(tabId: String, questionId: String)
     case conversationHistory(tabId: String, messages: [Message], hasMore: Bool, cursor: String?)
     case messageAdded(tabId: String, message: Message)

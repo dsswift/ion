@@ -13,8 +13,12 @@ final class NormalizedEventPermissionTests: XCTestCase {
         {"type":"permission_request","tabId":"t1","questionId":"q1","toolName":"bash","toolInput":{"command":"rm -rf /"},"options":[{"id":"allow","label":"Allow","kind":"approve"},{"id":"deny","label":"Deny","kind":"reject"}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .permissionRequest(let tabId, let questionId, let toolName, let toolInput, let options) = event {
+        if case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, let toolInput, let options) = event {
             XCTAssertEqual(tabId, "t1")
+            // No instanceId on the wire (CLI tab / older desktop) — must
+            // decode as nil, which passes the EngineView active-instance
+            // filter for backward compatibility.
+            XCTAssertNil(instanceId)
             XCTAssertEqual(questionId, "q1")
             XCTAssertEqual(toolName, "bash")
             XCTAssertNotNil(toolInput)
@@ -29,12 +33,29 @@ final class NormalizedEventPermissionTests: XCTestCase {
         }
     }
 
+    func testDecodePermissionRequestWithInstanceId() throws {
+        // Engine-view denials carry the owning sub-tab's instanceId so the
+        // card can be scoped to the active engine instance.
+        let json = """
+        {"type":"permission_request","tabId":"t1","instanceId":"inst-7","questionId":"q3","toolName":"ExitPlanMode","toolInput":{"planContent":"# Plan"},"options":[]}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, _, _) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "inst-7")
+            XCTAssertEqual(questionId, "q3")
+            XCTAssertEqual(toolName, "ExitPlanMode")
+        } else {
+            XCTFail("Expected permissionRequest, got \(event)")
+        }
+    }
+
     func testDecodePermissionRequestWithNullToolInput() throws {
         let json = """
         {"type":"permission_request","tabId":"t1","questionId":"q2","toolName":"read","toolInput":null,"options":[{"id":"ok","label":"OK","kind":null}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .permissionRequest(_, _, _, let toolInput, let options) = event {
+        if case .permissionRequest(_, _, _, _, let toolInput, let options) = event {
             XCTAssertNil(toolInput)
             XCTAssertEqual(options.count, 1)
             XCTAssertNil(options[0].kind)
@@ -62,6 +83,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
         let option = PermissionOption(id: "yes", label: "Yes", kind: "approve")
         let original = RemoteEvent.permissionRequest(
             tabId: "t1",
+            instanceId: "inst-1",
             questionId: "q99",
             toolName: "write",
             toolInput: ["path": AnyCodable("/tmp/foo")],
@@ -69,8 +91,9 @@ final class NormalizedEventPermissionTests: XCTestCase {
         )
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .permissionRequest(let tabId, let questionId, let toolName, let toolInput, let options) = decoded {
+        if case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, let toolInput, let options) = decoded {
             XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "inst-1")
             XCTAssertEqual(questionId, "q99")
             XCTAssertEqual(toolName, "write")
             XCTAssertEqual(toolInput?["path"]?.value as? String, "/tmp/foo")
@@ -78,6 +101,30 @@ final class NormalizedEventPermissionTests: XCTestCase {
             XCTAssertEqual(options[0].id, "yes")
         } else {
             XCTFail("Round-trip permissionRequest failed")
+        }
+    }
+
+    func testRoundTripPermissionRequestWithoutInstanceId() throws {
+        // nil instanceId must survive a round trip as nil (encodeIfPresent
+        // omits the key; decodeIfPresent restores nil) — guarding the
+        // legacy CLI-tab shape.
+        let original = RemoteEvent.permissionRequest(
+            tabId: "t2",
+            instanceId: nil,
+            questionId: "q100",
+            toolName: "read",
+            toolInput: nil,
+            options: []
+        )
+        let data = try encoder.encode(original)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertNil(json["instanceId"], "nil instanceId should be omitted from the wire")
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .permissionRequest(_, let instanceId, let questionId, _, _, _) = decoded {
+            XCTAssertNil(instanceId)
+            XCTAssertEqual(questionId, "q100")
+        } else {
+            XCTFail("Round-trip permissionRequest (nil instanceId) failed")
         }
     }
 
