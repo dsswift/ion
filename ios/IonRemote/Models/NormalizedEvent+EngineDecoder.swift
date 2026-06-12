@@ -64,6 +64,18 @@ extension RemoteEvent {
             let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
             return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
+        case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall, .engineDispatchStart:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            switch type {
+            case .engineToolUpdate: return .engineToolUpdate(tabId: tabId, instanceId: instanceId)
+            case .engineToolComplete: return .engineToolComplete(tabId: tabId, instanceId: instanceId)
+            case .engineScheduleFired: return .engineScheduleFired(tabId: tabId, instanceId: instanceId)
+            case .engineLlmCall: return .engineLlmCall(tabId: tabId, instanceId: instanceId)
+            case .engineDispatchStart: return .engineDispatchStart(tabId: tabId, instanceId: instanceId)
+            default: return nil
+            }
+
         case .engineError:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)

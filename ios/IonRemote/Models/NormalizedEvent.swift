@@ -56,6 +56,8 @@ enum RemoteEvent: Codable, Sendable {
     case engineWorkingMessage(tabId: String, instanceId: String?, message: String, metadata: [String: AnyCodable]?)
     case engineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String)
     case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool)
+    case engineToolUpdate(tabId: String, instanceId: String?)
+    case engineToolComplete(tabId: String, instanceId: String?)
     case engineToolStalled(tabId: String, instanceId: String?, toolId: String, toolName: String, elapsed: Double)
     /// Engine drained a mid-turn steer message into the conversation as
     /// a user turn before the next LLM call. The desktop renders a
@@ -65,6 +67,9 @@ enum RemoteEvent: Codable, Sendable {
     /// message is already part of the conversation. See the Go-side
     /// SteerInjectedEvent and the TS engine_steer_injected variant.
     case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int)
+    case engineScheduleFired(tabId: String, instanceId: String?)
+    case engineLlmCall(tabId: String, instanceId: String?)
+    case engineDispatchStart(tabId: String, instanceId: String?)
     case engineError(tabId: String, instanceId: String?, message: String)
     case engineNotify(tabId: String, instanceId: String?, message: String, level: String, metadata: [String: AnyCodable]?)
     case engineDialog(tabId: String, instanceId: String?, dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?)
@@ -323,8 +328,13 @@ enum RemoteEvent: Codable, Sendable {
         case engineWorkingMessage = "engine_working_message"
         case engineToolStart = "engine_tool_start"
         case engineToolEnd = "engine_tool_end"
+        case engineToolUpdate = "engine_tool_update"
+        case engineToolComplete = "engine_tool_complete"
         case engineToolStalled = "engine_tool_stalled"
         case engineSteerInjected = "engine_steer_injected"
+        case engineScheduleFired = "engine_schedule_fired"
+        case engineLlmCall = "engine_llm_call"
+        case engineDispatchStart = "engine_dispatch_start"
         case engineError = "engine_error"
         case engineNotify = "engine_notify"
         case engineDialog = "engine_dialog"

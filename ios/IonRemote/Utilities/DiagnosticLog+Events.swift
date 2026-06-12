@@ -111,6 +111,17 @@ extension DiagnosticLog {
         case .engineSteerInjected(let tabId, let instId, let messageLength):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)")
 
+        case .engineToolUpdate(let tabId, let instId):
+            log("EVENT: engineToolUpdate tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
+        case .engineToolComplete(let tabId, let instId):
+            log("EVENT: engineToolComplete tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
+        case .engineScheduleFired(let tabId, let instId):
+            log("EVENT: engineScheduleFired tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
+        case .engineLlmCall(let tabId, let instId):
+            log("EVENT: engineLlmCall tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
+        case .engineDispatchStart(let tabId, let instId):
+            log("EVENT: engineDispatchStart tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
+
         case .engineError(let tabId, let instId, let msg):
             log("ERR: engine tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") msg=\(msg.prefix(80))")
 

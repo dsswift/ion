@@ -66,6 +66,32 @@ extension RemoteEvent {
             try container.encode(messageLength, forKey: .steerMessageLength)
             return true
 
+        case .engineToolUpdate(let tabId, let instanceId):
+            try container.encode(TypeKey.engineToolUpdate, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            return true
+        case .engineToolComplete(let tabId, let instanceId):
+            try container.encode(TypeKey.engineToolComplete, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            return true
+        case .engineScheduleFired(let tabId, let instanceId):
+            try container.encode(TypeKey.engineScheduleFired, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            return true
+        case .engineLlmCall(let tabId, let instanceId):
+            try container.encode(TypeKey.engineLlmCall, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            return true
+        case .engineDispatchStart(let tabId, let instanceId):
+            try container.encode(TypeKey.engineDispatchStart, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            return true
+
         case .engineError(let tabId, let instanceId, let message):
             try container.encode(TypeKey.engineError, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

@@ -223,6 +223,11 @@ extension SessionViewModel {
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
+        // No-op: iOS does not render these events yet. Decoding them
+        // prevents the 123 decode-errors/session diagnostic finding.
+        case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall, .engineDispatchStart:
+            break
+
         case .engineError(let tabId, let instanceId, let message):
             handleEngineError(tabId: tabId, instanceId: instanceId, message: message)
 

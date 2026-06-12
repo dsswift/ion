@@ -505,4 +505,71 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         }
     }
 
+    // MARK: - engine_tool_update / engine_tool_complete / engine_schedule_fired / engine_llm_call / engine_dispatch_start
+
+    func testEngineToolUpdateDecode() throws {
+        let json = """
+        {"type":"engine_tool_update","tabId":"t1","instanceId":"i1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineToolUpdate(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+        } else {
+            XCTFail("Expected engineToolUpdate")
+        }
+    }
+
+    func testEngineToolCompleteDecode() throws {
+        let json = """
+        {"type":"engine_tool_complete","tabId":"t1","instanceId":"i1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineToolComplete(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+        } else {
+            XCTFail("Expected engineToolComplete")
+        }
+    }
+
+    func testEngineScheduleFiredDecode() throws {
+        let json = """
+        {"type":"engine_schedule_fired","tabId":"t1","instanceId":"i1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineScheduleFired(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+        } else {
+            XCTFail("Expected engineScheduleFired")
+        }
+    }
+
+    func testEngineLlmCallDecode() throws {
+        let json = """
+        {"type":"engine_llm_call","tabId":"t1","instanceId":"i1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineLlmCall(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+        } else {
+            XCTFail("Expected engineLlmCall")
+        }
+    }
+
+    func testEngineDispatchStartDecode() throws {
+        let json = """
+        {"type":"engine_dispatch_start","tabId":"t1","instanceId":"i1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineDispatchStart(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+        } else {
+            XCTFail("Expected engineDispatchStart")
+        }
+    }
+
 }

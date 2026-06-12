@@ -89,6 +89,7 @@
 		A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
 		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
+		A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */; };
 		A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */; };
 		A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */; };
 		A1B2C3D4E5F60001001100AA /* RemoteModelEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001101AA /* RemoteModelEntry.swift */; };
@@ -278,6 +279,7 @@
 		A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineKeys.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Snapshot.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+OnConnected.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Send.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Receive.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Lifecycle.swift"; sourceTree = "<group>"; };
@@ -581,6 +583,7 @@
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
 				A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */,
+				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
 				A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */,
 			);
 			path = ViewModels;
@@ -841,6 +844,7 @@
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,
 				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
 				A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */,
+				A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */,
 				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
 				A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */,

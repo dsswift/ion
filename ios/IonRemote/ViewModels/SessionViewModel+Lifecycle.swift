@@ -221,6 +221,12 @@ extension SessionViewModel {
         DiagnosticLog.log("DISCONNECT: tearing down")
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = nil
+        // Clear any commands deferred via `runWhenConnected` — a hard
+        // reset means the user is intentionally walking away from the
+        // current pairing's state (switch desktop, unpair), so resume
+        // commands waiting for the previous transport must not fire
+        // against the next one.
+        clearPendingOnConnected()
         tearDownTransport()
         wipeTransientState()
     }

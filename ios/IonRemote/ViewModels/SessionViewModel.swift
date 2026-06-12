@@ -243,6 +243,20 @@ final class SessionViewModel {
     var connectionState: ConnectionState = .disconnected
     var pairingState: PairingState = .idle
 
+    /// Blocks deferred until the transport reaches `.connected` (i.e. the
+    /// first snapshot has arrived and confirmed the round-trip works).
+    /// Populated by `runWhenConnected(_:)` and drained inside
+    /// `handleSnapshot` when `connectionState` flips to `.connected`. Also
+    /// cleared by `disconnect()` so a hard reset wipes pending work.
+    ///
+    /// Exists to fix the iOS resume race: scene `.active` fires
+    /// auto-resume commands (`requestAllGitChanges`, `sendReportFocus`)
+    /// before the LAN/relay handshake completes, which otherwise produces
+    /// spurious "Not connected" / "Send failed" toasts. See
+    /// `SessionViewModel+OnConnected.swift` for the helper and
+    /// `IonRemoteApp.swift`'s `.active` handler for the call sites.
+    var pendingOnConnected: [() -> Void] = []
+
     /// Which desktop is currently selected (persisted in UserDefaults).
     var activeDeviceId: String? {
         get { UserDefaults.standard.string(forKey: "activeDeviceId") }
