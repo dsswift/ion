@@ -145,6 +145,16 @@ export interface IonAPI {
   engineCommand(key: string, command: string, args: string): Promise<void>
   engineStop(key: string): Promise<void>
   engineRemapSession(oldKey: string, newKey: string): Promise<void>
+  /** Notify the main process that the user focused a tab. The main
+   *  process publishes the session key as a desktop.focus resource so
+   *  extensions can route to the active session. */
+  notifyTabFocus(tabId: string): void
+  /** Publish a mark_read delta for a resource. Propagates the read state to
+   *  all subscribers (including iOS) via the engine's resource broker. */
+  markResourceRead(kind: string, resourceId: string): void
+  /** Publish a delete op for a resource. Removes the item from all
+   *  subscribers (including iOS) via the engine's resource broker. */
+  publishResourceDelete(kind: string, resourceId: string): void
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
   // ─── Model & provider management ───
@@ -371,6 +381,9 @@ const api: IonAPI = {
   engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
   engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),
   engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
+  notifyTabFocus: (tabId) => ipcRenderer.send(IPC.NOTIFY_TAB_FOCUS, { tabId }),
+  markResourceRead: (kind, resourceId) => ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId }),
+  publishResourceDelete: (kind, resourceId) => ipcRenderer.send(IPC.DELETE_RESOURCE, { kind, resourceId }),
   onEngineEvent: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, key: string, event: any) => callback(key, event)
     ipcRenderer.on(IPC.ENGINE_EVENT, handler)

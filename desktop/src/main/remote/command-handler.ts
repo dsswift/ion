@@ -1,5 +1,5 @@
 import { log as _log } from '../logger'
-import { sessionPlane } from '../state'
+import { sessionPlane, deviceFocusMap } from '../state'
 import {
   handleSync,
   handleCreateTab,
@@ -80,6 +80,7 @@ import {
 import { handleLoadAttachments } from './handlers/attachments'
 import { handleSetRemoteDisplay } from './handlers/display'
 import { handleSetDesktopSetting } from './handlers/desktop-settings'
+import { handleRequestResourceContent, handleMarkResourceRead, handleDeleteResource } from './handlers/resources'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string): void {
@@ -157,5 +158,14 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'load_attachments': await handleLoadAttachments(cmd, deviceId); break
     case 'set_remote_display': await handleSetRemoteDisplay(cmd, deviceId); break
     case 'set_desktop_setting': await handleSetDesktopSetting(cmd, deviceId); break
+    case 'request_resource_content': await handleRequestResourceContent(cmd, deviceId); break
+    case 'mark_resource_read': await handleMarkResourceRead(cmd); break
+    case 'delete_resource': await handleDeleteResource(cmd); break
+    case 'report_focus': {
+      const { tabId, interceptEnabled } = cmd
+      deviceFocusMap.set(deviceId, { tabId, interceptEnabled })
+      log(`report_focus: device=${deviceId} tabId=${tabId} interceptEnabled=${interceptEnabled}`)
+      break
+    }
   }
 }

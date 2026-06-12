@@ -224,6 +224,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           ),
         }
       })
+      // Publish focused session key as a workspace resource so extensions
+      // can route notifications to the active tab. Fire-and-forget.
+      window.ion.notifyTabFocus(tabId)
     },
 
     closeTab: (tabId) => {

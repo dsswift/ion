@@ -6,6 +6,7 @@ import {
 import { useSessionStore } from '../stores/sessionStore'
 import { HistoryPicker } from './HistoryPicker'
 import { SettingsPopover } from './SettingsPopover'
+import { NotificationsBell } from './NotificationsPanel'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -446,7 +447,8 @@ export function TabStrip() {
           <Lightning size={14} />
         </button>
 
-        <HistoryPicker />
+        {/* <HistoryPicker /> */}
+        <NotificationsBell />
 
         <SettingsPopover />
       </div>

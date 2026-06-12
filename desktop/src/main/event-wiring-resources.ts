@@ -24,7 +24,7 @@ const SUBSCRIBED_RESOURCE_KINDS = ['briefing']
 // Global resource kinds the desktop subscribes to once at engine connect
 // (not per-session). These use the Manager-level global broker for
 // workspace-scoped resources that don't belong to any single conversation.
-const GLOBAL_RESOURCE_KINDS: string[] = ['desktop.focus']
+const GLOBAL_RESOURCE_KINDS: string[] = ['desktop.focus', 'briefing']
 
 // Active subscriptions keyed by `${sessionKey}:${kind}` → subscriptionId.
 // Prevents double-subscribing when engine_command_registry fires more than
@@ -117,6 +117,7 @@ export function wireTabFocusHandler(): void {
 // see the item as read.
 
 export async function publishResourceMarkRead(kind: string, resourceId: string): Promise<void> {
+  log(`resource: mark_read kind=${kind} id=${resourceId}`)
   await engineBridge.request('resource_publish', {
     key: '',
     resourceKind: kind,
@@ -131,5 +132,31 @@ export async function publishResourceMarkRead(kind: string, resourceId: string):
 export function wireMarkResourceReadHandler(): void {
   ipcMain.on(IPC.MARK_RESOURCE_READ, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
     publishResourceMarkRead(kind, resourceId).catch(() => {})
+  })
+}
+
+// ── Delete resource publishing ──────────────────────────────────────────────
+//
+// When the user deletes a resource on desktop, the renderer calls
+// publishResourceDelete via the preload bridge. The main process publishes a
+// delete op back to the engine so all other subscribers (e.g. iOS) remove
+// the item.
+
+export async function publishResourceDelete(kind: string, resourceId: string): Promise<void> {
+  log(`resource: delete kind=${kind} id=${resourceId}`)
+  await engineBridge.request('resource_publish', {
+    key: '',
+    resourceKind: kind,
+    resourceGlobal: true,
+    resourceOp: 'delete',
+    resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
+  }).catch((err: unknown) => {
+    log(`resource_delete: failed kind=${kind} id=${resourceId} err=${err}`)
+  })
+}
+
+export function wireDeleteResourceHandler(): void {
+  ipcMain.on(IPC.DELETE_RESOURCE, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
+    publishResourceDelete(kind, resourceId).catch(() => {})
   })
 }

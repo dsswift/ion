@@ -102,6 +102,14 @@ export const useSessionStore = create<State>((set, get) => {
         return { readResourceIds: updated }
       })
     },
+    deleteResource: (kind: string, resourceId: string) => {
+      set((state) => {
+        const current = state.resources[kind] ?? []
+        return {
+          resources: { ...state.resources, [kind]: current.filter(r => r.id !== resourceId) },
+        }
+      })
+    },
   } as State
 })
 

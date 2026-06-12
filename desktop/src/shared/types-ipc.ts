@@ -228,6 +228,11 @@ export const IPC = {
   ENGINE_EVENT: 'ion:engine-event',
   ENGINE_REMAP_SESSION: 'ion:engine-remap-session',
 
+  // Resource focus tracking
+  NOTIFY_TAB_FOCUS: 'ion:notify-tab-focus',
+  MARK_RESOURCE_READ: 'ion:mark-resource-read',
+  DELETE_RESOURCE: 'ion:delete-resource',
+
   // Model & provider management
   LIST_MODELS: 'ion:list-models',
   STORE_CREDENTIAL: 'ion:store-credential',

@@ -53,13 +53,22 @@ export interface RemoteTabState {
   isTerminalOnly?: boolean
   isEngine?: boolean
   engineProfileId?: string | null
-  engineInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; modelFallback?: { requestedModel: string; fallbackModel: string } }>
+  engineInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; runningAgentCount?: number; modelFallback?: { requestedModel: string; fallbackModel: string }; conversationIds?: string[] }>
   activeEngineInstanceId?: string | null
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
   groupId?: string | null
   /** When true, auto-group movement is suppressed for this tab. */
   groupPinned?: boolean
+  /**
+   * Aggregated "any sub-instance has running background children" flag,
+   * folded across `engineInstances[*].runningAgentCount`. Optional so
+   * older iOS builds that don't decode the field continue to work; iOS
+   * uses this to drive the parent tab pill's yellow "awaiting children"
+   * dot. See CLAUDE.md § "Common parity surfaces" for the desktop/iOS
+   * parity rule.
+   */
+  hasRunningChildren?: boolean
   /** The current conversation/session ID for this tab. Engine tabs use StatusFields.sessionId instead. */
   conversationId?: string | null
   /** Unix ms timestamp of the last status-changing activity (message, status change). */
@@ -204,11 +213,24 @@ export type RemoteCommand =
   | { type: 'set_desktop_setting'; key: string; value: unknown }
   | { type: 'set_pill_color'; tabId: string; pillColor: string | null }
   | { type: 'set_pill_icon'; tabId: string; pillIcon: string | null }
+  // ─── Focus reporting (intercept routing) ────────────────────────────
+  // Sent by iOS whenever the focused tab changes, the app foregrounds/
+  // backgrounds, or the per-device intercept preference toggles. The desktop
+  // stores the mapping in its deviceFocusMap to route engine_intercept events
+  // to the right device(s). tabId null means the device is backgrounded.
+  | { type: 'report_focus'; tabId: string | null; interceptEnabled: boolean }
+  | { type: 'request_resource_content'; kind: string; resourceId: string }
+  | { type: 'mark_resource_read'; kind: string; resourceId: string }
+  // Permanently remove a notification from the global resource broker.
+  // The desktop publishes a delete delta through the engine so all
+  // subscribers (desktop + iOS) remove the item from their collections.
+  | { type: 'delete_resource'; kind: string; resourceId: string }
 
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number }
+  | { type: 'snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'resource_content'; resourceId: string; kind: string; content: string }
   | { type: 'tab_created'; tab: RemoteTabState }
   | { type: 'tab_closed'; tabId: string }
   | { type: 'tab_status'; tabId: string; status: TabStatus }
@@ -216,7 +238,11 @@ export type RemoteEvent =
   | { type: 'tool_call'; tabId: string; toolName: string; toolId: string }
   | { type: 'tool_result'; tabId: string; toolId: string; content: string; isError: boolean }
   | { type: 'task_complete'; tabId: string; result: string; costUsd: number }
-  | { type: 'permission_request'; tabId: string; questionId: string; toolName: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
+  // `instanceId` scopes engine-view permission requests to the engine
+  // sub-tab (instance) that produced them, so clients can hide a plan/
+  // question card when the user views a sibling sub-conversation.
+  // Optional + absent for CLI tabs — additive, non-breaking.
+  | { type: 'permission_request'; tabId: string; instanceId?: string; questionId: string; toolName: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'permission_resolved'; tabId: string; questionId: string }
   | { type: 'error'; tabId: string; message: string }
   | { type: 'conversation_history'; tabId: string; messages: RemoteMessage[]; hasMore: boolean; cursor?: string }
@@ -313,6 +339,11 @@ export type RemoteEvent =
   | { type: 'discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
   | { type: 'tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }
   | { type: 'request_diagnostic_logs' }
+  // ─── engine_intercept (forwarded from engine to iOS) ────────────────
+  // The desktop forwards this to iOS devices that have the target session's
+  // tab focused and have interceptEnabled. Carries the full intercept payload
+  // so iOS can render the appropriate inline UI (banner or redirect marker).
+  | { type: 'engine_intercept'; tabId: string; level: string; title: string; message: string; source?: string; metadata?: Record<string, unknown> }
 
 // ─── Relay control frames (injected by relay, not by Ion) ───
 
