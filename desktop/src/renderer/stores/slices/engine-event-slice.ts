@@ -2,6 +2,8 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { formatClearDivider, formatPlanCreatedDivider, formatSteerAppliedDivider } from '../../../shared/clear-divider'
 import { handleEngineStatusEvent } from './engine-event-status'
+import { applyResourceSnapshot, applyResourceDelta } from './resource-slice'
+import type { ResourceItem } from '../../../shared/types-engine'
 
 /**
  * Per-tab cache of extension-registered command names, populated by
@@ -547,6 +549,40 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
             })
             return { engineModelFallbacks: fallbacks }
           })
+          break
+        }
+        case 'engine_resource_snapshot': {
+          // Resource snapshot: replace the entire collection for this kind.
+          // applyResourceSnapshot returns a partial ResourceState (resources +
+          // resourceSubscriptions) which Zustand merges into the full store.
+          const items: ResourceItem[] = event.resourceItems ?? []
+          set((state) =>
+            applyResourceSnapshot(
+              { resources: state.resources, resourceSubscriptions: state.resourceSubscriptions, readResourceIds: state.readResourceIds },
+              event.resourceKind,
+              event.resourceSubId,
+              items,
+            ),
+          )
+          break
+        }
+        case 'engine_resource_delta': {
+          // Resource delta: incremental update for this kind.
+          if (event.resourceDelta) {
+            const delta = event.resourceDelta
+            set((state) =>
+              applyResourceDelta(
+                { resources: state.resources, resourceSubscriptions: state.resourceSubscriptions, readResourceIds: state.readResourceIds },
+                event.resourceKind,
+                delta,
+              ),
+            )
+          }
+          break
+        }
+        case 'engine_notification': {
+          // Notification from extension ctx.notify(). The relay handles
+          // APNs push delivery — desktop logs for observability.
           break
         }
       }

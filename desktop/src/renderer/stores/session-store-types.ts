@@ -1,4 +1,5 @@
 import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, EngineInstance, EnginePaneState, AgentStateUpdate, StatusFields, Message, ImageAttachmentPayload } from '../../shared/types'
+import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
   version: string
@@ -99,6 +100,17 @@ export interface State {
    * iOS card path continues to work unchanged at the tab level.
    */
   enginePermissionDenied: Map<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null>
+
+  /**
+   * Resource subsystem state (D-007). Resources keyed by kind — each entry
+   * is the full item collection for that kind, replaced on snapshot and
+   * incrementally updated by deltas from the engine resource broker.
+   */
+  resources: Record<string, ResourceItem[]>
+  /** Active resource subscription IDs keyed by kind. Used for unsubscribe. */
+  resourceSubscriptions: Record<string, string>
+  /** IDs of resources the user has opened/viewed. Client-local read tracking. */
+  readResourceIds: Set<string>
 
   tallViewTabId: string | null
   scrollToBottomCounter: number
@@ -212,6 +224,7 @@ export interface State {
   setEngineModel: (tabId: string, modelId: string) => void
   addEngineSystemMessage: (key: string, content: string) => void
   setEngineDraftInput: (key: string, text: string) => void
+  markResourceRead: (resourceId: string) => void
 }
 
 export type StoreSet = (partial: State | Partial<State> | ((state: State) => State | Partial<State>), replace?: false) => void

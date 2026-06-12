@@ -7,6 +7,8 @@ import { broadcast } from './broadcast'
 import { currentBackend } from './settings-store'
 import { normalizedToRemote } from './remote/protocol'
 import { formatClearDivider } from '../shared/clear-divider'
+import { subscribeToResourceKinds, subscribeToGlobalResourceKinds } from './event-wiring-resources'
+export { wireTabFocusHandler, wireMarkResourceReadHandler } from './event-wiring-resources'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -52,6 +54,19 @@ export function wireEngineBridgeEvents(): void {
         extensionCommandRegistry.set(key, names)
         log(`engine_command_registry: cached key=${key} count=${names.size} names=[${[...names].join(',')}]`)
       }
+      // Extensions are loaded — subscribe to resource kinds now. The
+      // command_registry event fires after the extension process has
+      // declared its resource kinds, so the broker is ready to serve
+      // subscription requests. Idempotent: subscribeToResourceKinds
+      // skips kinds already subscribed for this session key.
+      subscribeToResourceKinds(key).catch((err) => {
+        log(`resource_subscribe: error key=${key} err=${err}`)
+      })
+      // Also subscribe to global resource kinds (workspace-scoped).
+      // Idempotent: subscribeToGlobalResourceKinds skips already-subscribed kinds.
+      subscribeToGlobalResourceKinds().catch((err) => {
+        log(`resource_subscribe_global: error err=${err}`)
+      })
     }
 
     broadcast(IPC.ENGINE_EVENT, key, event)

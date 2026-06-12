@@ -67,6 +67,9 @@ const initialState = {
   // `State` (session-store-types.ts) for the full rationale. Mirrors the
   // other per-instance maps (engineMessages, engineDraftInputs, etc.).
   enginePermissionDenied: new Map<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null>(),
+  resources: {} as Record<string, import('../../shared/types-engine').ResourceItem[]>,
+  resourceSubscriptions: {} as Record<string, string>,
+  readResourceIds: new Set<string>(),
   tallViewTabId: null,
   scrollToBottomCounter: 0,
   settingsOpen: false,
@@ -92,6 +95,13 @@ export const useSessionStore = create<State>((set, get) => {
     ...createEventSlice(_set, _get),
     ...createEngineSlice(_set, _get),
     ...createEngineEventSlice(_set, _get),
+    markResourceRead: (resourceId: string) => {
+      set((state) => {
+        const updated = new Set(state.readResourceIds)
+        updated.add(resourceId)
+        return { readResourceIds: updated }
+      })
+    },
   } as State
 })
 

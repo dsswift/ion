@@ -1,5 +1,44 @@
 // ─── Engine Types (native Ion extension runtime) ───
 
+// ─── Resource subsystem types (D-007) ───
+
+export interface ResourceItem {
+  id: string
+  kind: string
+  title?: string
+  content: string
+  createdAt: string
+  conversationId?: string
+  metadata?: Record<string, unknown>
+  updatedAt?: string
+  read?: boolean
+}
+
+export interface ResourceDelta {
+  op: 'create' | 'update' | 'delete' | 'mark_read'
+  item: ResourceItem
+}
+
+export interface ResourceFilter {
+  kind: string
+  conversationId?: string
+  since?: string
+  limit?: number
+}
+
+// ─── Notification types (D-009) ───
+
+export interface NotifyOpts {
+  kind: string
+  resourceId?: string
+  title: string
+  body: string
+  sound?: string
+  scope?: 'user' | 'device' | 'all'
+  conversationId?: string
+  targetSessionKey?: string
+}
+
 export interface EngineProfile {
   id: string
   name: string
@@ -173,6 +212,24 @@ export type EngineEvent =
   // directly so consumers don't have to scrape `permissionDenials.toolInput`
   // to recover them.
   | { type: 'engine_plan_proposal'; planProposalKind: 'exit' | string; planFilePath?: string; planSlug?: string }
+  // engine_plan_mode_auto_exit fires when the engine deterministically
+  // synthesizes an ExitPlanMode call at end-of-turn because the model
+  // ended a plan-mode run without invoking ExitPlanMode or
+  // AskUserQuestion (issue #187). It is a sibling to
+  // engine_plan_proposal: both surface the plan-approval card, but
+  // this event additionally tells consumers the exit was
+  // engine-driven rather than model-driven.
+  //
+  // Emitted BEFORE the companion engine_plan_proposal{kind:"exit"} so
+  // consumers that key off the synthesis specifically see it first.
+  // The TaskCompleteEvent that follows carries the same synthesized
+  // PermissionDenial as the model-driven path, so consumers keying
+  // off the denial path continue to render approval cards unchanged.
+  //
+  // Use cases: telemetry on prompt quality (how often does the model
+  // misroute plan exit?); subtle UI hints that the synthesis fired
+  // ("Plan surfaced automatically — review carefully").
+  | { type: 'engine_plan_mode_auto_exit'; stopReason: string; planFilePath?: string; planSlug?: string; reason?: string; sessionId?: string; runId?: string }
   | { type: 'engine_stream_reset' }
   | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string }
   | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }
@@ -315,4 +372,43 @@ export type EngineEvent =
       dispatchInputTokens: number
       dispatchOutputTokens: number
       dispatchToolCount: number
+    }
+  // ─── Resource subsystem events (D-007) ───
+  //
+  // engine_resource_snapshot: emitted when a client subscribes to a resource
+  // kind. Consumers REPLACE their local collection with resourceItems.
+  //
+  // engine_resource_delta: emitted when a producer publishes a change.
+  // Consumers apply the delta incrementally.
+  //
+  // Both carry resourceKind and resourceSubId for subscription correlation.
+  | {
+      type: 'engine_resource_snapshot'
+      resourceKind: string
+      resourceSubId: string
+      resourceItems: ResourceItem[]
+    }
+  | {
+      type: 'engine_resource_delta'
+      resourceKind: string
+      resourceSubId: string
+      resourceDelta: ResourceDelta
+    }
+  // ─── Notification events (D-009) ───
+  //
+  // engine_notification: emitted when an extension calls ctx.notify().
+  // The push/pushTitle/pushBody fields trigger APNs delivery through the
+  // relay when the mobile peer is not connected. The notifyKind/Title/Body
+  // fields carry structured metadata for richer client handling.
+  | {
+      type: 'engine_notification'
+      push: boolean
+      pushTitle: string
+      pushBody: string
+      notifyKind: string
+      notifyResourceId?: string
+      notifyTitle: string
+      notifyBody: string
+      notifySound?: string
+      notifyScope?: string
     }
