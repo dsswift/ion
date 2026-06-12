@@ -587,7 +587,7 @@ Walk every commit on the branch:
 - Conventional Commits with required scope: `type(scope): subject`
 - Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`
 - Allowed scopes: `engine`, `desktop`, `relay`, `ios`, `docs`, `repo`
-- Subject ≤ 75 chars, lowercase, imperative, no trailing period
+- Only one directory scope per commit scope. You cannot include ios scope changes in a commit for desktop scope. They must be broken into separate commits, one for each scope. If you bundle scopes the Release Damnit CI/CD stage will not properly detect the changes for the scope or update the versions, and the release will never happen.
 - Issue association (when working from an issue): subject must end with ` (#N)` AND body must include `Fixes #N` or `Closes #N` trailer. Both are required.
 
 ### Necessity and correctness

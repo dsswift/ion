@@ -11,6 +11,17 @@
 
 Each component has its own `AGENTS.md` with subsystem-specific rules.
 
+## Extension SDK source location
+
+The TypeScript SDK that extensions import lives in **two places**:
+
+| Location | Role |
+|----------|------|
+| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
+| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
+
+The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build. **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes (types, runtime, or any other SDK file). The installed copy at `~/.ion/` is read-only from the agent's perspective.
+
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
@@ -95,7 +106,8 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
   - Both are required. Subject alone gives the auto-link but won't close the issue; body alone closes the issue but isn't visible in short logs.
 - Never `--no-verify`.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
-- Never `git push`. Tell the user the changes are ready.
+- **Always `git commit` completed work.** When all quality gates pass and the implementation is done, commit before reporting back to the user. Uncommitted changes in the working tree get lost — other sessions, rebuilds, and checkouts will overwrite them. The commit is the unit of durable work; an uncommitted edit is not "done."
+- Never `git push`. Tell the user the changes are ready to push.
 
 ## Layered architecture
 
@@ -196,6 +208,31 @@ Only when the interface physically cannot work on iOS (e.g. a keyboard-only inte
 - Note in the PR description why iOS was skipped.
 - Consider whether an alternate mobile-appropriate rendering exists.
 - At minimum, ensure the iOS app doesn't break or show stale data because of the desktop change.
+
+## Resource subsystem
+
+The engine provides a generic resource subsystem for durable structured content. Extensions declare resource kinds, publish items, and handle queries. Clients subscribe and receive snapshots + incremental deltas.
+
+### Scoping
+
+- **Session-scoped** (`conversationId` set): resource belongs to a specific conversation. Appears in that tab's attachments panel. Persists for the lifetime of the conversation.
+- **Workspace-scoped** (`conversationId` empty): resource belongs to no conversation. Appears in the global notifications inbox. Persists until the producing extension cleans it up.
+
+### Cross-device synchronization
+
+The desktop is the primary client. The iOS app is a thin client connected via WebSocket (directly or through the relay). All state changes flow through the engine:
+
+- When a resource is published, the engine broadcasts the delta to all subscribers (desktop + iOS).
+- When a user reads a resource on either device, the client sends a `resource_publish` with `op: 'mark_read'`. The engine fans the delta to all subscribers. Both devices update their read state.
+- The engine does not track read state. Clients send the mark_read delta; the engine routes it. Producer extensions persist read state if they choose to.
+
+### Producer-owned persistence
+
+The engine stores nothing. Extensions that declare resource kinds are responsible for persisting their data. When a client subscribes (or resubscribes after disconnect), the engine routes a query to the producing extension, which answers from its own store.
+
+### Notifications
+
+`ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads (per D-009). The push body is a doorbell string ("New briefing ready"), not content. The `resourceId` field enables deep-linking: iOS reads it from the push payload's `userInfo` to navigate to the specific resource.
 
 ## Contract stability (never break the client)
 

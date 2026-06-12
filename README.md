@@ -1,8 +1,8 @@
 <img src="assets/images/ion-engine-hero-web.png" width="100%">
 
-A headless agent runtime. One binary. Zero opinions. Fifty-five hooks to make it yours.
+A headless agent runtime. One binary. Zero opinions. Seventy hooks to make it yours.
 
-`~9 MB static binary` · `16 LLM providers` · `59 extension hooks` · `14 built-in tools` · `MIT license`
+`~9 MB static binary` · `14 LLM providers` · `70 extension hooks` · `20 built-in tools` · `MIT license`
 
 Ion Engine is a headless, multi-provider LLM runtime for building agent systems in any domain. It runs as a single static Go binary with no runtime dependencies. Extensions speak JSON-RPC over stdin/stdout in any language. Your job is the interface, the workflow, and the domain. The engine handles the rest.
 
@@ -30,10 +30,10 @@ Ion is different in kind, not in quality. It's a **foundation**: a headless runt
 - **Native parallel sub-agents.** Spawn child agents with different models that run their own tool loops concurrently. A parent on Opus coordinates researchers on Sonnet and formatters on Haiku.
 - **Built-in security primitives.** OS-level sandboxing (Seatbelt on macOS, bwrap on Linux), secret redaction, dangerous command blocking, and a permission engine with LLM-based classification.
 - **Enterprise policy enforcement.** 4-layer config merge (defaults, user, project, enterprise) where the enterprise layer is sealed. Security sets the floor; developers customize above it.
-- **Zero vendor SDK dependencies.** 16 LLM providers via raw HTTP with manual SSE parsing. No transitive dependency chain you don't control. Fork the binary, keep your agents.
+- **Zero vendor SDK dependencies.** 14 LLM providers via raw HTTP with manual SSE parsing. No transitive dependency chain you don't control. Fork the binary, keep your agents.
 - **MCP support.** Dual-transport MCP client (stdio for local servers, SSE for remote) with resource reading exposed as first-class tools.
 - **Credential management.** Five-level resolver: programmatic override, environment variables, OS keychain, encrypted file store, and CLI proxy for TOS-compliant subscription access via Claude Code.
-- **55 extension hooks** across 15 categories. Intercept and modify behavior at every stage of the agent loop.
+- **70 extension hooks** across 18 categories. Intercept and modify behavior at every stage of the agent loop.
 
 You want to build your own coding agent? Use this engine and wrap your own opinions around it. You want non-coding agent orchestrations? Build harnesses that coordinate domain-specific agents. You want to embed an agent runtime in a container sidecar, a CI pipeline, or a web API? It's a single static Go binary with no runtime dependencies.
 
@@ -173,7 +173,7 @@ Key references: [Socket Protocol](docs/protocol/index.md) | [CLI Reference](docs
 
 ## Model and Provider Configuration
 
-Ion supports 16 providers and lets you plug in your own through a common interface. The engine picks a provider in this order: a registered model in `~/.ion/models.json`, then a built-in name-prefix match (`claude-*`, `gpt-*`, `qwen*`, `llama*`, `gemini-*`, `mistral*`, `grok*`, `deepseek-*`, and so on), then a hard error if neither matches.
+Ion supports 14 providers and lets you plug in your own through a common interface. The engine picks a provider in this order: a registered model in `~/.ion/models.json`, then a built-in name-prefix match (`claude-*`, `gpt-*`, `qwen*`, `llama*`, `gemini-*`, `mistral*`, `grok*`, `deepseek-*`, and so on), then a hard error if neither matches.
 
 Set the model you want in `~/.ion/engine.json` and configure its provider block:
 
@@ -881,23 +881,28 @@ Both do the same thing. Set `ION_WEBHOOK_URL` and every session sends live updat
 - Manage persistent state. Extensions handle their own storage.
 - Override enterprise policy. Sealed config always wins.
 
-### 55 hooks
+### 70 hooks
 
-| Category | Hooks |
-|----------|-------|
-| **Lifecycle** (13) | `session_start`, `session_end`, `before_prompt`, `turn_start`, `turn_end`, `message_start`, `message_end`, `tool_start`, `tool_end`, `tool_call`, `on_error`, `agent_start`, `agent_end` |
-| **Session** (5) | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch` |
-| **Pre-action** (2) | `before_agent_start`, `before_provider_request` |
-| **Content** (7) | `context`, `message_update`, `tool_result`, `input`, `model_select`, `user_bash`, `plan_mode_prompt` |
-| **Per-tool call** (7) | `bash_tool_call`, `read_tool_call`, `write_tool_call`, `edit_tool_call`, `grep_tool_call`, `glob_tool_call`, `agent_tool_call` |
-| **Per-tool result** (7) | `bash_tool_result`, `read_tool_result`, `write_tool_result`, `edit_tool_result`, `grep_tool_result`, `glob_tool_result`, `agent_tool_result` |
-| **Context** (3) | `context_discover`, `context_load`, `instruction_load` |
-| **Permission** (2) | `permission_request`, `permission_denied` |
-| **File** (2) | `file_changed`, `workspace_file_changed` |
-| **Task** (2) | `task_created`, `task_completed` |
-| **Elicitation** (2) | `elicitation_request`, `elicitation_result` |
-| **Context injection** (1) | `context_inject` |
-| **Capability** (3) | `capability_discover`, `capability_match`, `capability_invoke` |
+| Category | Count | Examples |
+|----------|------:|---------|
+| **Lifecycle** | 13 | `session_start`, `session_end`, `before_prompt`, `turn_start`, `turn_end`, `message_start`, `message_end`, `tool_start`, `tool_end`, `tool_call`, `on_error`, `agent_start`, `agent_end` |
+| **Session Management** | 6 | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch`, `session_switch` |
+| **Pre-Action** | 2 | `before_agent_start`, `before_provider_request` |
+| **Content** | 6 | `context`, `message_update`, `tool_result`, `input`, `model_select`, `plan_mode_prompt` |
+| **Per-Tool Call** | 7 | `bash_tool_call`, `read_tool_call`, `write_tool_call`, `edit_tool_call`, `grep_tool_call`, `glob_tool_call`, `agent_tool_call` |
+| **Per-Tool Result** | 7 | `bash_tool_result`, `read_tool_result`, `write_tool_result`, `edit_tool_result`, `grep_tool_result`, `glob_tool_result`, `agent_tool_result` |
+| **Context Discovery** | 3 | `context_discover`, `context_load`, `instruction_load` |
+| **Permission** | 2 | `permission_request`, `permission_denied` |
+| **File Changes** | 2 | `file_changed`, `workspace_file_changed` |
+| **Task Lifecycle** | 2 | `task_created`, `task_completed` |
+| **Elicitation** | 2 | `elicitation_request`, `elicitation_result` |
+| **Context Injection** | 1 | `context_inject` |
+| **Capability Framework** | 3 | `capability_discover`, `capability_match`, `capability_invoke` |
+| **Plan Mode** | 4 | `plan_mode_enter`, `plan_mode_exit`, `before_plan_mode_auto_exit`, `plan_mode_auto_exit` |
+| **Extension Lifecycle** | 4 | `extension_respawned`, `turn_aborted`, `peer_extension_died`, `peer_extension_respawned` |
+| **Cross-Session** | 3 | `session_message`, `session_list`, `session_send` |
+| **Early-Stop Continuation** | 2 | `should_continue`, `continue_generation` |
+| **System Message Injection** | 1 | `system_message` |
 
 See the full [extension reference](docs/extensions/index.md) for init handshake format, hook data shapes, and protocol details.
 
