@@ -29,6 +29,8 @@ struct EngineView: View {
     @State private var showPermissionDeniedAlert = false
     /// Draft text snapshot taken when recording starts, used to restore on cancel.
     @State private var draftBeforeRecording = ""
+    /// Slash command autocomplete: nil = menu hidden; non-nil = the current "/" prefix text.
+    @State private var slashFilter: String?
 
     private var instances: [EngineInstanceInfo] {
         viewModel.engineInstances[tabId] ?? []
@@ -233,6 +235,49 @@ struct EngineView: View {
     private var isRunning: Bool {
         let tab = viewModel.tab(for: tabId)
         return tab?.status == .running || tab?.status == .connecting
+    }
+
+    /// Merged slash commands for autocomplete: filesystem-discovered + /clear builtin + extension-registered.
+    private var slashCommands: [DiscoveredSlashCommand] {
+        var cmds = viewModel.discoveredCommands[workingDirectory] ?? []
+
+        // Inject the /clear builtin (matches desktop's SLASH_COMMANDS constant).
+        let clearCmd = DiscoveredSlashCommand(
+            name: "clear", description: "Clear conversation history",
+            scope: "builtin", source: "builtin", origin: nil
+        )
+        if !cmds.contains(where: { $0.name == "clear" }) {
+            cmds.insert(clearCmd, at: 0)
+        }
+
+        // Merge extension-registered commands from engine_command_registry.
+        if let extCmds = viewModel.extensionCommands[compoundKey] {
+            for ec in extCmds where !cmds.contains(where: { $0.name == ec.name }) {
+                cmds.append(DiscoveredSlashCommand(
+                    name: ec.name,
+                    description: ec.description ?? ec.name,
+                    scope: "extension",
+                    source: "extension",
+                    origin: nil
+                ))
+            }
+        }
+        return cmds
+    }
+
+    private func updateSlashFilter(_ text: String) {
+        let pattern = #"^\/[a-zA-Z0-9_:\-]*$"#
+        if text.range(of: pattern, options: .regularExpression) != nil {
+            slashFilter = text
+        } else {
+            slashFilter = nil
+        }
+    }
+
+    private func fetchCommandsIfNeeded() {
+        let dir = workingDirectory
+        guard !dir.isEmpty, viewModel.discoveredCommands[dir] == nil else { return }
+        viewModel.discoverCommands(directory: dir)
     }
 
     /// First pending permission request for this engine tab.
@@ -692,43 +737,58 @@ struct EngineView: View {
     // MARK: - Engine input bar
 
     private var engineInputBar: some View {
-        HStack(spacing: 8) {
-            attachButton
-            TextField("Send a prompt...", text: promptTextBinding, axis: .vertical)
-                .lineLimit(1...5)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
-                .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(
-                    isRecordingVoice ? theme.accent.opacity(0.5) : Color(.separator),
-                    lineWidth: isRecordingVoice ? 1.5 : 1
-                ))
-                .focused($isInputFocused)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            // Mic area: inline recording strip while active, mic button when idle
-            if isRecordingVoice {
-                VoiceRecordingStrip(
-                    audioLevel: viewModel.speechService.audioLevel,
-                    onStop: { stopVoiceRecording() },
-                    onCancel: { cancelVoiceRecording() }
+        VStack(spacing: 0) {
+            if let filter = slashFilter, !slashCommands.isEmpty {
+                SlashCommandMenu(
+                    filter: filter,
+                    commands: slashCommands,
+                    onSelect: { cmd in
+                        viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "/\(cmd.name) ")
+                        slashFilter = nil
+                    }
                 )
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            } else {
-                engineMicButton
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            Button { submitPrompt() } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title)
-                    .foregroundStyle(!cannotSend ? theme.accent : Color.gray)
+            HStack(spacing: 8) {
+                attachButton
+                TextField("Send a prompt...", text: promptTextBinding, axis: .vertical)
+                    .lineLimit(1...5)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
+                    .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(
+                        isRecordingVoice ? theme.accent.opacity(0.5) : Color(.separator),
+                        lineWidth: isRecordingVoice ? 1.5 : 1
+                    ))
+                    .focused($isInputFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                // Mic area: inline recording strip while active, mic button when idle
+                if isRecordingVoice {
+                    VoiceRecordingStrip(
+                        audioLevel: viewModel.speechService.audioLevel,
+                        onStop: { stopVoiceRecording() },
+                        onCancel: { cancelVoiceRecording() }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                } else {
+                    engineMicButton
+                }
+
+                Button { submitPrompt() } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title)
+                        .foregroundStyle(!cannotSend ? theme.accent : Color.gray)
+                }
+                .disabled(cannotSend)
             }
-            .disabled(cannotSend)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .animation(IonTheme.snappySpring, value: slashFilter)
         .animation(IonTheme.snappySpring, value: isRecordingVoice)
         .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
             Button("Open Settings") {
@@ -746,6 +806,15 @@ struct EngineView: View {
             if newTranscript.isEmpty { return }
             let separator = base.isEmpty ? "" : " "
             viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, base + separator + newTranscript)
+        }
+        .onChange(of: promptText) { _, newText in
+            updateSlashFilter(newText)
+        }
+        .onAppear {
+            fetchCommandsIfNeeded()
+        }
+        .onChange(of: workingDirectory) {
+            fetchCommandsIfNeeded()
         }
     }
 
