@@ -133,10 +133,10 @@
     }
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.1",
     "@types/archiver": "^7.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/ws": "^8.18.1",
@@ -144,14 +144,14 @@
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.0",
     "electron": "^35.7.5",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "postcss": "^8.5.15",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tailwindcss": "^4.2.1",
     "typescript": "^6.0.3",
     "vite": "^6.0.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.8"
   }
 }
