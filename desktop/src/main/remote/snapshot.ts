@@ -153,7 +153,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
                 // fallback indicator.
                 var mfOut = undefined;
                 if (s.engineModelFallbacks && s.engineModelFallbacks.get) {
-                  var mf = s.engineModelFallbacks.get(t.id + ':' + inst.id);
+                  const mf = s.engineModelFallbacks.get(t.id + ':' + inst.id);
                   if (mf) {
                     mfOut = { requestedModel: mf.requestedModel, fallbackModel: mf.fallbackModel };
                   }
