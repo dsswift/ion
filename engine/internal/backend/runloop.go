@@ -149,6 +149,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// reports turn=1 (matching TS behavior).
 		turn++
 		run.turnCount.Store(int64(turn))
+		// Belt-and-suspenders progress bump (see bumpProgressAtTurnBoundary).
+		run.bumpProgressAtTurnBoundary()
 
 		// Wind-down: warn the LLM 2 turns before max so it can wrap up
 		if maxTurns > 4 && turn == maxTurns-2 {

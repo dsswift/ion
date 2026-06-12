@@ -458,8 +458,38 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			}
 
 			// Launch the child in a goroutine and return a stub immediately.
+			//
+			// The deferred recover() block is the safety backstop for the
+			// "agent never reaches terminal status" failure mode. Today's
+			// runChild path emits agent_end on every exit branch (normal
+			// completion, child error, recall) — but any panic inside
+			// runChild, startChild, the child OnNormalized callback, the
+			// progress emitter, or the agent-state UpdateAgentStateByID
+			// closure would otherwise kill this goroutine silently. No
+			// agent_end fires, no dispatch_end telemetry is emitted, the
+			// dispatch registry retains the agent name forever, and the
+			// background_agents counter on engine_status stays positive
+			// until the engine process restarts. The original incident
+			// in conversation 1780874102870-12aee36b1e8d (see
+			// docs/diagnoses or the plan file) is the textbook example.
+			//
+			// Recovery here synthesizes the same terminal transitions
+			// that runChild's success/error/recall branches do: agent
+			// status flips to "error", an agent_state snapshot fires,
+			// agent_end fires on the parent extension group, and the
+			// dispatch registry deregisters the name. The result is
+			// that consumers see exactly the same lifecycle they would
+			// for any other dispatch failure, with the panic message
+			// available in lastWork for postmortem.
 			go func() {
 				defer cancelFn() // ensure context is cleaned up when goroutine exits
+				defer func() {
+					if r := recover(); r != nil {
+						recoverBackgroundDispatchPanic(
+							sa, registry, opts, key, agentID, agentName, r,
+						)
+					}
+				}()
 				result := runChild()
 
 				// Fire the appropriate callback.

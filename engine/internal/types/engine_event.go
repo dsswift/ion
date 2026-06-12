@@ -75,6 +75,23 @@ type EngineEvent struct {
 	// engine_tool_stalled
 	ToolElapsed float64 `json:"toolElapsed,omitempty"`
 
+	// engine_run_stalled — workflow signal emitted exactly once per run
+	// when the engine's progress watchdog detects that the run has made
+	// no forward progress for longer than the configured threshold and
+	// is about to cancel the run as a safety backstop. Mirrors the
+	// underlying RunStalledEvent NormalizedEvent variant. The
+	// authoritative completion signal remains the follow-up
+	// TaskCompleteEvent + emitExit; this event is advisory so consumers
+	// that want to distinguish "stalled" from generic "errored" can do
+	// so (e.g. desktop renders a watchdog icon, iOS surfaces a distinct
+	// notification, headless harnesses may opt to retry). See
+	// engine/internal/backend/runloop_watchdog.go for the watchdog
+	// implementation and CLAUDE.md § "The typed-event corollary" for
+	// the rule that this typed event is the engine's complete
+	// signaling surface for stall detection.
+	RunStalledDuration     float64 `json:"runStalledDuration,omitempty"`
+	RunStalledLastActivity string  `json:"runStalledLastActivity,omitempty"`
+
 	// engine_steer_injected — character count of a mid-turn steer
 	// message the engine drained into the conversation before the next
 	// LLM call. Clients use this to confirm a steer was captured without

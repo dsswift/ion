@@ -52,6 +52,10 @@
       "resetsAt",
       "status"
     ],
+    "run_stalled": [
+      "lastActivity",
+      "stalledDuration"
+    ],
     "session_dead": [
       "exitCode",
       "signal",
@@ -218,6 +222,8 @@
     "result",
     "retryAfterMs",
     "retryable",
+    "runStalledDuration",
+    "runStalledLastActivity",
     "schema",
     "signal",
     "source",

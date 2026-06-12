@@ -586,6 +586,21 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 	case *types.ToolStalledEvent:
 		return types.EngineEvent{Type: "engine_tool_stalled", ToolID: e.ToolID, ToolName: e.ToolName, ToolElapsed: e.Elapsed}
 
+	case *types.RunStalledEvent:
+		// Engine-wide progress watchdog tripped: this run made no
+		// forward progress for longer than the configured threshold
+		// and is about to be cancelled. Mirrors RunStalledEvent at the
+		// EngineEvent layer so clients that subscribe to the
+		// engine_-prefixed stream (desktop, iOS) see it the same way
+		// they see engine_tool_stalled. Authoritative completion still
+		// arrives via the follow-up engine_task_complete + engine_dead
+		// (or idle) events — see RunStalledEvent doc for the contract.
+		return types.EngineEvent{
+			Type:                   "engine_run_stalled",
+			RunStalledDuration:     e.StalledDuration,
+			RunStalledLastActivity: e.LastActivity,
+		}
+
 	case *types.SteerInjectedEvent:
 		// Surface mid-turn steer captures as a typed engine event so
 		// clients can render a confirmation (divider, toast, log line).

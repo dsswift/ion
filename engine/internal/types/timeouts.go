@@ -25,6 +25,20 @@ type TimeoutsConfig struct {
 	ElicitationMs     int64 `json:"elicitationMs,omitempty"`     // default: 300000 (5min)
 	RelayWriteMs      int64 `json:"relayWriteMs,omitempty"`      // default: 10000
 	BroadcastWriteMs  int64 `json:"broadcastWriteMs,omitempty"`  // default: 5000
+	// RunStallMs is the threshold for the engine's run-progress watchdog.
+	// When a run records no forward progress (no provider stream events,
+	// no tool results, no turn boundaries) for longer than this many
+	// milliseconds, the watchdog cancels the run's context as a safety
+	// backstop and emits RunStalledEvent + a non-zero TaskCompleteEvent.
+	// This is the engine's last line of defense against subsystems that
+	// block indefinitely on a channel or syscall outside the reach of
+	// HTTP/2 pings or per-tool timeouts. The default is generous (10min)
+	// because tool execution can legitimately take minutes; harnesses
+	// that orchestrate dispatched agents in parallel may want to tighten
+	// this so a wedged background dispatch doesn't sit invisibly for
+	// the full default. Zero (the default) means "use the compiled
+	// default 600000 (10min)" via the standard nil-safe accessor below.
+	RunStallMs        int64 `json:"runStallMs,omitempty"`        // default: 600000 (10min)
 	TruncationRetries int   `json:"truncationRetries,omitempty"` // default: 3
 }
 
@@ -83,6 +97,10 @@ func (t *TimeoutsConfig) RelayWrite() time.Duration { return t.durationOr(t.fiel
 
 // BroadcastWrite returns the server broadcast write timeout (default 5s).
 func (t *TimeoutsConfig) BroadcastWrite() time.Duration { return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.BroadcastWriteMs }), 5000) }
+
+// RunStall returns the engine-wide run progress watchdog threshold (default 10min).
+// See TimeoutsConfig.RunStallMs for the rationale and the watchdog contract.
+func (t *TimeoutsConfig) RunStall() time.Duration { return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.RunStallMs }), 600000) }
 
 // TruncationRetryLimit returns the max consecutive truncation retries (default 3).
 func (t *TimeoutsConfig) TruncationRetryLimit() int { return t.intOr(t.intField(func(c *TimeoutsConfig) int { return c.TruncationRetries }), 3) }
@@ -171,6 +189,9 @@ func MergeTimeouts(dst, src *TimeoutsConfig) *TimeoutsConfig {
 	}
 	if src.BroadcastWriteMs != 0 {
 		dst.BroadcastWriteMs = src.BroadcastWriteMs
+	}
+	if src.RunStallMs != 0 {
+		dst.RunStallMs = src.RunStallMs
 	}
 	if src.TruncationRetries != 0 {
 		dst.TruncationRetries = src.TruncationRetries

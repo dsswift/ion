@@ -100,6 +100,37 @@ type activeRun struct {
 	cumulativeOutputTokens int
 	lastContinuationDelta  int
 
+	// lastProgressAt is the unix-nanos timestamp of the last observed
+	// forward-progress event on this run. Bumped on every emit (so
+	// every provider stream chunk, tool result, status update, error
+	// event, etc.) and explicitly at every turn boundary. The
+	// run-progress watchdog goroutine launched in StartRunWithConfig
+	// reads this atomically every watchdog tick (default 30s) and
+	// cancels the run if (now - lastProgressAt) > RunStall().
+	//
+	// Atomic so the watchdog goroutine can read without taking
+	// run.mu — that mutex protects unrelated fields and is held for
+	// non-trivial durations during conversation save/load paths.
+	// Storing nanos as int64 keeps the value lock-free with the
+	// std/sync/atomic primitives.
+	lastProgressAt atomic.Int64
+
+	// progressWatchdogStop is closed by runLoop's deferred removeRun
+	// to signal the run-progress watchdog goroutine that it should
+	// exit immediately rather than wait up to one tick for its
+	// activeRuns-map poll to notice the run ended. Without this
+	// channel the watchdog goroutine lingers for up to
+	// runProgressWatchdogTick (default 30s) after every run
+	// completes — fine in production but a goroutine leak in tests
+	// and a real concern during FlushConversations / process
+	// shutdown which expects goroutines to drain promptly.
+	//
+	// Closed exactly once via sync.Once-equivalent semantics: the
+	// stopWatchdogOnce field guards the close so accidental
+	// double-close (from race-prone teardown paths) does not panic.
+	progressWatchdogStop chan struct{}
+	stopWatchdogOnce     sync.Once
+
 	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
 }
 
@@ -206,7 +237,14 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		planModeAutoExitEnabled:        resolvePlanModeAutoExit(&options, cfg),
 		opts:                           &options,
 		cfg:                            cfg,
+		progressWatchdogStop:           make(chan struct{}),
 	}
+	// Seed the watchdog clock with "started just now". Without this the
+	// watchdog's first tick (~30s in) would compare against the zero
+	// timestamp and immediately flag the run as stalled. The agent loop
+	// goroutine bumps this on every emit (see ApiBackend.emit) and at
+	// every turn boundary (see runLoop).
+	run.lastProgressAt.Store(run.startTime.UnixNano())
 
 	utils.Info("ApiBackend", fmt.Sprintf("StartRunWithConfig: runID=%s model=%s sessionID=%s planMode=%v planModeAutoExit=%v", requestID, options.Model, options.SessionID, options.PlanMode, run.planModeAutoExitEnabled))
 
@@ -215,6 +253,9 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 	b.mu.Unlock()
 
 	go b.runLoop(ctx, run, options)
+	// Run-progress watchdog: independent goroutine that cancels the run
+	// if no emit lands within RunStall. Lives in runloop_watchdog.go.
+	go b.runProgressWatchdog(run)
 }
 
 // FlushConversations persists every active run's conversation to disk.
@@ -367,14 +408,38 @@ func (b *ApiBackend) IsRunning(requestID string) bool {
 func (b *ApiBackend) removeRun(requestID string) {
 	utils.Debug("ApiBackend", fmt.Sprintf("removeRun: runID=%s", requestID))
 	b.mu.Lock()
+	run, ok := b.activeRuns[requestID]
 	delete(b.activeRuns, requestID)
 	b.mu.Unlock()
+
+	// Signal the run-progress watchdog goroutine to exit immediately.
+	// stopWatchdogOnce guards against double-close in the (theoretical)
+	// case where removeRun is invoked twice for the same run — e.g.
+	// runLoop's defer + a future explicit cleanup path. The select-on-
+	// nil-channel guard handles the activeRun-built-without-a-channel
+	// case used by some test fixtures (cancelWatchdog test, etc.).
+	if ok && run != nil && run.progressWatchdogStop != nil {
+		run.stopWatchdogOnce.Do(func() {
+			close(run.progressWatchdogStop)
+		})
+	}
 }
 
 // emit forwards a normalized event to the registered onNormalized callback
 // (set once by the server). The redaction policy comes from the run's own
 // SecurityCfg so concurrent runs with different configs don't leak.
+//
+// emit is also the single choke point through which the run-progress
+// watchdog observes forward progress. Every event that reaches a
+// consumer is a "we made progress" signal — provider stream chunks,
+// tool results, status updates, error events, etc. all flow through
+// this function. Bumping run.lastProgressAt here means we don't have
+// to instrument every emit call site individually. The watchdog itself
+// lives in runloop_watchdog.go.
 func (b *ApiBackend) emit(run *activeRun, event types.NormalizedEvent) {
+	if run != nil {
+		run.lastProgressAt.Store(time.Now().UnixNano())
+	}
 	if run != nil && run.cfg != nil && run.cfg.SecurityCfg != nil && run.cfg.SecurityCfg.RedactSecrets {
 		if tr, ok := event.Data.(*types.ToolResultEvent); ok {
 			tr.Content = insights.RedactSecrets(tr.Content)
