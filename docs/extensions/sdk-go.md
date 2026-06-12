@@ -396,10 +396,11 @@ Return `nil, nil` for void hooks. Return a typed result for hooks that expect on
 
 ```go
 type ToolDefinition struct {
-    Name        string
-    Description string
-    Parameters  map[string]interface{}
-    Execute     func(params interface{}, ctx *Context) (*types.ToolResult, error)
+    Name         string
+    Description  string
+    Parameters   map[string]interface{}
+    PlanModeSafe bool
+    Execute      func(params interface{}, ctx *Context) (*types.ToolResult, error)
 }
 ```
 

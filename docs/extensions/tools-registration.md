@@ -85,6 +85,7 @@ interface ToolDef {
   name: string        // unique tool name (used in tool/{name} RPC)
   description: string // shown to the LLM to decide when to use the tool
   parameters: any     // JSON Schema object describing the input
+  planModeSafe?: boolean // if true, tool is available during plan mode
   execute: (params: any, ctx: IonContext) => Promise<{ content: string; isError?: boolean }>
 }
 ```
@@ -93,10 +94,11 @@ interface ToolDef {
 
 ```go
 type ToolDefinition struct {
-    Name        string
-    Description string
-    Parameters  map[string]interface{}
-    Execute     func(params interface{}, ctx *Context) (*types.ToolResult, error)
+    Name         string
+    Description  string
+    Parameters   map[string]interface{}
+    PlanModeSafe bool
+    Execute      func(params interface{}, ctx *Context) (*types.ToolResult, error)
 }
 ```
 
@@ -182,3 +184,24 @@ execute: async (params, ctx) => {
 - Use snake_case for tool names (e.g., `search_jira`, `create_issue`)
 - Prefix with your extension name to avoid collisions (e.g., `ion_scaffold`, `deploy_preview`)
 - Keep descriptions concise but specific. The LLM uses the description to decide when to invoke the tool.
+
+## Plan mode
+
+By default, the engine filters the available tool list to a small safe set when the session enters plan mode (Write, Edit, AskUserQuestion, and ExitPlanMode). Extension tools are excluded unless they are explicitly marked safe.
+
+Set `planModeSafe: true` (TypeScript) or `PlanModeSafe: true` (Go) on any tool that is read-only or otherwise safe to call during a planning phase. The engine lets those tools through the plan-mode filter without requiring the operator to add them to the session allowlist.
+
+```typescript
+sdk.registerTool({
+  name: 'list_issues',
+  description: 'List open issues from the issue tracker',
+  parameters: { type: 'object', properties: {}, required: [] },
+  planModeSafe: true,   // read-only: available during plan mode
+  execute: async (params, ctx) => {
+    const issues = await fetchIssues()
+    return { content: JSON.stringify(issues) }
+  },
+})
+```
+
+Tools without `planModeSafe` are still available normally outside of plan mode. The flag is purely additive -- it only widens access in plan mode, it does not restrict access in normal mode.

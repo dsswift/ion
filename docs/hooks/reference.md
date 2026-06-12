@@ -1,14 +1,14 @@
 ---
 title: Hook Reference
-description: Complete reference for all 66 Ion Engine hooks with payloads, return types, and behavior.
+description: Complete reference for all Ion Engine hooks
 sidebar_position: 2
 ---
 
 # Hook Reference
 
-All 67 hooks grouped by category. For each hook: when it fires, what payload it receives, what return values do, and the dispatch pattern.
+All hooks grouped by category. For each hook: when it fires, what payload it receives, what return values do, and the dispatch pattern.
 
-## Lifecycle (13)
+## Lifecycle
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -88,7 +88,7 @@ type BeforePromptResult struct {
 }
 ```
 
-## Session Management (6)
+## Session Management
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -156,7 +156,7 @@ type ForkInfo struct {
 }
 ```
 
-## Pre-Action (2)
+## Pre-Action
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -186,7 +186,7 @@ type BeforeProviderRequestInfo struct {
 }
 ```
 
-## Content (6)
+## Content
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -215,7 +215,7 @@ type ModelSelectInfo struct {
 }
 ```
 
-## Per-Tool Call (7)
+## Per-Tool Call
 
 These hooks fire before a specific tool executes. The hook name is `{toolName}_tool_call`. Available for all core file/code tools.
 
@@ -242,7 +242,7 @@ type PerToolCallResult struct {
 }
 ```
 
-## Per-Tool Result (7)
+## Per-Tool Result
 
 These hooks fire after a specific tool returns. The hook name is `{toolName}_tool_result`. Available for all core file/code tools.
 
@@ -258,7 +258,7 @@ These hooks fire after a specific tool returns. The hook name is `{toolName}_too
 
 Last non-nil string return wins. The returned string replaces the tool result content seen by the LLM.
 
-## Context Discovery (3)
+## Context Discovery
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -285,7 +285,7 @@ type ContextLoadInfo struct {
 }
 ```
 
-## Permission (2)
+## Permission
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -313,7 +313,7 @@ type PermissionDeniedInfo struct {
 }
 ```
 
-## File Changes (2)
+## File Changes
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -343,7 +343,7 @@ type WorkspaceFileChangedInfo struct {
 
 Out-of-tree paths are not covered. Extensions that need to watch files outside the working directory install their own `node:fs.watch` in their subprocess. Renames are reported as paired delete+create events (cross-editor rename detection is unreliable).
 
-## Task Lifecycle (2)
+## Task Lifecycle
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -364,7 +364,7 @@ type TaskLifecycleInfo struct {
 }
 ```
 
-## Elicitation (2)
+## Elicitation
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -392,12 +392,13 @@ type ElicitationResultInfo struct {
 }
 ```
 
-## Plan Mode (3)
+## Plan Mode
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
 | `before_plan_mode_enter` | LLM calls `EnterPlanMode` tool requesting mode transition | `PlanModeEnterInfo{Source}` | `*BeforePlanModeEnterResult{Allow, Reason}` | Last non-nil `Allow` across hosts wins. Return `Allow: &false` to deny. Default (nil or no handler): allow. |
 | `before_plan_mode_exit` | LLM calls `ExitPlanMode` tool requesting plan review | `BeforePlanModeExitInfo{PlanFilePath, Source}` | `*BeforePlanModeExitResult{Allow, Reason}` | Last non-nil `Allow` wins. Return `Allow: &false` to send the model back for more planning. Default: allow. |
+| `before_plan_mode_auto_exit` | Plan-mode run ends with `end_turn` / `stop` but the assistant never invoked `ExitPlanMode` or `AskUserQuestion` (the engine is about to deterministically synthesize the exit — see [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md)) | `BeforePlanModeAutoExitInfo{SessionID, RunID, StopReason, PlanFilePath, AssistantText, EmittedTools}` | `*BeforePlanModeAutoExitResult{Suppress, PlanFilePath, Reason}` | Last writer wins per field across handlers. Return `Suppress: true` to block synthesis (the conversation stays parked in plan mode). Override `PlanFilePath` for stage-then-promote workflows; override `Reason` to localize or rephrase the human-readable string surfaced on the approval card. |
 | `plan_mode_prompt` | Plan mode session starts | `string` (plan file path) | `PlanModePromptResult{Prompt, Tools, SparseReminder}` or `string` | Last non-nil wins. Override plan mode prompt, allowed tool list, and/or per-turn sparse reminder text. |
 
 ### Payload Types
@@ -435,6 +436,41 @@ type BeforePlanModeExitResult struct {
 
 Merge semantics: last handler that returns a non-nil `Allow` wins, matching `before_early_stop_decision`. A handler that returns `Allow: nil` (or returns `nil` entirely) abstains.
 
+**BeforePlanModeAutoExitInfo**
+```go
+type BeforePlanModeAutoExitInfo struct {
+    SessionID     string   // engine session ID
+    RunID         string   // engine-issued request ID
+    StopReason    string   // "end_turn" or "stop" — never another value
+    PlanFilePath  string   // resolved plan file path (run, falling back to session)
+    AssistantText string   // concatenated text content of the final assistant turn
+    EmittedTools  []string // tool names the assistant did emit this turn
+}
+```
+
+The engine resolves `PlanFilePath` before firing the hook (preferring the run's own value, falling back to the session-level plan file path). The hook never fires when no path is resolvable — synthesizing an exit with no plan to show is worse than parking the conversation. `AssistantText` is capped at 4 KiB to bound the hook subprocess payload; consumers that need the full text should read it from the conversation history.
+
+**BeforePlanModeAutoExitResult**
+```go
+type BeforePlanModeAutoExitResult struct {
+    Suppress     bool   // true = block synthesis entirely
+    PlanFilePath string // non-empty = override the path used in the synthesized denial / event
+    Reason       string // non-empty = override the human-readable reason string
+}
+```
+
+Merge semantics: last writer wins per field across handlers. A handler that only sets `PlanFilePath` does not clobber an earlier handler's `Suppress` decision — matching the `BeforePlanModeExit` / `BeforeEarlyStopDecision` precedent. When `Suppress` is true the engine emits neither the synthetic `PermissionDenial` nor `engine_plan_mode_auto_exit`; the run completes as a normal `end_turn` and the conversation stays parked in plan mode.
+
+The hook itself fires only when the synthesis is otherwise about to happen — i.e. the run is in plan mode, the assistant's final turn contains no `ExitPlanMode` or `AskUserQuestion` `tool_use`, a plan file path is resolvable, and `limits.planModeAutoExitOnEndTurn` (or `RunOptions.PlanModeAutoExit`) has not already disabled it. Configurability summary:
+
+| Layer | Field | Default |
+|-------|-------|---------|
+| engine.json | `limits.planModeAutoExitOnEndTurn` | `true` |
+| RunOptions | `planModeAutoExit *bool` | `nil` (inherit) |
+| Extension SDK | `before_plan_mode_auto_exit` | no opinion |
+
+See [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md) for the full rationale and the on-by-default decision.
+
 **PlanModePromptResult**
 ```go
 type PlanModePromptResult struct {
@@ -444,7 +480,7 @@ type PlanModePromptResult struct {
 }
 ```
 
-## System Message Injection (1)
+## System Message Injection
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -481,7 +517,7 @@ type SystemInjectResult struct {
 }
 ```
 
-## Early-Stop Continuation (2)
+## Early-Stop Continuation
 
 These hooks let harness extensions take **programmatic control** of the early-stop continuation feature. The engine provides the mechanism — cumulative output-token tracking, threshold comparison, the decision hook, and the re-run-turn machinery — but does **not** ship an opinion about whether to nudge or what text to nudge with. Both are policy decisions that belong to the harness consumer. See [ADR-002: Engine vs Harness for Early-Stop Continuation](../architecture/adr/002-engine-vs-harness-early-stop.md) for the full rationale and [`earlyStopContinue` in engine.json](../configuration/engine-json.md#earlystopcontinue) for the configuration block.
 
@@ -595,7 +631,7 @@ sdk.On(extension.HookBeforeEarlyStopDecision, func(ctx *extension.Context, paylo
 })
 ```
 
-## Context Injection (1)
+## Context Injection
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -619,7 +655,7 @@ type ContextEntry struct {
 }
 ```
 
-## Capability Framework (3)
+## Capability Framework
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
@@ -659,7 +695,7 @@ type Capability struct {
 }
 ```
 
-## Extension Lifecycle (4)
+## Extension Lifecycle
 
 Fire when the engine auto-respawns a crashed extension subprocess. Respawn happens only when no run is in flight; mid-turn deaths defer until the run finishes. The strike budget is 3 respawns within a rolling 60s window — exceeding it leaves the host permanently dead until the user closes the tab. Observational hooks; return values are ignored.
 
@@ -698,3 +734,20 @@ type PeerExtensionInfo struct {
 }
 ```
 
+## Cross-Session
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `session_message` | Another session of the same extension type sends a message via `ctx.sessions.send()` | `SessionMessageInfo{SenderSessionKey, Kind, Payload}` | ignored | Observe only. The target extension can react by emitting events, injecting context, or ignoring the message. |
+
+### Payload Types
+
+**SessionMessageInfo**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `senderSessionKey` | `string` | Session key of the sender |
+| `kind` | `string` | Application-defined message kind |
+| `payload` | `map[string]interface{}` | Arbitrary structured data |
+
+Same extension type only. The engine enforces this by comparing extension names; cross-type messaging returns an error to the sender.

@@ -152,6 +152,31 @@ When the model calls `ExitPlanMode` to signal the plan is ready for review:
 3. If allowed, the engine records a `PermissionDenial` (so the run-end signal carries the exit context on `task_complete.permissionDenials`) and emits the typed `engine_plan_proposal{kind: "exit", planFilePath, planSlug}` workflow event. The run then terminates.
 4. The engine does **not** emit `engine_plan_mode_changed{enabled: false}` at this point. The model's `ExitPlanMode` call is a *proposal*, not a confirmed state transition — the mode does not actually change until the consumer's user-approval chokepoint (e.g. the desktop's Implement button) approves the exit and calls `SetPlanMode(false)`, which then fires `engine_plan_mode_changed{enabled: false}` as a state event.
 
+### Auto-exit safety net
+
+In long-running or large-context plan-mode runs, the model occasionally ends its final turn with `end_turn` / `stop` without invoking `ExitPlanMode` — it may call `Bash` with an echo, emit a text-only turn, or call a different tool entirely. The run completes cleanly, the plan file exists on disk, but the session is parked in plan mode with no approval card surfaced to the user.
+
+Per [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md), the engine deterministically synthesizes an `ExitPlanMode` call whenever a plan-mode run terminates with stop reason `end_turn` or `stop` and the final assistant turn contains no `ExitPlanMode` or `AskUserQuestion` tool_use.
+
+**Synthesis sequence:**
+
+1. The engine fires the [`before_plan_mode_auto_exit`](../hooks/reference.md#plan-mode-3) hook with `{SessionID, RunID, StopReason, PlanFilePath, AssistantText, EmittedTools}`. Extensions can suppress synthesis (`Suppress: true`) or override the `PlanFilePath` or `Reason` on the approval card. Last writer wins per field across handlers.
+2. If not suppressed, the engine emits `engine_plan_mode_auto_exit` — a typed event that lets consumers distinguish engine-synthesized exits from model-driven ones.
+3. The engine then emits `engine_plan_proposal{kind: "exit", planFilePath, planSlug}` via the same path as a model-driven exit, so existing consumers render the approval card unchanged.
+4. `TaskCompleteEvent` carries the synthetic `PermissionDenial` in `permissionDenials`. The `ToolUseID` is engine-generated (`synth-exit-plan-{runID}-t{turn}-{ns}`); the `ToolInput` carries `{synthesized: true}` so consumers that correlate denial IDs against provider logs can detect the synthetic origin.
+
+**Configuration** follows the same three-layer precedence as [ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md):
+
+| Layer | Field | Default |
+|-------|-------|---------|
+| `engine.json` | `limits.planModeAutoExitOnEndTurn` | `true` |
+| `RunOptions` | `planModeAutoExit` (`*bool`) | `nil` (inherit config) |
+| Extension SDK | `before_plan_mode_auto_exit` hook | no opinion (allow by default) |
+
+The safety net is **on by default**. A run that gets stuck without it is strictly worse than the (cheap, idempotent) synthesis. Harnesses with automation policies that should treat a missing `ExitPlanMode` as an error condition can set `planModeAutoExitOnEndTurn: false` in `engine.json`, set `PlanModeAutoExit: &false` on `RunOptions`, or return `Suppress: true` from the hook.
+
+> **Note:** The synthesis fires only when the preconditions all hold: the run is in plan mode, the final turn has stop reason `end_turn` / `stop`, no `ExitPlanMode` or `AskUserQuestion` tool_use appears in the final turn, and a plan file path is resolvable. Multi-turn runs in the middle of investigation end with stop reason `tool_use` and are unaffected.
+
 ### State events vs workflow events
 
 The plan-mode lifecycle is the canonical example of [ADR-003](../architecture/adr/003-state-events-vs-workflow-events.md)'s split between state-machine notifications and workflow proposals:

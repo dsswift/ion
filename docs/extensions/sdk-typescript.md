@@ -435,6 +435,7 @@ interface ToolDef {
   name: string
   description: string
   parameters: any                    // JSON Schema
+  planModeSafe?: boolean             // if true, available during plan mode
   execute: (params: any, ctx: IonContext) => Promise<{ content: string; isError?: boolean }>
 }
 ```
