@@ -6,6 +6,14 @@ iPhone companion (Ion Remote) for Ion Desktop. LAN (Bonjour/mDNS) + relay (WebSo
 
 > **Role in the consumer landscape.** This application is **a reference implementation** for mobile companion clients of the Ion Engine. It is not the canonical mobile client — third-party developers may build their own. The engine's real consumers are external. When the engine ships a feature iOS does not consume, that is the expected default; we extend iOS coverage when there is a UX or parity reason, not to validate engine surface. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers".
 
+## View readiness principle
+
+iOS is a thin client. The desktop snapshot is the source of truth. Every view must render with correct, complete data the moment it appears. When a user enters a conversation, the attachment badge must show the correct count, the tab status must be accurate, and all metadata must be present. No deferred loading for data the snapshot already carries.
+
+If a badge shows "1" and then updates to "3" after a round-trip, that is a bug. The snapshot must carry all data needed to render every visible element. iOS never computes critical display values (counts, lists, status) from local partial data when the snapshot provides the authoritative answer.
+
+Content that is expensive to transfer (file bodies, image data, full briefing text) can be loaded lazily when the user taps to view it. But the metadata (names, types, counts, identifiers) must be present in the snapshot so lists render complete and counts are accurate from the first frame.
+
 ## Commands
 
 ```bash
@@ -91,6 +99,15 @@ Shared types (`StatusFields`, `MessageEndUsage`, etc.) are validated against the
 3. Run the test target — it will fail if Go has fields you haven't accounted for.
 
 The test also decodes representative JSON for each engine event type, catching mismatches between Go's JSON keys and Swift's `CodingKeys`. Note: `StatusFields.contextPercent` is `Double` in Swift vs `int` in Go — this is intentional (Swift `Double` decodes JSON integers).
+
+## Notifications and resources
+
+The iOS app is a thin client for the resource subsystem. It subscribes to resource kinds and renders them in NotificationsView (global) or the attachments panel (session-scoped).
+
+- ResourceStore accumulates snapshot/delta events from the engine WebSocket
+- NotificationsView shows workspace-level briefings with read/unread state
+- Push notifications carry `ionKind` and `ionResourceId` in userInfo for deep-linking
+- When the user reads a resource, iOS sends `mark_read` through the transport so the desktop reflects the change
 
 ## Done criteria
 
