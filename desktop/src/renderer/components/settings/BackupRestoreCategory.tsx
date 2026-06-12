@@ -1,51 +1,18 @@
 import React, { useState } from 'react'
-import { Archive, ArrowCounterClockwise, CheckCircle, WarningCircle, ShieldCheck, FolderOpen } from '@phosphor-icons/react'
+import { Archive, ArrowCounterClockwise, CheckCircle, WarningCircle, ShieldCheck } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { SettingHeading } from './SettingHeading'
-
-type ExportScope = 'currently-open' | 'all'
-type ConflictPolicy = 'skip' | 'overwrite' | 'rename'
-
-interface ExportPreview {
-  conversationCount: number
-  totalUncompressedBytes: number
-  estimatedCompressedBytes: number
-}
-
-interface ExportResult {
-  ok: boolean
-  error?: string
-  destinationPath?: string
-  conversationCount?: number
-  bytesWritten?: number
-}
-
-interface RestoreManifest {
-  version: number
-  createdAt: string
-  ionVersion: string
-  scope: ExportScope
-  conversationCount: number
-  backendSnapshot: 'api' | 'cli'
-  hostname: string
-}
-
-interface RestoreResult {
-  ok: boolean
-  error?: string
-  restored: number
-  skipped: number
-  overwritten: number
-  renamed: number
-  errors: string[]
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
-}
+import {
+  formatBytes,
+  type ConflictPolicy,
+  type ExportPreview,
+  type ExportResult,
+  type ExportScope,
+  type RestoreManifest,
+  type RestoreResult,
+} from './BackupRestoreCategory.types'
+import { BackupRestoreOptionRadio } from './BackupRestoreOptionRadio'
+import { RestoreModalContent } from './BackupRestoreModal'
 
 export function BackupRestoreCategory() {
   const colors = useColors()
@@ -91,6 +58,7 @@ export function BackupRestoreCategory() {
           conversationCount: res.conversationCount ?? 0,
           totalUncompressedBytes: res.totalUncompressedBytes ?? 0,
           estimatedCompressedBytes: res.estimatedCompressedBytes ?? 0,
+          tabCount: res.tabCount,
         })
       } else {
         setExportPreview(null)
@@ -271,7 +239,7 @@ function ExportModalContent({
 
       <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>Scope</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-        <ScopeRadio
+        <BackupRestoreOptionRadio
           label="Currently open"
           description="Just the conversations your tabs reference, plus their chained continuations."
           checked={scope === 'currently-open'}
@@ -279,7 +247,7 @@ function ExportModalContent({
           disabled={exporting}
           colors={colors}
         />
-        <ScopeRadio
+        <BackupRestoreOptionRadio
           label="All conversations"
           description="Every conversation file on disk — full archival backup."
           checked={scope === 'all'}
@@ -292,8 +260,31 @@ function ExportModalContent({
       {preview && (
         <div style={{ ...cardStyle, marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: colors.textSecondary }}>
-            <strong style={{ color: colors.textPrimary }}>{preview.conversationCount}</strong> conversations,
-            {' ~'}{formatBytes(preview.estimatedCompressedBytes)} compressed
+            {/*
+              Show tab count alongside conversation count for 'currently-open':
+              one tab can reference up to five conversation IDs plus chain
+              continuations, so the conversation count is usually much
+              larger than the visible tab strip. Spelling both out
+              ("23 tabs across 1,047 conversation sessions") makes the
+              relationship explicit instead of confusing the user with a
+              number that doesn't match what they see.
+
+              For 'all', the tabs files aren't consulted at all (we
+              enumerate every file under ~/.ion/conversations/ directly),
+              so `tabCount` is undefined and we just show the conversation
+              count. Switching wording mid-stream would be misleading
+              there — "1,047 conversation sessions across N tabs" would
+              imply a per-tab relationship that the 'all' scope ignores.
+            */}
+            {preview.tabCount !== undefined && (
+              <>
+                <strong style={{ color: colors.textPrimary }}>{preview.tabCount.toLocaleString()}</strong>
+                {' tab'}{preview.tabCount === 1 ? '' : 's'}{' across '}
+              </>
+            )}
+            <strong style={{ color: colors.textPrimary }}>{preview.conversationCount.toLocaleString()}</strong>
+            {' conversation session'}{preview.conversationCount === 1 ? '' : 's'}{', ~'}
+            {formatBytes(preview.estimatedCompressedBytes)} compressed
             (uncompressed: {formatBytes(preview.totalUncompressedBytes)})
           </div>
         </div>
@@ -386,188 +377,14 @@ function ExportResultCard({ result, cardStyle, colors, onClose }: { result: Expo
   )
 }
 
-function ScopeRadio({ label, description, checked, onChange, disabled, colors }: {
-  label: string; description: string; checked: boolean; onChange: () => void; disabled: boolean; colors: ReturnType<typeof useColors>
-}) {
-  return (
-    <label
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 8,
-        padding: '8px 10px', borderRadius: 6,
-        background: checked ? `${colors.accent}11` : colors.surfacePrimary,
-        border: `1px solid ${checked ? colors.accent : colors.containerBorder}`,
-        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.6 : 1,
-      }}
-    >
-      <input type="radio" checked={checked} onChange={onChange} disabled={disabled} style={{ accentColor: colors.accent, marginTop: 2 }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: colors.textPrimary }}>{label}</div>
-        <div style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>{description}</div>
-      </div>
-    </label>
-  )
-}
+// ─── End of export modal sub-component ───
+//
+// Restore modal (RestoreModalContent, RestoreResultCard) lives in
+// BackupRestoreModal.tsx, and the shared radio component lives in
+// BackupRestoreOptionRadio.tsx. The split keeps each file under the
+// 600-line cap; see the rationale comments at the top of those files.
 
 // ─── Restore modal sub-component ───
-
-interface RestoreModalContentProps {
-  preview: { sourcePath?: string; manifest?: RestoreManifest } | null
-  conflictPolicy: ConflictPolicy
-  restoreTabs: boolean
-  restoring: boolean
-  result: RestoreResult | null
-  onConflictPolicyChange: (p: ConflictPolicy) => void
-  onRestoreTabsChange: (v: boolean) => void
-  onRestore: () => void
-  onClose: () => void
-  cardStyle: React.CSSProperties
-  colors: ReturnType<typeof useColors>
-}
-
-function RestoreModalContent({
-  preview, conflictPolicy, restoreTabs, restoring, result,
-  onConflictPolicyChange, onRestoreTabsChange, onRestore, onClose, cardStyle, colors,
-}: RestoreModalContentProps) {
-  return (
-    <div style={{ ...cardStyle, padding: 14, marginTop: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: colors.textPrimary }}>Restore from backup</span>
-        <button
-          onClick={onClose}
-          disabled={restoring}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.textTertiary, fontSize: 12 }}
-        >
-          {restoring ? '' : 'Cancel'}
-        </button>
-      </div>
-
-      {!preview?.manifest && !result && (
-        <div style={cardStyle}>
-          <span style={{ fontSize: 12, color: colors.textTertiary }}>Choose a backup file to inspect…</span>
-        </div>
-      )}
-
-      {preview?.manifest && (
-        <div style={{ ...cardStyle, marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <FolderOpen size={16} color={colors.accent} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary }}>Backup summary</span>
-          </div>
-          <div style={{ fontSize: 11, color: colors.textTertiary, lineHeight: 1.5 }}>
-            Created {new Date(preview.manifest.createdAt).toLocaleString()}<br />
-            On host <strong style={{ color: colors.textSecondary }}>{preview.manifest.hostname}</strong>{' '}
-            (Ion {preview.manifest.ionVersion}, backend {preview.manifest.backendSnapshot})<br />
-            Contains <strong style={{ color: colors.textSecondary }}>{preview.manifest.conversationCount}</strong> conversations
-            ({preview.manifest.scope === 'all' ? 'full archive' : 'currently-open subset'})
-          </div>
-        </div>
-      )}
-
-      {preview?.manifest && !result && (
-        <>
-          <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>Conflict policy</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-            <ScopeRadio
-              label="Skip existing"
-              description="Keep local files when the backup contains the same conversation ID. Default — safest."
-              checked={conflictPolicy === 'skip'}
-              onChange={() => onConflictPolicyChange('skip')}
-              disabled={restoring}
-              colors={colors}
-            />
-            <ScopeRadio
-              label="Overwrite existing"
-              description="Replace local files with the backup version. Use only when you trust the backup is newer."
-              checked={conflictPolicy === 'overwrite'}
-              onChange={() => onConflictPolicyChange('overwrite')}
-              disabled={restoring}
-              colors={colors}
-            />
-            <ScopeRadio
-              label="Restore as new IDs"
-              description="Give every restored conversation a fresh ID. Useful when carrying a backup from another machine."
-              checked={conflictPolicy === 'rename'}
-              onChange={() => onConflictPolicyChange('rename')}
-              disabled={restoring}
-              colors={colors}
-            />
-          </div>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: restoring ? 'default' : 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={restoreTabs}
-              onChange={(e) => onRestoreTabsChange(e.target.checked)}
-              disabled={restoring}
-              style={{ accentColor: colors.accent }}
-            />
-            <span style={{ fontSize: 12, color: colors.textSecondary }}>
-              Also restore tab layout from backup (merged — local tabs are preserved)
-            </span>
-          </label>
-
-          <button
-            onClick={onRestore}
-            disabled={restoring}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              width: '100%', padding: '8px 12px',
-              background: restoring ? colors.containerBg : colors.accent, border: 'none', borderRadius: 8,
-              color: restoring ? colors.textTertiary : '#fff',
-              cursor: restoring ? 'default' : 'pointer', fontSize: 13, fontWeight: 600,
-            }}
-          >
-            <ArrowCounterClockwise size={16} />
-            {restoring ? 'Restoring…' : 'Restore'}
-          </button>
-        </>
-      )}
-
-      {result && (
-        <RestoreResultCard result={result} cardStyle={cardStyle} colors={colors} onClose={onClose} />
-      )}
-    </div>
-  )
-}
-
-function RestoreResultCard({ result, cardStyle, colors, onClose }: { result: RestoreResult; cardStyle: React.CSSProperties; colors: ReturnType<typeof useColors>; onClose: () => void }) {
-  if (result.ok) {
-    return (
-      <div style={{ ...cardStyle, borderColor: '#34d399' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <CheckCircle size={16} color="#34d399" weight="fill" />
-          <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary }}>Restore complete</span>
-        </div>
-        <div style={{ fontSize: 11, color: colors.textTertiary, lineHeight: 1.5 }}>
-          Restored {result.restored} new files
-          {result.skipped > 0 ? `, skipped ${result.skipped}` : ''}
-          {result.overwritten > 0 ? `, overwrote ${result.overwritten}` : ''}
-          {result.renamed > 0 ? `, renamed ${result.renamed}` : ''}.
-          {result.errors.length > 0 && ` ${result.errors.length} file error${result.errors.length === 1 ? '' : 's'} (see desktop.log).`}
-        </div>
-        <div style={{ fontSize: 11, color: colors.textTertiary, marginTop: 6, fontStyle: 'italic' }}>
-          Restart Ion to see restored tabs in the tab strip.
-        </div>
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 8, width: '100%', padding: '6px 10px', fontSize: 12,
-            background: colors.containerBg, border: `1px solid ${colors.containerBorder}`,
-            borderRadius: 6, color: colors.textPrimary, cursor: 'pointer',
-          }}
-        >
-          Done
-        </button>
-      </div>
-    )
-  }
-  return (
-    <div style={{ ...cardStyle, borderColor: '#f87171' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <WarningCircle size={16} color="#f87171" weight="fill" />
-        <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary }}>Restore failed</span>
-      </div>
-      <div style={{ fontSize: 11, color: colors.textTertiary }}>{result.error}</div>
-    </div>
-  )
-}
+//
+// Lives in BackupRestoreModal.tsx — see the comment in the End of
+// export modal banner above for the split rationale.

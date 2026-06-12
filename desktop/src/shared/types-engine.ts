@@ -154,6 +154,48 @@ export interface StatusFields {
 }
 
 /**
+ * Mirror of Go's `types.SessionStatus`. Phase 3 of the state-management
+ * overhaul carries the engine's authoritative per-session status in one
+ * typed payload that consumers can map onto their local cache without
+ * inferring state from heterogeneous events (text deltas, message-end,
+ * task-complete). See engine/internal/types/types.go for per-field
+ * semantics; the wire shape is identical.
+ *
+ * Emitted by the engine alongside the legacy `engine_status` during the
+ * transition window. Both events carry the same authoritative state;
+ * Phase 4 removes the legacy emission once every in-repo consumer has
+ * migrated to read this type.
+ */
+export interface SessionStatus {
+  key: string
+  state: string
+  /** Unix-ms timestamp when the engine entered the current state.
+   *  Zero means "not tracked yet"; populated once Phase 5 lands the
+   *  per-session state-machine. */
+  stateSince?: number
+  /** Unix-ms timestamp when the engine last emitted a session-status
+   *  event for this key. Always populated on inbound events. */
+  lastEmittedAt: number
+  /** True iff the backend has a live run for this key. The engine
+   *  cross-checks `requestID` against the backend's run set so this
+   *  flag cannot drift the way `tab.status === 'running'` did. */
+  hasInflightRun?: boolean
+  /** Number of background dispatch agents still running. Same
+   *  semantics as `StatusFields.backgroundAgents`. */
+  backgroundAgentCount?: number
+  /** Unresolved AskUserQuestion / ExitPlanMode entries retained
+   *  across status emissions. Same shape as
+   *  `StatusFields.permissionDenials`. */
+  permissionDenialsPending?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
+  model?: string
+  contextPercent?: number
+  contextWindow?: number
+  totalCostUsd?: number
+  sessionId?: string
+  extensionName?: string
+}
+
+/**
  * Slash-command listing carried inside engine_command_registry snapshots.
  * Mirror of Go's types.EngineCommandListing. The desktop's prompt pipeline
  * uses the `name` set as a routing hint so it can short-circuit `.md`
@@ -216,6 +258,7 @@ export interface LlmContentBlock {
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
   | { type: 'engine_status'; fields: StatusFields; metadata?: Record<string, unknown> }
+  | { type: 'engine_session_status'; sessionStatus: SessionStatus; metadata?: Record<string, unknown> }
   | { type: 'engine_working_message'; message: string; metadata?: Record<string, unknown> }
   | { type: 'engine_notify'; message: string; level: 'info' | 'warning' | 'error'; metadata?: Record<string, unknown> }
   | { type: 'engine_dialog'; dialogId: string; method: 'select' | 'confirm' | 'input'; title: string; message?: string; options?: string[]; defaultValue?: string }

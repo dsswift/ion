@@ -27,6 +27,14 @@ export interface ExportPreview {
   conversationCount: number
   totalUncompressedBytes: number
   estimatedCompressedBytes: number
+  /**
+   * Tab count across all input tabs files, only populated for
+   * scope='currently-open'. Undefined for scope='all' because the tabs
+   * files are not consulted in that path. The renderer uses this to
+   * render "N tabs across M conversation sessions" so the user can
+   * relate the export size to their visible workspace.
+   */
+  tabCount?: number
 }
 
 export interface ExportResult {
@@ -51,7 +59,7 @@ export function previewExport(args: {
   scope: ExportScope
   sources: ExportSources
 }): ExportPreview {
-  const files = collectExportConversations({
+  const { files, tabCount } = collectExportConversations({
     scope: args.scope,
     conversationsDir: args.sources.conversationsDir,
     tabsFiles: args.sources.tabsFiles,
@@ -62,6 +70,7 @@ export function previewExport(args: {
     conversationCount: files.length,
     totalUncompressedBytes,
     estimatedCompressedBytes: Math.round(totalUncompressedBytes * 0.5),
+    tabCount,
   }
 }
 
@@ -89,7 +98,7 @@ export async function runExport(args: {
   backendSnapshot: 'api' | 'cli'
   onProgress?: ProgressCallback
 }): Promise<ExportResult> {
-  const conversationFiles = collectExportConversations({
+  const { files: conversationFiles } = collectExportConversations({
     scope: args.scope,
     conversationsDir: args.sources.conversationsDir,
     tabsFiles: args.sources.tabsFiles,

@@ -172,10 +172,29 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
             } else {
               msgs.push({ id: nextMsgId(), role: 'assistant', content: event.text, timestamp: Date.now() })
             }
-            const isActive = !pane || pane.activeInstanceId === instanceId
-            const tabs = isActive ? state.tabs.map((t) => t.id === tabId ? { ...t, status: 'running' as const } : t) : state.tabs
+            // Phase 4 of the state-management overhaul. We previously
+            // inferred `tab.status = 'running'` from text-delta arrival
+            // (gated on the active sub-instance). That inference was
+            // wrong on two counts:
+            //
+            //   1. CLAUDE.md "The typed-event corollary" — engine_status
+            //      is the engine's typed signal for state. Text deltas
+            //      are message content, not state. Inferring state from
+            //      content forces every consumer to keep parallel
+            //      bookkeeping and creates the gaps Phase 1 + 2 had to
+            //      paper over.
+            //
+            //   2. The engine already emits engine_status state=running
+            //      on prompt dispatch (engine/internal/session/
+            //      prompt_dispatch.go) and the new engine_session_status
+            //      mirror reaches the renderer through the same
+            //      channel. There is no surface where the running state
+            //      arrives via text-delta and not via engine_status —
+            //      so the inference was always redundant. Deleting it
+            //      removes a stranding pathway (Bug 1 in the original
+            //      plan) without losing any user-visible signal.
             const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-            return { tabs, enginePanes }
+            return { enginePanes }
           })
           break
         }

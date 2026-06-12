@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { runExport } from '../conversation-backup/export'
+import { previewExport, runExport } from '../conversation-backup/export'
 import { previewRestore, runRestore } from '../conversation-backup/restore'
 import { validateManifest, buildManifest } from '../conversation-backup/manifest'
 
@@ -359,5 +359,150 @@ describe('manifest', () => {
       expect(result.scope).toBe('all')
       expect(result.hostname).toBe('mac-mini')
     }
+  })
+})
+
+describe('previewExport tab count', () => {
+  // The export preview must report a tab count separate from the
+  // conversation count so the UI can render "N tabs across M conversation
+  // sessions" — otherwise the user sees a large number ("1,047") that
+  // doesn't match their visible tab strip and gets confused.
+  //
+  // Rules:
+  //   - 'currently-open' scope: tabCount = sum of tabs[].length across
+  //     every input tabs file (api + cli). Conversation sessions can
+  //     expand far beyond the tab count because each tab references
+  //     multiple session IDs.
+  //   - 'all' scope: tabCount = undefined (the tabs files aren't read
+  //     for this path). The renderer uses the undefined check to switch
+  //     to single-number phrasing.
+
+  it('reports tabCount summed across both backend tabs files for currently-open scope', () => {
+    writeConversationFiles('conv-A1', { llm: '{}\n', tree: '{}\n' })
+    writeConversationFiles('conv-A2', { llm: '{}\n', tree: '{}\n' })
+    writeConversationFiles('conv-B1', { llm: '{}\n', tree: '{}\n' })
+    writeMetadataFile('tabs-api.json', {
+      tabs: [
+        { conversationId: 'conv-A1' },
+        { conversationId: 'conv-A2' },
+      ],
+    })
+    writeMetadataFile('tabs-cli.json', {
+      tabs: [
+        { conversationId: 'conv-B1' },
+      ],
+    })
+
+    const preview = previewExport({
+      scope: 'currently-open',
+      sources: {
+        conversationsDir,
+        tabsFiles: [join(ionHome, 'tabs-api.json'), join(ionHome, 'tabs-cli.json')],
+        chainsFiles: [],
+        labelsFiles: [],
+      },
+    })
+
+    expect(preview.tabCount).toBe(3)             // 2 API + 1 CLI
+    expect(preview.conversationCount).toBe(3)    // each tab has exactly one conversationId
+  })
+
+  it('reports a conversation count larger than the tab count when chains expand it', () => {
+    // One tab — but its conversationId is the root of a chain with two
+    // continuations recorded in session-chains-api.json. All three IDs
+    // must be exported and counted; the tab count stays at 1.
+    writeConversationFiles('root', { llm: '{}\n', tree: '{}\n' })
+    writeConversationFiles('cont-1', { llm: '{}\n', tree: '{}\n' })
+    writeConversationFiles('cont-2', { llm: '{}\n', tree: '{}\n' })
+    writeMetadataFile('tabs-api.json', {
+      tabs: [{ conversationId: 'root' }],
+    })
+    writeMetadataFile('session-chains-api.json', {
+      chains: { root: ['cont-1', 'cont-2'] },
+      reverse: { 'cont-1': 'root', 'cont-2': 'root' },
+    })
+
+    const preview = previewExport({
+      scope: 'currently-open',
+      sources: {
+        conversationsDir,
+        tabsFiles: [join(ionHome, 'tabs-api.json')],
+        chainsFiles: [join(ionHome, 'session-chains-api.json')],
+        labelsFiles: [],
+      },
+    })
+
+    expect(preview.tabCount).toBe(1)
+    expect(preview.conversationCount).toBe(3)
+  })
+
+  it('reports tabCount=0 (not undefined) when tabs files exist but are empty', () => {
+    // A user who just installed Ion sees "0 tabs across 0 conversation
+    // sessions" — strictly more informative than swallowing the zero.
+    // tabCount=0 still passes the `tabCount !== undefined` UI check so
+    // the "N tabs across" phrasing renders.
+    writeMetadataFile('tabs-api.json', { tabs: [] })
+
+    const preview = previewExport({
+      scope: 'currently-open',
+      sources: {
+        conversationsDir,
+        tabsFiles: [join(ionHome, 'tabs-api.json')],
+        chainsFiles: [],
+        labelsFiles: [],
+      },
+    })
+
+    expect(preview.tabCount).toBe(0)
+    expect(preview.conversationCount).toBe(0)
+  })
+
+  it('returns undefined tabCount for all scope (signals UI to skip tab phrasing)', () => {
+    // 'all' scope enumerates ~/.ion/conversations/ directly and never
+    // touches the tabs files. tabCount must be undefined — not zero —
+    // so the renderer can switch from "N tabs across M sessions" to
+    // just "M conversation sessions" instead of misleadingly saying
+    // "0 tabs across M sessions" when there are in fact open tabs.
+    writeConversationFiles('conv-A', { llm: '{}\n', tree: '{}\n' })
+    writeConversationFiles('conv-B', { llm: '{}\n', tree: '{}\n' })
+    writeMetadataFile('tabs-api.json', {
+      tabs: [{ conversationId: 'conv-A' }, { conversationId: 'conv-B' }],
+    })
+
+    const preview = previewExport({
+      scope: 'all',
+      sources: {
+        conversationsDir,
+        tabsFiles: [join(ionHome, 'tabs-api.json')],
+        chainsFiles: [],
+        labelsFiles: [],
+      },
+    })
+
+    expect(preview.tabCount).toBeUndefined()
+    expect(preview.conversationCount).toBe(2)
+  })
+
+  it('reports tabCount when tabs file is the legacy top-level-array shape', () => {
+    // Older Ion versions persisted tabs as `[tab1, tab2, ...]` rather
+    // than `{ tabs: [...] }`. The collector already accepts both shapes;
+    // tab counting must too.
+    writeConversationFiles('conv-A', { llm: '{}\n', tree: '{}\n' })
+    writeFileSync(
+      join(ionHome, 'tabs-api.json'),
+      JSON.stringify([{ conversationId: 'conv-A' }, { conversationId: 'conv-A-2' }]),
+    )
+
+    const preview = previewExport({
+      scope: 'currently-open',
+      sources: {
+        conversationsDir,
+        tabsFiles: [join(ionHome, 'tabs-api.json')],
+        chainsFiles: [],
+        labelsFiles: [],
+      },
+    })
+
+    expect(preview.tabCount).toBe(2)
   })
 })

@@ -218,6 +218,14 @@ export async function getRemoteTabStates(): Promise<RemoteTabState[]> {
             // TabStripShared.ts line ~415, never trusting tab.status for
             // engine running-state. This derivation is purely for the
             // snapshot projection consumed by iOS.
+            //
+            // SYNC NOTE. The inline implementation below MUST match
+            // the pure deriveEngineParentStatus helper in
+            // snapshot-derive.ts. The helper is the canonical contract
+            // (pinned by __tests__/snapshot-derive.test.ts); the inline
+            // copy here exists because this IIFE runs in renderer
+            // process via executeJavaScript and cannot import from
+            // main-process modules. Reviewers verify by visual diff.
             var derivedStatus = t.status;
             if (t.isEngine === true) {
               if (anyInstanceRunning) {

@@ -6,6 +6,7 @@ import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
 import { spawnEngineServer } from './engine-bridge-spawn'
 import { startSession as startSessionImpl } from './engine-bridge-start-session'
+import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl } from './engine-bridge-state-sync'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import * as conv from './engine-bridge-conversations'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload } from '../shared/types'
@@ -52,6 +53,21 @@ export class EngineBridge extends EventEmitter {
   activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
   /** Client-side key aliases: oldKey → newKey. Rewrites incoming event keys. */
   private keyAliases = new Map<string, string>()
+  /**
+   * Phase 2 of the state-management overhaul. Tracks the last time the
+   * engine emitted an `engine_status` event for each session key. The
+   * snapshot poller (`snapshot-polling.ts`) reads this map to decide
+   * which keys are stale enough to warrant a `query_session_status`
+   * RPC. Updated in the inbound event-dispatch path (above).
+   *
+   * Kept on the bridge (not the renderer) because the bridge is the
+   * single arrival point for engine events and the only component
+   * that observes every event regardless of which renderer slice owns
+   * the resulting state. A renderer-side map would miss events that
+   * arrive after the renderer has unmounted (e.g. a background tab
+   * before iOS has subscribed).
+   */
+  lastEngineStatusAt = new Map<string, number>()
 
   constructor() {
     super()
@@ -269,6 +285,16 @@ export class EngineBridge extends EventEmitter {
     if (msg.key && msg.event) {
       // Rewrite key if it has been remapped (client-side alias)
       const routedKey = this.keyAliases.get(msg.key) ?? msg.key
+      // Phase 2 of the state-management overhaul: track the last
+      // engine_status receipt per key so the snapshot poller can
+      // detect stale keys and issue a query_session_status. We track
+      // only engine_status (not every event) because the convergence
+      // problem the poller addresses is specifically "we never saw a
+      // fresh status event" — text deltas, tool calls, agent state
+      // updates do not refresh the running/idle determination.
+      if (msg.event.type === 'engine_status') {
+        this.lastEngineStatusAt.set(routedKey, Date.now())
+      }
       debug(`event: key=${msg.key}${routedKey !== msg.key ? ` (aliased->${routedKey})` : ''} type=${msg.event.type}`)
       this.emit('event', routedKey, msg.event as EngineEvent)
     }
@@ -276,7 +302,11 @@ export class EngineBridge extends EventEmitter {
 
   // ─── Command helpers ───
 
-  private _send(msg: any): void {
+  // Used by sibling files in the engine-bridge.* module group (see
+  // engine-bridge-state-sync.ts). Not `private` so the state-sync RPCs
+  // can dispatch without forcing every helper back into this already-
+  // cap-bound file. Same convention as _sendWithResult / _sendWithData.
+  _send(msg: any): void {
     if (!this.conn || this.conn.destroyed) {
       warn(`_send: dropped message (no connection): cmd=${msg?.cmd} key=${msg?.key}`)
       return
@@ -492,10 +522,8 @@ export class EngineBridge extends EventEmitter {
     return this._sendWithResult(msg)
   }
 
-  sendReconcileState(key: string): void {
-    log(`sendReconcileState: key=${key}`)
-    this._send({ cmd: 'reconcile_state', key })
-  }
+  sendReconcileState(key: string): void { sendReconcileStateImpl(this, key) }
+  sendQuerySessionStatus(key: string): void { sendQuerySessionStatusImpl(this, key) }
 
   stopByPrefix(prefix: string): void {
     for (const key of this.activeSessions.keys()) {

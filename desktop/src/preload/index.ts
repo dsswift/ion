@@ -66,7 +66,7 @@ export interface IonAPI {
   migrateTabs(conversationIds: string[], targetBackend: 'api' | 'cli'): Promise<{ backupPaths: string[]; migrated: Array<{ conversationId: string; newConversationId: string; title: string }>; failed: Array<{ conversationId: string; title: string; error: string }> }>
 
   // ─── Conversation backup (export/restore zip archives) ───
-  conversationExportPreview(scope: 'currently-open' | 'all'): Promise<{ ok: boolean; error?: string; conversationCount?: number; totalUncompressedBytes?: number; estimatedCompressedBytes?: number }>
+  conversationExportPreview(scope: 'currently-open' | 'all'): Promise<{ ok: boolean; error?: string; conversationCount?: number; totalUncompressedBytes?: number; estimatedCompressedBytes?: number; tabCount?: number }>
   conversationExport(args: { scope: 'currently-open' | 'all'; destinationPath?: string }): Promise<{ ok: boolean; error?: string; destinationPath?: string; conversationCount?: number; bytesWritten?: number }>
   conversationRestorePreview(args?: { sourcePath?: string }): Promise<{ ok: boolean; error?: string; sourcePath?: string; manifest?: { version: number; createdAt: string; createdBy: string; ionVersion: string; scope: 'currently-open' | 'all'; conversationCount: number; backendSnapshot: 'api' | 'cli'; hostname: string } }>
   conversationRestore(args: { sourcePath: string; conflictPolicy?: 'skip' | 'overwrite' | 'rename'; restoreTabs?: boolean }): Promise<{ ok: boolean; error?: string; restored: number; skipped: number; overwritten: number; renamed: number; errors: string[] }>

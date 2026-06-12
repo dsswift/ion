@@ -42,14 +42,26 @@ export interface ConversationFiles {
  * the export's "currently-open" scope must export exactly the conversations
  * the cleanup protects, otherwise the user could end up in a state where
  * the cleanup spared a conversation but the backup missed it.
+ *
+ * Returns the union of all conversation IDs *and* the total tab count
+ * across the input files. The tab count is shown in the export preview UI
+ * so the user can reconcile "what I see in the tab strip" (a small number)
+ * with "what is being exported" (potentially much larger because each tab
+ * can reference up to five conversation-ID sources, plus chain continuations).
+ *
+ * `tabCount` sums `tabs[].length` across every readable file. Failed parses
+ * contribute zero to both `ids` and `tabCount`, matching the existing
+ * forgiving policy: one corrupt tabs file does not abort the collection.
  */
-function collectIdsFromTabsFiles(tabsFiles: string[]): Set<string> {
+function collectIdsFromTabsFiles(tabsFiles: string[]): { ids: Set<string>; tabCount: number } {
   const ids = new Set<string>()
+  let tabCount = 0
   for (const file of tabsFiles) {
     if (!file || !existsSync(file)) continue
     try {
       const raw = JSON.parse(readFileSync(file, 'utf-8'))
       const tabs: any[] = Array.isArray(raw) ? raw : raw.tabs || []
+      tabCount += tabs.length
       for (const tab of tabs) {
         if (typeof tab?.conversationId === 'string' && tab.conversationId) ids.add(tab.conversationId)
         if (typeof tab?.lastKnownSessionId === 'string' && tab.lastKnownSessionId) ids.add(tab.lastKnownSessionId)
@@ -78,7 +90,7 @@ function collectIdsFromTabsFiles(tabsFiles: string[]): Set<string> {
       // Other tabs files / chains files contribute their IDs normally.
     }
   }
-  return ids
+  return { ids, tabCount }
 }
 
 /**
@@ -193,20 +205,37 @@ function enumerateAllConversations(conversationsDir: string): ConversationFiles[
 }
 
 /**
+ * Result of the top-level export collector.
+ *
+ * `files` is the resolved conversation file set that will be bundled.
+ *
+ * `tabCount` is the number of *visible tabs* across the input tabs files.
+ * Only meaningful when `scope='currently-open'` — for `scope='all'` the
+ * tabs files are not consulted and `tabCount` is `undefined`. The renderer
+ * uses this to render "23 tabs across N conversation sessions" so the
+ * user can relate the export size to their visible workspace.
+ */
+export interface CollectExportResult {
+  files: ConversationFiles[]
+  tabCount?: number
+}
+
+/**
  * Top-level collector: given a scope and source files, return the
- * conversation file set that should be bundled in the export zip.
+ * conversation file set that should be bundled in the export zip, plus
+ * the tab count (for 'currently-open') so the UI can show both numbers.
  */
 export function collectExportConversations(args: {
   scope: ExportScope
   conversationsDir: string
   tabsFiles: string[]
   chainsFiles: string[]
-}): ConversationFiles[] {
+}): CollectExportResult {
   if (args.scope === 'all') {
-    return enumerateAllConversations(args.conversationsDir)
+    return { files: enumerateAllConversations(args.conversationsDir) }
   }
 
-  const ids = collectIdsFromTabsFiles(args.tabsFiles)
+  const { ids, tabCount } = collectIdsFromTabsFiles(args.tabsFiles)
   for (const id of collectIdsFromChainsFiles(args.chainsFiles)) {
     ids.add(id)
   }
@@ -216,5 +245,5 @@ export function collectExportConversations(args: {
     const resolved = resolveConversationFiles(args.conversationsDir, id)
     if (resolved) out.push(resolved)
   }
-  return out
+  return { files: out, tabCount }
 }

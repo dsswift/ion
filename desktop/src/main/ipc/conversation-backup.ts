@@ -61,7 +61,7 @@ export function registerConversationBackupIpc(): void {
     try {
       const sources = buildExportSources()
       const preview = previewExport({ scope, sources })
-      log(`export preview: scope=${scope} conversations=${preview.conversationCount} uncompressed=${preview.totalUncompressedBytes}`)
+      log(`export preview: scope=${scope} tabs=${preview.tabCount ?? 'n/a'} conversations=${preview.conversationCount} uncompressed=${preview.totalUncompressedBytes}`)
       return { ok: true, ...preview }
     } catch (err: any) {
       log(`export preview failed: ${err.message}`)
