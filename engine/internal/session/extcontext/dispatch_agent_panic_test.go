@@ -27,6 +27,7 @@ type panicTestAccessor struct {
 }
 
 func (p *panicTestAccessor) SessionKey() string       { return "panic-test-session" }
+func (p *panicTestAccessor) ConversationID() string   { return "" }
 func (p *panicTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
 	p.mu.Lock()

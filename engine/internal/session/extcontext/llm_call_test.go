@@ -27,6 +27,7 @@ type llmCallTestAccessor struct {
 }
 
 func (a *llmCallTestAccessor) SessionKey() string       { return "test-session" }
+func (a *llmCallTestAccessor) ConversationID() string   { return "" }
 func (a *llmCallTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *llmCallTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()

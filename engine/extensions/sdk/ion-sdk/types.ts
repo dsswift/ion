@@ -381,6 +381,10 @@ export interface IonContext {
    * ```
    */
   sessionKey: string
+  /** Durable conversation identity ({unix_millis}-{hex}). Stable across
+   *  engine restarts. Use this for resource scoping, audit trails, and
+   *  persistent identity. Empty when no conversation is active. */
+  conversationId: string
   cwd: string
   model: { id: string; contextWindow: number } | null
   config: ExtensionConfig

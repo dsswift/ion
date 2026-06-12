@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -119,11 +118,10 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 		}
 		return loaded, nil
 	}
-	// Append a 6-byte random suffix so two runs that begin in the same
-	// millisecond cannot collide on the conversation file. Falls back to
-	// a counter on the (extremely unlikely) rand.Read failure.
+	// Use the canonical conversation ID generator so two runs that begin
+	// in the same millisecond cannot collide on the conversation file.
 	return conversation.CreateConversation(
-		fmt.Sprintf("%d-%s", time.Now().UnixMilli(), newConvSuffix()),
+		conversation.NewConversationID(),
 		opts.SystemPrompt,
 		model,
 	), nil

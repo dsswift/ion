@@ -19,6 +19,11 @@ type Context struct {
 	// of a module-level `Map` to keep per-session state across hook calls.
 	SessionKey string
 
+	// ConversationID is the durable conversation identity for this session.
+	// Unlike SessionKey, this ID is stable across engine restarts and
+	// reattaches. Empty when no conversation is active.
+	ConversationID string
+
 	Cwd    string
 	Model  *ModelRef
 	Config *ExtensionConfig

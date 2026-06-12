@@ -164,6 +164,7 @@ const emptyConfig: ExtensionConfig = {
 function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
+    conversationId: typeof ctxData?.conversationId === 'string' ? ctxData.conversationId : '',
     cwd: ctxData?.cwd || initConfig?.workingDirectory || '',
     model: ctxData?.model || null,
     config: ctxData?.config || initConfig || emptyConfig,

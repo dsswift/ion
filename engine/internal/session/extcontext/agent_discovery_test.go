@@ -21,6 +21,7 @@ type agentDiscoveryTestAccessor struct {
 }
 
 func (a *agentDiscoveryTestAccessor) SessionKey() string       { return "test-session" }
+func (a *agentDiscoveryTestAccessor) ConversationID() string   { return "" }
 func (a *agentDiscoveryTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *agentDiscoveryTestAccessor) Emit(ev types.EngineEvent) {}
 func (a *agentDiscoveryTestAccessor) SendAbort()               {}

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -56,6 +57,9 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
 		m.mu.Unlock()
+		if errors.Is(err, conversation.ErrNotFound) {
+			return "", fmt.Errorf("session %q has no conversation", key)
+		}
 		return "", fmt.Errorf("failed to load conversation: %w", err)
 	}
 
@@ -109,6 +113,9 @@ func (m *Manager) BranchSession(key, entryID string) error {
 
 	conv, err := conversation.Load(sessionID, "")
 	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			return fmt.Errorf("session %q has no conversation", key)
+		}
 		return fmt.Errorf("failed to load conversation: %w", err)
 	}
 
@@ -136,6 +143,9 @@ func (m *Manager) NavigateSession(key, targetID string) error {
 
 	conv, err := conversation.Load(sessionID, "")
 	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			return fmt.Errorf("session %q has no conversation", key)
+		}
 		return fmt.Errorf("failed to load conversation: %w", err)
 	}
 
@@ -162,6 +172,10 @@ func (m *Manager) GetSessionTree(key string) interface{} {
 
 	conv, err := conversation.Load(sessionID, "")
 	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			// Pre-minted ID with no prompt sent yet — no tree to show.
+			return nil
+		}
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_error",
 			EventMessage: "failed to load session tree: " + err.Error(),

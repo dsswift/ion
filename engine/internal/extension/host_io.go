@@ -206,6 +206,9 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	if ctx.SessionKey != "" {
 		wrapped["_ctx"].(map[string]interface{})["sessionKey"] = ctx.SessionKey
 	}
+	if ctx.ConversationID != "" {
+		wrapped["_ctx"].(map[string]interface{})["conversationId"] = ctx.ConversationID
+	}
 	if ctx.Model != nil {
 		wrapped["_ctx"].(map[string]interface{})["model"] = map[string]interface{}{
 			"id":            ctx.Model.ID,

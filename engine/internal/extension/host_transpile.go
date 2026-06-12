@@ -216,9 +216,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 			Parameters:   t.Parameters,
 			PlanModeSafe: t.PlanModeSafe,
 			Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
-				h.ctxStack.Push(ctx)
-				defer h.ctxStack.Pop()
-				raw, err := h.call("tool/"+toolName, params)
+				raw, err := h.callHook("tool/"+toolName, ctx, params)
 				if err != nil {
 					return &types.ToolResult{Content: err.Error(), IsError: true}, nil
 				}

@@ -46,10 +46,12 @@ func TestDispatchExport_EmitsSuccessOnEmptyConversation(t *testing.T) {
 	}
 }
 
-// TestDispatchExport_EmitsErrorOnLoadFailure verifies that /export emits a
-// failure-flavored engine_command_result when conversation.Load fails.
-// Pre-fix the dispatch returned silently in this path.
-func TestDispatchExport_EmitsErrorOnLoadFailure(t *testing.T) {
+// TestDispatchExport_EmitsSuccessOnMissingConversation verifies that /export
+// emits a success engine_command_result when conversation.Load fails with
+// ErrNotFound (e.g. pre-minted ID before any prompt was sent). There is
+// nothing to export, so the command is a no-op success — consistent with
+// the /clear and /compact handlers.
+func TestDispatchExport_EmitsSuccessOnMissingConversation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	mb := newMockBackend()
@@ -62,7 +64,9 @@ func TestDispatchExport_EmitsErrorOnLoadFailure(t *testing.T) {
 	t.Cleanup(func() { _ = mgr.StopSession(key) })
 
 	// Set a conversationID that points to a file that does not exist on disk.
-	// conversation.Load will fail because no file was ever written.
+	// conversation.Load will return ErrNotFound. With the pre-minting change,
+	// this is the normal state before the first prompt — export treats it as
+	// a no-op success (nothing to export).
 	mgr.mu.Lock()
 	mgr.sessions[key].conversationID = "nonexistent-conv-for-export-test"
 	mgr.mu.Unlock()
@@ -75,16 +79,16 @@ func TestDispatchExport_EmitsErrorOnLoadFailure(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 engine_command_result, got %d", len(results))
 	}
-	if results[0].event.CommandError == "" {
-		t.Errorf("expected non-empty CommandError for load failure, got empty string")
+	if results[0].event.CommandError != "" {
+		t.Errorf("expected empty CommandError (no-op success), got %q", results[0].event.CommandError)
 	}
 	if results[0].event.Command != "export" {
 		t.Errorf("expected Command=export, got %q", results[0].event.Command)
 	}
 
-	// No engine_export payload expected when load fails.
+	// No engine_export payload expected when conversation doesn't exist.
 	if exports := ec.byType("engine_export"); len(exports) != 0 {
-		t.Errorf("expected no engine_export events on load failure, got %d", len(exports))
+		t.Errorf("expected no engine_export events on missing conversation, got %d", len(exports))
 	}
 }
 

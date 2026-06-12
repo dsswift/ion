@@ -2,32 +2,11 @@ package backend
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
-
-// convSuffixCounter is a fallback used only when crypto/rand fails (it never
-// has, but the disk could be full at exactly the wrong moment). Combined with
-// the millisecond timestamp it still produces unique conversation IDs.
-var convSuffixCounter uint64
-
-// newConvSuffix returns a 12-hex-char random suffix. Callers prepend a
-// millisecond timestamp; the combined id is the conversation file name.
-// Two runs that begin in the same millisecond see different suffixes, so
-// their conversation files cannot collide.
-func newConvSuffix() string {
-	var b [6]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("%012x", atomic.AddUint64(&convSuffixCounter, 1))
-	}
-	return hex.EncodeToString(b[:])
-}
 
 // maxConsecutiveCompactions caps the number of proactive compactions that
 // can fire back-to-back without a successful API response in between. After

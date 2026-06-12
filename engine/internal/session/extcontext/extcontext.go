@@ -19,6 +19,7 @@ import (
 // that delegates to *Manager and *engineSession with appropriate locking.
 type SessionAccessor interface {
 	SessionKey() string
+	ConversationID() string
 	WorkingDirectory() string
 	Emit(ev types.EngineEvent)
 	SendAbort()
@@ -125,8 +126,9 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 	}
 
 	ctx := &extension.Context{
-		SessionKey: sa.SessionKey(),
-		Cwd:        sa.WorkingDirectory(),
+		SessionKey:     sa.SessionKey(),
+		ConversationID: sa.ConversationID(),
+		Cwd:            sa.WorkingDirectory(),
 		Emit: func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
 				// Cache extension-emitted agent states, then re-emit a merged

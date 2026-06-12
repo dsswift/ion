@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -129,6 +130,13 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 	}
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			// Pre-minted ID with no prompt sent yet — conversation file
+			// doesn't exist. Treat as already-empty (same as the "" path).
+			utils.Debug("Session", fmt.Sprintf("clear: conversation %s not found, treating as empty", s.conversationID))
+			m.emitCommandResult(key, "clear", nil)
+			return
+		}
 		utils.Log("Session", fmt.Sprintf("clear: failed to load conversation %s: %v", s.conversationID, err))
 		m.emitCommandResult(key, "clear", err)
 		return
@@ -188,6 +196,11 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	}
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			utils.Debug("Session", fmt.Sprintf("compact: conversation %s not found, treating as empty", s.conversationID))
+			m.emitCommandResult(key, "compact", nil)
+			return
+		}
 		utils.Log("Session", fmt.Sprintf("compact: failed to load conversation %s: %v", s.conversationID, err))
 		m.emitCommandResult(key, "compact", err)
 		return
@@ -215,6 +228,11 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 	}
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			utils.Debug("Session", fmt.Sprintf("export: conversation %s not found, nothing to export", s.conversationID))
+			m.emitCommandResult(key, "export", nil)
+			return
+		}
 		utils.Log("Session", fmt.Sprintf("export: failed to load conversation %s: %v", s.conversationID, err))
 		m.emitCommandResult(key, "export", err)
 		return
