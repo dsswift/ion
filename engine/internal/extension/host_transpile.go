@@ -192,8 +192,11 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		// the host's pending-init buffer and the session manager
 		// commits them after wiring the lifecycle-hook callback so
 		// init-time vetoes can fire correctly.
-		Webhooks  []WebhookRoute `json:"webhooks,omitempty"`
-		Schedules []ScheduleJob  `json:"schedules,omitempty"`
+		Webhooks  []WebhookRoute             `json:"webhooks,omitempty"`
+		Schedules []ScheduleJob              `json:"schedules,omitempty"`
+		// Resource kinds declared at init time (optional). The session
+		// wires them into the broker after the extension is fully loaded.
+		Resources []types.ResourceDeclaration `json:"resources,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		utils.Log("extension", fmt.Sprintf("init result parse error: %v", err))
@@ -261,5 +264,12 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		h.async.mu.Unlock()
 		utils.Log("extension", fmt.Sprintf("queued init async decls: ext=%s webhooks=%d schedules=%d",
 			h.name, len(result.Webhooks), len(result.Schedules)))
+	}
+
+	// Stash resource declarations for session wiring.
+	if len(result.Resources) > 0 {
+		h.pendingInitResources = append([]types.ResourceDeclaration(nil), result.Resources...)
+		utils.Log("extension", fmt.Sprintf("queued init resource decls: ext=%s resources=%d",
+			h.name, len(result.Resources)))
 	}
 }

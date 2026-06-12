@@ -6,6 +6,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/scheduling"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -18,6 +19,7 @@ type SessionInfo struct {
 	HasActiveRun   bool   `json:"hasActiveRun"`
 	ToolCount      int    `json:"toolCount"`
 	ConversationID string `json:"conversationId,omitempty"`
+	ExtensionName  string `json:"extensionName,omitempty"`
 }
 
 
@@ -47,6 +49,12 @@ type Manager struct {
 	asyncMu       sync.Mutex
 	webhookServer *webhooks.Server
 	scheduler     *scheduling.Scheduler
+
+	// globalBroker is the Manager-level resource broker for workspace-scoped
+	// resources (items with no conversationId). Extensions publish to it when
+	// an item has no conversationId; clients subscribe via resource_subscribe
+	// with resourceGlobal=true. Persists for the Manager's lifetime.
+	globalBroker *resource.Broker
 
 	// watchers deduplicates filesystem watchers across sessions that
 	// share the same working directory. Without this, N sessions on
@@ -79,9 +87,10 @@ func (m *Manager) GetTelemetryConfig() *types.TelemetryConfig {
 // events are translated and forwarded through OnEvent.
 func NewManager(b backend.RunBackend) *Manager {
 	m := &Manager{
-		sessions: make(map[string]*engineSession),
-		backend:  b,
-		watchers: newWatcherPool(),
+		sessions:     make(map[string]*engineSession),
+		backend:      b,
+		watchers:     newWatcherPool(),
+		globalBroker: resource.NewBroker(),
 	}
 
 	b.OnNormalized(m.handleNormalizedEvent)
@@ -136,6 +145,7 @@ func (m *Manager) ListSessions() []SessionInfo {
 			HasActiveRun:   s.requestID != "",
 			ToolCount:      toolCount,
 			ConversationID: s.conversationID,
+			ExtensionName:  s.extensionName,
 		})
 	}
 	return result
@@ -373,6 +383,25 @@ func (m *Manager) ClearConversationFile(sessionID string) error {
 
 	utils.Log("Session", fmt.Sprintf("ClearConversationFile: id=%s cleared Messages (was %d entries) — .tree.jsonl preserved", sessionID, len(conv.Entries)))
 	return nil
+}
+
+// ResourceBroker returns the resource broker for the session identified by key.
+// Returns nil when no session is found for the key.
+func (m *Manager) ResourceBroker(key string) *resource.Broker {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	return s.resourceBroker
+}
+
+// GlobalResourceBroker returns the Manager-level resource broker for
+// workspace-scoped resources (items with no conversationId). This broker
+// persists for the Manager's lifetime, not per-session.
+func (m *Manager) GlobalResourceBroker() *resource.Broker {
+	return m.globalBroker
 }
 
 // ReconcileState re-emits the current agent states and status for the given

@@ -73,6 +73,12 @@ type Host struct {
 	onSendMessage  func(text string)
 	persistentEmit func(types.EngineEvent)
 
+	// persistentPublishResource is the fallback for ext/publish_resource
+	// when no hook/tool context is active (e.g., onComplete callbacks
+	// from background dispatches fire after the run exits). Set by the
+	// session manager alongside persistentEmit.
+	persistentPublishResource func(kind string, delta types.ResourceDelta) error
+
 	// Rate limit for parse-failure WARNs so a misbehaving extension that
 	// floods stdout with non-JSON cannot bury other log signal. Holds a
 	// nanosecond timestamp of the last logged parse error.
@@ -130,6 +136,12 @@ type Host struct {
 	// clears them under the same lock.
 	pendingInitWebhooks  []WebhookRoute
 	pendingInitSchedules []ScheduleJob
+
+	// pendingInitResources carries resource declarations the subprocess
+	// returned from init. The session wires them into the resource broker
+	// after the extension is fully loaded. Not guarded by async.mu
+	// (resource declarations are pure registration, no veto path).
+	pendingInitResources []types.ResourceDeclaration
 }
 
 
@@ -139,6 +151,16 @@ func (h *Host) SetPersistentEmit(fn func(types.EngineEvent)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentEmit = fn
+}
+
+// SetPersistentPublishResource sets a fallback publish function for
+// ext/publish_resource when no hook/tool context is active. This is
+// needed because onComplete callbacks from background dispatches fire
+// after the run exits, when ctxStack is empty.
+func (h *Host) SetPersistentPublishResource(fn func(string, types.ResourceDelta) error) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentPublishResource = fn
 }
 
 // NewHost creates a new extension host with an empty SDK.
@@ -169,6 +191,19 @@ func (h *Host) SetRPCTimeout(d time.Duration) {
 // Name returns the extension's name as reported by the init handshake.
 func (h *Host) Name() string {
 	return h.name
+}
+
+// SetNameForTest sets the host's name without loading an extension.
+// Intended for unit tests in other packages that need hosts with
+// specific names for grouping/coordination testing.
+func (h *Host) SetNameForTest(name string) {
+	h.name = name
+}
+
+// MarkDeadForTest marks the host as dead without closing any channels.
+// Intended for unit tests that need to simulate a dead subprocess.
+func (h *Host) MarkDeadForTest() {
+	h.dead.Store(true)
 }
 
 // ExtensionDir returns the directory containing the extension entry point,
@@ -219,4 +254,11 @@ func (h *Host) Commands() map[string]CommandDefinition {
 // the session never reaches past the host abstraction. Nil clears.
 func (h *Host) SetOnCommandsChange(fn func()) {
 	h.sdk.SetOnCommandsChange(fn)
+}
+
+// Resources returns the resource declarations stashed from the most recent
+// init handshake. The session wires them into the resource broker after the
+// extension is fully loaded.
+func (h *Host) Resources() []types.ResourceDeclaration {
+	return h.pendingInitResources
 }

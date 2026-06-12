@@ -546,6 +546,29 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			PlanModeSlug:     slug,
 		}
 
+	case *types.PlanModeAutoExitEvent:
+		// PlanModeAutoExitEvent fires when the engine deterministically
+		// synthesizes an ExitPlanMode call at end-of-turn because the
+		// model ended a plan-mode run without invoking ExitPlanMode or
+		// AskUserQuestion (issue #187). Sibling to PlanProposalEvent —
+		// both surface the plan-approval card, but this event
+		// additionally tells consumers the exit was engine-driven
+		// rather than model-driven. Same slug-fallback semantics so
+		// consumers always receive a populated display string.
+		slug := e.PlanSlug
+		if slug == "" {
+			slug = types.PlanSlugFromPath(e.PlanFilePath)
+		}
+		return types.EngineEvent{
+			Type:                       "engine_plan_mode_auto_exit",
+			PlanModeAutoExitStopReason: e.StopReason,
+			PlanModeFilePath:           e.PlanFilePath,
+			PlanModeSlug:               slug,
+			PlanModeAutoExitReason:     e.Reason,
+			PlanModeAutoExitSessionID:  e.SessionID,
+			PlanModeAutoExitRunID:      e.RunID,
+		}
+
 	case *types.StreamResetEvent:
 		return types.EngineEvent{Type: "engine_stream_reset"}
 

@@ -126,6 +126,24 @@ type EngineEvent struct {
 	// docs/architecture/adr/003-state-events-vs-workflow-events.md.
 	PlanProposalKind string `json:"planProposalKind,omitempty"`
 
+	// engine_plan_mode_auto_exit — sibling to engine_plan_proposal.
+	// Fires when the engine deterministically synthesizes an ExitPlanMode
+	// call at end-of-turn because the model ended a plan-mode run without
+	// invoking ExitPlanMode or AskUserQuestion (issue #187). Both events
+	// surface the plan-approval card, but this one additionally tells
+	// consumers the exit was engine-driven rather than model-driven.
+	//
+	// Fields use the planModeAutoExit* prefix to avoid colliding with
+	// other event variants that share field name primitives (StopReason
+	// in particular collides with early-stop, which already uses
+	// earlyStopStopReason). PlanFilePath and PlanModeSlug are reused
+	// from engine_plan_mode_changed / engine_plan_proposal since the
+	// shape is identical.
+	PlanModeAutoExitStopReason string `json:"planModeAutoExitStopReason,omitempty"`
+	PlanModeAutoExitReason     string `json:"planModeAutoExitReason,omitempty"`
+	PlanModeAutoExitSessionID  string `json:"planModeAutoExitSessionId,omitempty"`
+	PlanModeAutoExitRunID      string `json:"planModeAutoExitRunId,omitempty"`
+
 	// engine_compacting
 	CompactingActive         bool   `json:"active,omitempty"`
 	CompactingSummary        string `json:"summary,omitempty"`
@@ -317,4 +335,40 @@ type EngineEvent struct {
 	DispatchInputTokens  int     `json:"dispatchInputTokens,omitempty"`
 	DispatchOutputTokens int     `json:"dispatchOutputTokens,omitempty"`
 	DispatchToolCount    int     `json:"dispatchToolCount,omitempty"`
+
+	// --- Resource subsystem events (D-007) ---
+	//
+	// engine_resource_snapshot: emitted when a client subscribes to a
+	// resource kind. Carries the full set of items the producer returned
+	// for the subscription's filter. Consumers REPLACE their local
+	// collection with this payload.
+	//
+	// engine_resource_delta: emitted when a producer publishes a change
+	// (create, update, delete, mark_read). Consumers apply the delta
+	// incrementally to their local collection.
+	//
+	// Both events carry ResourceKind and ResourceSubID so consumers can
+	// correlate events with their active subscriptions.
+	ResourceKind  string         `json:"resourceKind,omitempty"`
+	ResourceSubID string         `json:"resourceSubId,omitempty"`
+	ResourceItems []ResourceItem `json:"resourceItems,omitempty"`
+	ResourceDelta *ResourceDelta `json:"resourceDelta,omitempty"`
+
+	// --- Notification events (D-009) ---
+	//
+	// engine_notification: emitted when an extension calls ctx.Notify.
+	// The Push/PushTitle/PushBody fields trigger APNs delivery through
+	// the relay when the mobile peer is not connected — the relay checks
+	// these fields on any forwarded message, so no relay changes are needed.
+	// NotifyKind/ResourceID/Title/Body/Sound/Scope carry structured metadata
+	// for clients that want richer handling beyond the basic push title/body.
+	Push             bool   `json:"push,omitempty"`
+	PushTitle        string `json:"pushTitle,omitempty"`
+	PushBody         string `json:"pushBody,omitempty"`
+	NotifyKind       string `json:"notifyKind,omitempty"`
+	NotifyResourceID string `json:"notifyResourceId,omitempty"`
+	NotifyTitle      string `json:"notifyTitle,omitempty"`
+	NotifyBody       string `json:"notifyBody,omitempty"`
+	NotifySound      string `json:"notifySound,omitempty"`
+	NotifyScope      string `json:"notifyScope,omitempty"`
 }

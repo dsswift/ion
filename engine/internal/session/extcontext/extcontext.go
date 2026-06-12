@@ -4,11 +4,13 @@ package extcontext
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
+	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -75,6 +77,25 @@ type SessionAccessor interface {
 	// EmitAgentSnapshot emits the current merged agent state snapshot as
 	// an engine_agent_state event.
 	EmitAgentSnapshot(reason string)
+
+	// ResourceBroker returns the session's resource broker.
+	ResourceBroker() *resource.Broker
+
+	// GlobalResourceBroker returns the Manager-level broker for
+	// workspace-scoped resources.
+	GlobalResourceBroker() *resource.Broker
+
+	// BroadcastNotification routes a notification from an extension through
+	// the engine's emit pipeline so the relay can forward it with push flags.
+	BroadcastNotification(opts types.NotifyOpts)
+
+	// ListAllSessions returns info about all active sessions in the engine.
+	ListAllSessions() []extension.SessionListEntry
+
+	// SendToSession sends a structured message to another session of the
+	// same extension type. Returns an error if the target doesn't exist,
+	// has a different extension type, or has no session_message hook.
+	SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error
 }
 
 // NewExtContext builds a fully-populated extension.Context by delegating all
@@ -205,6 +226,64 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 	// powers DispatchAgent and LLMCall — provider routing, hook firing,
 	// and event emission go through the same plumbing.
 	ctx.LLMCall = BuildLLMCallFunc(sa)
+
+	// Wire resource subsystem operations.
+	ctx.DeclareResource = func(decl types.ResourceDeclaration) error {
+		broker := sa.ResourceBroker()
+		if broker == nil {
+			return fmt.Errorf("resource broker not available")
+		}
+		host := &resource.FuncProducerHost{}
+		return broker.RegisterProducer(decl.Kind, host, decl)
+	}
+
+	ctx.PublishResource = func(kind string, delta types.ResourceDelta) error {
+		// Always publish to the session broker first — producers and subscribers
+		// are registered there regardless of whether the item is workspace-scoped
+		// (conversationId == "") or conversation-scoped. Skipping the session
+		// broker for workspace-scoped items was the bug: delta routed only to the
+		// global broker while all subscribers sat on the session broker, yielding
+		// recipients=0.
+		broker := sa.ResourceBroker()
+		if broker == nil {
+			return fmt.Errorf("resource broker not available")
+		}
+		if err := broker.Publish(kind, delta); err != nil {
+			return err
+		}
+		// Also fan out to the global broker so global subscribers receive the
+		// delta. Per-session subscriptions often fail (producer only exists on
+		// the extension's session broker), so the global broker is the reliable
+		// delivery path for all resource kinds.
+		if gb := sa.GlobalResourceBroker(); gb != nil {
+			gb.PublishDirect(kind, delta)
+		}
+		return nil
+	}
+
+	ctx.HandleResourceQuery = func(kind string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
+		broker := sa.ResourceBroker()
+		if broker == nil {
+			return
+		}
+		broker.SetQueryHandler(kind, handler)
+	}
+
+	ctx.Notify = func(opts types.NotifyOpts) error {
+		if opts.Title == "" {
+			return fmt.Errorf("notification title is required")
+		}
+		sa.BroadcastNotification(opts)
+		return nil
+	}
+
+	ctx.ListSessions = func() ([]extension.SessionListEntry, error) {
+		return sa.ListAllSessions(), nil
+	}
+
+	ctx.SendToSession = func(targetKey string, kind string, payload map[string]interface{}) error {
+		return sa.SendToSession(sa.SessionKey(), targetKey, kind, payload)
+	}
 
 	// Populate extension config if available.
 	if eg := sa.ExtGroup(); eg != nil && !eg.IsEmpty() {

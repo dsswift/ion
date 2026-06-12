@@ -15,6 +15,12 @@ import {
   scheduleApi,
   webhooksApi,
 } from './runtime-async'
+import {
+  buildResourcesAPI,
+  drainPendingResourceInit,
+  handleResourceQuery,
+  registerResourceRpcBridge,
+} from './runtime-resources'
 import { doRegisterAgentTools } from './runtime-agents'
 import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './runtime-log'
 import type {
@@ -34,8 +40,10 @@ import type {
   IonSDK,
   LLMCallOpts,
   LLMCallResult,
+  NotifyOpts,
   ProcessInfo,
   RecallAgentOpts,
+  SessionListEntry,
   SandboxProfile,
   SandboxWrapResult,
   SendPromptOpts,
@@ -308,6 +316,18 @@ function buildContext(ctxData: any): IonContext {
         cost: typeof result?.cost === 'number' ? result.cost : 0,
       }
     },
+    async notify(opts: NotifyOpts): Promise<void> {
+      await request('ext/notify', opts)
+    },
+    sessions: {
+      async list(): Promise<SessionListEntry[]> {
+        const result = await request('ext/list_sessions', {})
+        return (result as SessionListEntry[]) ?? []
+      },
+      async send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void> {
+        await request('ext/send_to_session', { targetKey, kind, payload })
+      },
+    },
   }
 }
 
@@ -329,6 +349,8 @@ async function handleRequest(
       // After this call, subsequent registrations route through the
       // ext/register_* RPCs instead of the pending queue.
       const pending = drainPendingInit()
+      // Drain resource declarations declared at module scope.
+      const resourcePending = drainPendingResourceInit()
       respond(id, {
         tools: Array.from(tools.values()).map((t) => ({
           name: t.name,
@@ -343,6 +365,7 @@ async function handleRequest(
         ),
         webhooks: pending.webhooks,
         schedules: pending.schedules,
+        resources: resourcePending.resources,
       })
       return
     }
@@ -361,6 +384,13 @@ async function handleRequest(
     if (method === 'engine/resolve_predicate') {
       const result = await dispatchResolvePredicate(params)
       respond(id, result)
+      return
+    }
+
+    // -- Resource query from the engine (when a client subscribes) ----------
+    if (method === 'resource/query') {
+      const items = await handleResourceQuery(params as any)
+      respond(id, items)
       return
     }
 
@@ -524,6 +554,9 @@ export function createIon(): IonSDK {
   // ion.schedule can issue ext/register_* and ext/deregister_* calls
   // for dynamic registrations after init.
   registerRpcBridge(request)
+  // Wire the resource runtime's RPC bridge so ion.resources.declare
+  // and ion.resources.publish route correctly after init.
+  registerResourceRpcBridge(request)
 
   process.nextTick(() => startListening())
 
@@ -542,5 +575,6 @@ export function createIon(): IonSDK {
     },
     webhooks: webhooksApi,
     schedule: scheduleApi,
+    resources: buildResourcesAPI(),
   }
 }

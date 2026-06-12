@@ -12,6 +12,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/providers"
+	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/session/pending"
@@ -38,6 +39,7 @@ type sessionAccessor struct {
 }
 
 func (a *sessionAccessor) SessionKey() string       { return a.key }
+func (a *sessionAccessor) ConversationID() string   { return a.s.conversationID }
 func (a *sessionAccessor) WorkingDirectory() string  { return a.s.config.WorkingDirectory }
 
 func (a *sessionAccessor) Emit(ev types.EngineEvent) { a.m.emit(a.key, ev) }
@@ -237,6 +239,146 @@ func (a *sessionAccessor) EmitAgentSnapshot(reason string) {
 	a.m.emit(a.key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 }
 
+func (a *sessionAccessor) ResourceBroker() *resource.Broker       { return a.s.resourceBroker }
+func (a *sessionAccessor) GlobalResourceBroker() *resource.Broker { return a.m.globalBroker }
+
+// BroadcastNotification emits an engine_notification event with push flags
+// set so the relay forwards it to APNs when the mobile peer is offline.
+// When TargetSessionKey is set, the notification is emitted on the target
+// session's event stream instead of the caller's. The target must exist;
+// if it doesn't, the notification is emitted on the caller's session and
+// a warning is logged.
+func (a *sessionAccessor) BroadcastNotification(opts types.NotifyOpts) {
+	ev := types.EngineEvent{
+		Type:             "engine_notification",
+		Push:             true,
+		PushTitle:        opts.Title,
+		PushBody:         opts.Body,
+		NotifyKind:       opts.Kind,
+		NotifyResourceID: opts.ResourceID,
+		NotifyTitle:      opts.Title,
+		NotifyBody:       opts.Body,
+		NotifySound:      opts.Sound,
+		NotifyScope:      opts.Scope,
+	}
+
+	targetKey := opts.TargetSessionKey
+	if targetKey != "" && targetKey != a.key {
+		// Verify the target session exists.
+		a.m.mu.RLock()
+		_, exists := a.m.sessions[targetKey]
+		a.m.mu.RUnlock()
+		if exists {
+			utils.Log("session", fmt.Sprintf("BroadcastNotification: routing to target session key=%s (from %s)", targetKey, a.key))
+			a.m.emit(targetKey, ev)
+			return
+		}
+		utils.Warn("session", fmt.Sprintf("BroadcastNotification: target session %q not found, falling back to caller %s", targetKey, a.key))
+	}
+
+	a.m.emit(a.key, ev)
+}
+
+// BroadcastIntercept emits an engine_intercept event on the target session's
+// stream. This is a fire-and-forget signal — the engine attaches no semantics
+// beyond routing the event. When TargetSessionKey is set and the session
+// exists, the event is emitted on that session's stream. Otherwise it falls
+// back to the caller's session and a warning is logged.
+func (a *sessionAccessor) BroadcastIntercept(opts extension.InterceptOpts) {
+	ev := types.EngineEvent{
+		Type:              "engine_intercept",
+		InterceptLevel:    opts.Level,
+		InterceptTitle:    opts.Title,
+		InterceptMessage:  opts.Message,
+		InterceptSource:   opts.Source,
+		InterceptMetadata: opts.Metadata,
+	}
+
+	targetKey := opts.TargetSessionKey
+	if targetKey != "" && targetKey != a.key {
+		a.m.mu.RLock()
+		_, exists := a.m.sessions[targetKey]
+		a.m.mu.RUnlock()
+		if exists {
+			utils.Log("session", fmt.Sprintf("BroadcastIntercept: routing to target session key=%s (from %s)", targetKey, a.key))
+			a.m.emit(targetKey, ev)
+			return
+		}
+		utils.Warn("session", fmt.Sprintf("BroadcastIntercept: target session %q not found, falling back to caller %s", targetKey, a.key))
+	}
+
+	a.m.emit(a.key, ev)
+}
+
+func (a *sessionAccessor) ListAllSessions() []extension.SessionListEntry {
+	infos := a.m.ListSessions()
+	entries := make([]extension.SessionListEntry, len(infos))
+	for i, info := range infos {
+		entries[i] = extension.SessionListEntry{
+			Key:            info.Key,
+			HasActiveRun:   info.HasActiveRun,
+			ExtensionName:  info.ExtensionName,
+			ConversationID: info.ConversationID,
+		}
+	}
+	return entries
+}
+
+func (a *sessionAccessor) SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error {
+	a.m.mu.RLock()
+	senderSession, senderOK := a.m.sessions[senderKey]
+	targetSession, targetOK := a.m.sessions[targetKey]
+	a.m.mu.RUnlock()
+
+	if !targetOK {
+		return fmt.Errorf("target session %q not found", targetKey)
+	}
+	if !senderOK {
+		return fmt.Errorf("sender session %q not found", senderKey)
+	}
+
+	// Enforce same extension type.
+	if senderSession.extensionName != targetSession.extensionName {
+		return fmt.Errorf("cross-session messaging requires same extension type (sender=%q target=%q)",
+			senderSession.extensionName, targetSession.extensionName)
+	}
+
+	// Check the target session has an extension group.
+	if targetSession.extGroup == nil || targetSession.extGroup.IsEmpty() {
+		return fmt.Errorf("target session %q has no extension group", targetKey)
+	}
+
+	// Fire the session_message hook on each host in the target session's
+	// extension group, using the target session's context.
+	info := extension.SessionMessageInfo{
+		SenderSessionKey: senderKey,
+		Kind:             kind,
+		Payload:          payload,
+	}
+
+	ctx := a.m.newExtContext(targetSession, targetKey)
+	for _, h := range targetSession.extGroup.Hosts() {
+		if err := h.SDK().FireSessionMessage(ctx, info); err != nil {
+			utils.Log("session", fmt.Sprintf("SendToSession: hook fire failed sender=%s target=%s kind=%s err=%v", senderKey, targetKey, kind, err))
+		}
+	}
+
+	utils.Log("session", fmt.Sprintf("SendToSession: delivered sender=%s target=%s kind=%s", senderKey, targetKey, kind))
+	return nil
+}
+
+// RunOnceCheck delegates to the Manager's runOnce registry, scoped to this
+// session's loaded extension directory.
+func (a *sessionAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
+	result := a.m.RunOnceCheck(a.key, operationID, debounceMs)
+	return result.Execute, result.Reason
+}
+
+// RunOnceComplete delegates to the Manager's runOnce registry.
+func (a *sessionAccessor) RunOnceComplete(operationID string, failed bool) {
+	a.m.RunOnceComplete(a.key, operationID, failed)
+}
+
 // newExtContext builds a fully-populated extension Context for the given session.
 // All functional callbacks are wired through the extcontext.SessionAccessor interface.
 func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context {
@@ -264,15 +406,30 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
 	}
 
+	// Pre-mint a conversation ID when the caller doesn't supply one (fresh
+	// tab). This ensures the engine_status {state: "idle"} event at the end
+	// of StartSession carries a sessionId immediately — before any prompt is
+	// sent. Clients need this so users can copy the session ID for tabs where
+	// extensions execute and fail at startup, before a message is ever sent.
+	// The backend's loadOrCreateConversation handles pre-set SessionIDs: it
+	// tries Load, gets ErrNotFound (no file yet), and calls CreateConversation
+	// with this ID — so the conversation file will use this same ID.
+	convID := config.SessionID
+	if convID == "" {
+		convID = conversation.NewConversationID()
+		utils.Log("Session", fmt.Sprintf("StartSession: key=%s pre-minted conversationID=%s", key, convID))
+	}
+
 	s := &engineSession{
 		key:              key,
 		config:           config,
-		conversationID:   config.SessionID,
+		conversationID:   convID,
 		agents:           agents.NewRegistry(),
 		childPIDs:        make(map[int]struct{}),
 		pending:          pending.New(),
 		maxQueueDepth:    32,
 		dispatchRegistry: extcontext.NewDispatchRegistry(),
+		resourceBroker:   resource.NewBroker(),
 	}
 
 	// Initialize process registry for extension-spawned subprocesses.
@@ -497,6 +654,16 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		// real session context.
 		m.wireHostAsync(key, host)
 		m.commitHostInitAsyncDecls(key, host)
+		// Commit resource declarations (D-007) onto the session broker.
+		if errs := host.CommitPendingResourceDecls(s.resourceBroker); len(errs) != 0 {
+			for _, err := range errs {
+				m.emit(key, types.EngineEvent{
+					Type:         "engine_error",
+					EventMessage: fmt.Sprintf("resource declaration rejected: %v", err),
+					ErrorCode:    "resource_init_rejected",
+				})
+			}
+		}
 		group.Add(host)
 	}
 	if group.IsEmpty() {
@@ -532,6 +699,25 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				m.mu.Unlock()
 			}
 			m.emit(capturedKey, ev)
+		})
+
+		// Persistent publish for ext/publish_resource calls from
+		// onComplete callbacks (after the run exits, ctxStack is empty).
+		// Always publish to session broker first, then fan out to global
+		// broker for reliable delivery (per-session subscriptions often
+		// fail because the producer only exists on one session's broker).
+		host.SetPersistentPublishResource(func(kind string, delta types.ResourceDelta) error {
+			if s.resourceBroker != nil {
+				if err := s.resourceBroker.Publish(kind, delta); err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("no broker available")
+			}
+			if m.globalBroker != nil {
+				m.globalBroker.PublishDirect(kind, delta)
+			}
+			return nil
 		})
 	}
 

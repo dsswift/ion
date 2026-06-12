@@ -609,6 +609,15 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		err := s.manager.ClearConversationFile(cmd.Key)
 		s.sendResult(conn, cmd, err, nil)
 
+	case "resource_subscribe":
+		s.dispatchResourceSubscribe(conn, cmd)
+
+	case "resource_unsubscribe":
+		s.dispatchResourceUnsubscribe(conn, cmd)
+
+	case "resource_publish":
+		s.dispatchResourcePublish(conn, cmd)
+
 	case "shutdown":
 		_ = s.Stop()
 

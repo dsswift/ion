@@ -729,3 +729,117 @@ func TestParseClientCommand_StoreCredentialEmptyCredential(t *testing.T) {
 		t.Errorf("expected provider 'openai', got %q", cmd.Provider)
 	}
 }
+
+// --- resource_publish command tests ---
+
+func TestParseClientCommand_ResourcePublishValid(t *testing.T) {
+	raw := `{"cmd":"resource_publish","key":"s1","resourceOp":"upsert"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected non-nil result for valid resource_publish")
+	}
+	if cmd.Cmd != "resource_publish" {
+		t.Errorf("expected cmd 'resource_publish', got %q", cmd.Cmd)
+	}
+	if cmd.Key != "s1" {
+		t.Errorf("expected key 's1', got %q", cmd.Key)
+	}
+	if cmd.ResourceOp != "upsert" {
+		t.Errorf("expected resourceOp 'upsert', got %q", cmd.ResourceOp)
+	}
+}
+
+func TestParseClientCommand_ResourcePublishMissingResourceOp(t *testing.T) {
+	raw := `{"cmd":"resource_publish","key":"s1"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Errorf("expected nil for resource_publish missing resourceOp, got %+v", cmd)
+	}
+}
+
+func TestParseClientCommand_ResourceSubscribeValid(t *testing.T) {
+	raw := `{"cmd":"resource_subscribe","key":"s1","resourceKind":"briefing"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected non-nil result for valid resource_subscribe")
+	}
+	if cmd.Cmd != "resource_subscribe" {
+		t.Errorf("expected cmd 'resource_subscribe', got %q", cmd.Cmd)
+	}
+	if cmd.Key != "s1" {
+		t.Errorf("expected key 's1', got %q", cmd.Key)
+	}
+	if cmd.ResourceKind != "briefing" {
+		t.Errorf("expected resourceKind 'briefing', got %q", cmd.ResourceKind)
+	}
+}
+
+func TestParseClientCommand_ResourceSubscribeMissingKind(t *testing.T) {
+	raw := `{"cmd":"resource_subscribe","key":"s1"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Errorf("expected nil for resource_subscribe missing resourceKind, got %+v", cmd)
+	}
+}
+
+// Global subscriptions use key="" with resourceGlobal:true. The validator must
+// accept an empty key when resourceGlobal is set, otherwise the desktop's
+// workspace-level subscription (briefing, desktop.focus) is rejected with
+// "invalid command" and iOS never receives resource events.
+func TestParseClientCommand_ResourceSubscribeGlobalEmptyKey(t *testing.T) {
+	raw := `{"cmd":"resource_subscribe","key":"","resourceKind":"briefing","resourceGlobal":true}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected non-nil result for global resource_subscribe with empty key")
+	}
+	if cmd.Cmd != "resource_subscribe" {
+		t.Errorf("expected cmd 'resource_subscribe', got %q", cmd.Cmd)
+	}
+	if cmd.ResourceKind != "briefing" {
+		t.Errorf("expected resourceKind 'briefing', got %q", cmd.ResourceKind)
+	}
+	if !cmd.ResourceGlobal {
+		t.Errorf("expected ResourceGlobal=true")
+	}
+}
+
+func TestParseClientCommand_ResourceSubscribeGlobalMissingKind(t *testing.T) {
+	raw := `{"cmd":"resource_subscribe","key":"","resourceGlobal":true}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Errorf("expected nil for global resource_subscribe missing resourceKind, got %+v", cmd)
+	}
+}
+
+func TestParseClientCommand_ResourceSubscribeMissingKeyNonGlobal(t *testing.T) {
+	raw := `{"cmd":"resource_subscribe","key":"","resourceKind":"briefing"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Errorf("expected nil for non-global resource_subscribe with empty key, got %+v", cmd)
+	}
+}
+
+func TestParseClientCommand_ResourceUnsubscribeValid(t *testing.T) {
+	raw := `{"cmd":"resource_unsubscribe","key":"s1","resourceSubId":"sub-1"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected non-nil result for valid resource_unsubscribe")
+	}
+	if cmd.Cmd != "resource_unsubscribe" {
+		t.Errorf("expected cmd 'resource_unsubscribe', got %q", cmd.Cmd)
+	}
+	if cmd.Key != "s1" {
+		t.Errorf("expected key 's1', got %q", cmd.Key)
+	}
+	if cmd.ResourceSubID != "sub-1" {
+		t.Errorf("expected resourceSubId 'sub-1', got %q", cmd.ResourceSubID)
+	}
+}
+
+func TestParseClientCommand_ResourceUnsubscribeMissingSubId(t *testing.T) {
+	raw := `{"cmd":"resource_unsubscribe","key":"s1"}`
+	cmd := ParseClientCommand(raw)
+	if cmd != nil {
+		t.Errorf("expected nil for resource_unsubscribe missing resourceSubId, got %+v", cmd)
+	}
+}

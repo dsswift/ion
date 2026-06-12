@@ -148,6 +148,18 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		h.ResetAsyncRegistrations()
 		m.commitHostInitAsyncDecls(key, h)
 
+		// Rewire resource query handlers onto the existing broker producers
+		// and re-deliver snapshots to subscribers. This corrects the empty-
+		// snapshot that was delivered when the initial query failed because
+		// the first subprocess died before it could answer the resource/query
+		// RPC. The broker's producer entries already exist (registered during
+		// CommitPendingResourceDecls on first spawn); RewireResourceDecls
+		// updates their query handlers to point to the live subprocess and
+		// pushes a fresh snapshot to every active subscriber.
+		if broker := m.ResourceBroker(key); broker != nil {
+			h.RewireResourceDecls(broker)
+		}
+
 		// Fire extension_respawned on the new instance so the harness
 		// can rebuild caches.
 		_ = h.SDK().FireExtensionRespawned(ctx, extension.ExtensionRespawnedInfo{

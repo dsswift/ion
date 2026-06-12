@@ -631,6 +631,54 @@ export interface IonContext {
    * ```
    */
   llmCall(opts: LLMCallOpts): Promise<LLMCallResult>
+
+  // --- Resource subsystem (D-007) ---
+
+  /**
+   * Resource producer API. Use `ctx.resources.declare(...)` to register
+   * this extension as the producer for a resource kind, then call
+   * `handle.publish(...)` to push deltas to subscribers.
+   * Use `ctx.resources.onQuery(...)` to register a handler invoked when
+   * a client subscribes (for the initial snapshot).
+   */
+  resources: {
+    /** Declare this extension as the producer for a resource kind. */
+    declare(decl: ResourceDeclaration): Promise<ResourceHandle>
+    /** Register a query handler for the given kind. Called when clients subscribe. */
+    onQuery(kind: string, handler: (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]): void
+  }
+
+  /**
+   * Send a push notification through the engine's notification pipeline.
+   * The engine routes the payload through the relay's push channel.
+   * Notifications are signals — they identify the resource and surface it to
+   * the user; they don't carry full content payloads.
+   *
+   * @example
+   * ```ts
+   * await ctx.notify({ kind: 'briefing', title: 'New Brief', body: 'Summary ready.' })
+   * ```
+   */
+  notify(opts: NotifyOpts): Promise<void>
+
+  /** List all active sessions in the engine. Extensions use this to discover
+   *  other sessions (e.g. for cross-session notification targeting). The engine
+   *  returns all sessions; filter by extensionName on your side. */
+  sessions: {
+    list(): Promise<SessionListEntry[]>
+    /** Send a structured message to another session of the same extension
+     *  type. The target must have a session_message hook registered.
+     *  Same extension type only — the engine enforces this. */
+    send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void>
+  }
+}
+
+/** Describes a session as returned by ctx.sessions.list(). */
+export interface SessionListEntry {
+  key: string
+  hasActiveRun: boolean
+  extensionName?: string
+  conversationId?: string
 }
 
 /** Options for {@link IonContext.sendPrompt}. */
@@ -1377,6 +1425,20 @@ export interface HookPayloadMap {
   // docs/architecture/adr/002-engine-vs-harness-early-stop.md.
   before_early_stop_decision: EarlyStopDecisionInfo
   early_stop_continued: EarlyStopContinuedInfo
+
+  // Cross-session messaging (1) -- fires when another session of the same
+  // extension type sends a message via ctx.sessions.send().
+  session_message: SessionMessageInfo
+}
+
+/** Payload for the `session_message` hook. */
+export interface SessionMessageInfo {
+  /** Session key of the sender. */
+  senderSessionKey: string
+  /** Application-defined message kind. */
+  kind: string
+  /** Application-defined payload. */
+  payload: Record<string, unknown>
 }
 
 /** Convenience type: union of all hook names. */
@@ -1508,6 +1570,27 @@ export interface IonSDK {
     weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>
     interval(opts: ScheduleInterval): Promise<ScheduleHandle>
   }
+
+  /**
+   * Resource producer API. Declare resource kinds at module scope
+   * (pre-init) so they appear in the init response; call
+   * `handle.publish(op, item)` to push deltas to subscribers.
+   *
+   * @example
+   * ```ts
+   * const ion = createIon()
+   * const notesHandle = await ion.resources.declare({ kind: 'note' })
+   * ion.resources.onQuery('note', (filter) => fetchNotes(filter))
+   * // later, when a note is created:
+   * await notesHandle.publish('create', { id: '1', kind: 'note', content: '...', createdAt: new Date().toISOString() })
+   * ```
+   */
+  resources: {
+    /** Declare this extension as the producer for a resource kind. */
+    declare(decl: ResourceDeclaration): Promise<ResourceHandle>
+    /** Register a query handler for the given kind. Called when clients subscribe. */
+    onQuery(kind: string, handler: (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]): void
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1572,6 +1655,8 @@ export interface WebhookRoute {
   maxBodyBytes?: number
   /** Override bind interface (advanced — usually inherited from engine config). */
   interface?: string
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
   /**
    * Handler invoked for each matching request. The ctx is freshly
    * built per fire; ctx.dispatchAgent / sendPrompt / emit /
@@ -1594,6 +1679,8 @@ export interface ScheduleDaily {
   time: string // "HH:MM" 24-hour
   tz?: string  // IANA timezone; empty inherits engine default
   timeoutMs?: number
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
   handler: (ctx: IonContext) => Promise<void> | void
 }
@@ -1605,6 +1692,8 @@ export interface ScheduleWeekly {
   dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
   tz?: string
   timeoutMs?: number
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
   handler: (ctx: IonContext) => Promise<void> | void
 }
@@ -1614,6 +1703,8 @@ export interface ScheduleInterval {
   id: string
   intervalMs: number
   timeoutMs?: number
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
   handler: (ctx: IonContext) => Promise<void> | void
 }
@@ -1638,4 +1729,80 @@ export interface ScheduleJob {
 export interface ScheduleHandle {
   id: string
   unregister(): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
+// Resource subsystem types (D-007).
+// ---------------------------------------------------------------------------
+//
+// Extensions that produce resources declare a kind, register a query handler
+// for the initial snapshot, and publish deltas as items change. Clients
+// subscribe via the socket (resource_subscribe command) and receive
+// engine_resource_snapshot + engine_resource_delta events.
+
+/** A single resource instance. Content is an opaque string the engine
+ *  never interprets — encoding is the producer's concern. */
+export interface ResourceItem {
+  id: string
+  kind: string
+  title?: string
+  content: string
+  createdAt: string
+  conversationId?: string
+  metadata?: Record<string, unknown>
+  updatedAt?: string
+  read?: boolean
+}
+
+/** A single change to a resource collection. */
+export interface ResourceDelta {
+  op: 'create' | 'update' | 'delete' | 'mark_read'
+  item: ResourceItem
+}
+
+/** Scopes a subscription or query. */
+export interface ResourceFilter {
+  kind: string
+  conversationId?: string
+  since?: string
+  limit?: number
+}
+
+/** Passed to ion.resources.declare(). One producer per kind per session. */
+export interface ResourceDeclaration {
+  kind: string
+}
+
+/** Handle returned by ion.resources.declare(). */
+export interface ResourceHandle {
+  /** Publish a delta (create/update/delete/mark_read) for this resource kind. */
+  publish(op: ResourceDelta['op'], item: ResourceItem): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
+// Notification types (D-009)
+// ---------------------------------------------------------------------------
+
+/** Options for ctx.notify() / ion.notify(). Notifications are signals that
+ *  identify a resource and surface to the user — not full content payloads. */
+export interface NotifyOpts {
+  /** Resource kind this notification relates to (e.g. "briefing"). */
+  kind: string
+  /** ID of the specific resource item, if applicable. */
+  resourceId?: string
+  /** Short notification title shown in the notification banner. */
+  title: string
+  /** Notification body text. */
+  body: string
+  /** Notification sound name. Omit for the default sound. */
+  sound?: string
+  /** Delivery scope: "user" (default), "device", "all". */
+  scope?: 'user' | 'device' | 'all'
+  /** Conversation/session ID this notification relates to. Clients use this
+   *  to navigate to the correct tab when the user acts on the notification.
+   *  Omit for workspace-level notifications. */
+  conversationId?: string
+  /** When set, the engine emits the notification on the target session's
+   *  event stream instead of the caller's. The target must exist. */
+  targetSessionKey?: string
 }

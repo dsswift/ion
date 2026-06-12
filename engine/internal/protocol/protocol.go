@@ -156,6 +156,17 @@ type ClientCommand struct {
 	CompactEnabled        *bool   `json:"compactEnabled,omitempty"`
 	CompactSummaryEnabled *bool   `json:"compactSummaryEnabled,omitempty"`
 	CompactMemoryEnabled  *bool   `json:"compactMemoryEnabled,omitempty"`
+
+	// resource_subscribe / resource_unsubscribe
+	ResourceKind   string                `json:"resourceKind,omitempty"`
+	ResourceFilter *types.ResourceFilter `json:"resourceFilter,omitempty"`
+	ResourceSubID  string                `json:"resourceSubId,omitempty"`
+	// resource_subscribe: when true, subscribe to the global (workspace-level)
+	// broker instead of the per-session broker.
+	ResourceGlobal bool `json:"resourceGlobal,omitempty"`
+	// resource_publish: operation and item for client-side resource publishing.
+	ResourceOp   string              `json:"resourceOp,omitempty"`
+	ResourceItem *types.ResourceItem `json:"resourceItem,omitempty"`
 }
 
 var validCommands = map[string]bool{
@@ -198,6 +209,14 @@ var validCommands = map[string]bool{
 	// session is running against it (so dispatchClear cannot be used).
 	// Non-breaking additive command. Requires key (sessionId).
 	"clear_conversation_file": true,
+	// resource_subscribe / resource_unsubscribe: client-side resource
+	// collection management. resource_subscribe attaches a live subscription
+	// to a resource kind; the engine streams snapshot + delta events back
+	// over the connection. resource_unsubscribe tears down an active
+	// subscription by its ID.
+	"resource_subscribe":   true,
+	"resource_unsubscribe": true,
+	"resource_publish":     true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -378,6 +397,18 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "clear_conversation_file":
 		// key carries the sessionId (conversationId) to wipe. Required and non-empty.
 		return hasNonEmptyString(raw, "key")
+	case "resource_subscribe":
+		// Global subscriptions (resourceGlobal: true) use key="" intentionally —
+		// they target the Manager-level broker, not a per-session broker. Require
+		// a non-empty key only for per-session subscriptions.
+		if hasBool(raw, "resourceGlobal") {
+			return hasNonEmptyString(raw, "resourceKind")
+		}
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceKind")
+	case "resource_unsubscribe":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceSubId")
+	case "resource_publish":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceOp")
 	}
 	return false
 }

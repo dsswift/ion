@@ -6,6 +6,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/recorder"
+	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/session/pending"
@@ -57,14 +58,15 @@ type engineSession struct {
 	maxQueueDepth               int // default 32
 
 	// Wired subsystems (populated in StartSession)
-	extGroup     *extension.ExtensionGroup
-	mcpConns     []*mcp.Connection
-	permEngine   *permissions.Engine
-	telemetry    *telemetry.Collector
-	recorder     *recorder.Recorder
-	toolServer   *backend.ToolServer
-	procRegistry *extension.ProcessRegistry
-	pending      *pending.Broker
+	extGroup       *extension.ExtensionGroup
+	mcpConns       []*mcp.Connection
+	permEngine     *permissions.Engine
+	telemetry      *telemetry.Collector
+	recorder       *recorder.Recorder
+	toolServer     *backend.ToolServer
+	procRegistry   *extension.ProcessRegistry
+	pending        *pending.Broker
+	resourceBroker *resource.Broker
 
 	// fsWatcherRelease releases this session's share of the pooled workspace
 	// watcher. The underlying watcher closes when the last session sharing

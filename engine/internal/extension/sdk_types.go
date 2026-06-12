@@ -174,6 +174,54 @@ type Context struct {
 	//
 	// Nil when the session has no extension wiring (rare; defensive guard).
 	LLMCall func(opts LLMCallOpts) (*LLMCallResult, error)
+
+	// Resource subsystem — producer side. Extensions declare resource
+	// kinds they produce, publish items, and register query handlers
+	// that respond when clients subscribe.
+	//
+	// DeclareResource registers this extension as the producer for a
+	// resource kind on the session's broker. One producer per kind.
+	DeclareResource func(decl types.ResourceDeclaration) error
+
+	// PublishResource publishes a create/update/delete/mark_read delta
+	// to all subscribers of the given kind. The broker fans out the
+	// delta to every active subscription.
+	PublishResource func(kind string, delta types.ResourceDelta) error
+
+	// HandleResourceQuery registers a query handler for the given kind.
+	// When a client subscribes, the broker calls this handler to get the
+	// initial snapshot of items matching the subscription filter.
+	HandleResourceQuery func(kind string, handler func(types.ResourceFilter) ([]types.ResourceItem, error))
+
+	// Notify sends a push notification through the engine's notification
+	// pipeline. The engine formats the payload and routes it through
+	// the relay's push channel. Extensions never speak relay protocol
+	// directly. Notifications are signals, not payloads — they carry
+	// enough to identify the resource and surface it to the user, not
+	// the full content.
+	Notify func(opts types.NotifyOpts) error
+
+	// ListSessions returns info about all active sessions in the engine.
+	// Extensions use this to discover other sessions of the same extension
+	// type for cross-session notification targeting. The engine returns
+	// all sessions; the extension filters by ExtensionName on its side.
+	ListSessions func() ([]SessionListEntry, error)
+
+	// SendToSession sends a structured message to another session of the
+	// same extension type. The target session must have a session_message
+	// hook registered; if not, the engine returns an error. Same extension
+	// type only — the engine enforces this by comparing extension names.
+	SendToSession func(targetKey string, kind string, payload map[string]interface{}) error
+}
+
+// SessionListEntry describes a session as returned by ListSessions.
+// Mirrors session.SessionInfo but lives in the extension package to
+// avoid a circular dependency.
+type SessionListEntry struct {
+	Key            string `json:"key"`
+	HasActiveRun   bool   `json:"hasActiveRun"`
+	ExtensionName  string `json:"extensionName,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 // DispatchAgentOpts configures an engine-native agent dispatch.
