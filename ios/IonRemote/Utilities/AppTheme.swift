@@ -21,6 +21,16 @@ protocol AppTheme {
     var statusDone: Color { get }
     var statusError: Color { get }
     var statusPending: Color { get }
+    /// "Awaiting children" — the orchestrator is idle but dispatched
+    /// background agents are still executing. Rendered as a yellow/
+    /// amber pulsing dot on the parent tab pill, sub-tab pill, and
+    /// footer state label. Mirrors the desktop's
+    /// `statusWaitingChildren` token in `theme-tokens.ts`. Distinct
+    /// from `statusRunning` (orange = foreground) so foreground vs.
+    /// background activity is visually disambiguated. See
+    /// `ConversationStatusBar.swift` and `TabRowView.swift` for the
+    /// render sites.
+    var statusWaitingChildren: Color { get }
     var surfaceElevated: Color { get }
     var codeBg: Color { get }
     var userBubbleTint: Color { get }
@@ -105,6 +115,7 @@ final class ThemeManager: AppTheme {
     var statusDone: Color { _currentTheme.statusDone }
     var statusError: Color { _currentTheme.statusError }
     var statusPending: Color { _currentTheme.statusPending }
+    var statusWaitingChildren: Color { _currentTheme.statusWaitingChildren }
     var surfaceElevated: Color { _currentTheme.surfaceElevated }
     var codeBg: Color { _currentTheme.codeBg }
     var userBubbleTint: Color { _currentTheme.userBubbleTint }

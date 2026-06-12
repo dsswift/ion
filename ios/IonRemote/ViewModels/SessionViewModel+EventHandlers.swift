@@ -582,18 +582,8 @@ extension SessionViewModel {
 
     // MARK: - Upload attachment result
 
-    /// Deduplicate messages by ID, keeping the last occurrence of each.
-    private func deduplicateMessages(_ msgs: [Message]) -> [Message] {
-        var seen = Set<String>()
-        var result: [Message] = []
-        for msg in msgs.reversed() {
-            if seen.insert(msg.id).inserted {
-                result.append(msg)
-            }
-        }
-        result.reverse()
-        return result
-    }
+    // `deduplicateMessages` lives in SessionViewModel+ConversationHelpers.swift
+    // to keep this file under the 600-line cap.
 
     // `handleUploadAttachmentResult` lives in
     // SessionViewModel+UploadEvents.swift to keep this file under the

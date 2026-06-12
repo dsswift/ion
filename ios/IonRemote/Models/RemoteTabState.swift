@@ -34,6 +34,15 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var pillColor: String?
     /// Custom pill icon key (e.g. "diamond", "star"). Nil means use the default status dot.
     var pillIcon: String?
+    /// Aggregated "any sub-instance has running dispatched background
+    /// agents" flag, projected by the desktop's
+    /// `getRemoteTabStates` snapshot. Drives the yellow "awaiting
+    /// children" pulse on the parent tab pill in `TabRowView`. Nil/
+    /// absent means false — older desktops that don't emit this field
+    /// continue to work, with the parent pill simply not pulsing
+    /// yellow until they're upgraded. See CLAUDE.md § "Common parity
+    /// surfaces" parity table for the desktop/iOS parity rule.
+    var hasRunningChildren: Bool?
 
     var displayTitle: String {
         customTitle ?? title
@@ -95,6 +104,15 @@ struct EngineInstanceInfo: Codable, Identifiable, Sendable {
     /// status is aggregated by the snapshot — if any instance is running,
     /// `RemoteTabState.status` is promoted to `.running`.
     var isRunning: Bool? = nil
+    /// Per-engine-instance dispatched-agent count, decoded from the
+    /// desktop snapshot. > 0 when the instance has background agents
+    /// in the `running` status — even if the orchestrator itself is
+    /// idle. Drives the yellow "awaiting children" pulse on the iOS
+    /// sub-tab pill in `EngineInstanceBar` (priority cascade matches
+    /// the desktop: waitingState → isRunning → runningAgentCount).
+    /// Nil/zero means no background agents are running. See
+    /// CLAUDE.md § "Common parity surfaces" parity table.
+    var runningAgentCount: Int? = nil
     /// Per-engine-instance model-fallback indicator. Non-nil when the
     /// desktop's engineModelFallbacks map holds an entry for this
     /// `tabId:instanceId` — i.e. the engine emitted ModelFallbackEvent

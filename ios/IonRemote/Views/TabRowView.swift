@@ -303,15 +303,29 @@ struct TabRowView: View {
         if tab.status == .running || tab.status == .connecting {
             return (Color(hex: 0xE8854A), true)
         }
-        // 5. Plan ready -> Green (idle or completed -- run finishes after auto-allow)
+        // 5. Awaiting children (yellow + pulse) — orchestrator idle
+        //    but dispatched background agents still executing. The
+        //    desktop `snapshot.ts` aggregates per-instance
+        //    `runningAgentCount` into the top-level `hasRunningChildren`
+        //    flag so iOS can read it without a per-instance fold. Sits
+        //    below the orange running branch (foreground wins) and
+        //    above the plan/question waits (active background work is
+        //    a stronger signal than passive "waiting on you"). The
+        //    yellow hex matches the desktop's `statusWaitingChildren`
+        //    and `IonDefaultTheme.statusWaitingChildren`. See
+        //    CLAUDE.md § "Common parity surfaces" parity row.
+        if tab.hasRunningChildren == true {
+            return (Color(hex: 0xF59E0B), true)
+        }
+        // 6. Plan ready -> Green (idle or completed -- run finishes after auto-allow)
         if hasPlanReady && (tab.status == .idle || tab.status == .completed) {
             return (.green, false)
         }
-        // 6. Question pending -> Blue (idle or completed)
+        // 7. Question pending -> Blue (idle or completed)
         if hasQuestion && (tab.status == .idle || tab.status == .completed) {
             return (Color(hex: 0x4A9EF5), false)
         }
-        // 7. Default -> Gray
+        // 8. Default -> Gray
         return (Color(hex: 0x8A8A80), false)
     }
 }

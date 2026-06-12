@@ -538,7 +538,8 @@ struct EngineView: View {
                     onTapAttachments: {},
                     isEngine: true,
                     extensionName: fields.extensionName,
-                    statusState: fields.state
+                    statusState: fields.state,
+                    runningAgentCount: runningAgentCount
                 )
             }
             Divider()

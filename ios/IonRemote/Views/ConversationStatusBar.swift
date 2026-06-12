@@ -21,6 +21,13 @@ struct ConversationStatusBar: View {
     var isEngine: Bool = false
     var extensionName: String? = nil
     var statusState: String? = nil
+    /// Number of dispatched background agents currently running.
+    /// When `statusState == "idle"` and this is > 0 the bar renders
+    /// the yellow "awaiting children" pulse + label instead of the
+    /// gray "idle" text. Mirrors the desktop's `agentRunningCount`
+    /// prop on `EngineFooter`. Defaults to 0 for older snapshots
+    /// that don't carry the field.
+    var runningAgentCount: Int = 0
 
     @State private var showModeConfirm = false
 
@@ -66,15 +73,41 @@ struct ConversationStatusBar: View {
                     .frame(height: 12)
             }
 
-            // Running/idle dot indicator (when statusState is provided)
+            // Running/idle/waiting dot indicator (when statusState is provided).
+            //
+            // Three visual states, priority cascade matches desktop's
+            // EngineFooter and the StatusDot/getTabStatusColor cascade
+            // in TabStripStatusDot.tsx / TabStripShared.ts:
+            //   - state == "running"  → orange `theme.statusRunning`
+            //     dot, label = state text (orange/foreground)
+            //   - state == "idle" AND runningAgentCount > 0 →
+            //     yellow `theme.statusWaitingChildren` dot, label =
+            //     "waiting for N background agent(s)" (yellow/background)
+            //   - otherwise → gray dot, plain `state` text (truly idle)
+            //
+            // The pulse is implicit on iOS — the InstancePulsingDot
+            // is reused in EngineInstanceBar; for this footer we keep
+            // the dot static like the prior implementation to avoid
+            // animating two separate status bars on screen. The label
+            // color carries the signal.
             if let state = statusState {
                 let isRunningState = state.lowercased() == "running"
+                let isWaitingChildren = state.lowercased() == "idle" && runningAgentCount > 0
+                let dotColor: Color = isRunningState
+                    ? theme.statusRunning
+                    : (isWaitingChildren ? theme.statusWaitingChildren : Color.gray)
+                let labelColor: Color = isRunningState
+                    ? theme.statusRunning
+                    : (isWaitingChildren ? theme.statusWaitingChildren : Color.secondary)
+                let labelText: String = isWaitingChildren
+                    ? "waiting for \(runningAgentCount) background agent\(runningAgentCount == 1 ? "" : "s")"
+                    : state
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(isRunningState ? theme.accent : Color.gray)
+                        .fill(dotColor)
                         .frame(width: 6, height: 6)
-                    Text(state)
-                        .foregroundStyle(isRunningState ? theme.accent : Color.secondary)
+                    Text(labelText)
+                        .foregroundStyle(labelColor)
                 }
 
                 Divider()

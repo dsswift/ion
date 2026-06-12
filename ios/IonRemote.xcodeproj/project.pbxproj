@@ -12,6 +12,7 @@
 		A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */; };
 		A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */; };
 		A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */; };
+		A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */; };
 		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
 		A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000CAA /* RelayClient.swift */; };
 		A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000EAA /* LANClient.swift */; };
@@ -81,6 +82,7 @@
 		A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */; };
 		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
+		A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */; };
 		A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */; };
 		A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */; };
 		A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */; };
@@ -95,6 +97,7 @@
 		A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */; };
 		A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */; };
 		A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */; };
+		A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */; };
 		A1B2C3D4E5F60001E50006AA /* EngineEventSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001E50007AA /* EngineEventSupport.swift */; };
 		A1B2C3D4E5F60001D70006AA /* DesktopSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */; };
 		A1B2C3D4E5F60001D80006AA /* DesktopSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */; };
@@ -196,6 +199,7 @@
 		A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabState.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Encode.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000CAA /* RelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClient.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000EAA /* LANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANClient.swift; sourceTree = "<group>"; };
@@ -267,6 +271,7 @@
 		A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabGroupCommands.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationHelpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConnectionEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineWorkflowEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabEventHandlers.swift"; sourceTree = "<group>"; };
@@ -280,6 +285,7 @@
 		A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Permission.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Terminal.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Engine.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+EngineDecoder.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001E50007AA /* EngineEventSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineEventSupport.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopSettingsModel.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopSettingsView.swift"; sourceTree = "<group>"; };
@@ -429,6 +435,7 @@
 				A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */,
 				A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */,
 				A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */,
+				A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */,
 				A1B2C3D4E5F60001E50007AA /* EngineEventSupport.swift */,
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
@@ -438,6 +445,7 @@
 				A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */,
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
+				A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
@@ -566,6 +574,7 @@
 				A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */,
 				B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
+				A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */,
 				A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */,
 				A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */,
 				A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */,
@@ -784,6 +793,7 @@
 				A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */,
 				A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */,
 				A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */,
+				A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */,
 				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,
 				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
 				A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */,
@@ -824,6 +834,7 @@
 				A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */,
 				B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
+				A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */,
 				A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */,
 				A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */,
 				A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */,
@@ -837,6 +848,7 @@
 				A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */,
 				A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */,
 				A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */,
+				A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */,
 				A1B2C3D4E5F60001E50006AA /* EngineEventSupport.swift in Sources */,
 				A1B2C3D4E5F60001D70006AA /* DesktopSettingsModel.swift in Sources */,
 				A1B2C3D4E5F60001D80006AA /* DesktopSettingsView.swift in Sources */,

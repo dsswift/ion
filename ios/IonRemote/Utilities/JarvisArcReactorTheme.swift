@@ -18,6 +18,12 @@ struct JarvisArcReactorTheme: AppTheme {
     let statusDone = Color.green
     let statusError = Color(red: 0xC4 / 255, green: 0x70 / 255, blue: 0x60 / 255)
     let statusPending = Color(red: 0x4A / 255, green: 0x9E / 255, blue: 0xF5 / 255)
+    // "Awaiting children" — keep amber even in the HUD theme so the
+    // foreground (cyan) vs. background (amber) distinction stays
+    // legible. A second cyan-tinted dot would collide with statusRunning
+    // at a glance, defeating the visual vocabulary the dot establishes
+    // on the desktop and IonDefaultTheme.
+    let statusWaitingChildren = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
     let surfaceElevated = Color(red: 8 / 255, green: 24 / 255, blue: 44 / 255)
     let codeBg = Color(red: 4 / 255, green: 14 / 255, blue: 28 / 255).opacity(0.8)
     let userBubbleTint = Color(red: 10 / 255, green: 36 / 255, blue: 60 / 255)
