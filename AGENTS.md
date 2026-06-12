@@ -182,7 +182,7 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Desktop | iOS counterpart | Sync path |
 |---------|----------------|-----------|
 | Tab status dot (TabStripTabPill, StatusDot) | Tab list dot (TabRowView.statusInfo) | `snapshot.ts` → `RemoteTabState.status` |
-| Engine instance bar (EngineStatusBar) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.engineInstances` |
+| Engine instance bar (EngineTabStrip) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.engineInstances` |
 | Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `engineInstances` |
 | Tab group pills | Tab group sections | `snapshot.ts` → group fields on `RemoteTabState` |
 | Thinking indicator / interrupt button | Activity indicator / interrupt button | Real-time events (`engineTextDelta`, `tabStatus`) |
