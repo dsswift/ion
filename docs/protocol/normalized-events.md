@@ -305,6 +305,40 @@ emitted at the model-fallback swap site in `runloop.go`.
 
 ---
 
+### plan_mode_auto_exit
+
+Workflow event emitted when the engine synthesizes an ExitPlanMode tool call at end-of-turn because the extension did not call ExitPlanMode itself. Sibling to `plan_proposal`. Both `plan_mode_auto_exit` and `plan_proposal` fire on synthesis: this event identifies that synthesis occurred, while `plan_proposal` carries the normal plan-approval payload.
+
+The event fires only when synthesis proceeds — if the `before_plan_mode_auto_exit` hook suppresses synthesis, neither this event nor `plan_proposal` is emitted. See [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md) for the full rationale.
+
+| Field          | Type                     | Description |
+|----------------|--------------------------|-------------|
+| `type`         | `"plan_mode_auto_exit"`  | Event type  |
+| `sessionId`    | string                   | Engine session ID |
+| `runId`        | string                   | Engine-issued request ID for the run |
+| `stopReason`   | string                   | The model's stop reason (`"end_turn"` or `"stop"`) |
+| `planFilePath` | string                   | Resolved plan file path used in the synthesized exit |
+| `planSlug`     | string                   | Basename of the plan file with `.md` stripped |
+| `reason`       | string                   | Human-readable explanation of why auto-exit fired |
+
+---
+
+### run_stalled
+
+Advisory workflow signal emitted once per run when the engine's progress watchdog detects no forward progress (no provider stream events, no tool results, no turn boundaries) for longer than the configured threshold and cancels the run as a safety backstop. The authoritative completion signal is the follow-up `task_complete` with a non-zero exit code; this event exists so consumers that want to render "stalled" distinctly from "errored" can do so.
+
+Not retained or replayed on reconnect. Headless harnesses receive the event in the JSON stream and may abort, retry, notify, or ignore.
+
+| Field             | Type             | Description |
+|-------------------|------------------|-------------|
+| `type`            | `"run_stalled"`  | Event type |
+| `stalledDuration` | number           | Seconds since the last recorded progress event. Equal to or greater than the configured threshold at emission time. |
+| `lastActivity`    | string           | Short description of the most recent progress event (e.g. `"provider stream chunk"`, `"tool result"`). Optional; empty when no description is available. |
+
+**Produced from:** `RunStalledEvent` in [`engine/internal/types/normalized_event.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event.go), emitted by the watchdog in `runloop_watchdog.go`.
+
+---
+
 ## Normalization Pipeline
 
 The normalizer processes raw events by inspecting the top-level `type` field:
