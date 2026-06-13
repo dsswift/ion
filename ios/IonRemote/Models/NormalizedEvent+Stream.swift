@@ -64,7 +64,8 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let text = try container.decode(String.self, forKey: .text)
             let switchTo = try container.decodeIfPresent(Bool.self, forKey: .switchTo) ?? false
-            return .inputPrefill(tabId: tabId, text: text, switchTo: switchTo)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            return .inputPrefill(tabId: tabId, text: text, switchTo: switchTo, instanceId: instanceId)
 
         default:
             return nil
@@ -131,11 +132,12 @@ extension RemoteEvent {
             try container.encode(prompts, forKey: .prompts)
             return true
 
-        case .inputPrefill(let tabId, let text, let switchTo):
+        case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
             try container.encode(TypeKey.inputPrefill, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(text, forKey: .text)
             if switchTo { try container.encode(true, forKey: .switchTo) }
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
             return true
 
         default:

@@ -70,6 +70,9 @@ extension DiagnosticLog {
         case .forkFromMessage(let tabId, let msgId):
             log("CMD: forkFromMessage tabId=\(tabId.prefix(8)) msgId=\(msgId.prefix(8))")
 
+        case .engineRewind(let tabId, let instanceId, let msgId, let userTurnIndex):
+            log("CMD: engineRewind tabId=\(tabId.prefix(8)) instanceId=\(instanceId.prefix(8)) msgId=\(msgId.prefix(8)) userTurnIndex=\(userTurnIndex.map(String.init) ?? "nil")")
+
         case .unpair:
             log("CMD: unpair")
 

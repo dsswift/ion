@@ -125,7 +125,26 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleInputPrefill(tabId: String, text: String, switchTo: Bool) {
+    func handleInputPrefill(tabId: String, text: String, switchTo: Bool, instanceId: String?) {
+        // Engine-instance prefill (engine_rewind): seed the engine instance's
+        // draft, not the CLI input. The desktop broadcasts a fresh
+        // engine_conversation_history immediately after the rewind restart
+        // (broadcastEngineHistory), which the engineConversationHistory handler
+        // applies as a full replace — so the truncated message list refreshes
+        // on its own. Here we only place the rewound user message back in the
+        // engine input box.
+        if let instanceId {
+            DiagnosticLog.log("EVENT: inputPrefill -> engine draft tabId=\(tabId.prefix(8)) instance=\(instanceId.prefix(8)) len=\(text.count)")
+            setEngineDraft(tabId: tabId, instanceId: instanceId, text)
+            if switchTo {
+                pendingNavigationTabId = tabId
+            }
+            return
+        }
+
+        // CLI-tab prefill: write the tab-level pending input and (for a
+        // rewind, switchTo == false) reload the CLI conversation so the
+        // truncated history is reflected.
         pendingInputByTab[tabId] = text
         if switchTo {
             pendingNavigationTabId = tabId

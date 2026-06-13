@@ -161,8 +161,8 @@ extension SessionViewModel {
             guard !conversationLoaded.contains(tabId) else { break }
             liveText[tabId, default: ""] += "\n[error] \(message)\n"
 
-        case .inputPrefill(let tabId, let text, let switchTo):
-            handleInputPrefill(tabId: tabId, text: text, switchTo: switchTo)
+        case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
+            handleInputPrefill(tabId: tabId, text: text, switchTo: switchTo, instanceId: instanceId)
 
         // Terminal events
         case .terminalOutput(let tabId, let instanceId, let data):

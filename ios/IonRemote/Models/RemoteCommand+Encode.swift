@@ -112,6 +112,13 @@ extension RemoteCommand {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(messageId, forKey: .messageId)
 
+        case .engineRewind(let tabId, let instanceId, let messageId, let userTurnIndex):
+            try container.encode(TypeKey.engineRewind, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
+            try container.encode(messageId, forKey: .messageId)
+            try container.encodeIfPresent(userTurnIndex, forKey: .userTurnIndex)
+
         case .unpair:
             try container.encode(TypeKey.unpair, forKey: .type)
 

@@ -73,8 +73,8 @@ extension DiagnosticLog {
         case .transportReconnecting:
             log("EVENT: transportReconnecting")
 
-        case .inputPrefill(let tabId, let text, let switchTo):
-            log("EVENT: inputPrefill tabId=\(tabId.prefix(8)) len=\(text.count) switchTo=\(switchTo)")
+        case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
+            log("EVENT: inputPrefill tabId=\(tabId.prefix(8)) len=\(text.count) switchTo=\(switchTo) instance=\(instanceId?.prefix(8) ?? "nil")")
 
         case .terminalOutput(let tabId, let instId, let data):
             log("EVENT: terminalOutput tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8)) len=\(data.count)")

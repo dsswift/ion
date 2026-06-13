@@ -43,7 +43,9 @@ enum RemoteEvent: Codable, Sendable {
     /// Heartbeat from the desktop with sender timestamp and queue depth.
     case heartbeat(senderTs: Double, buffered: Int)
     /// Desktop is prefilling input text (after rewind or fork).
-    case inputPrefill(tabId: String, text: String, switchTo: Bool)
+    /// `instanceId` is set when the prefill targets a specific engine
+    /// instance's draft (engine_rewind); nil for CLI-tab rewinds.
+    case inputPrefill(tabId: String, text: String, switchTo: Bool, instanceId: String?)
     // Terminal events
     case terminalOutput(tabId: String, instanceId: String, data: String)
     case terminalExit(tabId: String, instanceId: String, exitCode: Int)

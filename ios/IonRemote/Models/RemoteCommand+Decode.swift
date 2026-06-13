@@ -125,6 +125,13 @@ extension RemoteCommand {
             let messageId = try container.decode(String.self, forKey: .messageId)
             self = .forkFromMessage(tabId: tabId, messageId: messageId)
 
+        case .engineRewind:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            let messageId = try container.decode(String.self, forKey: .messageId)
+            let userTurnIndex = try container.decodeIfPresent(Int.self, forKey: .userTurnIndex)
+            self = .engineRewind(tabId: tabId, instanceId: instanceId, messageId: messageId, userTurnIndex: userTurnIndex)
+
         case .unpair:
             self = .unpair
 
