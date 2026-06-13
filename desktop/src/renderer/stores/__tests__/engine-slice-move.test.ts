@@ -63,6 +63,7 @@ function makeInstance(id: string, label: string, extra?: Partial<ConversationIns
     agentStates: [],
     statusFields: null,
     planFilePath: null,
+    forkedFromConversationIds: null,
     ...extra,
   }
 }

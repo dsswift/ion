@@ -77,6 +77,8 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         ? [...tab.historicalSessionIds, oldSessionId]
         : [...tab.historicalSessionIds]
 
+      console.log(`[store] rewindToMessage: tabId=${tabId.slice(0, 8)} msgIdx=${idx} totalMsgs=${tab.messages.length} keepMsgs=${idx} oldSessionId=${oldSessionId?.slice(0, 16) ?? 'none'} historicalChainLen=${historicalSessionIds.length}`)
+
       const rewoundMessages = tab.messages.slice(0, idx)
       const lastToolMsg = [...rewoundMessages].reverse().find((m) => m.toolName)
       const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')

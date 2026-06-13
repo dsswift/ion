@@ -73,6 +73,10 @@ export interface PersistedTab {
    * `engineDenials` and `engineModelOverrides`.
    */
   enginePermissionModes?: Record<string, 'auto' | 'plan'>
+  /** Per-engine-instance forked conversation ID chain, keyed by `instanceId`.
+   *  Set after rewind so the next prompt can inject prior-conversation context.
+   *  Persisted so the rewind state survives app restart. */
+  engineForkedFromConversationIds?: Record<string, string[]>
   terminalInstances?: TerminalInstance[]
   terminalBuffers?: Record<string, string>
   /** Wall-clock ms of the most recent engine event for this tab. Persisted so

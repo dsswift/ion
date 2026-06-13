@@ -148,6 +148,13 @@ function persistTabs(useSessionStore: Store): void {
             if (m && m !== 'auto') permModes[inst.id] = m
           }
           if (Object.keys(permModes).length > 0) result.enginePermissionModes = permModes
+          const forkedChains: Record<string, string[]> = {}
+          for (const inst of hPane.instances) {
+            if (inst.forkedFromConversationIds && inst.forkedFromConversationIds.length > 0) {
+              forkedChains[inst.id] = inst.forkedFromConversationIds
+            }
+          }
+          if (Object.keys(forkedChains).length > 0) result.engineForkedFromConversationIds = forkedChains
           return result
         })() : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),

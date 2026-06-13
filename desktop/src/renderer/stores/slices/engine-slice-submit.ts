@@ -88,7 +88,48 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
       // Filter out invalid model values (e.g. "unknown" from stale state)
       // so the engine's own defaultModel resolution handles the fallback.
       const modelOverride = rawModel === 'unknown' ? undefined : rawModel
-      window.ion.enginePrompt(key, text, modelOverride, appendSystemPrompt, imageAttachments, rawAttachments, implementationPhase).then((result) => {
+
+      // ─── Rewind context injection ───
+      // If this instance was rewound (forkedFromConversationIds is set),
+      // inject the prior conversation as a system prompt so the fresh
+      // engine session has context from before the rewind point. Same
+      // pattern as CLI rewind in send-slice.ts. One-shot: cleared after
+      // injection regardless of whether prior messages existed.
+      let effectiveSystemPrompt = appendSystemPrompt
+      if (currentInst?.forkedFromConversationIds) {
+        const priorMessages = (currentInst.messages ?? [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .filter((m) => m.content.trim().length > 0)
+        if (priorMessages.length > 0) {
+          const transcript = priorMessages
+            .map((m) => `[${m.role}]: ${m.content}`)
+            .join('\n\n')
+          const forkCtx = `This conversation was forked from a previous session. Here is the conversation history up to the fork point:\n\n<prior-conversation>\n${transcript}\n</prior-conversation>\n\nContinue from this point. The user's next message is the first message in this forked conversation.`
+          effectiveSystemPrompt = effectiveSystemPrompt
+            ? `${effectiveSystemPrompt}\n\n${forkCtx}`
+            : forkCtx
+          console.log(`[engine] rewind context injected: key=${key} priorMessages=${priorMessages.length} transcriptLen=${transcript.length} forkedFrom=${JSON.stringify(currentInst.forkedFromConversationIds)}`)
+        } else {
+          console.log(`[engine] rewind context skipped (no prior user/assistant messages): key=${key} forkedFrom=${JSON.stringify(currentInst.forkedFromConversationIds)}`)
+        }
+        // Clear forkedFromConversationIds — one-shot injection.
+        console.log(`[engine] rewind context cleared forkedFromConversationIds: key=${key}`)
+        set((state) => {
+          const enginePanes = new Map(state.enginePanes)
+          const paneInner = enginePanes.get(tabId)
+          if (paneInner) {
+            const idx2 = paneInner.instances.findIndex((i) => i.id === instanceId)
+            if (idx2 !== -1) {
+              const instances = paneInner.instances.slice()
+              instances[idx2] = { ...instances[idx2], forkedFromConversationIds: null }
+              enginePanes.set(tabId, { ...paneInner, instances })
+            }
+          }
+          return { enginePanes }
+        })
+      }
+
+      window.ion.enginePrompt(key, text, modelOverride, effectiveSystemPrompt, imageAttachments, rawAttachments, implementationPhase).then((result) => {
         if (result && !result.ok) {
           set((state) => {
             const enginePanes = new Map(state.enginePanes)

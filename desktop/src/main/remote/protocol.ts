@@ -147,6 +147,7 @@ export type RemoteCommand =
   | { type: 'rename_terminal_instance'; tabId: string; instanceId: string; label: string }
   | { type: 'rewind'; tabId: string; messageId: string }
   | { type: 'fork_from_message'; tabId: string; messageId: string }
+  | { type: 'engine_rewind'; tabId: string; instanceId: string; messageId: string }
   | { type: 'create_engine_tab'; workingDirectory?: string; profileId?: string }
   | { type: 'engine_prompt'; tabId: string; instanceId?: string; text: string; attachments?: Array<{ type: 'image' | 'file'; name: string; path: string }>; implementationPhase?: boolean }
   | { type: 'engine_abort'; tabId: string; instanceId?: string }

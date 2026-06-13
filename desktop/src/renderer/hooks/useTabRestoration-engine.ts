@@ -72,6 +72,7 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
   const instanceConversationIds = new Map<string, string[]>()
   const instanceModelOverrides = new Map<string, string>()
   const instancePermissionModes = new Map<string, 'auto' | 'plan'>()
+  const instanceForkedChains = new Map<string, string[]>()
 
   if (st.engineInstances && st.engineInstances.length > 0) {
     if (st.engineMessages) {
@@ -169,6 +170,15 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
       }
     }
 
+    if (st.engineForkedFromConversationIds) {
+      for (const inst of st.engineInstances) {
+        const chain = st.engineForkedFromConversationIds[inst.id]
+        if (chain && chain.length > 0) {
+          instanceForkedChains.set(inst.id, chain)
+        }
+      }
+    }
+
     // Fallback: synthesize a denial from the last tool message in
     // each instance's persisted engineMessages when the engine
     // hasn't yet replayed a permissionDenials entry for it.
@@ -230,6 +240,7 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
       agentStates: instanceAgentStates.get(inst.id) || [],
       statusFields: null,   // populated on first engine_status event
       planFilePath: null,   // populated on first engine_plan_mode_changed event
+      forkedFromConversationIds: instanceForkedChains.get(inst.id) || null,
     }))
     restoredPanes.set(tabId, {
       instances: populatedInstances,

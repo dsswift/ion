@@ -195,6 +195,13 @@ export interface State {
    * the engine-instance equivalent of resetTabSession on the CLI plane.
    */
   resetEngineInstance: (tabId: string, instanceId: string) => void
+  /**
+   * Rewind an engine instance to a previous user message. Truncates messages
+   * to before the target, tears down the running session, and pre-fills the
+   * input bar with the target message's text. Prior conversation context is
+   * injected as a system prompt on the next send (one-shot).
+   */
+  rewindEngineInstance: (tabId: string, instanceId: string, messageId: string) => void
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
   reorderEngineInstances: (tabId: string, reordered: Array<EngineInstance & ConversationInstance>) => void

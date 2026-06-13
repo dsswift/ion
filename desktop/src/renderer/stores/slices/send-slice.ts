@@ -198,6 +198,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           effectiveSystemPrompt = effectiveSystemPrompt
             ? `${effectiveSystemPrompt}\n\n${forkCtx}`
             : forkCtx
+          console.log(`[store] rewind context injected: tabId=${activeTabId?.slice(0, 8)} priorMessages=${priorMessages.length} transcriptLen=${transcript.length} forkedFromSessionId=${tab.forkedFromSessionId?.slice(0, 16)}`)
         }
       }
 

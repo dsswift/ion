@@ -92,6 +92,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         agentStates: [],
         statusFields: null,
         planFilePath: null,
+        forkedFromConversationIds: null,
       }
       panes.set(tabId, {
         instances: [...pane.instances, instance],
@@ -253,6 +254,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
             agentStates: [],
             statusFields: null,
             planFilePath: null,
+            forkedFromConversationIds: null,
           }
         }),
       })
@@ -270,6 +272,122 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       engineUsage.delete(key)
 
       set({ enginePanes: panes, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage })
+    },
+
+    rewindEngineInstance: (tabId, instanceId, messageId) => {
+      const tab = get().tabs.find((t) => t.id === tabId)
+      if (!tab) {
+        console.warn(`[engine] rewindEngineInstance: tab not found tabId=${tabId.slice(0, 8)}`)
+        return
+      }
+      const panes = new Map(get().enginePanes)
+      const pane = panes.get(tabId)
+      if (!pane) {
+        console.warn(`[engine] rewindEngineInstance: pane not found tabId=${tabId.slice(0, 8)}`)
+        return
+      }
+      const inst = pane.instances.find((i) => i.id === instanceId)
+      if (!inst) {
+        console.warn(`[engine] rewindEngineInstance: instance not found tabId=${tabId.slice(0, 8)} instanceId=${instanceId}`)
+        return
+      }
+      const idx = inst.messages.findIndex((m) => m.id === messageId)
+      if (idx < 0) {
+        console.warn(`[engine] rewindEngineInstance: message not found tabId=${tabId.slice(0, 8)} instanceId=${instanceId} messageId=${messageId}`)
+        return
+      }
+
+      const targetMessage = inst.messages[idx]
+      const key = `${tabId}:${instanceId}`
+      const priorConvIds = inst.conversationIds.length > 0 ? [...inst.conversationIds] : null
+      console.log(`[engine] rewindEngineInstance: key=${key} msgIdx=${idx} totalMsgs=${inst.messages.length} keepMsgs=${idx} priorConvIds=${JSON.stringify(priorConvIds)} targetMsgLen=${targetMessage.content.length}`)
+
+      // Stop the engine session completely (not just abort the current run).
+      // A rewind must start a fresh conversation — aborting would leave the
+      // old conversation file intact and the next send_prompt would append to
+      // it, creating a confusing state where the engine has full pre-rewind
+      // history but the desktop shows truncated messages.
+      window.ion.engineStop(key).then(() => {
+        console.log(`[engine] rewindEngineInstance: session stopped key=${key}, starting fresh session`)
+        // Start a fresh session with the same key. No sessionId is passed,
+        // so the engine allocates a new conversation file. The prior context
+        // is injected as appendSystemPrompt on the next prompt (see
+        // engine-slice-submit.ts fork context injection).
+        const { engineProfiles } = usePreferencesStore.getState()
+        const profile = tab.engineProfileId ? engineProfiles.find((p) => p.id === tab.engineProfileId) : null
+        window.ion.engineStart(key, {
+          profileId: profile?.id || '',
+          extensions: profile?.extensions || [],
+          workingDirectory: tab.workingDirectory,
+        }).then(() => {
+          console.log(`[engine] rewindEngineInstance: fresh session started key=${key} profile=${profile?.id || 'none'}`)
+        }).catch((err: any) => {
+          console.error(`[engine] rewindEngineInstance: restart failed key=${key} err=${err.message}`)
+        })
+      }).catch((err: any) => {
+        console.error(`[engine] rewindEngineInstance: stop failed key=${key} err=${(err as Error).message}`)
+      })
+
+      const rewoundMessages = inst.messages.slice(0, idx)
+
+      // Restore permissionDenied from the last tool message in the truncated
+      // history, same heuristic as CLI rewindToMessage in resume-slice.ts.
+      const parseInput = (raw?: string): Record<string, unknown> | undefined => {
+        if (!raw) return undefined
+        try { return JSON.parse(raw) } catch { return undefined }
+      }
+      const lastToolMsg = [...rewoundMessages].reverse().find((m) => m.toolName)
+      const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
+        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseInput(lastToolMsg.toolInput) }] }
+        : null
+
+      panes.set(tabId, {
+        ...pane,
+        instances: pane.instances.map((i) => {
+          if (i.id !== instanceId) return i
+          return {
+            ...i,
+            messages: rewoundMessages,
+            modelOverride: i.modelOverride,  // preserve model selection across rewind
+            permissionMode: i.permissionMode, // preserve permission mode across rewind
+            permissionDenied: restoredDenied,
+            conversationIds: [],
+            draftInput: targetMessage.content,
+            agentStates: [],
+            statusFields: null,
+            planFilePath: null,
+            forkedFromConversationIds: i.conversationIds.length > 0 ? [...i.conversationIds] : null,
+          }
+        }),
+      })
+
+      // Clean up compound-keyed Maps — same as resetEngineInstance.
+      const engineWorkingMessages = new Map(get().engineWorkingMessages)
+      const engineNotifications = new Map(get().engineNotifications)
+      const engineDialogs = new Map(get().engineDialogs)
+      const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
+      const engineUsage = new Map(get().engineUsage)
+      engineWorkingMessages.delete(key)
+      engineNotifications.delete(key)
+      engineDialogs.delete(key)
+      enginePinnedPrompt.delete(key)
+      engineUsage.delete(key)
+
+      set((state) => ({
+        enginePanes: panes,
+        engineWorkingMessages,
+        engineNotifications,
+        engineDialogs,
+        enginePinnedPrompt,
+        engineUsage,
+        // Set pendingInput on the parent TabState so InputBar pre-fills
+        // immediately (same one-shot pattern as CLI rewindToMessage).
+        tabs: state.tabs.map((t) =>
+          t.id === tabId
+            ? { ...t, pendingInput: targetMessage.content }
+            : t
+        ),
+      }))
     },
 
     selectEngineInstance: (tabId, instanceId) => {

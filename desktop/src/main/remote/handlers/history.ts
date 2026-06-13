@@ -57,6 +57,28 @@ export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 
   }
 }
 
+export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'engine_rewind' }>): Promise<void> {
+  try {
+    const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedInstId = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const inputText = await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return null;
+        store.getState().rewindEngineInstance('${escapedTabId}', '${escapedInstId}', '${escapedMsgId}');
+        var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+        return tab ? tab.pendingInput || null : null;
+      })()
+    `)
+    if (inputText) {
+      state.remoteTransport?.send({ type: 'input_prefill', tabId: cmd.tabId, text: inputText })
+    }
+  } catch (err) {
+    log(`engine_rewind error: ${(err as Error).message}`)
+  }
+}
+
 export function handleUnpair(deviceId: string): void {
   if (deviceId) {
     log(`Remote unpair command from device ${deviceId}`)

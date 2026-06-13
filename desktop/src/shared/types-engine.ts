@@ -111,6 +111,9 @@ export interface ConversationInstance {
   statusFields: StatusFields | null
   /** Path to the active plan file (null = not in plan mode / no plan yet) */
   planFilePath: string | null
+  /** Set after rewind — the conversation ID chain before rewind. Used to inject
+   *  prior-conversation context on the next prompt. Cleared after first send. */
+  forkedFromConversationIds: string[] | null
 }
 
 export interface EnginePaneState {
