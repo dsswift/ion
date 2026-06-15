@@ -13,6 +13,28 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.39.0](https://github.com/dsswift/ion/compare/engine-v1.38.0...engine-v1.39.0) (2026-06-15)
+
+### Features
+
+* **engine:** add CompactNow capability and engine_export constant ([b52bf31](https://github.com/dsswift/ion/commit/b52bf31995e9321e3290331b103a085ebf130559))
+* **engine:** rename dead Engine* instance vocab to Conversation* ([94ad974](https://github.com/dsswift/ion/commit/94ad9743e32499c520982e5606c05d1e1d87590b))
+* **engine:** add ion-meta log and transcript introspection (#228) ([b05779d](https://github.com/dsswift/ion/commit/b05779d7081675eb9e427249a1d2b7f30c775962))
+* **engine:** explicit fresh-conversation path for restart (#231) ([624f4da](https://github.com/dsswift/ion/commit/624f4dac13fc04980776967976661a9ea640691e))
+* **engine:** session-rooted cancellation context tree (#232) ([d82d4bc](https://github.com/dsswift/ion/commit/d82d4bcbafc89cdca29828c75d2f7026848c3760))
+* **engine:** evolve llmCall opts + async concurrency (#225,#226) ([fde8acc](https://github.com/dsswift/ion/commit/fde8acc46edd43f994b523be5963c7877a939b7e))
+* **engine:** add IsRoot flag and agentName to before_agent_start (#227) ([157e388](https://github.com/dsswift/ion/commit/157e38895843ea3ba7fdee25e5590eda07208066))
+
+### Bug Fixes
+
+* **engine:** serialize file-mutating tools on same path ([ce59ae6](https://github.com/dsswift/ion/commit/ce59ae6e3d04848edb4a1a001702782415420068))
+* **engine:** prevent cache_control on empty text blocks ([e779dfa](https://github.com/dsswift/ion/commit/e779dfa122cc24aa2f29e1727abf114af91d1632))
+* **engine:** clear pending denials on /clear ([91b296f](https://github.com/dsswift/ion/commit/91b296ff97d588bd4f819a6eda8f3ffaf7ec8477))
+* **engine:** use fmt.Fprintf in tools_files_test (lint) ([e97d13a](https://github.com/dsswift/ion/commit/e97d13abd329796b7134616741b27ec808b860b6))
+* **engine:** add agentName to BeforeAgentStartResult SDK type ([7af4892](https://github.com/dsswift/ion/commit/7af489252b6667f6642c5323526ea60b8213fe35))
+* **engine:** repair openai-compatible stream tool args + errors (#229) ([76789c0](https://github.com/dsswift/ion/commit/76789c04346fb3d4d08b86e559218f8516b007bf))
+* **engine:** stop pinning stale command-type magic number ([998ed68](https://github.com/dsswift/ion/commit/998ed685adf810f440c4212d5ffb94fc98b1f6c9))
+
 ## [1.38.0](https://github.com/dsswift/ion/compare/engine-v1.37.0...engine-v1.38.0) (2026-06-12)
 
 ### Features

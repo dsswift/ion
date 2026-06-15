@@ -10,6 +10,18 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.40.0](https://github.com/dsswift/ion/compare/ios-v1.39.0...ios-v1.40.0) (2026-06-15)
+
+### Features
+
+* **ios:** add engine-tab rewind to reach desktop parity ([305f3bf](https://github.com/dsswift/ion/commit/305f3bf90e0f4567672fb5918506820c2bf4aec8))
+* **ios:** rename Engine* instance vocab to Conversation* ([1dae06b](https://github.com/dsswift/ion/commit/1dae06b0337b64722901d6bf96445cc06f123fd3))
+
+### Bug Fixes
+
+* **ios:** mirror engine context window fix in status bar ([f0bdd9e](https://github.com/dsswift/ion/commit/f0bdd9ebbcabcecc707da978ed248e23fe06901c))
+* **ios:** suppress restored card after /clear divider ([f8109a1](https://github.com/dsswift/ion/commit/f8109a1e8329fb58ca5fd32a98671356ddf6dbe4))
+
 ## [1.39.0](https://github.com/dsswift/ion/compare/ios-v1.38.0...ios-v1.39.0) (2026-06-12)
 
 ### Features

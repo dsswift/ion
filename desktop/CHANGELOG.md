@@ -10,6 +10,26 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.53.0](https://github.com/dsswift/ion/compare/desktop-v1.52.0...desktop-v1.53.0) (2026-06-15)
+
+### Features
+
+* **desktop:** add rewind support for engine tab conversations ([bfb82c5](https://github.com/dsswift/ion/commit/bfb82c5cd1ff2f6396b99ef4ff11705b8453e171))
+* **desktop:** carry instanceId on engine_rewind input_prefill reply ([eaa823d](https://github.com/dsswift/ion/commit/eaa823d406e0e56cc6c52d1732b88925915b1232))
+* **desktop:** add ensureSession as single eager durable start site ([ee8f2d6](https://github.com/dsswift/ion/commit/ee8f2d64d297c5f9203de6c34e543fa965eb56c7))
+* **desktop:** restart resilience for reused tab keys (#231) ([a851126](https://github.com/dsswift/ion/commit/a851126e868ed9db56daf122600abf129f69f91d))
+* **desktop:** configurable editor and conversation font sizes ([430cd36](https://github.com/dsswift/ion/commit/430cd36989252719e6f8e44bf858d35f31adaf15))
+* **desktop:** keep literal tab title for slash-command prompts ([e528367](https://github.com/dsswift/ion/commit/e5283671d0b5a39e6b3b52a38444dba9a12c483e))
+
+### Bug Fixes
+
+* **desktop:** stack engine toasts vertically with close buttons ([9b5e250](https://github.com/dsswift/ion/commit/9b5e250b8f294bba8b9ec0468cbae647ccea60af))
+* **desktop:** filter extension picker to supported entry points ([cde55da](https://github.com/dsswift/ion/commit/cde55da50c77a9c90449e3682d61e9e9f19d885e))
+* **desktop:** use engine context window in status bar indicator ([3062a90](https://github.com/dsswift/ion/commit/3062a90bac740f5bc7a1d0838beaa0a9c71571d3))
+* **desktop:** dismiss question/plan card on /clear ([7865879](https://github.com/dsswift/ion/commit/7865879dcdfee203cede4cd7d4639cf17f37cd1b))
+* **desktop:** guard idle pre-mint from clobbering conversationId ([7ba1b70](https://github.com/dsswift/ion/commit/7ba1b700d404e54e037e3b9c68b67848e8e33b60))
+* **desktop:** mock electron in engine-rewind test for ci ([d158dd2](https://github.com/dsswift/ion/commit/d158dd2b32fffc73aaf2f115147f88beab5a77a0))
+
 ## [1.52.0](https://github.com/dsswift/ion/compare/desktop-v1.51.0...desktop-v1.52.0) (2026-06-12)
 
 ### Features
