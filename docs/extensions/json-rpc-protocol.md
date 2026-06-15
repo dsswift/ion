@@ -108,7 +108,7 @@ For hooks with structured payloads, the payload fields are merged directly into 
 
 **Response patterns:**
 
-Five return patterns cover all 55 hooks:
+Five return patterns cover every hook:
 
 **Void** -- fire-and-forget hooks. Return null.
 

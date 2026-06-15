@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Tool System
 
-The engine provides 14 core tools and 4 optional tools. Tools are the primary way the LLM interacts with the filesystem, network, and external systems.
+The engine provides a set of core tools plus optional task tools. Tools are the primary way the LLM interacts with the filesystem, network, and external systems.
 
 ## Architecture
 

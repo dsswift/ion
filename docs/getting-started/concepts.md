@@ -46,13 +46,26 @@ Sessions are created with `start_session` and destroyed with `stop_session`. Mul
 
 The engine manages session lifecycle. The daemon broadcasts events from all sessions to all connected clients. Clients filter by session key.
 
+## Conversations
+
+A conversation is the unit a client renders: one continuous thread of user prompts and agent responses backed by a session. There is a **single, unified conversation type**. The terms below are the canonical vocabulary; use them in code, comments, and docs.
+
+- **Conversation** — the unified type. Whether it runs on the `api` or `cli` backend is an **orthogonal axis**, not a separate kind of conversation.
+- **Plain conversation** — a conversation with **no** engine extension hosted inside it (`hasEngineExtension === false`). The control plane drives it directly.
+- **Extension-hosted conversation** — a conversation that **hosts an engine extension** (`hasEngineExtension === true`). The hosted extension adds multi-instance UI, profiles, and sub-conversations. The presence of the extension is the only real differentiator from a plain conversation.
+- **Backend axis** — `api` (the default, used by the vast majority of conversations) versus `cli` (the Claude Code subprocessor backend, `CliBackend` / `HybridBackend`). This axis is independent of whether a conversation is plain or extension-hosted.
+- **Normalized stream** — the control-plane event stream of typed `NormalizedEvent`s. It drives plain conversations.
+- **Raw extension stream** — the raw `engine_*` event stream (delivered via `onEngineEvent`). It drives extension-hosted instances.
+
+The distinction between the two streams is about **how events arrive and are interpreted**, not about a conversation "type." Both stream into the same unified conversation model.
+
 ## Extensions
 
 An extension is a subprocess that communicates with the engine over JSON-RPC 2.0 (stdin/stdout). Extensions can be written in any language. A TypeScript SDK is provided, but anything that reads JSON-RPC from stdin and writes responses to stdout will work.
 
 An extension can:
 
-- **Register hooks**: intercept and modify engine behavior at 55 defined points
+- **Register hooks**: intercept and modify engine behavior at defined points throughout the agent loop
 - **Register tools**: add custom tools the LLM can invoke
 - **Register commands**: add custom client commands
 - **Emit events**: send data back through the engine's event stream
@@ -61,7 +74,7 @@ Extensions are loaded at session start via the `--extension` flag or through con
 
 ## Hooks
 
-Hooks are the primary way extensions shape agent behavior. Ion defines 55 hooks across 15 categories:
+Hooks are the primary way extensions shape agent behavior. Ion defines hooks across the full agent lifecycle, grouped by category. A representative sample:
 
 | Category | Examples | Purpose |
 |----------|----------|---------|
@@ -77,7 +90,7 @@ Hooks are the primary way extensions shape agent behavior. Ion defines 55 hooks 
 
 Hooks follow a request/response pattern. The engine sends a hook notification to all registered extensions, collects responses, and merges them. Some hooks can block execution (returning an error or denial), while others modify data in-flight.
 
-See the [hooks reference](../hooks/) for the complete list.
+See the [hooks reference](../hooks/reference.md) for the complete, authoritative list.
 
 ## Agents
 
@@ -87,7 +100,7 @@ Agents share the session's conversation tree (creating a branch) but have indepe
 
 ## Providers
 
-Ion supports 14+ LLM providers, all implemented as raw HTTP with SSE parsing. No provider SDKs are used.
+Ion supports a broad set of LLM providers, all implemented as raw HTTP with SSE parsing. No provider SDKs are used.
 
 **Native providers** (purpose-built implementations):
 - Anthropic
@@ -105,7 +118,7 @@ Provider selection happens per-request via the model name. The engine routes `cl
 
 ## Tools
 
-The engine ships 14 core tools that are always available, plus 4 optional tools that a harness can opt into.
+The engine ships a set of always-available core tools, plus optional task tools a harness can opt into.
 
 **Core tools:**
 
@@ -125,10 +138,13 @@ The engine ships 14 core tools that are always available, plus 4 optional tools 
 | `Skill` | Load skill presets |
 | `ListMcpResources` | List MCP server resources |
 | `ReadMcpResource` | Read an MCP resource |
+| `SearchHistory` | Search prior conversation history |
 
 **Optional tools** (harness opt-in): `TaskCreate`, `TaskList`, `TaskGet`, `TaskStop`.
 
 Every tool invocation passes through the hook system. Per-tool hooks (`beforeBash`, `beforeWrite`, etc.) let extensions gate, modify, or deny individual tool calls.
+
+See the [tools reference](../tools/reference.md) for the complete, authoritative list.
 
 ## Configuration
 
@@ -160,7 +176,7 @@ See the [configuration reference](../configuration/) for the full schema.
 
 All communication between clients and the engine uses NDJSON (newline-delimited JSON) over a Unix domain socket (`~/.ion/engine.sock`) or TCP (`127.0.0.1:21017` on Windows).
 
-**Client to engine**: 20 command types (e.g., `start_session`, `send_prompt`, `stop_session`, `shutdown`).
+**Client to engine**: a set of command types (e.g., `start_session`, `send_prompt`, `stop_session`, `shutdown`).
 
 **Engine to clients**: broadcast events (e.g., `engine_text_delta`, `engine_status`, `engine_tool_use`, `engine_error`). Events are broadcast to all connected clients; clients filter by session key.
 
@@ -171,6 +187,6 @@ See the [protocol reference](../protocol/) for the full command and event catalo
 ## Next steps
 
 - [CLI reference](../cli/reference.md) -- all commands and flags
-- [Hooks reference](../hooks/) -- the 55-hook catalog
+- [Hooks reference](../hooks/) -- the hook catalog
 - [Extension SDK](../extensions/) -- build your first extension
 - [Configuration](../configuration/) -- engine.json schema

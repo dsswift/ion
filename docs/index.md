@@ -6,9 +6,9 @@ sidebar_position: 1
 
 # Ion Engine
 
-Ion is a headless AI agent runtime. Single Go binary (~9MB), zero runtime dependencies. It runs as a daemon on a Unix socket or TCP port, speaks NDJSON, and executes LLM-driven agent loops with tool use, branching conversations, and a 55-hook extension system.
+Ion is a headless AI agent runtime. Single Go binary (~9MB), zero runtime dependencies. It runs as a daemon on a Unix socket or TCP port, speaks NDJSON, and executes LLM-driven agent loops with tool use, branching conversations, and a hook-based extension system.
 
-14+ LLM providers via raw HTTP (no SDKs). 14 core tools. 4-layer config merge with enterprise sealing. Extensions in any language via JSON-RPC 2.0.
+Multi-provider LLM access via raw HTTP (no SDKs). A built-in core tool set. 4-layer config merge with enterprise sealing. Extensions in any language via JSON-RPC 2.0.
 
 ## Who is this for?
 

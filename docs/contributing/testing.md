@@ -44,7 +44,7 @@ Integration test files:
 | `session_lifecycle_test.go` | Session start/stop, prompt handling, abort, plan mode, event flow |
 | `api_backend_test.go` | Agent loop: text responses, tool calls, budget limits, cancellation, hooks |
 | `conversation_roundtrip_test.go` | JSONL persistence round-trip, branching, migration, compaction |
-| `protocol_contract_test.go` | Wire format validation, NDJSON framing, all 16 command types |
+| `protocol_contract_test.go` | Wire format validation, NDJSON framing, the full command-type set |
 | `normalizer_test.go` | Event normalization pipeline, event round-trip fidelity |
 | `tools_test.go` | Real tool execution: Read, Write, Edit, Bash, Grep, Glob |
 | `agent_streaming_test.go` | Agent streaming behavior |

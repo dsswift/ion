@@ -12,7 +12,7 @@ Extensions add custom behavior to the Ion Engine. They run as subprocesses that 
 
 Extensions plug into four systems:
 
-**Hooks** -- React to engine lifecycle events. There are 59 hooks across 16 categories covering session lifecycle, tool execution, context loading, permissions, extension crash recovery, and more. Hooks can observe events passively (logging, analytics) or actively modify behavior (rewrite prompts, block tool calls, inject context).
+**Hooks** -- React to engine lifecycle events. Hooks span the agent lifecycle, covering session lifecycle, tool execution, context loading, permissions, extension crash recovery, and more. Hooks can observe events passively (logging, analytics) or actively modify behavior (rewrite prompts, block tool calls, inject context).
 
 **Tools** -- Register custom tools that the LLM can invoke. Tools appear alongside the engine's built-in tools (Read, Write, Bash, etc.) and follow the same JSON Schema parameter definition. The LLM decides when to use them based on the tool description and the current task.
 
