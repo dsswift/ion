@@ -933,6 +933,8 @@ export interface BeforeProviderRequestInfo {
 /** Optional return from `before_agent_start`. */
 export interface BeforeAgentStartResult {
   systemPrompt?: string
+  /** Override agent name; empty/absent means no change. */
+  agentName?: string
 }
 
 /** Optional return from `before_prompt`. */
