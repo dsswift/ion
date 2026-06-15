@@ -423,6 +423,45 @@ Every solution must solve the problem at its root cause. **Never trade correctne
 
 5. **Never avoid expanding a surface to dodge work.** If a feature requires a new event type on iOS, a new protocol field, a new enum case, or a new handler — add it. Workarounds that relay, proxy, or approximate the proper mechanism to "keep the surface small" are the same anti-pattern as substituting a heuristic for a precise mechanism. API surfaces, event surfaces, and wire protocols are meant to grow as the product grows. A comment like "iOS does not yet act on this" is a gap waiting for its first consumer, not a reason to route around the gap.
 
+## Testing is mandatory — every feature, every fix
+
+**No feature and no bug fix is complete without a test that pins its behavior.** A change that compiles, type-checks, and "looks correct on read" is *not* verified. "I read the code and it's right" is the exact reasoning that lets defects reach production — it is never an acceptable substitute for a test.
+
+### The non-negotiable rule
+
+Every PR that adds a feature or fixes a bug **must** include a test that:
+
+- **For a feature:** asserts the feature does what it is specified to do — the field arrives, the event fires, the branch is taken, the value propagates end to end.
+- **For a bug fix:** *fails on the unfixed code and passes on the fixed code.* This is the definition of a regression test. If the test passes with your fix reverted, it does not test your fix — it tests something else. Before claiming a bug fix is tested, mentally (or actually) revert the fix and confirm the test goes red.
+
+If you cannot write a test that distinguishes the fixed behavior from the broken behavior, you do not yet understand the bug well enough to claim it is fixed.
+
+### Why this is a critical-severity rule, not a style preference
+
+A bug found in production is *prima facie evidence that coverage was inadequate* — the feature shipped, nobody knew whether it worked, an external consumer found the failure, and only then was it corrected. **Fixing that bug without adding a test repeats the identical mistake:** the corrected behavior is once again unprotected, and the next innocuous refactor can silently re-break it with every quality gate still green. The test is what converts "we hope this works" into "we know this works, and we will know immediately if it stops."
+
+The canonical example is this repository's own #227: `before_agent_start` shipped with no test pinning the root-vs-sub-agent payload distinction, so the root firing's empty-`AgentInfo` sentinel went undetected until an external consumer's system prompt was poisoned in production. The fix added an `IsRoot` flag — and must add the test that asserts `IsRoot` is `true` on the root firing and `false` on sub-agent firings, *and* that the wire payload serializes the field. Without that test, a later edit reverting the call site to `AgentInfo{}` passes every gate.
+
+### What the test must actually pin (avoid false coverage)
+
+Test the *behavior the change introduces*, not the plumbing that was already there.
+
+- A test that asserts a handler *receives* a payload but never asserts the *new field's value* gives false confidence. If the change is "set `IsRoot: true` at the root call site," the test must assert `received.IsRoot == true` at that path — not merely that some payload arrived.
+- A cross-boundary field (Go → JSON → TS/Swift) needs a **serialization** test pinning the wire shape (`"isRoot":true` present; omitted when false if `omitempty`). A Go-only struct-equality test does not protect the consumer contract.
+- A "field propagates from A to B" claim needs a test that exercises A→B, not two separate unit tests that each assume the wire-up.
+
+### Don't trade correctness for un-brittle-ness — but don't write brittle tests either
+
+Well-architected tests survive innocuous refactors and fail only when real behavior changes. Aim for that. But "a good test is hard to write here" is **not** a license to skip the test. The bar is: pin the behavioral contract at the most stable seam available (the public hook payload, the serialized wire shape, the observable event), not the incidental internals. If the only way you can think to test it is brittle, that usually signals the behavior should be observable at a more stable boundary — fix the seam, then test it.
+
+### Parity is part of the contract (test it too)
+
+When a feature exists on one client and not another, or is implemented two different ways across clients, that divergence is itself a defect this rule is meant to catch. A field that flows through the snapshot to one client must have a test pinning that it reaches the other (or an explicit, documented decision that it does not apply). "One client has it, the other silently doesn't" is the class of bug that should never survive to production — pin the parity.
+
+### The forbidden completion claim
+
+Do not report a feature or fix as "done," "complete," or "verified" when the only verification performed is: it compiles, it type-checks, existing tests still pass, and the code reads correctly. Those are necessary but **not sufficient**. The sufficient condition is a test that exercises the new behavior and would fail without the change. If you are about to commit and there is no such test, the work is not done — write the test first.
+
 ## Conversation storage
 
 Conversations are persisted as NDJSON file pairs under `~/.ion/conversations/`.
