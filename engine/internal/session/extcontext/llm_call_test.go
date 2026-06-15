@@ -474,3 +474,63 @@ func TestLLMCall_CancelledBySessionRoot(t *testing.T) {
 		}
 	}
 }
+
+// TestLLMCall_TemperatureAndJSONModeReachStreamOpts pins that ctx.llmCall
+// forwards Temperature (only when TemperatureSet) and maps JSONMode to
+// ResponseFormat on the provider stream options (#225).
+func TestLLMCall_TemperatureAndJSONModeReachStreamOpts(t *testing.T) {
+	const model = "test-model-temp"
+	mock := registerMockProvider(t, model)
+	mock.SetResponse(helpers.TextResponse("ok"))
+
+	acc := &llmCallTestAccessor{extGroup: extension.NewExtensionGroup()}
+	llmCall := BuildLLMCallFunc(acc)
+
+	_, err := llmCall(extension.LLMCallOpts{
+		Model:          model,
+		Prompt:         "extract",
+		JSONMode:       true,
+		Temperature:    0.1,
+		TemperatureSet: true,
+	})
+	if err != nil {
+		t.Fatalf("LLMCall error: %v", err)
+	}
+
+	calls := mock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(calls))
+	}
+	if calls[0].Temperature == nil {
+		t.Fatal("stream Temperature is nil; want forwarded when TemperatureSet=true")
+	}
+	if *calls[0].Temperature != 0.1 {
+		t.Errorf("stream Temperature = %v, want 0.1", *calls[0].Temperature)
+	}
+	if calls[0].ResponseFormat != "json_object" {
+		t.Errorf("stream ResponseFormat = %q, want json_object (JSONMode=true)", calls[0].ResponseFormat)
+	}
+}
+
+// TestLLMCall_TemperatureUnsetOmitted pins that an unset temperature
+// (TemperatureSet=false) is NOT forwarded — the provider default applies.
+func TestLLMCall_TemperatureUnsetOmitted(t *testing.T) {
+	const model = "test-model-temp-unset"
+	mock := registerMockProvider(t, model)
+	mock.SetResponse(helpers.TextResponse("ok"))
+
+	acc := &llmCallTestAccessor{extGroup: extension.NewExtensionGroup()}
+	llmCall := BuildLLMCallFunc(acc)
+
+	_, err := llmCall(extension.LLMCallOpts{Model: model, Prompt: "hi"})
+	if err != nil {
+		t.Fatalf("LLMCall error: %v", err)
+	}
+	calls := mock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(calls))
+	}
+	if calls[0].Temperature != nil {
+		t.Errorf("stream Temperature = %v, want nil (unset → provider default)", *calls[0].Temperature)
+	}
+}

@@ -209,6 +209,15 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 		"stream":     true,
 	}
 
+	// Temperature: forward when the caller set it (pointer non-nil),
+	// including a deliberate 0.0. Anthropic supports a temperature
+	// parameter. (Anthropic has NO request-level JSON-mode switch, so
+	// opts.ResponseFormat is intentionally not mapped here — jsonMode stays
+	// advisory on Anthropic; see LLMCallOpts.JSONMode docs.)
+	if opts.Temperature != nil {
+		body["temperature"] = *opts.Temperature
+	}
+
 	// System prompt with cache_control for prompt caching
 	if opts.System != "" {
 		body["system"] = []map[string]any{

@@ -151,6 +151,24 @@ function request(method: string, params: any): Promise<any> {
   })
 }
 
+// requestWithId is request() that also surfaces the RPC id to the caller.
+// Used by llmCall so an AbortSignal can fire a cancel notification keyed to
+// the exact in-flight call (ext/llm_call_cancel { requestId: id }). The id is
+// otherwise an internal detail of request(); only cancellable RPCs need it.
+function requestWithId(
+  method: string,
+  params: any,
+): { id: number; promise: Promise<any> } {
+  const id = nextRequestId++
+  const promise = new Promise<any>((resolve, reject) => {
+    pendingRequests.set(id, { resolve, reject })
+    process.stdout.write(
+      JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n',
+    )
+  })
+  return { id, promise }
+}
+
 // ---------------------------------------------------------------------------
 // Context builder
 // ---------------------------------------------------------------------------
@@ -298,26 +316,61 @@ function buildContext(ctxData: any): IonContext {
       return result as HistoryMatch[]
     },
     async llmCall(opts: LLMCallOpts): Promise<LLMCallResult> {
-      // One-shot lightweight inference. Forwards the opts verbatim to the
-      // engine's ext/llm_call RPC; the engine resolves the provider, fires
+      // One-shot lightweight inference. Forwards the opts to the engine's
+      // ext/llm_call RPC; the engine resolves the provider, fires
       // before_provider_request, drains the stream, and emits the
       // engine_llm_call observability event.
       //
       // We coerce every numeric/boolean field defensively because the engine
       // returns a real LLMCallResult on success but a JSON-RPC error on
       // failure (which the request helper unwraps into a thrown Error).
-      const result = await request('ext/llm_call', {
+      //
+      // temperature: an AbortSignal is not JSON-serializable, so we never
+      // forward opts.signal in params. Instead we send a temperatureSet flag
+      // alongside the value so the engine can distinguish a deliberate 0
+      // (deterministic) from "unset" (provider default) — the omitempty wire
+      // tag would otherwise erase a real 0.
+      const hasTemp = typeof opts.temperature === 'number'
+      const { id, promise } = requestWithId('ext/llm_call', {
         model: opts.model || '',
         system: opts.system || '',
         prompt: opts.prompt || '',
         jsonMode: !!opts.jsonMode,
         maxTokens: typeof opts.maxTokens === 'number' ? opts.maxTokens : 0,
+        temperature: hasTemp ? opts.temperature : 0,
+        temperatureSet: hasTemp,
       })
-      return {
-        content: typeof result?.content === 'string' ? result.content : '',
-        inputTokens: typeof result?.inputTokens === 'number' ? result.inputTokens : 0,
-        outputTokens: typeof result?.outputTokens === 'number' ? result.outputTokens : 0,
-        cost: typeof result?.cost === 'number' ? result.cost : 0,
+
+      // Wire the optional AbortSignal to per-call cancellation. The signal
+      // is consumed runtime-side and converted to a fire-and-forget
+      // ext/llm_call_cancel notification keyed by the in-flight RPC id; the
+      // engine looks up the call's CancelFunc and cancels it. If the signal
+      // is already aborted, fire immediately. The listener is removed once
+      // the call settles so a later abort cannot fire a stale cancel.
+      let removeAbortListener: (() => void) | undefined
+      if (opts.signal) {
+        const fireCancel = () => {
+          notify('ext/llm_call_cancel', { requestId: id })
+        }
+        if (opts.signal.aborted) {
+          fireCancel()
+        } else {
+          opts.signal.addEventListener('abort', fireCancel, { once: true })
+          removeAbortListener = () =>
+            opts.signal?.removeEventListener('abort', fireCancel)
+        }
+      }
+
+      try {
+        const result = await promise
+        return {
+          content: typeof result?.content === 'string' ? result.content : '',
+          inputTokens: typeof result?.inputTokens === 'number' ? result.inputTokens : 0,
+          outputTokens: typeof result?.outputTokens === 'number' ? result.outputTokens : 0,
+          cost: typeof result?.cost === 'number' ? result.cost : 0,
+        }
+      } finally {
+        removeAbortListener?.()
       }
     },
     async notify(opts: NotifyOpts): Promise<void> {

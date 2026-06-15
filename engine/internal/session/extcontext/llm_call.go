@@ -100,6 +100,21 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 			Messages:  messages,
 			MaxTokens: opts.MaxTokens,
 		}
+		// Forward temperature only when the caller explicitly set it.
+		// TemperatureSet disambiguates a deliberate 0 (fully deterministic)
+		// from "unset"; without it the omitempty JSON tag on the wire field
+		// would erase a real 0. When unset, the provider default applies.
+		if opts.TemperatureSet {
+			t := opts.Temperature
+			streamOpts.Temperature = &t
+		}
+		// Provider-enforced JSON mode. The provider layer maps this to a
+		// request-level switch where one exists (OpenAI-compatible:
+		// response_format={"type":"json_object"}); providers without a native
+		// switch (Anthropic) ignore it and the flag stays advisory.
+		if opts.JSONMode {
+			streamOpts.ResponseFormat = "json_object"
+		}
 
 		// --- Fire before_provider_request (observe-only) ---
 		//
@@ -169,6 +184,29 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 		// success engine_llm_call event for work the user cancelled.
 		ctx, cancel := context.WithCancel(sa.RootContext())
 		defer cancel()
+
+		// Compose the optional per-call context (opts.Ctx) so the call is
+		// cancelled if EITHER the session root or the per-call context
+		// fires. opts.Ctx is set by the host when a TS-side AbortSignal is
+		// threaded into ctx.llmCall({ signal }); the host cancels it via
+		// the ext/llm_call_cancel notification. Go has no native "cancel on
+		// either of two contexts", so a small watcher goroutine cancels our
+		// derived ctx when opts.Ctx fires. The goroutine exits when ctx is
+		// done (either source), so it never leaks.
+		if opts.Ctx != nil {
+			go func(perCall context.Context) {
+				select {
+				case <-perCall.Done():
+					utils.Debug("LLMCall", fmt.Sprintf(
+						"per-call context cancelled; cancelling llm_call (sessionKey=%s model=%s)",
+						sa.SessionKey(), opts.Model,
+					))
+					cancel()
+				case <-ctx.Done():
+					// Call finished or session root cancelled; nothing to do.
+				}
+			}(opts.Ctx)
+		}
 
 		events, errc := provider.Stream(ctx, streamOpts)
 

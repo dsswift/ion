@@ -327,6 +327,20 @@ func (p *openaiProvider) buildRequestBody(opts types.LlmStreamOptions) map[strin
 		body["reasoning_effort"] = "high"
 	}
 
+	// Temperature: forward when the caller set it (pointer non-nil). A
+	// deliberate 0.0 is meaningful (deterministic), so we forward it too.
+	if opts.Temperature != nil {
+		body["temperature"] = *opts.Temperature
+	}
+
+	// Provider-enforced JSON mode for OpenAI-compatible providers. Maps the
+	// generic ResponseFormat="json_object" to the OpenAI response_format
+	// object so the provider guarantees valid JSON output rather than the
+	// engine relying on best-effort fence-stripping.
+	if opts.ResponseFormat == "json_object" {
+		body["response_format"] = map[string]any{"type": "json_object"}
+	}
+
 	return body
 }
 

@@ -280,10 +280,22 @@ export interface HistoryMatch {
  *   can dispatch is callable here.
  * - `system`: optional system prompt. Omit for none.
  * - `prompt`: the single user-role message. Required.
- * - `jsonMode`: advisory flag requesting JSON-formatted output. Today
- *   the engine forwards this in observability metadata only; provider-
- *   side wiring is reserved for a future release. Parse defensively.
+ * - `jsonMode`: request JSON-formatted output. Enforcement is per-provider:
+ *   on OpenAI-compatible providers the engine sets
+ *   `response_format: { type: 'json_object' }` so valid JSON is guaranteed;
+ *   on Anthropic (and any provider with no native request-level JSON switch)
+ *   it remains advisory — forwarded only in observability metadata — so parse
+ *   defensively there. The flag is always surfaced on `engine_llm_call`.
  * - `maxTokens`: response cap (0 = provider default).
+ * - `temperature`: sampling temperature for deterministic extraction /
+ *   classification / routing (e.g. 0.1–0.2). When omitted the provider
+ *   default applies. `0` is a valid, meaningful value (fully deterministic)
+ *   and is forwarded as-is — omitting the field is how you request the
+ *   provider default.
+ * - `signal`: optional AbortSignal for per-call cancellation. When the signal
+ *   aborts, the engine cancels the in-flight provider request and the
+ *   returned promise rejects. The signal also composes with session-level
+ *   abort: either cancels the call.
  */
 export interface LLMCallOpts {
   model: string
@@ -291,6 +303,8 @@ export interface LLMCallOpts {
   prompt: string
   jsonMode?: boolean
   maxTokens?: number
+  temperature?: number
+  signal?: AbortSignal
 }
 
 /**
@@ -1798,6 +1812,8 @@ export interface ScheduleJob {
   tz?: string
   timeoutMs?: number
   enabledRefName?: string
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
 }
 
 /** Handle returned by ion.schedule.daily/weekly/interval. */

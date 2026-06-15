@@ -11,6 +11,19 @@ type LlmStreamOptions struct {
 	ServerTools []map[string]any `json:"serverTools,omitempty"` // opaque server-side tools (e.g. web_search_20250305)
 	MaxTokens   int              `json:"maxTokens,omitempty"`
 	Thinking    *ThinkingConfig  `json:"thinking,omitempty"`
+	// Temperature is the sampling temperature for the request. Pointer so
+	// "unset" (nil → provider default applies) is distinct from an explicit
+	// 0.0 (fully deterministic). Providers that support a temperature
+	// parameter map it into their request body; providers without one ignore
+	// it. Threaded from ctx.llmCall (LLMCallOpts.Temperature) and available
+	// to any other caller that builds stream options directly.
+	Temperature *float64 `json:"temperature,omitempty"`
+	// ResponseFormat requests a provider-enforced output format. The only
+	// recognized value today is "json_object", which OpenAI-compatible
+	// providers map to response_format={"type":"json_object"}. Providers
+	// without a native request-level format switch (e.g. Anthropic) ignore
+	// it — the field is advisory there. Empty means "no enforced format".
+	ResponseFormat string `json:"responseFormat,omitempty"`
 }
 
 // LlmMessage is a single message in the LLM conversation.
