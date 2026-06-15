@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion'
 import { ArrowCounterClockwise } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
+import { activeInstance } from '../stores/conversation-instance'
 import { PermissionCard } from './PermissionCard'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { useColors } from '../theme'
@@ -38,9 +39,19 @@ export function ConversationView() {
   const prevTabIdRef = useRef(activeTabId)
   const colors = useColors()
   const unifiedTurnView = usePreferencesStore((s) => s.unifiedTurnView)
+  const conversationFontSize = usePreferencesStore((s) => s.conversationFontSize)
   const scrollToBottomCounter = useSessionStore((s) => s.scrollToBottomCounter)
 
   const tab = tabs.find((t) => t.id === activeTabId)
+
+  // Per-conversation state (messages, permission queue/denied, planFilePath)
+  // now lives on the active `ConversationInstance` in `conversationPanes`, not on
+  // `TabState`. Subscribe to the active instance so the view re-renders as
+  // its scrollback/permission state changes. Normal tabs resolve to their
+  // single `main` instance; engine tabs to their active sub-conversation.
+  const inst = useSessionStore((s) =>
+    activeTabId ? activeInstance(s.conversationPanes, activeTabId) : null,
+  )
 
   // Reset render offset and scroll state when switching tabs
   useEffect(() => {
@@ -59,9 +70,9 @@ export function ConversationView() {
   }, [])
 
   // Auto-scroll when content changes and user is near bottom.
-  const msgCount = tab?.messages?.length ?? 0
-  const lastMsg = tab?.messages?.at(-1)
-  const permissionQueueLen = tab?.permissionQueue?.length ?? 0
+  const msgCount = inst?.messages?.length ?? 0
+  const lastMsg = inst?.messages?.at(-1)
+  const permissionQueueLen = inst?.permissionQueue?.length ?? 0
   const queuedCount = tab?.queuedPrompts?.length ?? 0
   const scrollTrigger = `${msgCount}:${lastMsg?.content?.length ?? 0}:${permissionQueueLen}:${queuedCount}`
 
@@ -80,7 +91,7 @@ export function ConversationView() {
   }, [scrollToBottomCounter])
 
   // Group only the visible slice of messages
-  const allMessages = tab?.messages ?? []
+  const allMessages = inst?.messages ?? []
   const totalCount = allMessages.length
   let startIndex = Math.max(0, totalCount - INITIAL_RENDER_CAP - renderOffset * PAGE_SIZE)
 
@@ -130,8 +141,11 @@ export function ConversationView() {
 
   if (!tab) return null
 
-  // Skeleton tab: messages haven't been loaded yet (lazy loading in progress)
-  if (tab.messages === null) {
+  // Skeleton tab: the active instance hasn't been hydrated yet (lazy loading
+  // in progress). Under the 2A invariant a normal tab's `main` instance is
+  // materialized eagerly, so a null `inst` here means the pane/instance is
+  // not yet present — treat it as the loading state.
+  if (!inst) {
     return (
       <div className="flex items-center justify-center h-full" style={{ color: colors.textSecondary }}>
         <div className="flex items-center gap-2 text-sm">
@@ -149,9 +163,9 @@ export function ConversationView() {
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const isDead = tab.status === 'dead'
   const isFailed = tab.status === 'failed'
-  const showInterrupt = (isRunning || tab.bashExecuting) && (tab.messages ?? []).some((m) => m.role === 'user')
+  const showInterrupt = (isRunning || tab.bashExecuting) && inst.messages.some((m) => m.role === 'user')
 
-  if ((tab.messages?.length ?? 0) === 0) {
+  if (inst.messages.length === 0) {
     return <EmptyState />
   }
 
@@ -159,13 +173,13 @@ export function ConversationView() {
   const historicalThreshold = Math.max(0, totalCount - 20)
 
   const handleRetry = () => {
-    const lastUserMsg = [...(tab.messages ?? [])].reverse().find((m) => m.role === 'user')
+    const lastUserMsg = [...inst.messages].reverse().find((m) => m.role === 'user')
     if (lastUserMsg) {
       sendMessage(lastUserMsg.content)
     }
   }
 
-  const permissionDeniedHandlers = tab.permissionDenied
+  const permissionDeniedHandlers = inst.permissionDenied
     ? buildPermissionDeniedHandlers(tab, sendMessage)
     : null
 
@@ -189,7 +203,7 @@ export function ConversationView() {
         <div
           ref={scrollRef}
           className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pt-2 conversation-selectable"
-          style={{ paddingBottom: 28 }}
+          style={{ paddingBottom: 28, ['--ion-conv-font-size' as string]: `${conversationFontSize}px` } as React.CSSProperties}
           onScroll={handleScroll}
         >
         {/* Load older button */}
@@ -233,11 +247,11 @@ export function ConversationView() {
 
         {/* Permission card (shows first item from queue) */}
         <AnimatePresence>
-          {tab.permissionQueue.length > 0 && (
+          {inst.permissionQueue.length > 0 && (
             <PermissionCard
               tabId={tab.id}
-              permission={tab.permissionQueue[0]}
-              queueLength={tab.permissionQueue.length}
+              permission={inst.permissionQueue[0]}
+              queueLength={inst.permissionQueue.length}
             />
           )}
         </AnimatePresence>
@@ -249,14 +263,14 @@ export function ConversationView() {
             ticks can re-synthesize task_complete with old permissionDenials
             before prompt_dispatch clears the engine's lastPermissionDenials. */}
         <AnimatePresence>
-          {tab.permissionDenied && permissionDeniedHandlers && !isRunning && (
+          {inst.permissionDenied && permissionDeniedHandlers && !isRunning && (
             <PermissionDeniedCard
-              tools={tab.permissionDenied.tools}
+              tools={inst.permissionDenied.tools}
               tabId={tab.id}
               sessionId={tab.conversationId}
               projectPath={staticInfo?.projectPath || process.cwd()}
-              messages={tab.messages ?? []}
-              tabPlanFilePath={tab.planFilePath}
+              messages={inst.messages}
+              tabPlanFilePath={inst.planFilePath}
               tabGroupPinned={tab.groupPinned}
               onDismiss={permissionDeniedHandlers.onDismiss}
               onAnswer={permissionDeniedHandlers.onAnswer}
@@ -355,7 +369,7 @@ export function ConversationView() {
       </div>{/* end scroll + activity wrapper */}
 
       {/* Task list — pinned below scroll area */}
-      <TodoListPanel messages={tab.messages ?? []} isRunning={isRunning} />
+      <TodoListPanel messages={inst.messages} isRunning={isRunning} />
     </div>
   )
 }

@@ -1,8 +1,9 @@
 import type { EngineBridge } from './engine-bridge'
-import { log as _log } from './logger'
+import { log as _log, warn as _warn } from './logger'
 import type { EngineConfig } from '../shared/types'
 
 function log(msg: string): void { _log('engine-bridge', msg) }
+function warn(msg: string): void { _warn('engine-bridge', msg) }
 
 /**
  * startSession — bridge attach handshake.
@@ -89,4 +90,35 @@ export async function startSession(
     log(`startSession: key=${key} skipping reconcile (start failed: ${result.error ?? 'unknown'})`)
   }
   return result
+}
+
+/**
+ * reRegisterSessions — re-issue start_session for every tracked session after a
+ * socket reconnect, then reconcile each.
+ *
+ * Lives here next to startSession because it shares the same resume affordance:
+ * a tracked conversationId is injected as config.sessionId so the engine resumes
+ * the prior conversation rather than minting a new one. Combined with the
+ * engine-side binding store and the desktop B1 divergence guard, this keeps a
+ * tab bound to its original conversation across an engine restart (#230/#231).
+ *
+ * Fire-and-forget per session: a failed re-register is logged and skipped so one
+ * bad session does not block recovery of the others.
+ */
+export function reRegisterSessions(bridge: EngineBridge): void {
+  for (const [key, entry] of bridge.activeSessions) {
+    log(`Re-registering session after reconnect: key=${key}`)
+    const config = { ...entry.config }
+    if (entry.conversationId) {
+      config.sessionId = entry.conversationId
+    }
+    bridge
+      ._sendWithResult({ cmd: 'start_session', key, config })
+      .then((result) => {
+        if (result.ok) bridge.sendReconcileState(key)
+      })
+      .catch(() => {
+        warn(`Failed to re-register session ${key}`)
+      })
+  }
 }

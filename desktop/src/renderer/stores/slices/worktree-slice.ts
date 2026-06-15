@@ -1,6 +1,7 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { bumpMsgCounter } from '../session-store-helpers'
+import { commitInstance } from '../conversation-instance'
 
 export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -84,12 +85,12 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
           const msg = result.hasConflicts
             ? `Merge conflict: resolve manually in ${repoPath} then close this tab.`
             : `Merge failed: ${result.error}`
+          // System message appends onto the active conversation instance now.
           set((s) => ({
-            tabs: s.tabs.map((t) =>
-              t.id === tabId
-                ? { ...t, messages: [...(t.messages ?? []), { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: msg, timestamp: Date.now() }] }
-                : t
-            ),
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
+              ...inst,
+              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: msg, timestamp: Date.now() }],
+            })),
           }))
           return
         }
@@ -98,12 +99,12 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       } else {
         const pushResult = await window.ion.gitWorktreePush(worktreePath, sourceBranch)
         if (!pushResult.ok) {
+          // System message appends onto the active conversation instance now.
           set((s) => ({
-            tabs: s.tabs.map((t) =>
-              t.id === tabId
-                ? { ...t, messages: [...(t.messages ?? []), { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Push failed: ${pushResult.error}`, timestamp: Date.now() }] }
-                : t
-            ),
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
+              ...inst,
+              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Push failed: ${pushResult.error}`, timestamp: Date.now() }],
+            })),
           }))
           return
         }

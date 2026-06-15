@@ -125,8 +125,8 @@ export default function App() {
   const tabsReady = useSessionStore((s) => s.tabsReady)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const isTerminalOnly = activeTab?.isTerminalOnly || false
-  const isEngine = activeTab?.isEngine || false
-  const isEngineTall = useSessionStore((s) => s.tallViewTabId === s.activeTabId && (s.tabs.find((t) => t.id === s.activeTabId)?.isEngine || false))
+  const isEngine = activeTab?.hasEngineExtension || false
+  const isEngineTall = useSessionStore((s) => s.tallViewTabId === s.activeTabId && (s.tabs.find((t) => t.id === s.activeTabId)?.hasEngineExtension || false))
   const terminalOpen = useSessionStore((s) => s.terminalOpenTabIds.has(s.activeTabId))
   const explorerOpen = useSessionStore((s) => s.fileExplorerOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
   const editorOpen = useSessionStore((s) => {

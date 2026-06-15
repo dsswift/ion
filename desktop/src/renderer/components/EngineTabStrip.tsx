@@ -4,7 +4,7 @@ import { Reorder } from 'framer-motion'
 import { useShallow } from 'zustand/shallow'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
-import type { EngineInstance } from '../../shared/types'
+import type { ConversationRef } from '../../shared/types'
 import { getEngineInstanceWaitingState } from './TabStripShared'
 import { Tooltip } from './git/Tooltip'
 import { EngineInstanceCloseConfirmDialog } from './EngineInstanceCloseConfirmDialog'
@@ -39,24 +39,24 @@ interface Props {
  */
 export function EngineTabStrip({ tabId }: Props) {
   const colors = useColors()
-  const pane = useSessionStore((s) => s.enginePanes.get(tabId))
+  const pane = useSessionStore((s) => s.conversationPanes.get(tabId))
   const instances = pane?.instances || []
   const activeId = pane?.activeInstanceId || null
   const tabs = useSessionStore((s) => s.tabs)
-  // Subscribe to enginePanes so the per-instance status dot re-renders when
+  // Subscribe to conversationPanes so the per-instance status dot re-renders when
   // permissionDenied or statusFields on any instance changes. Both fields now
-  // live on the instance in enginePanes — identity changes on every dual-write.
+  // live on the instance in conversationPanes — identity changes on every dual-write.
   // The `pane` selector above already does this; keeping a named comment here
   // so it's clear we no longer need separate subscriptions to the removed Maps.
 
-  // Project per-instance running state from enginePanes instances so the
+  // Project per-instance running state from conversationPanes instances so the
   // renderTab closure can read each pill's state without calling hooks inside
   // .map(). Instance statusFields is set by engine-event-status.ts on every
   // engine_status event. useShallow prevents re-render when pairs don't change.
   const engineStateByInstance = useSessionStore(
     useShallow((s) => {
       const out = new Map<string, string>()
-      for (const inst of s.enginePanes.get(tabId)?.instances || []) {
+      for (const inst of s.conversationPanes.get(tabId)?.instances || []) {
         const state = inst.statusFields?.state
         if (state) out.set(inst.id, state)
       }
@@ -81,7 +81,7 @@ export function EngineTabStrip({ tabId }: Props) {
     }),
   )
   // Other engine tabs this instance can be moved to
-  const engineTargetTabs = tabs.filter((t) => t.isEngine && t.id !== tabId)
+  const engineTargetTabs = tabs.filter((t) => t.hasEngineExtension && t.id !== tabId)
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -108,7 +108,7 @@ export function EngineTabStrip({ tabId }: Props) {
   // hold stale references if the underlying instance list changes.
   const [confirmingCloseInstId, setConfirmingCloseInstId] = useState<string | null>(null)
 
-  const startRename = (inst: EngineInstance) => {
+  const startRename = (inst: ConversationRef) => {
     setEditingId(inst.id)
     setEditLabel(inst.label)
   }
@@ -120,7 +120,7 @@ export function EngineTabStrip({ tabId }: Props) {
     setEditingId(null)
   }
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, inst: EngineInstance) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, inst: ConversationRef) => {
     if (engineTargetTabs.length === 0) return
     e.preventDefault()
     e.stopPropagation()
@@ -129,7 +129,7 @@ export function EngineTabStrip({ tabId }: Props) {
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
 
-  const renderTab = (inst: EngineInstance) => {
+  const renderTab = (inst: ConversationRef) => {
     const isActive = inst.id === activeId
     // Per-instance waiting-state dot. 'question' (yellow/orange) and
     // 'plan-ready' (green) mirror the parent-tab pill glow palette in

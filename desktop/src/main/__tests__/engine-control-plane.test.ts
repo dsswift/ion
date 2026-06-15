@@ -575,4 +575,26 @@ describe('EngineControlPlane', () => {
       expect(mockBridge.startSession).toHaveBeenCalledOnce()
     })
   })
+  describe('reconnect — conversationId preservation (issue #230 B1/B2)', () => {
+    it('preserves conversationId when resetting engineSessionStarted on reconnect', () => {
+      const tabId = cp.createTab()
+      const tab = cp.getTabStatus(tabId)!
+      // Simulate a tab that has a tracked conversationId and a started session.
+      tab.conversationId = 'original-conv-id'
+      tab.engineSessionStarted = true
+
+      // Find the 'reconnected' handler registered in the constructor.
+      const reconnectCall = mockBridge.on.mock.calls.find(
+        (call: any[]) => call[0] === 'reconnected',
+      )
+      expect(reconnectCall).toBeDefined()
+      const reconnectHandler = reconnectCall![1]
+      reconnectHandler()
+
+      // engineSessionStarted must be reset so the re-register fires.
+      expect(tab.engineSessionStarted).toBe(false)
+      // conversationId must be preserved, not cleared.
+      expect(tab.conversationId).toBe('original-conv-id')
+    })
+  })
 })

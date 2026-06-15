@@ -61,7 +61,7 @@ function buildHarness(opts: { tabStatus?: string; activeInstanceId?: string; ins
     tabs: [
       {
         id: 'tab1',
-        isEngine: true,
+        hasEngineExtension: true,
         status: opts.tabStatus ?? 'idle',
         conversationId: undefined,
         lastKnownSessionId: undefined,
@@ -75,7 +75,7 @@ function buildHarness(opts: { tabStatus?: string; activeInstanceId?: string; ins
     enginePinnedPrompt: new Map(),
     engineUsage: new Map(),
     engineModelFallbacks: new Map(),
-    enginePanes: new Map([[
+    conversationPanes: new Map([[
       'tab1',
       {
         instances: opts.instances ?? [makeInstance('inst1')],
@@ -93,7 +93,7 @@ function buildHarness(opts: { tabStatus?: string; activeInstanceId?: string; ins
 }
 
 function getInstance(state: any, tabId: string, instanceId: string) {
-  return state.enginePanes.get(tabId)?.instances.find((i: any) => i.id === instanceId)
+  return state.conversationPanes.get(tabId)?.instances.find((i: any) => i.id === instanceId)
 }
 
 describe('engine_status — Phase 4 regression: behaviors that survive the refactor', () => {
@@ -354,5 +354,51 @@ describe('engine_status — Phase 4 contract: status mutation behavior', () => {
     const inactive = getInstance(state, 'tab1', 'inst-inactive')
     expect(inactive?.statusFields?.state).toBe('idle')
     expect(inactive?.statusFields?.model).toBe('claude-4')
+  })
+
+  it('projects engine contextWindow onto the parent tab so the indicator divides by engine truth', () => {
+    // The StatusBarContextIndicator (renderer/components) reads
+    // tab.contextWindow as the denominator when recomputing percent
+    // locally. Without this projection the indicator falls back to the
+    // picker-selected model's nominal window — see the
+    // sturdy-wishing-tide.md / cosy-pacing-bee.md diagnosis for the
+    // 100% / 498k / 200k bug this fix prevents.
+    const { state, slice } = buildHarness()
+    slice.handleEngineEvent('tab1:inst1', {
+      type: 'engine_status',
+      fields: {
+        state: 'idle',
+        label: '',
+        model: 'claude-opus-4-7',
+        contextPercent: 50,
+        contextWindow: 1_000_000,
+        sessionId: 'conv-window-test',
+      },
+    } as any)
+
+    expect(state.tabs[0].contextWindow).toBe(1_000_000)
+  })
+
+  it('does not overwrite tab.contextWindow when engine emits zero (no window resolved)', () => {
+    // Some engine_status ticks arrive before the model is resolved (e.g.
+    // the very first emit after StartRun). In that case contextWindow
+    // is 0. We must NOT overwrite a previously-known window with 0 — the
+    // indicator would silently revert to the picker fallback.
+    const { state, slice } = buildHarness()
+    state.tabs[0].contextWindow = 200_000
+
+    slice.handleEngineEvent('tab1:inst1', {
+      type: 'engine_status',
+      fields: {
+        state: 'idle',
+        label: '',
+        model: '',
+        contextPercent: 0,
+        contextWindow: 0,
+        sessionId: 'conv-zero-window',
+      },
+    } as any)
+
+    expect(state.tabs[0].contextWindow).toBe(200_000)
   })
 })

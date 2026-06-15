@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Hook System
 
-The Ion Engine exposes 60 hooks across 17 categories. Hooks let extensions observe, modify, and gate engine behavior without changing engine code. Extensions register handlers via the SDK; the engine fires hooks at defined points during session and tool lifecycles.
+The Ion Engine exposes a comprehensive hook surface spanning the agent lifecycle. Hooks let extensions observe, modify, and gate engine behavior without changing engine code. Extensions register handlers via the SDK; the engine fires hooks at defined points during session and tool lifecycles. The [hook reference](reference.md) is the complete, authoritative catalog.
 
 ## Dispatch Model
 
@@ -69,24 +69,26 @@ Examples: context_inject, capability_discover
 
 ## Hook Categories
 
-| Category | Count | Purpose |
-|----------|-------|---------|
-| Lifecycle | 13 | Session, turn, message, tool, agent, and error events |
-| Session Management | 5 | Compaction, fork, and switch gates |
-| Pre-Action | 2 | Intercept before agent start or provider request |
-| Content | 6 | Context, message updates, input rewriting, model selection |
-| Per-Tool Call | 7 | Gate or mutate individual tool invocations |
-| Per-Tool Result | 7 | Modify individual tool results |
-| Context Discovery | 3 | Filter or modify context files and instructions |
-| Permission | 2 | Observe permission decisions |
-| File Changes | 1 | Observe file system changes |
-| Task Lifecycle | 2 | Observe task creation and completion |
-| Elicitation | 2 | Handle and observe structured user input requests |
-| Plan Mode | 1 | Override plan mode prompt and tool list |
-| System Message Injection | 1 | Override or suppress engine steering messages |
-| Context Injection | 1 | Inject additional context into system prompt |
-| Capability Framework | 3 | Discover, match, and gate capabilities |
-| Extension Lifecycle | 4 | React to extension subprocess crashes and auto-respawn |
+| Category | Purpose |
+|----------|---------|
+| Lifecycle | Session, turn, message, tool, agent, and error events |
+| Session Management | Compaction, fork, and switch gates |
+| Pre-Action | Intercept before agent start or provider request |
+| Content | Context, message updates, input rewriting, model selection |
+| Per-Tool Call | Gate or mutate individual tool invocations |
+| Per-Tool Result | Modify individual tool results |
+| Context Discovery | Filter or modify context files and instructions |
+| Permission | Observe permission decisions |
+| File Changes | Observe file system changes |
+| Task Lifecycle | Observe task creation and completion |
+| Elicitation | Handle and observe structured user input requests |
+| Plan Mode | Override plan mode prompt and tool list |
+| System Message Injection | Override or suppress engine steering messages |
+| Context Injection | Inject additional context into system prompt |
+| Capability Framework | Discover, match, and gate capabilities |
+| Extension Lifecycle | React to extension subprocess crashes and auto-respawn |
+
+The [hook reference](reference.md) lists every hook in each category with its payload, return value, and dispatch pattern — it is the authoritative source.
 
 ## Handler Signature
 

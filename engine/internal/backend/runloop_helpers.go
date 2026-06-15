@@ -2,10 +2,13 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // maxConsecutiveCompactions caps the number of proactive compactions that
@@ -55,6 +58,53 @@ const defaultToolTimeout = 5 * time.Minute
 // Declared as a var (not const) so tests can shorten it without waiting 30s.
 var toolStallThreshold = 30 * time.Second
 
+// resolveContextWindow returns the context-window size (in tokens) to use for
+// compaction sizing for the given model. It uses the registry's window only
+// when it is a usable positive value; a registry entry that exists but carries
+// ContextWindow == 0 (a catalog gap, e.g. openai/gpt-4o-mini routed via
+// OpenRouter) would otherwise overwrite the sane default with 0 and collapse
+// every compaction (limit=0, budget=0 → truncate to nothing each turn). The
+// > 0 guard must live here, at the resolution site, so the clamped value flows
+// into AutoCompactTokenLimit and the targetTokens math — not only into
+// GetContextUsage's internal clamp.
+func resolveContextWindow(model string) int {
+	info := providers.GetModelInfo(model)
+	if info == nil {
+		utils.Warn("ApiBackend", fmt.Sprintf("resolveContextWindow: model=%s window=%d (fallback, model not in registry)", model, conversation.DefaultContext))
+		return conversation.DefaultContext
+	}
+	if info.ContextWindow > 0 {
+		utils.Log("ApiBackend", fmt.Sprintf("resolveContextWindow: model=%s window=%d (from registry)", model, info.ContextWindow))
+		return info.ContextWindow
+	}
+	utils.Warn("ApiBackend", fmt.Sprintf("resolveContextWindow: model=%s registry window=0, using default=%d (zero-guard)", model, conversation.DefaultContext))
+	return conversation.DefaultContext
+}
+
+// handleUnknownStopReason resolves the run loop's `switch stopReason` default
+// branch. It distinguishes a provider-signalled "error" stop — which slipped
+// past the provider's own *ProviderError conversion (the openai provider now
+// returns a *ProviderError for these) — from a genuinely-unknown stop reason.
+//
+//   - "error": emit an ErrorEvent and exit non-zero, so headless consumers can
+//     tell "the model had nothing to say" apart from "the provider failed"
+//     instead of receiving a silent exit 0.
+//   - anything else: log it and exit 0 (the prior, preserved behavior).
+func (b *ApiBackend) handleUnknownStopReason(run *activeRun, conv *conversation.Conversation, stopReason string, turn int) {
+	if stopReason == "error" {
+		utils.Error("ApiBackend", fmt.Sprintf("stop reason=error reached run loop: runID=%s turn=%d — emitting ErrorEvent + exit 1", run.requestID, turn))
+		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
+			ErrorMessage: "The provider reported an error mid-stream.",
+			IsError:      true,
+			ErrorCode:    "provider_stream_error",
+		}})
+		b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
+		return
+	}
+	utils.Log("ApiBackend", fmt.Sprintf("unexpected stop reason: %s (runID=%s turn=%d) — exit 0", stopReason, run.requestID, turn))
+	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
+}
+
 // computeCost estimates the USD cost for a turn using the model registry.
 func computeCost(model string, usage types.LlmUsage) float64 {
 	info := providers.GetModelInfo(model)
@@ -102,9 +152,11 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 		})
 	}
 	if len(blocks) == 0 {
-		// All attachments invalid AND prompt empty: emit a single empty
-		// text block so AddUserMessage's blocks branch is well-formed.
-		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: ""})
+		// All attachments invalid AND prompt empty: emit a placeholder text
+		// block so AddUserMessage's blocks branch is well-formed. Must be
+		// non-empty — Anthropic rejects cache_control on empty text blocks.
+		utils.Debug("ApiBackend", "buildUserContentBlocks: emitting placeholder for empty prompt + invalid attachments")
+		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: "(empty prompt)"})
 	}
 	return blocks
 }

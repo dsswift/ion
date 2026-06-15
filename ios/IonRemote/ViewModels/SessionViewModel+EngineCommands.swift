@@ -26,7 +26,7 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].status = .running
         }
-        let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+        let instanceId = activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id
 
         // Optimistic local insert so the user's message appears immediately
         // (with inline image preview when attachments are present) rather than

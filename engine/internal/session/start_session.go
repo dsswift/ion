@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,6 +46,13 @@ func (a *sessionAccessor) WorkingDirectory() string  { return a.s.config.Working
 func (a *sessionAccessor) Emit(ev types.EngineEvent) { a.m.emit(a.key, ev) }
 
 func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }
+
+// RootContext returns the session's cancellation root so extcontext-built
+// operations (ctx.llmCall, agent dispatch) derive from it and are cancelled
+// by a session-level abort. Never nil — rootContext() falls back to
+// context.Background() for test-constructed sessions. See
+// session_root_context.go.
+func (a *sessionAccessor) RootContext() context.Context { return a.s.rootContext() }
 
 func (a *sessionAccessor) SendPrompt(text string, model string) error {
 	var overrides *PromptOverrides
@@ -406,19 +414,14 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
 	}
 
-	// Pre-mint a conversation ID when the caller doesn't supply one (fresh
-	// tab). This ensures the engine_status {state: "idle"} event at the end
-	// of StartSession carries a sessionId immediately — before any prompt is
-	// sent. Clients need this so users can copy the session ID for tabs where
-	// extensions execute and fail at startup, before a message is ever sent.
-	// The backend's loadOrCreateConversation handles pre-set SessionIDs: it
-	// tries Load, gets ErrNotFound (no file yet), and calls CreateConversation
-	// with this ID — so the conversation file will use this same ID.
-	convID := config.SessionID
-	if convID == "" {
-		convID = conversation.NewConversationID()
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s pre-minted conversationID=%s", key, convID))
-	}
+	// Resolve the conversation ID for this session. When the caller supplies an
+	// explicit SessionID it wins; otherwise the binding store and the
+	// ForceNewConversation flag decide between resume and fresh-mint. See
+	// resolveConversationID in session_bindings.go for the full decision tree
+	// and logging. The backend's loadOrCreateConversation handles a pre-set id:
+	// it tries Load, gets ErrNotFound (no file yet), and calls CreateConversation
+	// with this ID — so the conversation file will use this same ID. (#230/#231)
+	convID := resolveConversationID(bindingsPath(), key, config)
 
 	s := &engineSession{
 		key:              key,
@@ -431,6 +434,13 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		dispatchRegistry: extcontext.NewDispatchRegistry(),
 		resourceBroker:   resource.NewBroker(),
 	}
+
+	// Initialize the session's cancellation root before any run or
+	// dispatch can be launched. Every cancellable operation spawned for
+	// this session derives from this root, so SendAbort / StopSession can
+	// cancel the whole in-flight tree in one call. See
+	// session_root_context.go.
+	s.newSessionRootContext()
 
 	// Initialize process registry for extension-spawned subprocesses.
 	// If the PID-file directory cannot be created, log and continue with a
@@ -465,6 +475,11 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	m.sessions[key] = s
 
 	m.mu.Unlock()
+
+	// Persist the key->conversationId binding for restart resilience (B2 fix
+	// for issue #230). Written immediately after session creation so a crash
+	// mid-startup still leaves the binding on disk for the next restart.
+	saveBinding(bindingsPath(), key, convID)
 
 	// Rehydrate agent dispatch state from the conversation file if the
 	// session is resuming an existing conversation. This runs before

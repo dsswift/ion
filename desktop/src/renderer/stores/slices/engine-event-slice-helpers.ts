@@ -9,14 +9,15 @@
  *     synchronously on keystroke; no reactive subscription needed.
  *
  *   - withInstanceMessages / withInstanceAgentStates — pure Map
- *     transformers that return a new enginePanes Map with the specified
+ *     transformers that return a new conversationPanes Map with the specified
  *     ConversationInstance field updated. Returning the original Map
  *     unchanged on a miss avoids spurious re-renders on the hot event
  *     path.
  */
 
-import type { EnginePaneState, AgentStateUpdate } from '../../../shared/types-engine'
+import type { ConversationPane, AgentStateUpdate } from '../../../shared/types-engine'
 import type { Message } from '../../../shared/types-session'
+import { parseSessionKey } from '../../../shared/session-key'
 
 /**
  * Per-tab cache of extension-registered command names, populated by
@@ -41,23 +42,23 @@ export function getRendererExtensionCommands(key: string): Array<{ name: string;
 
 // ─── Instance-write helpers ───────────────────────────────────────────────────
 //
-// Each helper returns a new enginePanes Map with the specified ConversationInstance
+// Each helper returns a new conversationPanes Map with the specified ConversationInstance
 // field updated on the instance identified by `key` (`${tabId}:${instanceId}`).
 // Returns the original Map unchanged when the pane or instance is not found,
-// so callers can do `if (updated !== original) returnPatch.enginePanes = updated`
+// so callers can do `if (updated !== original) returnPatch.conversationPanes = updated`
 // without allocating on the hot path.
 
 export function withInstanceMessages(
-  enginePanes: Map<string, EnginePaneState>,
+  conversationPanes: Map<string, ConversationPane>,
   key: string,
   messages: Message[],
-): Map<string, EnginePaneState> {
-  const [tabId, instanceId] = key.split(':')
-  const pane = enginePanes.get(tabId)
-  if (!pane) return enginePanes
+): Map<string, ConversationPane> {
+  const { tabId, instanceId } = parseSessionKey(key)
+  const pane = conversationPanes.get(tabId)
+  if (!pane) return conversationPanes
   const idx = pane.instances.findIndex((i) => i.id === instanceId)
-  if (idx === -1) return enginePanes
-  const updated = new Map(enginePanes)
+  if (idx === -1) return conversationPanes
+  const updated = new Map(conversationPanes)
   const instances = pane.instances.slice()
   instances[idx] = { ...instances[idx], messages }
   updated.set(tabId, { ...pane, instances })
@@ -65,16 +66,16 @@ export function withInstanceMessages(
 }
 
 export function withInstanceAgentStates(
-  enginePanes: Map<string, EnginePaneState>,
+  conversationPanes: Map<string, ConversationPane>,
   key: string,
   agentStates: AgentStateUpdate[],
-): Map<string, EnginePaneState> {
-  const [tabId, instanceId] = key.split(':')
-  const pane = enginePanes.get(tabId)
-  if (!pane) return enginePanes
+): Map<string, ConversationPane> {
+  const { tabId, instanceId } = parseSessionKey(key)
+  const pane = conversationPanes.get(tabId)
+  if (!pane) return conversationPanes
   const idx = pane.instances.findIndex((i) => i.id === instanceId)
-  if (idx === -1) return enginePanes
-  const updated = new Map(enginePanes)
+  if (idx === -1) return conversationPanes
+  const updated = new Map(conversationPanes)
   const instances = pane.instances.slice()
   instances[idx] = { ...instances[idx], agentStates }
   updated.set(tabId, { ...pane, instances })
@@ -91,20 +92,20 @@ export function withInstanceAgentStates(
  * and keep the interrupt button visible when no agent is actually running.
  */
 export function withRunningAgentsErrored(
-  enginePanes: Map<string, EnginePaneState>,
+  conversationPanes: Map<string, ConversationPane>,
   key: string,
-): Map<string, EnginePaneState> {
-  const [tabId, instanceId] = key.split(':')
-  const pane = enginePanes.get(tabId)
-  if (!pane) return enginePanes
+): Map<string, ConversationPane> {
+  const { tabId, instanceId } = parseSessionKey(key)
+  const pane = conversationPanes.get(tabId)
+  if (!pane) return conversationPanes
   const idx = pane.instances.findIndex((i) => i.id === instanceId)
-  if (idx === -1) return enginePanes
+  if (idx === -1) return conversationPanes
   const inst = pane.instances[idx]
-  if (!inst.agentStates?.some((a) => a.status === 'running')) return enginePanes
+  if (!inst.agentStates?.some((a) => a.status === 'running')) return conversationPanes
   const agentStates = inst.agentStates.map((a) =>
     a.status === 'running' ? { ...a, status: 'error' as const } : a,
   )
-  const updated = new Map(enginePanes)
+  const updated = new Map(conversationPanes)
   const instances = pane.instances.slice()
   instances[idx] = { ...instances[idx], agentStates }
   updated.set(tabId, { ...pane, instances })

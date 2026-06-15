@@ -6,6 +6,7 @@ import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { activeInstance } from '../stores/conversation-instance'
 
 function RowToggle({
   checked,
@@ -132,19 +133,15 @@ export function SettingsPopover() {
   }
 
   const handleCopyTranscript = () => {
-    const { activeTabId, tabs, enginePanes } = useSessionStore.getState()
+    const { activeTabId, tabs, conversationPanes } = useSessionStore.getState()
     const tab = tabs.find((t) => t.id === activeTabId)
     if (!tab) return
 
-    let messages: Array<{ role: string; content: string }>
-    if (tab.isEngine) {
-      // Engine tabs: messages on the active instance in enginePanes
-      const pane = enginePanes.get(tab.id)
-      const inst = pane?.activeInstanceId ? pane.instances.find(i => i.id === pane.activeInstanceId) : null
-      messages = inst?.messages ?? []
-    } else {
-      messages = tab.messages ?? []
-    }
+    // Messages live on the active `ConversationInstance` for every tab type
+    // (normal tabs carry a single `main` instance), so there is no longer a
+    // `tab.hasEngineExtension` fork — `activeInstance` resolves the right instance.
+    const messages: Array<{ role: string; content: string }> =
+      activeInstance(conversationPanes, tab.id)?.messages ?? []
 
     const transcript = formatTranscript(messages)
     if (!transcript) return
@@ -159,7 +156,7 @@ export function SettingsPopover() {
       tabs,
       staticInfo,
       backend,
-      enginePanes,
+      conversationPanes,
     } = useSessionStore.getState()
     const tab = tabs.find((t) => t.id === activeTabId)
     if (!tab) return
@@ -167,10 +164,10 @@ export function SettingsPopover() {
     const homeDir = staticInfo?.homePath || '~'
     let payload: string
 
-    if (tab.isEngine) {
+    if (tab.hasEngineExtension) {
       // Each engine restart writes a new conversation file. Copy every
       // file the engine has produced for this instance, newest last.
-      const pane = enginePanes.get(tab.id)
+      const pane = conversationPanes.get(tab.id)
       const inst = pane?.activeInstanceId ? pane.instances.find(i => i.id === pane.activeInstanceId) : null
       if (!inst) return
       const ids = inst.conversationIds
@@ -198,15 +195,15 @@ export function SettingsPopover() {
     const {
       activeTabId,
       tabs,
-      enginePanes,
+      conversationPanes,
     } = useSessionStore.getState()
     const tab = tabs.find((t) => t.id === activeTabId)
     if (!tab) return
 
     let payload: string
 
-    if (tab.isEngine) {
-      const pane = enginePanes.get(tab.id)
+    if (tab.hasEngineExtension) {
+      const pane = conversationPanes.get(tab.id)
       const inst = pane?.activeInstanceId ? pane.instances.find(i => i.id === pane.activeInstanceId) : null
       if (!inst) return
       const ids = inst.conversationIds
@@ -237,12 +234,12 @@ export function SettingsPopover() {
   // Check if debug info can be copied
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tabs = useSessionStore((s) => s.tabs)
-  const enginePanes = useSessionStore((s) => s.enginePanes)
+  const conversationPanes = useSessionStore((s) => s.conversationPanes)
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const hasDebugInfo = (() => {
     if (!activeTab) return false
-    if (activeTab.isEngine) {
-      const pane = enginePanes.get(activeTab.id)
+    if (activeTab.hasEngineExtension) {
+      const pane = conversationPanes.get(activeTab.id)
       const inst = pane?.activeInstanceId ? pane.instances.find(i => i.id === pane.activeInstanceId) : null
       // Enable when either the live engine has reported a sessionId OR the
       // instance has persisted historical conversation IDs (restored tabs

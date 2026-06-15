@@ -45,7 +45,7 @@ struct TabRowView: View {
                     }
                 }
 
-            if tab.isEngine == true {
+            if tab.hasEngineExtension == true {
                 Image(systemName: "bolt.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -94,7 +94,7 @@ struct TabRowView: View {
 
             Spacer()
 
-            if tab.groupPinned == true && tab.isEngine != true {
+            if tab.groupPinned == true && tab.hasEngineExtension != true {
                 Image(systemName: "pin.fill")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

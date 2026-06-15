@@ -445,7 +445,11 @@ func TestSerializeServerEvent_RoundTrip(t *testing.T) {
 // --- New tests ported from TS ---
 
 func TestParseClientCommand_AllCommandTypes(t *testing.T) {
-	// Verify all 16 valid command types are parseable with required fields.
+	// Verify a representative set of command types is parseable with their
+	// required fields. This is intentionally a subset, not the full command
+	// set — the authoritative list of accepted discriminators lives in
+	// validateRaw (protocol.go). Add a row here when a command's required-field
+	// parsing needs coverage; do not treat the map size as a command count.
 	allCmds := map[string]string{
 		"start_session":   `{"cmd":"start_session","key":"k","config":{"profileId":"p","extensionDir":"/e","workingDirectory":"/w"}}`,
 		"send_prompt":     `{"cmd":"send_prompt","key":"k","text":"hi"}`,
@@ -475,10 +479,6 @@ func TestParseClientCommand_AllCommandTypes(t *testing.T) {
 				t.Errorf("got cmd %q, want %q", result.Cmd, cmd)
 			}
 		})
-	}
-
-	if len(allCmds) != 16 {
-		t.Errorf("expected 16 command types, have %d", len(allCmds))
 	}
 }
 

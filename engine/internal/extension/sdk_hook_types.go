@@ -1,6 +1,8 @@
 package extension
 
 import (
+	"context"
+
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -284,10 +286,23 @@ type TurnInfo struct {
 	TurnNumber int `json:"turnNumber"`
 }
 
-// AgentInfo describes an agent lifecycle event.
+// AgentInfo describes an agent lifecycle event. Shared by the agent_start,
+// agent_end, and before_agent_start hooks.
+//
+// before_agent_start is dual-purpose: it fires once per sub-agent launch with
+// a populated Name/Task, AND once per root prompt for primary system-prompt
+// injection. The two firings were previously distinguishable only by an
+// undocumented empty-Name sentinel. IsRoot is the explicit discriminator:
+// consumers that inject a sub-agent-only preamble should branch on !IsRoot
+// rather than the legacy Name == "" check.
 type AgentInfo struct {
 	Name string `json:"name"`
 	Task string `json:"task,omitempty"`
+	// IsRoot is true only on the before_agent_start root-loop firing (primary
+	// system-prompt injection), where Name and Task are empty. It is always
+	// false for sub-agent before_agent_start firings and for the agent_start /
+	// agent_end hooks (which only ever describe sub-agents).
+	IsRoot bool `json:"isRoot,omitempty"`
 }
 
 // BeforeProviderRequestInfo describes a pending outbound LLM provider request.
@@ -343,16 +358,45 @@ type LLMCallOpts struct {
 	// Prompt is the user-role message sent in a single turn. Required —
 	// empty Prompt returns an error.
 	Prompt string `json:"prompt"`
-	// JSONMode requests JSON-formatted output. Today this is advisory: the
-	// engine forwards the flag in observability metadata, but providers vary
-	// in how they honour structured-output flags through the streaming API.
-	// Callers should still parse the response defensively. Reserved for a
-	// future provider-side wiring when every backend exposes a uniform
-	// JSON-mode switch.
+	// JSONMode requests JSON-formatted output. Enforcement is per-provider:
+	// on OpenAI-compatible providers the engine sets
+	// response_format={"type":"json_object"} so the provider guarantees
+	// valid JSON. On Anthropic and any provider without a native
+	// request-level JSON switch the flag remains advisory (forwarded only in
+	// observability metadata) — those providers have no equivalent knob, so
+	// callers should still parse the response defensively. The flag is
+	// always surfaced on the engine_llm_call event regardless of provider.
 	JSONMode bool `json:"jsonMode,omitempty"`
 	// MaxTokens caps the response length. 0 means provider default. Mirrors
 	// LlmStreamOptions.MaxTokens — passed through verbatim.
 	MaxTokens int `json:"maxTokens,omitempty"`
+	// Temperature controls sampling determinism. Extraction / classification
+	// / routing prompts want low values (e.g. 0.1–0.2) for reproducible
+	// output. The engine forwards this to providers that support a
+	// temperature parameter (all current OpenAI-compatible and Anthropic
+	// providers). 0 is a valid, meaningful value (fully deterministic), so
+	// callers that want "provider default" should leave Temperature unset
+	// and rely on TemperatureSet to disambiguate — see TemperatureSet.
+	Temperature float64 `json:"temperature,omitempty"`
+	// TemperatureSet distinguishes "temperature explicitly 0" from
+	// "temperature unset" across the JSON boundary, where the omitempty tag
+	// on Temperature would otherwise erase a deliberate 0. The TS SDK sets
+	// this true whenever the caller supplied a temperature. When false, the
+	// engine omits temperature from the provider request (provider default
+	// applies). When true, the engine forwards Temperature verbatim,
+	// including 0.
+	TemperatureSet bool `json:"temperatureSet,omitempty"`
+	// Ctx is an optional in-process cancellation context for this single
+	// call. When non-nil, the call is cancelled if Ctx is cancelled — this
+	// is how the host wires per-call cancellation (ext/llm_call_cancel,
+	// driven by a TS-side AbortSignal) into the call. It composes with the
+	// session cancellation root: the call is cancelled if EITHER the session
+	// root or Ctx fires. nil means "no per-call cancel; rely on the session
+	// root only".
+	//
+	// json:"-" because a context.Context never crosses the wire (mirrors
+	// RunOptions.ParentCtx). Not a contract surface; not in the manifest.
+	Ctx context.Context `json:"-"`
 }
 
 // LLMCallResult is the response from ctx.LLMCall. Carries the accumulated

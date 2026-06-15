@@ -1,13 +1,14 @@
 import type { StoreSet } from '../session-store-types'
-import type { EngineEvent, EnginePaneState, StatusFields } from '../../../shared/types'
+import type { EngineEvent, ConversationPane, StatusFields } from '../../../shared/types'
+import { parseSessionKey } from '../../../shared/session-key'
 
 /**
- * Return a new enginePanes Map with the given instance fields patched for
+ * Return a new conversationPanes Map with the given instance fields patched for
  * the instance identified by `key` (`${tabId}:${instanceId}`). No-ops
  * silently when the pane or instance is not found.
  */
-function withInstancePatch(
-  enginePanes: Map<string, EnginePaneState>,
+export function withInstancePatch(
+  conversationPanes: Map<string, ConversationPane>,
   key: string,
   patch: Partial<{
     statusFields: StatusFields | null
@@ -15,13 +16,13 @@ function withInstancePatch(
     permissionDenied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
     modelOverride: string | null
   }>,
-): Map<string, EnginePaneState> {
-  const [tabId, instanceId] = key.split(':')
-  const pane = enginePanes.get(tabId)
-  if (!pane) return enginePanes
+): Map<string, ConversationPane> {
+  const { tabId, instanceId } = parseSessionKey(key)
+  const pane = conversationPanes.get(tabId)
+  if (!pane) return conversationPanes
   const idx = pane.instances.findIndex((i) => i.id === instanceId)
-  if (idx === -1) return enginePanes
-  const updated = new Map(enginePanes)
+  if (idx === -1) return conversationPanes
+  const updated = new Map(conversationPanes)
   const instances = pane.instances.slice()
   instances[idx] = { ...instances[idx], ...patch }
   updated.set(tabId, { ...pane, instances })
@@ -75,8 +76,8 @@ export function handleEngineStatusEvent(
     // Merge last-known context/cost into incoming status fields so the
     // footer doesn't reset to 0% when the engine emits a status event
     // without usage data.
-    const [, instanceId] = key.split(':')
-    const pane = state.enginePanes.get(tabId)
+    const { instanceId } = parseSessionKey(key)
+    const pane = state.conversationPanes.get(tabId)
     const existingInst = pane?.instances.find((i) => i.id === instanceId)
     const prev = existingInst?.statusFields ?? null
     const merged: StatusFields = { ...event.fields }
@@ -201,6 +202,17 @@ export function handleEngineStatusEvent(
           updates.conversationId = sessionId
           updates.lastKnownSessionId = sessionId
         }
+        // Project the engine-reported context window onto the parent tab
+        // so the local-percent recomputation in StatusBarContextIndicator
+        // has the engine's truth to divide by. Without this, the indicator
+        // falls back to the picker-selected model's nominal window, which
+        // produces a 100% reading whenever the picker disagrees with the
+        // engine (e.g. opus-running conversation displayed under a Sonnet
+        // picker selection).
+        const incomingWindow = event.fields?.contextWindow
+        if (typeof incomingWindow === 'number' && incomingWindow > 0 && t.contextWindow !== incomingWindow) {
+          updates.contextWindow = incomingWindow
+        }
         if (isRunning && t.status !== 'running' && isActive) {
           updates.status = 'running' as const
         }
@@ -227,7 +239,7 @@ export function handleEngineStatusEvent(
       returnPatch.tabs = tabs
     }
 
-    // Update ConversationInstance fields on the instance in enginePanes.
+    // Update ConversationInstance fields on the instance in conversationPanes.
     const instancePatch: Parameters<typeof withInstancePatch>[2] = {
       statusFields: merged,
     }
@@ -240,9 +252,9 @@ export function handleEngineStatusEvent(
     if (isValidModel && incomingModel) {
       instancePatch.modelOverride = incomingModel
     }
-    const updatedPanes = withInstancePatch(state.enginePanes, key, instancePatch)
-    if (updatedPanes !== state.enginePanes) {
-      returnPatch.enginePanes = updatedPanes
+    const updatedPanes = withInstancePatch(state.conversationPanes, key, instancePatch)
+    if (updatedPanes !== state.conversationPanes) {
+      returnPatch.conversationPanes = updatedPanes
     }
 
     return returnPatch

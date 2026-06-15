@@ -32,7 +32,7 @@ import XCTest
 ///     RemoteEvent on iOS. The engine emits `model_fallback` as a
 ///     workflow signal at the swap site; the desktop projects it onto
 ///     its session store and forwards the *fact* to iOS via the
-///     snapshot path (RemoteTabState.engineInstances[i].modelFallback).
+///     snapshot path (RemoteTabState.conversationInstances[i].modelFallback).
 ///     iOS reads from the snapshot only — there is no live RemoteEvent
 ///     variant for this signal. If a future iOS feature needs the live
 ///     event (e.g. per-instance toast notifications), add the Swift

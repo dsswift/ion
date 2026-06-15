@@ -196,7 +196,16 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		var childPlanExited bool
 
 		// Cancellation context for background dispatch / recall support.
-		ctx, cancelFn := context.WithCancel(context.Background())
+		// Derived from the session cancellation root (sa.RootContext())
+		// rather than context.Background() so a session-level abort
+		// cancels this dispatch's context alongside its explicit recall
+		// path. The child agent typically runs as a separate process, so
+		// the authoritative kill is still the OS-process reap in the
+		// session manager's abortAllDescendants (killProcess by PID) — this
+		// context cancel is the in-process half (it unblocks any
+		// goroutine selecting on ctx.Done() here, e.g. background recall
+		// wiring), keeping dispatch consistent with the unified tree.
+		ctx, cancelFn := context.WithCancel(sa.RootContext())
 		var recalled bool
 		var recallReason string
 
@@ -291,6 +300,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			Prompt:      opts.Task,
 			Model:       model,
 			ProjectPath: projectPath,
+			// Derive the child run from the session cancellation root so a
+			// session abort cascades to in-process child runs (ApiBackend).
+			// Process-backed children (CliBackend) are additionally reaped
+			// by PID kill in the manager's abortAllDescendants; threading
+			// the parent here makes the in-process backends consistent with
+			// the unified tree rather than orphaned on Background.
+			ParentCtx: sa.RootContext(),
 		}
 		if opts.SystemPrompt != "" {
 			runOpts.AppendSystemPrompt = opts.SystemPrompt

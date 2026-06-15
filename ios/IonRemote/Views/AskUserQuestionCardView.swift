@@ -143,7 +143,7 @@ struct AskUserQuestionCardView: View {
     /// recognises the message as engine-scoped (`isEngineTab: true`);
     /// conversation tabs use `sendPrompt` as before.
     private func submitAnswer(_ text: String) {
-        if viewModel.tab(for: tabId)?.isEngine == true {
+        if viewModel.tab(for: tabId)?.hasEngineExtension == true {
             viewModel.submitEnginePrompt(tabId: tabId, text: text)
         } else {
             viewModel.sendPrompt(tabId: tabId, text: text)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ConversationView: View {
-    @Environment(SessionViewModel.self) private var viewModel
+    @Environment(SessionViewModel.self) var viewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     let tabId: String
@@ -22,11 +22,11 @@ struct ConversationView: View {
         viewModel.tab(for: tabId)
     }
 
-    private var isRunning: Bool {
+    var isRunning: Bool {
         tab?.status == .running || tab?.status == .connecting
     }
 
-    private var conversationMessages: [Message] {
+    var conversationMessages: [Message] {
         viewModel.messages[tabId] ?? []
     }
 
@@ -48,7 +48,7 @@ struct ConversationView: View {
         groupConversationItems(conversationMessages, unifiedTurnView: unifiedTurnView)
     }
 
-    private var isLoading: Bool {
+    var isLoading: Bool {
         viewModel.loadingConversation.contains(tabId)
     }
 
@@ -157,28 +157,28 @@ struct ConversationView: View {
 
     /// Detect ExitPlanMode or AskUserQuestion as the last tool in history
     /// and synthesize a PermissionRequest so the card renders on reopen.
-    /// Returns nil if a user message appears after the tool (the conversation
-    /// has moved past the plan/question and the card is stale).
+    /// Returns nil when the card has been dismissed — either a user message or
+    /// a `/clear` divider appears after the tool. The dismissal rule lives in
+    /// `PendingCard.outcome` (a pure, unit-tested function mirrored from the
+    /// desktop's shared pending-card rule) so both clients agree exactly.
     private func computeRestoredSpecialCard() -> PermissionRequest? {
-        guard let lastTool = conversationMessages.last(where: { $0.isTool }),
-              lastTool.toolName == "ExitPlanMode" || lastTool.toolName == "AskUserQuestion"
-        else {
-            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: no ExitPlanMode/AskUserQuestion as last tool (totalMessages=\(conversationMessages.count))")
+        let outcome = PendingCard.outcome(for: conversationMessages)
+        let lastTool: Message
+        switch outcome {
+        case .none:
+            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: no ExitPlanMode/AskUserQuestion as last outstanding tool (totalMessages=\(conversationMessages.count))")
             return nil
+        case .suppressedByUser:
+            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: stale — user message after tool")
+            return nil
+        case .suppressedByClear:
+            DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: suppressed — /clear divider after tool")
+            return nil
+        case .found(let tool):
+            lastTool = tool
         }
 
         DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: found lastTool=\(lastTool.toolName ?? "nil") id=\(lastTool.id) toolInput=\(lastTool.toolInput?.prefix(200) ?? "nil")")
-
-        // Stale detection: walk backwards from the end of the conversation.
-        // If a user message appears before we hit the tool, the conversation
-        // continued past this plan/question — don't resurface the card.
-        for message in conversationMessages.reversed() {
-            if message.id == lastTool.id { break } // hit the tool first — genuine
-            if message.role == .user {
-                DiagnosticLog.log("PERM-CARD: computeRestoredSpecialCard: stale — user message after tool")
-                return nil
-            }
-        }
 
         var toolInput: [String: AnyCodable]?
         if let inputStr = lastTool.toolInput, let data = inputStr.data(using: .utf8),
@@ -205,7 +205,7 @@ struct ConversationView: View {
 
     /// Unified row enum that wraps both state indicators and conversation items.
     /// Hashable by a stable string id for the diffable data source.
-    private enum RowItem: Hashable {
+    enum RowItem: Hashable {
         case loadMore
         case loading
         case loadFailed
@@ -318,6 +318,7 @@ struct ConversationView: View {
                 preferredModel: viewModel.preferredModel,
                 contextPercent: tab?.contextPercent,
                 contextTokens: tab?.contextTokens,
+                engineContextWindow: tab?.contextWindow,
                 isRunning: isRunning,
                 permissionMode: tab?.permissionMode,
                 availableModels: viewModel.availableModels,
@@ -472,6 +473,61 @@ struct ConversationView: View {
             ConversationAttachmentsSheet(tabId: tabId)
                 .environment(viewModel)
         }
+        // Share-sheet presentation for /export payloads. The view-model
+        // parks the rendered output on `pendingExport` whenever the
+        // engine_export event arrives; we present the system share
+        // sheet, then clear the field once the user dismisses it. The
+        // tabId match guards against a stale export from a different
+        // tab firing on this view (only one share sheet at a time, and
+        // SwiftUI gates re-presentation on the `id` change).
+        //
+        // We share a temp-file URL (not the bare string) so AirDrop /
+        // Files / Mail receive a correctly-typed, correctly-named
+        // artifact. The extension comes from the engine-reported
+        // export format. If the temp-file write fails we fall back to
+        // sharing the raw string so the user is never left with a
+        // broken share sheet.
+        .sheet(item: Binding(
+            get: { viewModel.pendingExport?.tabId == tabId ? viewModel.pendingExport : nil },
+            set: { _ in viewModel.pendingExport = nil }
+        )) { export in
+            ExportShareSheet(items: ConversationView.shareItems(for: export))
+        }
+    }
+
+    /// Build the share-sheet item array for an export. Prefers a typed
+    /// temp-file URL (`ion-conversation-<date>.<ext>`) written from the
+    /// payload so the system share sheet shows a real file; falls back
+    /// to the raw payload string if the write fails.
+    static func shareItems(for export: PendingExport) -> [Any] {
+        let ext = ConversationView.fileExtension(for: export.format)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withFullDate]
+        let date = iso.string(from: Date())
+        let suffix = String(UUID().uuidString.prefix(6)).lowercased()
+        let name = "ion-conversation-\(date)-\(suffix).\(ext)"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do {
+            try export.payload.write(to: url, atomically: true, encoding: .utf8)
+            return [url]
+        } catch {
+            // Temp-file write failed (rare — sandbox/disk pressure). Share
+            // the raw string so the user still gets a usable share sheet.
+            return [export.payload]
+        }
+    }
+
+    /// Map the engine-reported export format to a file extension. Mirrors
+    /// the desktop's extensionForFormat; nil/unrecognized defaults to the
+    /// engine's own /export default (markdown → md).
+    static func fileExtension(for format: String?) -> String {
+        switch format {
+        case "markdown": return "md"
+        case "json": return "json"
+        case "html": return "html"
+        case "jsonl": return "jsonl"
+        default: return "md"
+        }
     }
 
     // MARK: - Message List
@@ -485,116 +541,6 @@ struct ConversationView: View {
             horizontalInset: 0
         ) { [self] rowItem in
             rowView(rowItem)
-        }
-    }
-
-    // MARK: - Row dispatch
-
-    @ViewBuilder
-    private func rowView(_ rowItem: RowItem) -> some View {
-        switch rowItem {
-        case .loadMore:
-            Button {
-                viewModel.loadMoreMessages(tabId: tabId)
-            } label: {
-                if isLoading {
-                    ProgressView()
-                } else {
-                    Text("Load earlier messages")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.vertical, 8)
-
-        case .loading:
-            ProgressView("Loading conversation...")
-                .padding(.top, 40)
-
-        case .loadFailed:
-            Button {
-                viewModel.loadConversation(tabId: tabId)
-            } label: {
-                VStack(spacing: 8) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.title2)
-                    Text("Couldn't load conversation.\nTap to retry.")
-                        .font(.subheadline)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 40)
-
-        case .empty:
-            VStack(spacing: 12) {
-                Image("IonIcon")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 48, height: 48)
-                    .foregroundStyle(.tertiary)
-                Text("Send a message to get started")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 80)
-
-        case .conversation(let item):
-            conversationItemView(item)
-
-        case .liveText(let text):
-            Text(text)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(.horizontal)
-        }
-    }
-
-    // MARK: - Conversation item dispatch
-
-    @ViewBuilder
-    private func conversationItemView(_ item: ConversationItem) -> some View {
-        switch item {
-        case .user(let message):
-            EngineMessageRow(
-                message: message,
-                onRewind: { messageId in
-                    viewModel.rewindConversation(tabId: tabId, messageId: messageId)
-                },
-                onFork: { messageId in
-                    viewModel.forkFromMessage(tabId: tabId, messageId: messageId)
-                }
-            )
-
-        case .assistant(let message):
-            let isLast = message.id == conversationMessages.last?.id
-            let combined = consecutiveAssistantContent(
-                for: message.id, in: conversationMessages
-            )
-            let voiceSvc = viewModel.voiceService
-            EngineMessageRow(
-                message: message,
-                copyableContent: combined,
-                isSpeaking: voiceSvc.speakingMessageId == message.id && voiceSvc.isSpeaking,
-                isRunning: isRunning && isLast,
-                onSkipSpeaking: { voiceSvc.skip() },
-                onStopAllSpeaking: { voiceSvc.stop() },
-                hasPendingSpeech: voiceSvc.hasPending
-            )
-
-        case .system(let message):
-            EngineMessageRow(message: message, copyableContent: message.content)
-
-        case .toolGroup(let tools):
-            EngineToolGroupRow(tools: tools)
-
-        case .compaction(let message):
-            CompactionRowView(message: message)
-
-        case .agentTurn(let tools, let assistantMessages, let isActive):
-            AgentTurnRow(tools: tools, assistantMessages: assistantMessages, isActive: isActive)
         }
     }
 }

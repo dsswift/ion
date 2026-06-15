@@ -27,7 +27,7 @@ struct PlanApprovalCardView: View {
     /// groups, so pin/unpin is irrelevant — always show a single
     /// "Implement" button.
     private var showUnpinOption: Bool {
-        tab?.groupPinned == true && tab?.isEngine != true
+        tab?.groupPinned == true && tab?.hasEngineExtension != true
     }
 
     /// Reveals a secondary "Implement, clear context" button below the

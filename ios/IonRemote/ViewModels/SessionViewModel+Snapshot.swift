@@ -16,7 +16,7 @@ extension SessionViewModel {
             let tools = t.permissionQueue.map { "\($0.toolName)(id=\($0.questionId.prefix(12)))" }.joined(separator: ", ")
             DiagnosticLog.log("SNAP: tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=[\(tools)]")
         }
-        for t in snapshotTabs where t.isEngine == true && t.permissionQueue.isEmpty {
+        for t in snapshotTabs where t.hasEngineExtension == true && t.permissionQueue.isEmpty {
             if t.status == .completed || t.status == .idle {
                 DiagnosticLog.log("SNAP: engine tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=EMPTY (no denials promoted)")
             }
@@ -169,10 +169,10 @@ extension SessionViewModel {
                 activeTerminalInstance[tab.id] = tab.activeTerminalInstanceId ?? instances.first?.id
             }
             // Populate engine instance state from snapshot tab data
-            if tab.isEngine == true, let instances = tab.engineInstances {
+            if tab.hasEngineExtension == true, let instances = tab.conversationInstances {
                 // Merge snapshot-projected fields onto existing instances so
                 // we preserve runtime conversation state across snapshot
-                // ticks. EngineInstanceInfo carries two flavors of state:
+                // ticks. ConversationInstanceInfo carries two flavors of state:
                 //
                 //   - Snapshot-projected (Codable): id, label, waitingState,
                 //     isRunning, runningAgentCount, modelFallback. These are
@@ -182,8 +182,8 @@ extension SessionViewModel {
                 //     populated by live events / loadEngineConversation and
                 //     must survive the snapshot reassignment.
                 //
-                // Previously this code did `engineInstances[tab.id] =
-                // instances.map { EngineInstanceInfo(id:label:waitingState:) }`
+                // Previously this code did `conversationInstances[tab.id] =
+                // instances.map { ConversationInstanceInfo(id:label:waitingState:) }`
                 // which constructed fresh instances with default-empty
                 // runtime state — wiping messages every snapshot. That was
                 // masked by an unconditional `loadEngineConversation` call
@@ -192,8 +192,8 @@ extension SessionViewModel {
                 // is no longer masked and the conversation would disappear
                 // a few seconds after open. The merge below fixes the root
                 // cause: preserve runtime state, update snapshot fields.
-                let existing = engineInstances[tab.id] ?? []
-                engineInstances[tab.id] = instances.map { snap in
+                let existing = conversationInstances[tab.id] ?? []
+                conversationInstances[tab.id] = instances.map { snap in
                     if var prior = existing.first(where: { $0.id == snap.id }) {
                         prior.label = snap.label
                         prior.waitingState = snap.waitingState
@@ -208,8 +208,8 @@ extension SessionViewModel {
                     // live events.
                     return snap
                 }
-                activeEngineInstance[tab.id] = tab.activeEngineInstanceId ?? instances.first?.id
-                ionLog.info("snapshot: engine tab \(tab.id.prefix(8)), instances=\(instances.map(\.id)), active=\(tab.activeEngineInstanceId ?? "nil")")
+                activeEngineInstance[tab.id] = tab.activeConversationInstanceId ?? instances.first?.id
+                ionLog.info("snapshot: engine tab \(tab.id.prefix(8)), instances=\(instances.map(\.id)), active=\(tab.activeConversationInstanceId ?? "nil")")
                 // Pre-load engine conversation history for engine tabs we
                 // haven't loaded yet. Guarded against `engineConversationLoaded`
                 // so the snapshot handler — which runs on every ~5s snapshot

@@ -39,12 +39,13 @@ vi.mock('../../preferences', () => ({
 
 import { createEventSlice } from '../slices/event-slice'
 import type { State } from '../session-store-types'
+import { seedMainPane, mainInstance } from './helpers/conversation-test-helpers'
 
 function makeTab() {
   return {
     id: 'tab1',
     title: 'Engine',
-    isEngine: false,
+    hasEngineExtension: false,
     engineProfileId: null,
     workingDirectory: '/tmp',
     hasChosenDirectory: true,
@@ -55,15 +56,11 @@ function makeTab() {
     customTitle: null,
     pillColor: null,
     permissionMode: 'plan' as const,
-    permissionDenied: null,
-    permissionQueue: [],
     queuedPrompts: [],
-    messages: [],
     historicalSessionIds: [],
     conversationId: 'conv-1',
     lastKnownSessionId: 'conv-1',
     lastResult: null,
-    sessionModel: 'mock-model',
     sessionTools: [],
     sessionMcpServers: [],
     sessionSkills: [],
@@ -73,15 +70,22 @@ function makeTab() {
     lastEventAt: 0,
     isCompacting: false,
     hasUnread: false,
-    planFilePath: '/tmp/plan.md',
   }
 }
 
 function buildHarness() {
+  // Per-conversation state (messages, permissionDenied, sessionModel,
+  // planFilePath) lives on the tab's `main` instance now; seed it eagerly so
+  // the event-slice reducer resolves the active instance.
   const state: any = {
     activeTabId: 'tab1',
     isExpanded: true,
     tabs: [makeTab()],
+    conversationPanes: seedMainPane('tab1', {
+      permissionMode: 'plan',
+      sessionModel: 'mock-model',
+      planFilePath: '/tmp/plan.md',
+    }),
     backend: 'api',
     sendMessage: vi.fn(),
   }
@@ -108,8 +112,9 @@ describe('event-slice — engine_plan_mode_changed', () => {
     // The mode flip back to 'auto' must wait for the user-approval gate
     // in onImplement. The engine event is advisory only.
     expect(state.tabs[0].permissionMode).toBe('plan')
-    // planFilePath is still propagated so the approval card has the path.
-    expect(state.tabs[0].planFilePath).toBe('/tmp/plan.md')
+    // planFilePath is still propagated (on the instance) so the approval
+    // card has the path.
+    expect(mainInstance(state.conversationPanes, 'tab1')?.planFilePath).toBe('/tmp/plan.md')
   })
 
   it('DOES set permissionMode to plan on planModeEnabled=true', () => {
@@ -127,12 +132,12 @@ describe('event-slice — engine_plan_mode_changed', () => {
 
   it('appends a "Plan created" divider system message on planModeEnabled=true', () => {
     // Regression test: the event-slice handler also seeds a divider into
-    // the CLI tab's messages so the user can see when the plan phase
-    // started. The earlier test only verified permissionMode; this one
-    // pins the divider-insertion path that engine-event-slice.ts mirrors
-    // for the engine-tab path.
+    // the CLI tab's `main` instance messages so the user can see when the
+    // plan phase started. The earlier test only verified permissionMode;
+    // this one pins the divider-insertion path that engine-event-slice.ts
+    // mirrors for the engine-tab path.
     const { state, slice } = buildHarness()
-    const messagesBefore = state.tabs[0].messages.length
+    const messagesBefore = mainInstance(state.conversationPanes, 'tab1')!.messages.length
 
     slice.handleNormalizedEvent!('tab1', {
       type: 'engine_plan_mode_changed' as any,
@@ -141,8 +146,8 @@ describe('event-slice — engine_plan_mode_changed', () => {
       planSlug: 'my-plan',
     } as any)
 
-    expect(state.tabs[0].messages.length).toBe(messagesBefore + 1)
-    const last = state.tabs[0].messages.at(-1)!
+    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore + 1)
+    const last = mainInstance(state.conversationPanes, 'tab1')!.messages.at(-1)!
     expect(last.role).toBe('system')
     expect(last.content).toMatch(/^── Plan created at /)
     expect(last.content).toContain('my-plan')
@@ -154,7 +159,7 @@ describe('event-slice — engine_plan_mode_changed', () => {
     // user-approval gate is the authoritative chokepoint, so the
     // proposal must not insert a divider into the scrollback.
     const { state, slice } = buildHarness()
-    const messagesBefore = state.tabs[0].messages.length
+    const messagesBefore = mainInstance(state.conversationPanes, 'tab1')!.messages.length
 
     slice.handleNormalizedEvent!('tab1', {
       type: 'engine_plan_mode_changed' as any,
@@ -162,7 +167,7 @@ describe('event-slice — engine_plan_mode_changed', () => {
       planFilePath: '/tmp/plan.md',
     } as any)
 
-    expect(state.tabs[0].messages.length).toBe(messagesBefore)
+    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore)
   })
 })
 
@@ -187,9 +192,10 @@ describe('event-slice — task_complete with ExitPlanMode denial', () => {
       ],
     } as any)
 
-    expect(state.tabs[0].permissionDenied).not.toBeNull()
-    expect(state.tabs[0].permissionDenied.tools).toHaveLength(1)
-    expect(state.tabs[0].permissionDenied.tools[0].toolName).toBe('ExitPlanMode')
+    const denied = mainInstance(state.conversationPanes, 'tab1')!.permissionDenied
+    expect(denied).not.toBeNull()
+    expect(denied!.tools).toHaveLength(1)
+    expect(denied!.tools[0].toolName).toBe('ExitPlanMode')
 
     // Confirm no synthetic "Plan mode is not active..." message was scheduled.
     expect(state.sendMessage).not.toHaveBeenCalled()

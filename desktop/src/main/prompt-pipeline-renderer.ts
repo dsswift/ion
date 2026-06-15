@@ -109,20 +109,33 @@ export async function insertRendererSystemMessage(p: IncomingPrompt, content: st
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return;
           var s = store.getState();
-          store.setState({
-            tabs: s.tabs.map(function(t) {
-              if (t.id !== '${escapedTab}') return t;
-              return Object.assign({}, t, {
-                status: t.status === 'connecting' ? 'idle' : t.status,
-                messages: t.messages.concat([{
-                  id: 'msg-' + Date.now() + '-' + Math.random(),
-                  role: 'system',
-                  content: '${escapedContent}',
-                  timestamp: Date.now()
-                }])
-              });
-            })
+          // Per-conversation messages now live on the active ConversationInstance
+          // in conversationPanes, not on the in-memory TabState. Append the system
+          // message onto the active instance, and update the tab status separately.
+          var pane = s.conversationPanes ? s.conversationPanes.get('${escapedTab}') : null;
+          var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
+          var patch = {};
+          if (inst) {
+            var newMsg = {
+              id: 'msg-' + Date.now() + '-' + Math.random(),
+              role: 'system',
+              content: '${escapedContent}',
+              timestamp: Date.now()
+            };
+            var nextMsgs = (inst.messages || []).concat([newMsg]);
+            var nextInst = Object.assign({}, inst, { messages: nextMsgs, messageCount: nextMsgs.length });
+            var nextInstances = pane.instances.map(function(i) { return i === inst ? nextInst : i; });
+            var nextPanes = new Map(s.conversationPanes);
+            nextPanes.set('${escapedTab}', Object.assign({}, pane, { instances: nextInstances }));
+            patch.conversationPanes = nextPanes;
+          }
+          patch.tabs = s.tabs.map(function(t) {
+            if (t.id !== '${escapedTab}') return t;
+            return Object.assign({}, t, {
+              status: t.status === 'connecting' ? 'idle' : t.status
+            });
           });
+          store.setState(patch);
         })()
       `)
     }

@@ -15,7 +15,7 @@ struct TabRowContextMenu: ViewModifier {
     /// live appended if not already present). Matches the desktop
     /// SettingsPopover merge logic.
     private var engineSessionIds: [String] {
-        guard tab.isEngine == true else { return [] }
+        guard tab.hasEngineExtension == true else { return [] }
         let instanceId = viewModel.activeEngineInstance[tab.id]
         let inst = viewModel.engineInstance(tabId: tab.id, instanceId: instanceId)
         let liveId = inst?.statusFields?.sessionId
@@ -29,7 +29,7 @@ struct TabRowContextMenu: ViewModifier {
     func body(content: Content) -> some View {
         content.contextMenu {
             // -- Clipboard actions --
-            if tab.isEngine == true {
+            if tab.hasEngineExtension == true {
                 if !engineSessionIds.isEmpty {
                     Button {
                         UIPasteboard.general.string = engineSessionIds.joined(separator: "\n")
@@ -92,7 +92,7 @@ struct TabRowContextMenu: ViewModifier {
             // Pin/unpin and move-to-group-and-pin are irrelevant for
             // engine tabs — they are multiplexed (multiple sub-conversations)
             // and shouldn't auto-move between groups.
-            if viewModel.tabGroupMode == "manual" && tab.isEngine != true {
+            if viewModel.tabGroupMode == "manual" && tab.hasEngineExtension != true {
                 Button {
                     viewModel.toggleTabGroupPin(tabId: tab.id)
                 } label: {
@@ -128,7 +128,7 @@ struct TabRowContextMenu: ViewModifier {
                         Label("Move to Group and Pin", systemImage: "pin")
                     }
                 }
-            } else if viewModel.tabGroupMode == "manual" && tab.isEngine == true {
+            } else if viewModel.tabGroupMode == "manual" && tab.hasEngineExtension == true {
                 // Engine tabs: allow plain move-to-group (manual
                 // organization) but skip pin/unpin and move-and-pin.
                 let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }

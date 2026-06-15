@@ -135,6 +135,14 @@ func executeNotebook(ctx context.Context, input map[string]any, cwd string) (*ty
 	}
 
 	filePath := resolvePath(cwd, path)
+
+	// Serialize concurrent notebook operations targeting the same file path.
+	// Mutating actions (edit, add, delete) do read-modify-write; without this
+	// lock they race the same way Edit and Write do.
+	mu := fileLock(filePath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: Notebook cancelled.", IsError: true}, nil
 	}

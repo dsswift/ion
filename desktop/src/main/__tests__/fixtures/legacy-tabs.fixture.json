@@ -1,0 +1,615 @@
+{
+  "activeSessionId": "1746638780144-fd6bb1f5b546",
+  "activeTabIndex": 0,
+  "isExpanded": true,
+  "editorGeometry": {
+    "x": 267,
+    "y": 220,
+    "w": 660,
+    "h": 800
+  },
+  "planGeometry": {
+    "x": 282,
+    "y": 144,
+    "w": 885,
+    "h": 885
+  },
+  "agentDetailGeometry": {
+    "x": 60,
+    "y": 80,
+    "w": 600,
+    "h": 500
+  },
+  "tabs": [
+    {
+      "conversationId": "1746638780144-fd6bb1f5b546",
+      "title": "Bird log",
+      "customTitle": "Bird log",
+      "workingDirectory": "/home/fixture/projects/alpha",
+      "hasChosenDirectory": true,
+      "additionalDirs": [],
+      "permissionMode": "plan",
+      "messageCount": 352,
+      "historicalSessionIds": [
+        "1788582497587-dfa9b80cc87f",
+        "1784180910692-f74df369b1f7"
+      ],
+      "lastKnownSessionId": "1700107967447-d52234a86bef",
+      "groupId": "35ea9aad-fixture-group",
+      "groupPinned": true,
+      "permissionDenied": {
+        "tools": [
+          {
+            "toolName": "ExitPlanMode",
+            "toolUseId": "restored"
+          }
+        ]
+      }
+    },
+    {
+      "conversationId": "1750156584481-c56475f5a5cf",
+      "title": "Maze runner",
+      "customTitle": "Maze runner",
+      "workingDirectory": "/home/fixture/projects/beta",
+      "hasChosenDirectory": true,
+      "additionalDirs": [],
+      "permissionMode": "auto",
+      "messageCount": 331,
+      "lastKnownSessionId": "1732677097671-7fb9d91d2924",
+      "groupId": "83ab72c0-fixture-group",
+      "contextTokens": 227753,
+      "planFilePath": "/home/fixture/work/garden/file_8681.txt",
+      "lastMessagePreview": "[fictional preview #932]",
+      "lastEventAt": 1781352777770,
+      "terminalInstances": [
+        {
+          "id": "dea80756",
+          "label": "main",
+          "kind": "user",
+          "readOnly": false,
+          "cwd": "/home/fixture/projects/alpha"
+        }
+      ]
+    },
+    {
+      "conversationId": "1723197873754-515cf1027bb5",
+      "title": "Cloud sketch",
+      "customTitle": "Cloud sketch",
+      "workingDirectory": "/home/fixture/work/recipes",
+      "hasChosenDirectory": true,
+      "additionalDirs": [],
+      "permissionMode": "plan",
+      "messageCount": 352,
+      "historicalSessionIds": [
+        "1761604207638-046a94edb0d5",
+        "1715238550125-1cc8fa79c1d8"
+      ],
+      "lastKnownSessionId": "1731152373752-cc7e458362f8",
+      "groupId": "d8a32767-fixture-group",
+      "groupPinned": true,
+      "permissionDenied": {
+        "tools": [
+          {
+            "toolName": "ExitPlanMode",
+            "toolUseId": "restored"
+          }
+        ]
+      }
+    },
+    {
+      "conversationId": "1750162257631-a635fdc8b021",
+      "title": "Puzzle solver",
+      "customTitle": "Puzzle solver",
+      "workingDirectory": "/home/fixture/work/garden",
+      "hasChosenDirectory": true,
+      "additionalDirs": [],
+      "permissionMode": "plan",
+      "messageCount": 237,
+      "lastKnownSessionId": "1728397397488-917a64330b8e",
+      "groupId": "4cd353c5-fixture-group",
+      "groupPinned": true
+    },
+    {
+      "conversationId": "1750089915448-02ce41d6b528",
+      "title": "Bird log",
+      "customTitle": "Bird log",
+      "workingDirectory": "/home/fixture/work/garden",
+      "hasChosenDirectory": true,
+      "additionalDirs": [],
+      "permissionMode": "auto",
+      "messageCount": 0,
+      "lastKnownSessionId": "1701241754174-ef2253179903",
+      "pillColor": "#f5c842",
+      "pillIcon": "lightning",
+      "modelOverride": "fictional-model-a",
+      "groupId": "0febae73-fixture-group",
+      "groupPinned": true,
+      "lastEventAt": 1781478500849,
+      "isEngine": true,
+      "engineProfileId": "5a3528e5",
+      "engineInstances": [
+        {
+          "id": "441e59a0",
+          "label": "helper two",
+          "modelOverride": "fictional-model-a",
+          "permissionMode": "auto",
+          "permissionDenied": null,
+          "conversationIds": [
+            "1759101243943-991cd70a8550"
+          ],
+          "draftInput": "",
+          "statusFields": {
+            "label": "",
+            "state": "idle",
+            "model": "fictional-model-a",
+            "contextPercent": 0,
+            "contextWindow": 1000000,
+            "backend": "api",
+            "sessionId": "1780771550094-1ca65aaabc2c"
+          },
+          "planFilePath": null,
+          "forkedFromConversationIds": null
+        },
+        {
+          "id": "b2488e19",
+          "label": "draft",
+          "modelOverride": "fictional-model-a",
+          "permissionMode": "auto",
+          "permissionDenied": null,
+          "conversationIds": [
+            "1775748202397-153512db8b41"
+          ],
+          "draftInput": "",
+          "statusFields": {
+            "label": "",
+            "state": "idle",
+            "model": "fictional-model-a",
+            "contextPercent": 0,
+            "contextWindow": 1000000,
+            "backend": "api",
+            "sessionId": "1780801204375-522d2e143e22"
+          },
+          "planFilePath": null,
+          "forkedFromConversationIds": null
+        },
+        {
+          "id": "c4d4067b",
+          "label": "scratch",
+          "modelOverride": "fictional-model-a",
+          "permissionMode": "auto",
+          "permissionDenied": null,
+          "conversationIds": [
+            "1738055815619-5c242c0821a7"
+          ],
+          "draftInput": "",
+          "statusFields": {
+            "label": "",
+            "state": "idle",
+            "model": "fictional-model-a",
+            "contextPercent": 14,
+            "contextWindow": 1000000,
+            "totalCostUsd": 0.29085,
+            "backend": "api",
+            "sessionId": "1781204683489-7cc774bd2bab"
+          },
+          "planFilePath": null,
+          "forkedFromConversationIds": null
+        },
+        {
+          "id": "fad8e1e0",
+          "label": "helper one",
+          "modelOverride": "fictional-model-a",
+          "permissionMode": "auto",
+          "permissionDenied": {
+            "tools": [
+              {
+                "toolName": "AskUserQuestion",
+                "toolUseId": "toolu_011kMQzDoeXwEC6UYEGn915P",
+                "toolInput": {
+                  "options": [
+                    "[fictional opt #869]",
+                    "[fictional opt #137]",
+                    "[fictional opt #877]"
+                  ]
+                }
+              }
+            ]
+          },
+          "conversationIds": [
+            "1740101267277-2d8a51809a46"
+          ],
+          "draftInput": "",
+          "statusFields": {
+            "label": "",
+            "state": "idle",
+            "model": "fictional-model-a",
+            "contextPercent": 2,
+            "contextWindow": 1000000,
+            "totalCostUsd": 0.103515,
+            "permissionDenials": [
+              {
+                "toolName": "AskUserQuestion",
+                "toolUseId": "toolu_011kMQzDoeXwEC6UYEGn915P",
+                "toolInput": {
+                  "options": [
+                    "Investigate, then propose",
+                    "Read and fix directly",
+                    "Just explain the cause"
+                  ],
+                  "question": "The improver returned without findings twice. Do you want it to investigate and propose changes for your review first, or read the harness and apply the fixes directly in one pass?"
+                }
+              }
+            ],
+            "backend": "api",
+            "sessionId": "1781439783820-6a220aa18dfd"
+          },
+          "planFilePath": null,
+          "forkedFromConversationIds": null
+        },
+        {
+          "id": "8e054596",
+          "label": "helper one",
+          "modelOverride": "fictional-model-a",
+          "permissionMode": "auto",
+          "permissionDenied": null,
+          "conversationIds": [
+            "1750360755797-f78aa12435f6"
+          ],
+          "draftInput": "",
+          "statusFields": {
+            "label": "",
+            "state": "idle",
+            "model": "fictional-model-a",
+            "contextPercent": 2,
+            "contextWindow": 1000000,
+            "totalCostUsd": 0.031155,
+            "backend": "api",
+            "sessionId": "1781440740558-4a286b13f53d"
+          },
+          "planFilePath": null,
+          "forkedFromConversationIds": null
+        }
+      ],
+      "engineMessages": {
+        "441e59a0": [
+          {
+            "role": "system",
+            "timestamp": 1780771534067,
+            "content": "\u2500\u2500 Session started"
+          },
+          {
+            "role": "harness",
+            "timestamp": 1780771534154,
+            "content": "[fictional harness #114]",
+            "dedupKey": "ion-meta:welcome"
+          },
+          {
+            "role": "user",
+            "timestamp": 1780771549927,
+            "content": "[fictional user #862]"
+          },
+          {
+            "role": "tool",
+            "timestamp": 1780780705798,
+            "content": "[fictional tool-result #581]",
+            "toolName": "Bash",
+            "toolId": "toolu_1225b478410b667a99a5dd95",
+            "toolInput": "{\"arg\": \"[fictional tool-input #581]\"}",
+            "toolStatus": "completed"
+          },
+          {
+            "role": "tool",
+            "timestamp": 1780780728419,
+            "content": "[fictional tool-result #40]",
+            "toolName": "Bash",
+            "toolId": "toolu_ed62105fb1474d6420b56fcc",
+            "toolInput": "{\"arg\": \"[fictional tool-input #40]\"}",
+            "toolStatus": "completed"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1780780751732,
+            "content": "[fictional assistant #219]"
+          }
+        ],
+        "b2488e19": [
+          {
+            "role": "system",
+            "timestamp": 1780801056316,
+            "content": "\u2500\u2500 Session started"
+          },
+          {
+            "role": "harness",
+            "timestamp": 1780801056566,
+            "content": "[fictional harness #846]",
+            "dedupKey": "ion-meta:welcome"
+          },
+          {
+            "role": "user",
+            "timestamp": 1780801204136,
+            "content": "[fictional user #673]"
+          },
+          {
+            "role": "tool",
+            "timestamp": 1780801523050,
+            "content": "[fictional tool-result #591]",
+            "toolName": "dispatch_extension_improver",
+            "toolId": "toolu_a9fcbe5fa8a664d53d6bcf0d",
+            "toolInput": "{\"arg\": \"[fictional tool-input #591]\"}",
+            "toolStatus": "completed"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1780801819598,
+            "content": "[fictional assistant #85]"
+          },
+          {
+            "role": "user",
+            "timestamp": 1780868544577,
+            "content": "[fictional user #360]"
+          }
+        ],
+        "c4d4067b": [
+          {
+            "role": "system",
+            "timestamp": 1781204683345,
+            "content": "\u2500\u2500 Session started"
+          },
+          {
+            "role": "harness",
+            "timestamp": 1781204683722,
+            "content": "[fictional harness #545]",
+            "dedupKey": "ion-meta:welcome"
+          },
+          {
+            "role": "user",
+            "timestamp": 1781204801155,
+            "content": "[fictional user #141]"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1781470983318,
+            "content": "[fictional assistant #426]"
+          },
+          {
+            "role": "tool",
+            "timestamp": 1781470986264,
+            "content": "[fictional tool-result #78]",
+            "toolName": "Bash",
+            "toolId": "toolu_8d2225fdd84df8d2ab2a3988",
+            "toolInput": "{\"arg\": \"[fictional tool-input #78]\"}",
+            "toolStatus": "completed"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1781470990534,
+            "content": "[fictional assistant #586]"
+          }
+        ],
+        "fad8e1e0": [
+          {
+            "role": "system",
+            "timestamp": 1781439783819,
+            "content": "\u2500\u2500 Session started"
+          },
+          {
+            "role": "harness",
+            "timestamp": 1781439783968,
+            "content": "[fictional harness #949]",
+            "dedupKey": "ion-meta:welcome"
+          },
+          {
+            "role": "user",
+            "timestamp": 1781439993147,
+            "content": "[fictional user #368]"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1781440082381,
+            "content": "[fictional assistant #298]"
+          },
+          {
+            "role": "tool",
+            "timestamp": 1781440185933,
+            "content": "[fictional tool-result #216]",
+            "toolName": "AskUserQuestion",
+            "toolId": "toolu_16141ed9556a796d99f78745",
+            "toolInput": "{\"arg\": \"[fictional tool-input #216]\"}",
+            "toolStatus": "completed"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1781440185949,
+            "content": "[fictional assistant #427]"
+          }
+        ],
+        "8e054596": [
+          {
+            "role": "system",
+            "timestamp": 1781440740557,
+            "content": "\u2500\u2500 Session started"
+          },
+          {
+            "role": "harness",
+            "timestamp": 1781440740710,
+            "content": "[fictional harness #788]",
+            "dedupKey": "ion-meta:welcome"
+          },
+          {
+            "role": "user",
+            "timestamp": 1781440768857,
+            "content": "[fictional user #67]"
+          },
+          {
+            "role": "user",
+            "timestamp": 1781459214523,
+            "content": "[fictional user #335]"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1781459222826,
+            "content": "[fictional assistant #458]"
+          },
+          {
+            "role": "assistant",
+            "timestamp": 1781459222845,
+            "content": "[fictional assistant #232]"
+          }
+        ]
+      },
+      "engineAgentStates": {
+        "441e59a0": [
+          {
+            "name": "ion-tutor",
+            "status": "idle",
+            "metadata": {
+              "color": "#2e8b57",
+              "displayName": "Tutor",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          },
+          {
+            "name": "extension-builder",
+            "status": "idle",
+            "metadata": {
+              "color": "#6432b4",
+              "displayName": "Extension Builder",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          }
+        ],
+        "b2488e19": [
+          {
+            "name": "ion-tutor",
+            "status": "idle",
+            "metadata": {
+              "color": "#2e8b57",
+              "displayName": "Tutor",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          },
+          {
+            "name": "extension-builder",
+            "status": "idle",
+            "metadata": {
+              "color": "#6432b4",
+              "displayName": "Extension Builder",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          }
+        ],
+        "c4d4067b": [
+          {
+            "name": "ion-tutor",
+            "status": "idle",
+            "metadata": {
+              "color": "#2e8b57",
+              "displayName": "Tutor",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          },
+          {
+            "name": "extension-builder",
+            "status": "idle",
+            "metadata": {
+              "color": "#6432b4",
+              "displayName": "Extension Builder",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          }
+        ],
+        "fad8e1e0": [
+          {
+            "name": "ion-tutor",
+            "status": "idle",
+            "metadata": {
+              "color": "#2e8b57",
+              "displayName": "Tutor",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          },
+          {
+            "name": "extension-builder",
+            "status": "idle",
+            "metadata": {
+              "color": "#6432b4",
+              "displayName": "Extension Builder",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          }
+        ],
+        "8e054596": [
+          {
+            "name": "ion-tutor",
+            "status": "idle",
+            "metadata": {
+              "color": "#2e8b57",
+              "displayName": "Tutor",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          },
+          {
+            "name": "extension-improver",
+            "status": "idle",
+            "metadata": {
+              "color": "#b45a28",
+              "displayName": "Extension Improver",
+              "invited": true,
+              "type": "specialist",
+              "visibility": "sticky"
+            }
+          }
+        ]
+      },
+      "engineDenials": {
+        "fad8e1e0": {
+          "tools": [
+            {
+              "toolName": "AskUserQuestion",
+              "toolUseId": "toolu_011kMQzDoeXwEC6UYEGn915P",
+              "toolInput": {
+                "options": [
+                  "[fictional opt #869]",
+                  "[fictional opt #137]",
+                  "[fictional opt #877]"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "engineSessionIds": {
+        "441e59a0": "1714949841360-42771ba752cc",
+        "b2488e19": "1746640772880-227bd9c9d584",
+        "c4d4067b": "1739299372984-5bf2a12f719a",
+        "fad8e1e0": "1727215707498-5b9b3156ea17",
+        "8e054596": "1744804568051-1519d3c1d712"
+      },
+      "engineModelOverrides": {
+        "441e59a0": "fictional-model-a",
+        "b2488e19": "fictional-model-a",
+        "c4d4067b": "fictional-model-a",
+        "fad8e1e0": "fictional-model-a",
+        "8e054596": "fictional-model-a"
+      }
+    }
+  ]
+}

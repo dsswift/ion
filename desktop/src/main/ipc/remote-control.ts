@@ -70,7 +70,11 @@ export function registerRemoteControlIpc(): void {
             if (!store) return [];
             var s = store.getState();
             var tab = s.tabs.find(function(t) { return t.id === '${tabId.replace(/'/g, "\\'")}'; });
-            return tab ? JSON.parse(JSON.stringify(tab.messages || [])) : [];
+            if (!tab) return [];
+            // Messages now live on the active ConversationInstance in conversationPanes.
+            var pane = s.conversationPanes ? s.conversationPanes.get(tab.id) : null;
+            var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
+            return inst ? JSON.parse(JSON.stringify(inst.messages || [])) : [];
           } catch(e) { return []; }
         })()
       `)

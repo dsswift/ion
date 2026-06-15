@@ -150,6 +150,242 @@ func (cp *compactParams) resolveSessionMemory(conv *conversation.Conversation, l
 	return mem, fmt.Sprintf("%s compact: using session memory as summary (no boundary tracking)", label)
 }
 
+// performCompactParams bundles every input performCompact needs. Built once
+// per call site so the function signature stays stable as new compaction
+// inputs land (e.g. a "trigger" string when we added user-triggered compaction).
+//
+// Fields:
+//   - ctx:           Threaded for LLM-based summarisation (tier 2 of the
+//                    four-tier fallback). May be context.Background() for
+//                    out-of-run callers; the LLM tier respects cancellation
+//                    on its own deadline if the ctx has none.
+//   - run:           Synthetic-or-real activeRun. b.emit reads run.requestID
+//                    for routing and updates run.lastProgressAt. Must not be
+//                    nil — CompactNow constructs a minimal one when invoked
+//                    outside an actual run loop.
+//   - conv:          The conversation to compact in place.
+//   - hooks:         Per-run hooks (cancel, summary override, memory access).
+//                    Zero-valued RunHooks{} is fine; nil callbacks are skipped.
+//   - contextWindow: Total context budget for the active model (tokens).
+//   - tokenLimit:    Pre-compaction trigger threshold. Used only for logging
+//                    and the hook payload; performCompact does not re-check
+//                    it (the caller has already decided compaction must run).
+//   - cp:            Compaction policy knobs from RunOptions.
+//   - trigger:       "auto" (proactive), "reactive" (prompt_too_long retry),
+//                    or "user" (operator-initiated /compact). Surfaced on the
+//                    boundary block's Trigger field and the CompactingEvent
+//                    Strategy field so consumers can distinguish the path.
+type performCompactParams struct {
+	ctx           context.Context
+	run           *activeRun
+	conv          *conversation.Conversation
+	hooks         RunHooks
+	contextWindow int
+	tokenLimit    int
+	cp            compactParams
+	trigger       string
+}
+
+// performCompact runs the compaction pipeline: micro-compact → optional
+// hard-truncate with four-tier summary → boundary-block injection → tree
+// entry append → save → memory-tracking reset → session_compact hook.
+//
+// Extracted from compactIfNeeded so the same code path serves three
+// triggers: the proactive token-limit check (via compactIfNeeded),
+// the reactive prompt_too_long retry (via compactReactive — though
+// that path stays separate because of escalation semantics), and
+// out-of-run user-initiated compaction (via CompactNow). Sharing the
+// implementation guarantees byte-identical observability: the
+// boundary block shape, event sequence, hook payloads, and tree
+// entries do not drift based on which trigger fired.
+//
+// Caller responsibilities — performCompact assumes these have already
+// happened:
+//   - Decision to compact (token-limit check, prompt_too_long signal,
+//     or user request) — performCompact ALWAYS compacts.
+//   - session_before_compact hook (cancellation gate) — fired by
+//     compactIfNeeded for "auto" and by CompactNow for "user". The
+//     reactive path has its own copy and bypasses performCompact
+//     entirely (see compactReactive).
+//   - run.compactionsWithoutProgress increment (only the proactive
+//     gate cares about the cascade circuit breaker; user-triggered
+//     compaction skips it because the user is explicitly asking).
+//
+// The function is intentionally not in compactIfNeeded's gate so a
+// reviewer can see the pure "do the compaction" sequence in one
+// place. Diff against the original compactIfNeeded body for the
+// extraction's equivalence proof.
+func (b *ApiBackend) performCompact(p performCompactParams) {
+	b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
+	msgBefore := len(p.conv.Messages)
+
+	// usageBefore captures the pre-compaction token count for the
+	// hook payload and the boundary block's TokensBefore field.
+	// Sourced from GetContextUsage so cache-aware token math is used
+	// consistently with the proactive trigger's measurement.
+	usageBefore := conversation.GetContextUsage(p.conv, p.contextWindow)
+	tokensBefore := usageBefore.Tokens
+
+	// Slice at the most recent boundary so the fact extractor cannot
+	// re-extract from a prior summary. Combined with the structural
+	// boundary block this is the duplication firewall: previous
+	// summaries stay in-context for the model to see, but they are
+	// invisible to the regex pipeline that builds the next summary.
+	scanSlice := conversation.MessagesAfterLastCompactBoundary(p.conv)
+	facts := compaction.ExtractFacts(scanSlice)
+	utils.Log("ApiBackend", fmt.Sprintf("%s compact: extracted %d facts from %d-message scan slice (full conv=%d)", p.trigger, len(facts), len(scanSlice), msgBefore))
+
+	// Step 1: MicroCompact — protect only the most recent N turns (default 3).
+	cleared := conversation.MicroCompact(p.conv, p.cp.microKeepTurns)
+	utils.Log("ApiBackend", fmt.Sprintf("%s compact step 1: tokens=%d limit=%d micro-compact cleared %d (keepTurns=%d)", p.trigger, tokensBefore, p.tokenLimit, cleared, p.cp.microKeepTurns))
+
+	// Step 2: If still above the limit, hard-truncate to a token budget.
+	// For "user" trigger we ALWAYS run step 2 regardless of the
+	// micro-compact outcome — the user is asking for context reduction
+	// and the gentle step is rarely enough on its own. For "auto" we
+	// honour the same usage re-check the original compactIfNeeded did,
+	// preserving the "step 1 was sufficient" early-exit.
+	var summary string
+	var sessionMemory string
+	targetTokens := int(float64(p.contextWindow) * p.cp.targetPercent / 100.0)
+	utils.Debug("ApiBackend", fmt.Sprintf("%s compact: targetTokens formula: contextWindow=%d * targetPercent=%.1f%% = target=%d", p.trigger, p.contextWindow, p.cp.targetPercent, targetTokens))
+	usageAfterMicro := conversation.GetContextUsage(p.conv, p.contextWindow)
+	utils.Debug("ApiBackend", fmt.Sprintf("%s compact: usageAfterMicro.Tokens=%d (limit=%d)", p.trigger, usageAfterMicro.Tokens, p.tokenLimit))
+
+	shouldHardTruncate := usageAfterMicro.Tokens > p.tokenLimit || p.trigger == "user"
+	if shouldHardTruncate {
+		// Four-tier summary fallback: session memory → LLM → hook → regex.
+		// Must generate summary BEFORE truncation drops the messages.
+		if mem, reason := p.cp.resolveSessionMemory(p.conv, p.trigger); mem != "" {
+			summary = mem
+			sessionMemory = mem
+			utils.Log("ApiBackend", reason)
+		}
+		if summary == "" && p.cp.summaryEnabled {
+			droppedText := compaction.FormatMessagesForSummary(p.conv.Messages)
+			if droppedText != "" {
+				llmSummary, llmUsage := compaction.Summarize(p.ctx, droppedText, p.cp.summaryModel, p.cp.summaryMaxTokens)
+				if llmSummary != "" {
+					summary = llmSummary
+					utils.Log("ApiBackend", fmt.Sprintf("%s compact: LLM summary generated (%d chars)", p.trigger, len(summary)))
+					if llmUsage != nil {
+						totalIn := llmUsage.InputTokens + llmUsage.CacheReadInputTokens + llmUsage.CacheCreationInputTokens
+						b.emit(p.run, types.NormalizedEvent{Data: &types.UsageEvent{
+							Usage: types.UsageData{
+								InputTokens:  &totalIn,
+								OutputTokens: &llmUsage.OutputTokens,
+							},
+						}})
+					}
+				} else {
+					utils.Log("ApiBackend", fmt.Sprintf("%s compact: LLM summary returned empty despite droppedText len=%d", p.trigger, len(droppedText)))
+				}
+			} else {
+				utils.Debug("ApiBackend", fmt.Sprintf("%s compact: no text content for LLM summary", p.trigger))
+			}
+		}
+		// Tiers 3+4 (hook → regex) live in renderCompactSummary so both
+		// compactIfNeeded and compactReactive route through the same
+		// decision point. Tiers 1+2 (session memory, LLM) stay above
+		// because each has its own engine-internal side effects.
+		if summary == "" {
+			var path string
+			summary, path = renderCompactSummary(p.run.requestID, p.hooks, p.trigger, scanSlice, facts)
+			if summary == "" {
+				utils.Log("ApiBackend", fmt.Sprintf("%s compact: all four summary tiers produced nothing (session memory, LLM, hook, regex) path=%s", p.trigger, path))
+			}
+		}
+
+		// Now truncate.
+		conversation.CompactToTokenBudget(p.conv, targetTokens, p.cp.minKeepTurns, p.cp.estimationPadding)
+		utils.Log("ApiBackend", fmt.Sprintf("%s compact step 2: truncated to budget=%d (%.0f%% of %d), %d messages remain", p.trigger, targetTokens, p.cp.targetPercent, p.contextWindow, len(p.conv.Messages)))
+
+		// Inject a typed boundary block so the next compaction can slice
+		// at this point and avoid re-extracting facts from this summary.
+		recentFiles := compaction.ExtractRecentFiles(conversation.MessagesAfterLastCompactBoundary(p.conv))
+		utils.Debug("ApiBackend", fmt.Sprintf("%s compact: extracted %d recent files", p.trigger, len(recentFiles)))
+		injectCompactBoundary(p.conv, conversation.CompactMeta{
+			Trigger:            p.trigger,
+			MessagesSummarized: msgBefore - len(p.conv.Messages),
+			MessagesBefore:     msgBefore,
+			MessagesAfter:      len(p.conv.Messages) + 1, // +1 for the boundary about to be inserted
+			ClearedBlocks:      cleared,
+			TokensBefore:       tokensBefore,
+			Summary:            summary,
+			FactCount:          len(facts),
+			RecentFiles:        recentFiles,
+		})
+	} else {
+		targetTokens = 0
+		utils.Debug("ApiBackend", fmt.Sprintf("%s compact: step 1 sufficient, skipping hard truncate (tokens=%d limit=%d)", p.trigger, usageAfterMicro.Tokens, p.tokenLimit))
+	}
+	conversation.PostCompactReset(p.conv)
+
+	// Emit enriched completion event so clients can render a compaction marker.
+	msgAfter := len(p.conv.Messages)
+	b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{
+		Active:         false,
+		Summary:        summary,
+		MessagesBefore: msgBefore,
+		MessagesAfter:  msgAfter,
+		ClearedBlocks:  cleared,
+		Strategy:       p.trigger,
+	}})
+
+	// Record compaction in the conversation tree (if entries are tracked).
+	if p.conv.Entries != nil {
+		conversation.AppendEntry(p.conv, conversation.EntryCompaction, conversation.CompactionData{
+			Summary:          summary,
+			FirstKeptEntryID: firstEntryID(p.conv),
+			TokensBefore:     tokensBefore,
+		})
+		utils.Debug("ApiBackend", fmt.Sprintf("%s compact: appended compaction entry to conversation tree", p.trigger))
+	} else {
+		utils.Debug("ApiBackend", fmt.Sprintf("%s compact: conv.Entries is nil, skipping tree entry", p.trigger))
+	}
+
+	// Persist immediately so compaction survives mid-loop crashes.
+	if err := conversation.Save(p.conv, ""); err != nil {
+		utils.Log("ApiBackend", fmt.Sprintf("%s compact: failed to save: %s", p.trigger, err.Error()))
+	} else {
+		utils.Debug("ApiBackend", fmt.Sprintf("%s compact: conversation saved successfully convID=%s", p.trigger, p.conv.ID))
+	}
+
+	// Reset session memory debounce baselines so the growth threshold
+	// restarts from the post-compaction token count. Without this, the
+	// threshold is unreachable because compaction reduced the token count
+	// below the previous baseline.
+	if p.cp.resetMemoryTracking != nil {
+		postTokens := conversation.EstimateTokens(p.conv.Messages)
+		p.cp.resetMemoryTracking(postTokens)
+	}
+
+	utils.Log("ApiBackend", fmt.Sprintf("%s compact COMPLETE: tokensBefore=%d msgsBefore=%d msgsAfter=%d dropped=%d summaryLen=%d clearedBlocks=%d convID=%s contextWindow=%d",
+		p.trigger, tokensBefore, msgBefore, msgAfter, msgBefore-msgAfter, len(summary), cleared, p.conv.ID, p.contextWindow))
+
+	if p.hooks.OnSessionCompact != nil {
+		// Compute post-compaction token count before the hook fires.
+		tokensAfter := conversation.GetContextUsage(p.conv, p.contextWindow).Tokens
+
+		// Pass facts as a typed slice value on the map payload. The session
+		// bridge in prompt_runconfig.go downcasts it directly — no
+		// stringly-typed intermediate. nil is fine; the bridge handles
+		// missing/empty facts symmetrically.
+		p.hooks.OnSessionCompact(p.run.requestID, map[string]interface{}{
+			"strategy":         p.trigger,
+			"messagesBefore":   msgBefore,
+			"messagesAfter":    msgAfter,
+			"facts":            facts,
+			"tokensBefore":     tokensBefore,
+			"tokenLimit":       p.tokenLimit,
+			"targetTokens":     targetTokens,
+			"microCompactKeep": p.cp.microKeepTurns,
+			"tokensAfter":      tokensAfter,
+			"sessionMemory":    sessionMemory,
+		})
+	}
+}
+
 // compactIfNeeded performs proactive compaction when context usage exceeds
 // the absolute token limit. Honours the session_before_compact hook (which
 // can cancel the operation) and emits CompactingEvent edges so consumers
@@ -207,161 +443,16 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: compactionsWithoutProgress %d -> %d", run.compactionsWithoutProgress, run.compactionsWithoutProgress+1))
 	run.compactionsWithoutProgress++
 
-	b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
-	msgBefore := len(conv.Messages)
-
-	// Slice at the most recent boundary so the fact extractor cannot
-	// re-extract from a prior summary. Combined with the structural
-	// boundary block this is the duplication firewall: previous
-	// summaries stay in-context for the model to see, but they are
-	// invisible to the regex pipeline that builds the next summary.
-	scanSlice := conversation.MessagesAfterLastCompactBoundary(conv)
-	facts := compaction.ExtractFacts(scanSlice)
-	utils.Log("ApiBackend", fmt.Sprintf("proactive compact: extracted %d facts from %d-message scan slice (full conv=%d)", len(facts), len(scanSlice), msgBefore))
-
-	// Step 1: MicroCompact — protect only the most recent N turns (default 3).
-	cleared := conversation.MicroCompact(conv, cp.microKeepTurns)
-	utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 1: tokens=%d limit=%d micro-compact cleared %d (keepTurns=%d)", usage.Tokens, tokenLimit, cleared, cp.microKeepTurns))
-
-	// Step 2: If still above the limit, hard-truncate to a token budget.
-	var summary string
-	var sessionMemory string
-	targetTokens := int(float64(contextWindow) * cp.targetPercent / 100.0)
-	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: targetTokens formula: contextWindow=%d * targetPercent=%.1f%% = target=%d", contextWindow, cp.targetPercent, targetTokens))
-	usageAfterMicro := conversation.GetContextUsage(conv, contextWindow)
-	utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: usageAfterMicro.Tokens=%d (limit=%d)", usageAfterMicro.Tokens, tokenLimit))
-	if usageAfterMicro.Tokens > tokenLimit {
-
-		// Four-tier summary fallback: session memory → LLM → hook → regex.
-		// Must generate summary BEFORE truncation drops the messages.
-		if mem, reason := cp.resolveSessionMemory(conv, "proactive"); mem != "" {
-			summary = mem
-			sessionMemory = mem
-			utils.Log("ApiBackend", reason)
-		}
-		if summary == "" && cp.summaryEnabled {
-			droppedText := compaction.FormatMessagesForSummary(conv.Messages)
-			if droppedText != "" {
-				llmSummary, llmUsage := compaction.Summarize(ctx, droppedText, cp.summaryModel, cp.summaryMaxTokens)
-				if llmSummary != "" {
-					summary = llmSummary
-					utils.Log("ApiBackend", fmt.Sprintf("proactive compact: LLM summary generated (%d chars)", len(summary)))
-					if llmUsage != nil {
-						totalIn := llmUsage.InputTokens + llmUsage.CacheReadInputTokens + llmUsage.CacheCreationInputTokens
-						b.emit(run, types.NormalizedEvent{Data: &types.UsageEvent{
-							Usage: types.UsageData{
-								InputTokens:  &totalIn,
-								OutputTokens: &llmUsage.OutputTokens,
-							},
-						}})
-					}
-				} else {
-					utils.Log("ApiBackend", fmt.Sprintf("proactive compact: LLM summary returned empty despite droppedText len=%d", len(droppedText)))
-				}
-			} else {
-				utils.Debug("ApiBackend", "proactive compact: no text content for LLM summary")
-			}
-		}
-		// Tiers 3+4 (hook → regex) live in renderCompactSummary so both
-		// compactIfNeeded and compactReactive route through the same
-		// decision point. Tiers 1+2 (session memory, LLM) stay above
-		// because each has its own engine-internal side effects.
-		if summary == "" {
-			var path string
-			summary, path = renderCompactSummary(run.requestID, hooks, "auto", scanSlice, facts)
-			if summary == "" {
-				utils.Log("ApiBackend", fmt.Sprintf("proactive compact: all four summary tiers produced nothing (session memory, LLM, hook, regex) path=%s", path))
-			}
-		}
-
-		// Now truncate.
-		conversation.CompactToTokenBudget(conv, targetTokens, cp.minKeepTurns, cp.estimationPadding)
-		utils.Log("ApiBackend", fmt.Sprintf("proactive compact step 2: truncated to budget=%d (%.0f%% of %d), %d messages remain", targetTokens, cp.targetPercent, contextWindow, len(conv.Messages)))
-
-		// Inject a typed boundary block so the next compaction can slice
-		// at this point and avoid re-extracting facts from this summary.
-		recentFiles := compaction.ExtractRecentFiles(conversation.MessagesAfterLastCompactBoundary(conv))
-		utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: extracted %d recent files", len(recentFiles)))
-		injectCompactBoundary(conv, conversation.CompactMeta{
-			Trigger:            "auto",
-			MessagesSummarized: msgBefore - len(conv.Messages),
-			MessagesBefore:     msgBefore,
-			MessagesAfter:      len(conv.Messages) + 1, // +1 for the boundary about to be inserted
-			ClearedBlocks:      cleared,
-			TokensBefore:       usage.Tokens,
-			Summary:            summary,
-			FactCount:          len(facts),
-			RecentFiles:        recentFiles,
-		})
-	} else {
-		targetTokens = 0
-		utils.Debug("ApiBackend", fmt.Sprintf("proactive compact: step 1 sufficient, skipping hard truncate (tokens=%d limit=%d)", usageAfterMicro.Tokens, tokenLimit))
-	}
-	conversation.PostCompactReset(conv)
-
-	// Emit enriched completion event so clients can render a compaction marker.
-	msgAfter := len(conv.Messages)
-	b.emit(run, types.NormalizedEvent{Data: &types.CompactingEvent{
-		Active:         false,
-		Summary:        summary,
-		MessagesBefore: msgBefore,
-		MessagesAfter:  msgAfter,
-		ClearedBlocks:  cleared,
-		Strategy:       "auto",
-	}})
-
-	// Record compaction in the conversation tree (if entries are tracked).
-	if conv.Entries != nil {
-		conversation.AppendEntry(conv, conversation.EntryCompaction, conversation.CompactionData{
-			Summary:          summary,
-			FirstKeptEntryID: firstEntryID(conv),
-			TokensBefore:     usage.Tokens,
-		})
-		utils.Debug("ApiBackend", "compactIfNeeded: appended compaction entry to conversation tree")
-	} else {
-		utils.Debug("ApiBackend", "compactIfNeeded: conv.Entries is nil, skipping tree entry")
-	}
-
-	// Persist immediately so compaction survives mid-loop crashes.
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.Log("ApiBackend", "failed to save after compaction: "+err.Error())
-	} else {
-		utils.Debug("ApiBackend", fmt.Sprintf("compactIfNeeded: conversation saved successfully convID=%s", conv.ID))
-	}
-
-	// Reset session memory debounce baselines so the growth threshold
-	// restarts from the post-compaction token count. Without this, the
-	// threshold is unreachable because compaction reduced the token count
-	// below the previous baseline.
-	if cp.resetMemoryTracking != nil {
-		postTokens := conversation.EstimateTokens(conv.Messages)
-		cp.resetMemoryTracking(postTokens)
-	}
-
-	utils.Log("ApiBackend", fmt.Sprintf("compactIfNeeded COMPLETE: tokensBefore=%d msgsBefore=%d msgsAfter=%d dropped=%d summaryLen=%d clearedBlocks=%d strategy=auto convID=%s contextWindow=%d",
-		usage.Tokens, msgBefore, msgAfter, msgBefore-msgAfter, len(summary), cleared, conv.ID, contextWindow))
-
-	if hooks.OnSessionCompact != nil {
-		// Compute post-compaction token count before the hook fires.
-		tokensAfter := conversation.GetContextUsage(conv, contextWindow).Tokens
-
-		// Pass facts as a typed slice value on the map payload. The session
-		// bridge in prompt_runconfig.go downcasts it directly — no
-		// stringly-typed intermediate. nil is fine; the bridge handles
-		// missing/empty facts symmetrically.
-		hooks.OnSessionCompact(run.requestID, map[string]interface{}{
-			"strategy":         "auto",
-			"messagesBefore":   msgBefore,
-			"messagesAfter":    msgAfter,
-			"facts":            facts,
-			"tokensBefore":     usage.Tokens,
-			"tokenLimit":       tokenLimit,
-			"targetTokens":     targetTokens,
-			"microCompactKeep": cp.microKeepTurns,
-			"tokensAfter":      tokensAfter,
-			"sessionMemory":    sessionMemory,
-		})
-	}
+	b.performCompact(performCompactParams{
+		ctx:           ctx,
+		run:           run,
+		conv:          conv,
+		hooks:         hooks,
+		contextWindow: contextWindow,
+		tokenLimit:    tokenLimit,
+		cp:            cp,
+		trigger:       "auto",
+	})
 }
 
 // compactReactive runs the 3-step reactive compaction triggered by a

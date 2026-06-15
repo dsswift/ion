@@ -76,42 +76,6 @@ enum PairingState: Sendable {
     }
 }
 
-// MARK: - EngineDialogInfo
-
-struct EngineDialogInfo: Identifiable {
-    let id: String
-    let method: String
-    let title: String
-    let options: [String]?
-    let defaultValue: String?
-
-    init(dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?) {
-        self.id = dialogId
-        self.method = method
-        self.title = title
-        self.options = options
-        self.defaultValue = defaultValue
-    }
-}
-
-// MARK: - EventBatcher
-
-/// Collects remote events off the main thread so they can be drained
-/// in a single batch and processed in one MainActor block per frame.
-actor EventBatcher {
-    private var buffer: [RemoteEvent] = []
-
-    func enqueue(_ event: RemoteEvent) {
-        buffer.append(event)
-    }
-
-    func drain() -> [RemoteEvent] {
-        let batch = buffer
-        buffer.removeAll(keepingCapacity: true)
-        return batch
-    }
-}
-
 // MARK: - SessionViewModel
 
 @Observable
@@ -155,7 +119,7 @@ final class SessionViewModel {
     var agentConversationMessages: [String: [Message]] = [:]     // conversationId -> messages
     var agentConversationLoading: Set<String> = []               // conversationIds currently loading
     // Engine instance state (per engine tab)
-    var engineInstances: [String: [EngineInstanceInfo]] = [:]   // tabId -> instances
+    var conversationInstances: [String: [ConversationInstanceInfo]] = [:]   // tabId -> instances
     var activeEngineInstance: [String: String] = [:]              // tabId -> active instanceId
     /// Engine profiles synced from the desktop settings.
     var engineProfiles: [EngineProfile] = []
@@ -230,6 +194,15 @@ final class SessionViewModel {
 
     // Upload attachment results (consumed by InputBar / EngineView)
     var pendingUploadResults: [UploadAttachmentResult] = []
+
+    /// Pending /export payload waiting to be presented via the iOS share
+    /// sheet. Populated by handleEngineExport on engine_export receipt;
+    /// cleared by the view layer after the sheet is dismissed.
+    ///
+    /// Nil when no export is awaiting presentation. The view layer
+    /// observes this property and presents the share sheet whenever it
+    /// flips non-nil; the dismissal sets it back to nil.
+    var pendingExport: PendingExport? = nil
 
     // MARK: - Toast Messages
     var toastMessages: [ToastMessage] = []
@@ -394,7 +367,7 @@ final class SessionViewModel {
     /// Compute the compound key for the active engine instance.
     /// Returns `"tabId:instanceId"` when an instance is active, or just `tabId` as fallback.
     func engineCompoundKey(tabId: String) -> String {
-        let instanceId = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id ?? ""
+        let instanceId = activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id ?? ""
         return instanceId.isEmpty ? tabId : "\(tabId):\(instanceId)"
     }
 

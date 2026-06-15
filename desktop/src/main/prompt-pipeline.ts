@@ -84,6 +84,7 @@
 
 import type { RunOptions } from '../shared/types'
 import { IPC } from '../shared/types'
+import { sessionKey, MAIN_INSTANCE_ID } from '../shared/session-key'
 
 /**
  * Attachment shape carried in remote `prompt`/`engine_prompt` commands.
@@ -180,14 +181,21 @@ export interface IncomingPrompt {
 }
 
 /**
- * Compute the engine session key.
- * - CLI tab            → tabId
- * - Engine tab w/ inst → `${tabId}:${instanceId}`
- * - Engine tab w/o inst → tabId (defensive; engine prompt path normally fails earlier)
+ * Compute the engine session key for the wire-bound submit/command path.
+ *
+ * This key is sent to the engine (sendCommand / sendPrompt) — it is the
+ * engine wire key (Key A), which the DECISION freezes:
+ *   - plain conversation (no hosted extension) → bare `tabId` (the
+ *     conversation's own engine session identity)
+ *   - extension-hosted instance → `${tabId}:${instanceId}`
+ * The defensive case (an extension-hosted tab that somehow lacks an
+ * instanceId) falls back to the `main` sentinel rather than minting a bare
+ * key, so an extension-hosted submit never collides with the plain-
+ * conversation key space.
  */
 function engineKey(p: IncomingPrompt): string {
-  if (p.isEngineTab && p.instanceId) return `${p.tabId}:${p.instanceId}`
-  return p.tabId
+  if (!p.isEngineTab) return p.tabId
+  return sessionKey(p.tabId, p.instanceId ?? MAIN_INSTANCE_ID)
 }
 
 /**
@@ -345,7 +353,10 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     return
   }
 
-  // CLI path.
+  // Plain-conversation path (no engine extension hosted in the conversation).
+  // Routes through the control plane keyed by bare tabId — the engine wire key
+  // is the conversation's own identity, unaffected by the renderer's internal
+  // `${tabId}:main` pane-addressing convention.
   if (p.source === 'remote') {
     // The remote path goes through the renderer broadcast so the renderer's
     // send-slice does the optimistic insert + tab status update. The IPC

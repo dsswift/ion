@@ -6,7 +6,7 @@ import XCTest
 ///
 /// The engine emits ModelFallbackEvent when a child run's requested model
 /// doesn't resolve to a provider. The desktop projects that fact onto
-/// `RemoteTabState.engineInstances[i].modelFallback` via the snapshot,
+/// `RemoteTabState.conversationInstances[i].modelFallback` via the snapshot,
 /// rather than as a live RemoteEvent variant — the engine's event is a
 /// workflow signal, and projecting through the snapshot gives iOS a
 /// sticky-across-reconnect indicator without a new wire variant. See

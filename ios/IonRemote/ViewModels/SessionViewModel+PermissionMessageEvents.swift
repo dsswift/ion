@@ -13,8 +13,8 @@ extension SessionViewModel {
     func handlePermissionRequest(tabId: String, instanceId: String? = nil, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption]) {
         let inputKeys = toolInput?.keys.sorted() ?? []
         let inputSummary = toolInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
-        let isEngine = tabs.first(where: { $0.id == tabId })?.isEngine == true
-        DiagnosticLog.log("PERM: handlePermissionRequest: tabId=\(tabId.prefix(8)) instanceId=\(instanceId?.prefix(8) ?? "nil") questionId=\(questionId.prefix(16)) toolName=\(toolName) inputKeys=\(inputKeys) inputTypes=[\(inputSummary)] options=\(options.map(\.label)) isEngine=\(isEngine)")
+        let hasEngineExtension = tabs.first(where: { $0.id == tabId })?.hasEngineExtension == true
+        DiagnosticLog.log("PERM: handlePermissionRequest: tabId=\(tabId.prefix(8)) instanceId=\(instanceId?.prefix(8) ?? "nil") questionId=\(questionId.prefix(16)) toolName=\(toolName) inputKeys=\(inputKeys) inputTypes=[\(inputSummary)] options=\(options.map(\.label)) isEngine=\(hasEngineExtension)")
 
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             // Normalize AnyCodable toolInput to Foundation types so the
@@ -125,7 +125,26 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleInputPrefill(tabId: String, text: String, switchTo: Bool) {
+    func handleInputPrefill(tabId: String, text: String, switchTo: Bool, instanceId: String?) {
+        // Engine-instance prefill (engine_rewind): seed the engine instance's
+        // draft, not the CLI input. The desktop broadcasts a fresh
+        // engine_conversation_history immediately after the rewind restart
+        // (broadcastEngineHistory), which the engineConversationHistory handler
+        // applies as a full replace — so the truncated message list refreshes
+        // on its own. Here we only place the rewound user message back in the
+        // engine input box.
+        if let instanceId {
+            DiagnosticLog.log("EVENT: inputPrefill -> engine draft tabId=\(tabId.prefix(8)) instance=\(instanceId.prefix(8)) len=\(text.count)")
+            setEngineDraft(tabId: tabId, instanceId: instanceId, text)
+            if switchTo {
+                pendingNavigationTabId = tabId
+            }
+            return
+        }
+
+        // CLI-tab prefill: write the tab-level pending input and (for a
+        // rewind, switchTo == false) reload the CLI conversation so the
+        // truncated history is reflected.
         pendingInputByTab[tabId] = text
         if switchTo {
             pendingNavigationTabId = tabId

@@ -134,6 +134,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   EngineConfig: [
     'claudeCompat',
     'extensions',
+    'forceNewConversation',
     'maxTokens',
     'model',
     'profileId',

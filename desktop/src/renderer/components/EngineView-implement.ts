@@ -10,6 +10,7 @@
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { formatImplementDivider } from '../../shared/clear-divider'
+import { parseSessionKey } from '../../shared/session-key'
 
 /** Shape of the denial entry for extracting planFilePath from toolInput. */
 interface DenialEntry {
@@ -55,19 +56,19 @@ export async function runHandleImplement(
   }
 
   // Switch to auto mode for this specific engine instance only.
-  // Write permissionMode directly onto the instance in enginePanes.
+  // Write permissionMode directly onto the instance in conversationPanes.
   if (key) {
-    const [tabIdForKey, instanceId] = key.split(':')
+    const { tabId: tabIdForKey, instanceId } = parseSessionKey(key)
     useSessionStore.setState((s) => {
-      const enginePanes = new Map(s.enginePanes)
-      const pane = enginePanes.get(tabIdForKey)
+      const conversationPanes = new Map(s.conversationPanes)
+      const pane = conversationPanes.get(tabIdForKey)
       if (!pane) return {}
       const idx = pane.instances.findIndex((i) => i.id === instanceId)
       if (idx === -1) return {}
       const instances = pane.instances.slice()
       instances[idx] = { ...instances[idx], permissionMode: 'auto' }
-      enginePanes.set(tabIdForKey, { ...pane, instances })
-      return { enginePanes }
+      conversationPanes.set(tabIdForKey, { ...pane, instances })
+      return { conversationPanes }
     })
     window.ion.engineSetPlanMode(key, false)
   }

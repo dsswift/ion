@@ -4,6 +4,8 @@ import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import type { useColors } from '../theme'
 import type { TabState } from '../../shared/types'
+import type { ConversationPane } from '../../shared/types-engine'
+import { activeInstance } from '../stores/conversation-instance'
 import { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { computeAnchoredPosition } from './tabstrip-anchored-position'
 export type { AnchoredPositionInput } from './tabstrip-anchored-position'
@@ -304,24 +306,31 @@ function waitingStateFromTools(
 /**
  * Derive the waiting state from a tab's pending denials.
  *
- * - CLI tabs: read from `tab.permissionDenied`.
- * - Engine tabs (`tab.isEngine === true`): fold across every engine
- *   instance under this tab in `state.enginePermissionDenied`, returning
- *   the worst-priority waiting state ('question' > 'plan-ready' > null).
+ * Both CLI and engine tabs now store `permissionDenied` on their
+ * `ConversationInstance`(s) in `conversationPanes` — the previous
+ * `tab.permissionDenied` vs. per-instance fork is gone.
+ *
+ * - Normal (single-instance) tabs: read from the active `main` instance
+ *   via `activeInstance(conversationPanes, tab.id)`.
+ * - Engine tabs (`tab.hasEngineExtension === true`): fold across every engine
+ *   instance under this tab in `conversationPanes`, returning the
+ *   worst-priority waiting state ('question' > 'plan-ready' > null).
  *
  * Engine sub-tabs (instances) are independent sub-conversations and
  * each may have its own pending question or plan card. Parent-pill
- * glow must surface "any sub-tab is blocked," so we walk the per-
- * instance map keyed by `${tabId}:${instanceId}`.
+ * glow must surface "any sub-tab is blocked," so we walk all the
+ * instances in the pane. `conversationPanes` is threaded in by reactive
+ * callers (the render callsites already subscribe to it) so this
+ * function stays a pure derivation; it is optional and falls back to a
+ * one-shot store read for the few non-reactive callers that don't hold
+ * the map, matching the consistency the old store-reading body had.
  */
-export function getWaitingState(tab: TabState): WaitingState {
-  if (tab.isEngine) {
-    // Read the store directly. This is invoked from render callsites
-    // that already subscribe to the parts of state that change the
-    // map's identity (enginePermissionDenied / enginePanes), so this
-    // is consistent at render time.
-    const s = useSessionStore.getState()
-    const pane = s.enginePanes.get(tab.id)
+export function getWaitingState(
+  tab: TabState,
+  conversationPanes: Map<string, ConversationPane> = useSessionStore.getState().conversationPanes,
+): WaitingState {
+  if (tab.hasEngineExtension) {
+    const pane = conversationPanes.get(tab.id)
     if (!pane || pane.instances.length === 0) return null
     let hasPlanReady = false
     for (const inst of pane.instances) {
@@ -331,7 +340,9 @@ export function getWaitingState(tab: TabState): WaitingState {
     }
     return hasPlanReady ? 'plan-ready' : null
   }
-  return waitingStateFromTools(tab.permissionDenied?.tools)
+  // Normal tab: the single `main` instance holds permissionDenied now.
+  const inst = activeInstance(conversationPanes, tab.id)
+  return waitingStateFromTools(inst?.permissionDenied?.tools)
 }
 
 /** Same tristate logic as `getWaitingState`, but for a single engine
@@ -339,14 +350,14 @@ export function getWaitingState(tab: TabState): WaitingState {
  *  Used by the engine sub-tab pill renderer to draw a per-instance
  *  status dot. */
 export function getEngineInstanceWaitingState(tabId: string, instanceId: string): WaitingState {
-  const pane = useSessionStore.getState().enginePanes.get(tabId)
+  const pane = useSessionStore.getState().conversationPanes.get(tabId)
   const inst = pane?.instances.find((i) => i.id === instanceId)
   return waitingStateFromTools(inst?.permissionDenied?.tools)
 }
 
 /**
  * Check whether any engine instance under a tab is currently running.
- * Folds across `enginePanes` instances and reads per-instance state
+ * Folds across `conversationPanes` instances and reads per-instance state
  * from `engineStatusFields` — parallel to how `getWaitingState` folds
  * across `enginePermissionDenied` for denial aggregation.
  *
@@ -357,7 +368,7 @@ export function getEngineInstanceWaitingState(tabId: string, instanceId: string)
  */
 export function isAnyEngineInstanceRunning(tabId: string): boolean {
   const s = useSessionStore.getState()
-  const pane = s.enginePanes.get(tabId)
+  const pane = s.conversationPanes.get(tabId)
   if (!pane || pane.instances.length === 0) return false
   for (const inst of pane.instances) {
     const state = inst.statusFields?.state
@@ -369,7 +380,7 @@ export function isAnyEngineInstanceRunning(tabId: string): boolean {
 /**
  * Check whether any engine instance under a tab has running dispatched
  * background agents. Sibling to `isAnyEngineInstanceRunning` — folds
- * across `enginePanes` instances and reads per-instance entries from
+ * across `conversationPanes` instances and reads per-instance entries from
  * `engineAgentStates`. This is the data source for the "awaiting
  * children" yellow pulsing dot on the parent tab pill and for the
  * action-layer guard in `closeTab` that hard-blocks tab close while
@@ -382,7 +393,7 @@ export function isAnyEngineInstanceRunning(tabId: string): boolean {
  */
 export function anyEngineInstanceHasRunningChildren(tabId: string): boolean {
   const s = useSessionStore.getState()
-  const pane = s.enginePanes.get(tabId)
+  const pane = s.conversationPanes.get(tabId)
   if (!pane || pane.instances.length === 0) return false
   for (const inst of pane.instances) {
     for (const a of inst.agentStates) {
@@ -402,23 +413,34 @@ export function getTabStatusColor(
   let glow = false
   let glowColor = colors.statusPermissionGlow
 
-  const waitingState = getWaitingState(tab)
+  // Both waiting-state and the permission queue now live on the tab's
+  // active ConversationInstance in conversationPanes (the `tab.permissionDenied`
+  // / `tab.permissionQueue` fields are gone). Read the store directly here:
+  // this is a non-reactive helper, but its only React caller
+  // (StackedStatusDots inside GroupPill) re-renders on conversationPanes identity
+  // changes via GroupPill's `s.conversationPanes` subscription, so the read is
+  // consistent at render time.
+  const conversationPanes = useSessionStore.getState().conversationPanes
+  const inst = activeInstance(conversationPanes, tab.id)
+  const permissionQueueLength = inst?.permissionQueue.length ?? 0
+
+  const waitingState = getWaitingState(tab, conversationPanes)
 
   if (tab.status === 'dead' || tab.status === 'failed') {
     bg = colors.statusError
-  } else if (tab.permissionQueue.length > 0) {
+  } else if (permissionQueueLength > 0) {
     bg = colors.statusPermission; glow = true
   } else if (waitingState === 'plan-ready') {
     bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
   } else if (waitingState === 'question') {
     bg = colors.infoText; glow = true; glowColor = colors.tabGlowQuestion
-  } else if (tab.status === 'connecting' || tab.status === 'running' || (tab.isEngine && isAnyEngineInstanceRunning(tab.id))) {
+  } else if (tab.status === 'connecting' || tab.status === 'running' || (tab.hasEngineExtension && isAnyEngineInstanceRunning(tab.id))) {
     // Orange "foreground running" wins over yellow "background only" —
     // the orchestrator's own activity is the strongest signal. Yellow
     // "awaiting children" fires below for the case where orchestrator
     // is idle but dispatched agents are still executing.
     bg = colors.statusRunning; pulse = true
-  } else if (tab.isEngine && anyEngineInstanceHasRunningChildren(tab.id)) {
+  } else if (tab.hasEngineExtension && anyEngineInstanceHasRunningChildren(tab.id)) {
     // Yellow "awaiting children" — orchestrator idle, dispatched
     // background agents still running. Visually distinct from the
     // orange running state so users can tell at a glance whether

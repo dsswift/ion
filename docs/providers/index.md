@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Providers
 
-Ion connects to 14+ LLM providers via raw HTTP with SSE parsing. No provider SDKs are used. Every provider implements the same `LlmProvider` interface and translates its native streaming format into Anthropic-canonical SSE events.
+Ion connects to a broad set of LLM providers via raw HTTP with SSE parsing. No provider SDKs are used. Every provider implements the same `LlmProvider` interface and translates its native streaming format into Anthropic-canonical SSE events.
 
 ## Architecture
 

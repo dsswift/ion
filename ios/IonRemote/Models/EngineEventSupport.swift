@@ -246,10 +246,10 @@ struct SessionStatus: Codable, Sendable {
     let extensionName: String?
 }
 
-// MARK: - EngineInstancePayload
+// MARK: - ConversationInstancePayload
 
 /// Wire type for engine instance added/removed events.
-struct EngineInstancePayload: Codable, Sendable {
+struct ConversationInstancePayload: Codable, Sendable {
     let id: String
     let label: String
 }

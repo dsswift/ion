@@ -56,22 +56,23 @@ export function GroupPill({
 
   const displayTitle = selectedTab ? (selectedTab.customTitle || selectedTab.title) : ''
 
-  // Subscribe to enginePanes so the group pill border re-renders when any
+  // Subscribe to conversationPanes so the group pill border re-renders when any
   // engine instance's permissionDenied field changes. getWaitingState() reads
-  // inst.permissionDenied directly from enginePanes instances — no separate
-  // Map subscription needed.
-  useSessionStore((s) => s.enginePanes)
+  // inst.permissionDenied directly from conversationPanes instances (both normal
+  // `main` instances and engine sub-instances) — no separate Map subscription
+  // needed. Capture the map so we can thread it into getWaitingState below.
+  const conversationPanes = useSessionStore((s) => s.conversationPanes)
 
   // Derive aggregate waiting state: if ANY tab in the group is waiting on the user.
   // Question takes priority over plan-ready across all tabs in the group.
   // We delegate to getWaitingState() so the engine-tab branch (folding
-  // across per-instance denials in `enginePermissionDenied`) is honored
-  // here too. For CLI tabs the helper reads `tab.permissionDenied` as
-  // before.
+  // across per-instance denials in `conversationPanes`) is honored here too. For
+  // normal tabs the helper reads the active `main` instance's
+  // permissionDenied — which is where it lives now (off TabState).
   const groupWaitingState: 'plan-ready' | 'question' | null = (() => {
     let hasPlanReady = false
     for (const t of group.tabs) {
-      const ws = getWaitingState(t)
+      const ws = getWaitingState(t, conversationPanes)
       if (ws === 'question') return 'question'
       if (ws === 'plan-ready') hasPlanReady = true
     }

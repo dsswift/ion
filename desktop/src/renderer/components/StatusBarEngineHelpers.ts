@@ -5,7 +5,7 @@ import type { StatusFields } from '../../shared/types'
 /**
  * Resolve the currently-active engine instance's `StatusFields` snapshot.
  *
- * Engine status is carried on the instance object in `enginePanes`, on
+ * Engine status is carried on the instance object in `conversationPanes`, on
  * `instance.statusFields`. Every engine-only StatusBar slot (state dot,
  * extension name, model picker engine variant, context bar, cost, "via CLI"
  * badge per-instance) reads from this same source — this helper centralizes
@@ -22,8 +22,8 @@ export function useActiveEngineStatusFields(): StatusFields | null {
   return useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      if (!tab?.isEngine) return null
-      const pane = s.enginePanes.get(s.activeTabId)
+      if (!tab?.hasEngineExtension) return null
+      const pane = s.conversationPanes.get(s.activeTabId)
       const instanceId = pane?.activeInstanceId
       if (!instanceId) return null
       const inst = pane.instances.find((i) => i.id === instanceId)
@@ -45,8 +45,8 @@ export function useActiveEngineKey(): { tabId: string; instanceId: string; key: 
   return useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      if (!tab?.isEngine) return null
-      const pane = s.enginePanes.get(s.activeTabId)
+      if (!tab?.hasEngineExtension) return null
+      const pane = s.conversationPanes.get(s.activeTabId)
       const instanceId = pane?.activeInstanceId
       if (!instanceId) return null
       return { tabId: s.activeTabId, instanceId, key: `${s.activeTabId}:${instanceId}` }
@@ -66,8 +66,8 @@ export function useActiveEngineKey(): { tabId: string; instanceId: string; key: 
 export function useActiveEngineAgentRunningCount(): number {
   return useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    if (!tab?.isEngine) return 0
-    const pane = s.enginePanes.get(s.activeTabId)
+    if (!tab?.hasEngineExtension) return 0
+    const pane = s.conversationPanes.get(s.activeTabId)
     const instanceId = pane?.activeInstanceId
     if (!instanceId) return 0
     const inst = pane.instances.find((i) => i.id === instanceId)

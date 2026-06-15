@@ -1,6 +1,7 @@
 import { useSessionStore } from '../../stores/sessionStore'
 import { usePreferencesStore } from '../../preferences'
 import { nextMsgId } from '../../stores/session-store-helpers'
+import { activeInstance, commitInstance } from '../../stores/conversation-instance'
 import { formatImplementDivider } from '../../../shared/clear-divider'
 import type { TabState, Attachment } from '../../../shared/types'
 
@@ -116,10 +117,12 @@ export function buildPermissionDeniedHandlers(
       }
     }
 
-    // Extract plan file path: tab state (engine event) > denial toolInput
-    let planFilePath: string | null = tab.planFilePath || null
-    if (!planFilePath && tab.permissionDenied?.tools) {
-      const exitDenial = tab.permissionDenied.tools.find(
+    // Extract plan file path: instance state (engine event) > denial toolInput.
+    // Per-conversation state lives on the tab's active instance now.
+    const planInst = activeInstance(useSessionStore.getState().conversationPanes, tab.id)
+    let planFilePath: string | null = planInst?.planFilePath || null
+    if (!planFilePath && planInst?.permissionDenied?.tools) {
+      const exitDenial = planInst.permissionDenied.tools.find(
         (t) => t.toolName === 'ExitPlanMode' && t.toolInput
       )
       if (exitDenial?.toolInput?.planFilePath) {
@@ -153,36 +156,42 @@ export function buildPermissionDeniedHandlers(
       console.log(`[onImplement] tab=${tab.id.slice(0, 8)} clearing context — resetTabSession + archive conversationId`)
       window.ion.resetTabSession(tab.id)
 
-      useSessionStore.setState((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tab.id
-            ? {
-                ...t,
-                messages: [
-                  ...(t.messages ?? []),
-                  {
-                    id: nextMsgId(),
-                    role: 'system' as const,
-                    content: formatImplementDivider(new Date()),
-                    timestamp: Date.now(),
-                  },
-                ],
-                historicalSessionIds: [
-                  ...t.historicalSessionIds,
-                  ...(t.conversationId && !t.historicalSessionIds.includes(t.conversationId)
-                    ? [t.conversationId] : []),
-                ],
-                conversationId: null,
-                planFilePath: null,
-                lastResult: null,
-                currentActivity: '',
-                permissionQueue: [],
-                permissionDenied: null,
-                queuedPrompts: [],
-              }
-            : t
-        ),
-      }))
+      useSessionStore.setState((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, tab.id, (inst) => ({
+          ...inst,
+          messages: [
+            ...inst.messages,
+            {
+              id: nextMsgId(),
+              role: 'system' as const,
+              content: formatImplementDivider(new Date()),
+              timestamp: Date.now(),
+            },
+          ],
+          planFilePath: null,
+          permissionQueue: [],
+          permissionDenied: null,
+        }))
+        return {
+          conversationPanes,
+          tabs: s.tabs.map((t) =>
+            t.id === tab.id
+              ? {
+                  ...t,
+                  historicalSessionIds: [
+                    ...t.historicalSessionIds,
+                    ...(t.conversationId && !t.historicalSessionIds.includes(t.conversationId)
+                      ? [t.conversationId] : []),
+                  ],
+                  conversationId: null,
+                  lastResult: null,
+                  currentActivity: '',
+                  queuedPrompts: [],
+                }
+              : t
+          ),
+        }
+      })
     } else {
       // Default: preserve the engine session. The setPermissionMode call
       // above already flipped plan mode off on the engine side (which
@@ -191,30 +200,36 @@ export function buildPermissionDeniedHandlers(
       // conversationId stays put so the LLM history is preserved across
       // the plan→implement boundary.
       console.log(`[onImplement] tab=${tab.id.slice(0, 8)} preserving conversation — staying in conversationId=${tab.conversationId ?? '<none>'}`)
-      useSessionStore.setState((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tab.id
-            ? {
-                ...t,
-                messages: [
-                  ...(t.messages ?? []),
-                  {
-                    id: nextMsgId(),
-                    role: 'system' as const,
-                    content: formatImplementDivider(new Date()),
-                    timestamp: Date.now(),
-                  },
-                ],
-                planFilePath: null,
-                lastResult: null,
-                currentActivity: '',
-                permissionQueue: [],
-                permissionDenied: null,
-                queuedPrompts: [],
-              }
-            : t
-        ),
-      }))
+      useSessionStore.setState((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, tab.id, (inst) => ({
+          ...inst,
+          messages: [
+            ...inst.messages,
+            {
+              id: nextMsgId(),
+              role: 'system' as const,
+              content: formatImplementDivider(new Date()),
+              timestamp: Date.now(),
+            },
+          ],
+          planFilePath: null,
+          permissionQueue: [],
+          permissionDenied: null,
+        }))
+        return {
+          conversationPanes,
+          tabs: s.tabs.map((t) =>
+            t.id === tab.id
+              ? {
+                  ...t,
+                  lastResult: null,
+                  currentActivity: '',
+                  queuedPrompts: [],
+                }
+              : t
+          ),
+        }
+      })
     }
 
     // Structured signal to the engine that this run is the implement

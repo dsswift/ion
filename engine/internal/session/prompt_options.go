@@ -12,9 +12,15 @@ import (
 
 func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) types.RunOptions {
 	opts := types.RunOptions{
-		Prompt:                      text,
-		ProjectPath:                 s.config.WorkingDirectory,
-		SessionID:                   s.conversationID,
+		Prompt:      text,
+		ProjectPath: s.config.WorkingDirectory,
+		// SessionID is Ion's conversation-file identity. The API backend
+		// uses it to load/create ~/.ion/conversations/<id>.* and to resume.
+		SessionID: s.conversationID,
+		// CliResumeSessionID is claude's own captured session UUID (empty on
+		// the first CLI run → no --resume). The API backend ignores it; only
+		// the CLI backend reads it. Distinct identity space from SessionID.
+		CliResumeSessionID:          s.cliSessionID,
 		MaxTokens:                   s.config.MaxTokens,
 		Thinking:                    s.config.Thinking,
 		PlanMode:                    s.planMode,

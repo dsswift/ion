@@ -6,13 +6,14 @@ import { useColors } from '../theme'
 import { runHandleImplement } from './EngineView-implement'
 import { EngineDialog } from './EngineDialog'
 import { EngineTabStrip } from './EngineTabStrip'
+import { EngineNotificationToasts } from './EngineNotificationToasts'
 import { AgentPanel } from './AgentPanel'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
 import { ArrowDown } from '@phosphor-icons/react'
 import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, HarnessMessage, MessageBubble,
-  CopyButton, InterruptButton, CompactionRow, AgentTurnGroup, InterceptBanner,
+  CopyButton, MessageActions, InterruptButton, CompactionRow, AgentTurnGroup, InterceptBanner,
 } from './conversation'
 
 // Stable empty refs to avoid creating new array/object references on every render.
@@ -34,32 +35,32 @@ interface EngineViewProps {
 
 export function EngineView({ tabId }: EngineViewProps) {
   const colors = useColors()
-  const pane = useSessionStore(s => s.enginePanes.get(tabId))
+  const pane = useSessionStore(s => s.conversationPanes.get(tabId))
   const activeInstanceId = pane?.activeInstanceId || ''
   const key = activeInstanceId ? `${tabId}:${activeInstanceId}` : ''
 
   const pinnedPrompt = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
     return k ? (s.enginePinnedPrompt.get(k) || '') : ''
   })
   const notifications = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
     return k ? (s.engineNotifications.get(k) || EMPTY_NOTIFICATIONS) : EMPTY_NOTIFICATIONS
   })
   const messages = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.messages ?? EMPTY_MESSAGES
   })
   const agentStates = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.agentStates ?? EMPTY_AGENTS
   })
   const workingMessage = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
     return k ? (s.engineWorkingMessages.get(k) || '') : ''
   })
@@ -74,11 +75,15 @@ export function EngineView({ tabId }: EngineViewProps) {
   // folds across instances for engine tabs. iOS receives the active
   // instance's denial via the snapshot path (see main/remote/snapshot.ts).
   const permissionDenied = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.permissionDenied ?? null
   })
-  const tabPlanFilePath = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.planFilePath)
+  const tabPlanFilePath = useSessionStore(s => {
+    const p = s.conversationPanes.get(tabId)
+    const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
+    return inst?.planFilePath ?? null
+  })
   const tabGroupPinned = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.groupPinned)
   const tabConversationId = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.conversationId)
   const staticInfo = useSessionStore(s => s.staticInfo)
@@ -87,7 +92,7 @@ export function EngineView({ tabId }: EngineViewProps) {
   const toggleTallView = useSessionStore(s => s.toggleTallView)
   const unifiedTurnView = usePreferencesStore(s => s.unifiedTurnView)
   const engineModelOverride = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.modelOverride ?? undefined
   })
@@ -166,30 +171,28 @@ export function EngineView({ tabId }: EngineViewProps) {
   const tabsReady = useSessionStore(s => s.tabsReady)
   useEffect(() => {
     if (!tabsReady) return
-    const pane = useSessionStore.getState().enginePanes.get(tabId)
+    const pane = useSessionStore.getState().conversationPanes.get(tabId)
     if (!pane || pane.instances.length === 0) {
       useSessionStore.getState().addEngineInstance(tabId)
     }
   }, [tabId, tabsReady])
 
-  // Auto-dismiss notifications after 5s
-  useEffect(() => {
-    if (notifications.length === 0) return
-    const timer = setTimeout(() => {
-      useSessionStore.setState(state => {
-        const p = state.enginePanes.get(tabId)
-        const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
-        if (!k) return {}
-        const notifs = new Map(state.engineNotifications)
-        const keyNotifs = notifs.get(k) || []
-        if (keyNotifs.length > 0) {
-          notifs.set(k, keyNotifs.slice(1))
-        }
-        return { engineNotifications: notifs }
-      })
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [notifications.length, tabId])
+  // Dismiss a single toast notification by id. Called by both the X
+  // button and each toast's own auto-dismiss timer (see
+  // EngineNotificationToasts.tsx for why timers are per-toast rather
+  // than one shared head-removal timer).
+  const dismissNotification = useCallback((id: string) => {
+    useSessionStore.setState(state => {
+      const p = state.conversationPanes.get(tabId)
+      const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
+      if (!k) return {}
+      const notifs = new Map(state.engineNotifications)
+      const keyNotifs = notifs.get(k) || []
+      if (keyNotifs.length === 0) return {}
+      notifs.set(k, keyNotifs.filter(n => n.id !== id))
+      return { engineNotifications: notifs }
+    })
+  }, [tabId])
 
   const handleAbort = useCallback(() => {
     console.log(`[EngineView] handleAbort: key=${key} isRunning=${isRunning} hasRunningChildren=${hasRunningChildren} tabStatus=${tabStatus}`)
@@ -230,15 +233,15 @@ export function EngineView({ tabId }: EngineViewProps) {
   const clearPermissionDenied = useCallback(() => {
     if (!key || !activeInstanceId) return
     useSessionStore.setState((s) => {
-      const pane = s.enginePanes.get(tabId)
+      const pane = s.conversationPanes.get(tabId)
       if (!pane) return {}
       const idx = pane.instances.findIndex((i) => i.id === activeInstanceId)
       if (idx === -1) return {}
-      const updatedPanes = new Map(s.enginePanes)
+      const updatedPanes = new Map(s.conversationPanes)
       const instances = pane.instances.slice()
       instances[idx] = { ...instances[idx], permissionDenied: null }
       updatedPanes.set(tabId, { ...pane, instances })
-      return { enginePanes: updatedPanes }
+      return { conversationPanes: updatedPanes }
     })
   }, [key, tabId, activeInstanceId])
 
@@ -379,7 +382,7 @@ export function EngineView({ tabId }: EngineViewProps) {
               {grouped.map((item, idx) => {
                 switch (item.kind) {
                   case 'user':
-                    return <MessageBubble key={item.message.id} message={item.message} skipMotion actions={<CopyButton text={item.message.content} />} />
+                    return <MessageBubble key={item.message.id} message={item.message} skipMotion actions={<MessageActions message={item.message} variant="user" engineContext={{ tabId, instanceId: activeInstanceId }} />} />
                   case 'assistant':
                     return <AssistantMessage key={item.message.id} message={item.message} skipMotion />
                   case 'tool-group':
@@ -525,32 +528,9 @@ export function EngineView({ tabId }: EngineViewProps) {
           into the single unified `StatusBar` mounted at the app root.
           See `App.tsx`. */}
 
-      {/* Notification toasts */}
-      <AnimatePresence>
-        {notifications.slice(0, 3).map((notif) => (
-          <motion.div
-            key={notif.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            style={{
-              position: 'absolute',
-              bottom: 32, right: 12,
-              maxWidth: 300,
-              padding: '8px 12px',
-              borderRadius: 8,
-              fontSize: 12,
-              background: notif.level === 'error' ? 'rgba(200,50,50,0.9)' :
-                notif.level === 'warning' ? 'rgba(180,140,30,0.9)' :
-                  'rgba(60,60,55,0.95)',
-              color: '#fff',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            }}
-          >
-            {notif.message}
-          </motion.div>
-        ))}
-      </AnimatePresence>
+      {/* Notification toasts — vertically stacked, individually
+          dismissable. See EngineNotificationToasts.tsx. */}
+      <EngineNotificationToasts notifications={notifications} onDismiss={dismissNotification} />
 
       {/* Dialog overlay */}
       <EngineDialog tabId={tabId} />

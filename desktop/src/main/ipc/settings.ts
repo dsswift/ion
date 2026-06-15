@@ -4,6 +4,7 @@ import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import { state, engineBridge } from '../state'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
+import { runTabUnifyMigration } from '../tab-migration-unify-runner'
 import {
   SETTINGS_DEFAULTS,
   SETTINGS_DIR,
@@ -126,6 +127,23 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(IPC.LOAD_TABS, () => {
     const PREV_FILE = TABS_FILE + '.prev'
+    // One-time unify migration (backup → migrate → verify → restore-on-failure).
+    // Idempotent: skips files already at the unified schemaVersion. Runs here —
+    // the single load chokepoint — so migration always precedes the first read,
+    // on both the primary file and the .prev recovery file. On verify failure
+    // the migration leaves the legacy file untouched and the read-side
+    // back-compat path below still loads it, so no data is lost.
+    try {
+      const primaryOutcome = runTabUnifyMigration(TABS_FILE)
+      if (primaryOutcome.reason === 'success') {
+        log(`[tabs] unify migration applied to ${TABS_FILE} (${primaryOutcome.tabCount} tabs, backup ${primaryOutcome.backupPath})`)
+      } else if (primaryOutcome.reason === 'verify-failed' || primaryOutcome.reason === 'error') {
+        log(`[tabs] unify migration NOT applied to ${TABS_FILE} (${primaryOutcome.reason}: ${primaryOutcome.errorMessage}) — loading legacy via back-compat`)
+      }
+      if (existsSync(PREV_FILE)) runTabUnifyMigration(PREV_FILE)
+    } catch (err) {
+      log(`[tabs] unify migration unexpected error: ${(err as Error).message} — loading legacy`)
+    }
     try {
       let primary: any = null
       let primaryCount = 0

@@ -1,8 +1,9 @@
 // ion-meta -- extension authoring harness.
 //
 // This is the orchestrator extension for building Ion Engine extensions,
-// agents, skills, and hooks. It registers nine tools (catalog/hook/SDK
-// introspection, scaffolding, validation, inspection, typechecking),
+// agents, skills, and hooks. It registers twelve tools (catalog/hook/SDK
+// introspection, scaffolding, validation, inspection, typechecking,
+// conversation/log introspection),
 // exposes seven specialist sub-agents (orchestrator + six specialists),
 // and ships a system-prompt persona generated from the live SDK source.
 //
@@ -45,6 +46,9 @@ import {
   readDocTool,
   validateManifestTool,
   typecheckExtensionTool,
+  readConversationTool,
+  listConversationsTool,
+  searchLogsTool,
 } from './tools'
 
 const ion = createIon()
@@ -311,6 +315,9 @@ ion.registerTool(listSDKMethodsTool)
 ion.registerTool(readDocTool)
 ion.registerTool(validateManifestTool)
 ion.registerTool(typecheckExtensionTool)
+ion.registerTool(readConversationTool)
+ion.registerTool(listConversationsTool)
+ion.registerTool(searchLogsTool)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 

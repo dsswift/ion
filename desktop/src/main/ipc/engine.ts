@@ -1,10 +1,12 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { buildClearDividerRemoteEvent } from '../../shared/clear-divider'
+import { parseSessionKey } from '../../shared/session-key'
 import { log as _log } from '../logger'
 import { engineBridge, sessionPlane, state } from '../state'
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { encodeImageAttachments } from '../remote/attachment-encoder'
+import { broadcastEngineHistory } from '../remote/handlers/engine-history'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -36,11 +38,12 @@ export function registerEngineIpc(): void {
     // slash and (for pure-command success) clear status back to idle, or
     // (for a non-slash) submit the prompt to the engine bridge directly.
     //
-    // Key shape: engine bridge keys are `${tabId}:${instanceId}` for engine
-    // tabs. We split here to feed the pipeline its expected (tabId, instanceId)
-    // pair. If there's no ':' the key IS the tabId (defensive — shouldn't
-    // happen for engine tabs in practice).
-    const [tabId, instanceId] = key.includes(':') ? key.split(':', 2) : [key, null]
+    // Key shape: the engine-extension addressing key is `${tabId}:${instanceId}`
+    // for an extension-hosted instance. parseSessionKey feeds the pipeline its
+    // expected (tabId, instanceId) pair; a bare key (which should not occur on
+    // this extension-hosted path) resolves to the `main` instance rather than a
+    // null instanceId, matching engineKey()'s fallback in prompt-pipeline.ts.
+    const { tabId, instanceId } = parseSessionKey(key)
     const reqId = `desktop-engine-${Date.now()}`
 
     // Resolve the tab's working directory from the renderer store so the
@@ -149,6 +152,11 @@ export function registerEngineIpc(): void {
   ipcMain.handle(IPC.ENGINE_REMAP_SESSION, (_event, { oldKey, newKey }: { oldKey: string; newKey: string }) => {
     log(`IPC ENGINE_REMAP_SESSION: ${oldKey} -> ${newKey}`)
     engineBridge.remapSession(oldKey, newKey)
+  })
+
+  ipcMain.handle(IPC.ENGINE_BROADCAST_HISTORY, async (_event, { tabId, instanceId }: { tabId: string; instanceId: string | null }) => {
+    log(`IPC ENGINE_BROADCAST_HISTORY: tabId=${tabId} instanceId=${instanceId || 'null'}`)
+    await broadcastEngineHistory(tabId, instanceId)
   })
 
   ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string; source?: string }) => {

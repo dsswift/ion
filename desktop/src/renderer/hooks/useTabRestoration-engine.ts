@@ -1,8 +1,9 @@
-import type { Message, AgentStateUpdate, ConversationInstance, EngineInstance } from '../../shared/types'
+import type { Message, AgentStateUpdate, ConversationInstance, ConversationRef } from '../../shared/types'
 import type { PersistedTab } from '../../shared/types-persistence'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { isExtensionErrorMessage } from '../stores/session-store-persistence'
+import { pendingCardOutcome } from '../../shared/pending-card'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {
@@ -26,7 +27,7 @@ function parseToolInput(raw?: string): Record<string, unknown> | undefined {
  *
  * Side effects:
  *   - Calls `createEngineTab` on the session store (synchronous).
- *   - Performs a single atomic `setState` to seed enginePanes with
+ *   - Performs a single atomic `setState` to seed conversationPanes with
  *     fully-populated ConversationInstance fields on each instance.
  *   - Issues async `window.ion.engineStart` calls per instance (the
  *     returned promises are not awaited — engines start in parallel).
@@ -44,10 +45,10 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
   //
   // All per-instance state is collected into local Maps here (keyed by
   // instanceId for easy lookup in populatedInstances below) and then
-  // written directly onto each EngineInstance as ConversationInstance
+  // written directly onto each ConversationRef as ConversationInstance
   // fields. The 8 legacy Maps on the session store are no longer set
   // from this function — instance fields are the canonical source.
-  const restoredPanes = new Map(useSessionStore.getState().enginePanes)
+  const restoredPanes = new Map(useSessionStore.getState().conversationPanes)
 
   // Per-instance data — keyed by instanceId (not compound tabId:instanceId).
   const instanceMessages = new Map<string, Message[]>()
@@ -72,172 +73,143 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
   const instanceConversationIds = new Map<string, string[]>()
   const instanceModelOverrides = new Map<string, string>()
   const instancePermissionModes = new Map<string, 'auto' | 'plan'>()
+  const instanceForkedChains = new Map<string, string[]>()
 
-  if (st.engineInstances && st.engineInstances.length > 0) {
-    if (st.engineMessages) {
-      for (const inst of st.engineInstances) {
-        const saved = st.engineMessages[inst.id]?.filter(
-          (m) => !isExtensionErrorMessage({ role: m.role || '', content: m.content || '' }),
-        )
-        if (saved && saved.length > 0) {
-          instanceMessages.set(inst.id, saved.map((m) => ({
-            id: crypto.randomUUID(),
-            role: m.role as Message['role'],
-            content: m.content || '',
-            toolName: m.toolName,
-            toolId: m.toolId,
-            toolInput: m.toolInput,
-            toolStatus: m.toolStatus as Message['toolStatus'],
-            timestamp: m.timestamp,
-            dedupKey: m.dedupKey,
-          })))
-        }
+  // Read per-instance state from the unified conversationPane. Loaded tabs are
+  // normalized to the unified shape (migrateTabToUnified) before restoration, so
+  // every instance's messages / agentStates / denial / model / draft / session
+  // ids / forked chains already live on the persisted ConversationInstance —
+  // no `engine*` map lookups remain.
+  const unifiedInstances = st.conversationPane?.instances ?? []
+  if (unifiedInstances.length > 0) {
+    for (const inst of unifiedInstances) {
+      const saved = (inst.messages ?? []).filter(
+        (m) => !isExtensionErrorMessage({ role: m.role || '', content: m.content || '' }),
+      )
+      if (saved.length > 0) {
+        instanceMessages.set(inst.id, saved.map((m) => ({
+          id: crypto.randomUUID(),
+          role: m.role as Message['role'],
+          content: m.content || '',
+          toolName: m.toolName,
+          toolId: m.toolId,
+          toolInput: m.toolInput,
+          toolStatus: m.toolStatus as Message['toolStatus'],
+          timestamp: m.timestamp,
+          dedupKey: m.dedupKey,
+        })))
       }
-    }
 
-    if (st.engineAgentStates) {
-      for (const inst of st.engineInstances) {
-        const saved = st.engineAgentStates[inst.id]
-        if (saved && saved.length > 0) {
-          instanceAgentStates.set(inst.id, saved.map((a) => ({
-            name: a.name,
-            ...(a.id ? { id: a.id } : {}),
-            status: (a.status === 'running' ? 'done' : a.status) as AgentStateUpdate['status'],
-            metadata: a.metadata,
-          })))
-        }
+      const agents = inst.agentStates
+      if (agents && agents.length > 0) {
+        instanceAgentStates.set(inst.id, agents.map((a) => ({
+          name: a.name,
+          ...(a.id ? { id: a.id } : {}),
+          status: (a.status === 'running' ? 'done' : a.status) as AgentStateUpdate['status'],
+          metadata: a.metadata,
+        })))
       }
-    }
 
-    if (st.engineDrafts) {
-      for (const inst of st.engineInstances) {
-        const d = st.engineDrafts[inst.id]
-        if (d && d.length > 0) {
-          instanceDraftInputs.set(inst.id, d)
-          console.log(`[restore] engine draft for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} len=${d.length}`)
-        }
+      if (inst.draftInput && inst.draftInput.length > 0) {
+        instanceDraftInputs.set(inst.id, inst.draftInput)
+        console.log(`[restore] engine draft for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} len=${inst.draftInput.length}`)
       }
-    }
 
-    if (st.engineDenials) {
-      for (const inst of st.engineInstances) {
-        const d = st.engineDenials[inst.id]
-        if (d && d.tools && d.tools.length > 0) {
-          instancePermissionDenied.set(inst.id, { tools: d.tools })
-          console.log(`[restore] engine denial for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tools=${d.tools.map((t) => t.toolName).join(',')}`)
-        }
+      if (inst.permissionDenied && inst.permissionDenied.tools && inst.permissionDenied.tools.length > 0) {
+        instancePermissionDenied.set(inst.id, { tools: inst.permissionDenied.tools })
+        console.log(`[restore] engine denial for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tools=${inst.permissionDenied.tools.map((t) => t.toolName).join(',')}`)
       }
-    }
 
-    // Seed per-instance conversation IDs from persistence.
-    // engine_status will append additional IDs as the session
-    // runs; we only need the most recent one here so backfill
-    // can locate the conversation file.
-    if (st.engineSessionIds) {
-      for (const inst of st.engineInstances) {
-        const sid = st.engineSessionIds[inst.id]
-        if (sid) {
-          instanceConversationIds.set(inst.id, [sid])
-        }
+      // Seed per-instance conversation IDs from persistence so the engine
+      // restart can pass the correct sessionId per instance (and backfill can
+      // locate the conversation file). engine_status appends more at runtime.
+      if (inst.conversationIds && inst.conversationIds.length > 0) {
+        instanceConversationIds.set(inst.id, [...inst.conversationIds])
       }
-    }
 
-    if (st.engineModelOverrides) {
-      for (const inst of st.engineInstances) {
-        const m = st.engineModelOverrides[inst.id]
-        if (m) {
-          instanceModelOverrides.set(inst.id, m)
-          console.log(`[restore] engine model override for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} model=${m}`)
-        }
+      if (inst.modelOverride) {
+        instanceModelOverrides.set(inst.id, inst.modelOverride)
+        console.log(`[restore] engine model override for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} model=${inst.modelOverride}`)
       }
-    }
 
-    if (st.enginePermissionModes) {
-      for (const inst of st.engineInstances) {
-        const m = st.enginePermissionModes[inst.id]
-        if (m) {
-          instancePermissionModes.set(inst.id, m)
-          console.log(`[restore] engine permission mode for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} mode=${m}`)
-        }
-      }
-    } else if (st.permissionMode === 'plan') {
-      // Back-compat: old persisted state had a single permissionMode on the parent
-      // tab that was applied to all instances. If that was 'plan', seed all instances
-      // with 'plan' so the restored state matches what the user last saw.
-      for (const inst of st.engineInstances) {
+      if (inst.permissionMode) {
+        instancePermissionModes.set(inst.id, inst.permissionMode)
+      } else if (st.permissionMode === 'plan') {
+        // Back-compat: a legacy parent-level 'plan' applied to all instances.
         instancePermissionModes.set(inst.id, 'plan')
       }
+
+      if (inst.forkedFromConversationIds && inst.forkedFromConversationIds.length > 0) {
+        instanceForkedChains.set(inst.id, inst.forkedFromConversationIds)
+      }
     }
 
-    // Fallback: synthesize a denial from the last tool message in
-    // each instance's persisted engineMessages when the engine
-    // hasn't yet replayed a permissionDenials entry for it.
+    // Fallback: synthesize a denial from the last tool message in each
+    // instance's persisted messages when the engine hasn't replayed a denial.
     //
-    // Why this matters: the engine's reconcile_state only re-emits
-    // `pendingDenials` from `lastPermissionDenials` in memory. When
-    // the engine restarts (or never had the denial recorded), that
-    // slice is empty and the desktop loses the card even though
-    // the conversation file shows the assistant's final
-    // AskUserQuestion / ExitPlanMode call. Mirrors the CLI path
-    // (in useTabRestoration.ts) which does the same scan over
-    // historical messages — engine tabs need this too because they
-    // don't route through the CLI's historicalSessionIds replay.
+    // Why this matters: the engine's reconcile_state only re-emits pending
+    // denials from in-memory state. On engine restart that slice is empty and
+    // the desktop loses the card even though the conversation file shows the
+    // assistant's final AskUserQuestion / ExitPlanMode call. Mirrors the
+    // plain-conversation path which scans historical messages.
     //
-    // We only synthesize when:
-    //   - the instance has no entry in instancePermissionDenied
-    //     (engineDenials already authoritative if present), AND
-    //   - the last persisted message with a toolName is
-    //     AskUserQuestion or ExitPlanMode.
-    //
-    // The synthetic entry's toolInput is parsed from the persisted
-    // message's `toolInput` (a JSON string captured by the engine_tool_update
-    // slice handler). For pre-feature persisted data that lacks
-    // toolInput, the entry is created with toolInput=undefined; the
-    // useEnginePermissionDenialBackfill hook then loads the matching
-    // conversation file to enrich the toolInput from disk.
-    if (st.engineMessages) {
-      for (const inst of st.engineInstances) {
-        if (instancePermissionDenied.get(inst.id)) continue
-        const msgs = st.engineMessages[inst.id]
-        if (!msgs || msgs.length === 0) continue
-        // Find the most recent tool message.
-        const lastTool = [...msgs].reverse().find((m) => m.toolName)
-        if (!lastTool) continue
-        if (lastTool.toolName !== 'AskUserQuestion' && lastTool.toolName !== 'ExitPlanMode') continue
-        instancePermissionDenied.set(inst.id, {
-          tools: [{
-            toolName: lastTool.toolName,
-            toolUseId: lastTool.toolId || 'restored',
-            toolInput: parseToolInput(lastTool.toolInput),
-          }],
-        })
-        console.log(`[restore] engine denial synthesized from history for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tool=${lastTool.toolName} toolId=${(lastTool.toolId || 'none').slice(0, 16)} hasInput=${lastTool.toolInput ? 'yes' : 'no'}`)
+    // We synthesize only when the instance has no authoritative denial AND the
+    // last pending-card tool is genuinely still outstanding (no trailing /clear
+    // divider, no trailing user message) — the shared pending-card rule. This is
+    // the resurrected-card-bug fix: a conversation cleared after its last
+    // question must NOT rebuild the card from history.
+    for (const inst of unifiedInstances) {
+      if (instancePermissionDenied.get(inst.id)) continue
+      const msgs = inst.messages
+      if (!msgs || msgs.length === 0) continue
+      const outcome = pendingCardOutcome(msgs)
+      if (outcome.kind !== 'found') {
+        if (outcome.kind === 'suppressed-by-clear' || outcome.kind === 'suppressed-by-user') {
+          console.log(`[restore] engine denial suppressed for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} reason=${outcome.kind}`)
+        }
+        continue
       }
+      instancePermissionDenied.set(inst.id, {
+        tools: [{
+          toolName: outcome.toolName,
+          toolUseId: outcome.toolId || 'restored',
+          toolInput: parseToolInput(outcome.toolInput),
+        }],
+      })
+      console.log(`[restore] engine denial synthesized from history for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tool=${outcome.toolName} toolId=${(outcome.toolId || 'none').slice(0, 16)} hasInput=${outcome.toolInput ? 'yes' : 'no'}`)
     }
 
     // Build pane instances with fully-populated ConversationInstance fields.
     // All per-instance data was collected into the local Maps above.
     // Components that read from instance fields see correct initial values
     // without waiting for the first engine event (issue #203).
-    const populatedInstances: Array<EngineInstance & ConversationInstance> = st.engineInstances.map((inst) => ({
-      ...inst,
-      messages: instanceMessages.get(inst.id) || [],
-      modelOverride: instanceModelOverrides.get(inst.id) || null,
-      permissionMode: (instancePermissionModes.get(inst.id) || 'auto') as 'auto' | 'plan',
-      permissionDenied: instancePermissionDenied.get(inst.id) || null,
-      conversationIds: instanceConversationIds.get(inst.id) || [],
-      draftInput: instanceDraftInputs.get(inst.id) || '',
-      agentStates: instanceAgentStates.get(inst.id) || [],
-      statusFields: null,   // populated on first engine_status event
-      planFilePath: null,   // populated on first engine_plan_mode_changed event
-    }))
+    const populatedInstances: Array<ConversationRef & ConversationInstance> = unifiedInstances.map((inst) => {
+      const restoredMessages = instanceMessages.get(inst.id) || []
+      return {
+        id: inst.id,
+        label: inst.label,
+        messages: restoredMessages,
+        messageCount: restoredMessages.length,  // persisted-count proxy mirrors loaded messages
+        modelOverride: instanceModelOverrides.get(inst.id) || null,
+        sessionModel: null,   // populated on first engine_status event
+        permissionMode: (instancePermissionModes.get(inst.id) || 'auto') as 'auto' | 'plan',
+        permissionDenied: instancePermissionDenied.get(inst.id) || null,
+        permissionQueue: [],  // live requests are re-emitted by the engine reconcile handshake
+        conversationIds: instanceConversationIds.get(inst.id) || [],
+        draftInput: instanceDraftInputs.get(inst.id) || '',
+        agentStates: instanceAgentStates.get(inst.id) || [],
+        statusFields: null,   // populated on first engine_status event
+        planFilePath: null,   // populated on first engine_plan_mode_changed event
+        forkedFromConversationIds: instanceForkedChains.get(inst.id) || null,
+      }
+    })
     restoredPanes.set(tabId, {
       instances: populatedInstances,
-      activeInstanceId: st.engineInstances[0].id,
+      activeInstanceId: unifiedInstances[0].id,
     })
   }
 
-  // Single atomic setState: tab metadata + enginePanes with fully-populated instances.
+  // Single atomic setState: tab metadata + conversationPanes with fully-populated instances.
   // Instance fields (messages, agentStates, permissionDenied, etc.) are written onto
   // each instance directly — the legacy per-Map keys are not seeded here.
   useSessionStore.setState((s) => ({
@@ -249,13 +221,15 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
             pillColor: st.pillColor || null,
             groupId: st.groupId || null,
             groupPinned: st.groupPinned ?? false,
-            modelOverride: st.modelOverride || null,
             conversationId: st.conversationId || null,
-            draftInput: st.draftInput ?? '',
             lastMessagePreview: st.lastMessagePreview || null,
             lastEventAt: st.lastEventAt ?? null,
+            // NB: modelOverride and draftInput are no longer TabState fields —
+            // they live on each ConversationInstance in conversationPanes and were
+            // seeded into populatedInstances above (modelOverride from
+            // st.engineModelOverrides, draftInput from st.engineDrafts).
             // Keep tab.permissionMode at 'auto' for engine tabs — per-instance
-            // modes live on each instance in enginePanes. The parent tab's
+            // modes live on each instance in conversationPanes. The parent tab's
             // permissionMode is only meaningful for CLI tabs.
             permissionMode: 'auto',
             // NB: deliberately NOT restoring st.permissionDenied
@@ -264,26 +238,23 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
           }
         : t
     ),
-    enginePanes: restoredPanes,
+    conversationPanes: restoredPanes,
   }))
-  if (st.draftInput) console.log(`[restore] draft for engine tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
+  // (Per-instance engine drafts are logged in the collection loop above; the
+  // parent tab carries no conversation draft for an extension-hosted tab.)
 
   // Start engine processes (state is fully set up)
-  if (st.engineInstances && st.engineInstances.length > 0) {
+  if (unifiedInstances.length > 0) {
     const { engineProfiles } = usePreferencesStore.getState()
     const profile = st.engineProfileId ? engineProfiles.find((p) => p.id === st.engineProfileId) : null
     if (profile) {
-      for (const inst of st.engineInstances) {
+      for (const inst of unifiedInstances) {
         const key = `${tabId}:${inst.id}`
-        // Prefer the per-instance sessionId from
-        // engineSessionIds (most recent conversation file for
-        // this instance). Fall back to the parent
-        // tab.conversationId only for back-compat with old
-        // persisted states that pre-date the per-instance
-        // serialization — in that case all instances will try
-        // to share one conversation, which is the legacy
-        // behavior; new persisted states avoid this collision.
-        const instSessionId = st.engineSessionIds?.[inst.id] || st.conversationId || ''
+        // Prefer the per-instance sessionId (most recent conversation id for
+        // this instance, from the unified instance's conversationIds). Fall
+        // back to the parent tab.conversationId only for legacy back-compat —
+        // in that case instances share one conversation (the old behavior).
+        const instSessionId = inst.conversationIds?.[inst.conversationIds.length - 1] || st.conversationId || ''
         window.ion.engineStart(key, {
           profileId: profile.id,
           extensions: profile.extensions,
@@ -296,7 +267,7 @@ export function restoreEngineTab(st: PersistedTab, restoredTabIds: Array<{ tabId
           // fresh sessions with planMode=false; without this sync, a restored
           // plan-mode instance loses its engine plan mode state until the next
           // submitEnginePrompt fires.
-          const pane = useSessionStore.getState().enginePanes.get(tabId)
+          const pane = useSessionStore.getState().conversationPanes.get(tabId)
           const restoredInst = pane?.instances.find((i) => i.id === inst.id)
           if (restoredInst?.permissionMode === 'plan') {
             console.log(`[restore] syncing plan mode to engine for ${key}`)

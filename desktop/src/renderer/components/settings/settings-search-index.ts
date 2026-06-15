@@ -35,6 +35,8 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'appearance', label: 'Close Explorer on External Launch', keywords: 'close explorer external finder native app reveal' },
   { categoryId: 'appearance', label: 'Open Markdown in Preview', keywords: 'markdown preview edit mode .md file' },
   { categoryId: 'appearance', label: 'Word Wrap', keywords: 'word wrap editor line long scroll horizontal' },
+  { categoryId: 'appearance', label: 'Editor Font Size', keywords: 'editor font size pixels text preview code' },
+  { categoryId: 'appearance', label: 'Conversation Font Size', keywords: 'conversation font size pixels text message chat readable larger' },
   { categoryId: 'appearance', label: 'Terminal Font', keywords: 'terminal font family nerd monospace typeface' },
   { categoryId: 'appearance', label: 'Terminal Font Size', keywords: 'terminal font size pixels text' },
 

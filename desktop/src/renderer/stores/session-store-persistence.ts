@@ -1,6 +1,8 @@
 import type { PersistedTabState } from '../../shared/types'
 import { usePreferencesStore } from '../preferences'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
+import { serializeConversationPane } from './serialize-conversation-pane'
+import { UNIFIED_SCHEMA_VERSION } from '../../main/tab-migration-unify'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
 
 type Store = typeof UseSessionStoreType
@@ -36,11 +38,20 @@ function persistTabs(useSessionStore: Store): void {
   }
   void dirsWithEditorState
 
-  const { terminalPanes, enginePanes } = useSessionStore.getState()
+  const { terminalPanes, conversationPanes } = useSessionStore.getState()
 
   const persistedTabs = tabs
     .map((t) => {
       const pane = terminalPanes.get(t.id)
+      // Conversation state is persisted as the unified conversationPane
+      // (schemaVersion 2). A plain conversation serializes its single `main`
+      // instance (count only — content reloads from the conversation file); an
+      // extension-hosted conversation serializes content per instance. The old
+      // split shape (flat fields + engine* maps) is no longer written.
+      const convoPane = serializeConversationPane(conversationPanes.get(t.id), {
+        hasEngineExtension: !!t.hasEngineExtension,
+        tabIdForLog: t.id,
+      })
       return {
         conversationId: t.conversationId,
         title: t.customTitle || t.title,
@@ -49,107 +60,22 @@ function persistTabs(useSessionStore: Store): void {
         hasChosenDirectory: t.hasChosenDirectory,
         additionalDirs: t.additionalDirs,
         permissionMode: t.permissionMode,
-        messageCount: t.messages?.length ?? t.messageCount ?? 0,
+        ...(convoPane ? { conversationPane: convoPane } : {}),
         ...(t.historicalSessionIds.length > 0 ? { historicalSessionIds: t.historicalSessionIds } : {}),
         ...(t.lastKnownSessionId ? { lastKnownSessionId: t.lastKnownSessionId } : {}),
         ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
         ...(t.pillColor ? { pillColor: t.pillColor } : {}),
         ...(t.pillIcon ? { pillIcon: t.pillIcon } : {}),
-        ...(t.modelOverride ? { modelOverride: t.modelOverride } : {}),
         ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
         ...(t.worktree ? { worktree: t.worktree } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),
         ...(t.groupPinned ? { groupPinned: true } : {}),
         ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
-        ...(t.draftInput ? { draftInput: t.draftInput } : {}),
         ...(t.contextTokens ? { contextTokens: t.contextTokens } : {}),
-        ...(t.permissionDenied ? { permissionDenied: t.permissionDenied } : {}),
-        ...(t.planFilePath ? { planFilePath: t.planFilePath } : {}),
         ...(t.lastMessagePreview ? { lastMessagePreview: t.lastMessagePreview } : {}),
         ...(t.lastEventAt ? { lastEventAt: t.lastEventAt } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
-        ...(t.isEngine ? { isEngine: true, engineProfileId: t.engineProfileId } : {}),
-        ...(t.isEngine ? (() => {
-          const hPane = enginePanes.get(t.id)
-          if (!hPane || hPane.instances.length === 0) return {}
-          // Strip messages and agentStates from the persisted instances —
-          // they are already serialized into the separate engineMessages
-          // and engineAgentStates maps below. Writing them twice doubled
-          // the tabs file size (~13.5 MB of redundant data in a 28.8 MB
-          // file), causing startup parse overhead and persistence churn.
-          const result: Record<string, any> = { engineInstances: hPane.instances.map(({ messages, agentStates, ...rest }) => rest) }
-          const msgs: Record<string, any[]> = {}
-          for (const inst of hPane.instances) {
-            const arr = inst.messages?.filter((m) => !isExtensionErrorMessage(m))
-            if (arr && arr.length > 0) {
-              msgs[inst.id] = arr.map((m) => ({ role: m.role, content: m.content, toolName: m.toolName, toolId: m.toolId, toolInput: m.toolInput, toolStatus: m.toolStatus, timestamp: m.timestamp, ...(m.dedupKey ? { dedupKey: m.dedupKey } : {}), ...(m.planFilePath ? { planFilePath: m.planFilePath } : {}), ...(m.attachments && m.attachments.length > 0 ? { attachments: m.attachments } : {}) }))
-            }
-          }
-          if (Object.keys(msgs).length > 0) result.engineMessages = msgs
-          const agentStates: Record<string, Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>> = {}
-          for (const inst of hPane.instances) {
-            const arr = inst.agentStates
-            if (arr && arr.length > 0) {
-              agentStates[inst.id] = arr.map((a) => ({
-                name: a.name,
-                ...(a.id ? { id: a.id } : {}),
-                status: a.status === 'running' ? 'done' : a.status,
-                ...(a.metadata ? { metadata: a.metadata } : {}),
-              }))
-            }
-          }
-          if (Object.keys(agentStates).length > 0) result.engineAgentStates = agentStates
-          const drafts: Record<string, string> = {}
-          for (const inst of hPane.instances) {
-            const d = inst.draftInput
-            if (d && d.length > 0) drafts[inst.id] = d
-          }
-          if (Object.keys(drafts).length > 0) result.engineDrafts = drafts
-          const denials: Record<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }> = {}
-          for (const inst of hPane.instances) {
-            const d = inst.permissionDenied
-            if (d && d.tools && d.tools.length > 0) {
-              denials[inst.id] = { tools: d.tools }
-            }
-          }
-          if (Object.keys(denials).length > 0) result.engineDenials = denials
-          // Persist the most recent conversation ID for each instance so
-          // we can resume the engine session with continuity on relaunch
-          // and so the denial-backfill hook can locate the right
-          // conversation file. The runtime map (engineConversationIds)
-          // is keyed by the compound `${tabId}:${instanceId}` and may
-          // hold a chain of historical IDs — we serialize only the most
-          // recent (last) ID per instance.
-          const sessionIds: Record<string, string> = {}
-          for (const inst of hPane.instances) {
-            const chain = inst.conversationIds
-            if (chain && chain.length > 0) {
-              sessionIds[inst.id] = chain[chain.length - 1]
-            }
-          }
-          if (Object.keys(sessionIds).length > 0) {
-            result.engineSessionIds = sessionIds
-          } else if (hPane.instances.length > 0) {
-            // Diagnostic: engine tab has instances but zero session IDs were
-            // resolved from the instance fields. This means conversationIds
-            // was not populated — on next restart these instances will start
-            // fresh engine conversations. Log instance IDs for investigation.
-            console.log(`[persist] engineSessionIds empty for engine tab=${t.id.slice(0, 8)} instances=${hPane.instances.length} instanceIds=${JSON.stringify(hPane.instances.map((i) => i.id.slice(0, 8)))}`)
-          }
-          const modelOverrides: Record<string, string> = {}
-          for (const inst of hPane.instances) {
-            const m = inst.modelOverride
-            if (m && m.length > 0) modelOverrides[inst.id] = m
-          }
-          if (Object.keys(modelOverrides).length > 0) result.engineModelOverrides = modelOverrides
-          const permModes: Record<string, 'auto' | 'plan'> = {}
-          for (const inst of hPane.instances) {
-            const m = inst.permissionMode
-            if (m && m !== 'auto') permModes[inst.id] = m
-          }
-          if (Object.keys(permModes).length > 0) result.enginePermissionModes = permModes
-          return result
-        })() : {}),
+        ...(t.hasEngineExtension ? { hasEngineExtension: true, engineProfileId: t.engineProfileId } : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),
         ...(pane && pane.instances.length > 0 ? (() => {
           const buffers: Record<string, string> = {}
@@ -192,6 +118,7 @@ function persistTabs(useSessionStore: Store): void {
   }
 
   const data: PersistedTabState = {
+    schemaVersion: UNIFIED_SCHEMA_VERSION,
     activeSessionId: activeTab?.conversationId || null,
     activeTabIndex,
     tabs: persistedTabs,
@@ -252,28 +179,25 @@ function scanForStuckTabs(useSessionStore: Store): void {
 export function setupPersistence(useSessionStore: Store): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
-    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.enginePanes !== prev.enginePanes) {
+    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.conversationPanes !== prev.conversationPanes) {
       // Flush immediately when permissionDenied changes on any tab — this
       // state must survive a crash or force-quit (e.g. the desktop is killed
       // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
-      // denial is never written to the conversation file). This covers:
-      //   - CLI tabs: `tab.permissionDenied` changing on `state.tabs`.
-      //   - Engine tabs: per-instance `permissionDenied` changing on enginePanes.
+      // denial is never written to the conversation file). Per-conversation
+      // permissionDenied now lives on the instance for EVERY tab (normal tabs
+      // use their `main` instance), so the single conversationPanes scan below covers
+      // both CLI and engine tabs.
       //
-      // IMPORTANT: The engine-tab check must compare per-instance permissionDenied
-      // precisely — NOT use `state.enginePanes !== prev.enginePanes`. The Map
-      // identity changes on every RAF text-delta flush (~60fps during streaming)
-      // because withInstanceMessages creates a new Map. Using the coarse check
-      // bypassed the 100ms debounce and caused persistTabs() (4 synchronous
-      // filesystem ops + full JSON serialization) to fire at 60fps.
+      // IMPORTANT: compare per-instance permissionDenied precisely — NOT
+      // `state.conversationPanes !== prev.conversationPanes`. The Map identity changes on
+      // every RAF text-delta flush (~60fps during streaming) because the
+      // streaming commit creates a new Map. Using the coarse check bypassed the
+      // 100ms debounce and caused persistTabs() (4 synchronous filesystem ops +
+      // full JSON serialization) to fire at 60fps.
       const permissionDeniedChanged =
-        (state.tabs !== prev.tabs && state.tabs.some((t, i) => {
-          const p = prev.tabs[i]
-          return p && t.id === p.id && t.permissionDenied !== p.permissionDenied
-        })) ||
-        (state.enginePanes !== prev.enginePanes && (() => {
-          for (const [tabId, pane] of state.enginePanes) {
-            const prevPane = prev.enginePanes.get(tabId)
+        state.conversationPanes !== prev.conversationPanes && (() => {
+          for (const [tabId, pane] of state.conversationPanes) {
+            const prevPane = prev.conversationPanes.get(tabId)
             if (!prevPane) continue
             for (const inst of pane.instances) {
               const prevInst = prevPane.instances.find((p) => p.id === inst.id)
@@ -281,7 +205,7 @@ export function setupPersistence(useSessionStore: Store): void {
             }
           }
           return false
-        })())
+        })()
 
       // Flush immediately when a CLI tab captures its first conversationId.
       // The engine event slice already does this for engine tabs via

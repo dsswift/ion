@@ -168,7 +168,19 @@ func (b *CliBackend) Cancel(requestID string) bool {
 // StartRun spawns a Claude CLI process and streams its output through
 // the normalizer pipeline.
 func (b *CliBackend) StartRun(requestID string, options types.RunOptions) {
-	ctx, cancel := context.WithCancel(context.Background())
+	// Derive the run's cancellation context from the session root when the
+	// caller threaded one (RunOptions.ParentCtx), so a session-level abort
+	// cascades to this CLI process's context (which the run loop honors via
+	// ctx.Done() and Cancel() escalates to SIGINT/SIGKILL). Falls back to
+	// context.Background() for callers that don't supply a parent.
+	parent := options.ParentCtx
+	if parent == nil {
+		parent = context.Background()
+		utils.Debug("CliBackend", "StartRun: no ParentCtx; using Background requestID="+requestID)
+	} else {
+		utils.Debug("CliBackend", "StartRun: deriving run ctx from session ParentCtx requestID="+requestID)
+	}
+	ctx, cancel := context.WithCancel(parent)
 
 	run := &cliRun{
 		requestID: requestID,
@@ -279,9 +291,9 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	if opts.MaxBudgetUsd > 0 {
 		args = append(args, "--max-budget-usd", strconv.FormatFloat(opts.MaxBudgetUsd, 'f', -1, 64))
 	}
-	if opts.SessionID != "" {
-		args = append(args, "--resume", opts.SessionID)
-	}
+	// Resume only with claude's own captured session UUID (CliResumeSessionID),
+	// never with Ion's conversation id (opts.SessionID). See cliResumeArgs.
+	args = append(args, cliResumeArgs(opts)...)
 	for _, dir := range opts.AddDirs {
 		args = append(args, "--add-dir", dir)
 	}
@@ -471,8 +483,19 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 				// Plan mode enrichment: when the CLI's result contains an
 				// ExitPlanMode denial, inject our planFilePath (which the
 				// CLI's wire format doesn't carry) and emit a
-				// PlanModeChangedEvent before the TaskCompleteEvent so
-				// consumers see the path before the run terminates.
+				// PlanProposalEvent{Kind:"exit"} before the TaskCompleteEvent
+				// so consumers see the path before the run terminates.
+				//
+				// Per ADR-003 (state events vs workflow events): the model
+				// calling ExitPlanMode is a *proposal*, not a confirmed mode
+				// change. The engine must NOT emit a
+				// PlanModeChangedEvent{Enabled:false} here — the mode flip is
+				// deferred to the user-approval chokepoint. Instead it emits
+				// the first-class workflow signal PlanProposalEvent{Kind:"exit"},
+				// matching the API backend's interceptExitPlanMode path
+				// (runloop_plan_mode_gates.go). The enriched ExitPlanMode
+				// permission denial keeps flowing through engine_status /
+				// task_complete for the existing card-render path.
 				if run.planMode && run.planFilePath != "" {
 					for i := range e.PermissionDenials {
 						if e.PermissionDenials[i].ToolName == "ExitPlanMode" {
@@ -480,12 +503,13 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 								"planFilePath": run.planFilePath,
 							}
 							b.emit(run.requestID, types.NormalizedEvent{
-								Data: &types.PlanModeChangedEvent{
-									Enabled:      false,
+								Data: &types.PlanProposalEvent{
+									Kind:         "exit",
 									PlanFilePath: run.planFilePath,
 									PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
 								},
 							})
+							utils.Info("CliBackend", fmt.Sprintf("run=%s exit_tool emit plan_proposal kind=exit planFile=%s (mode change deferred to user approval, per ADR-003)", run.requestID, run.planFilePath))
 							break
 						}
 					}

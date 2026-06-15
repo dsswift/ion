@@ -264,8 +264,8 @@ export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type
           if (!store) return null;
           var s = store.getState();
           var tab = s.tabs.find(function(t) { return t.id === '${escapedTab}'; });
-          if (!tab || !tab.isEngine) return null;
-          var pane = s.enginePanes.get('${escapedTab}');
+          if (!tab || !tab.hasEngineExtension) return null;
+          var pane = s.conversationPanes.get('${escapedTab}');
           if (!pane || !pane.activeInstanceId) return null;
           return { instanceId: pane.activeInstanceId };
         })()
@@ -310,7 +310,10 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
           var s = store.getState();
           var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
           if (!tab) return { messages: [], hasMore: false };
-          var all = tab.messages || [];
+          // Messages live on the active conversation instance for every tab.
+          var hPane = s.conversationPanes ? s.conversationPanes.get('${escapedTabId}') : null;
+          var hInst = hPane ? (hPane.instances.find(function(i){ return i.id === hPane.activeInstanceId; }) || hPane.instances[0]) : null;
+          var all = (hInst && hInst.messages) || [];
           var total = all.length;
           var pageSize = ${PAGE_SIZE};
           var before = '${escapedBefore}';
@@ -366,7 +369,10 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
                     if (!store) return null;
                     var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
                     if (!tab) return null;
-                    var msgs = tab.messages || [];
+                    var st2 = store.getState();
+                    var pPane = st2.conversationPanes ? st2.conversationPanes.get('${escapedTabId}') : null;
+                    var pInst = pPane ? (pPane.instances.find(function(i){ return i.id === pPane.activeInstanceId; }) || pPane.instances[0]) : null;
+                    var msgs = (pInst && pInst.messages) || [];
                     for (var i = msgs.length - 1; i >= 0; i--) {
                       var m = msgs[i];
                       if (m.toolName === 'Write' && m.toolInput) {
@@ -377,8 +383,8 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
                         } catch(e) {}
                       }
                     }
-                    // Fallback: check permissionDenied for planFilePath
-                    var denied = tab.permissionDenied && tab.permissionDenied.tools;
+                    // Fallback: check the instance's permissionDenied for planFilePath
+                    var denied = pInst && pInst.permissionDenied && pInst.permissionDenied.tools;
                     if (denied) {
                       for (var d = 0; d < denied.length; d++) {
                         if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {

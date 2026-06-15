@@ -50,6 +50,7 @@ import {
 import {
   handleRewind,
   handleForkFromMessage,
+  handleEngineRewind,
   handleUnpair,
 } from './handlers/history'
 import {
@@ -126,6 +127,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'set_pill_icon': handleSetPillIcon(cmd); break
     case 'rewind': await handleRewind(cmd); break
     case 'fork_from_message': await handleForkFromMessage(cmd); break
+    case 'engine_rewind': await handleEngineRewind(cmd); break
     case 'set_tab_group_mode': await handleSetTabGroupMode(cmd); break
     case 'move_tab_to_group': await handleMoveTabToGroup(cmd); break
     case 'toggle_tab_group_pin': await handleToggleTabGroupPin(cmd); break

@@ -9,7 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// Hook event names. 66 hooks across 15 categories.
+// Hook event names.
 const (
 	// Lifecycle hooks
 	HookSessionStart = "session_start"

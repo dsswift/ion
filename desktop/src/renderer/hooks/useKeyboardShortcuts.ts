@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useSessionStore, editorDirForTab } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
+import { SETTINGS_DEFAULTS } from '../preferences-types'
 
 interface CloseConfirmTab {
   id: string
@@ -15,7 +16,13 @@ interface CloseConfirmTab {
  * Cmd+T new tab · Cmd+Shift+T new tab in current dir · Cmd+W close tab (confirm)
  * Cmd+H/L prev/next tab · Cmd+J/K collapse/expand · Cmd+Y tall toggle
  * Cmd+, settings · Cmd+R recent dirs · Cmd+N scratch file
- * Cmd+= zoom in · Cmd+- zoom out · Cmd+0 reset zoom
+ * Cmd+= / Cmd+- grow/shrink the focused component's font · Cmd+0 reset it.
+ *   Focus in the file editor (CodeMirror) → editor font size; the editor's
+ *   own keymap (FileEditorCodeMirror) handles Cmd+= / Cmd+-, so this global
+ *   handler defers for those keys. Otherwise → conversation message font
+ *   size. Cmd+0 resets the focused component to the shipped default
+ *   (SETTINGS_DEFAULTS) for both editor and conversation. These keys no
+ *   longer zoom the whole UI; uiZoom remains adjustable from Settings.
  * Cmd+F find in conversation · Cmd+G next match · Cmd+Shift+G prev match
  * Shift+Tab toggle plan/auto · Ctrl+` toggle terminal · Ctrl+Shift+` add shell
  *
@@ -79,16 +86,32 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
         if (s.isExpanded) s.toggleExpanded()
       }
       if (e.metaKey && (e.key === '=' || e.key === '+')) {
+        // Editor focus: CodeMirror's own keymap (FileEditorCodeMirror) handles
+        // Mod-= and already bumps editorFontSize. Defer to it — do not also act
+        // here, or the size would step twice. preventDefault is intentionally
+        // skipped so the editor keymap still receives the event.
+        if (document.activeElement?.closest('.cm-editor')) return
         e.preventDefault()
-        usePreferencesStore.getState().zoomIn()
+        const p = usePreferencesStore.getState()
+        p.setConversationFontSize(p.conversationFontSize + 1)
       }
       if (e.metaKey && e.key === '-') {
+        if (document.activeElement?.closest('.cm-editor')) return
         e.preventDefault()
-        usePreferencesStore.getState().zoomOut()
+        const p = usePreferencesStore.getState()
+        p.setConversationFontSize(p.conversationFontSize - 1)
       }
       if (e.metaKey && e.key === '0') {
+        // Reset the focused component's font to the shipped default. Unlike
+        // Cmd+= / Cmd+-, CodeMirror has no Mod-0 binding, so this global
+        // handler resets the editor itself when the editor is focused.
         e.preventDefault()
-        usePreferencesStore.getState().setUiZoom(1)
+        const p = usePreferencesStore.getState()
+        if (document.activeElement?.closest('.cm-editor')) {
+          p.setEditorFontSize(SETTINGS_DEFAULTS.editorFontSize)
+        } else {
+          p.setConversationFontSize(SETTINGS_DEFAULTS.conversationFontSize)
+        }
       }
       if (e.metaKey && e.key === 'h') {
         e.preventDefault()

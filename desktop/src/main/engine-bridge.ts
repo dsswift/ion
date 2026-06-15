@@ -5,7 +5,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
 import { spawnEngineServer } from './engine-bridge-spawn'
-import { startSession as startSessionImpl } from './engine-bridge-start-session'
+import { startSession as startSessionImpl, reRegisterSessions as reRegisterSessionsImpl } from './engine-bridge-start-session'
 import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl } from './engine-bridge-state-sync'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import * as conv from './engine-bridge-conversations'
@@ -224,18 +224,9 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  /** Re-register all tracked sessions, then reconcile (see startSession()). */
+  /** Re-register all tracked sessions, then reconcile (see engine-bridge-start-session.ts). */
   private _reRegisterSessions(): void {
-    for (const [key, entry] of this.activeSessions) {
-      log(`Re-registering session after reconnect: key=${key}`)
-      const config = { ...entry.config }
-      if (entry.conversationId) {
-        config.sessionId = entry.conversationId
-      }
-      this._sendWithResult({ cmd: 'start_session', key, config })
-        .then((result) => { if (result.ok) this.sendReconcileState(key) })
-        .catch(() => { warn(`Failed to re-register session ${key}`) })
-    }
+    reRegisterSessionsImpl(this)
   }
 
   /**
@@ -395,6 +386,18 @@ export class EngineBridge extends EventEmitter {
     if (entry) {
       entry.conversationId = conversationId
     }
+  }
+
+  /**
+   * Return a shallow copy of the last EngineConfig used to start this session
+   * key, or undefined if the key was never started. Used by the divergence
+   * resume path (engine-control-plane-events.ts) so a post-restart resume
+   * carries the tab's real workingDirectory/extensions/model instead of empty
+   * placeholders. Returning a copy keeps callers from mutating bridge state.
+   */
+  getSessionConfig(key: string): EngineConfig | undefined {
+    const entry = this.activeSessions.get(key)
+    return entry ? { ...entry.config } : undefined
   }
 
   async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[]): Promise<{ ok: boolean; error?: string }> {

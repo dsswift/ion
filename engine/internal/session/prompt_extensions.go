@@ -80,7 +80,7 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	}
 	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing before_agent_start", key))
 	basCtx := m.newExtContext(s, key)
-	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{})
+	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true})
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
 		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: before_agent_start injected %d chars", key, len(agentSysPrompt)))

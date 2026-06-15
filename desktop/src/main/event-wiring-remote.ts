@@ -127,9 +127,13 @@ export function wireRemoteSessionPlaneForwarding(): void {
                 (function() {
                   var store = window.__Ion_SESSION_STORE__;
                   if (!store) return null;
-                  var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+                  var s = store.getState();
+                  var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
                   if (!tab) return null;
-                  var msgs = tab.messages || [];
+                  // Per-conversation state now lives on the active ConversationInstance.
+                  var pane = s.conversationPanes ? s.conversationPanes.get(tab.id) : null;
+                  var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
+                  var msgs = (inst && inst.messages) || [];
                   for (var i = msgs.length - 1; i >= 0; i--) {
                     var m = msgs[i];
                     if (m.toolName === 'Write' && m.toolInput) {
@@ -141,7 +145,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
                     }
                   }
                   // Fallback: check permissionDenied for planFilePath
-                  var denied = tab.permissionDenied && tab.permissionDenied.tools;
+                  var denied = inst && inst.permissionDenied && inst.permissionDenied.tools;
                   if (denied) {
                     for (var d = 0; d < denied.length; d++) {
                       if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
@@ -241,9 +245,13 @@ export function wireRemoteSessionPlaneForwarding(): void {
             (function() {
               var store = window.__Ion_SESSION_STORE__;
               if (!store) return null;
-              var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+              var s = store.getState();
+              var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
               if (!tab) return null;
-              var msgs = tab.messages || [];
+              // Per-conversation state now lives on the active ConversationInstance.
+              var pane = s.conversationPanes ? s.conversationPanes.get(tab.id) : null;
+              var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
+              var msgs = (inst && inst.messages) || [];
               for (var i = msgs.length - 1; i >= 0; i--) {
                 var m = msgs[i];
                 if (m.toolName === 'Write' && m.toolInput) {
@@ -255,7 +263,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
                 }
               }
               // Fallback: check permissionDenied for planFilePath
-              var denied = tab.permissionDenied && tab.permissionDenied.tools;
+              var denied = inst && inst.permissionDenied && inst.permissionDenied.tools;
               if (denied) {
                 for (var d = 0; d < denied.length; d++) {
                   if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {

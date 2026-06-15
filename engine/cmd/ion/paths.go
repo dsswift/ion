@@ -50,6 +50,14 @@ func pidPath() string {
 	return filepath.Join(home, ".ion", "engine.pid")
 }
 
+func exitPath() string {
+	if v := os.Getenv("ION_EXIT_PATH"); v != "" {
+		return v
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".ion", "engine.exit")
+}
+
 func nextRequestID() string {
 	n := atomic.AddInt64(&requestCounter, 1)
 	return fmt.Sprintf("cli-%d-%d", os.Getpid(), n)

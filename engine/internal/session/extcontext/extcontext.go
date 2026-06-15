@@ -23,6 +23,15 @@ type SessionAccessor interface {
 	WorkingDirectory() string
 	Emit(ev types.EngineEvent)
 	SendAbort()
+
+	// RootContext returns the session's cancellation root context. Every
+	// cancellable operation built from this accessor (ctx.llmCall, agent
+	// dispatch) derives its own context from this root so a session-level
+	// abort cancels them all. Implementations must never return nil — a
+	// session with no root (test-constructed) returns context.Background()
+	// so derive sites can call context.WithCancel(sa.RootContext())
+	// unconditionally.
+	RootContext() context.Context
 	SendPrompt(text string, model string) error
 	Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error)
 	SuppressTool(name string)

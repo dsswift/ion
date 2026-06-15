@@ -25,14 +25,14 @@ function makeInstance(id: string) {
 
 function buildHarness() {
   const state: any = {
-    tabs: [{ id: 'tab1', isEngine: true, status: 'running', lastEventAt: 0, permissionDenied: null }],
+    tabs: [{ id: 'tab1', hasEngineExtension: true, status: 'running', lastEventAt: 0, permissionDenied: null }],
     engineWorkingMessages: new Map(),
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
     engineUsage: new Map(),
     engineModelFallbacks: new Map(),
-    enginePanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
+    conversationPanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial
@@ -44,7 +44,7 @@ function buildHarness() {
 }
 
 function getPermissionDenied(state: any, tabId: string, instanceId: string) {
-  const pane = state.enginePanes.get(tabId)
+  const pane = state.conversationPanes.get(tabId)
   return pane?.instances.find((i: any) => i.id === instanceId)?.permissionDenied
 }
 

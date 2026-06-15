@@ -102,6 +102,13 @@ func executeEdit(ctx context.Context, input map[string]any, cwd string) (*types.
 
 	filePath = resolvePath(cwd, filePath)
 
+	// Serialize concurrent Edit/Write calls targeting the same file path.
+	// Without this lock, parallel errgroup goroutines race on read-modify-write
+	// and silently overwrite each other's results.
+	mu := fileLock(filePath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: Edit cancelled.", IsError: true}, nil
 	}

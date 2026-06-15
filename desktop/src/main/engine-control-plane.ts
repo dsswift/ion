@@ -59,8 +59,13 @@ export class EngineControlPlane extends EventEmitter {
     this.bridge.on('reconnected', () => {
       for (const tab of this.tabs.values()) {
         if (tab.engineSessionStarted) {
-          log(`resetSessionFlag after reconnect: tabId=${tab.tabId}`)
+          log(`resetSessionFlag after reconnect: tabId=${tab.tabId} conversationId=${tab.conversationId ?? 'none'} (preserved)`)
           tab.engineSessionStarted = false
+          // conversationId is intentionally preserved here. The bridge's
+          // _reRegisterSessions will re-send start_session with this id so
+          // the engine resumes the original conversation, not a fresh one.
+          // The B1 guard in handleStatusEvent ensures the post-restart
+          // pre-mint idle event does not clobber it.
         }
       }
     })
@@ -167,6 +172,82 @@ export class EngineControlPlane extends EventEmitter {
     }
   }
 
+  /**
+   * Idempotent single entry point that guarantees a live engine session
+   * exists for a normal (non-engine-extension) tab. Starts the engine session
+   * if it is not already started, injecting the tracked conversationId as
+   * `sessionId` so the engine RESUMES the same conversation under the same key
+   * instead of minting a fresh session identity. A no-op when the session is
+   * already started.
+   *
+   * This is the unification seam: both the lazy first-prompt path
+   * (submitPrompt) and the eager restore/open path call this, so a normal tab
+   * has exactly one start site and one stable key for its whole life — the
+   * same lifecycle engine tabs already get. Eager start on restore means a
+   * reopened conversation is immediately clearable and (for engine tabs)
+   * background-job capable, instead of being a sessionless shell until the
+   * first prompt.
+   *
+   * Every branch logs with the tab id, conversationId, and outcome so the
+   * session-identity lifecycle is reconstructable from ~/.ion/desktop.log.
+   */
+  async ensureSession(
+    tabId: string,
+    opts: {
+      workingDirectory: string
+      conversationId?: string | null
+      permissionMode?: 'auto' | 'plan'
+      extensions?: string[]
+      model?: string
+      maxTokens?: number
+      thinking?: { enabled: boolean; budgetTokens?: number }
+    },
+  ): Promise<{ ok: boolean; error?: string }> {
+    this.ensureTab(tabId)
+    const tab = this.tabs.get(tabId)!
+
+    // Seed tracked conversationId from the caller when the tab has none yet
+    // (restore path supplies the persisted id). This is what makes the resume
+    // stable: the same conversationId flows into config.sessionId on every
+    // start for this tab.
+    if (opts.conversationId && !tab.conversationId) {
+      tab.conversationId = opts.conversationId
+      log(`ensureSession: tabId=${tabId} seeded tracked conversationId=${opts.conversationId} from caller`)
+    }
+    if (opts.permissionMode) tab.permissionMode = opts.permissionMode
+
+    if (tab.engineSessionStarted) {
+      log(`ensureSession: tabId=${tabId} already started (conversationId=${tab.conversationId ?? 'none'}) — no-op`)
+      return { ok: true }
+    }
+
+    const config: EngineConfig = {
+      profileId: 'default',
+      extensions: opts.extensions || [],
+      workingDirectory: opts.workingDirectory,
+      sessionId: opts.conversationId || tab.conversationId || undefined,
+      model: opts.model,
+      maxTokens: opts.maxTokens,
+      thinking: opts.thinking,
+      claudeCompat: (() => {
+        try { return readSettings().enableClaudeCompat ?? SETTINGS_DEFAULTS.enableClaudeCompat }
+        catch { return SETTINGS_DEFAULTS.enableClaudeCompat }
+      })(),
+    }
+    log(`ensureSession: tabId=${tabId} starting engine session sessionId=${config.sessionId ?? 'new'} dir=${config.workingDirectory}`)
+    const result = await this.bridge.startSession(tabId, config)
+    if (!result.ok) {
+      error(`ensureSession: tabId=${tabId} startSession failed err=${result.error}`)
+      return result
+    }
+    tab.engineSessionStarted = true
+    log(`ensureSession: tabId=${tabId} engine session live (conversationId=${tab.conversationId ?? 'none'})`)
+    if (tab.permissionMode === 'plan') {
+      this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
+    }
+    return result
+  }
+
   async submitPrompt(tabId: string, requestId: string, options: RunOptions): Promise<void> {
     const tab = this.tabs.get(tabId)
     if (!tab) {
@@ -234,11 +315,22 @@ export class EngineControlPlane extends EventEmitter {
       log(`workingDirectory confirmed on engine: tabId=${tabId} dir=${wd}`)
     }
 
+    // Single start site: delegate to ensureSession (idempotent). It is a
+    // no-op when the session is already started, and otherwise starts it with
+    // the resolved working directory + tracked conversationId so the first
+    // prompt and a prior eager restore-start converge on the same key.
     if (!tab.engineSessionStarted) {
-      log(`startSession: tabId=${tabId} model=${config.model} dir=${config.workingDirectory}`)
-      const result = await this.bridge.startSession(tabId, config)
+      const result = await this.ensureSession(tabId, {
+        workingDirectory: config.workingDirectory,
+        conversationId: config.sessionId ?? tab.conversationId,
+        permissionMode: tab.permissionMode,
+        extensions: config.extensions,
+        model: config.model,
+        maxTokens: config.maxTokens,
+        thinking: config.thinking,
+      })
       if (!result.ok) {
-        error(`startSession failed: tabId=${tabId} err=${result.error}`)
+        error(`submitPrompt: tabId=${tabId} ensureSession failed err=${result.error}`)
         this._setStatus(tabId, 'failed')
         this.emit('error', tabId, {
           message: result.error || 'Failed to start engine session',
@@ -249,11 +341,6 @@ export class EngineControlPlane extends EventEmitter {
         } as EnrichedError)
         return
       }
-      tab.engineSessionStarted = true
-
-      if (tab.permissionMode === 'plan') {
-        this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
-      }
     }
 
     this._setStatus(tabId, 'running')
@@ -262,14 +349,21 @@ export class EngineControlPlane extends EventEmitter {
 
     if (!result.ok && result.error?.includes('not found')) {
       warn(`sendPrompt session lost, re-creating: tabId=${tabId}`)
+      // Reset the started flag so ensureSession actually re-starts (it no-ops
+      // when the flag is set). Route the recovery through the same single
+      // start site rather than re-issuing startSession inline.
       tab.engineSessionStarted = false
 
-      const startResult = await this.bridge.startSession(tabId, config)
+      const startResult = await this.ensureSession(tabId, {
+        workingDirectory: config.workingDirectory,
+        conversationId: config.sessionId ?? tab.conversationId,
+        permissionMode: tab.permissionMode,
+        extensions: config.extensions,
+        model: config.model,
+        maxTokens: config.maxTokens,
+        thinking: config.thinking,
+      })
       if (startResult.ok) {
-        tab.engineSessionStarted = true
-        if (tab.permissionMode === 'plan') {
-          this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
-        }
         result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, undefined, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath)
       } else {
         error(`session re-create failed: tabId=${tabId} err=${startResult.error}`)

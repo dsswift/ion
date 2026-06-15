@@ -21,7 +21,7 @@
  * inline copy in snapshot.ts must match this function exactly.
  *
  * The helper is intentionally side-effect-free and takes only the
- * inputs it needs; no `state` or `enginePanes` access. This keeps the
+ * inputs it needs; no `state` or `conversationPanes` access. This keeps the
  * unit tests trivial to set up and the contract reviewable in one
  * place.
  */

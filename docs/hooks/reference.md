@@ -75,8 +75,9 @@ type ErrorInfo struct {
 **AgentInfo**
 ```go
 type AgentInfo struct {
-    Name string
-    Task string
+    Name   string
+    Task   string
+    IsRoot bool // true only on the before_agent_start root-loop firing
 }
 ```
 
@@ -160,8 +161,15 @@ type ForkInfo struct {
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `before_agent_start` | Before a sub-agent launches | `AgentInfo{Name, Task}` | `BeforeAgentStartResult{SystemPrompt, AgentName}` | Last non-empty wins per field independently. Injects system prompt and/or resolves agent name. |
+| `before_agent_start` | Before a sub-agent launches **and** once per root prompt for primary system-prompt injection | `AgentInfo{Name, Task, IsRoot}` | `BeforeAgentStartResult{SystemPrompt, AgentName}` | Last non-empty wins per field independently. Injects system prompt and/or resolves agent name. |
 | `before_provider_request` | Immediately before each outbound LLM provider call from the agent loop. Fires once per turn (including fallback hops). | `BeforeProviderRequestInfo{Provider, Model, TurnNumber, MessageCount, ToolCount, HasSystemPrompt, MaxTokens}` | ignored | Observe only |
+
+> **`before_agent_start` is dual-purpose.** It fires once per **sub-agent**
+> launch (`IsRoot == false`, populated `Name`/`Task`) **and** once per **root**
+> prompt for primary system-prompt injection (`IsRoot == true`, empty
+> `Name`/`Task`). A handler that injects a sub-agent-only preamble must branch
+> on `!isRoot` (preferred) — or the legacy `name !== ""` sentinel — to avoid
+> poisoning the root session's own system prompt on every turn.
 
 ### Payload Types
 

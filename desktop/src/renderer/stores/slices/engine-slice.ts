@@ -1,9 +1,11 @@
-import type { TabStatus, TabState, EngineInstance, ConversationInstance } from '../../../shared/types'
+import type { TabStatus, TabState, ConversationRef, ConversationInstance } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
 import { createEngineSubmitActions } from './engine-slice-submit'
+import { createEngineRewindActions } from './engine-slice-rewind'
+import { parseSessionKey } from '../../../shared/session-key'
 
 export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -24,7 +26,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const newTab: TabState = {
         ...makeLocalTab(),
         title,
-        isEngine: true,
+        hasEngineExtension: true,
         engineProfileId: profileId || null,
         workingDirectory,
         hasChosenDirectory: !!(dir || defaultBase),
@@ -34,9 +36,10 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         // Extensions control plan mode via ctx.SetPlanMode — the user's
         // default permission mode preference applies to CLI tabs only.
         permissionMode: 'auto',
-        // Clear the plan-model override that makeLocalTab may have set
-        // (it applies the split model when defaultPermissionMode is 'plan').
-        modelOverride: null,
+        // NB: the engine instance's modelOverride is seeded in
+        // addEngineInstance (from engineDefaultModel/preferredModel); the
+        // old tab-level `modelOverride: null` reset is gone since that field
+        // no longer lives on TabState.
       }
 
       set((state) => ({
@@ -54,7 +57,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       if (!tab) return ''
       const { engineProfiles } = usePreferencesStore.getState()
       const profile = tab.engineProfileId ? engineProfiles.find((p) => p.id === tab.engineProfileId) : null
-      const panes = new Map(get().enginePanes)
+      const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId) || { instances: [], activeInstanceId: null }
       const labelBase = profile?.name || 'Engine'
       const maxNum = pane.instances.reduce((max, i) => {
@@ -71,7 +74,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
       // Session-start divider as the first message for this instance.
       // This is the only place it is created — on tab restoration,
-      // addEngineInstance is skipped (instances already exist in enginePanes
+      // addEngineInstance is skipped (instances already exist in conversationPanes
       // from the restored snapshot), so no duplicate is produced.
       const startDivider = {
         id: nextMsgId(),
@@ -80,25 +83,29 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         timestamp: Date.now(),
       }
 
-      const instance: EngineInstance & ConversationInstance = {
+      const instance: ConversationRef & ConversationInstance = {
         id,
         label,
         messages: [startDivider],
+        messageCount: 1,  // one message: the session-start divider
         modelOverride: initialModel,
+        sessionModel: null,
         permissionMode: 'auto',
         permissionDenied: null,
+        permissionQueue: [],
         conversationIds: [],
         draftInput: '',
         agentStates: [],
         statusFields: null,
         planFilePath: null,
+        forkedFromConversationIds: null,
       }
       panes.set(tabId, {
         instances: [...pane.instances, instance],
         activeInstanceId: id,
       })
       set((state) => ({
-        enginePanes: panes,
+        conversationPanes: panes,
         tabs: state.tabs.map((t) =>
           t.id === tabId ? { ...t, status: 'connecting' as TabStatus } : t
         ),
@@ -119,39 +126,39 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
               keyNotifs.push({ id: nextMsgId(), message: `Extension error: ${result.error}`, level: 'error', timestamp: Date.now() })
               notifications.set(key, keyNotifs)
               // Write error message onto instance
-              const [tabIdInner, instanceId] = key.split(':')
-              const enginePanes = new Map(state.enginePanes)
-              const paneInner = enginePanes.get(tabIdInner)
+              const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+              const conversationPanes = new Map(state.conversationPanes)
+              const paneInner = conversationPanes.get(tabIdInner)
               if (paneInner) {
                 const idx = paneInner.instances.findIndex((i) => i.id === instanceId)
                 if (idx !== -1) {
                   const instances = paneInner.instances.slice()
                   const msgs = [...(instances[idx].messages || []), { id: nextMsgId(), role: 'system' as const, content: `Failed to start engine: ${result.error}`, timestamp: Date.now() }]
                   instances[idx] = { ...instances[idx], messages: msgs }
-                  enginePanes.set(tabIdInner, { ...paneInner, instances })
+                  conversationPanes.set(tabIdInner, { ...paneInner, instances })
                 }
               }
               const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
-              return { engineNotifications: notifications, enginePanes, tabs }
+              return { engineNotifications: notifications, conversationPanes, tabs }
             })
           }
         }).catch((err: any) => {
           console.error(`[engine] Start error: ${err.message}`)
           set((state) => {
-            const [tabIdInner, instanceId] = key.split(':')
-            const enginePanes = new Map(state.enginePanes)
-            const paneInner = enginePanes.get(tabIdInner)
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const conversationPanes = new Map(state.conversationPanes)
+            const paneInner = conversationPanes.get(tabIdInner)
             if (paneInner) {
               const idx = paneInner.instances.findIndex((i) => i.id === instanceId)
               if (idx !== -1) {
                 const instances = paneInner.instances.slice()
                 const msgs = [...(instances[idx].messages || []), { id: nextMsgId(), role: 'system' as const, content: `Engine start failed: ${err.message}`, timestamp: Date.now() }]
                 instances[idx] = { ...instances[idx], messages: msgs }
-                enginePanes.set(tabIdInner, { ...paneInner, instances })
+                conversationPanes.set(tabIdInner, { ...paneInner, instances })
               }
             }
             const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
-            return { enginePanes, tabs }
+            return { conversationPanes, tabs }
           })
         })
       } else {
@@ -167,7 +174,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
     },
 
     removeEngineInstance: (tabId, instanceId) => {
-      const panes = new Map(get().enginePanes)
+      const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) return
       const key = `${tabId}:${instanceId}`
@@ -187,10 +194,10 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         // logs a refusal and the tab stays open — the user can
         // re-attempt close once children finish aborting.
         get().closeTab(tabId)
-        set({ enginePanes: panes })
+        set({ conversationPanes: panes })
       } else {
         panes.set(tabId, { instances: remaining, activeInstanceId: activeId })
-        set({ enginePanes: panes })
+        set({ conversationPanes: panes })
       }
       // ConversationInstance fields are carried on the instance object itself
       // and are gone when the instance is removed from panes above.
@@ -214,7 +221,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       // itself so the user stays on the same tab/sub-tab. Mirrors the
       // CLI-side resetTabSession on engine-control-plane.ts which keeps
       // the tab open and zeros out conversationId/promptCount.
-      const panes = new Map(get().enginePanes)
+      const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) return
       const instanceExists = pane.instances.some((i) => i.id === instanceId)
@@ -245,14 +252,18 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           return {
             ...i,
             messages: [divider],
+            messageCount: 1,  // one message: the reset-boundary divider
             modelOverride: i.modelOverride,  // preserve model selection across reset
+            sessionModel: null,  // engine reports a fresh model on the next status event
             permissionMode: 'auto' as const,
             permissionDenied: null,
+            permissionQueue: [],
             conversationIds: [],
             draftInput: '',
             agentStates: [],
             statusFields: null,
             planFilePath: null,
+            forkedFromConversationIds: null,
           }
         }),
       })
@@ -269,11 +280,13 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       enginePinnedPrompt.delete(key)
       engineUsage.delete(key)
 
-      set({ enginePanes: panes, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage })
+      set({ conversationPanes: panes, engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage })
     },
 
+    rewindEngineInstance: createEngineRewindActions(set, get).rewindEngineInstance!,
+
     selectEngineInstance: (tabId, instanceId) => {
-      const panes = new Map(get().enginePanes)
+      const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) return
       panes.set(tabId, { ...pane, activeInstanceId: instanceId })
@@ -316,7 +329,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         console.log(`[selectEngineInstance] tab=${tabId.slice(0, 8)} instance=${instanceId} reconciledStatus=${newStatus}`)
 
         set((state) => ({
-          enginePanes: panes,
+          conversationPanes: panes,
           tabs: state.tabs.map((t) => {
             if (t.id !== tabId) return t
             const updates: Partial<typeof t> = { status: newStatus, permissionMode: instancePermissionMode }
@@ -334,7 +347,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         console.log(`[selectEngineInstance] tab=${tabId.slice(0, 8)} instance=${instanceId} noStatusEntry, panes only`)
         if (lastConvId) {
           set((state) => ({
-            enginePanes: panes,
+            conversationPanes: panes,
             tabs: state.tabs.map((t) => {
               if (t.id !== tabId) return t
               if (t.conversationId === lastConvId && t.permissionMode === instancePermissionMode) return { ...t }
@@ -343,7 +356,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           }))
         } else {
           set((state) => ({
-            enginePanes: panes,
+            conversationPanes: panes,
             tabs: state.tabs.map((t) => {
               if (t.id !== tabId) return t
               if (t.permissionMode === instancePermissionMode) return { ...t }
@@ -355,20 +368,20 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
     },
 
     renameEngineInstance: (tabId, instanceId, label) => {
-      const panes = new Map(get().enginePanes)
+      const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) return
       panes.set(tabId, {
         ...pane,
         instances: pane.instances.map((i) => i.id === instanceId ? { ...i, label } : i),
       })
-      set({ enginePanes: panes })
+      set({ conversationPanes: panes })
     },
 
     moveEngineInstance: (sourceTabId, instanceId, targetTabId) => {
       const state = get()
-      const sourcePaneRaw = state.enginePanes.get(sourceTabId)
-      const targetPaneRaw = state.enginePanes.get(targetTabId)
+      const sourcePaneRaw = state.conversationPanes.get(sourceTabId)
+      const targetPaneRaw = state.conversationPanes.get(targetTabId)
       if (!sourcePaneRaw) {
         console.warn(`[engine] moveEngineInstance: source pane not found tabId=${sourceTabId}`)
         return
@@ -379,7 +392,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         return
       }
       const targetTab = state.tabs.find((t) => t.id === targetTabId)
-      if (!targetTab?.isEngine) {
+      if (!targetTab?.hasEngineExtension) {
         console.warn(`[engine] moveEngineInstance: target tab ${targetTabId} is not an engine tab`)
         return
       }
@@ -389,7 +402,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       console.log(`[engine] moveEngineInstance: ${oldKey} -> ${newKey}`)
 
       // The instance object carries all ConversationInstance fields — it moves
-      // with the instance when we update enginePanes. No per-field Map rekeying
+      // with the instance when we update conversationPanes. No per-field Map rekeying
       // is needed for the migrated fields.
       //
       // Rekey the non-ConversationInstance compound-keyed Maps.
@@ -408,27 +421,27 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       rekey(enginePinnedPrompt)
       rekey(engineUsage)
 
-      // Update enginePanes: remove from source, add to target.
+      // Update conversationPanes: remove from source, add to target.
       // The instance object (with all ConversationInstance fields) moves as-is.
-      const enginePanes = new Map(state.enginePanes)
+      const conversationPanes = new Map(state.conversationPanes)
       const sourceRemaining = sourcePaneRaw.instances.filter((i) => i.id !== instanceId)
       if (sourceRemaining.length === 0) {
-        enginePanes.delete(sourceTabId)
+        conversationPanes.delete(sourceTabId)
       } else {
         const newActiveId = sourcePaneRaw.activeInstanceId === instanceId
           ? (sourceRemaining[sourceRemaining.length - 1]?.id || null)
           : sourcePaneRaw.activeInstanceId
-        enginePanes.set(sourceTabId, { instances: sourceRemaining, activeInstanceId: newActiveId })
+        conversationPanes.set(sourceTabId, { instances: sourceRemaining, activeInstanceId: newActiveId })
       }
 
       const targetPane = targetPaneRaw || { instances: [], activeInstanceId: null }
-      enginePanes.set(targetTabId, {
+      conversationPanes.set(targetTabId, {
         instances: [...targetPane.instances, instance],
         activeInstanceId: instance.id,
       })
 
       set({
-        enginePanes,
+        conversationPanes,
         engineWorkingMessages,
         engineNotifications,
         engineDialogs,
@@ -449,28 +462,28 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
     },
 
     reorderEngineInstances: (tabId, reordered) => {
-      const panes = new Map(get().enginePanes)
+      const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) return
       panes.set(tabId, { ...pane, instances: reordered })
-      set({ enginePanes: panes })
+      set({ conversationPanes: panes })
     },
 
     setEngineModel: (tabId, modelId) => {
-      const pane = get().enginePanes.get(tabId)
+      const pane = get().conversationPanes.get(tabId)
       const instanceId = pane?.activeInstanceId
       if (!instanceId) return
       // Write modelOverride directly onto the instance.
       set((state) => {
-        const enginePanes = new Map(state.enginePanes)
-        const paneInner = enginePanes.get(tabId)
+        const conversationPanes = new Map(state.conversationPanes)
+        const paneInner = conversationPanes.get(tabId)
         if (!paneInner) return {}
         const idx = paneInner.instances.findIndex((i) => i.id === instanceId)
         if (idx === -1) return {}
         const instances = paneInner.instances.slice()
         instances[idx] = { ...instances[idx], modelOverride: modelId }
-        enginePanes.set(tabId, { ...paneInner, instances })
-        return { enginePanes }
+        conversationPanes.set(tabId, { ...paneInner, instances })
+        return { conversationPanes }
       })
     },
 

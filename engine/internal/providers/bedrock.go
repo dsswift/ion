@@ -102,11 +102,21 @@ func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOpti
 		maxTokens = 16384
 	}
 
+	inferenceConfig := map[string]any{"maxTokens": maxTokens}
+	// Temperature: forward when the caller set it (pointer non-nil),
+	// including a deliberate 0.0. Bedrock's Converse API accepts
+	// inferenceConfig.temperature. Bedrock has no uniform request-level JSON
+	// switch across model families, so ResponseFormat is not mapped —
+	// jsonMode stays advisory here.
+	if opts.Temperature != nil {
+		inferenceConfig["temperature"] = *opts.Temperature
+	}
+
 	body := map[string]any{
-		"modelId": opts.Model,
-		"system":  []map[string]any{{"text": opts.System}},
-		"messages": formatBedrockMessages(opts.Messages),
-		"inferenceConfig": map[string]any{"maxTokens": maxTokens},
+		"modelId":         opts.Model,
+		"system":          []map[string]any{{"text": opts.System}},
+		"messages":        formatBedrockMessages(opts.Messages),
+		"inferenceConfig": inferenceConfig,
 	}
 
 	if len(opts.Tools) > 0 {

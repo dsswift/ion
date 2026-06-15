@@ -10,6 +10,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useActiveEngineStatusFields, useActiveEngineKey } from './StatusBarEngineHelpers'
+import { activeInstance } from '../stores/conversation-instance'
 
 /* ─── Model Picker (inline — tightly coupled to StatusBar) ─── */
 
@@ -41,7 +42,11 @@ export function ModelPicker() {
   const tab = useSessionStore(
     useShallow((s) => {
       const t = s.tabs.find((t) => t.id === s.activeTabId)
-      return t ? { status: t.status, sessionModel: t.sessionModel, modelOverride: t.modelOverride, isEngine: t.isEngine } : undefined
+      if (!t) return undefined
+      // Per-conversation model state (`sessionModel` / `modelOverride`) now
+      // lives on the active instance, resolved via `activeInstance`.
+      const inst = activeInstance(s.conversationPanes, t.id)
+      return { status: t.status, sessionModel: inst?.sessionModel ?? null, modelOverride: inst?.modelOverride ?? null, hasEngineExtension: t.hasEngineExtension }
     }),
   )
   const activeTabId = useSessionStore((s) => s.activeTabId)
@@ -52,7 +57,7 @@ export function ModelPicker() {
   const engineKey = useActiveEngineKey()
   const engineModelOverride = useSessionStore((s) => {
     if (!engineKey) return undefined
-    const pane = s.enginePanes.get(engineKey.tabId)
+    const pane = s.conversationPanes.get(engineKey.tabId)
     const inst = pane?.instances.find((i) => i.id === engineKey.instanceId)
     return inst?.modelOverride ?? undefined
   })
@@ -71,7 +76,7 @@ export function ModelPicker() {
   // engine tabs we use the active instance's engine status because
   // each instance can be in a different run-state and only the active
   // one gates the picker.
-  const isEngine = !!tab?.isEngine
+  const isEngine = !!tab?.hasEngineExtension
   const isBusy = isEngine
     ? engineStatus?.state === 'running'
     : (tab?.status === 'running' || tab?.status === 'connecting')

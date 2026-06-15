@@ -23,7 +23,7 @@ extension SessionViewModel {
     /// cache and the parent tab's status field. Phase 3 contract:
     ///
     ///   - Synthesizes a legacy `StatusFields` from the new payload
-    ///     and writes it to `engineInstances[i].statusFields`. This
+    ///     and writes it to `conversationInstances[i].statusFields`. This
     ///     keeps every existing consumer (status caption, instance bar,
     ///     model-fallback indicator) reading from the same field so no
     ///     UI surface needs awareness of which event drove the update.

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
-	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/scheduling"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -314,6 +313,14 @@ func (m *Manager) StopSession(key string) error {
 		return fmt.Errorf("session %q not found", key)
 	}
 
+	// Cancel the session's cancellation root so every descendant
+	// operation (backend run, dispatched agents, in-flight llmCall) is
+	// torn down with the session. Done before the explicit backend.Cancel
+	// below; the two are complementary (root cascade for in-process work,
+	// backend.Cancel for the per-run watchdog / terminal-status contract).
+	// See session_root_context.go.
+	s.cancelSessionRoot("stop session")
+
 	// Cancel active run
 	if s.requestID != "" {
 		m.backend.Cancel(s.requestID)
@@ -562,23 +569,27 @@ func (m *Manager) currentSessionStatus(s *engineSession) string {
 // loaded or saved; in that case no partial write occurs (Load/Save are atomic
 // operations at the file level).
 func (m *Manager) ClearConversationFile(sessionID string) error {
-	utils.Log("Session", fmt.Sprintf("ClearConversationFile: loading conversation sessionId=%s", sessionID))
-	conv, err := conversation.Load(sessionID, "")
+	utils.Log("Session", fmt.Sprintf("ClearConversationFile: clearing conversation sessionId=%s", sessionID))
+	// Route through the shared clear core (preferKey empty → the core does a
+	// reverse lookup over live sessions by conversationID). This guarantees
+	// the file-only clear path carries identical semantics to the
+	// live-session /clear: if a live session owns this conversation, its
+	// retained AskUserQuestion / ExitPlanMode denials are cleared and the
+	// shared clear signal is emitted so desktop and iOS dismiss the pending
+	// card. If no live session owns it, the file is still wiped and there is
+	// no in-memory card to dismiss (the consumer's restore-time rule handles
+	// a later reopen).
+	res, err := m.clearConversationCore(sessionID, "")
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("ClearConversationFile: load failed sessionId=%s err=%v", sessionID, err))
-		return fmt.Errorf("load conversation %q: %w", sessionID, err)
+		utils.Log("Session", fmt.Sprintf("ClearConversationFile: sessionId=%s core failed: %v", sessionID, err))
+		return err
 	}
-
-	conv.Messages = nil
-	conv.LastInputTokens = 0
-	conv.LastInputTokensMsgCount = 0
-
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.Log("Session", fmt.Sprintf("ClearConversationFile: save failed sessionId=%s err=%v", sessionID, err))
-		return fmt.Errorf("save conversation %q: %w", sessionID, err)
+	if res.sessionKey != "" {
+		utils.Log("Session", fmt.Sprintf("ClearConversationFile: sessionId=%s owned by live session key=%s deniedCleared=%d — emitting shared clear signal", sessionID, res.sessionKey, res.deniedCleared))
+		m.emitClearSignal(res.sessionKey)
+	} else {
+		utils.Log("Session", fmt.Sprintf("ClearConversationFile: sessionId=%s wiped=%t (no live session owner, no signal to emit)", sessionID, res.wiped))
 	}
-
-	utils.Log("Session", fmt.Sprintf("ClearConversationFile: id=%s cleared Messages (was %d entries) — .tree.jsonl preserved", sessionID, len(conv.Entries)))
 	return nil
 }
 

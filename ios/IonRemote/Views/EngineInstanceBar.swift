@@ -4,10 +4,10 @@ import SwiftUI
 /// Modeled on `TerminalInstanceBar` with simplified behavior.
 struct EngineInstanceBar: View {
     let tabId: String
-    let instances: [EngineInstanceInfo]
+    let instances: [ConversationInstanceInfo]
     let activeInstanceId: String
     @Environment(SessionViewModel.self) private var viewModel
-    @State private var renamingInstance: EngineInstanceInfo? = nil
+    @State private var renamingInstance: ConversationInstanceInfo? = nil
     @State private var renameText: String = ""
     /// When non-nil, surfaces a small alert describing the model-fallback
     /// for the corresponding instance — tapped by the user on the ⚠
@@ -25,11 +25,11 @@ struct EngineInstanceBar: View {
     /// before the user can react. The action sheet on iPhone surfaces
     /// from the bottom of the screen (popover on iPad), forcing the
     /// user to move their finger to a different region to confirm.
-    @State private var pendingCloseInstance: EngineInstanceInfo? = nil
+    @State private var pendingCloseInstance: ConversationInstanceInfo? = nil
 
     /// Other engine tabs the active instance can be moved to.
     private var moveTargets: [RemoteTabState] {
-        viewModel.tabs.filter { $0.isEngine == true && $0.id != tabId }
+        viewModel.tabs.filter { $0.hasEngineExtension == true && $0.id != tabId }
     }
 
     var body: some View {
@@ -110,7 +110,7 @@ struct EngineInstanceBar: View {
     /// for the given engine instance. Returns all IDs (historical first,
     /// live appended if not already present). Matches the desktop
     /// SettingsPopover merge logic.
-    private func mergedSessionIds(for instance: EngineInstanceInfo) -> [String] {
+    private func mergedSessionIds(for instance: ConversationInstanceInfo) -> [String] {
         var ids = instance.conversationIds ?? []
         if let current = instance.statusFields?.sessionId, !ids.contains(current) {
             ids.append(current)
@@ -119,7 +119,7 @@ struct EngineInstanceBar: View {
     }
 
     @ViewBuilder
-    private func instanceButton(_ instance: EngineInstanceInfo) -> some View {
+    private func instanceButton(_ instance: ConversationInstanceInfo) -> some View {
         Button {
             viewModel.selectEngineInstance(tabId: tabId, instanceId: instance.id)
         } label: {
@@ -152,7 +152,7 @@ struct EngineInstanceBar: View {
                     .lineLimit(1)
 
                 // Model-fallback indicator. The desktop populates
-                // `EngineInstanceInfo.modelFallback` via the snapshot
+                // `ConversationInstanceInfo.modelFallback` via the snapshot
                 // projection (see snapshot.ts) when the engine emitted
                 // a ModelFallbackEvent for this instance's most recent
                 // run. Rendered as a small ⚠ glyph in the same pill;

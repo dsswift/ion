@@ -51,8 +51,9 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
       {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
       {displayContent.trim() && (
         <div
-          className="text-[13px] leading-[1.5] px-3 py-1.5"
+          className="leading-[1.5] px-3 py-1.5"
           style={{
+            fontSize: 'var(--ion-conv-font-size, 13px)',
             background: colors.userBubble,
             color: colors.userBubbleText,
             border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,

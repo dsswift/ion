@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Trash, PuzzlePiece } from '@phosphor-icons/react'
+import { Trash, PuzzlePiece, Broom, DownloadSimple } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { fuzzyFilterAndSort } from '../../shared/fuzzy-match'
@@ -15,6 +15,8 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/clear', description: 'Clear conversation history', icon: <Trash size={13} />, group: 'builtin' },
+  { command: '/compact', description: 'Summarize older turns and free context', icon: <Broom size={13} />, group: 'builtin' },
+  { command: '/export', description: 'Export conversation as Markdown', icon: <DownloadSimple size={13} />, group: 'builtin' },
 ]
 
 /** Icon used for extension-registered commands in the slash menu. */

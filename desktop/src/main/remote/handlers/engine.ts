@@ -2,6 +2,7 @@ import { log as _log } from '../../logger'
 import { state, engineBridge } from '../../state'
 import { encodeImageAttachments } from '../attachment-encoder'
 import { processIncomingPrompt } from '../../prompt-pipeline'
+import { readEngineHistoryFromStore } from './engine-history'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -39,7 +40,7 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
-        var pane = store.getState().enginePanes.get('${escapedTab}');
+        var pane = store.getState().conversationPanes.get('${escapedTab}');
         return pane && pane.activeInstanceId ? pane.activeInstanceId : null;
       })()
     `)
@@ -62,7 +63,7 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
         (function() {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return null;
-          var pane = store.getState().enginePanes.get('${escapedTab}');
+          var pane = store.getState().conversationPanes.get('${escapedTab}');
           if (!pane) return null;
           var inst = pane.instances.find(function(i) { return i.id === '${instanceId!.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'; });
           return inst ? { id: inst.id, label: inst.label } : null;
@@ -239,7 +240,7 @@ export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type
         (function() {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return null;
-          var pane = store.getState().enginePanes.get('${escaped}');
+          var pane = store.getState().conversationPanes.get('${escaped}');
           if (!pane) return null;
           var escapedId = '${instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}';
           var inst = pane.instances.find(function(i) { return i.id === escapedId; });
@@ -352,43 +353,8 @@ export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, {
       state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
       return
     }
-    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const compoundKey = cmd.instanceId
-      ? `${cmd.tabId}:${cmd.instanceId}`
-      : await state.mainWindow.webContents.executeJavaScript(`
-        (function() {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return '${escapedTab}';
-          var pane = store.getState().enginePanes.get('${escapedTab}');
-          return pane && pane.activeInstanceId ? '${escapedTab}:' + pane.activeInstanceId : '${escapedTab}';
-        })()
-      `) || cmd.tabId
-    const escapedKey = compoundKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const msgs = await state.mainWindow.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return [];
-        var parts = '${escapedKey}'.split(':');
-        var tabId = parts[0]; var instId = parts[1];
-        var pane = store.getState().enginePanes.get(tabId);
-        var inst = pane && instId ? pane.instances.find(function(i) { return i.id === instId; }) : null;
-        var msgs = (inst && inst.messages) || [];
-        return msgs.map(function(m) {
-          var content = m.content || '';
-          if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
-          // Carry dedupKey through to iOS so the data is available on
-          // reconnect / history-replay. iOS does not yet act on the key,
-          // but having it on the wire lets a future iOS-side dedup
-          // implementation match the desktop's behavior without a
-          // protocol change.
-          var out = { id: m.id, role: m.role, content: content, toolName: m.toolName, toolId: m.toolId, toolStatus: m.toolStatus, timestamp: m.timestamp };
-          if (m.dedupKey) out.dedupKey = m.dedupKey;
-          return out;
-        });
-      })()
-    `) || []
-    const instanceId = compoundKey.includes(':') ? compoundKey.split(':')[1] : null
-    log(`load_engine_conversation: compoundKey=${compoundKey}, found ${msgs.length} messages, instanceId=${instanceId}`)
+    const { instanceId, messages: msgs, escapedKey } = await readEngineHistoryFromStore(cmd.tabId, cmd.instanceId || null)
+    log(`load_engine_conversation: tabId=${cmd.tabId} found ${msgs.length} messages, instanceId=${instanceId}`)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
 
     // Also send current engine state so iOS has agent panel, status bar,
@@ -424,7 +390,7 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
         var key = '${escapedKey}';
         var parts = key.split(':');
         var tabId = parts[0]; var instId = parts[1];
-        var pane = s.enginePanes.get(tabId);
+        var pane = s.conversationPanes.get(tabId);
         var inst = pane && instId ? pane.instances.find(function(i) { return i.id === instId; }) : null;
         var agents = (inst && inst.agentStates) || [];
         var status = (inst && inst.statusFields) || null;
@@ -513,8 +479,8 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
             var store = window.__Ion_SESSION_STORE__;
             if (!store) return '';
             var convIds = ${convIdsJson};
-            var enginePanes = store.getState().enginePanes;
-            for (var [, pane] of enginePanes) {
+            var conversationPanes = store.getState().conversationPanes;
+            for (var [, pane] of conversationPanes) {
               for (var inst of pane.instances) {
                 var agents = inst.agentStates || [];
                 for (var a of agents) {

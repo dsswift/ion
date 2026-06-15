@@ -10,7 +10,7 @@ import Foundation
 //     falling back to the active instance when the engine omits instanceId.
 //
 //   - engineInstance(tabId:instanceId:): read-only lookup of an
-//     EngineInstanceInfo by (tabId, instanceId).
+//     ConversationInstanceInfo by (tabId, instanceId).
 //
 //   - mutateEngineInstance(tabId:instanceId:_:): write path — finds the
 //     instance by index and applies a mutating closure in place. The 4
@@ -21,7 +21,7 @@ import Foundation
 //     every remaining compound-keyed dictionary (working message, dialogs,
 //     pinned prompt, active tools) so they follow the instance to its new
 //     tab. The 4 conversation fields are NOT rekeyed here — they travel
-//     with the EngineInstanceInfo struct when engineInstances is updated.
+//     with the ConversationInstanceInfo struct when conversationInstances is updated.
 //
 // All helpers live on SessionViewModel via extension. They are intentionally
 // in a separate file because EventHandlers.swift is near the 600-line cap;
@@ -46,7 +46,7 @@ extension SessionViewModel {
         if let id = instanceId {
             return "\(tabId):\(id)"
         }
-        let resolved = activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+        let resolved = activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id
         if let id = resolved {
             DiagnosticLog.log("ENGINE: agent_state: nil instanceId tabId=\(tabId.prefix(8)) resolved=\(id.prefix(8))")
             return "\(tabId):\(id)"
@@ -56,44 +56,44 @@ extension SessionViewModel {
     }
 
     /// Resolve `instanceId` the same way `resolveEngineKey` does, then
-    /// return the matching `EngineInstanceInfo` (if any). Used by write
+    /// return the matching `ConversationInstanceInfo` (if any). Used by write
     /// sites that need the actual instanceId string after nil-resolution
     /// before calling `mutateEngineInstance`.
     @MainActor
     func resolveInstanceId(tabId: String, instanceId: String?) -> String? {
         if let id = instanceId { return id }
-        return activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+        return activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id
     }
 
-    /// Return the `EngineInstanceInfo` for a given (tabId, instanceId) pair,
+    /// Return the `ConversationInstanceInfo` for a given (tabId, instanceId) pair,
     /// or nil when no matching instance is registered. Pass nil for
     /// `instanceId` to look up the active instance.
     @MainActor
-    func engineInstance(tabId: String, instanceId: String?) -> EngineInstanceInfo? {
-        let id = instanceId ?? activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+    func engineInstance(tabId: String, instanceId: String?) -> ConversationInstanceInfo? {
+        let id = instanceId ?? activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id
         guard let id else { return nil }
-        return engineInstances[tabId]?.first(where: { $0.id == id })
+        return conversationInstances[tabId]?.first(where: { $0.id == id })
     }
 
-    /// Mutate the `EngineInstanceInfo` identified by (tabId, instanceId)
+    /// Mutate the `ConversationInstanceInfo` identified by (tabId, instanceId)
     /// in place. Pass nil for `instanceId` to target the active instance.
     /// No-ops silently when the instance is not found (defensive — mirrors
     /// the dict-write pattern that simply overwrites an absent key).
     @MainActor
-    func mutateEngineInstance(tabId: String, instanceId: String?, _ body: (inout EngineInstanceInfo) -> Void) {
-        let id = instanceId ?? activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id
+    func mutateEngineInstance(tabId: String, instanceId: String?, _ body: (inout ConversationInstanceInfo) -> Void) {
+        let id = instanceId ?? activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id
         guard let id,
-              let idx = engineInstances[tabId]?.firstIndex(where: { $0.id == id })
+              let idx = conversationInstances[tabId]?.firstIndex(where: { $0.id == id })
         else { return }
-        body(&engineInstances[tabId]![idx])
+        body(&conversationInstances[tabId]![idx])
     }
 
     /// Rekey every remaining compound-keyed dictionary from `oldKey` to
     /// `newKey`. Called when an engine instance moves between tabs.
     ///
     /// Note: the 4 conversation fields (messages, agentStates, statusFields,
-    /// modelOverride) are NOT in this list — they live on EngineInstanceInfo
-    /// and travel with the struct when engineInstances is updated in the
+    /// modelOverride) are NOT in this list — they live on ConversationInstanceInfo
+    /// and travel with the struct when conversationInstances is updated in the
     /// `.engineInstanceMoved` handler. Only the maps that still live as
     /// standalone dictionaries on SessionViewModel are rekeyed here.
     ///

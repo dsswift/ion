@@ -151,6 +151,18 @@ type ApiBackend struct {
 	onError      func(string, error)
 
 	authResolver *auth.Resolver
+
+	// lastRunConfig caches the RunConfig from the most recent
+	// StartRunWithConfig call so out-of-run operations (CompactNow,
+	// triggered by /compact between turns) can replay the session's
+	// hooks, session-memory helpers, and security config without
+	// constructing them from scratch.
+	//
+	// Guarded by mu. A nil value means "no run has started on this
+	// backend instance yet"; CompactNow falls back to a zero-valued
+	// RunConfig in that case, which exercises the same code paths the
+	// run loop uses when callers invoke StartRun (the no-hook path).
+	lastRunConfig *RunConfig
 }
 
 // NewApiBackend creates an ApiBackend ready for use.
@@ -220,7 +232,20 @@ func (b *ApiBackend) StartRun(requestID string, options types.RunOptions) {
 // state. Existing call sites that don't need session integration (tests,
 // the Agent tool's child runs) keep using StartRun.
 func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptions, cfg *RunConfig) {
-	ctx, cancel := context.WithCancel(context.Background())
+	// Derive the run's cancellation context from the session root when the
+	// caller threaded one (RunOptions.ParentCtx). This is what makes a
+	// session-level abort cascade to this run: cancelling the session root
+	// cancels parent, which cancels ctx here. Falls back to
+	// context.Background() for callers that don't supply a parent (tests,
+	// the Agent tool's child runs) — identical to the prior behavior.
+	parent := options.ParentCtx
+	if parent == nil {
+		parent = context.Background()
+		utils.Debug("ApiBackend", fmt.Sprintf("StartRunWithConfig: no ParentCtx; using Background runID=%s", requestID))
+	} else {
+		utils.Debug("ApiBackend", fmt.Sprintf("StartRunWithConfig: deriving run ctx from session ParentCtx runID=%s", requestID))
+	}
+	ctx, cancel := context.WithCancel(parent)
 
 	run := &activeRun{
 		requestID:    requestID,
@@ -250,6 +275,12 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 
 	b.mu.Lock()
 	b.activeRuns[requestID] = run
+	// Cache the RunConfig so CompactNow (invoked between turns when no
+	// activeRun exists) can replay the session's hooks/memory helpers.
+	// Captured under the same lock that owns activeRuns to avoid races
+	// with a concurrent CompactNow read. nil cfg is allowed and stored
+	// verbatim — the read path treats nil as "no hooks available".
+	b.lastRunConfig = cfg
 	b.mu.Unlock()
 
 	go b.runLoop(ctx, run, options)
@@ -338,10 +369,7 @@ func (b *ApiBackend) GetContextUsage(requestID string) *conversation.ContextUsag
 		return nil
 	}
 	model := run.conv.Model
-	contextWindow := conversation.DefaultContext
-	if info := providers.GetModelInfo(model); info != nil {
-		contextWindow = info.ContextWindow
-	}
+	contextWindow := resolveContextWindow(model)
 	usage := conversation.GetContextUsage(run.conv, contextWindow)
 	return &usage
 }

@@ -6,6 +6,7 @@ import { getDynamicContextWindow } from '../stores/model-labels'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
+import { activeInstance } from '../stores/conversation-instance'
 
 /* ─── Context Percentage Indicator ─── */
 
@@ -13,14 +14,23 @@ export function ContextIndicator() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const { contextTokens, contextPercent, modelOverride, sessionModel } = useSessionStore(
+  const { contextTokens, contextPercent, engineContextWindow, modelOverride, sessionModel } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
+      // Per-conversation model state now lives on the active instance
+      // (`modelOverride` / `sessionModel`), resolved via `activeInstance`.
+      const inst = tab ? activeInstance(s.conversationPanes, tab.id) : null
       return {
         contextTokens: tab?.contextTokens ?? null,
         contextPercent: tab?.contextPercent ?? null,
-        modelOverride: tab?.modelOverride ?? null,
-        sessionModel: tab?.sessionModel ?? null,
+        // engineContextWindow is the window size of the model the engine
+        // actually used on the most recent turn. Distinct from the
+        // picker-selected model's nominal window. Renderers MUST use
+        // this as the denominator when recomputing percent locally;
+        // see the rationale at types-session.ts contextWindow doc.
+        engineContextWindow: tab?.contextWindow ?? null,
+        modelOverride: inst?.modelOverride ?? null,
+        sessionModel: inst?.sessionModel ?? null,
       }
     }),
   )
@@ -29,13 +39,29 @@ export function ContextIndicator() {
   const ref = useRef<HTMLSpanElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
-  // Resolve effective model: per-tab override > session model > global preferred
+  // Resolve effective picker-model: per-tab override > session model >
+  // global preferred. Used ONLY as the fallback denominator when the
+  // engine has not yet reported a window (cold-start tabs, post-clear
+  // state). Once the engine has answered at least once, the numerator
+  // and denominator must come from the same model — see the bug
+  // diagnosed in plan cosy-pacing-bee.md (a Sonnet-picker reading
+  // displayed an Opus conversation as 100% / 498k / 200k because the
+  // denominator was the picker's nominal window).
   const effectiveModel = modelOverride || sessionModel || preferredModel
-  const windowSize = getDynamicContextWindow(effectiveModel)
+  const fallbackWindow = getDynamicContextWindow(effectiveModel)
 
-  // Always calculate locally when tokens are available (ensures model switch
-  // immediately updates the percentage). Fall back to engine-computed percent
-  // only when contextTokens is null.
+  // Compute the denominator: prefer the engine-truth window over the
+  // picker fallback. Both numerator and denominator must come from the
+  // same model the engine actually billed.
+  const windowSize = engineContextWindow ?? fallbackWindow
+
+  // Local percent recomputation: when contextTokens is available, divide
+  // by the engine's reported window (anchored to the model that produced
+  // those tokens). When contextTokens is null, fall back to the engine's
+  // pre-computed contextPercent. The cap at 100 is a display guard —
+  // engine-truth math never exceeds 100% when both sides come from the
+  // same model; the cap protects against transient mismatch during
+  // the cold-start window before contextWindow has been reported.
   const pct = contextTokens != null
     ? Math.min(100, Math.round((contextTokens / windowSize) * 100))
     : contextPercent

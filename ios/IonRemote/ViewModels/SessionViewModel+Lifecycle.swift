@@ -287,7 +287,7 @@ extension SessionViewModel {
         engineDialogs = [:]
         enginePinnedPrompt = [:]
         engineConversationLoaded = []
-        engineInstances = [:]
+        conversationInstances = [:]
         activeEngineInstance = [:]
         engineProfiles = []
         // Clear the cached per-desktop projection so a transport swap

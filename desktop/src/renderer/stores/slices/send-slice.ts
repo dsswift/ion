@@ -2,6 +2,7 @@ import type { TabStatus, Attachment } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden, cancelDoneGroupMove } from '../session-store-helpers'
+import { activeInstance, commitInstance } from '../conversation-instance'
 
 export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -9,8 +10,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const { activeTabId } = get()
       const toolMsgId = nextMsgId()
       const now = Date.now()
-      set((s) => ({
-        tabs: s.tabs.map((t) => {
+      // Scrollback lives on the active conversation instance now; append the
+      // user-bash + tool messages there and set bash/title flags on the tab.
+      set((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, activeTabId, (inst) => ({
+          ...inst,
+          messages: [
+            ...inst.messages,
+            { id: nextMsgId(), role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now },
+            { id: toolMsgId, role: 'tool' as const, content: '', toolName: 'Bash', toolInput: JSON.stringify({ command }), toolStatus: 'running' as const, userExecuted: true, timestamp: now },
+          ],
+        }))
+        const tabs = s.tabs.map((t) => {
           if (t.id !== activeTabId) return t
           const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
           const title = needsTitle
@@ -21,14 +32,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             title,
             bashExecuting: true,
             bashExecId: execId,
-            messages: [
-              ...(t.messages ?? []),
-              { id: nextMsgId(), role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now },
-              { id: toolMsgId, role: 'tool' as const, content: '', toolName: 'Bash', toolInput: JSON.stringify({ command }), toolStatus: 'running' as const, userExecuted: true, timestamp: now },
-            ],
           }
-        }),
-      }))
+        })
+        return { tabs, conversationPanes }
+      })
       return { toolMsgId, tabId: activeTabId }
     },
 
@@ -38,8 +45,17 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (stdout) outputParts.push(stdout.trimEnd())
       if (stderr) outputParts.push(`stderr: ${stderr.trimEnd()}`)
       if (exitCode !== null && exitCode !== 0) outputParts.push(`exit code: ${exitCode}`)
-      set((s) => ({
-        tabs: s.tabs.map((t) => {
+      // The tool message being completed lives on the active instance scrollback.
+      set((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
+          ...inst,
+          messages: inst.messages.map((m) =>
+            m.id === toolMsgId
+              ? { ...m, content: outputParts.join('\n'), toolStatus: 'completed' as const }
+              : m
+          ),
+        }))
+        const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
           return {
             ...t,
@@ -47,14 +63,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             bashExecId: null,
             hasUnread: (t.id !== activeTabId || !isExpanded) ? true : t.hasUnread,
             bashResults: [...t.bashResults, { command, stdout, stderr }],
-            messages: (t.messages ?? []).map((m) =>
-              m.id === toolMsgId
-                ? { ...m, content: outputParts.join('\n'), toolStatus: 'completed' as const }
-                : m
-            ),
           }
-        }),
-      }))
+        })
+        return { tabs, conversationPanes }
+      })
       playNotificationIfHidden()
     },
 
@@ -63,6 +75,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const tab = tabs.find((t) => t.id === activeTabId)
       const resolvedPath = projectPath || (tab?.hasChosenDirectory ? tab.workingDirectory : (staticInfo?.homePath || tab?.workingDirectory || '~'))
       if (!tab) return
+
+      // Per-conversation state (scrollback, modelOverride, planFilePath) lives
+      // on the active instance now. Snapshot it BEFORE the set() below so the
+      // fork-context priorMessages read reflects the pre-send history (excludes
+      // the user message we're about to append).
+      const sendInst = activeInstance(get().conversationPanes, activeTabId)
 
       if (tab.status === 'connecting') {
         console.log(`[sendMessage] blocked: tab=${tab.id.slice(0, 8)} status=connecting, dropping prompt len=${prompt.length}`)
@@ -125,9 +143,25 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
         : tab.title
 
-      set((s) => ({
-        scrollToBottomCounter: s.scrollToBottomCounter + 1,
-        tabs: s.tabs.map((t) => {
+      set((s) => {
+        // Append the user message onto the active conversation instance, and
+        // (on a fresh run) clear any pending denial there. Tab-level fields
+        // (status, title, attachments, etc.) stay on the tab.
+        const userMessage = {
+          id: nextMsgId(),
+          role: 'user' as const,
+          content: prompt,
+          attachments: msgAttachments.length > 0 ? msgAttachments : undefined,
+          timestamp: Date.now(),
+        }
+        const conversationPanes = commitInstance(s.conversationPanes, activeTabId, (inst) => ({
+          ...inst,
+          messages: [...inst.messages, userMessage],
+          // On a fresh (non-busy) send, clear the pending denial card — the
+          // user is moving past the question/plan card.
+          ...(isBusy ? {} : { permissionDenied: null }),
+        }))
+        const tabs = s.tabs.map((t) => {
           if (t.id !== activeTabId) return t
           const withEffectiveBase = t.hasChosenDirectory
             ? t
@@ -142,16 +176,6 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
               title,
               attachments: [],
               bashResults: [],
-              messages: [
-                ...(withEffectiveBase.messages ?? []),
-                {
-                  id: nextMsgId(),
-                  role: 'user' as const,
-                  content: prompt,
-                  attachments: msgAttachments.length > 0 ? msgAttachments : undefined,
-                  timestamp: Date.now(),
-                },
-              ],
             }
           }
           return {
@@ -163,20 +187,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             title,
             attachments: [],
             bashResults: [],
-            permissionDenied: null,
-            messages: [
-              ...(withEffectiveBase.messages ?? []),
-              {
-                id: nextMsgId(),
-                role: 'user' as const,
-                content: prompt,
-                attachments: msgAttachments.length > 0 ? msgAttachments : undefined,
-                timestamp: Date.now(),
-              },
-            ],
           }
-        }),
-      }))
+        })
+        return {
+          scrollToBottomCounter: s.scrollToBottomCounter + 1,
+          tabs,
+          conversationPanes,
+        }
+      })
 
       if (isBusy) {
         window.ion.steer(activeTabId, fullPrompt)
@@ -187,7 +205,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       let effectiveSystemPrompt = appendSystemPrompt || undefined
       if (tab.forkedFromSessionId && !tab.conversationId) {
-        const priorMessages = (tab.messages ?? [])
+        const priorMessages = (sendInst?.messages ?? [])
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .filter((m) => m.content.trim().length > 0)
         if (priorMessages.length > 0) {
@@ -198,6 +216,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           effectiveSystemPrompt = effectiveSystemPrompt
             ? `${effectiveSystemPrompt}\n\n${forkCtx}`
             : forkCtx
+          console.log(`[store] rewind context injected: tabId=${activeTabId?.slice(0, 8)}:main priorMessages=${priorMessages.length} transcriptLen=${transcript.length} forkedFromSessionId=${tab.forkedFromSessionId?.slice(0, 16)}`)
         }
       }
 
@@ -205,7 +224,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       window.ion.setPermissionMode(activeTabId, currentMode, 'prompt_sync')
 
       let extensions: string[] | undefined
-      if (tab.isEngine && tab.engineProfileId) {
+      if (tab.hasEngineExtension && tab.engineProfileId) {
         const profile = usePreferencesStore.getState().engineProfiles.find((p) => p.id === tab.engineProfileId)
         if (profile?.extensions?.length) {
           extensions = profile.extensions
@@ -216,12 +235,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt: fullPrompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: tab.modelOverride || preferredModel || undefined,
+        model: sendInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         appendSystemPrompt: effectiveSystemPrompt,
         extensions,
         implementationPhase,
-        planFilePath: tab.planFilePath || undefined,
+        planFilePath: sendInst?.planFilePath || undefined,
       }).catch((err: Error) => {
         get().handleError(activeTabId, {
           message: err.message,
@@ -269,24 +288,27 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const requestId = crypto.randomUUID()
       const isBusy = tab.status === 'running'
 
+      // Per-conversation state lives on the active instance; snapshot it before
+      // the set() so the prompt-call reads pre-send modelOverride/planFilePath.
+      const remoteInst = activeInstance(get().conversationPanes, tabId)
+
       const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
       const title = needsTitle
         ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
         : tab.title
 
-      set((s) => ({
-        scrollToBottomCounter: s.scrollToBottomCounter + 1,
-        tabs: s.tabs.map((t) => {
+      set((s) => {
+        const userMessage = { id: nextMsgId(), role: 'user' as const, content: prompt, timestamp: Date.now(), source: 'remote' as const }
+        const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
+          ...inst,
+          messages: [...inst.messages, userMessage],
+          // Clear the pending denial on a fresh (non-busy) remote send.
+          ...(isBusy ? {} : { permissionDenied: null }),
+        }))
+        const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
           if (isBusy) {
-            return {
-              ...t,
-              title,
-              messages: [
-                ...(t.messages ?? []),
-                { id: nextMsgId(), role: 'user' as const, content: prompt, timestamp: Date.now(), source: 'remote' as const },
-              ],
-            }
+            return { ...t, title }
           }
           return {
             ...t,
@@ -295,14 +317,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             lastEventAt: Date.now(),
             currentActivity: 'Starting...',
             title,
-            permissionDenied: null,
-            messages: [
-              ...(t.messages ?? []),
-              { id: nextMsgId(), role: 'user' as const, content: prompt, timestamp: Date.now(), source: 'remote' as const },
-            ],
           }
-        }),
-      }))
+        })
+        return {
+          scrollToBottomCounter: s.scrollToBottomCounter + 1,
+          tabs,
+          conversationPanes,
+        }
+      })
 
       if (isBusy) {
         window.ion.steer(tabId, prompt)
@@ -313,7 +335,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       window.ion.setPermissionMode(tabId, currentMode, 'prompt_sync')
 
       let remoteExtensions: string[] | undefined
-      if (tab.isEngine && tab.engineProfileId) {
+      if (tab.hasEngineExtension && tab.engineProfileId) {
         const profile = usePreferencesStore.getState().engineProfiles.find((p) => p.id === tab.engineProfileId)
         if (profile?.extensions?.length) {
           remoteExtensions = profile.extensions
@@ -324,12 +346,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: tab.modelOverride || preferredModel || undefined,
+        model: remoteInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         source: 'remote',
         extensions: remoteExtensions,
         imageAttachments,
-        planFilePath: tab.planFilePath || undefined,
+        planFilePath: remoteInst?.planFilePath || undefined,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,
@@ -353,9 +375,16 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const execId = crypto.randomUUID()
       const now = Date.now()
 
-      set((s) => ({
-        scrollToBottomCounter: s.scrollToBottomCounter + 1,
-        tabs: s.tabs.map((t) => {
+      set((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
+          ...inst,
+          messages: [
+            ...inst.messages,
+            { id: userMsgId, role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now, source: 'remote' as const },
+            { id: toolMsgId, role: 'tool' as const, content: '', toolName: 'Bash', toolInput: JSON.stringify({ command }), toolStatus: 'running' as const, userExecuted: true, timestamp: now },
+          ],
+        }))
+        const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
           const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
           const title = needsTitle
@@ -366,14 +395,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             title,
             bashExecuting: true,
             bashExecId: execId,
-            messages: [
-              ...(t.messages ?? []),
-              { id: userMsgId, role: 'user' as const, content: `! ${command}`, userExecuted: true, timestamp: now, source: 'remote' as const },
-              { id: toolMsgId, role: 'tool' as const, content: '', toolName: 'Bash', toolInput: JSON.stringify({ command }), toolStatus: 'running' as const, userExecuted: true, timestamp: now },
-            ],
           }
-        }),
-      }))
+        })
+        return { scrollToBottomCounter: s.scrollToBottomCounter + 1, tabs, conversationPanes }
+      })
 
       window.ion.executeBash(execId, command, cwd).then((result) => {
         const outputParts: string[] = []
@@ -381,22 +406,26 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         if (result.stderr) outputParts.push(`stderr: ${result.stderr.trimEnd()}`)
         if (result.exitCode !== null && result.exitCode !== 0) outputParts.push(`exit code: ${result.exitCode}`)
 
-        set((s) => ({
-          tabs: s.tabs.map((t) => {
+        set((s) => {
+          const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
+            ...inst,
+            messages: inst.messages.map((m) =>
+              m.id === toolMsgId
+                ? { ...m, content: outputParts.join('\n') || '(no output)', toolStatus: 'completed' as const }
+                : m
+            ),
+          }))
+          const tabs = s.tabs.map((t) => {
             if (t.id !== tabId) return t
             return {
               ...t,
               bashExecuting: false,
               bashExecId: null,
               bashResults: [...t.bashResults, { command, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode }],
-              messages: (t.messages ?? []).map((m) =>
-                m.id === toolMsgId
-                  ? { ...m, content: outputParts.join('\n') || '(no output)', toolStatus: 'completed' as const }
-                  : m
-              ),
             }
-          }),
-        }))
+          })
+          return { tabs, conversationPanes }
+        })
 
         window.ion.sendRemote({
           type: 'message_added',
@@ -410,21 +439,25 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           },
         })
       }).catch(() => {
-        set((s) => ({
-          tabs: s.tabs.map((t) => {
+        set((s) => {
+          const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
+            ...inst,
+            messages: inst.messages.map((m) =>
+              m.id === toolMsgId
+                ? { ...m, content: 'IPC error: bash execution failed', toolStatus: 'completed' as const }
+                : m
+            ),
+          }))
+          const tabs = s.tabs.map((t) => {
             if (t.id !== tabId) return t
             return {
               ...t,
               bashExecuting: false,
               bashExecId: null,
-              messages: (t.messages ?? []).map((m) =>
-                m.id === toolMsgId
-                  ? { ...m, content: 'IPC error: bash execution failed', toolStatus: 'completed' as const }
-                  : m
-              ),
             }
-          }),
-        }))
+          })
+          return { tabs, conversationPanes }
+        })
       })
     },
   }

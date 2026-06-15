@@ -161,8 +161,8 @@ extension SessionViewModel {
             guard !conversationLoaded.contains(tabId) else { break }
             liveText[tabId, default: ""] += "\n[error] \(message)\n"
 
-        case .inputPrefill(let tabId, let text, let switchTo):
-            handleInputPrefill(tabId: tabId, text: text, switchTo: switchTo)
+        case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
+            handleInputPrefill(tabId: tabId, text: text, switchTo: switchTo, instanceId: instanceId)
 
         // Terminal events
         case .terminalOutput(let tabId, let instanceId, let data):
@@ -285,8 +285,8 @@ extension SessionViewModel {
             handleEngineDead(tabId: tabId, instanceId: instanceId, exitCode: exitCode, signal: signal, stderrTail: stderrTail)
 
         case .engineInstanceAdded(let tabId, let instanceId, let label):
-            let info = EngineInstanceInfo(id: instanceId, label: label)
-            engineInstances[tabId, default: []].append(info)
+            let info = ConversationInstanceInfo(id: instanceId, label: label)
+            conversationInstances[tabId, default: []].append(info)
             activeEngineInstance[tabId] = instanceId
 
         case .engineInstanceRemoved(let tabId, let instanceId):
@@ -300,19 +300,19 @@ extension SessionViewModel {
             // and tool state are orphaned under the old compound key and
             // silently disappear from the view when the user switches to
             // the target tab.
-            if var srcInstances = engineInstances[sourceTabId],
+            if var srcInstances = conversationInstances[sourceTabId],
                let idx = srcInstances.firstIndex(where: { $0.id == instanceId }) {
                 let inst = srcInstances.remove(at: idx)
-                engineInstances[sourceTabId] = srcInstances.isEmpty ? nil : srcInstances
+                conversationInstances[sourceTabId] = srcInstances.isEmpty ? nil : srcInstances
                 if srcInstances.isEmpty {
                     activeEngineInstance.removeValue(forKey: sourceTabId)
                 } else if activeEngineInstance[sourceTabId] == instanceId {
                     activeEngineInstance[sourceTabId] = srcInstances.last?.id
                 }
-                var tgtInstances = engineInstances[targetTabId] ?? []
+                var tgtInstances = conversationInstances[targetTabId] ?? []
                 if !tgtInstances.contains(where: { $0.id == instanceId }) {
                     tgtInstances.append(inst)
-                    engineInstances[targetTabId] = tgtInstances
+                    conversationInstances[targetTabId] = tgtInstances
                 }
                 activeEngineInstance[targetTabId] = instanceId
 
@@ -348,6 +348,14 @@ extension SessionViewModel {
 
         case .engineCommandResult:
             handleEngineCommandResult()
+
+        case .engineExport(let tabId, _, let message, let exportFormat):
+            // Engine has rendered a /export payload. Stash it on the
+            // view model so a SwiftUI share-sheet observer can pick it
+            // up. Bound to ConversationView via the .sheet/.share
+            // mechanism in SessionViewModel's pendingExport state.
+            // exportFormat drives the shared file's extension.
+            handleEngineExport(tabId: tabId, payload: message, format: exportFormat)
 
         case .desktopSettingsSnapshot(let settings, let schema, let groups):
             // Per-desktop user-preferences projection. Snapshot semantics

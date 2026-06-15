@@ -1,8 +1,8 @@
 <img src="assets/images/ion-engine-hero-web.png" width="100%">
 
-A headless agent runtime. One binary. Zero opinions. Seventy hooks to make it yours.
+A headless agent runtime. One binary. Zero opinions. Seventy-three hooks to make it yours.
 
-`~9 MB static binary` · `14 LLM providers` · `70 extension hooks` · `20 built-in tools` · `MIT license`
+`~9 MB static binary` · `14 LLM providers` · `73 extension hooks` · `15 built-in tools` · `MIT license`
 
 Ion Engine is a headless, multi-provider LLM runtime for building agent systems in any domain. It runs as a single static Go binary with no runtime dependencies. Extensions speak JSON-RPC over stdin/stdout in any language. Your job is the interface, the workflow, and the domain. The engine handles the rest.
 
@@ -30,10 +30,10 @@ Ion is different in kind, not in quality. It's a **foundation**: a headless runt
 - **Native parallel sub-agents.** Spawn child agents with different models that run their own tool loops concurrently. A parent on Opus coordinates researchers on Sonnet and formatters on Haiku.
 - **Built-in security primitives.** OS-level sandboxing (Seatbelt on macOS, bwrap on Linux), secret redaction, dangerous command blocking, and a permission engine with LLM-based classification.
 - **Enterprise policy enforcement.** 4-layer config merge (defaults, user, project, enterprise) where the enterprise layer is sealed. Security sets the floor; developers customize above it.
-- **Zero vendor SDK dependencies.** 14 LLM providers via raw HTTP with manual SSE parsing. No transitive dependency chain you don't control. Fork the binary, keep your agents.
+- **Zero vendor SDK dependencies.** LLM providers via raw HTTP with manual SSE parsing. No transitive dependency chain you don't control. Fork the binary, keep your agents.
 - **MCP support.** Dual-transport MCP client (stdio for local servers, SSE for remote) with resource reading exposed as first-class tools.
 - **Credential management.** Five-level resolver: programmatic override, environment variables, OS keychain, encrypted file store, and CLI proxy for TOS-compliant subscription access via Claude Code.
-- **70 extension hooks** across 18 categories. Intercept and modify behavior at every stage of the agent loop.
+- **Extension hooks** across every stage of the agent loop. Intercept and modify behavior wherever you need to.
 
 You want to build your own coding agent? Use this engine and wrap your own opinions around it. You want non-coding agent orchestrations? Build harnesses that coordinate domain-specific agents. You want to embed an agent runtime in a container sidecar, a CI pipeline, or a web API? It's a single static Go binary with no runtime dependencies.
 
@@ -173,7 +173,7 @@ Key references: [Socket Protocol](docs/protocol/index.md) | [CLI Reference](docs
 
 ## Model and Provider Configuration
 
-Ion supports 14 providers and lets you plug in your own through a common interface. The engine picks a provider in this order: a registered model in `~/.ion/models.json`, then a built-in name-prefix match (`claude-*`, `gpt-*`, `qwen*`, `llama*`, `gemini-*`, `mistral*`, `grok*`, `deepseek-*`, and so on), then a hard error if neither matches.
+Ion supports many providers and lets you plug in your own through a common interface. The engine picks a provider in this order: a registered model in `~/.ion/models.json`, then a built-in name-prefix match (`claude-*`, `gpt-*`, `qwen*`, `llama*`, `gemini-*`, `mistral*`, `grok*`, `deepseek-*`, and so on), then a hard error if neither matches.
 
 Set the model you want in `~/.ion/engine.json` and configure its provider block:
 
@@ -590,7 +590,7 @@ Build on it, customize it, ship it to your team or your customers.
 
 ## Talk to Any Model
 
-Sixteen providers, zero SDKs. Every provider is raw HTTP with SSE parsing. No transitive dependencies, no version conflicts, no vendor lock-in.
+Raw-HTTP providers, zero SDKs. Every provider is raw HTTP with SSE parsing. No transitive dependencies, no version conflicts, no vendor lock-in.
 
 **Native:** Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, Vertex AI, Azure AI Foundry
 
@@ -881,30 +881,30 @@ Both do the same thing. Set `ION_WEBHOOK_URL` and every session sends live updat
 - Manage persistent state. Extensions handle their own storage.
 - Override enterprise policy. Sealed config always wins.
 
-### 70 hooks
+### Hooks
 
-| Category | Count | Examples |
-|----------|------:|---------|
-| **Lifecycle** | 13 | `session_start`, `session_end`, `before_prompt`, `turn_start`, `turn_end`, `message_start`, `message_end`, `tool_start`, `tool_end`, `tool_call`, `on_error`, `agent_start`, `agent_end` |
-| **Session Management** | 6 | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch`, `session_switch` |
-| **Pre-Action** | 2 | `before_agent_start`, `before_provider_request` |
-| **Content** | 6 | `context`, `message_update`, `tool_result`, `input`, `model_select`, `plan_mode_prompt` |
-| **Per-Tool Call** | 7 | `bash_tool_call`, `read_tool_call`, `write_tool_call`, `edit_tool_call`, `grep_tool_call`, `glob_tool_call`, `agent_tool_call` |
-| **Per-Tool Result** | 7 | `bash_tool_result`, `read_tool_result`, `write_tool_result`, `edit_tool_result`, `grep_tool_result`, `glob_tool_result`, `agent_tool_result` |
-| **Context Discovery** | 3 | `context_discover`, `context_load`, `instruction_load` |
-| **Permission** | 2 | `permission_request`, `permission_denied` |
-| **File Changes** | 2 | `file_changed`, `workspace_file_changed` |
-| **Task Lifecycle** | 2 | `task_created`, `task_completed` |
-| **Elicitation** | 2 | `elicitation_request`, `elicitation_result` |
-| **Context Injection** | 1 | `context_inject` |
-| **Capability Framework** | 3 | `capability_discover`, `capability_match`, `capability_invoke` |
-| **Plan Mode** | 4 | `plan_mode_enter`, `plan_mode_exit`, `before_plan_mode_auto_exit`, `plan_mode_auto_exit` |
-| **Extension Lifecycle** | 4 | `extension_respawned`, `turn_aborted`, `peer_extension_died`, `peer_extension_respawned` |
-| **Cross-Session** | 3 | `session_message`, `session_list`, `session_send` |
-| **Early-Stop Continuation** | 2 | `should_continue`, `continue_generation` |
-| **System Message Injection** | 1 | `system_message` |
+| Category | Examples |
+|----------|---------|
+| **Lifecycle** | `session_start`, `session_end`, `before_prompt`, `turn_start`, `turn_end`, `message_start`, `message_end`, `tool_start`, `tool_end`, `tool_call`, `on_error`, `agent_start`, `agent_end` |
+| **Session Management** | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch`, `compact_summary_request` |
+| **Pre-Action** | `before_agent_start`, `before_provider_request` |
+| **Content** | `context`, `message_update`, `tool_result`, `input`, `model_select`, `user_bash` |
+| **Per-Tool Call** | `bash_tool_call`, `read_tool_call`, `write_tool_call`, `edit_tool_call`, `grep_tool_call`, `glob_tool_call`, `agent_tool_call` |
+| **Per-Tool Result** | `bash_tool_result`, `read_tool_result`, `write_tool_result`, `edit_tool_result`, `grep_tool_result`, `glob_tool_result`, `agent_tool_result` |
+| **Context Discovery** | `context_discover`, `context_load`, `instruction_load` |
+| **Permission** | `permission_request`, `permission_denied`, `permission_classify` |
+| **File Changes** | `file_changed`, `workspace_file_changed` |
+| **Task Lifecycle** | `task_created`, `task_completed` |
+| **Elicitation** | `elicitation_request`, `elicitation_result` |
+| **Context Injection** | `context_inject` |
+| **Capability Framework** | `capability_discover`, `capability_match`, `capability_invoke` |
+| **Plan Mode** | `plan_mode_prompt`, `before_plan_mode_enter`, `before_plan_mode_exit`, `before_plan_mode_auto_exit`, `system_inject` |
+| **Early-Stop Continuation** | `before_early_stop_decision`, `early_stop_continued` |
+| **Extension Lifecycle** | `extension_respawned`, `turn_aborted`, `peer_extension_died`, `peer_extension_respawned` |
+| **Async-Trigger Registration** | `webhook_registered`, `webhook_deregistered`, `schedule_registered`, `schedule_deregistered` |
+| **Cross-Session** | `session_message` |
 
-See the full [extension reference](docs/extensions/index.md) for init handshake format, hook data shapes, and protocol details.
+See the full [extension reference](docs/extensions/index.md) for init handshake format, hook data shapes, and protocol details. The [hook reference](docs/hooks/reference.md) is the complete, authoritative catalog.
 
 ### Ion Meta: build harnesses with a harness
 
@@ -1020,9 +1020,9 @@ Clients connect over a Unix socket and send NDJSON commands. The engine runs the
 
 For non-socket integrations, `ion rpc` reads commands from stdin and writes events to stdout.
 
-## 14 Built-in Tools
+## Built-in Tools
 
-Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, and ReadMcpResource. Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are opt-in via harness configuration. Extensions can register additional tools or replace the built-ins entirely.
+Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, and SearchHistory. Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are opt-in via harness configuration. Extensions can register additional tools or replace the built-ins entirely.
 
 ## Reference Clients
 

@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, EngineInstance, EnginePaneState, ConversationInstance, AgentStateUpdate, StatusFields, Message, ImageAttachmentPayload } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationRef, ConversationPane, ConversationInstance, AgentStateUpdate, StatusFields, Message, ImageAttachmentPayload } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -55,7 +55,7 @@ export interface State {
   engineDialogs: Map<string, { dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string } | null>
   enginePinnedPrompt: Map<string, string>
   engineUsage: Map<string, { percent: number; tokens: number; cost: number }>
-  enginePanes: Map<string, EnginePaneState>
+  conversationPanes: Map<string, ConversationPane>
   /**
    * Pending model-fallback notice per engine instance, keyed by the
    * compound `${tabId}:${instanceId}` key. Populated when the engine
@@ -195,9 +195,16 @@ export interface State {
    * the engine-instance equivalent of resetTabSession on the CLI plane.
    */
   resetEngineInstance: (tabId: string, instanceId: string) => void
+  /**
+   * Rewind an engine instance to a previous user message. Truncates messages
+   * to before the target, tears down the running session, and pre-fills the
+   * input bar with the target message's text. Prior conversation context is
+   * injected as a system prompt on the next send (one-shot).
+   */
+  rewindEngineInstance: (tabId: string, instanceId: string, messageId: string, userTurnIndex?: number) => void
   selectEngineInstance: (tabId: string, instanceId: string) => void
   renameEngineInstance: (tabId: string, instanceId: string, label: string) => void
-  reorderEngineInstances: (tabId: string, reordered: Array<EngineInstance & ConversationInstance>) => void
+  reorderEngineInstances: (tabId: string, reordered: Array<ConversationRef & ConversationInstance>) => void
   moveEngineInstance: (sourceTabId: string, instanceId: string, targetTabId: string) => void
   setEngineModel: (tabId: string, modelId: string) => void
   addEngineSystemMessage: (key: string, content: string) => void

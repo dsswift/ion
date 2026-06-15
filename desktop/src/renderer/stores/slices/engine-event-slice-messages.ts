@@ -43,6 +43,9 @@ import { formatClearDivider, formatPlanCreatedDivider, formatSteerAppliedDivider
 import { applyResourceSnapshot, applyResourceDelta } from './resource-slice'
 import type { ResourceItem } from '../../../shared/types-engine'
 import { extensionCommandsByKey, withInstanceMessages, withRunningAgentsErrored } from './engine-event-slice-helpers'
+import { withInstancePatch } from './engine-event-status'
+import { commitInstance } from '../conversation-instance'
+import { parseSessionKey, instanceIdFromKey, tabIdFromKey, isCompoundKey } from '../../../shared/session-key'
 
 /**
  * Handle cross-cutting events that apply to both CLI tabs (bare tabId key)
@@ -86,26 +89,47 @@ export function handleCrossEngineEvent(
     // path either.
     const cmdName = event.command || ''
     const failed = !!event.commandError
-    const tabIdForCmd = key.includes(':') ? key.split(':')[0] : key
+    const tabIdForCmd = tabIdFromKey(key)
     if (cmdName === 'clear' && !failed) {
       const divider = formatClearDivider(new Date())
-      if (key.includes(':')) {
-        // Engine tab — insert into instance messages.
+      // STREAM DISCRIMINATOR: compound key = raw extension stream (engine-hosted instance); bare = plain conversation's /clear via the normalized path.
+      if (isCompoundKey(key)) {
+        // Engine tab — insert the clear divider into instance messages AND
+        // clear any pending AskUserQuestion / ExitPlanMode card on this
+        // instance. /clear is a checkpoint that dismisses the pending
+        // question along with the conversation history. The engine already
+        // stopped retaining/re-emitting the denial (command_dispatch.go
+        // dispatchClear), but the renderer's engine_status handler PRESERVES
+        // an existing permissionDenied on denial-free ticks (anti-flicker),
+        // so a nil-denial status snapshot will NOT clear an already-displayed
+        // card. We clear it here, on the explicit /clear signal. Only the
+        // instance addressed by the compound key is touched, not every
+        // instance on the tab.
         set((state) => {
-          const [tabIdInner, instanceId] = key.split(':')
-          const pane = state.enginePanes.get(tabIdInner)
+          const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+          const pane = state.conversationPanes.get(tabIdInner)
           const inst = pane?.instances.find((i) => i.id === instanceId)
           const msgs = [...(inst?.messages || []), { id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() }]
-          const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-          return { enginePanes }
+          const withMsgs = withInstanceMessages(state.conversationPanes, key, msgs)
+          const conversationPanes = withInstancePatch(withMsgs, key, { permissionDenied: null })
+          return { conversationPanes }
         })
       } else {
-        // CLI tab — insert into the tab's local messages array.
-        set((state) => ({
-          tabs: state.tabs.map((t) => t.id === tabIdForCmd
-            ? { ...t, messages: [...(t.messages ?? []), { id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() }] }
-            : t),
-        }))
+        // CLI tab — insert the clear divider into the tab's `main`
+        // conversation instance AND clear any pending permissionDenied card.
+        // The waiting pill is derived from permissionDenied
+        // (TabStripShared.getWaitingState), so clearing it settles the pill
+        // back to idle. Same rationale as the engine-tab branch above: the
+        // explicit /clear signal is where we dismiss the card, since
+        // denial-free status ticks preserve it.
+        set((state) => {
+          const conversationPanes = commitInstance(state.conversationPanes, tabIdForCmd, (inst) => ({
+            ...inst,
+            messages: [...inst.messages, { id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() }],
+            permissionDenied: null,
+          }))
+          return { conversationPanes }
+        })
       }
     }
     return true
@@ -194,8 +218,8 @@ export function handleMessageEvents(
   switch (event.type) {
     case 'engine_tool_start': {
       set((state) => {
-        const [tabIdInner, instanceId] = key.split(':')
-        const pane = state.enginePanes.get(tabIdInner)
+        const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+        const pane = state.conversationPanes.get(tabIdInner)
         const inst = pane?.instances.find((i) => i.id === instanceId)
         const msgs = [...(inst?.messages || []), {
           id: event.toolId,
@@ -206,8 +230,8 @@ export function handleMessageEvents(
           toolStatus: 'running' as const,
           timestamp: Date.now(),
         }]
-        const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-        return { enginePanes }
+        const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+        return { conversationPanes }
       })
       return true
     }
@@ -230,29 +254,29 @@ export function handleMessageEvents(
       // m.toolInput)`) finds it on engine tabs too.
       if (!event.toolId) return true
       set((state) => {
-        const [tabIdInner, instanceId] = key.split(':')
-        const pane = state.enginePanes.get(tabIdInner)
+        const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+        const pane = state.conversationPanes.get(tabIdInner)
         const inst = pane?.instances.find((i) => i.id === instanceId)
         const msgs = (inst?.messages || []).map((m) => {
           if (m.toolId !== event.toolId) return m
           return { ...m, toolInput: (m.toolInput || '') + (event.partialInput || '') }
         })
-        const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-        return { enginePanes }
+        const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+        return { conversationPanes }
       })
       return true
     }
     case 'engine_tool_end': {
       set((state) => {
-        const [tabIdInner, instanceId] = key.split(':')
-        const pane = state.enginePanes.get(tabIdInner)
+        const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+        const pane = state.conversationPanes.get(tabIdInner)
         const inst = pane?.instances.find((i) => i.id === instanceId)
         const msgs = (inst?.messages || []).map((m) => {
           if (m.toolId !== event.toolId) return m
           return { ...m, content: event.result || '', toolStatus: (event.isError ? 'error' : 'completed') as 'error' | 'completed' }
         })
-        const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-        return { enginePanes }
+        const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+        return { conversationPanes }
       })
       return true
     }
@@ -262,18 +286,18 @@ export function handleMessageEvents(
         return true
       }
       set((state) => {
-        const pane = state.enginePanes.get(tabId)
-        const instanceId = key.split(':')[1]
+        const pane = state.conversationPanes.get(tabId)
+        const instanceId = instanceIdFromKey(key)
         const otherInstances = pane?.instances.filter((i) => i.id !== instanceId) || []
         // Flip any running agents to error — the engine is dead so they
         // can't complete.  Preserves done/idle/cancelled entries so the
         // AgentPanel's post-completion inspection UI remains intact.
-        const enginePanes = withRunningAgentsErrored(state.enginePanes, key)
+        const conversationPanes = withRunningAgentsErrored(state.conversationPanes, key)
         if (otherInstances.length === 0) {
           const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'dead' as const } : t)
-          return { tabs, enginePanes }
+          return { tabs, conversationPanes }
         }
-        return { enginePanes }
+        return { conversationPanes }
       })
       return true
     }
@@ -302,14 +326,14 @@ export function handleMessageEvents(
           notifications.set(key, keyNotifications)
           // Still flip running agents to error — the extension is dead so
           // hooks can't complete.
-          const enginePanes = withRunningAgentsErrored(state.enginePanes, key)
-          return { engineNotifications: notifications, enginePanes }
+          const conversationPanes = withRunningAgentsErrored(state.conversationPanes, key)
+          return { engineNotifications: notifications, conversationPanes }
         })
         return true
       }
       set((state) => {
-        const [tabIdInner, instanceId] = key.split(':')
-        const pane = state.enginePanes.get(tabIdInner)
+        const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+        const pane = state.conversationPanes.get(tabIdInner)
         const inst = pane?.instances.find((i) => i.id === instanceId)
         const msgs = [...(inst?.messages || []), { id: nextMsgId(), role: 'system' as const, content: `Error: ${event.message}`, timestamp: Date.now() }]
         const isActive = !pane || pane.activeInstanceId === instanceId
@@ -318,9 +342,9 @@ export function handleMessageEvents(
           : state.tabs
         // Flip any running agents to error — the engine errored so they
         // can't complete.  Preserves done/idle/cancelled entries.
-        let enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-        enginePanes = withRunningAgentsErrored(enginePanes, key)
-        return { tabs, enginePanes }
+        let conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+        conversationPanes = withRunningAgentsErrored(conversationPanes, key)
+        return { tabs, conversationPanes }
       })
       return true
     }
@@ -413,8 +437,8 @@ export function handleMessageEvents(
           if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
           let content = parts.join(' · ')
           if (event.summary) content += '\n\n' + event.summary
-          const [tabIdInner, instanceId] = key.split(':')
-          const pane = state.enginePanes.get(tabIdInner)
+          const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+          const pane = state.conversationPanes.get(tabIdInner)
           const inst = pane?.instances.find((i) => i.id === instanceId)
           const msgs = [...(inst?.messages || []), {
             id: nextMsgId(),
@@ -422,8 +446,8 @@ export function handleMessageEvents(
             content,
             timestamp: Date.now(),
           }]
-          const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-          return { engineWorkingMessages: workingMessages, enginePanes }
+          const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+          return { engineWorkingMessages: workingMessages, conversationPanes }
         })
       }
       return true
@@ -436,8 +460,8 @@ export function handleMessageEvents(
       // → Plan created → Implementing → …
       if (event.planModeEnabled) {
         set((state) => {
-          const [tabIdInner, instanceId] = key.split(':')
-          const pane = state.enginePanes.get(tabIdInner)
+          const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+          const pane = state.conversationPanes.get(tabIdInner)
           if (!pane) return {}
           const idx = pane.instances.findIndex((i) => i.id === instanceId)
           if (idx === -1) return {}
@@ -449,7 +473,7 @@ export function handleMessageEvents(
             timestamp: Date.now(),
             planFilePath: event.planFilePath,
           }]
-          const updatedPanes = new Map(state.enginePanes)
+          const updatedPanes = new Map(state.conversationPanes)
           const instances = pane.instances.slice()
           instances[idx] = {
             ...instances[idx],
@@ -457,7 +481,7 @@ export function handleMessageEvents(
             planFilePath: event.planFilePath ?? instances[idx].planFilePath,
           }
           updatedPanes.set(tabIdInner, { ...pane, instances })
-          return { enginePanes: updatedPanes }
+          return { conversationPanes: updatedPanes }
         })
       }
       return true
@@ -470,8 +494,8 @@ export function handleMessageEvents(
       // before end_turn exit, after tool results) — each capture
       // gets its own divider so the user sees the count.
       set((state) => {
-        const [tabIdInner, instanceId] = key.split(':')
-        const pane = state.enginePanes.get(tabIdInner)
+        const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+        const pane = state.conversationPanes.get(tabIdInner)
         const inst = pane?.instances.find((i) => i.id === instanceId)
         const msgs = [...(inst?.messages || []), {
           id: nextMsgId(),
@@ -479,8 +503,8 @@ export function handleMessageEvents(
           content: formatSteerAppliedDivider(new Date(), event.steerMessageLength),
           timestamp: Date.now(),
         }]
-        const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-        return { enginePanes }
+        const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+        return { conversationPanes }
       })
       return true
     }

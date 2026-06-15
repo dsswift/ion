@@ -43,6 +43,17 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 				removed++
 				continue
 			}
+			// Empty text blocks serve no semantic purpose and cause Anthropic
+			// API errors when the cache_control layer attaches ephemeral
+			// markers to them ("cache_control cannot be set for empty text
+			// blocks"). Remove them at load time so already-stuck
+			// conversations become sendable again.
+			if b.Type == "text" && b.Text == "" {
+				utils.Debug("Conversation", fmt.Sprintf(
+					"sanitize: removed empty text block from message (role=%s)", msg.Role))
+				removed++
+				continue
+			}
 			if b.Type == "tool_use" && b.Input == nil {
 				b.Input = map[string]any{}
 			}

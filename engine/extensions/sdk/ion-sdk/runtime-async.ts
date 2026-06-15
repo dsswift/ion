@@ -127,6 +127,7 @@ export const webhooksApi: WebhooksApi = {
       auth: stripCallableAuth(route.auth, tokenRefName),
       maxBodyBytes: route.maxBodyBytes,
       interface: route.interface,
+      ...(route.concurrency !== undefined ? { concurrency: route.concurrency } : {}),
       // handler not sent on the wire — it stays local.
     } as any
 
@@ -181,6 +182,7 @@ export const scheduleApi: ScheduleApi = {
       tz: opts.tz,
       timeoutMs: opts.timeoutMs,
       enabledRefName: stashEnabled(opts.id, opts.enabled),
+      ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
     }, opts.handler)
   },
   weekly(opts) {
@@ -192,6 +194,7 @@ export const scheduleApi: ScheduleApi = {
       tz: opts.tz,
       timeoutMs: opts.timeoutMs,
       enabledRefName: stashEnabled(opts.id, opts.enabled),
+      ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
     }, opts.handler)
   },
   interval(opts) {
@@ -201,6 +204,7 @@ export const scheduleApi: ScheduleApi = {
       intervalMs: opts.intervalMs,
       timeoutMs: opts.timeoutMs,
       enabledRefName: stashEnabled(opts.id, opts.enabled),
+      ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
     }, opts.handler)
   },
 }

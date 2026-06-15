@@ -1,8 +1,10 @@
 import { create } from 'zustand'
-import type { TerminalPaneState, EnginePaneState, Message } from '../../shared/types'
+import type { TerminalPaneState, ConversationPane, Message } from '../../shared/types'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import type { State, StoreSet, StoreGet } from './session-store-types'
-import { makeLocalTab } from './session-store-helpers'
+import { makeLocalTab, initialModelOverride } from './session-store-helpers'
+import { makeMainPane } from './conversation-instance'
+import { parseSessionKey } from '../../shared/session-key'
 import { createTabSlice } from './slices/tab-slice'
 import { createResumeSlice } from './slices/resume-slice'
 import { createExpandSlice } from './slices/expand-slice'
@@ -25,6 +27,13 @@ export { AVAILABLE_MODELS, getModelDisplayLabel } from './model-labels'
 export type { FileEditorTab, FileEditorDirState } from './session-store-types'
 
 const initialTab = makeLocalTab()
+
+// Seed the initial tab's single `main` conversation instance eagerly (2A):
+// every tab — normal or engine — owns at least one ConversationInstance in
+// conversationPanes from creation, so no consumer ever sees a missing pane.
+const initialEnginePanes = new Map<string, ConversationPane>([
+  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride() })],
+])
 
 const initialState = {
   tabs: [initialTab],
@@ -55,7 +64,7 @@ const initialState = {
   engineDialogs: new Map(),
   enginePinnedPrompt: new Map(),
   engineUsage: new Map(),
-  enginePanes: new Map<string, EnginePaneState>(),
+  conversationPanes: initialEnginePanes,
   engineModelFallbacks: new Map<string, { requestedModel: string; fallbackModel: string; reason: string; at: number }>(),
   resources: {} as Record<string, import('../../shared/types-engine').ResourceItem[]>,
   resourceSubscriptions: {} as Record<string, string>,
@@ -108,8 +117,8 @@ export const useSessionStore = create<State>((set, get) => {
 ;(window as any).__Ion_resolveEngineModel = (compoundKey: string): string => {
   const s = useSessionStore.getState()
   const prefs = usePreferencesStore.getState()
-  const [tabId, instanceId] = compoundKey.split(':')
-  const pane = s.enginePanes.get(tabId)
+  const { tabId, instanceId } = parseSessionKey(compoundKey)
+  const pane = s.conversationPanes.get(tabId)
   const inst = pane?.instances.find((i) => i.id === instanceId)
   return inst?.modelOverride || prefs.engineDefaultModel || prefs.preferredModel || 'claude-sonnet-4-6'
 }

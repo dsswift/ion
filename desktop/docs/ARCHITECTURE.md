@@ -126,7 +126,7 @@ All methods map to `ipcRenderer.invoke()` (request-response) or `ipcRenderer.sen
 
 Single Zustand store (`stores/sessionStore.ts`) composed from feature slices in `stores/slices/`:
 - Tab list with full `TabState` objects (messages, status, attachments, permissions, etc.)
-- `enginePanes: Map<tabId, EnginePaneState>` — each entry holds `instances: Array<EngineInstance & ConversationInstance>`. All per-conversation engine state (messages, modelOverride, permissionMode, permissionDenied, conversationIds, draftInput, agentStates, statusFields) lives on the `ConversationInstance` fields, not in separate top-level Maps.
+- `conversationPanes: Map<tabId, ConversationPane>` — each entry holds `instances: Array<ConversationRef & ConversationInstance>`. All per-conversation state (messages, modelOverride, permissionMode, permissionDenied, conversationIds, draftInput, agentStates, statusFields) lives on the `ConversationInstance` fields, not in separate top-level Maps.
 - Active tab selection
 - Marketplace state (catalog, search, filter, install progress)
 - UI state (expanded, marketplace open)

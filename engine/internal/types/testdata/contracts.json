@@ -163,6 +163,7 @@
     "errorCategory",
     "errorCode",
     "exitCode",
+    "exportFormat",
     "extensionName",
     "fallbackModel",
     "fallbackReason",
@@ -255,6 +256,7 @@
     "EngineConfig": [
       "claudeCompat",
       "extensions",
+      "forceNewConversation",
       "maxTokens",
       "model",
       "profileId",

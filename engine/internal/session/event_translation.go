@@ -75,6 +75,27 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		utils.Debug("Session", fmt.Sprintf("dropping unhandled normalized event type: %T", event.Data))
 		return
 	}
+
+	// The task_complete → engine_status translation stamps the
+	// backend-reported sessionID (claude's UUID for the CLI backend) onto
+	// Fields.SessionID. Substitute Ion's stable conversationID so the
+	// client-facing session id is consistent with every other surface
+	// (handleRunExit idle status, buildSessionStatusMirror, ListSessions)
+	// and never leaks a claude UUID that has no Ion conversation file. For
+	// the API backend the two values are equal, so this is a no-op there.
+	// translateToEngineEvent is a pure function with no session access, so
+	// the substitution must happen here where the manager holds the session.
+	if ee.Type == "engine_status" && ee.Fields != nil {
+		m.mu.RLock()
+		if s2, ok2 := m.sessions[key]; ok2 && s2.conversationID != "" {
+			if ee.Fields.SessionID != s2.conversationID {
+				utils.Debug("Session", fmt.Sprintf("task_complete status: substituting Ion conversationID=%s for backend sessionID=%s key=%s", s2.conversationID, ee.Fields.SessionID, key))
+			}
+			ee.Fields.SessionID = s2.conversationID
+		}
+		m.mu.RUnlock()
+	}
+
 	m.emit(key, ee)
 
 	// Track plan mode changes so re-entering plan mode triggers reentry
@@ -99,6 +120,19 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			}
 			m.mu.Unlock()
 		}
+	}
+
+	// Per ADR-003, the model calling ExitPlanMode surfaces as a
+	// PlanProposalEvent{Kind:"exit"} (a workflow proposal), NOT a
+	// PlanModeChangedEvent{Enabled:false} (a confirmed state change). The
+	// CLI backend emits this on the model's ExitPlanMode tool call, and the
+	// API backend emits it from interceptExitPlanMode. Record the exit so
+	// reentry detection fires when plan mode is re-enabled — mirroring the
+	// PlanModeChangedEvent{Enabled:false} branch above. Idempotent with the
+	// SetPlanMode(false) user-approval chokepoint path (both set
+	// hasExitedPlanMode=true).
+	if pp, ok := event.Data.(*types.PlanProposalEvent); ok && pp.Kind == "exit" {
+		m.MarkPlanModeExited(key)
 	}
 
 	// Track last-known context usage on the session so subsequent
@@ -257,9 +291,15 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 
 	var nextPrompt *pendingPrompt
 	var bgCount int
+	var ionConvID string
 	m.mu.Lock()
 	if s, ok := m.sessions[key]; ok {
 		s.requestID = ""
+		// Ion's durable conversation-file identity, captured under the lock
+		// for use in persistTerminalDispatches below. This is NOT the
+		// backend-reported sessionID (which is claude's UUID for the CLI
+		// backend and has no Ion files).
+		ionConvID = s.conversationID
 		// Preserve completed agent states (done/error/cancelled) so their
 		// conversation history survives for post-run inspection and tab
 		// persistence. Also preserve running states that correspond to active
@@ -277,8 +317,20 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		} else {
 			s.agents.ClearRunningStates()
 		}
+		// Capture the backend-reported sessionID into cliSessionID — claude's
+		// native session UUID is what `--resume` needs on the next CLI run.
+		// CRITICAL: do NOT write it into s.conversationID. conversationID is
+		// Ion's durable conversation-file identity; overwriting it with a
+		// claude UUID corrupts compaction, export, /clear, tree navigation,
+		// and the client-facing session id (all keyed on the Ion id). For the
+		// API backend the reported sessionID equals s.conversationID already,
+		// so storing it in cliSessionID is inert there (the API backend never
+		// reads CliResumeSessionID).
 		if sessionID != "" {
-			s.conversationID = sessionID
+			s.cliSessionID = sessionID
+			utils.Log("Session", fmt.Sprintf("handleRunExit: captured cliSessionID=%s key=%s (conversationID=%s unchanged)", sessionID, key, s.conversationID))
+		} else {
+			utils.Log("Session", fmt.Sprintf("handleRunExit: no sessionID reported by backend key=%s (cliSessionID unchanged=%s)", key, s.cliSessionID))
 		}
 		if len(s.promptQueue) > 0 {
 			next := s.promptQueue[0]
@@ -292,8 +344,10 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// This runs AFTER the backend's final save (which fires before OnExit)
 	// so the load-append-save cycle won't be overwritten by a subsequent
 	// backend save. Only terminal states (done/error/cancelled) with
-	// dispatch metadata (task, agent type) are persisted.
-	m.persistTerminalDispatches(key, sessionID)
+	// dispatch metadata (task, agent type) are persisted. Keyed on Ion's
+	// conversationID (the file basename) — never the backend-reported
+	// sessionID, which for the CLI backend is claude's UUID with no Ion file.
+	m.persistTerminalDispatches(key, ionConvID)
 
 	// Emit updated agent state snapshot after clearing running agents.
 	// Completed agents (done/error/cancelled) are preserved so their
@@ -324,11 +378,19 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	var idlePct, idleCW int
 	var idleModel string
 	var idleCost float64
+	var idleSessionID string
 	if s, ok := m.sessions[key]; ok {
 		idlePct = s.lastContextPct
 		idleCW = s.lastContextWindow
 		idleModel = s.lastModel
 		idleCost = s.lastTotalCost
+		// Client-facing session id is always Ion's stable conversationID —
+		// never the backend-reported sessionID (which is claude's UUID for
+		// the CLI backend). This keeps the run-exit status consistent with
+		// every other client-facing surface (buildSessionStatusMirror,
+		// ListSessions, the StartSession idle status), all of which report
+		// conversationID. For the API backend the two are equal anyway.
+		idleSessionID = s.conversationID
 	}
 	m.mu.RUnlock()
 
@@ -336,7 +398,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// clients can keep the tab status active and interrupt button visible
 	// even though the parent LLM turn has ended.
 	idleFields := &types.StatusFields{
-		Label: key, State: "idle", SessionID: sessionID,
+		Label: key, State: "idle", SessionID: idleSessionID,
 		ContextPercent: idlePct, ContextWindow: idleCW,
 		Model: idleModel, TotalCostUsd: idleCost,
 		BackgroundAgents: bgCount,

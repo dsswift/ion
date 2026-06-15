@@ -64,11 +64,6 @@ export async function playNotificationIfHidden(): Promise<void> {
 export function makeLocalTab(): TabState {
   const prefs = usePreferencesStore.getState()
   const permissionMode = prefs.defaultPermissionMode
-  // Auto-set planning model override when split is enabled and tab starts in plan mode
-  const modelOverride =
-    prefs.planModelSplitEnabled && prefs.planModeModel && permissionMode === 'plan'
-      ? prefs.planModeModel
-      : null
   return {
     id: crypto.randomUUID(),
     conversationId: null,
@@ -79,17 +74,10 @@ export function makeLocalTab(): TabState {
     lastEventAt: null,
     hasUnread: false,
     currentActivity: '',
-    permissionQueue: [],
-    permissionDenied: null,
     attachments: [],
-    draftInput: '',
-    messages: [],
-    messageCount: 0,
     title: 'New Tab',
     customTitle: null,
     lastResult: null,
-    sessionModel: null,
-    modelOverride,
     sessionTools: [],
     sessionMcpServers: [],
     sessionSkills: [],
@@ -100,7 +88,6 @@ export function makeLocalTab(): TabState {
     lastMessagePreview: null,
     additionalDirs: [],
     permissionMode,
-    planFilePath: null,
     bashResults: [],
     bashExecuting: false,
     bashExecId: null,
@@ -114,15 +101,37 @@ export function makeLocalTab(): TabState {
     groupPinned: false,
     contextTokens: null,
     contextPercent: null,
+    contextWindow: null,
     isCompacting: false,
     isTerminalOnly: false,
-    isEngine: false,
+    hasEngineExtension: false,
     engineProfileId: null,
   }
 }
 
-export function isBlankConversationTab(t: TabState, dir: string): boolean {
-  return !t.isTerminalOnly && !t.isEngine && (t.messages?.length ?? t.messageCount ?? 0) === 0 && !t.customTitle && t.workingDirectory === dir
+/**
+ * Build the initial `modelOverride` for a normal tab's `main` conversation
+ * instance: the planning-model split applies when the tab starts in plan mode
+ * and the user has configured a plan-mode model. Returned separately from
+ * `makeLocalTab` because model state now lives on the instance, not the tab —
+ * the pane-seeding site passes this into `makeMainPane({ modelOverride })`.
+ */
+export function initialModelOverride(): string | null {
+  const prefs = usePreferencesStore.getState()
+  return prefs.planModelSplitEnabled && prefs.planModeModel && prefs.defaultPermissionMode === 'plan'
+    ? prefs.planModeModel
+    : null
+}
+
+/**
+ * Blank-conversation detection. `msgCount` is the tab's active-instance
+ * effective message count (`instanceMessageCount` from conversation-instance.ts);
+ * callers resolve it from `conversationPanes` since message state no longer lives on
+ * `TabState`. A blank conversation tab has no messages, no custom title, and is
+ * anchored to `dir`.
+ */
+export function isBlankConversationTab(t: TabState, dir: string, msgCount: number): boolean {
+  return !t.isTerminalOnly && !t.hasEngineExtension && msgCount === 0 && !t.customTitle && t.workingDirectory === dir
 }
 
 export function isBlankTerminalTab(t: TabState, dir: string): boolean {

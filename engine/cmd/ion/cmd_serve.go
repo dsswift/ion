@@ -34,6 +34,12 @@ func cmdServe() {
 	_ = os.MkdirAll(ionDir, 0o700)
 	utils.Log("main", fmt.Sprintf("=== engine process start pid=%d version=%s ===", os.Getpid(), version))
 
+	// Read back any pre-existing exit breadcrumb so the prior exit is
+	// observable in the log immediately after startup. Then write our own
+	// "running" record so an unclean termination is detectable by the next start.
+	logPriorExit(exitPath())
+	writeRunning(exitPath())
+
 	cfg := config.LoadConfig("")
 	utils.Log("main", fmt.Sprintf("config loaded: backend=%s model=%s providers=%d mcp=%d",
 		cfg.Backend, cfg.DefaultModel, len(cfg.Providers), len(cfg.McpServers)))
@@ -166,6 +172,18 @@ func cmdServe() {
 		os.Exit(1)
 	}
 	fmt.Printf("Ion Engine v%s started (pid %d)\n", version, os.Getpid())
+
+	// Heartbeat: update lastBeat every 5 s so an unclean death leaves a
+	// dateable breadcrumb. The goroutine is daemon-style -- no sync needed
+	// on shutdown because writeClean/writePanic overwrite the record before
+	// the process exits on the graceful path.
+	go func() {
+		t := time.NewTicker(beatInterval)
+		defer t.Stop()
+		for range t.C {
+			beat(exitPath())
+		}
+	}()
 	if runtime.GOOS == "windows" {
 		fmt.Printf("Listening: tcp://%s\n", sock)
 	} else {
@@ -212,6 +230,7 @@ func cmdServe() {
 	select {
 	case sig := <-sigCh:
 		utils.Log("main", fmt.Sprintf("received signal: %s, shutting down", sig))
+		writeClean(exitPath(), sig.String())
 		// Best-effort durability: persist any in-flight conversation before
 		// the run goroutines are cancelled by srv.Stop(). This guarantees the
 		// user's most recent prompt and any complete assistant blocks survive
@@ -221,6 +240,7 @@ func cmdServe() {
 		_ = srv.Stop()
 	case <-srv.Done():
 		utils.Log("main", "shutdown command received, shutting down")
+		writeClean(exitPath(), "shutdown-cmd")
 		b.FlushConversations()
 		// srv.Stop() already called by the shutdown command handler.
 	}

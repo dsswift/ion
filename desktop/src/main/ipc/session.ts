@@ -80,6 +80,18 @@ export function registerSessionIpc(): void {
     sessionPlane.initSession(tabId)
   })
 
+  // Eagerly ensure a live engine session for a normal tab (e.g. on restore /
+  // reopen) so the conversation resumes under a stable key and is immediately
+  // clearable, instead of being a sessionless shell until the first prompt.
+  // Idempotent on the control-plane side (no-op when already started).
+  ipcMain.handle(
+    IPC.ENSURE_ENGINE_SESSION,
+    async (_event, { tabId, workingDirectory, conversationId, permissionMode }: { tabId: string; workingDirectory: string; conversationId?: string | null; permissionMode?: 'auto' | 'plan' }) => {
+      log(`IPC ENSURE_ENGINE_SESSION: tab=${tabId} conversationId=${conversationId ?? 'none'} dir=${workingDirectory}`)
+      return sessionPlane.ensureSession(tabId, { workingDirectory, conversationId, permissionMode })
+    },
+  )
+
   ipcMain.on(IPC.RESET_TAB_SESSION, (_event, tabId: string) => {
     log(`IPC RESET_TAB_SESSION: ${tabId}`)
     sessionPlane.resetTabSession(tabId)

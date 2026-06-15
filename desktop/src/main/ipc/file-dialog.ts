@@ -6,6 +6,11 @@ import { state } from '../state'
 import { showWindow } from '../window-manager'
 import { validateExternalUrl } from '../ipc-validation'
 import { engineIsRemote, getEngineHostInfo, listEngineDirectory } from '../engine-bridge-fs'
+import { log as _log } from '../logger'
+
+function log(msg: string): void {
+  _log('file-dialog', msg)
+}
 
 export function registerFileDialogIpc(): void {
   ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
@@ -22,17 +27,25 @@ export function registerFileDialogIpc(): void {
   ipcMain.handle(IPC.SELECT_EXTENSION_FILES, async () => {
     if (!state.mainWindow) return null
     state.mainWindow.hide()
-    const ionHome = join(homedir(), '.ion')
+    const extensionsDir = join(homedir(), '.ion', 'extensions')
     const options = {
-      defaultPath: ionHome,
+      defaultPath: extensionsDir,
       properties: ['openFile' as const, 'multiSelections' as const],
-      filters: [{ name: 'Extensions', extensions: ['ts', 'js'] }],
+      filters: [
+        { name: 'Extension Entry Points', extensions: ['ts', 'js', 'mjs', 'cjs'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
     }
     const result = process.platform === 'darwin'
       ? await dialog.showOpenDialog(options)
       : await dialog.showOpenDialog(state.mainWindow!, options)
     state.mainWindow?.show()
-    return result.canceled ? null : result.filePaths
+    if (result.canceled) {
+      log('extension file picker cancelled')
+      return null
+    }
+    log(`extension file picker: user selected ${result.filePaths.length} file(s): ${result.filePaths.join(', ')}`)
+    return result.filePaths
   })
 
   // Engine-host filesystem RPCs. Used by the remote-aware directory picker

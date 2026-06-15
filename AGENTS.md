@@ -194,13 +194,13 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Desktop | iOS counterpart | Sync path |
 |---------|----------------|-----------|
 | Tab status dot (TabStripTabPill, StatusDot) | Tab list dot (TabRowView.statusInfo) | `snapshot.ts` → `RemoteTabState.status` |
-| Engine instance bar (EngineTabStrip) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.engineInstances` |
-| Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `engineInstances` |
+| Engine instance bar (EngineTabStrip) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.conversationInstances` |
+| Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `conversationInstances` |
 | Tab group pills | Tab group sections | `snapshot.ts` → group fields on `RemoteTabState` |
 | Thinking indicator / interrupt button | Activity indicator / interrupt button | Real-time events (`engineTextDelta`, `tabStatus`) |
-| Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` (CLI) and `StatusFields.sessionId` (engine) |
+| Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` (plain conversation) and `StatusFields.sessionId` (extension-hosted conversation) |
 | Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` allowlist → `desktop_settings_snapshot` event (settings + schema + groups) → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match the desktop's `CATEGORIES` array; renaming a desktop category requires updating `PROJECTABLE_GROUP_LABELS` and the test in `projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` unless the setting is local-machine-only (font, path, secret). |
-| Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.engineInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `engineInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
+| Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
 
 ### When to skip iOS
 
@@ -340,6 +340,38 @@ A valid plan resolution is one of: change code, change a contract, delete code, 
 
 The `ion--review-changes.md` and `ion--align.md` commands enforce this rule at plan-generation time. Reviewers should reject any plan that violates it.
 
+## Volatile counts — keep them out of docs and code
+
+**Never hand-encode a count that the code already determines.** Hook count, hook-category count, provider count, command-type count, tool count, event-variant count — any "N of X" where X is enumerable in source — goes stale the moment it is written. Every commit that adds a hook, a provider, a tool, or a command silently invalidates every prose statement that pinned the old number, and nothing fails to catch it. The result is documentation that lies about the code.
+
+This is the same defect family as the "Aspirational comments" rule above: a number that no longer matches the code is a comment that lies. The next agent or contributor reads "55 hooks" as ground truth, builds on it, and is wrong.
+
+### The one exception
+
+The **top-level `README.md` header badge** (the single tagline + badge line at the very top of the file) may carry a curated set of these numbers as marketing/bragging-rights figures. That surface is deliberately refreshed when the product is showcased. Nowhere else — not the README body, not a leaf doc, not a component `README.md`, not a `docs/` page, and not a code comment — may restate them.
+
+### What to write instead
+
+- Use qualitative phrasing: "a comprehensive set of hooks across the agent lifecycle", "a broad set of LLM providers", "the built-in core tool set".
+- Link to the authoritative by-name reference: `docs/hooks/reference.md`, `docs/tools/reference.md`, or the source file (`engine/internal/extension/sdk.go`, `engine/internal/providers/provider.go`, etc.).
+- **By-name lists are fine** — listing the tools or providers by name is self-maintaining and is the source of truth. A bare count is not. If you list them by name, do not also assert how many there are.
+
+When you touch a doc or comment that pins such a count, remove the count as part of the change (good-citizen rule below). Do not "correct" it to the new number — the new number is stale on the next PR.
+
+## Good citizen — fix what you find
+
+If, during any feature or fix, you **stumble across something that is wrong** — a stale or incorrect comment, documentation that no longer matches the code, a failing or stale-assertion test, a lie-to-the-future of any kind — it is **always in scope**. Fix it.
+
+You are not breaking functionality by correcting a comment, a doc, or a test; you are **restoring** it. An incorrect comment is worse than no comment: whoever comes after you will not have the context that let you silently work around the discrepancy. They will read the stale statement as ground truth and build on a falsehood, breaking a future implementation. The only safe state is: the artifact tells the truth.
+
+### The boundary (so this never becomes a tangent)
+
+- **Do not go hunting.** This rule fires on what you *encounter in the path of the work*, not on a codebase-wide audit you launch to find problems. No speculative sweeps.
+- **Roll it into the current plan.** When you find it, add it to the plan you are executing. Do not defer it to a "future PR", an issue, or a `TODO` — deferral is the forbidden anti-pattern (see "## Aspirational comments" and the "## Scope" rule in the user's global rules).
+- **Commit separately when unrelated.** The fix does not have to address the same issue you are working on. A stale comment found while implementing feature X is committed as its own `fix` / `chore` / `docs` commit at a clean scope seam, before or after the main work — it does not have to be entangled with feature X's commit.
+
+This generalizes "## Aspirational comments" (incomplete or lying comments are bugs), "## Volatile counts" (stale counts are lies), and the global "## Scope" rule (never defer ordered work).
+
 ## Operator premises — verify before acting
 
 Operator requests routinely contain **factual premises about the codebase** — "we only support X", "the only place that happens is Y", "this field is unused", "feature Z doesn't exist yet". These premises are frequently wrong. The author of this repository is wrong about them sometimes; new contributors are wrong about them more often. **Treat every premise as a claim to be verified, not as ground truth.**
@@ -422,6 +454,45 @@ Every solution must solve the problem at its root cause. **Never trade correctne
    If you can't articulate the failure modes, you haven't analyzed the problem deeply enough to justify the shortcut.
 
 5. **Never avoid expanding a surface to dodge work.** If a feature requires a new event type on iOS, a new protocol field, a new enum case, or a new handler — add it. Workarounds that relay, proxy, or approximate the proper mechanism to "keep the surface small" are the same anti-pattern as substituting a heuristic for a precise mechanism. API surfaces, event surfaces, and wire protocols are meant to grow as the product grows. A comment like "iOS does not yet act on this" is a gap waiting for its first consumer, not a reason to route around the gap.
+
+## Testing is mandatory — every feature, every fix
+
+**No feature and no bug fix is complete without a test that pins its behavior.** A change that compiles, type-checks, and "looks correct on read" is *not* verified. "I read the code and it's right" is the exact reasoning that lets defects reach production — it is never an acceptable substitute for a test.
+
+### The non-negotiable rule
+
+Every PR that adds a feature or fixes a bug **must** include a test that:
+
+- **For a feature:** asserts the feature does what it is specified to do — the field arrives, the event fires, the branch is taken, the value propagates end to end.
+- **For a bug fix:** *fails on the unfixed code and passes on the fixed code.* This is the definition of a regression test. If the test passes with your fix reverted, it does not test your fix — it tests something else. Before claiming a bug fix is tested, mentally (or actually) revert the fix and confirm the test goes red.
+
+If you cannot write a test that distinguishes the fixed behavior from the broken behavior, you do not yet understand the bug well enough to claim it is fixed.
+
+### Why this is a critical-severity rule, not a style preference
+
+A bug found in production is *prima facie evidence that coverage was inadequate* — the feature shipped, nobody knew whether it worked, an external consumer found the failure, and only then was it corrected. **Fixing that bug without adding a test repeats the identical mistake:** the corrected behavior is once again unprotected, and the next innocuous refactor can silently re-break it with every quality gate still green. The test is what converts "we hope this works" into "we know this works, and we will know immediately if it stops."
+
+The canonical example is this repository's own #227: `before_agent_start` shipped with no test pinning the root-vs-sub-agent payload distinction, so the root firing's empty-`AgentInfo` sentinel went undetected until an external consumer's system prompt was poisoned in production. The fix added an `IsRoot` flag — and must add the test that asserts `IsRoot` is `true` on the root firing and `false` on sub-agent firings, *and* that the wire payload serializes the field. Without that test, a later edit reverting the call site to `AgentInfo{}` passes every gate.
+
+### What the test must actually pin (avoid false coverage)
+
+Test the *behavior the change introduces*, not the plumbing that was already there.
+
+- A test that asserts a handler *receives* a payload but never asserts the *new field's value* gives false confidence. If the change is "set `IsRoot: true` at the root call site," the test must assert `received.IsRoot == true` at that path — not merely that some payload arrived.
+- A cross-boundary field (Go → JSON → TS/Swift) needs a **serialization** test pinning the wire shape (`"isRoot":true` present; omitted when false if `omitempty`). A Go-only struct-equality test does not protect the consumer contract.
+- A "field propagates from A to B" claim needs a test that exercises A→B, not two separate unit tests that each assume the wire-up.
+
+### Don't trade correctness for un-brittle-ness — but don't write brittle tests either
+
+Well-architected tests survive innocuous refactors and fail only when real behavior changes. Aim for that. But "a good test is hard to write here" is **not** a license to skip the test. The bar is: pin the behavioral contract at the most stable seam available (the public hook payload, the serialized wire shape, the observable event), not the incidental internals. If the only way you can think to test it is brittle, that usually signals the behavior should be observable at a more stable boundary — fix the seam, then test it.
+
+### Parity is part of the contract (test it too)
+
+When a feature exists on one client and not another, or is implemented two different ways across clients, that divergence is itself a defect this rule is meant to catch. A field that flows through the snapshot to one client must have a test pinning that it reaches the other (or an explicit, documented decision that it does not apply). "One client has it, the other silently doesn't" is the class of bug that should never survive to production — pin the parity.
+
+### The forbidden completion claim
+
+Do not report a feature or fix as "done," "complete," or "verified" when the only verification performed is: it compiles, it type-checks, existing tests still pass, and the code reads correctly. Those are necessary but **not sufficient**. The sufficient condition is a test that exercises the new behavior and would fail without the change. If you are about to commit and there is no such test, the work is not done — write the test first.
 
 ## Conversation storage
 

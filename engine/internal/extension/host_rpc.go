@@ -113,6 +113,23 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 		default:
 			utils.Info(tag, body)
 		}
+	case "ext/llm_call_cancel":
+		// Per-call cancellation for ctx.llmCall({ signal }). The TS runtime
+		// fires this fire-and-forget notification (no response) when the
+		// caller's AbortSignal aborts, keyed by the in-flight ext/llm_call
+		// RPC id. We look up the registered CancelFunc and invoke it; an
+		// unknown id is a benign race with completion (logged, no-op).
+		var notif struct {
+			Params struct {
+				RequestID int64 `json:"requestId"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(raw, &notif); err != nil {
+			utils.Log("extension", fmt.Sprintf("ext/llm_call_cancel parse error: %v", err))
+			return
+		}
+		cancelled := h.cancelInflightLLMCall(notif.Params.RequestID)
+		utils.Debug("extension", fmt.Sprintf("ext/llm_call_cancel: requestId=%d cancelled=%t", notif.Params.RequestID, cancelled))
 	default:
 		utils.Log("extension", fmt.Sprintf("unknown notification method: %s", method))
 	}
@@ -649,61 +666,9 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		h.sendResponse(id, json.RawMessage(data), nil)
 
 	case "ext/llm_call":
-		// One-shot lightweight inference. The TS SDK calls this to
-		// avoid the cost of dispatch_agent for harness-internal
-		// classification / extraction prompts. Runs the call on a
-		// goroutine so a slow provider doesn't stall the RPC reader;
-		// the response goes back through the standard sendResponse
-		// path when the call completes (or errors).
-		var req struct {
-			Params struct {
-				Model     string `json:"model"`
-				System    string `json:"system,omitempty"`
-				Prompt    string `json:"prompt"`
-				JSONMode  bool   `json:"jsonMode,omitempty"`
-				MaxTokens int    `json:"maxTokens,omitempty"`
-			} `json:"params"`
-		}
-		if err := json.Unmarshal(raw, &req); err != nil {
-			utils.Log("extension", fmt.Sprintf("ext/llm_call: parse error: %v", err))
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
-			return
-		}
-		if ctx == nil || ctx.LLMCall == nil {
-			utils.Log("extension", "ext/llm_call: no ctx or no LLMCall wired; rejecting")
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "llmCall not available outside an active session"})
-			return
-		}
-		utils.Debug("extension", fmt.Sprintf(
-			"ext/llm_call: dispatching model=%s sysLen=%d promptLen=%d jsonMode=%v maxTokens=%d",
-			req.Params.Model, len(req.Params.System), len(req.Params.Prompt),
-			req.Params.JSONMode, req.Params.MaxTokens,
-		))
-		go func() {
-			result, err := ctx.LLMCall(LLMCallOpts{
-				Model:     req.Params.Model,
-				System:    req.Params.System,
-				Prompt:    req.Params.Prompt,
-				JSONMode:  req.Params.JSONMode,
-				MaxTokens: req.Params.MaxTokens,
-			})
-			if err != nil {
-				utils.Log("extension", fmt.Sprintf("ext/llm_call: failed: %v", err))
-				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
-				return
-			}
-			data, marshalErr := json.Marshal(result)
-			if marshalErr != nil {
-				utils.Error("extension", fmt.Sprintf("ext/llm_call: marshal failed: %v", marshalErr))
-				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: marshalErr.Error()})
-				return
-			}
-			utils.Debug("extension", fmt.Sprintf(
-				"ext/llm_call: success contentLen=%d in=%d out=%d cost=%.6f",
-				len(result.Content), result.InputTokens, result.OutputTokens, result.Cost,
-			))
-			h.sendResponse(id, json.RawMessage(data), nil)
-		}()
+		// One-shot lightweight inference. Handler lives in
+		// host_rpc_llm_call.go to keep this file under the 800-line cap.
+		h.handleLLMCallRPC(ctx, id, raw)
 
 	case "ext/declare_resource":
 		h.handleDeclareResource(id, raw)

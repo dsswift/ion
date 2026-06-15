@@ -33,8 +33,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // Stub the store module before importing the helper. The helper reads
 // `useSessionStore.getState()` synchronously, so we just need a
 // settable mock to swap the world per test.
-const state: { enginePanes: Map<string, any> } = {
-  enginePanes: new Map(),
+const state: { conversationPanes: Map<string, any> } = {
+  conversationPanes: new Map(),
 }
 
 vi.mock('../../stores/sessionStore', () => ({
@@ -60,18 +60,18 @@ vi.mock('../../preferences', () => ({
 import { anyEngineInstanceHasRunningChildren, isAnyEngineInstanceRunning } from '../TabStripShared'
 
 function resetState() {
-  state.enginePanes = new Map()
+  state.conversationPanes = new Map()
 }
 
 function setPane(tabId: string, instanceIds: string[]) {
-  state.enginePanes.set(tabId, {
+  state.conversationPanes.set(tabId, {
     instances: instanceIds.map((id) => ({ id, label: id, agentStates: [], statusFields: null })),
     activeInstanceId: instanceIds[0] || null,
   })
 }
 
 function setAgents(tabId: string, instanceId: string, statuses: string[]) {
-  const pane = state.enginePanes.get(tabId)
+  const pane = state.conversationPanes.get(tabId)
   if (!pane) return
   const idx = pane.instances.findIndex((i: any) => i.id === instanceId)
   if (idx === -1) return
@@ -129,7 +129,7 @@ describe('anyEngineInstanceHasRunningChildren', () => {
     setPane('tab1', ['inst1'])
     setAgents('tab1', 'inst1', ['running'])
     // Set statusFields on the instance directly (no legacy Map)
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = { ...pane.instances[0], statusFields: { state: 'running' } }
     expect(anyEngineInstanceHasRunningChildren('tab1')).toBe(true)
     expect(isAnyEngineInstanceRunning('tab1')).toBe(true)

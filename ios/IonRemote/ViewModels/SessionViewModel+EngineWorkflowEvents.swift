@@ -134,4 +134,29 @@ extension SessionViewModel {
         // interpreting engine_command_result directly. The wire
         // protocol stays uniform either way.
     }
+
+    /// Handle a `engine_export` event by parking the rendered payload
+    /// on `pendingExport` so a SwiftUI observer in ConversationView /
+    /// EngineView can present an iOS share sheet.
+    ///
+    /// The share sheet is the right surface on iOS (no save-as dialog
+    /// equivalent on touch UI) — it lets the user route to Files,
+    /// AirDrop, Mail, or Copy in one tap. We do not transform the
+    /// payload; whatever the engine emitted (markdown / json / html /
+    /// jsonl) is what the user shares. `format` (from the engine's
+    /// exportFormat field) drives the shared file's extension; nil when
+    /// the engine predates the field, in which case the view layer
+    /// defaults to markdown.
+    ///
+    /// Only one pending export at a time. If a second engine_export
+    /// arrives before the first sheet is dismissed (rare — would
+    /// require concurrent /export commands on different tabs in flight
+    /// at once), the second overwrites the first. The conversation
+    /// the user actually initiated is the one to surface; clobber is
+    /// the right semantics.
+    @MainActor
+    func handleEngineExport(tabId: String, payload: String, format: String?) {
+        guard !payload.isEmpty else { return }
+        pendingExport = PendingExport(tabId: tabId, payload: payload, format: format)
+    }
 }

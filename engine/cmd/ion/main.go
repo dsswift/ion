@@ -12,7 +12,18 @@ func main() {
 
 	switch command {
 	case "serve":
-		cmdServe()
+		// Wrap in an anonymous func with a recover so panics write a
+		// breadcrumb before the process exits. Re-panic preserves the exit code.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					stack := captureStack()
+					writePanic(exitPath(), fmt.Sprintf("%v", r), stack)
+					panic(r) // re-panic to preserve non-zero exit
+				}
+			}()
+			cmdServe()
+		}()
 	case "start":
 		cmdStart(flags, listFlags)
 	case "prompt":

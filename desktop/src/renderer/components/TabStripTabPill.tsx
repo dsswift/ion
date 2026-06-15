@@ -5,6 +5,7 @@ import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import type { TabState } from '../../shared/types'
 import { getWaitingState, isAnyEngineInstanceRunning, anyEngineInstanceHasRunningChildren, formatRelativeShort } from './TabStripShared'
+import { activeInstance } from '../stores/conversation-instance'
 import { StatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 
@@ -57,24 +58,31 @@ export function TabPill({
   const gitOpsMode = usePreferencesStore((s) => s.gitOpsMode)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
 
-  // Subscribe to enginePanes so this component re-renders when any engine
+  // Subscribe to conversationPanes so this component re-renders when any engine
   // instance's statusFields or agentStates changes. Both fields now live
-  // on the instance in enginePanes — the single subscription covers what
+  // on the instance in conversationPanes — the single subscription covers what
   // previously required separate engineStatusFields + engineAgentStates
-  // subscriptions. Only engine tabs need this.
-  useSessionStore((s) => tab.isEngine ? s.enginePanes : null)
+  // subscriptions. Normal tabs also read their `main` instance from here
+  // now (permissionDenied / permissionQueue moved off TabState), so we
+  // subscribe unconditionally rather than only for engine tabs.
+  const conversationPanes = useSessionStore((s) => s.conversationPanes)
 
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const displayTitle = tab.customTitle || tab.title
 
+  // Active instance for this tab (the single `main` instance for normal
+  // tabs). Holds the permission queue that used to live on TabState.
+  const inst = activeInstance(conversationPanes, tab.id)
+  const hasPermission = (inst?.permissionQueue.length ?? 0) > 0
+
   // For engine tabs, check if any sub-tab instance is running so the
   // main tab pill pulses even when the active instance is idle.
-  const anyInstanceRunning = tab.isEngine && isAnyEngineInstanceRunning(tab.id)
+  const anyInstanceRunning = tab.hasEngineExtension && isAnyEngineInstanceRunning(tab.id)
   // Parallel "any sub-instance has running dispatched background
   // children" derivation — drives the yellow "awaiting children" dot
   // and the hard-block on the X close button. Foreground orange wins
   // over background yellow in the StatusDot priority cascade.
-  const anyInstanceHasRunningChildren = tab.isEngine && anyEngineInstanceHasRunningChildren(tab.id)
+  const anyInstanceHasRunningChildren = tab.hasEngineExtension && anyEngineInstanceHasRunningChildren(tab.id)
   const effectiveStatus = (anyInstanceRunning && !isRunning) ? 'running' as const : tab.status
   // Combined "must not close" predicate. Hard-blocks the X close
   // button below. Mirrors the action-layer guard in tab-slice.ts
@@ -85,7 +93,7 @@ export function TabPill({
   const closeBlocked = isRunning || anyInstanceHasRunningChildren
 
   // Derive waiting-for-user state from permission denials
-  const waitingState = getWaitingState(tab)
+  const waitingState = getWaitingState(tab, conversationPanes)
 
   // Waiting-state border color (thin rim, no boxShadow bleed)
   const waitingBorder = waitingState === 'plan-ready'
@@ -146,7 +154,7 @@ export function TabPill({
           onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
         }}
       >
-        <StatusDot status={effectiveStatus} hasUnread={tab.hasUnread} hasPermission={tab.permissionQueue.length > 0} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} hasRunningChildren={anyInstanceHasRunningChildren} />
+        <StatusDot status={effectiveStatus} hasUnread={tab.hasUnread} hasPermission={hasPermission} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} hasRunningChildren={anyInstanceHasRunningChildren} />
       </span>
       {tab.groupPinned && tabGroupMode === 'manual' && (
         <PushPin size={10} color={colors.textTertiary} className="flex-shrink-0" style={{ opacity: 0.7 }} />

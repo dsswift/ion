@@ -28,6 +28,7 @@ export const IPC = {
   RESPOND_PERMISSION: 'ion:respond-permission',
   APPROVE_DENIED_TOOLS: 'ion:approve-denied-tools',
   INIT_SESSION: 'ion:init-session',
+  ENSURE_ENGINE_SESSION: 'ion:ensure-engine-session',
   RESET_TAB_SESSION: 'ion:reset-tab-session',
   ANIMATE_HEIGHT: 'ion:animate-height',
   LIST_SESSIONS: 'ion:list-sessions',
@@ -237,6 +238,7 @@ export const IPC = {
   ENGINE_STOP: 'ion:engine-stop',
   ENGINE_EVENT: 'ion:engine-event',
   ENGINE_REMAP_SESSION: 'ion:engine-remap-session',
+  ENGINE_BROADCAST_HISTORY: 'ion:engine-broadcast-history',
 
   // Resource focus tracking
   NOTIFY_TAB_FOCUS: 'ion:notify-tab-focus',

@@ -109,11 +109,11 @@ export function useEngineEvents() {
     // update store without calling back to main, then re-evaluate auto group placement
     const remoteSetModeHandler = (_e: any, data: { tabId: string; mode: 'auto' | 'plan' }) => {
       const targetTab = useSessionStore.getState().tabs.find((t) => t.id === data.tabId)
-      if (targetTab?.isEngine) {
-        // Engine tabs: write permissionMode onto the active instance in enginePanes.
+      if (targetTab?.hasEngineExtension) {
+        // Engine tabs: write permissionMode onto the active instance in conversationPanes.
         useSessionStore.setState((s) => {
-          const enginePanes = new Map(s.enginePanes)
-          const pane = enginePanes.get(data.tabId)
+          const conversationPanes = new Map(s.conversationPanes)
+          const pane = conversationPanes.get(data.tabId)
           if (!pane) return {}
           const instanceId = pane.activeInstanceId
           if (!instanceId) return {}
@@ -121,8 +121,8 @@ export function useEngineEvents() {
           if (idx === -1) return {}
           const instances = pane.instances.slice()
           instances[idx] = { ...instances[idx], permissionMode: data.mode }
-          enginePanes.set(data.tabId, { ...pane, instances })
-          return { enginePanes }
+          conversationPanes.set(data.tabId, { ...pane, instances })
+          return { conversationPanes }
         })
       } else {
         // CLI tabs: update permissionMode on the parent tab.

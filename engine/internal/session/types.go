@@ -1,6 +1,8 @@
 package session
 
 import (
+	"context"
+
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
@@ -40,10 +42,50 @@ type pendingPrompt struct {
 
 // engineSession holds the state for a single session managed by the Manager.
 type engineSession struct {
-	key                         string
-	config                      types.EngineConfig
-	requestID                   string // empty when no active run
-	conversationID              string
+	key            string
+	config         types.EngineConfig
+	requestID      string // empty when no active run
+
+	// rootCtx is the per-session cancellation root. Every cancellable
+	// operation spawned on behalf of this session derives its own
+	// context.Context from rootCtx — the backend run (via
+	// RunOptions.ParentCtx), dispatched child agents, and ad-hoc
+	// ctx.llmCall() invocations. Cancelling rootCancel therefore
+	// cascades to all in-flight descendants for free (Go context tree),
+	// which is what turns the engine's three historically-disconnected
+	// abort mechanisms (backend Cancel-by-requestID, child-process kill
+	// by PID, orphaned llmCall context) into one unified tree.
+	//
+	// Lifecycle:
+	//   - Created in StartSession (newSessionRootContext), before any run
+	//     or dispatch can be launched.
+	//   - Cancelled by SendAbort (user abort) and StopSession (teardown).
+	//     Both are idempotent: cancelling an already-cancelled context is
+	//     a no-op, and rootCancel is nil-guarded for test-constructed
+	//     sessions that never called newSessionRootContext.
+	//   - OS-process kill (abortAllDescendants → killProcess) remains the
+	//     leaf enforcement for child agents that run as separate processes;
+	//     you cannot context-cancel another process. The root context is
+	//     the in-process tree; process kill is its leaf.
+	//
+	// rootCtx is NOT a contract surface — it never crosses the wire and is
+	// never serialized. It is purely the engine's internal cancellation
+	// backbone.
+	rootCtx    context.Context
+	rootCancel context.CancelFunc
+
+	conversationID string
+	// cliSessionID is the claude-native session UUID captured from CLI run
+	// exits (the backend reports it via SessionInitEvent/TaskCompleteEvent →
+	// emitExit → handleRunExit). It is the ONLY value fed to `claude
+	// --resume` (via RunOptions.CliResumeSessionID). It is deliberately kept
+	// distinct from conversationID: conversationID is Ion's durable
+	// conversation-file identity (`{millis}-{12hex}`, the basename of the
+	// `~/.ion/conversations/<id>.*` files) and must never be overwritten with
+	// a claude UUID — doing so would break compaction, export, /clear, tree
+	// navigation, and the client-facing session id, all of which key on the
+	// Ion id. Empty until the first successful CLI run reports a UUID.
+	cliSessionID                string
 	agents                      *agents.Registry
 	extensionName               string // friendly name broadcast by the extension
 	suppressedTools             []string

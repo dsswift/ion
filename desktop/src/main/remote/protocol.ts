@@ -47,14 +47,25 @@ export interface RemoteTabState {
   permissionQueue: PermissionRequest[]
   lastMessage: string | null
   contextTokens: number | null
+  /**
+   * Engine-reported context window size (tokens) of the model the engine
+   * actually used on the most recent turn. Mirrors TabState.contextWindow.
+   * iOS reads this as the denominator when recomputing context percent
+   * locally so the indicator stays accurate even when the picker-selected
+   * model disagrees with the engine. Falls back to the picker model's
+   * nominal window when null (cold-start tabs).
+   */
+  contextWindow: number | null
   modelOverride?: string | null
   messageCount: number
   queuedPrompts: string[]
   isTerminalOnly?: boolean
-  isEngine?: boolean
+  /** True when the conversation hosts an engine extension. Wire field consumed
+   *  by iOS (RemoteTabState.swift). Not a backend flag. */
+  hasEngineExtension?: boolean
   engineProfileId?: string | null
-  engineInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; runningAgentCount?: number; modelFallback?: { requestedModel: string; fallbackModel: string }; conversationIds?: string[] }>
-  activeEngineInstanceId?: string | null
+  conversationInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; runningAgentCount?: number; modelFallback?: { requestedModel: string; fallbackModel: string }; conversationIds?: string[] }>
+  activeConversationInstanceId?: string | null
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
   groupId?: string | null
@@ -62,7 +73,7 @@ export interface RemoteTabState {
   groupPinned?: boolean
   /**
    * Aggregated "any sub-instance has running background children" flag,
-   * folded across `engineInstances[*].runningAgentCount`. Optional so
+   * folded across `conversationInstances[*].runningAgentCount`. Optional so
    * older iOS builds that don't decode the field continue to work; iOS
    * uses this to drive the parent tab pill's yellow "awaiting children"
    * dot. See CLAUDE.md § "Common parity surfaces" for the desktop/iOS
@@ -147,6 +158,7 @@ export type RemoteCommand =
   | { type: 'rename_terminal_instance'; tabId: string; instanceId: string; label: string }
   | { type: 'rewind'; tabId: string; messageId: string }
   | { type: 'fork_from_message'; tabId: string; messageId: string }
+  | { type: 'engine_rewind'; tabId: string; instanceId: string; messageId: string; userTurnIndex?: number }
   | { type: 'create_engine_tab'; workingDirectory?: string; profileId?: string }
   | { type: 'engine_prompt'; tabId: string; instanceId?: string; text: string; attachments?: Array<{ type: 'image' | 'file'; name: string; path: string }>; implementationPhase?: boolean }
   | { type: 'engine_abort'; tabId: string; instanceId?: string }
@@ -279,7 +291,11 @@ export type RemoteEvent =
   | { type: 'engine_instance_moved'; sourceTabId: string; instanceId: string; targetTabId: string }
   | { type: 'engine_conversation_history'; tabId: string; instanceId?: string | null; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number; dedupKey?: string }> }
   | { type: 'agent_conversation_history'; agentName: string; conversationId?: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
-  | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean }
+  // input_prefill seeds a remote client's input box with text (e.g. the
+  // rewound user message after a rewind). `instanceId` is set when the
+  // prefill targets a specific engine instance's draft (engine_rewind);
+  // absent/null for CLI-tab rewinds, where the tab has a single input.
+  | { type: 'input_prefill'; tabId: string; text: string; switchTo?: boolean; instanceId?: string | null }
   | { type: 'engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
   // Snapshot of the desktop's projectable user preferences. Emitted once

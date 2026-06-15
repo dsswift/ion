@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from
 import { AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
+import { activeInstance } from '../stores/conversation-instance'
 import { AttachmentChips } from './AttachmentChips'
 import { SlashCommandMenu, getFilteredCommandsWithExtras, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
 import { useColors } from '../theme'
@@ -57,8 +58,8 @@ export function InputBar() {
   const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const activeInstanceId = useSessionStore((s) => {
     const t = s.tabs.find((t) => t.id === s.activeTabId)
-    if (!t?.isEngine) return null
-    return s.enginePanes.get(t.id)?.activeInstanceId ?? null
+    if (!t?.hasEngineExtension) return null
+    return s.conversationPanes.get(t.id)?.activeInstanceId ?? null
   })
   const bashExecuting = tab?.bashExecuting ?? false
   const tabsReady = useSessionStore((s) => s.tabsReady)
@@ -99,7 +100,7 @@ export function InputBar() {
 
   // Merge extension-registered commands from the engine's command registry.
   // The key matches the engine session key used by engine-event-slice.ts.
-  const extensionKey = tab?.isEngine && activeInstanceId ? `${activeTabId}:${activeInstanceId}` : activeTabId
+  const extensionKey = tab?.hasEngineExtension && activeInstanceId ? `${activeTabId}:${activeInstanceId}` : activeTabId
   const extensionExtra: SlashCommand[] = extensionKey
     ? getRendererExtensionCommands(extensionKey).map((ec) => ({
       command: `/${ec.name}`,
@@ -119,9 +120,9 @@ export function InputBar() {
     if (prevId && prevId !== activeTabId) {
       // Save what was typed to the tab we're leaving
       setDraftInput(prevId, input)
-      // Load the arriving tab's draft
-      const arriving = useSessionStore.getState().tabs.find((t) => t.id === activeTabId)
-      setInput(arriving?.draftInput ?? '')
+      // Load the arriving tab's draft (now stored on its `main` instance)
+      const arrivingDraft = activeInstance(useSessionStore.getState().conversationPanes, activeTabId)?.draftInput ?? ''
+      setInput(arrivingDraft)
       setSlashFilter(null)
     }
     prevTabIdRef.current = activeTabId
@@ -134,10 +135,10 @@ export function InputBar() {
   const prevInstanceRef = useRef<string | null>(activeInstanceId)
   useEffect(() => {
     const prevInst = prevInstanceRef.current
-    if (tab?.isEngine && activeTabId && prevInst && prevInst !== activeInstanceId) {
+    if (tab?.hasEngineExtension && activeTabId && prevInst && prevInst !== activeInstanceId) {
       setEngineDraftInput(`${activeTabId}:${prevInst}`, input)
       const arrivingDraft = activeInstanceId
-        ? (useSessionStore.getState().enginePanes.get(activeTabId)?.instances.find(i => i.id === activeInstanceId)?.draftInput ?? '')
+        ? (useSessionStore.getState().conversationPanes.get(activeTabId)?.instances.find(i => i.id === activeInstanceId)?.draftInput ?? '')
         : ''
       setInput(arrivingDraft)
       setSlashFilter(null)
@@ -326,8 +327,8 @@ export function InputBar() {
     // by the engine-event-slice subscriber, so the same trigger works for
     // both desktop-initiated and iOS-initiated /clear.
     const currentTab = useSessionStore.getState().tabs.find(t => t.id === useSessionStore.getState().activeTabId)
-    if (currentTab?.isEngine) {
-      const enginePane = useSessionStore.getState().enginePanes.get(currentTab.id)
+    if (currentTab?.hasEngineExtension) {
+      const enginePane = useSessionStore.getState().conversationPanes.get(currentTab.id)
       if (enginePane?.activeInstanceId) {
         setEngineDraftInput(`${currentTab.id}:${enginePane.activeInstanceId}`, '')
       }

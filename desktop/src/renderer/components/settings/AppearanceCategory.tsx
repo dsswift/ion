@@ -31,6 +31,10 @@ export function AppearanceCategory() {
   const setDefaultTallEngine = usePreferencesStore((s) => s.setDefaultTallEngine)
   const editorWordWrap = usePreferencesStore((s) => s.editorWordWrap)
   const setEditorWordWrap = usePreferencesStore((s) => s.setEditorWordWrap)
+  const editorFontSize = usePreferencesStore((s) => s.editorFontSize)
+  const setEditorFontSize = usePreferencesStore((s) => s.setEditorFontSize)
+  const conversationFontSize = usePreferencesStore((s) => s.conversationFontSize)
+  const setConversationFontSize = usePreferencesStore((s) => s.setConversationFontSize)
   const closeExplorerOnFileOpen = usePreferencesStore((s) => s.closeExplorerOnFileOpen)
   const setCloseExplorerOnFileOpen = usePreferencesStore((s) => s.setCloseExplorerOnFileOpen)
   const hideOnExternalLaunch = usePreferencesStore((s) => s.hideOnExternalLaunch)
@@ -47,6 +51,52 @@ export function AppearanceCategory() {
     if (fontCache) return
     fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) })
   }, [])
+
+  // Shared +/- font-size stepper (8–24px). Used by the Editor, Conversation,
+  // and Terminal font-size controls so the markup lives in one place.
+  const fontStepper = (value: number, onChange: (v: number) => void) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        onClick={() => onChange(Math.max(8, value - 1))}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          border: `1px solid ${colors.inputBorder}`,
+          background: colors.surfacePrimary,
+          color: colors.textPrimary,
+          fontSize: 16,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        -
+      </button>
+      <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
+        {value}
+      </span>
+      <button
+        onClick={() => onChange(Math.min(24, value + 1))}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          border: `1px solid ${colors.inputBorder}`,
+          background: colors.surfacePrimary,
+          color: colors.textPrimary,
+          fontSize: 16,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        +
+      </button>
+    </div>
+  )
 
   return (
     <>
@@ -168,6 +218,18 @@ export function AppearanceCategory() {
         onChange={setEditorWordWrap}
       />
 
+      <SettingHeading>Editor</SettingHeading>
+
+      <SettingSection description="Editor font size (edit and preview) in pixels.">
+        {fontStepper(editorFontSize, setEditorFontSize)}
+      </SettingSection>
+
+      <SettingHeading>Conversation</SettingHeading>
+
+      <SettingSection description="Conversation message font size in pixels.">
+        {fontStepper(conversationFontSize, setConversationFontSize)}
+      </SettingSection>
+
       <SettingHeading>Terminal</SettingHeading>
 
       <SettingSection
@@ -201,47 +263,7 @@ export function AppearanceCategory() {
       </SettingSection>
 
       <SettingSection description="Font size in pixels.">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setTerminalFontSize(Math.max(8, terminalFontSize - 1))}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              border: `1px solid ${colors.inputBorder}`,
-              background: colors.surfacePrimary,
-              color: colors.textPrimary,
-              fontSize: 16,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            -
-          </button>
-          <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 24, textAlign: 'center' }}>
-            {terminalFontSize}
-          </span>
-          <button
-            onClick={() => setTerminalFontSize(Math.min(24, terminalFontSize + 1))}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              border: `1px solid ${colors.inputBorder}`,
-              background: colors.surfacePrimary,
-              color: colors.textPrimary,
-              fontSize: 16,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            +
-          </button>
-        </div>
+        {fontStepper(terminalFontSize, setTerminalFontSize)}
       </SettingSection>
     </>
   )

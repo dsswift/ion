@@ -58,8 +58,8 @@ extension SessionViewModel {
     /// `resetTabSession` only addressed the CLI plane; that gap is closed
     /// by the dedicated `reset_engine_session` wire command.
     func implementPlan(tabId: String, prompt: String, clearContext: Bool = false) {
-        let isEngine = tabs.first(where: { $0.id == tabId })?.isEngine == true
-        let instanceId = isEngine ? activeEngineInstance[tabId] ?? engineInstances[tabId]?.first?.id : nil
+        let hasEngineExtension = tabs.first(where: { $0.id == tabId })?.hasEngineExtension == true
+        let instanceId = hasEngineExtension ? activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id : nil
         // Optimistic local update for responsive UI
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].permissionMode = .auto
@@ -84,7 +84,7 @@ extension SessionViewModel {
                     // to `bridge.stopSession(`${tabId}:${instanceId}`)` on
                     // the desktop. CLI tabs continue to use `reset_tab_session`
                     // which addresses the CLI session plane.
-                    if isEngine, let instanceId {
+                    if hasEngineExtension, let instanceId {
                         ionLog.info("implementPlan: tabId=\(tabId.prefix(8), privacy: .public) instanceId=\(instanceId.prefix(8), privacy: .public) clearContext=true — sending resetEngineSession")
                         try await transport.send(.resetEngineSession(tabId: tabId, instanceId: instanceId))
                     } else {
@@ -107,7 +107,7 @@ extension SessionViewModel {
                 try await transport.send(.setPermissionMode(tabId: tabId, mode: .auto))
                 // Send the implementation prompt with implementationPhase
                 // flag so the engine suppresses EnterPlanMode injection.
-                if isEngine {
+                if hasEngineExtension {
                     try await transport.send(.enginePrompt(tabId: tabId, text: prompt, instanceId: instanceId, implementationPhase: true))
                 } else {
                     try await transport.send(.prompt(tabId: tabId, text: prompt, implementationPhase: true))

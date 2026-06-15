@@ -34,8 +34,8 @@ export async function handleLoadAttachments(
     // loadSkeletonMessages before scanning. Skeleton tabs have messages===null
     // after a desktop restart. Without this, source 3 (system planFilePath)
     // and source 4 (tool-call plan detection) both miss plans because they
-    // scan tab.messages, which is empty. Engine tabs are exempt (their
-    // messages are managed separately via enginePanes).
+    // scan an empty instance scrollback. Extension-hosted tabs are exempt
+    // (their per-instance messages are not lazily loaded this way).
     await state.mainWindow.webContents.executeJavaScript(`
       (function() {
         try {
@@ -43,9 +43,15 @@ export async function handleLoadAttachments(
           if (!store) return null;
           var s = store.getState();
           var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-          if (!tab || tab.isEngine || tab.messages !== null) return null;
-          // Skeleton tab: load messages now and return the Promise so
-          // Electron awaits hydration before the attachment scan runs.
+          if (!tab || tab.hasEngineExtension) return null;
+          // Skeleton detection on the unified container: the main instance has
+          // empty messages but a positive persisted messageCount.
+          var pane = s.conversationPanes ? s.conversationPanes.get('${escapedTabId}') : null;
+          var main = pane ? (pane.instances.find(function(i){ return i.id === 'main'; }) || pane.instances[0]) : null;
+          var isSkeleton = main && (main.messages || []).length === 0 && (main.messageCount || 0) > 0;
+          if (!isSkeleton) return null;
+          // Load messages now and return the Promise so Electron awaits
+          // hydration before the attachment scan runs.
           return s.loadSkeletonMessages('${escapedTabId}');
         } catch(e) { return null; }
       })()
@@ -59,17 +65,10 @@ export async function handleLoadAttachments(
           var s = store.getState();
           var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
           if (!tab) return [];
-          // Source messages from the right place per tab type:
-          //  - Conversation tabs: tab.messages
-          //  - Engine tabs: active instance messages in enginePanes
-          var msgs = tab.messages || [];
-          if (tab.isEngine) {
-            var pane = s.enginePanes ? s.enginePanes.get('${escapedTabId}') : null;
-            if (pane) {
-              var inst = pane.activeInstanceId ? pane.instances.find(function(i) { return i.id === pane.activeInstanceId; }) : null;
-              if (inst && inst.messages) msgs = inst.messages;
-            }
-          }
+          // Messages live on the active conversation instance for EVERY tab.
+          var pane = s.conversationPanes ? s.conversationPanes.get('${escapedTabId}') : null;
+          var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
+          var msgs = (inst && inst.messages) || [];
           var seen = {};
           var result = [];
           var re = /^\\[Attached (image|file|plan): ([^\\]]+)\\]$/;
@@ -121,12 +120,8 @@ export async function handleLoadAttachments(
               }
             }
           }
-          // Plan file: check tab-level first, then engine instance level
-          var planPath = tab.planFilePath || null;
-          if (!planPath && tab.isEngine && pane) {
-            var inst = pane.activeInstanceId ? pane.instances.find(function(i) { return i.id === pane.activeInstanceId; }) : null;
-            if (inst && inst.planFilePath) planPath = inst.planFilePath;
-          }
+          // Plan file: read from the active conversation instance.
+          var planPath = (inst && inst.planFilePath) || null;
           if (planPath && !seen[planPath]) {
             var pp = planPath.split('/');
             result.push({ type: 'plan', name: pp[pp.length - 1] || 'plan.md', path: planPath });

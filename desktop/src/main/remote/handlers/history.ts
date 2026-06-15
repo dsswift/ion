@@ -57,6 +57,35 @@ export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 
   }
 }
 
+export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'engine_rewind' }>): Promise<void> {
+  try {
+    const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedInstId = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    // userTurnIndex is the 0-based index of the target among role==='user'
+    // messages. iOS supplies it because its optimistic user-message id is a
+    // UUID the desktop store never minted (the desktop uses nextMsgId()), so
+    // an id lookup would miss. rewindEngineInstance falls back to the ordinal
+    // when the id is not found. JS-encode null when absent (desktop-initiated
+    // rewinds pass only the id and omit the index).
+    const userTurnIndexArg = typeof cmd.userTurnIndex === 'number' ? String(cmd.userTurnIndex) : 'null'
+    const inputText = await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return null;
+        store.getState().rewindEngineInstance('${escapedTabId}', '${escapedInstId}', '${escapedMsgId}', ${userTurnIndexArg});
+        var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+        return tab ? tab.pendingInput || null : null;
+      })()
+    `)
+    if (inputText) {
+      state.remoteTransport?.send({ type: 'input_prefill', tabId: cmd.tabId, text: inputText, instanceId: cmd.instanceId })
+    }
+  } catch (err) {
+    log(`engine_rewind error: ${(err as Error).message}`)
+  }
+}
+
 export function handleUnpair(deviceId: string): void {
   if (deviceId) {
     log(`Remote unpair command from device ${deviceId}`)

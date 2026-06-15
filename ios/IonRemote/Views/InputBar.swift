@@ -61,22 +61,34 @@ struct InputBar: View {
     private var slashCommands: [DiscoveredSlashCommand] {
         var cmds = viewModel.discoveredCommands[workingDirectory] ?? []
 
-        // Inject the /clear builtin (matches desktop's SLASH_COMMANDS constant).
-        // `origin` is nil for synthetic local entries — the filter only applies
-        // to disk-discovered commands the desktop server sent us.
-        let clearCmd = DiscoveredSlashCommand(
-            name: "clear", description: "Clear conversation history",
-            scope: "builtin", source: "builtin", origin: nil
-        )
-        if !cmds.contains(where: { $0.name == "clear" }) {
-            cmds.insert(clearCmd, at: 0)
+        // Inject the three engine built-ins (matches desktop's
+        // SLASH_COMMANDS constant). `origin` is nil for synthetic local
+        // entries — the filter only applies to disk-discovered commands
+        // the desktop server sent us. Insert in reverse so /clear ends
+        // up at index 0 (matching the existing visual order).
+        let builtins = [
+            DiscoveredSlashCommand(
+                name: "clear", description: "Clear conversation history",
+                scope: "builtin", source: "builtin", origin: nil
+            ),
+            DiscoveredSlashCommand(
+                name: "compact", description: "Summarize older turns and free context",
+                scope: "builtin", source: "builtin", origin: nil
+            ),
+            DiscoveredSlashCommand(
+                name: "export", description: "Export conversation as Markdown",
+                scope: "builtin", source: "builtin", origin: nil
+            ),
+        ]
+        for builtin in builtins.reversed() where !cmds.contains(where: { $0.name == builtin.name }) {
+            cmds.insert(builtin, at: 0)
         }
 
         // Merge extension-registered commands from engine_command_registry.
         let tab = viewModel.tab(for: tabId)
         let extKey: String? = {
             guard let t = tab else { return nil }
-            return (t.isEngine == true) ? viewModel.engineCompoundKey(tabId: t.id) : t.id
+            return (t.hasEngineExtension == true) ? viewModel.engineCompoundKey(tabId: t.id) : t.id
         }()
         if let key = extKey, let extCmds = viewModel.extensionCommands[key] {
             for ec in extCmds where !cmds.contains(where: { $0.name == ec.name }) {

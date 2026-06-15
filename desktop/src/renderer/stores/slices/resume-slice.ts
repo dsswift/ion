@@ -2,6 +2,8 @@ import type { TabState, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
+import { makeMainPane, commitInstance, activeInstance } from '../conversation-instance'
+import { lastPendingCardTool, type PendingCardMessage } from '../../../shared/pending-card'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {
@@ -9,24 +11,38 @@ function parseToolInput(raw?: string): Record<string, unknown> | undefined {
   try { return JSON.parse(raw) } catch { return undefined }
 }
 
+/**
+ * Build a restored `permissionDenied` entry from a message history using the
+ * shared pending-card rule (returns null when no card should be restored —
+ * e.g. a trailing /clear divider or user message dismissed it). Single seam so
+ * every fork/resume/rewind path in this slice applies the identical rule.
+ */
+function buildRestoredDenied(
+  messages: readonly PendingCardMessage[],
+): { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null {
+  const found = lastPendingCardTool(messages)
+  if (!found) return null
+  return { tools: [{ toolName: found.toolName, toolUseId: found.toolId || 'restored', toolInput: parseToolInput(found.toolInput) }] }
+}
+
+
 export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     forkTab: async (sourceTabId) => {
       const source = get().tabs.find((t) => t.id === sourceTabId)
       if (!source || !source.conversationId) return null
-      if (!source.messages) throw new Error('Cannot fork a skeleton tab without loaded messages')
+      // Source scrollback lives on the source tab's active instance now.
+      const sourceInst = activeInstance(get().conversationPanes, sourceTabId)
+      if (!sourceInst) throw new Error('Cannot fork a tab whose conversation instance is missing')
       try {
         const { tabId } = await window.ion.createTab()
 
-        const messages: Message[] = source.messages.map((m) => ({
+        const messages: Message[] = sourceInst.messages.map((m) => ({
           ...m,
           id: nextMsgId(),
         }))
 
-        const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
-        const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
-          : null
+        const restoredDenied = buildRestoredDenied(messages)
 
         const sourceDisplay = source.customTitle || source.title
         const baseMatch = sourceDisplay.match(/^(.+?)\s*\(\d+\)$/)
@@ -49,11 +65,18 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           permissionMode: source.permissionMode,
           pillColor: source.pillColor,
           pillIcon: source.pillIcon,
-          messages,
-          permissionDenied: restoredDenied,
         }
+        // Seed the forked tab's `main` pane with the carried-over scrollback +
+        // restored denial. modelOverride carries from the source instance.
+        console.log(`[store] forkTab: source=${sourceTabId.slice(0, 8)} new=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
         set((s) => ({
           tabs: [...s.tabs, tab],
+          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
+            messages,
+            messageCount: messages.length,
+            modelOverride: sourceInst.modelOverride,
+            permissionDenied: restoredDenied,
+          })),
           activeTabId: tab.id,
           isExpanded: true,
         }))
@@ -67,64 +90,71 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
     rewindToMessage: (tabId, messageId) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return
-      if (!tab.messages) throw new Error('Cannot rewind a skeleton tab without loaded messages')
-      const idx = tab.messages.findIndex((m) => m.id === messageId)
+      // Scrollback lives on the active conversation instance now.
+      const inst = activeInstance(get().conversationPanes, tabId)
+      if (!inst) throw new Error('Cannot rewind a tab whose conversation instance is missing')
+      const idx = inst.messages.findIndex((m) => m.id === messageId)
       if (idx < 0) return
 
-      const targetMessage = tab.messages[idx]
+      const targetMessage = inst.messages[idx]
       const oldSessionId = tab.conversationId
       const historicalSessionIds = oldSessionId
         ? [...tab.historicalSessionIds, oldSessionId]
         : [...tab.historicalSessionIds]
 
-      const rewoundMessages = tab.messages.slice(0, idx)
-      const lastToolMsg = [...rewoundMessages].reverse().find((m) => m.toolName)
-      const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-        ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
-        : null
+      console.log(`[store] rewindToMessage: tabId=${tabId.slice(0, 8)}:main msgIdx=${idx} totalMsgs=${inst.messages.length} keepMsgs=${idx} oldSessionId=${oldSessionId?.slice(0, 16) ?? 'none'} historicalChainLen=${historicalSessionIds.length}`)
+
+      const rewoundMessages = inst.messages.slice(0, idx)
+      const restoredDenied = buildRestoredDenied(rewoundMessages)
 
       window.ion.resetTabSession(tabId)
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
+      // Conversation state (messages, permissionQueue, permissionDenied,
+      // draftInput) resets on the active instance; tab-level run state and the
+      // one-shot pendingInput reset on the tab.
+      set((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, tabId, (i) => ({
+          ...i,
+          messages: rewoundMessages,
+          permissionQueue: [],
+          permissionDenied: restoredDenied,
+          draftInput: targetMessage.content,
+        }))
+        const tabs = s.tabs.map((t) =>
           t.id === tabId
             ? {
                 ...t,
-                messages: rewoundMessages,
                 conversationId: null,
                 historicalSessionIds,
                 forkedFromSessionId: oldSessionId,
                 lastResult: null,
                 currentActivity: '',
-                permissionQueue: [],
-                permissionDenied: restoredDenied,
                 queuedPrompts: [],
                 pendingInput: targetMessage.content,
-                draftInput: targetMessage.content,
               }
             : t
-        ),
-      }))
+        )
+        return { tabs, conversationPanes }
+      })
     },
 
     forkFromMessage: async (tabId, messageId) => {
       const source = get().tabs.find((t) => t.id === tabId)
       if (!source) return null
-      if (!source.messages) throw new Error('Cannot fork from a skeleton tab without loaded messages')
-      const idx = source.messages.findIndex((m) => m.id === messageId)
+      // Source scrollback lives on the source tab's active instance now.
+      const sourceInst = activeInstance(get().conversationPanes, tabId)
+      if (!sourceInst) throw new Error('Cannot fork from a tab whose conversation instance is missing')
+      const idx = sourceInst.messages.findIndex((m) => m.id === messageId)
       if (idx < 0) return null
 
       try {
         const { tabId: newTabId } = await window.ion.createTab()
-        const targetMessage = source.messages[idx]
-        const messages: Message[] = source.messages.slice(0, idx).map((m) => ({
+        const targetMessage = sourceInst.messages[idx]
+        const messages: Message[] = sourceInst.messages.slice(0, idx).map((m) => ({
           ...m,
           id: nextMsgId(),
         }))
 
-        const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
-        const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
-          : null
+        const restoredDenied = buildRestoredDenied(messages)
 
         const sourceDisplay = source.customTitle || source.title
         const baseMatch = sourceDisplay.match(/^(.+?)\s*\(\d+\)$/)
@@ -147,13 +177,20 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           permissionMode: source.permissionMode,
           pillColor: source.pillColor,
           pillIcon: source.pillIcon,
-          messages,
-          permissionDenied: restoredDenied,
+          // pendingInput stays on the tab (one-shot InputBar pre-fill); draftInput
+          // is seeded onto the instance below.
           pendingInput: targetMessage.content,
-          draftInput: targetMessage.content,
         }
+        console.log(`[store] forkFromMessage: source=${tabId.slice(0, 8)} new=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
         set((s) => ({
           tabs: [...s.tabs, tab],
+          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
+            messages,
+            messageCount: messages.length,
+            modelOverride: sourceInst.modelOverride,
+            permissionDenied: restoredDenied,
+            draftInput: targetMessage.content,
+          })),
           activeTabId: tab.id,
           isExpanded: true,
         }))
@@ -194,10 +231,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           timestamp: m.timestamp,
         }))
 
-        const lastToolMsg = [...messages].reverse().find((m) => m.toolName)
-        const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
-          : null
+        const restoredDenied = buildRestoredDenied(messages)
 
         const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
         const groupId = tabGroupMode === 'manual'
@@ -213,12 +247,17 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           customTitle: customTitle || null,
           workingDirectory: defaultDir,
           hasChosenDirectory: !!projectPath,
-          messages,
-          permissionDenied: restoredDenied,
           groupId,
         }
+        // Seed the resumed tab's `main` pane with the loaded scrollback + denial.
+        console.log(`[store] resumeSession: tab=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
         set((s) => ({
           tabs: [...s.tabs, tab],
+          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
+            messages,
+            messageCount: messages.length,
+            permissionDenied: restoredDenied,
+          })),
           activeTabId: tab.id,
           isExpanded: true,
         }))
@@ -237,8 +276,10 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         tab.workingDirectory = defaultDir
         tab.hasChosenDirectory = !!projectPath
         tab.groupId = groupId
+        // Seed an empty `main` pane even on the error path so the tab is usable.
         set((s) => ({
           tabs: [...s.tabs, tab],
+          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane()),
           activeTabId: tab.id,
           isExpanded: true,
         }))
@@ -248,7 +289,12 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
     loadSkeletonMessages: async (tabId) => {
       const tab = get().tabs.find((t) => t.id === tabId)
-      if (!tab || tab.messages !== null || !tab.conversationId) return
+      if (!tab || !tab.conversationId) return
+      // Skeleton state lives on the active instance now: a persisted
+      // messageCount > 0 with an empty messages array means not-yet-hydrated.
+      // Already-loaded (messages present) tabs short-circuit.
+      const inst = activeInstance(get().conversationPanes, tabId)
+      if (!inst || inst.messages.length > 0) return
 
       try {
         // Load all historical + current session messages in a single
@@ -275,38 +321,32 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
             timestamp: m.timestamp,
           }))
 
-        // Restore permissionDenied from the last tool message (only if tab
-        // doesn't already have one from the persisted state)
-        const currentTab = get().tabs.find((t) => t.id === tabId)
-        let restoredDenied = currentTab?.permissionDenied ?? null
+        // Restore permissionDenied from the last tool message (only if the
+        // instance doesn't already have one from the persisted state)
+        const currentInst = activeInstance(get().conversationPanes, tabId)
+        let restoredDenied = currentInst?.permissionDenied ?? null
         if (!restoredDenied) {
-          const lastToolMsg = [...allMessages].reverse().find((m) => m.toolName)
-          if (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion') {
-            restoredDenied = { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
-          }
+          restoredDenied = buildRestoredDenied(allMessages)
         }
 
+        console.log(`[loadSkeletonMessages] hydrated tab=${tabId.slice(0, 8)}:main msgs=${allMessages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
         set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === tabId
-              ? {
-                  ...t,
-                  messages: allMessages,
-                  messageCount: allMessages.length,
-                  ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
-                }
-              : t
-          ),
+          conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
+            ...i,
+            messages: allMessages,
+            messageCount: allMessages.length,
+            ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
+          })),
         }))
       } catch (err) {
-        console.warn(`[loadSkeletonMessages] failed for tab ${tabId.slice(0, 8)}:`, err)
+        console.warn(`[loadSkeletonMessages] failed for tab ${tabId.slice(0, 8)}:main:`, err)
         // Hydrate with empty messages so the tab is usable
         set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === tabId && t.messages === null
-              ? { ...t, messages: [], messageCount: 0 }
-              : t
-          ),
+          conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
+            ...i,
+            messages: [],
+            messageCount: 0,
+          })),
         }))
       }
     },
@@ -351,10 +391,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           })
         }
 
-        const lastToolMsg = [...allMessages].reverse().find((m) => m.toolName)
-        const restoredDenied = (lastToolMsg?.toolName === 'ExitPlanMode' || lastToolMsg?.toolName === 'AskUserQuestion')
-          ? { tools: [{ toolName: lastToolMsg.toolName, toolUseId: 'restored', toolInput: parseToolInput(lastToolMsg.toolInput) }] }
-          : null
+        const restoredDenied = buildRestoredDenied(allMessages)
 
         const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
         const groupId = tabGroupMode === 'manual'
@@ -371,12 +408,17 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           customTitle: customTitle || null,
           workingDirectory: defaultDir,
           hasChosenDirectory: !!projectPath,
-          messages: allMessages,
-          permissionDenied: restoredDenied,
           groupId,
         }
+        // Seed the resumed tab's `main` pane with the loaded chain scrollback.
+        console.log(`[store] resumeSessionWithChain: tab=${tab.id.slice(0, 8)}:main msgs=${allMessages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
         set((s) => ({
           tabs: [...s.tabs, tab],
+          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
+            messages: allMessages,
+            messageCount: allMessages.length,
+            permissionDenied: restoredDenied,
+          })),
           activeTabId: tab.id,
           isExpanded: true,
         }))
@@ -396,8 +438,10 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         tab.workingDirectory = defaultDir
         tab.hasChosenDirectory = !!projectPath
         tab.groupId = groupId
+        // Seed an empty `main` pane even on the error path so the tab is usable.
         set((s) => ({
           tabs: [...s.tabs, tab],
+          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane()),
           activeTabId: tab.id,
           isExpanded: true,
         }))

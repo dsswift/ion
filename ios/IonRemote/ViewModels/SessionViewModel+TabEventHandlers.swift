@@ -12,7 +12,7 @@ extension SessionViewModel {
         tabIds.remove(tabId)
         liveText.removeValue(forKey: tabId)
         // Clean up all engine state for this tab
-        engineInstances.removeValue(forKey: tabId)
+        conversationInstances.removeValue(forKey: tabId)
         activeEngineInstance.removeValue(forKey: tabId)
         for key in engineWorkingMessages.keys where key == tabId || key.hasPrefix("\(tabId):") {
             engineWorkingMessages.removeValue(forKey: key)

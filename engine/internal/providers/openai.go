@@ -168,6 +168,20 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 			continue
 		}
 
+		// In-stream error object. OpenAI-compatible providers (OpenRouter,
+		// etc.) signal an upstream/transient failure mid-stream as a valid
+		// JSON chunk carrying a top-level {"error": {...}} — often with empty
+		// choices. The SSE parse succeeds, so without this branch the failure
+		// would be silently dropped by the empty-choices continue below and
+		// the turn would complete as a successful empty response. Convert it
+		// to a *ProviderError and return so WithRetry / the run loop surface
+		// it as a real error (see Defect 2 in the #229 fix plan).
+		if chunk.Error != nil {
+			pe := p.providerErrorFromStream(chunk.Error)
+			utils.Error("OpenAI", fmt.Sprintf("doStream: in-stream error chunk: id=%s model=%s code=%s retryable=%v msg=%s", p.id, opts.Model, pe.Code, pe.Retryable, pe.Message))
+			return pe
+		}
+
 		if len(chunk.Choices) == 0 {
 			continue
 		}
@@ -259,11 +273,28 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 
 		// Finish reason
 		if choice.FinishReason != "" {
+			// Defect 2: a finish_reason of "error" is an upstream/transient
+			// failure carried in-band (often alongside a chunk-level error
+			// object). Convert it to a *ProviderError and return so the
+			// existing retry + error-surfacing path handles it, instead of
+			// translating it to a literal "error" stop reason that the run
+			// loop would treat as a successful empty turn.
+			if choice.FinishReason == "error" {
+				pe := p.providerErrorFromStream(chunk.Error)
+				utils.Error("OpenAI", fmt.Sprintf("doStream: finish_reason=error: id=%s model=%s code=%s retryable=%v msg=%s", p.id, opts.Model, pe.Code, pe.Retryable, pe.Message))
+				return pe
+			}
 			// Close any open block
 			if inTextBlock || currentToolID != "" {
 				if err := sendEvent(ctx, events, types.LlmStreamEvent{Type: "content_block_stop", BlockIndex: contentIndex}); err != nil {
 					return err
 				}
+				// Defect 1 (layer 2): reset block state after emitting the
+				// stop so a trailing chunk that also carries a finish_reason
+				// cannot emit a second content_block_stop for the same block
+				// (which downstream would clobber the parsed tool input).
+				inTextBlock = false
+				currentToolID = ""
 			}
 			stopReason := translateFinishReason(choice.FinishReason)
 			if err := sendEvent(ctx, events, types.LlmStreamEvent{
@@ -325,6 +356,20 @@ func (p *openaiProvider) buildRequestBody(opts types.LlmStreamOptions) map[strin
 
 	if opts.Thinking != nil && opts.Thinking.Enabled {
 		body["reasoning_effort"] = "high"
+	}
+
+	// Temperature: forward when the caller set it (pointer non-nil). A
+	// deliberate 0.0 is meaningful (deterministic), so we forward it too.
+	if opts.Temperature != nil {
+		body["temperature"] = *opts.Temperature
+	}
+
+	// Provider-enforced JSON mode for OpenAI-compatible providers. Maps the
+	// generic ResponseFormat="json_object" to the OpenAI response_format
+	// object so the provider guarantees valid JSON output rather than the
+	// engine relying on best-effort fence-stripping.
+	if opts.ResponseFormat == "json_object" {
+		body["response_format"] = map[string]any{"type": "json_object"}
 	}
 
 	return body
@@ -468,12 +513,101 @@ func sendEvent(ctx context.Context, ch chan<- types.LlmStreamEvent, ev types.Llm
 	}
 }
 
+// providerErrorFromStream converts an in-stream error object into a
+// *ProviderError. Retryability is derived from the provider error's own
+// code/type/message — NOT from HTTP status — because in-stream errors arrive
+// over an HTTP 200 response (the failure is in the SSE body), so the
+// status-based classifier in FromOpenAIError never fires for them. Known
+// terminal codes (invalid model, content filter, auth, invalid request) map
+// to non-retryable; genuinely unknown in-stream errors default to retryable
+// so transient upstream blips get the existing WithRetry budget.
+//
+// A nil error object (a bare finish_reason="error" with no payload) yields a
+// retryable unknown error so the failure is still surfaced rather than
+// swallowed.
+func (p *openaiProvider) providerErrorFromStream(se *openaiStreamError) *ProviderError {
+	if se == nil {
+		return &ProviderError{Code: ErrUnknown, Message: "provider signalled an in-stream error with no detail", Retryable: true}
+	}
+
+	code := strings.ToLower(se.normalizedCode())
+	typ := strings.ToLower(se.Type)
+	msg := se.Message
+	if msg == "" {
+		msg = "provider in-stream error"
+	}
+	haystack := code + " " + typ + " " + strings.ToLower(msg)
+
+	switch {
+	case strings.Contains(haystack, "content_filter"),
+		strings.Contains(haystack, "content policy"),
+		strings.Contains(haystack, "content_policy"):
+		return &ProviderError{Code: ErrContentFilter, Message: msg, Retryable: false}
+	case strings.Contains(haystack, "model_not_found"),
+		strings.Contains(haystack, "invalid_model"),
+		strings.Contains(haystack, "does not exist"),
+		strings.Contains(haystack, "unknown model"):
+		return &ProviderError{Code: ErrInvalidModel, Message: msg, Retryable: false}
+	case strings.Contains(haystack, "authentication"),
+		strings.Contains(haystack, "unauthorized"),
+		strings.Contains(haystack, "invalid_api_key"),
+		strings.Contains(haystack, "invalid api key"),
+		typ == "auth", code == "auth":
+		return &ProviderError{Code: ErrAuth, Message: msg, Retryable: false}
+	case strings.Contains(haystack, "too long"),
+		strings.Contains(haystack, "maximum context"),
+		strings.Contains(haystack, "context length"):
+		return &ProviderError{Code: ErrPromptTooLong, Message: msg, Retryable: false}
+	case strings.Contains(haystack, "invalid_request"),
+		strings.Contains(haystack, "invalid request"):
+		return &ProviderError{Code: ErrInvalidReq, Message: msg, Retryable: false}
+	case strings.Contains(haystack, "rate_limit"),
+		strings.Contains(haystack, "rate limit"):
+		return &ProviderError{Code: ErrRateLimit, Message: msg, Retryable: true}
+	case strings.Contains(haystack, "overloaded"):
+		return &ProviderError{Code: ErrOverloaded, Message: msg, Retryable: true}
+	default:
+		// Unknown in-stream error: default to retryable so transient upstream
+		// failures get the existing retry budget. Exhausted retries still
+		// surface as a non-zero exit via the run loop's streamErr path.
+		return &ProviderError{Code: ErrUnknown, Message: msg, Retryable: true}
+	}
+}
+
 // --- OpenAI SSE JSON structures ---
 
 type openaiChunk struct {
-	ID      string         `json:"id"`
-	Choices []openaiChoice `json:"choices"`
-	Usage   *openaiUsage   `json:"usage,omitempty"`
+	ID      string             `json:"id"`
+	Choices []openaiChoice     `json:"choices"`
+	Usage   *openaiUsage       `json:"usage,omitempty"`
+	Error   *openaiStreamError `json:"error,omitempty"`
+}
+
+// openaiStreamError is the in-stream error object some OpenAI-compatible
+// providers emit mid-stream (e.g. OpenRouter). Code is decoded as
+// json.RawMessage because providers are inconsistent about its type: some
+// send a string ("model_not_found"), others a number. A bare string field
+// would fail to unmarshal a numeric code and abort the entire chunk decode,
+// which the doStream loop's continue would then silently swallow.
+type openaiStreamError struct {
+	Message string          `json:"message"`
+	Type    string          `json:"type"`
+	Code    json.RawMessage `json:"code"`
+}
+
+// normalizedCode renders the raw error code as a string regardless of whether
+// the provider sent a JSON string or a JSON number. Returns "" when absent.
+func (e *openaiStreamError) normalizedCode() string {
+	if e == nil || len(e.Code) == 0 {
+		return ""
+	}
+	// Try string first (the common case), then fall back to the raw bytes
+	// (covers numeric codes like 503 and any other JSON scalar).
+	var s string
+	if err := json.Unmarshal(e.Code, &s); err == nil {
+		return s
+	}
+	return strings.Trim(string(e.Code), "\"")
 }
 
 type openaiChoice struct {

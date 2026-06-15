@@ -220,7 +220,7 @@ struct TabListView: View {
                 }
                 .navigationDestination(for: String.self) { tabId in
                     let tab = viewModel.tab(for: tabId)
-                    let _ = DiagnosticLog.log("NAV: iPhone push tabId=\(tabId.prefix(8)) isEngine=\(tab?.isEngine ?? false) isTerminal=\(tab?.isTerminalOnly ?? false)")
+                    let _ = DiagnosticLog.log("NAV: iPhone push tabId=\(tabId.prefix(8)) isEngine=\(tab?.hasEngineExtension ?? false) isTerminal=\(tab?.isTerminalOnly ?? false)")
                     destinationView(for: tabId)
                         .onAppear {
                             DiagnosticLog.log("NAV: iPhone onAppear tabId=\(tabId.prefix(8))")
@@ -455,7 +455,7 @@ struct TabListView: View {
 
     @ViewBuilder
     private func destinationView(for tabId: String) -> some View {
-        if viewModel.tab(for: tabId)?.isEngine == true {
+        if viewModel.tab(for: tabId)?.hasEngineExtension == true {
             EngineView(tabId: tabId)
         } else if viewModel.tab(for: tabId)?.isTerminalOnly == true {
             RemoteTerminalView(tabId: tabId)

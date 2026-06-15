@@ -5,6 +5,7 @@ import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedE
 import { broadcast } from './broadcast'
 import { currentBackend } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
+import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
 import { handleInterceptEvent } from './event-wiring-intercept'
 import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
@@ -56,6 +57,12 @@ export function wireEngineBridgeEvents(): void {
     for (const [deltaKey, text] of pendingTextDeltas) {
       broadcast(IPC.ENGINE_EVENT, deltaKey, { type: 'engine_text_delta', text })
       if (state.remoteTransport) {
+        // Wire-key (Key A) parsing for iOS forwarding — NOT renderer pane
+        // addressing. The `|| null` is load-bearing: a plain conversation's
+        // wire key is bare (→ instanceId null), an extension-hosted instance's
+        // is compound (→ its instanceId). iOS depends on this null vs id
+        // distinction, so do NOT convert this to parseSessionKey (which would
+        // map bare → 'main' and change the forwarded wire shape).
         const dtabId = deltaKey.split(':')[0]
         const dinstanceId = deltaKey.split(':')[1] || null
         state.remoteTransport.send({ type: 'engine_text_delta', tabId: dtabId, instanceId: dinstanceId, text })
@@ -142,7 +149,7 @@ export function wireEngineBridgeEvents(): void {
     // targeted iOS forwarding + optional abort/re-prompt. Skip the generic
     // broadcast and generic iOS send below — the handler does both.
     if (event.type === 'engine_intercept') {
-      const tabId = key.split(':')[0]
+      const tabId = tabIdFromKey(key)
       handleInterceptEvent(tabId, event).catch((err: unknown) => {
         log(`engine_intercept: handler error key=${key}: ${(err as Error).message}`)
       })
@@ -208,6 +215,11 @@ export function wireEngineBridgeEvents(): void {
     }
 
     if (state.remoteTransport) {
+      // Wire-key (Key A) parsing for iOS forwarding — NOT renderer pane
+      // addressing. `|| null` is load-bearing: bare wire key (plain
+      // conversation) → null; compound (extension-hosted instance) → its
+      // instanceId. iOS depends on this distinction; do NOT convert to
+      // parseSessionKey (it would map bare → 'main').
       const tabId = key.split(':')[0]
       const instanceId = key.split(':')[1] || null
       // Every engine event the desktop sees gets forwarded to iOS, with

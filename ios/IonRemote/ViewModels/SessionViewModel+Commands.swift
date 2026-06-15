@@ -70,6 +70,38 @@ extension SessionViewModel {
         send(.forkFromMessage(tabId: tabId, messageId: messageId))
     }
 
+    /// Rewind an engine-tab instance's conversation to the given message.
+    /// Sends the `engine_rewind` remote command; the desktop stops the
+    /// engine session, starts a fresh one, truncates the instance's
+    /// messages, and replies with an `input_prefill` carrying the rewound
+    /// user message (handled by the existing input_prefill path). Mirrors
+    /// rewindConversation for CLI tabs but is per-instance.
+    ///
+    /// Sends a `userTurnIndex` alongside the message id: the 0-based ordinal
+    /// of the target among role==.user messages in this instance. The desktop
+    /// resolves the rewind point by id first, then falls back to the ordinal —
+    /// which it always needs for iOS, because the target was rendered from an
+    /// optimistic UUID the desktop never minted (see the desktop store's
+    /// rewindEngineInstance). Computed over the instance's own message list so
+    /// it is invariant to tool/assistant interleaving.
+    @MainActor
+    func engineRewindInstance(tabId: String, instanceId: String, messageId: String) {
+        let messages = engineInstance(tabId: tabId, instanceId: instanceId)?.messages ?? []
+        var userTurnIndex: Int? = nil
+        var userCount = -1
+        for message in messages {
+            if message.role == .user {
+                userCount += 1
+                if message.id == messageId {
+                    userTurnIndex = userCount
+                    break
+                }
+            }
+        }
+        DiagnosticLog.log("CMD: engineRewindInstance tabId=\(tabId.prefix(8)) instanceId=\(instanceId.prefix(8)) messageId=\(messageId.prefix(16)) userTurnIndex=\(userTurnIndex.map(String.init) ?? "nil")")
+        send(.engineRewind(tabId: tabId, instanceId: instanceId, messageId: messageId, userTurnIndex: userTurnIndex))
+    }
+
     func respondPermission(tabId: String, questionId: String, optionId: String) {
         send(.respondPermission(tabId: tabId, questionId: questionId, optionId: optionId))
     }
@@ -230,14 +262,14 @@ extension SessionViewModel {
 
     func moveEngineInstance(sourceTabId: String, instanceId: String, targetTabId: String) {
         ionLog.info("moveEngineInstance: \(sourceTabId):\(instanceId) -> \(targetTabId)")
-        // Optimistic local update: move instance between engineInstances dictionaries
-        if var srcInstances = engineInstances[sourceTabId],
+        // Optimistic local update: move instance between conversationInstances dictionaries
+        if var srcInstances = conversationInstances[sourceTabId],
            let idx = srcInstances.firstIndex(where: { $0.id == instanceId }) {
             let inst = srcInstances.remove(at: idx)
-            engineInstances[sourceTabId] = srcInstances.isEmpty ? nil : srcInstances
-            var tgtInstances = engineInstances[targetTabId] ?? []
+            conversationInstances[sourceTabId] = srcInstances.isEmpty ? nil : srcInstances
+            var tgtInstances = conversationInstances[targetTabId] ?? []
             tgtInstances.append(inst)
-            engineInstances[targetTabId] = tgtInstances
+            conversationInstances[targetTabId] = tgtInstances
             // Update active instance on target
             activeEngineInstance[targetTabId] = instanceId
             // Update active instance on source (last remaining or nil)
@@ -259,10 +291,10 @@ extension SessionViewModel {
 
     func renameEngineInstance(tabId: String, instanceId: String, label: String) {
         // Update local state immediately
-        if var instances = engineInstances[tabId] {
+        if var instances = conversationInstances[tabId] {
             if let idx = instances.firstIndex(where: { $0.id == instanceId }) {
                 instances[idx].label = label
-                engineInstances[tabId] = instances
+                conversationInstances[tabId] = instances
             }
         }
         send(.engineRenameInstance(tabId: tabId, instanceId: instanceId, label: label))
@@ -270,7 +302,7 @@ extension SessionViewModel {
 
     func loadEngineConversation(tabId: String) {
         let instanceId = activeEngineInstance[tabId]
-        let instList = engineInstances[tabId]?.map(\.id) ?? []
+        let instList = conversationInstances[tabId]?.map(\.id) ?? []
         DiagnosticLog.log("LOAD-CONV: loadEngineConversation tabId=\(tabId.prefix(8)) instanceId=\(instanceId?.prefix(8) ?? "nil") allInstances=\(instList.map { $0.prefix(8) })")
         send(.loadEngineConversation(tabId: tabId, instanceId: instanceId))
     }

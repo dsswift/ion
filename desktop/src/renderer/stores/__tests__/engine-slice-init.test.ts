@@ -3,7 +3,7 @@
  *
  * Pins the contract that calling addEngineInstance for a new tab/instance
  * seeds a single "── Session started at <time> ──" system divider into
- * the instance's `messages` field in `enginePanes`. This is the only
+ * the instance's `messages` field in `conversationPanes`. This is the only
  * insertion site for the session-start divider; tab restoration (where
  * instances already exist) intentionally bypasses addEngineInstance so
  * persisted dividers are preserved without duplication.
@@ -54,7 +54,7 @@ function makeTab(id: string) {
   return {
     id,
     title: 'Engine',
-    isEngine: true,
+    hasEngineExtension: true,
     engineProfileId: null,
     workingDirectory: '/tmp',
     hasChosenDirectory: true,
@@ -69,7 +69,7 @@ function makeTab(id: string) {
 function buildHarness() {
   const state: any = {
     tabs: [makeTab('tab1'), makeTab('tab2')],
-    enginePanes: new Map(),
+    conversationPanes: new Map(),
     engineWorkingMessages: new Map(),
     engineNotifications: new Map(),
     engineDialogs: new Map(),
@@ -87,9 +87,9 @@ function buildHarness() {
   return { state, slice }
 }
 
-/** Get an instance from enginePanes by tabId + instanceId. */
+/** Get an instance from conversationPanes by tabId + instanceId. */
 function getInstance(state: any, tabId: string, instanceId: string) {
-  const pane = state.enginePanes.get(tabId)
+  const pane = state.conversationPanes.get(tabId)
   return pane?.instances.find((i: any) => i.id === instanceId)
 }
 
@@ -128,7 +128,7 @@ describe('engine-slice — resetEngineInstance', () => {
     const instanceId = slice.addEngineInstance!('tab1')
 
     // Append activity that resetEngineInstance must clear via pane mutation.
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     const idx = pane.instances.findIndex((i: any) => i.id === instanceId)
     pane.instances[idx] = {
       ...pane.instances[idx],
@@ -161,23 +161,23 @@ describe('engine-slice — resetEngineInstance', () => {
     expect(state.engineUsage.has(`tab1:${instanceId}`)).toBe(false)
 
     // The instance pane entry itself is preserved.
-    expect(state.enginePanes.get('tab1')?.instances.some((i: any) => i.id === instanceId)).toBe(true)
+    expect(state.conversationPanes.get('tab1')?.instances.some((i: any) => i.id === instanceId)).toBe(true)
   })
 
   it('is a no-op for an unknown tab', () => {
     const { state, slice } = buildHarness()
     expect(() => slice.resetEngineInstance!('nonexistent-tab', 'whatever')).not.toThrow()
-    expect(state.enginePanes.size).toBe(0)
+    expect(state.conversationPanes.size).toBe(0)
   })
 
   it('is a no-op for an unknown instance under a known tab', () => {
     const { state, slice } = buildHarness()
     slice.addEngineInstance!('tab1')
-    const panesBeforeSize = state.enginePanes.get('tab1')?.instances.length ?? 0
+    const panesBeforeSize = state.conversationPanes.get('tab1')?.instances.length ?? 0
 
     slice.resetEngineInstance!('tab1', 'inst-does-not-exist')
 
     // No new instances created, no existing ones wiped.
-    expect(state.enginePanes.get('tab1')?.instances.length ?? 0).toBe(panesBeforeSize)
+    expect(state.conversationPanes.get('tab1')?.instances.length ?? 0).toBe(panesBeforeSize)
   })
 })

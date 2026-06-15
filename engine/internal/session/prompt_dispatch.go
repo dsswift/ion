@@ -284,6 +284,14 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		},
 	})
 
+	// Thread the session's cancellation root onto the run so a
+	// session-level abort (SendAbort / StopSession cancels the root)
+	// cascades to this run's context. The backend derives
+	// context.WithCancel(opts.ParentCtx); nil would fall back to
+	// Background, so we set it unconditionally for the main session run.
+	// See session_root_context.go and backend ParentCtx handling.
+	opts.ParentCtx = s.rootContext()
+
 	// Dispatch to backend. ApiBackend uses the per-run config built above so
 	// every closure on this run sees this session's hooks/tools/perms.
 	// CliBackend ignores runCfg and follows its own subprocess wiring.

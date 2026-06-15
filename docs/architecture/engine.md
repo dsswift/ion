@@ -16,9 +16,9 @@ The Ion Engine is a single Go binary. It runs as a daemon, listens on a Unix soc
 | `internal/server` | Unix socket server, multi-client broadcast |
 | `internal/session` | SessionManager: lifecycle, event routing, extension wiring |
 | `internal/backend` | RunBackend interface, ApiBackend (agent loop), ToolServer |
-| `internal/providers` | LlmProvider interface, 14+ implementations, retry, SSE parsing |
-| `internal/tools` | Registry, 14 core tools, parallel execution via errgroup |
-| `internal/extension` | SDK (55 hooks), Host (subprocess JSON-RPC 2.0) |
+| `internal/providers` | LlmProvider interface, multiple provider implementations, retry, SSE parsing |
+| `internal/tools` | Registry, core tools, parallel execution via errgroup |
+| `internal/extension` | SDK (hook registry), Host (subprocess JSON-RPC 2.0) |
 | `internal/conversation` | Tree sessions, JSONL persistence, migration |
 | `internal/config` | 4-layer config merge, enterprise MDM, sealed fields |
 | `internal/protocol` | NDJSON wire format: ClientCommand, ServerMessage |
@@ -110,14 +110,14 @@ The engine listens on `~/.ion/engine.sock` (Unix) or `127.0.0.1:21017` (Windows/
 **Wire format**: newline-delimited JSON (NDJSON). One JSON object per line, terminated by `\n`.
 
 **Direction**:
-- Client to server: `ClientCommand` (16 command types)
+- Client to server: `ClientCommand` (the wire command set)
 - Server to client: `ServerMessage` (broadcast to all connected clients)
 
 The protocol is stateless from the server's perspective. Any client can send any command at any time. The server broadcasts all events to all connected clients. Client-side filtering is expected.
 
 ## Providers
 
-14+ LLM providers, all implemented as raw HTTP with SSE parsing. No SDK dependencies.
+Multiple LLM providers, all implemented as raw HTTP with SSE parsing. No SDK dependencies.
 
 **Native implementations** (provider-specific SSE format):
 - Anthropic
@@ -140,7 +140,7 @@ type LlmProvider interface {
 
 ## Tools
 
-14 core tools, always registered:
+Core tools, always registered:
 
 | Tool | Description |
 |------|-------------|
@@ -158,8 +158,9 @@ type LlmProvider interface {
 | Skill | Load and execute skills |
 | ListMcpResources | List MCP server resources |
 | ReadMcpResource | Read MCP server resource |
+| SearchHistory | Search prior conversation history |
 
-4 optional tools (harness opt-in): TaskCreate, TaskList, TaskGet, TaskStop.
+Optional tools (harness opt-in): TaskCreate, TaskList, TaskGet, TaskStop.
 
 Tools execute in parallel using `errgroup.Group`. Each tool call runs in its own goroutine with the parent context for cancellation.
 
@@ -167,21 +168,23 @@ Tools execute in parallel using `errgroup.Group`. Each tool call runs in its own
 
 Extensions are external processes that communicate with the engine via JSON-RPC 2.0 over stdio. The extension host manages subprocess lifecycle, message routing, and hook dispatch.
 
-55 hooks across 13 categories:
+Hooks across the agent lifecycle:
 
-| Category | Count | Examples |
-|----------|-------|---------|
-| Lifecycle | 13 | OnInit, OnShutdown, OnConnect |
-| Session | 5 | OnSessionStart, OnSessionEnd |
-| Pre-action | 2 | PrePrompt, PreToolUse |
-| Content | 7 | OnTextChunk, OnToolResult |
-| Per-tool | 14 | PreBash, PostBash, PreWrite, PostWrite |
-| Context | 3 | OnContextInject, OnContextRequest |
-| Permission | 2 | OnPermissionRequest, OnPermissionDecision |
-| File | 1 | OnFileChange |
-| Task | 2 | OnTaskCreate, OnTaskComplete |
-| Elicitation | 2 | OnElicitStart, OnElicitEnd |
-| Capability | 3 | OnCapabilityRegister, OnCapabilityQuery |
+| Category | Examples |
+|----------|---------|
+| Lifecycle | OnInit, OnShutdown, OnConnect |
+| Session | OnSessionStart, OnSessionEnd |
+| Pre-action | PrePrompt, PreToolUse |
+| Content | OnTextChunk, OnToolResult |
+| Per-tool | PreBash, PostBash, PreWrite, PostWrite |
+| Context | OnContextInject, OnContextRequest |
+| Permission | OnPermissionRequest, OnPermissionDecision |
+| File | OnFileChange |
+| Task | OnTaskCreate, OnTaskComplete |
+| Elicitation | OnElicitStart, OnElicitEnd |
+| Capability | OnCapabilityRegister, OnCapabilityQuery |
+
+The [hook reference](../hooks/reference.md) is the complete, authoritative catalog.
 
 Extensions can be written in any language. The SDK provides TypeScript bindings (`ion-sdk.ts`) for the most common case.
 

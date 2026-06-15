@@ -1,9 +1,11 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/export"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -113,62 +115,35 @@ func (m *Manager) emitCommandResult(key, command string, err error) {
 	})
 }
 
-// dispatchClear handles the built-in /clear command. Wipes the
-// LLM-visible conversation history, resets the context-percent counter,
-// re-fires session_start so the harness can re-prime, and emits a
-// command_result. Same path used to live inline in SendCommand; the
-// extraction is mechanical.
+// dispatchClear handles the built-in /clear command on a live session. It
+// routes the wipe + denial-clear through the shared clearConversationCore so
+// the file-only path (ClearConversationFile) and this path carry identical
+// semantics, then re-fires session_start (a /clear is a checkpoint that
+// re-primes the harness) and emits the shared clear signal. See clear_core.go
+// for the rationale behind the single shared core.
 func (m *Manager) dispatchClear(s *engineSession, key string) {
-	if s.conversationID == "" {
-		utils.Debug("Session", fmt.Sprintf("clear: no conversationID set on session %s, nothing to wipe", key))
-		// Still emit success on a never-talked-to session so consumers
-		// see the same "clear executed" signal regardless of whether
-		// there was any conversation to wipe. The conversation was
-		// already "empty" so /clear semantically succeeded.
-		m.emitCommandResult(key, "clear", nil)
-		return
-	}
-	conv, err := conversation.Load(s.conversationID, "")
+	// Run the shared core with this session's key as the known owner. The
+	// core clears retained AskUserQuestion / ExitPlanMode denials on the
+	// session (so heartbeat / ReconcileState / QuerySessionStatus stop
+	// re-publishing a stale card) and wipes the on-disk Messages, preserving
+	// the .tree.jsonl tree. It does not emit — we emit below so the
+	// session_start re-fire is sequenced correctly relative to the signal.
+	res, err := m.clearConversationCore(s.conversationID, key)
 	if err != nil {
-		if errors.Is(err, conversation.ErrNotFound) {
-			// Pre-minted ID with no prompt sent yet — conversation file
-			// doesn't exist. Treat as already-empty (same as the "" path).
-			utils.Debug("Session", fmt.Sprintf("clear: conversation %s not found, treating as empty", s.conversationID))
-			m.emitCommandResult(key, "clear", nil)
-			return
-		}
-		utils.Log("Session", fmt.Sprintf("clear: failed to load conversation %s: %v", s.conversationID, err))
+		utils.Log("Session", fmt.Sprintf("clear: key=%s core failed convID=%s: %v", key, s.conversationID, err))
 		m.emitCommandResult(key, "clear", err)
 		return
 	}
-	conv.Messages = nil
-	conv.LastInputTokens = 0
-	conv.LastInputTokensMsgCount = 0
-	_ = conversation.Save(conv, "")
-	s.lastContextPct = 0
-	utils.Log("Session", fmt.Sprintf("cleared conversation id=%s for session %s — .tree.jsonl preserved", s.conversationID, key))
-	// Emit the engine_status snapshot first so consumers can mirror the
-	// reset context-percent before they see the command_result event. The
-	// order matters: consumers that mirror context-percent from every
-	// engine_status event would briefly observe a stale percent if the
-	// command_result arrived first.
-	m.emit(key, types.EngineEvent{
-		Type: "engine_status",
-		Fields: &types.StatusFields{
-			State:          m.sessionState(s),
-			ContextPercent: 0,
-			ContextWindow:  s.lastContextWindow,
-			Model:          s.lastModel,
-			TotalCostUsd:   s.lastTotalCost,
-		},
-	})
+	utils.Log("Session", fmt.Sprintf("clear: key=%s core done convID=%s wiped=%t deniedCleared=%d", key, s.conversationID, res.wiped, res.deniedCleared))
+
 	// Re-fire session_start so the harness can re-prime the now-empty
-	// conversation. `/clear` is a checkpoint, not a session restart —
-	// the session, extension subprocesses, and MCP connections stay
-	// alive. Only the LLM-visible history was wiped above; firing
-	// session_start gives the harness a chance to inject whatever
-	// bootstrap context it would normally inject for a fresh session.
-	// Same pattern as start_session.go's bootstrap path.
+	// conversation. `/clear` is a checkpoint, not a session restart — the
+	// session, extension subprocesses, and MCP connections stay alive. Only
+	// the LLM-visible history was wiped above; firing session_start gives the
+	// harness a chance to inject whatever bootstrap context it would normally
+	// inject for a fresh session. Same pattern as start_session.go's bootstrap
+	// path. Fired before the clear signal so any harness-injected state is in
+	// place when consumers observe the reset.
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		utils.Log("Session", fmt.Sprintf("firing session_start on clear for session %s", key))
 		ctx := m.newExtContext(s, key)
@@ -177,16 +152,56 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 	} else {
 		utils.Debug("Session", fmt.Sprintf("clear: no extensions loaded for %s, skipping session_start re-fire", key))
 	}
-	// Emit an engine-driven result so consumers see a single
-	// authoritative "clear executed" event rather than inferring it
-	// locally. The Command field carries the name verbatim so a
-	// subscriber can switch on it without re-parsing EventMessage.
-	m.emitCommandResult(key, "clear", nil)
+
+	// Emit the single shared clear signal: engine_status (empty denials,
+	// reset context-percent) followed by engine_command_result{clear}. This
+	// is the same signal ClearConversationFile emits when it finds a live
+	// session, so desktop and iOS dismiss the card identically regardless of
+	// which clear entry point ran.
+	m.emitClearSignal(key)
 }
 
-// dispatchCompact handles the built-in /compact command. Calls the
-// conversation package's compaction helper (10-message tail by default)
-// and emits a command_result.
+// compactable is the local interface satisfied by any backend that can
+// run engine-side compaction in process. ApiBackend (and HybridBackend
+// when its current run is API-routed) implements this; CliBackend does
+// not — its conversation lives in the Claude Code subprocess, which
+// runs its own /compact natively.
+//
+// This local interface is the mechanism that keeps CompactNow off the
+// public RunBackend interface — adding it there would be a contract
+// change. Mirrors the steerable pattern in agent.go.
+type compactable interface {
+	CompactNow(ctx context.Context, req backend.CompactRequest) error
+}
+
+// dispatchCompact handles the built-in /compact command. Routes through
+// the backend's engine-side compaction (ApiBackend.CompactNow) when the
+// backend supports it; falls back to forwarding /compact over the
+// stream-json stdin pipe when the backend is the Claude Code CLI wrapper
+// so the subprocess can run its native /compact.
+//
+// Path A — API backend (in-process compaction):
+//
+//	The conversation lives on disk under the engine's control. CompactNow
+//	loads it, runs performCompact("user"), and persists the result with
+//	a compact_boundary block and a tree entry. CompactingEvent fires
+//	exactly as it does for proactive compaction so consumers can render
+//	the same progress UI.
+//
+// Path B — CLI backend (subprocess forwarding):
+//
+//	The Claude Code subprocess owns the conversation. We write the literal
+//	"/compact" string as a stream-json user message to its stdin so the
+//	subprocess executes its own compaction. Only valid while a run is
+//	in flight (the stdin pipe is closed at run-end). When no run is
+//	active we surface an informational error code the consumer can render
+//	as a friendly system message.
+//
+// Path C — no conversation:
+//
+//	Empty conversationID is a no-op success, matching the existing
+//	clear/export behavior so a /compact on a fresh tab does not return
+//	an error event.
 func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	if s.conversationID == "" {
 		utils.Debug("Session", fmt.Sprintf("compact: no conversationID set on session %s", key))
@@ -194,20 +209,73 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		m.emitCommandResult(key, "compact", nil)
 		return
 	}
-	conv, err := conversation.Load(s.conversationID, "")
-	if err != nil {
-		if errors.Is(err, conversation.ErrNotFound) {
-			utils.Debug("Session", fmt.Sprintf("compact: conversation %s not found, treating as empty", s.conversationID))
-			m.emitCommandResult(key, "compact", nil)
+
+	// Path A: backend supports engine-side compaction. ApiBackend
+	// (and HybridBackend when its run is API-routed) implements
+	// compactable; the assertion fails for CliBackend, which falls
+	// through to Path B.
+	if cb, ok := m.backend.(compactable); ok {
+		req := backend.CompactRequest{
+			ConversationID: s.conversationID,
+			Model:          s.lastModel,
+			RequestID:      fmt.Sprintf("user-compact-%s", s.conversationID),
+		}
+		utils.Log("Session", fmt.Sprintf("compact: dispatching to backend.CompactNow key=%s convID=%s model=%s", key, req.ConversationID, req.Model))
+		if err := cb.CompactNow(context.Background(), req); err != nil {
+			// Distinguish "conversation not found" from generic errors so
+			// the consumer can render a friendlier message. ErrNotFound
+			// is wrapped inside CompactNow's load failure; unwrap to test.
+			if errors.Is(err, conversation.ErrNotFound) {
+				utils.Debug("Session", fmt.Sprintf("compact: conversation %s not found, treating as empty success", s.conversationID))
+				m.emitCommandResult(key, "compact", nil)
+				return
+			}
+			utils.Log("Session", fmt.Sprintf("compact: CompactNow failed key=%s err=%v", key, err))
+			m.emitCommandResult(key, "compact", err)
 			return
 		}
-		utils.Log("Session", fmt.Sprintf("compact: failed to load conversation %s: %v", s.conversationID, err))
+		utils.Log("Session", fmt.Sprintf("compacted session %s via CompactNow", key))
+		m.emitCommandResult(key, "compact", nil)
+		return
+	}
+
+	// Path B: CLI backend — forward to the Claude Code subprocess.
+	// Without an active run there's no stdin pipe to write to, so we
+	// surface an informational error the consumer can render as a
+	// system message ("send /compact as a normal prompt instead").
+	rid := s.requestID
+	if rid == "" {
+		utils.Log("Session", fmt.Sprintf("compact: backend does not support engine-side compaction and no active run; key=%s", key))
+		m.emit(key, types.EngineEvent{
+			Type:         "engine_command_result",
+			Command:      "compact",
+			CommandError: "compact_requires_active_run",
+			EventMessage: "On this backend, /compact must run inside an active conversation. Send /compact as a normal prompt to forward it to the underlying CLI.",
+		})
+		return
+	}
+
+	// Mirror SteerAgent's stdin-message shape so the CLI subprocess
+	// parses the line as a user message containing the literal slash
+	// command. The Claude Code CLI's slash dispatcher recognises
+	// "/compact" inside a user-content text block and runs its own
+	// compaction. See engine/internal/backend/cli_backend.go for the
+	// stream-json wire shape.
+	stdinMsg := map[string]interface{}{
+		"type": "user",
+		"message": map[string]interface{}{
+			"role": "user",
+			"content": []map[string]interface{}{
+				{"type": "text", "text": "/compact"},
+			},
+		},
+	}
+	if err := m.backend.WriteToStdin(rid, stdinMsg); err != nil {
+		utils.Log("Session", fmt.Sprintf("compact: WriteToStdin failed key=%s err=%s", key, err.Error()))
 		m.emitCommandResult(key, "compact", err)
 		return
 	}
-	conversation.Compact(conv, 10)
-	_ = conversation.Save(conv, "")
-	utils.Log("Session", fmt.Sprintf("compacted session %s", key))
+	utils.Log("Session", fmt.Sprintf("compact: forwarded /compact to CLI subprocess key=%s rid=%s", key, rid))
 	m.emitCommandResult(key, "compact", nil)
 }
 
@@ -250,10 +318,34 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 	// engine_export fires before engine_command_result so consumers receive
 	// the payload before the completion signal — mirrors the ordering
 	// invariant dispatchClear documents at command_dispatch.go for the
-	// engine_status / command_result pair.
+	// engine_status / command_result pair. ExportFormat carries the
+	// resolved format so consumers pick an extension / MIME type without
+	// sniffing the payload bytes.
 	m.emit(key, types.EngineEvent{
-		Type:         "engine_export",
+		Type:         EngineEventExport,
 		EventMessage: output,
+		ExportFormat: format,
 	})
 	m.emitCommandResult(key, "export", nil)
 }
+
+// EngineEventExport is the wire type string for the export-payload event
+// emitted by dispatchExport. Lives at the session-package level so
+// command_registry.go's EngineEventCommandRegistry constant has a
+// stylistic peer and external consumers can import the string directly
+// from a stable Go symbol rather than copy-pasting the literal.
+//
+// The event carries the rendered export output (markdown / json / html /
+// jsonl, depending on the args passed to /export) on EngineEvent.EventMessage,
+// and the resolved format on EngineEvent.ExportFormat so consumers can pick a
+// file extension / MIME type without sniffing the payload. Consumers are
+// expected to handle the format-specific rendering or download; the engine
+// attaches no semantics beyond "this is the export".
+//
+// Per CLAUDE.md "Engine consumers" framing, this event is one half of the
+// contract: the desktop and iOS reference implementations render save-as
+// dialogs and share sheets, but external consumers (CLI orchestrators,
+// custom harnesses) may pipe the payload to stdout, write it to a
+// predetermined path, or stream it back over their own transport. The
+// engine has no opinion.
+const EngineEventExport = "engine_export"

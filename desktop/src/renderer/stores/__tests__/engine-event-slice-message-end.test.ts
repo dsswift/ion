@@ -34,7 +34,7 @@ function buildHarness() {
   const state: any = {
     tabs: [{
       id: 'tab1',
-      isEngine: true,
+      hasEngineExtension: true,
       status: 'running',
       lastEventAt: 0,
       permissionDenied: null,
@@ -47,7 +47,7 @@ function buildHarness() {
     enginePinnedPrompt: new Map(),
     engineUsage: new Map(),
     engineModelFallbacks: new Map(),
-    enginePanes: new Map([['tab1', { instances: [{ id: 'inst1', label: 'inst1', messages: [], modelOverride: null, permissionMode: 'auto', permissionDenied: null, conversationIds: [], draftInput: '', agentStates: [], statusFields: null, planFilePath: null }], activeInstanceId: 'inst1' }]]),
+    conversationPanes: new Map([['tab1', { instances: [{ id: 'inst1', label: 'inst1', messages: [], modelOverride: null, permissionMode: 'auto', permissionDenied: null, conversationIds: [], draftInput: '', agentStates: [], statusFields: null, planFilePath: null }], activeInstanceId: 'inst1' }]]),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial

@@ -18,7 +18,7 @@ import { useActiveEngineKey } from './StatusBarEngineHelpers'
  *
  * Read paths:
  * - **Engine tabs**: `instance.permissionMode` on the active instance in
- *   `enginePanes` (default 'auto' when no instance). Per-instance, since each
+ *   `conversationPanes` (default 'auto' when no instance). Per-instance, since each
  *   engine sub-conversation can have its own permission mode.
  * - **Conversation tabs**: `tab.permissionMode` (default 'plan').
  *
@@ -38,7 +38,7 @@ export function PermissionModePicker() {
   const isEngine = engineKey != null
   const permissionMode = useSessionStore((s) => {
     if (engineKey) {
-      const pane = s.enginePanes.get(engineKey.tabId)
+      const pane = s.conversationPanes.get(engineKey.tabId)
       const inst = pane?.instances.find((i) => i.id === engineKey.instanceId)
       return inst?.permissionMode ?? 'auto'
     }

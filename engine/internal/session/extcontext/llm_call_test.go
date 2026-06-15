@@ -1,10 +1,12 @@
 package extcontext
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -24,6 +26,10 @@ type llmCallTestAccessor struct {
 	mu       sync.Mutex
 	emitted  []types.EngineEvent
 	extGroup *extension.ExtensionGroup
+	// rootCtx lets a test supply a cancellable root so it can exercise the
+	// session-abort cascade into an in-flight llmCall. Nil falls back to
+	// context.Background() in RootContext().
+	rootCtx context.Context
 }
 
 func (a *llmCallTestAccessor) SessionKey() string       { return "test-session" }
@@ -42,6 +48,12 @@ func (a *llmCallTestAccessor) Emitted() []types.EngineEvent {
 	return out
 }
 func (a *llmCallTestAccessor) SendAbort()                                                         {}
+func (a *llmCallTestAccessor) RootContext() context.Context {
+	if a.rootCtx == nil {
+		return context.Background()
+	}
+	return a.rootCtx
+}
 func (a *llmCallTestAccessor) SendPrompt(_, _ string) error                                       { return nil }
 func (a *llmCallTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -406,5 +418,119 @@ func TestLLMCall_FiresBeforeProviderRequestExactlyOnce(t *testing.T) {
 	}
 	if recordedInfo.TurnNumber != 0 {
 		t.Errorf("hook payload TurnNumber = %d, want 0 (LLMCall is not part of a turn sequence)", recordedInfo.TurnNumber)
+	}
+}
+
+// TestLLMCall_CancelledBySessionRoot pins the #232 / #225 cascade: when the
+// session cancellation root (the accessor's RootContext) is cancelled while
+// an llmCall is in flight, the call returns an error and emits NO success
+// engine_llm_call event. This is the "hit Stop, kill the in-flight one-shot"
+// guarantee — before the unified tree the llmCall context was orphaned on
+// Background and ran to completion after abort.
+func TestLLMCall_CancelledBySessionRoot(t *testing.T) {
+	const model = "test-model-cancel"
+	mock := registerMockProvider(t, model)
+	// Emit the message_start (so input tokens are seen) then block until
+	// the context is cancelled — models a long-running provider call.
+	mock.SetResponse([]types.LlmStreamEvent{
+		{
+			Type: "message_start",
+			MessageInfo: &types.LlmStreamMessageInfo{
+				Usage: types.LlmUsage{InputTokens: 10},
+			},
+		},
+	})
+	mock.SetBlockUntilCancel(true)
+
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	acc := &llmCallTestAccessor{extGroup: extension.NewExtensionGroup(), rootCtx: rootCtx}
+	llmCall := BuildLLMCallFunc(acc)
+
+	// Cancel shortly after the call starts (simulating a user abort that
+	// cancels the session root mid-flight).
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		rootCancel()
+	}()
+
+	result, err := llmCall(extension.LLMCallOpts{
+		Model:  model,
+		Prompt: "long running",
+	})
+	if err == nil {
+		t.Fatal("expected an error from a cancelled llmCall, got nil")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result on cancellation, got %+v", result)
+	}
+	if !strings.Contains(err.Error(), "cancel") {
+		t.Errorf("error = %q, want it to mention cancellation", err.Error())
+	}
+
+	// No success engine_llm_call event must be emitted on cancellation.
+	for _, ev := range acc.Emitted() {
+		if ev.Type == "engine_llm_call" {
+			t.Errorf("engine_llm_call emitted on a cancelled call; the success-only event must be suppressed: %+v", ev)
+		}
+	}
+}
+
+// TestLLMCall_TemperatureAndJSONModeReachStreamOpts pins that ctx.llmCall
+// forwards Temperature (only when TemperatureSet) and maps JSONMode to
+// ResponseFormat on the provider stream options (#225).
+func TestLLMCall_TemperatureAndJSONModeReachStreamOpts(t *testing.T) {
+	const model = "test-model-temp"
+	mock := registerMockProvider(t, model)
+	mock.SetResponse(helpers.TextResponse("ok"))
+
+	acc := &llmCallTestAccessor{extGroup: extension.NewExtensionGroup()}
+	llmCall := BuildLLMCallFunc(acc)
+
+	_, err := llmCall(extension.LLMCallOpts{
+		Model:          model,
+		Prompt:         "extract",
+		JSONMode:       true,
+		Temperature:    0.1,
+		TemperatureSet: true,
+	})
+	if err != nil {
+		t.Fatalf("LLMCall error: %v", err)
+	}
+
+	calls := mock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(calls))
+	}
+	if calls[0].Temperature == nil {
+		t.Fatal("stream Temperature is nil; want forwarded when TemperatureSet=true")
+	}
+	if *calls[0].Temperature != 0.1 {
+		t.Errorf("stream Temperature = %v, want 0.1", *calls[0].Temperature)
+	}
+	if calls[0].ResponseFormat != "json_object" {
+		t.Errorf("stream ResponseFormat = %q, want json_object (JSONMode=true)", calls[0].ResponseFormat)
+	}
+}
+
+// TestLLMCall_TemperatureUnsetOmitted pins that an unset temperature
+// (TemperatureSet=false) is NOT forwarded — the provider default applies.
+func TestLLMCall_TemperatureUnsetOmitted(t *testing.T) {
+	const model = "test-model-temp-unset"
+	mock := registerMockProvider(t, model)
+	mock.SetResponse(helpers.TextResponse("ok"))
+
+	acc := &llmCallTestAccessor{extGroup: extension.NewExtensionGroup()}
+	llmCall := BuildLLMCallFunc(acc)
+
+	_, err := llmCall(extension.LLMCallOpts{Model: model, Prompt: "hi"})
+	if err != nil {
+		t.Fatalf("LLMCall error: %v", err)
+	}
+	calls := mock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(calls))
+	}
+	if calls[0].Temperature != nil {
+		t.Errorf("stream Temperature = %v, want nil (unset → provider default)", *calls[0].Temperature)
 	}
 }

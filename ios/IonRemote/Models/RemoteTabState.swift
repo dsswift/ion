@@ -13,14 +13,24 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var lastMessage: String?
     var contextTokens: Int?
     var contextPercent: Double?
+    /// Engine-reported context window size (tokens) of the model the
+    /// engine actually used on the most recent turn. Distinct from the
+    /// picker-selected model's nominal window. ConversationStatusBar
+    /// reads this as the denominator when computing percent locally so
+    /// the indicator stays accurate even when the picker disagrees with
+    /// the engine. Nil on cold-start tabs (no engine response yet); the
+    /// indicator falls back to the picker model's nominal window in that
+    /// case. See the desktop's TabState.contextWindow docs for the full
+    /// rationale.
+    var contextWindow: Int?
     var messageCount: Int?
     var queuedPrompts: [String]?
     var isTerminalOnly: Bool?
-    var isEngine: Bool?
+    var hasEngineExtension: Bool?
     var terminalInstances: [TerminalInstanceInfo]?
     var activeTerminalInstanceId: String?
-    var engineInstances: [EngineInstanceInfo]?
-    var activeEngineInstanceId: String?
+    var conversationInstances: [ConversationInstanceInfo]?
+    var activeConversationInstanceId: String?
     var groupId: String?
     /// When true, auto-group movement is suppressed for this tab. Nil/absent decodes as false.
     var groupPinned: Bool?
@@ -62,7 +72,7 @@ struct TerminalInstanceInfo: Codable, Identifiable, Sendable {
 // MARK: - EngineInstanceModelFallback
 
 /// Per-engine-instance model-fallback indicator carried on
-/// EngineInstanceInfo. Populated by the desktop snapshot when the engine
+/// ConversationInstanceInfo. Populated by the desktop snapshot when the engine
 /// emitted a ModelFallbackEvent for the corresponding run — i.e. the
 /// requested model didn't resolve to a provider and the engine fell
 /// back to its configured `defaultModel`.
@@ -83,9 +93,9 @@ struct EngineInstanceModelFallback: Codable, Sendable, Equatable {
     let fallbackModel: String
 }
 
-// MARK: - EngineInstanceInfo
+// MARK: - ConversationInstanceInfo
 
-struct EngineInstanceInfo: Codable, Identifiable, Sendable {
+struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     let id: String
     var label: String
     /// Per-engine-instance waiting state, decoded from the desktop snapshot.

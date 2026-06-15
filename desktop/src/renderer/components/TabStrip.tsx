@@ -27,11 +27,11 @@ export function TabStrip() {
   // Subscribe to engine state so the waiting-state border on an engine
   // tab's pill re-renders when any of its sub-instances gets/clears a
   // pending AskUserQuestion / ExitPlanMode denial. getWaitingState()
-  // Subscribe to enginePanes so tab strip pills re-render when instance
+  // Subscribe to conversationPanes so tab strip pills re-render when instance
   // permissionDenied or other ConversationInstance fields change. With all
-  // instance state on enginePanes, a single subscription covers everything
+  // instance state on conversationPanes, a single subscription covers everything
   // that previously required separate enginePermissionDenied subscription.
-  useSessionStore((s) => s.enginePanes)
+  useSessionStore((s) => s.conversationPanes)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const selectTab = useSessionStore((s) => s.selectTab)
   const closeTab = useSessionStore((s) => s.closeTab)

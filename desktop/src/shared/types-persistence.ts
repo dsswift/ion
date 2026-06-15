@@ -1,7 +1,47 @@
 import type { TerminalInstance, WorktreeInfo } from './types-session'
-import type { EngineInstance } from './types-engine'
+import type { ConversationRef } from './types-engine'
 
 // ─── Persisted Tab State ───
+
+/**
+ * Unified persisted conversation instance. Every tab — plain or
+ * extension-hosted — persists its conversation state as one or more of these
+ * inside `PersistedTab.conversationPane`. A plain conversation has exactly one
+ * instance with the `main` sentinel id; an extension-hosted conversation has
+ * one per sub-conversation.
+ *
+ * This replaces the old split persisted shape (plain tabs stored flat fields
+ * like `messageCount`/`permissionDenied`/`draftInput` directly on the tab;
+ * extension-hosted tabs stored parallel `engine*` maps keyed by instanceId).
+ * The migration (`tab-migration-unify.ts`) converts both old shapes into this
+ * one. The legacy fields remain on `PersistedTab` as deprecated READ-only
+ * inputs to the migration; current persistence writes only `conversationPane`.
+ */
+export interface PersistedConversationInstance {
+  id: string
+  label: string
+  /** Scrollback. Plain tabs persist message content here too (the old shape
+   *  persisted only a count for plain tabs and full messages for engine tabs;
+   *  the unified shape persists messages uniformly, gated by size as before). */
+  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string }>
+  /** Blank-tab / lazy-load proxy when messages are omitted. */
+  messageCount?: number
+  modelOverride?: string | null
+  sessionModel?: string | null
+  permissionMode?: 'auto' | 'plan'
+  permissionDenied?: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
+  conversationIds?: string[]
+  draftInput?: string
+  agentStates?: Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>
+  planFilePath?: string | null
+  forkedFromConversationIds?: string[] | null
+}
+
+/** Unified persisted pane: the instances for a tab + which is active. */
+export interface PersistedConversationPane {
+  instances: PersistedConversationInstance[]
+  activeInstanceId: string | null
+}
 
 export interface PersistedTab {
   conversationId: string | null
@@ -31,9 +71,24 @@ export interface PersistedTab {
   /** Per-engine-instance unsent input text, keyed by `instanceId`. Only non-empty values. */
   engineDrafts?: Record<string, string>
   isTerminalOnly?: boolean
+  /**
+   * Unified conversation state for this tab (the post-migration shape). When
+   * present, the loader reads conversation instances from here and IGNORES the
+   * legacy flat fields / `engine*` maps below. Written by current persistence;
+   * populated for legacy files by `tab-migration-unify.ts`.
+   */
+  conversationPane?: PersistedConversationPane
+  /**
+   * True when the conversation hosts an engine extension. Written by current
+   * persistence. The legacy `isEngine` key (below) is still READ by the loader
+   * for on-disk back-compat with tabs.json files written before the rename.
+   */
+  hasEngineExtension?: boolean
+  /** @deprecated Legacy on-disk key for `hasEngineExtension`. Read-only — the
+   *  loader/migration accepts it; persistence writes `hasEngineExtension`. */
   isEngine?: boolean
   engineProfileId?: string | null
-  engineInstances?: EngineInstance[]
+  engineInstances?: ConversationRef[]
   engineMessages?: Record<string, Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string }>>
   engineAgentStates?: Record<string, Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>>
   /**
@@ -73,6 +128,10 @@ export interface PersistedTab {
    * `engineDenials` and `engineModelOverrides`.
    */
   enginePermissionModes?: Record<string, 'auto' | 'plan'>
+  /** Per-engine-instance forked conversation ID chain, keyed by `instanceId`.
+   *  Set after rewind so the next prompt can inject prior-conversation context.
+   *  Persisted so the rewind state survives app restart. */
+  engineForkedFromConversationIds?: Record<string, string[]>
   terminalInstances?: TerminalInstance[]
   terminalBuffers?: Record<string, string>
   /** Wall-clock ms of the most recent engine event for this tab. Persisted so
@@ -101,6 +160,12 @@ export interface PersistedEditorState {
 }
 
 export interface PersistedTabState {
+  /**
+   * Schema version. Absent or < 2 means the legacy split shape (flat plain-tab
+   * fields + `engine*` maps); 2 means the unified `conversationPane` shape. The
+   * loader runs `tab-migration-unify.ts` when it sees a pre-2 file.
+   */
+  schemaVersion?: number
   activeSessionId: string | null
   /** Index of active tab in the tabs array (handles sessionless tabs) */
   activeTabIndex?: number | null

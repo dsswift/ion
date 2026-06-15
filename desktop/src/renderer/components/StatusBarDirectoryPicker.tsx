@@ -8,6 +8,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { compactPath } from './StatusBarShared'
 import { pickDirectoryForSession } from '../stores/remote-fs-store'
+import { activeInstance, instanceMessageCount } from '../stores/conversation-instance'
 
 /* ─── Directory Picker (button + popover for base/additional dirs) ─── */
 
@@ -21,7 +22,9 @@ export function DirectoryPicker() {
             additionalDirs: t.additionalDirs,
             hasChosenDirectory: t.hasChosenDirectory,
             workingDirectory: t.workingDirectory,
-            messages: t.messages,
+            // Blank-tab detection now sources its count from the active
+            // instance (effective `messages.length || messageCount`).
+            messageCount: instanceMessageCount(activeInstance(s.conversationPanes, t.id)),
             isTerminalOnly: t.isTerminalOnly,
           }
         : undefined
@@ -58,7 +61,7 @@ export function DirectoryPicker() {
   if (!tab) return null
 
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
-  const isEmpty = (tab.messages?.length ?? 0) === 0
+  const isEmpty = tab.messageCount === 0
   const hasExtraDirs = tab.additionalDirs.length > 0
   const baseLocked = !isEmpty
 

@@ -64,7 +64,7 @@ desktop/src/
 
 - Zustand. Single store (`sessionStore.ts`) composed from feature slices in `stores/slices/`.
 - Cross-slice actions live at root; don't reach across slices.
-- Engine instance state lives in `enginePanes: Map<tabId, EnginePaneState>`. Each `EnginePaneState.instances` entry is an `EngineInstance & ConversationInstance` — all per-conversation fields (messages, modelOverride, permissionMode, permissionDenied, conversationIds, draftInput, agentStates, statusFields) live directly on the instance, not in separate top-level Maps.
+- Per-conversation pane state lives in `conversationPanes: Map<tabId, ConversationPane>`. Each `ConversationPane.instances` entry is a `ConversationRef & ConversationInstance` — all per-conversation fields (messages, modelOverride, permissionMode, permissionDenied, conversationIds, draftInput, agentStates, statusFields) live directly on the instance, not in separate top-level Maps.
 - User-state persistence (tabs, labels, settings) goes through `main/utils/atomicWrite.ts`. Never `writeFileSync` directly.
 
 ## Renderer conventions

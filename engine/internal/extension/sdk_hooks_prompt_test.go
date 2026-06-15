@@ -214,6 +214,45 @@ func TestSDK_FireBeforeAgentStart(t *testing.T) {
 	}
 }
 
+// TestSDK_FireBeforeAgentStart_RootVsSubAgent pins that the IsRoot
+// discriminator (issue #227) reaches the handler unchanged. before_agent_start
+// fires for two distinct purposes — the root loop (IsRoot=true, empty
+// Name/Task) and sub-agent launches (IsRoot=false, populated Name) — and a
+// handler must be able to tell them apart to avoid injecting a sub-agent
+// preamble into the root system prompt. This asserts the field value the
+// handler observes, not merely that some payload arrived.
+func TestSDK_FireBeforeAgentStart_RootVsSubAgent(t *testing.T) {
+	sdk := NewSDK()
+	var received AgentInfo
+	sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {
+		received = payload.(AgentInfo)
+		return nil, nil
+	})
+
+	// Root firing — the engine passes AgentInfo{IsRoot: true} at the
+	// root-injection call site (session/prompt_extensions.go).
+	if _, _, err := sdk.FireBeforeAgentStart(testCtx(), AgentInfo{IsRoot: true}); err != nil {
+		t.Fatalf("unexpected error (root): %v", err)
+	}
+	if !received.IsRoot {
+		t.Fatalf("expected IsRoot=true on root firing, got false")
+	}
+	if received.Name != "" {
+		t.Fatalf("expected empty Name on root firing, got %q", received.Name)
+	}
+
+	// Sub-agent firing — populated Name, IsRoot defaults false.
+	if _, _, err := sdk.FireBeforeAgentStart(testCtx(), AgentInfo{Name: "researcher", Task: "find X"}); err != nil {
+		t.Fatalf("unexpected error (sub-agent): %v", err)
+	}
+	if received.IsRoot {
+		t.Fatalf("expected IsRoot=false on sub-agent firing, got true")
+	}
+	if received.Name != "researcher" {
+		t.Fatalf("expected Name 'researcher' on sub-agent firing, got %q", received.Name)
+	}
+}
+
 func TestSDK_FireBeforeAgentStart_MapResult(t *testing.T) {
 	sdk := NewSDK()
 	sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {

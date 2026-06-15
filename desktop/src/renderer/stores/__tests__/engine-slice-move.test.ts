@@ -3,7 +3,7 @@
  *
  * Tests the moveEngineInstance action in isolation using a hand-built
  * set/get pair over a plain mutable State object. ConversationInstance fields
- * (messages, agentStates, etc.) travel with the instance object in enginePanes.
+ * (messages, agentStates, etc.) travel with the instance object in conversationPanes.
  * Non-ConversationInstance compound-keyed Maps (workingMessages, notifications,
  * dialogs, pinnedPrompt, usage) are rekeyed.
  */
@@ -14,7 +14,7 @@ vi.mock('../session-store-helpers', () => ({
   makeLocalTab: vi.fn(() => ({
     id: 'mock-tab',
     title: '',
-    isEngine: false,
+    hasEngineExtension: false,
     engineProfileId: null,
     workingDirectory: '/tmp',
     hasChosenDirectory: false,
@@ -30,15 +30,15 @@ vi.mock('../session-store-helpers', () => ({
 
 import { createEngineSlice } from '../slices/engine-slice'
 import type { State } from '../session-store-types'
-import type { EngineInstance, EnginePaneState, ConversationInstance } from '../../../shared/types-engine'
+import type { ConversationRef, ConversationPane, ConversationInstance } from '../../../shared/types-engine'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function makeTab(id: string, isEngine = true) {
+function makeTab(id: string, hasEngineExtension = true) {
   return {
     id,
     title: 'Engine',
-    isEngine,
+    hasEngineExtension,
     engineProfileId: null,
     workingDirectory: '/tmp',
     hasChosenDirectory: false,
@@ -50,24 +50,28 @@ function makeTab(id: string, isEngine = true) {
   }
 }
 
-function makeInstance(id: string, label: string, extra?: Partial<ConversationInstance>): EngineInstance & ConversationInstance {
+function makeInstance(id: string, label: string, extra?: Partial<ConversationInstance>): ConversationRef & ConversationInstance {
   return {
     id,
     label,
     messages: [],
+    messageCount: 0,
     modelOverride: null,
+    sessionModel: null,
     permissionMode: 'auto',
     permissionDenied: null,
+    permissionQueue: [],
     conversationIds: [],
     draftInput: '',
     agentStates: [],
     statusFields: null,
     planFilePath: null,
+    forkedFromConversationIds: null,
     ...extra,
   }
 }
 
-function makePane(instances: Array<EngineInstance & ConversationInstance>, activeInstanceId: string | null): EnginePaneState {
+function makePane(instances: Array<ConversationRef & ConversationInstance>, activeInstanceId: string | null): ConversationPane {
   return { instances, activeInstanceId }
 }
 
@@ -89,7 +93,7 @@ function buildHarness() {
 
   const state: any = {
     tabs: [makeTab('srcTab'), makeTab('dstTab')],
-    enginePanes: new Map([
+    conversationPanes: new Map([
       ['srcTab', makePane([inst1], 'inst1')],
       ['dstTab', makePane([makeInstance('inst2', 'Engine 2')], 'inst2')],
     ]),
@@ -144,8 +148,8 @@ describe('moveEngineInstance', () => {
     const { state, slice } = buildHarness()
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
-    const dstPane = state.enginePanes.get('dstTab')!
-    const movedInst = dstPane.instances.find((i: EngineInstance) => i.id === 'inst1')
+    const dstPane = state.conversationPanes.get('dstTab')!
+    const movedInst = dstPane.instances.find((i: ConversationRef) => i.id === 'inst1')
     expect(movedInst).toBeDefined()
     // Messages travel with the instance
     expect(movedInst?.messages).toHaveLength(1)
@@ -187,8 +191,8 @@ describe('moveEngineInstance', () => {
     const { state, slice } = buildHarness()
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
-    const dstPane = state.enginePanes.get('dstTab')!
-    expect(dstPane.instances.map((i: EngineInstance) => i.id)).toContain('inst1')
+    const dstPane = state.conversationPanes.get('dstTab')!
+    expect(dstPane.instances.map((i: ConversationRef) => i.id)).toContain('inst1')
     expect(dstPane.activeInstanceId).toBe('inst1')
   })
 
@@ -196,35 +200,35 @@ describe('moveEngineInstance', () => {
     const { state, slice } = buildHarness()
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
-    expect(state.enginePanes.has('srcTab')).toBe(false)
+    expect(state.conversationPanes.has('srcTab')).toBe(false)
     expect(state.closeTab).toHaveBeenCalledWith('srcTab')
   })
 
   it('keeps source tab with updated activeInstanceId when other instances remain', () => {
     const { state, slice } = buildHarness()
-    state.enginePanes.set('srcTab', makePane(
+    state.conversationPanes.set('srcTab', makePane(
       [makeInstance('inst1', 'Engine 1'), makeInstance('inst3', 'Engine 3')],
       'inst1',
     ))
 
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
-    const srcPane = state.enginePanes.get('srcTab')!
-    expect(srcPane.instances.map((i: EngineInstance) => i.id)).toEqual(['inst3'])
+    const srcPane = state.conversationPanes.get('srcTab')!
+    expect(srcPane.instances.map((i: ConversationRef) => i.id)).toEqual(['inst3'])
     expect(srcPane.activeInstanceId).toBe('inst3')
     expect(state.closeTab).not.toHaveBeenCalled()
   })
 
   it('updates activeInstanceId to last remaining when active instance is moved', () => {
     const { state, slice } = buildHarness()
-    state.enginePanes.set('srcTab', makePane(
+    state.conversationPanes.set('srcTab', makePane(
       [makeInstance('inst1', 'Engine 1'), makeInstance('inst4', 'Engine 4')],
       'inst1',
     ))
 
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
-    const srcPane = state.enginePanes.get('srcTab')!
+    const srcPane = state.conversationPanes.get('srcTab')!
     expect(srcPane.activeInstanceId).toBe('inst4')
   })
 
@@ -251,35 +255,35 @@ describe('moveEngineInstance', () => {
   it('is a no-op when target tab is not an engine tab', () => {
     const { state, slice } = buildHarness()
     state.tabs.push(makeTab('nonEngineTab', false))
-    state.enginePanes.set('nonEngineTab', makePane([], null))
+    state.conversationPanes.set('nonEngineTab', makePane([], null))
 
-    const srcPaneBefore = state.enginePanes.get('srcTab')!.instances.length
+    const srcPaneBefore = state.conversationPanes.get('srcTab')!.instances.length
 
     slice.moveEngineInstance('srcTab', 'inst1', 'nonEngineTab')
 
-    expect(state.enginePanes.get('srcTab')!.instances.length).toBe(srcPaneBefore)
+    expect(state.conversationPanes.get('srcTab')!.instances.length).toBe(srcPaneBefore)
     expect((globalThis as any).window.ion.engineRemapSession).not.toHaveBeenCalled()
   })
 
   it('is a no-op when instance is not in source pane', () => {
     const { state, slice } = buildHarness()
-    const dstPaneBefore = state.enginePanes.get('dstTab')!.instances.length
+    const dstPaneBefore = state.conversationPanes.get('dstTab')!.instances.length
 
     slice.moveEngineInstance('srcTab', 'ghostInst', 'dstTab')
 
-    expect(state.enginePanes.get('dstTab')!.instances.length).toBe(dstPaneBefore)
+    expect(state.conversationPanes.get('dstTab')!.instances.length).toBe(dstPaneBefore)
     expect((globalThis as any).window.ion.engineRemapSession).not.toHaveBeenCalled()
   })
 
   it('handles move to a target with no existing pane (creates pane)', () => {
     const { state, slice } = buildHarness()
-    state.enginePanes.delete('dstTab')
+    state.conversationPanes.delete('dstTab')
 
     slice.moveEngineInstance('srcTab', 'inst1', 'dstTab')
 
-    const newPane = state.enginePanes.get('dstTab')
+    const newPane = state.conversationPanes.get('dstTab')
     expect(newPane).toBeDefined()
-    expect(newPane!.instances.map((i: EngineInstance) => i.id)).toContain('inst1')
+    expect(newPane!.instances.map((i: ConversationRef) => i.id)).toContain('inst1')
     expect(newPane!.activeInstanceId).toBe('inst1')
   })
 })

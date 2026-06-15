@@ -168,7 +168,7 @@ extension RemoteEvent {
         case .engineInstanceAdded(let tabId, let instanceId, let label):
             try container.encode(TypeKey.engineInstanceAdded, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
-            try container.encode(EngineInstancePayload(id: instanceId, label: label), forKey: .instance)
+            try container.encode(ConversationInstancePayload(id: instanceId, label: label), forKey: .instance)
             return true
 
         case .engineInstanceRemoved(let tabId, let instanceId):
@@ -306,6 +306,18 @@ extension RemoteEvent {
             try container.encodeIfPresent(message, forKey: .message)
             try container.encodeIfPresent(command, forKey: .command)
             try container.encodeIfPresent(commandError, forKey: .commandError)
+            return true
+
+        case .engineExport(let tabId, let instanceId, let message, let exportFormat):
+            // Encoder mirror of the decoder. The message field is the
+            // rendered export payload — non-optional because an empty
+            // export would be a no-op the engine wouldn't emit. exportFormat
+            // is optional (nil for legacy-engine round-trips).
+            try container.encode(TypeKey.engineExport, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(message, forKey: .message)
+            try container.encodeIfPresent(exportFormat, forKey: .exportFormat)
             return true
 
         case .engineResourceSnapshot(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceItems):

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -712,5 +713,187 @@ func TestNormalizeForFuzzyMatch(t *testing.T) {
 				t.Errorf("expected %q, got %q", tc.expect, got)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-path file lock regression tests
+// ---------------------------------------------------------------------------
+
+// TestParallelEditsSameFile issues 10 concurrent Edit calls against the same
+// file, each removing a distinct line. Without the per-path lock the edits
+// race and most are silently lost; with the lock all 10 land.
+func TestParallelEditsSameFile(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "parallel-edit.txt")
+
+	// Create a 20-line file: "line-00\nline-01\n…\nline-19\n"
+	const totalLines = 20
+	const editsToMake = 10
+	var sb strings.Builder
+	for i := 0; i < totalLines; i++ {
+		fmt.Fprintf(&sb, "line-%02d\n", i)
+	}
+	if err := os.WriteFile(filePath, []byte(sb.String()), 0o644); err != nil {
+		t.Fatalf("setup: write file: %v", err)
+	}
+
+	// Issue editsToMake concurrent Edit calls, each removing one distinct line.
+	// We remove even-numbered lines: line-00, line-02, …, line-18.
+	ctx := context.Background()
+	errs := make([]error, editsToMake)
+	results := make([]string, editsToMake)
+	var wg sync.WaitGroup
+	for i := 0; i < editsToMake; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			lineToRemove := fmt.Sprintf("line-%02d\n", i*2)
+			res, err := ExecuteTool(ctx, "Edit", map[string]any{
+				"file_path":  filePath,
+				"old_string": lineToRemove,
+				"new_string": "",
+			}, dir)
+			errs[i] = err
+			if res != nil {
+				results[i] = res.Content
+			}
+		}()
+	}
+	wg.Wait()
+
+	// All calls should succeed without internal errors.
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("edit %d returned error: %v", i, err)
+		}
+	}
+	for i, r := range results {
+		if !strings.Contains(r, "Successfully edited") {
+			t.Errorf("edit %d did not report success: %s", i, r)
+		}
+	}
+
+	// The file should have exactly totalLines - editsToMake lines remaining,
+	// and all of them should be odd-numbered lines.
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("read result file: %v", err)
+	}
+	remaining := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	if len(remaining) != totalLines-editsToMake {
+		t.Fatalf("expected %d lines remaining, got %d:\n%s",
+			totalLines-editsToMake, len(remaining), string(data))
+	}
+	for _, line := range remaining {
+		if line == "" {
+			continue
+		}
+		// All remaining lines should be odd-numbered (01, 03, 05, …, 19)
+		var num int
+		if _, err := fmt.Sscanf(line, "line-%02d", &num); err != nil {
+			t.Errorf("unexpected line format: %q", line)
+			continue
+		}
+		if num%2 == 0 {
+			t.Errorf("even line %q should have been removed but is still present", line)
+		}
+	}
+}
+
+// TestParallelWritesSameFile issues 10 concurrent Write calls against the same
+// file. With the per-path lock, each write completes atomically (no torn
+// writes); the final content is one of the 10 payloads in its entirety.
+func TestParallelWritesSameFile(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "parallel-write.txt")
+
+	const numWriters = 10
+	ctx := context.Background()
+	payloads := make([]string, numWriters)
+	for i := 0; i < numWriters; i++ {
+		// Each payload is unique and non-trivial so a torn write is detectable.
+		payloads[i] = fmt.Sprintf("writer-%d-content\n"+
+			"this is the payload from writer %d\n"+
+			"it spans multiple lines to detect torn writes\n", i, i)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < numWriters; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = ExecuteTool(ctx, "Write", map[string]any{
+				"file_path": filePath,
+				"content":   payloads[i],
+			}, dir)
+		}()
+	}
+	wg.Wait()
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("read result file: %v", err)
+	}
+	content := string(data)
+
+	// The final file must be exactly one of the payloads — not a mix.
+	found := false
+	for i, p := range payloads {
+		if content == p {
+			t.Logf("final content is from writer %d", i)
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("file content does not match any payload — possible torn write:\n%s", content)
+	}
+}
+
+// TestFileLockSamePathDifferentForms verifies that relative and absolute
+// references to the same file share the same lock (both go through
+// resolvePath which canonicalizes to an absolute path).
+func TestFileLockSamePathDifferentForms(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "canonical.txt")
+
+	// Create a file with two lines.
+	if err := os.WriteFile(filePath, []byte("line-a\nline-b\n"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+
+	// One goroutine uses the absolute path, the other uses the relative name
+	// (with cwd=dir). Both should serialize and both edits should land.
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = ExecuteTool(ctx, "Edit", map[string]any{
+			"file_path":  filePath, // absolute
+			"old_string": "line-a\n",
+			"new_string": "",
+		}, dir)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = ExecuteTool(ctx, "Edit", map[string]any{
+			"file_path":  "canonical.txt", // relative — resolved via cwd
+			"old_string": "line-b\n",
+			"new_string": "",
+		}, dir)
+	}()
+	wg.Wait()
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if string(data) != "" {
+		t.Errorf("expected empty file after removing both lines, got: %q", string(data))
 	}
 }

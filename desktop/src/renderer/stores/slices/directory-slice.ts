@@ -1,5 +1,6 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
+import { activeInstance, instanceMessageCount } from '../conversation-instance'
 
 export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -34,9 +35,12 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
       usePreferencesStore.getState().addRecentBaseDirectory(dir)
       usePreferencesStore.getState().incrementDirectoryUsage(dir)
       const { activeTabId } = get()
-      const tab = get().tabs.find((t) => t.id === activeTabId)
+      const s = get()
+      const tab = s.tabs.find((t) => t.id === activeTabId)
 
-      if (tab?.worktree && (tab.messages?.length ?? 0) === 0) {
+      // Message state lives on the active conversation instance now; resolve the
+      // effective count from conversationPanes for the "is this worktree empty?" check.
+      if (tab?.worktree && instanceMessageCount(activeInstance(s.conversationPanes, tab.id)) === 0) {
         window.ion.gitWorktreeRemove(
           tab.worktree.repoPath,
           tab.worktree.worktreePath,

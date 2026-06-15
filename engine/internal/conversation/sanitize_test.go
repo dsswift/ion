@@ -304,6 +304,118 @@ func TestSanitize_OnlyOrphanedServerToolUseDropsMessage(t *testing.T) {
 	}
 }
 
+// TestSanitize_EmptyTextBlockRemoved ensures a user message ending in an empty
+// text block has that block stripped. This prevents Anthropic's
+// "cache_control cannot be set for empty text blocks" rejection.
+func TestSanitize_EmptyTextBlockRemoved(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{Role: "user", Content: []types.LlmContentBlock{
+			{Type: "text", Text: "go"},
+		}},
+		{
+			Role: "assistant",
+			Content: []types.LlmContentBlock{
+				{Type: "tool_use", ID: "t1", Name: "Read", Input: map[string]any{"file": "x"}},
+			},
+		},
+		{
+			Role: "user",
+			Content: []types.LlmContentBlock{
+				{Type: "tool_result", ToolUseID: "t1", Content: "ok"},
+				{Type: "text", Text: ""},
+			},
+		},
+	}
+
+	out := SanitizeMessages(msgs)
+	if len(out) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(out))
+	}
+	blocks, ok := out[2].Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatalf("expected block slice, got %T", out[2].Content)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block (tool_result only, empty text removed), got %d", len(blocks))
+	}
+	if blocks[0].Type != "tool_result" {
+		t.Fatalf("expected tool_result, got %s", blocks[0].Type)
+	}
+}
+
+// TestSanitize_OnlyEmptyTextBlockDropsMessage ensures a user message whose
+// only block is an empty text block is dropped entirely.
+func TestSanitize_OnlyEmptyTextBlockDropsMessage(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{
+			Role: "user",
+			Content: []types.LlmContentBlock{
+				{Type: "text", Text: ""},
+			},
+		},
+	}
+
+	out := SanitizeMessages(msgs)
+	if len(out) != 0 {
+		t.Fatalf("expected 0 messages (empty text dropped), got %d", len(out))
+	}
+}
+
+// TestSanitize_NonEmptyTextBlockPreserved ensures non-empty text blocks are
+// NOT removed by the empty-text sanitization.
+func TestSanitize_NonEmptyTextBlockPreserved(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{
+			Role: "user",
+			Content: []types.LlmContentBlock{
+				{Type: "text", Text: "hello"},
+			},
+		},
+	}
+
+	out := SanitizeMessages(msgs)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(out))
+	}
+	blocks, ok := out[0].Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatalf("expected block slice, got %T", out[0].Content)
+	}
+	if len(blocks) != 1 || blocks[0].Text != "hello" {
+		t.Fatalf("non-empty text block should be preserved, got %v", blocks)
+	}
+}
+
+// TestSanitize_EmptyTextBlockInAssistantAlsoRemoved ensures empty text blocks
+// are removed from assistant messages too, not just user messages.
+func TestSanitize_EmptyTextBlockInAssistantAlsoRemoved(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{Role: "user", Content: "hello"},
+		{
+			Role: "assistant",
+			Content: []types.LlmContentBlock{
+				{Type: "text", Text: "response"},
+				{Type: "text", Text: ""},
+			},
+		},
+	}
+
+	out := SanitizeMessages(msgs)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(out))
+	}
+	blocks, ok := out[1].Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatalf("expected block slice, got %T", out[1].Content)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block (empty text removed), got %d", len(blocks))
+	}
+	if blocks[0].Text != "response" {
+		t.Fatalf("expected 'response', got %q", blocks[0].Text)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ReplacePlanFilePlaceholder tests
 // ---------------------------------------------------------------------------

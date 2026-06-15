@@ -72,9 +72,19 @@ export interface EngineConfig {
    * `.ion/` paths are active.
    */
   claudeCompat?: boolean
+  /**
+   * Request a brand-new conversation for this session key even when the engine's
+   * durable binding store holds a prior conversationId for it. Without this flag,
+   * a start_session with an empty sessionId resumes the bound conversation
+   * (restart resilience, issue #230). Set true to start fresh on a reused key
+   * (e.g. "new conversation" on an existing tab): the engine mints a new id and
+   * replaces the stored binding. An explicit non-empty sessionId still takes
+   * precedence over both this flag and the binding store. (#231)
+   */
+  forceNewConversation?: boolean
 }
 
-export interface EngineInstance {
+export interface ConversationRef {
   id: string        // crypto.randomUUID().slice(0,8)
   label: string     // "cos 1", "cos 2"
 }
@@ -95,12 +105,38 @@ export interface EngineInstance {
 export interface ConversationInstance {
   /** Scrollback messages for this instance */
   messages: Message[]
+  /**
+   * Persisted message count, used as the blank-tab / lazy-load proxy when
+   * `messages` is loaded but the on-disk count needs to survive a skeleton
+   * (unopened) restore. Set to `messages.length` whenever messages are
+   * loaded; read as `messages?.length ?? messageCount ?? 0`. Mirrors the
+   * old `TabState.messageCount` semantics, now instance-scoped — a normal
+   * tab's `main` instance carries the count its `TabState` used to hold.
+   */
+  messageCount: number
   /** Model override in effect for this instance (null = use tab/profile default) */
   modelOverride: string | null
+  /**
+   * Engine-reported active model for this conversation (from `session_init`
+   * for normal tabs, mirrored from `statusFields.model` for engine tabs).
+   * Distinct from `modelOverride` (the user's picker selection): this is the
+   * model the engine actually ran. Used as the picker's display fallback.
+   * Null until the first session_init / status event.
+   */
+  sessionModel: string | null
   /** Permission mode for this instance */
   permissionMode: 'auto' | 'plan'
   /** Pending permission-denied tools (null = no pending denial) */
   permissionDenied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
+  /**
+   * Live interactive permission requests awaiting a user click for this
+   * conversation. CLI/normal tabs populate this from `permission_request`
+   * events on their `main` instance; engine instances gain the same
+   * per-instance queue (the snapshot already scopes denial cards by
+   * instanceId). Distinct from `permissionDenied`, which is the
+   * non-interactive fallback card built from task_complete denials.
+   */
+  permissionQueue: import('./types-session').PermissionRequest[]
   /** Conversation IDs accumulated by this instance across sessions */
   conversationIds: string[]
   /** Draft input text for this instance's input bar */
@@ -111,10 +147,13 @@ export interface ConversationInstance {
   statusFields: StatusFields | null
   /** Path to the active plan file (null = not in plan mode / no plan yet) */
   planFilePath: string | null
+  /** Set after rewind — the conversation ID chain before rewind. Used to inject
+   *  prior-conversation context on the next prompt. Cleared after first send. */
+  forkedFromConversationIds: string[] | null
 }
 
-export interface EnginePaneState {
-  instances: Array<EngineInstance & ConversationInstance>
+export interface ConversationPane {
+  instances: Array<ConversationRef & ConversationInstance>
   activeInstanceId: string | null
 }
 
@@ -331,7 +370,7 @@ export type EngineEvent =
   // ModelFallbackEvent NormalizedEvent variant. The desktop renders a
   // small ⚠ glyph on the affected engine instance pill via the
   // engineModelFallbacks store map; iOS receives the fact through the
-  // snapshot path (RemoteTabState.engineInstances[i].modelFallback)
+  // snapshot path (RemoteTabState.conversationInstances[i].modelFallback)
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
   | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
@@ -378,6 +417,16 @@ export type EngineEvent =
   // pipeline awaits this event to decide between "dispatch landed, draw
   // the divider" and "engine disclaims, fall through to `.md` expansion".
   | { type: 'engine_command_result'; message?: string; command?: string; commandError?: string }
+  // engine_export carries the rendered export output for a /export command.
+  // The engine's dispatchExport emits this event with the rendered string
+  // on `message` BEFORE the matching engine_command_result, so consumers
+  // can capture the payload and persist it / surface a save dialog.
+  // `exportFormat` is the format the engine resolved from the /export args
+  // (markdown | json | html | jsonl; markdown when args is empty) — consumers
+  // use it to pick a file extension / MIME type directly rather than sniffing
+  // the payload bytes. See engine/internal/session/command_dispatch.go's
+  // EngineEventExport constant for the wire type string declaration.
+  | { type: 'engine_export'; message: string; exportFormat?: string }
   // engine_command_registry is a complete SNAPSHOT of the session's
   // extension-registered slash commands. Emitted at session_start (after
   // extensions wire up) and on every subsequent change (mid-session

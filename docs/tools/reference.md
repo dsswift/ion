@@ -6,7 +6,7 @@ sidebar_position: 2
 
 # Tool Reference
 
-All 14 core tools and 4 optional tools. Each entry shows the tool name, description, input parameters, and behavior.
+All core tools and the optional task tools. Each entry shows the tool name, description, input parameters, and behavior.
 
 ## Core Tools
 
@@ -174,6 +174,15 @@ Read a specific resource from a connected MCP server by URI. See [MCP Tools](mcp
 |-----------|------|----------|-------------|
 | `server` | string | yes | Name of the MCP server |
 | `uri` | string | yes | URI of the resource to read |
+
+### SearchHistory
+
+Search the conversation history for content that may have been compacted or cleared from the active context window. Returns matching snippets with context.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Search term to look for in conversation history. Case-insensitive keyword matching. |
+| `max_results` | number | no | Maximum number of results to return. Defaults to 20. Maximum 50. |
 
 ## Optional Tools
 

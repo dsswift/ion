@@ -34,6 +34,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   openMarkdownInPreview: saved.openMarkdownInPreview,
   editorWordWrap: saved.editorWordWrap,
   editorFontSize: saved.editorFontSize,
+  conversationFontSize: saved.conversationFontSize,
   gitOpsMode: saved.gitOpsMode,
   worktreeCompletionStrategy: saved.worktreeCompletionStrategy,
   worktreeBranchDefaults: saved.worktreeBranchDefaults,
@@ -217,6 +218,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   setEditorFontSize: (size) => {
     const clamped = Math.max(8, Math.min(24, Math.round(size)))
     set({ editorFontSize: clamped })
+    saveSettings(getAllSettings(get))
+  },
+  setConversationFontSize: (size) => {
+    const clamped = Math.max(8, Math.min(24, Math.round(size)))
+    set({ conversationFontSize: clamped })
     saveSettings(getAllSettings(get))
   },
   setGitOpsMode: (mode) => {

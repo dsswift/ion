@@ -81,8 +81,17 @@ func TestStartSessionWithSessionID(t *testing.T) {
 	}
 }
 
-// ─── Test 2: SessionID from exit persists to next prompt ───
-
+// ─── Test 2: backend-reported sessionID resumes via CliResumeSessionID ───
+//
+// Corrected two-identity-space contract: the backend-reported sessionID
+// (claude's native UUID for the CLI backend) does NOT replace Ion's
+// pre-minted conversation-file id (RunOptions.SessionID). Instead it is
+// captured into cliSessionID and fed to the next run via
+// RunOptions.CliResumeSessionID — the only value the CLI backend passes to
+// `claude --resume`. Ion's SessionID stays stable across prompts so every
+// Ion subsystem keyed on the conversation-file id keeps resolving the right
+// files. (Previously this test asserted the defective behavior of
+// overwriting SessionID with the backend value.)
 func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 	mb := helpers.NewMockBackend()
 	mgr := session.NewManager(mb)
@@ -107,25 +116,31 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 	firstRunID := keys[0]
 
 	// First run carries the pre-minted conversation ID (assigned at session
-	// start since the conversationId-on-context feature). Before that change,
-	// this was empty — the ID only appeared on the second run after the
-	// backend returned one via EmitExit.
+	// start since the conversationId-on-context feature) and no resume id
+	// yet (no claude UUID has been captured).
 	opts1, _ := mb.GetStarted(firstRunID)
 	if opts1.SessionID == "" {
 		t.Errorf("expected pre-minted SessionID on first run, got empty")
 	}
+	if opts1.CliResumeSessionID != "" {
+		t.Errorf("first run must omit CliResumeSessionID (no captured UUID), got %q", opts1.CliResumeSessionID)
+	}
 	preMinted := opts1.SessionID
 
-	// Simulate exit with a sessionID returned by the backend.
+	// Simulate exit with a sessionID returned by the backend (claude UUID).
 	mb.EmitExit(firstRunID, nil, nil, "conv-abc")
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify we got an idle status (run completed).
+	// Verify we got an idle status (run completed) and that it reports Ion's
+	// stable conversation id, not the backend-provided value.
 	idleEvents := ec.byType("engine_status")
 	foundIdle := false
 	for _, e := range idleEvents {
 		if e.Fields != nil && e.Fields.State == "idle" {
 			foundIdle = true
+			if e.Fields.SessionID != preMinted {
+				t.Errorf("idle status SessionID = %q, want Ion id %q (not backend value 'conv-abc')", e.Fields.SessionID, preMinted)
+			}
 			break
 		}
 	}
@@ -133,7 +148,8 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 		t.Fatal("expected engine_status with state=idle after first run exit")
 	}
 
-	// Second prompt should carry the sessionID from the first run's exit.
+	// Second prompt: SessionID stays the Ion id; the backend-provided value
+	// flows through CliResumeSessionID for --resume.
 	if err := mgr.SendPrompt("resume-2", "second message", nil); err != nil {
 		t.Fatalf("SendPrompt (second): %v", err)
 	}
@@ -160,11 +176,11 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 	if !ok {
 		t.Fatal("second started run not found")
 	}
-	if opts2.SessionID != "conv-abc" {
-		t.Errorf("expected SessionID='conv-abc' on second run, got %q", opts2.SessionID)
+	if opts2.SessionID != preMinted {
+		t.Errorf("second run SessionID = %q, want stable Ion id %q", opts2.SessionID, preMinted)
 	}
-	if opts2.SessionID == preMinted {
-		t.Errorf("second run should use backend-provided ID, not pre-minted %q", preMinted)
+	if opts2.CliResumeSessionID != "conv-abc" {
+		t.Errorf("second run CliResumeSessionID = %q, want backend-provided 'conv-abc'", opts2.CliResumeSessionID)
 	}
 }
 

@@ -6,11 +6,19 @@ import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
 import type { Message } from '../../../shared/types'
 
+interface Props {
+  message: Message
+  variant: 'user' | 'assistant'
+  /** When set, the component operates on an engine instance instead of a CLI tab. */
+  engineContext?: { tabId: string; instanceId: string }
+}
+
 /** Hover overlay actions (copy / rewind / fork) for a user or assistant message. */
-export function MessageActions({ message, variant }: { message: Message; variant: 'user' | 'assistant' }) {
+export function MessageActions({ message, variant, engineContext }: Props) {
   const colors = useColors()
-  const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
+  const tab = useSessionStore((s) => s.tabs.find((t) => t.id === (engineContext?.tabId ?? s.activeTabId)))
   const rewindToMessage = useSessionStore((s) => s.rewindToMessage)
+  const rewindEngineInstance = useSessionStore((s) => s.rewindEngineInstance)
   const forkFromMessage = useSessionStore((s) => s.forkFromMessage)
   const isIdle = tab != null && tab.status !== 'running' && tab.status !== 'connecting'
   const [confirmRewind, setConfirmRewind] = useState(false)
@@ -29,7 +37,11 @@ export function MessageActions({ message, variant }: { message: Message; variant
       return
     }
     setConfirmRewind(false)
-    rewindToMessage(tab.id, message.id)
+    if (engineContext) {
+      rewindEngineInstance(engineContext.tabId, engineContext.instanceId, message.id)
+    } else {
+      rewindToMessage(tab.id, message.id)
+    }
   }
 
   return (
@@ -55,24 +67,28 @@ export function MessageActions({ message, variant }: { message: Message; variant
             <ArrowCounterClockwise size={11} />
             <span>{confirmRewind ? 'Sure?' : 'Rewind'}</span>
           </motion.button>
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            onClick={() => tab && forkFromMessage(tab.id, message.id)}
-            disabled={!tab}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{
-              background: 'transparent',
-              color: colors.textTertiary,
-              border: 'none',
-            }}
-            title="Fork conversation from this message"
-          >
-            <GitFork size={11} />
-            <span>Fork</span>
-          </motion.button>
+          {/* Fork is only available for CLI tabs — engine instances don't
+              support forking to a new tab yet. */}
+          {!engineContext && (
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              onClick={() => tab && forkFromMessage(tab.id, message.id)}
+              disabled={!tab}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{
+                background: 'transparent',
+                color: colors.textTertiary,
+                border: 'none',
+              }}
+              title="Fork conversation from this message"
+            >
+              <GitFork size={11} />
+              <span>Fork</span>
+            </motion.button>
+          )}
         </>
       )}
     </div>

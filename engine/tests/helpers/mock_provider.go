@@ -15,6 +15,13 @@ type MockProvider struct {
 	callCount int
 	mu        sync.Mutex
 	calls     []types.LlmStreamOptions // recorded calls
+	// blockUntilCancel, when true, makes Stream emit any scripted events
+	// for the call and then block until ctx is cancelled, at which point it
+	// surfaces ctx.Err() on the error channel. This lets a test exercise
+	// the cancellation path (e.g. session abort cancelling an in-flight
+	// llmCall) deterministically without timing races. Default false
+	// preserves the original drain-and-return behavior.
+	blockUntilCancel bool
 }
 
 // NewMockProvider creates a MockProvider with the given ID.
@@ -43,6 +50,17 @@ func (m *MockProvider) SetResponseWithError(events []types.LlmStreamEvent, err e
 	defer m.mu.Unlock()
 	m.responses = append(m.responses, events)
 	m.errors = append(m.errors, err)
+}
+
+// SetBlockUntilCancel makes Stream block after emitting any scripted events
+// until ctx is cancelled, then surface ctx.Err() on the error channel. Used
+// to deterministically test cancellation (e.g. a session abort cancelling an
+// in-flight llmCall). Has no effect on the recorded-calls / call-count
+// accounting.
+func (m *MockProvider) SetBlockUntilCancel(v bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.blockUntilCancel = v
 }
 
 // CallCount returns how many times Stream was called.
@@ -83,6 +101,7 @@ func (m *MockProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) 
 		evs = m.responses[last]
 		streamErr = m.errors[last]
 	}
+	blockUntilCancel := m.blockUntilCancel
 	m.mu.Unlock()
 
 	go func() {
@@ -95,6 +114,14 @@ func (m *MockProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) 
 				errc <- ctx.Err()
 				return
 			}
+		}
+		// Blocking mode: hold the stream open until the caller cancels,
+		// then surface the context error. Models a long-running provider
+		// call that an abort must interrupt.
+		if blockUntilCancel {
+			<-ctx.Done()
+			errc <- ctx.Err()
+			return
 		}
 		if streamErr != nil {
 			errc <- streamErr

@@ -211,6 +211,13 @@ type EngineEvent struct {
 	Command      string `json:"command,omitempty"`
 	CommandError string `json:"commandError,omitempty"`
 
+	// engine_export — ExportFormat carries the rendered format the engine
+	// produced ("markdown" | "json" | "html" | "jsonl"), driven by the
+	// /export args (defaults to "markdown"). Consumers use it to pick a
+	// file extension / MIME type instead of sniffing the payload bytes.
+	// The rendered payload itself rides on EventMessage (`message`).
+	ExportFormat string `json:"exportFormat,omitempty"`
+
 	// engine_early_stop_decision_request — request/response wire protocol for
 	// the before_early_stop_decision hook. Promotes the hook to the socket so
 	// socket-only harnesses can participate without running

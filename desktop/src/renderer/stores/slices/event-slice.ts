@@ -3,6 +3,8 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden, totalInputTokens, scheduleDoneGroupMove } from '../session-store-helpers'
 import { formatPlanCreatedDivider, formatSteerAppliedDivider } from '../../../shared/clear-divider'
+import { activeInstance, commitInstance } from '../conversation-instance'
+import { maybeGenerateTabTitle } from './event-slice-titling'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -15,11 +17,25 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
     handleNormalizedEvent: (tabId, event) => {
       set((s) => {
         const { activeTabId } = s
+        // Resolve the active conversation instance for this tab ONCE (1B).
+        // All message writes mutate this local `messages` array across every
+        // event case; the instance + tab are committed together in a single
+        // set at the end. Per-conversation fields (permissionDenied,
+        // permissionQueue, planFilePath, modelOverride) ride on `instPatch`
+        // and are merged into the instance at commit time. Tab-level fields
+        // (status, currentActivity, conversationId, lastResult, …) stay on
+        // `updated`.
+        const inst0 = activeInstance(s.conversationPanes, tabId)
+        let messages: Message[] = inst0 ? inst0.messages.slice() : []
+        const instPatch: Partial<import('../../../shared/types-engine').ConversationInstance> = {}
+        let instTouched = false
+        // permissionQueue lives on the instance now; seed the working copy
+        // from the instance and write back through instPatch when it changes.
+        let permissionQueue = inst0 ? inst0.permissionQueue.slice() : []
+
         const tabs = s.tabs.map((tab) => {
           if (tab.id !== tabId) return tab
           const updated = { ...tab, lastEventAt: Date.now() }
-          // Auto-hydrate skeleton tabs that start receiving events
-          if (!updated.messages) updated.messages = []
 
           switch (event.type) {
             case 'session_init':
@@ -29,7 +45,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               }
               updated.conversationId = event.sessionId
               updated.lastKnownSessionId = event.sessionId
-              updated.sessionModel = event.model
+              instPatch.sessionModel = event.model
+              instTouched = true
               updated.sessionTools = event.tools
               updated.sessionMcpServers = event.mcpServers
               updated.sessionSkills = event.skills
@@ -39,12 +56,13 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 if (isTerminal) break
                 updated.status = 'running'
                 updated.currentActivity = 'Thinking...'
-                updated.permissionDenied = null
+                instPatch.permissionDenied = null
+                instTouched = true
                 if (updated.queuedPrompts.length > 0) {
                   const [nextPrompt, ...rest] = updated.queuedPrompts
                   updated.queuedPrompts = rest
-                  updated.messages = [
-                    ...updated.messages,
+                  messages = [
+                    ...messages,
                     { id: nextMsgId(), role: 'user' as const, content: nextPrompt, timestamp: Date.now() },
                   ]
                 }
@@ -52,9 +70,9 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
 
             case 'stream_reset': {
-              const lastMsgReset = updated.messages[updated.messages.length - 1]
+              const lastMsgReset = messages[messages.length - 1]
               if (lastMsgReset?.role === 'assistant' && !lastMsgReset.toolName) {
-                updated.messages = updated.messages.slice(0, -1)
+                messages = messages.slice(0, -1)
               }
               break
             }
@@ -76,8 +94,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
                   let content = parts.join(' · ')
                   if (event.summary) content += '\n\n' + event.summary
-                  updated.messages = [
-                    ...updated.messages,
+                  messages = [
+                    ...messages,
                     { id: nextMsgId(), role: 'system' as const, content, timestamp: Date.now() },
                   ]
                 }
@@ -93,8 +111,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // conversation as a user turn. Append a divider system
               // message so the CLI scrollback shows the user where the
               // steer fell. Mirrors the engine-event-slice.ts handler.
-              updated.messages = [
-                ...updated.messages,
+              messages = [
+                ...messages,
                 {
                   id: nextMsgId(),
                   role: 'system' as const,
@@ -105,17 +123,17 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
 
             case 'text_chunk': {
-              console.debug(`[DIAG] text_chunk: tab=${tabId} len=${(event as any).text?.length} prev_msg_len=${updated.messages[updated.messages.length - 1]?.content?.length ?? 'N/A'}`)
+              console.debug(`[DIAG] text_chunk: tab=${tabId} instance=main len=${(event as any).text?.length} prev_msg_len=${messages[messages.length - 1]?.content?.length ?? 'N/A'}`)
               updated.currentActivity = 'Writing...'
-              const lastMsg = updated.messages[updated.messages.length - 1]
+              const lastMsg = messages[messages.length - 1]
               if (lastMsg?.role === 'assistant' && !lastMsg.toolName) {
-                updated.messages = [
-                  ...updated.messages.slice(0, -1),
+                messages = [
+                  ...messages.slice(0, -1),
                   { ...lastMsg, content: lastMsg.content + event.text },
                 ]
               } else {
-                updated.messages = [
-                  ...updated.messages,
+                messages = [
+                  ...messages,
                   { id: nextMsgId(), role: 'assistant', content: event.text, timestamp: Date.now() },
                 ]
               }
@@ -124,8 +142,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'tool_call':
               updated.currentActivity = `Running ${event.toolName}...`
-              updated.messages = [
-                ...updated.messages,
+              messages = [
+                ...messages,
                 {
                   id: nextMsgId(),
                   role: 'tool',
@@ -140,27 +158,27 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
 
             case 'tool_call_update': {
-              const msgs = [...updated.messages]
+              const msgs = [...messages]
               const lastTool = [...msgs].reverse().find((m) => m.role === 'tool' && m.toolStatus === 'running')
               if (lastTool) {
                 lastTool.toolInput = (lastTool.toolInput || '') + event.partialInput
               }
-              updated.messages = msgs
+              messages = msgs
               break
             }
 
             case 'tool_call_complete': {
-              const msgs2 = [...updated.messages]
+              const msgs2 = [...messages]
               const runningTool = [...msgs2].reverse().find((m) => m.role === 'tool' && m.toolStatus === 'running')
               if (runningTool) {
                 runningTool.toolStatus = 'completed'
               }
-              updated.messages = msgs2
+              messages = msgs2
               break
             }
 
             case 'tool_result': {
-              const msgs3 = [...updated.messages]
+              const msgs3 = [...messages]
               const targetTool = [...msgs3].reverse().find((m) => m.role === 'tool' && m.toolId === event.toolId)
               if (targetTool) {
                 targetTool.content = event.content
@@ -177,19 +195,19 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   updated.hasFileActivity = true
                 }
               }
-              updated.messages = msgs3
+              messages = msgs3
               break
             }
 
             case 'task_update': {
               if (event.message?.content) {
                 const lastUserIdx = (() => {
-                  for (let i = updated.messages.length - 1; i >= 0; i--) {
-                    if (updated.messages[i].role === 'user') return i
+                  for (let i = messages.length - 1; i >= 0; i--) {
+                    if (messages[i].role === 'user') return i
                   }
                   return -1
                 })()
-                const hasStreamedText = updated.messages
+                const hasStreamedText = messages
                   .slice(lastUserIdx + 1)
                   .some((m) => m.role === 'assistant' && !m.toolName)
 
@@ -199,8 +217,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                     .map((b) => b.text!)
                     .join('')
                   if (textContent) {
-                    updated.messages = [
-                      ...updated.messages,
+                    messages = [
+                      ...messages,
                       { id: nextMsgId(), role: 'assistant' as const, content: textContent, timestamp: Date.now() },
                     ]
                   }
@@ -208,12 +226,12 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
                 for (const block of event.message.content) {
                   if (block.type === 'tool_use' && block.name) {
-                    const exists: Message | undefined = updated.messages.find(
+                    const exists: Message | undefined = messages.find(
                       (m) => m.role === 'tool' && m.toolName === block.name && !m.content
                     )
                     if (!exists) {
-                      updated.messages = [
-                        ...updated.messages,
+                      messages = [
+                        ...messages,
                         {
                           id: nextMsgId(),
                           role: 'tool',
@@ -227,7 +245,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                     } else if (block.input) {
                       const completeInput = JSON.stringify(block.input, null, 2)
                       if (exists.toolInput !== completeInput) {
-                        updated.messages = updated.messages.map((m) =>
+                        messages = messages.map((m) =>
                           m === exists ? { ...m, toolInput: completeInput } : m
                         )
                       }
@@ -247,11 +265,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             }
 
             case 'task_complete':
-              console.log(`[task_complete] tab=${tabId.slice(0, 8)} prevStatus=${tab.status} prevPermMode=${tab.permissionMode} prevPermDenied=${tab.permissionDenied ? JSON.stringify(tab.permissionDenied.tools.map((t) => t.toolName)) : 'null'} denials=${event.permissionDenials ? JSON.stringify(event.permissionDenials.map((d) => ({ name: d.toolName, hasInput: !!d.toolInput, inputKeys: d.toolInput ? Object.keys(d.toolInput) : [] }))) : 'none'}`)
+              console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main prevStatus=${tab.status} prevPermMode=${tab.permissionMode} prevPermDenied=${inst0?.permissionDenied ? JSON.stringify(inst0.permissionDenied.tools.map((t) => t.toolName)) : 'null'} denials=${event.permissionDenials ? JSON.stringify(event.permissionDenials.map((d) => ({ name: d.toolName, hasInput: !!d.toolInput, inputKeys: d.toolInput ? Object.keys(d.toolInput) : [] }))) : 'none'}`)
               updated.status = 'completed'
               updated.activeRequestId = null
               updated.currentActivity = ''
-              updated.permissionQueue = []
+              permissionQueue = []
               if (event.sessionId) {
                 updated.conversationId = event.sessionId
                 updated.lastKnownSessionId = event.sessionId
@@ -265,17 +283,17 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               }
               if (event.result) {
                 const lastUserIdx2 = (() => {
-                  for (let i = updated.messages.length - 1; i >= 0; i--) {
-                    if (updated.messages[i].role === 'user') return i
+                  for (let i = messages.length - 1; i >= 0; i--) {
+                    if (messages[i].role === 'user') return i
                   }
                   return -1
                 })()
-                const hasAnyText = updated.messages
+                const hasAnyText = messages
                   .slice(lastUserIdx2 + 1)
                   .some((m) => m.role === 'assistant' && !m.toolName)
                 if (!hasAnyText) {
-                  updated.messages = [
-                    ...updated.messages,
+                  messages = [
+                    ...messages,
                     { id: nextMsgId(), role: 'assistant' as const, content: event.result, timestamp: Date.now() },
                   ]
                 }
@@ -291,11 +309,13 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 // active" user message) is gone. task_complete now arrives
                 // while permissionMode is still 'plan', and the approval
                 // card renders cleanly from the unfiltered denials.
-                updated.permissionDenied = { tools: event.permissionDenials }
-                console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=denials permDenied set to ${JSON.stringify(updated.permissionDenied.tools.map((t) => t.toolName))} permMode=${updated.permissionMode}`)
+                instPatch.permissionDenied = { tools: event.permissionDenials }
+                instTouched = true
+                console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main branch=denials permDenied set to ${JSON.stringify(event.permissionDenials.map((t) => t.toolName))} permMode=${updated.permissionMode}`)
               } else {
-                console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=noDenials permDenied=null`)
-                updated.permissionDenied = null
+                console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main branch=noDenials permDenied=null`)
+                instPatch.permissionDenied = null
+                instTouched = true
               }
               playNotificationIfHidden()
               // Auto-move to done group on clean auto-mode completion.
@@ -304,7 +324,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // if the user re-sends, so the tab stays in in-progress.
               // Guard: only move if tab was actually running (not a stale task_complete
               // from a killed session during resetTabSession → implement flow)
-              if (tab.status === 'running' && updated.permissionMode === 'auto' && updated.permissionDenied === null) {
+              if (tab.status === 'running' && updated.permissionMode === 'auto' && instPatch.permissionDenied === null) {
                 const { autoGroupMovement, tabGroupMode, doneGroupId } = usePreferencesStore.getState()
                 console.log(`[auto-move:done] tab=${tabId.slice(0, 8)} autoGroup=${autoGroupMovement} tabGroupMode=${tabGroupMode} doneGroup=${doneGroupId ?? 'none'} currentGroup=${updated.groupId ?? 'none'} pinned=${updated.groupPinned}`)
                 if (autoGroupMovement && tabGroupMode === 'manual' && doneGroupId && updated.groupId !== doneGroupId) {
@@ -329,32 +349,26 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   }
                 }
               } else {
-                console.log(`[auto-move:done] skipped: tab=${tabId.slice(0, 8)} prevStatus=${tab.status} permMode=${updated.permissionMode} permDenied=${updated.permissionDenied !== null}`)
+                console.log(`[auto-move:done] skipped: tab=${tabId.slice(0, 8)} prevStatus=${tab.status} permMode=${updated.permissionMode} permDenied=${instPatch.permissionDenied !== null}`)
               }
-              if (
-                !updated.customTitle &&
-                usePreferencesStore.getState().aiGeneratedTitles
-              ) {
-                const firstUserMsg = updated.messages.find((m) => m.role === 'user')
-                if (firstUserMsg) {
-                  const capturedTabId = tabId
-                  window.ion.generateTitle(firstUserMsg.content).then((title) => {
-                    if (title) {
-                      get().renameTab(capturedTabId, title)
-                    }
-                  }).catch(() => { /* keep truncated fallback */ })
-                }
-              }
+              // Title resolution (slash short-circuit vs. LLM generation)
+              // lives in event-slice-titling.ts to keep this file under the
+              // file-size cap. The helper owns the full decision: it no-ops
+              // when a customTitle exists or the aiGeneratedTitles preference
+              // is off, skips LLM titling for slash commands, and otherwise
+              // fires the async generation. renameTab is read at call time.
+              maybeGenerateTabTitle(tabId, updated.customTitle, updated.title, messages, get().renameTab)
               break
 
             case 'error':
               updated.status = 'failed'
               updated.activeRequestId = null
               updated.currentActivity = ''
-              updated.permissionQueue = []
-              updated.permissionDenied = null
-              updated.messages = [
-                ...updated.messages,
+              permissionQueue = []
+              instPatch.permissionDenied = null
+              instTouched = true
+              messages = [
+                ...messages,
                 { id: nextMsgId(), role: 'system', content: `Error: ${event.message}`, timestamp: Date.now() },
               ]
               break
@@ -364,10 +378,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               updated.status = 'dead'
               updated.activeRequestId = null
               updated.currentActivity = ''
-              updated.permissionQueue = []
-              updated.permissionDenied = null
-              updated.messages = [
-                ...updated.messages,
+              permissionQueue = []
+              instPatch.permissionDenied = null
+              instTouched = true
+              messages = [
+                ...messages,
                 {
                   id: nextMsgId(),
                   role: 'system',
@@ -393,8 +408,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 // conversation so the user can see when each plan phase
                 // started. Mirrors the engine-tab path in
                 // engine-event-slice.ts.
-                updated.messages = [
-                  ...updated.messages,
+                messages = [
+                  ...messages,
                   {
                     id: nextMsgId(),
                     role: 'system' as const,
@@ -405,7 +420,8 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 ]
               }
               if ((event as any).planFilePath) {
-                updated.planFilePath = (event as any).planFilePath
+                instPatch.planFilePath = (event as any).planFilePath
+                instTouched = true
               }
               break
 
@@ -417,16 +433,17 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // task_complete.permissionDenials below (for back-compat),
               // but this event lets the renderer learn about the proposal
               // *as soon as the model calls the tool*, before task_complete
-              // arrives. We record the proposed plan path on the tab so
+              // arrives. We record the proposed plan path on the instance so
               // downstream UI (e.g. the implement button) has it without
               // having to scrape it from permissionDenied entries. See
               // docs/architecture/adr/003-state-events-vs-workflow-events.md.
               const proposal = event as any
               const kind = proposal.planProposalKind ?? proposal.kind
               const path = proposal.planFilePath
-              console.log(`[plan_proposal] tab=${tabId.slice(0, 8)} kind=${kind} planFilePath=${path ?? ''} planSlug=${proposal.planSlug ?? ''}`)
-              if (path && updated.planFilePath !== path) {
-                updated.planFilePath = path
+              console.log(`[plan_proposal] tab=${tabId.slice(0, 8)} instance=main kind=${kind} planFilePath=${path ?? ''} planSlug=${proposal.planSlug ?? ''}`)
+              if (path && inst0?.planFilePath !== path) {
+                instPatch.planFilePath = path
+                instTouched = true
               }
               break
             }
@@ -443,15 +460,15 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   label: o.label,
                 })),
               }
-              updated.permissionQueue = [...updated.permissionQueue, newReq]
+              permissionQueue = [...permissionQueue, newReq]
               updated.currentActivity = `Waiting for permission: ${event.toolName}`
               break
             }
 
             case 'rate_limit':
               if (event.status !== 'allowed') {
-                updated.messages = [
-                  ...updated.messages,
+                messages = [
+                  ...messages,
                   {
                     id: nextMsgId(),
                     role: 'system',
@@ -466,7 +483,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
           // Refresh last-message preview from whichever message ended up
           // most recent. Used as a tab-pill subtitle to help distinguish
           // multiple concurrent sessions.
-          const lastMsg = updated.messages[updated.messages.length - 1]
+          const lastMsg = messages[messages.length - 1]
           if (lastMsg) {
             updated.lastMessagePreview = formatMessagePreview(lastMsg.content)
           }
@@ -474,7 +491,20 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
           return updated
         })
 
-        return { tabs }
+        // Commit the working message list + per-conversation patch back onto
+        // the active instance in a single set (1B). conversationPanes is replaced
+        // only when the tab existed and the instance was found.
+        const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => {
+          const next = { ...inst, messages, permissionQueue }
+          if (instTouched) {
+            if ('permissionDenied' in instPatch) next.permissionDenied = instPatch.permissionDenied!
+            if ('planFilePath' in instPatch) next.planFilePath = instPatch.planFilePath ?? null
+            if ('sessionModel' in instPatch) next.sessionModel = instPatch.sessionModel ?? null
+          }
+          return next
+        })
+
+        return { tabs, conversationPanes }
       })
     },
 
@@ -482,52 +512,71 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (newStatus === 'dead') {
         console.warn(`[Ion] handleStatusChange: tab=${tabId} status=dead`)
       }
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                status: newStatus as TabStatus,
-                ...(newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead'
-                  ? { activeRequestId: null, currentActivity: '', permissionQueue: [] as import('../../../shared/types').PermissionRequest[], permissionDenied: null }
-                  : newStatus === 'completed'
-                    ? { activeRequestId: null, currentActivity: '', permissionQueue: [] as import('../../../shared/types').PermissionRequest[] }
+      set((s) => {
+        // permissionQueue + permissionDenied are per-conversation now; clear
+        // them on the active instance when the status becomes terminal.
+        const clearQueue = newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead' || newStatus === 'completed'
+        const clearDenied = newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead'
+        const conversationPanes = clearQueue
+          ? commitInstance(s.conversationPanes, tabId, (inst) => ({
+              ...inst,
+              permissionQueue: [],
+              ...(clearDenied ? { permissionDenied: null } : {}),
+            }))
+          : s.conversationPanes
+        return {
+          conversationPanes,
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  status: newStatus as TabStatus,
+                  ...(newStatus === 'idle' || newStatus === 'failed' || newStatus === 'dead' || newStatus === 'completed'
+                    ? { activeRequestId: null, currentActivity: '' }
                     : {}),
-              }
-            : t
-        ),
-      }))
+                }
+              : t
+          ),
+        }
+      })
     },
 
     handleError: (tabId, error) => {
-      set((s) => ({
-        tabs: s.tabs.map((t) => {
-          if (t.id !== tabId) return t
-
-          const msgs = t.messages ?? []
-          const lastMsg = msgs[msgs.length - 1]
-          const alreadyHasError = lastMsg?.role === 'system' && lastMsg.content.startsWith('Error:')
-
-          return {
-            ...t,
-            status: 'failed' as TabStatus,
-            activeRequestId: null,
-            currentActivity: '',
-            permissionQueue: [],
-            messages: alreadyHasError
-              ? msgs
-              : [
-                  ...msgs,
-                  {
-                    id: nextMsgId(),
-                    role: 'system' as const,
-                    content: `Error: ${error.message}${error.stderrTail.length > 0 ? '\n\n' + error.stderrTail.slice(-5).join('\n') : ''}`,
-                    timestamp: Date.now(),
-                  },
-                ],
-          }
-        }),
-      }))
+      set((s) => {
+        const inst = activeInstance(s.conversationPanes, tabId)
+        const msgs = inst ? inst.messages : []
+        const lastMsg = msgs[msgs.length - 1]
+        const alreadyHasError = lastMsg?.role === 'system' && lastMsg.content.startsWith('Error:')
+        const nextMessages = alreadyHasError
+          ? msgs
+          : [
+              ...msgs,
+              {
+                id: nextMsgId(),
+                role: 'system' as const,
+                content: `Error: ${error.message}${error.stderrTail.length > 0 ? '\n\n' + error.stderrTail.slice(-5).join('\n') : ''}`,
+                timestamp: Date.now(),
+              },
+            ]
+        const conversationPanes = commitInstance(s.conversationPanes, tabId, (i) => ({
+          ...i,
+          messages: nextMessages,
+          permissionQueue: [],
+        }))
+        return {
+          conversationPanes,
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  status: 'failed' as TabStatus,
+                  activeRequestId: null,
+                  currentActivity: '',
+                }
+              : t
+          ),
+        }
+      })
     },
   }
 }

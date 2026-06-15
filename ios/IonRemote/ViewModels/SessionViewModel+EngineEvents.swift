@@ -178,7 +178,7 @@ extension SessionViewModel {
         guard let exitCode, exitCode != 0 else { return }
         // Only mark tab dead if no other instances are running
         let instId = instanceId
-        let others = engineInstances[tabId]?.filter { $0.id != instId } ?? []
+        let others = conversationInstances[tabId]?.filter { $0.id != instId } ?? []
         if others.isEmpty {
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
                 tabs[idx].status = .dead
@@ -194,13 +194,13 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineInstanceRemoved(tabId: String, instanceId: String) {
-        engineInstances[tabId]?.removeAll { $0.id == instanceId }
+        conversationInstances[tabId]?.removeAll { $0.id == instanceId }
         if activeEngineInstance[tabId] == instanceId {
-            activeEngineInstance[tabId] = engineInstances[tabId]?.first?.id
+            activeEngineInstance[tabId] = conversationInstances[tabId]?.first?.id
         }
         // Clean up compound-keyed state for removed instance.
         // Note: messages, agentStates, statusFields, and modelOverride lived
-        // on the EngineInstanceInfo struct and are gone with the instance.
+        // on the ConversationInstanceInfo struct and are gone with the instance.
         // Only the standalone compound-keyed maps need explicit cleanup here.
         let removedKey = "\(tabId):\(instanceId)"
         engineWorkingMessages.removeValue(forKey: removedKey)

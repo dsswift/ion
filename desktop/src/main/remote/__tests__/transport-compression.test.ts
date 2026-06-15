@@ -49,7 +49,7 @@ describe('transport compression round-trip', () => {
       status: 'idle',
       workingDirectory: `/Users/dev/project-${i}`,
       permissionQueue: [],
-      engineInstances: [{ id: `inst-${i}`, label: 'default' }],
+      conversationInstances: [{ id: `inst-${i}`, label: 'default' }],
       lastActivityAt: Date.now() - i * 1000,
     }))
     const original = { type: 'snapshot', tabs, recentDirectories: ['/Users/dev'] }
@@ -65,7 +65,7 @@ describe('transport compression round-trip', () => {
       status: 'idle',
       workingDirectory: `/Users/dev/project-${i}`,
       permissionQueue: [],
-      engineInstances: [{ id: `inst-${i}`, label: 'default' }],
+      conversationInstances: [{ id: `inst-${i}`, label: 'default' }],
       lastActivityAt: Date.now() - i * 1000,
     }))
     const plaintext = JSON.stringify({ type: 'snapshot', tabs })

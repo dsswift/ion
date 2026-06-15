@@ -22,7 +22,7 @@ import { useSessionStore } from '../stores/sessionStore'
  *   card can render question text and plan content).
  *
  * Trigger:
- *   This effect watches `enginePanes`. Each time instance.conversationIds
+ *   This effect watches `conversationPanes`. Each time instance.conversationIds
  *   is updated (by engine_status carrying a sessionId after start_session
  *   + reconcile_state), the pane Map identity changes and this subscription
  *   fires. At that point we know:
@@ -53,13 +53,13 @@ export function useEnginePermissionDenialBackfill(): void {
   useEffect(() => {
     const processedKeys = new Set<string>()
 
-    // Subscribe to enginePanes. The pane Map identity changes whenever
+    // Subscribe to conversationPanes. The pane Map identity changes whenever
     // instance.conversationIds is updated (engine_status sets a new sessionId).
     // We iterate all instances across all panes to find newly-resolvable keys.
     const unsubscribe = useSessionStore.subscribe((state, prev) => {
-      if (state.enginePanes === prev.enginePanes) return
+      if (state.conversationPanes === prev.conversationPanes) return
 
-      for (const [tabId, pane] of state.enginePanes) {
+      for (const [tabId, pane] of state.conversationPanes) {
         for (const inst of pane.instances) {
           const key = `${tabId}:${inst.id}`
           if (processedKeys.has(key)) continue
@@ -191,7 +191,7 @@ async function backfillForKey(
     const finalCandidate = candidate
     const finalParsedInput = parsedInput
     useSessionStore.setState((state) => {
-      const pane = state.enginePanes.get(tabId)
+      const pane = state.conversationPanes.get(tabId)
       if (!pane) return {}
       const idx = pane.instances.findIndex((i) => i.id === instanceId)
       if (idx === -1) return {}
@@ -200,7 +200,7 @@ async function backfillForKey(
       // when we decided to backfill and when the load returned.
       if (!existing || !existing.tools || existing.tools.length === 0) return {}
       if (existing.tools[0]?.toolInput) return {}
-      const updatedPanes = new Map(state.enginePanes)
+      const updatedPanes = new Map(state.conversationPanes)
       const instances = pane.instances.slice()
       instances[idx] = {
         ...instances[idx],
@@ -214,7 +214,7 @@ async function backfillForKey(
       }
       updatedPanes.set(tabId, { ...pane, instances })
       console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=enriched tool=${finalCandidate.toolName} toolId=${finalCandidate.toolId.slice(0, 16)} inputKeys=${Object.keys(finalParsedInput).join(',')}`)
-      return { enginePanes: updatedPanes }
+      return { conversationPanes: updatedPanes }
     })
   } catch (err) {
     console.warn(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=error ${err instanceof Error ? err.message : String(err)}`)

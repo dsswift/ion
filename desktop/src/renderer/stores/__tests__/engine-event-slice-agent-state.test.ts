@@ -44,14 +44,14 @@ function makeInstance(id: string, extra: Partial<any> = {}) {
 
 function buildHarness() {
   const state: any = {
-    tabs: [{ id: 'tab1', isEngine: true, lastEventAt: 0 }],
+    tabs: [{ id: 'tab1', hasEngineExtension: true, lastEventAt: 0 }],
     engineWorkingMessages: new Map(),
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
     engineUsage: new Map(),
     engineModelFallbacks: new Map(),
-    enginePanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
+    conversationPanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial
@@ -62,9 +62,9 @@ function buildHarness() {
   return { state, slice }
 }
 
-/** Read agentStates from the instance in enginePanes. */
+/** Read agentStates from the instance in conversationPanes. */
 function getAgentStates(state: any, tabId: string, instanceId: string): AgentStateUpdate[] | undefined {
-  const pane = state.enginePanes.get(tabId)
+  const pane = state.conversationPanes.get(tabId)
   const inst = pane?.instances.find((i: any) => i.id === instanceId)
   return inst?.agentStates
 }
@@ -94,7 +94,7 @@ describe('engine_agent_state snapshot contract', () => {
     const key = 'tab1:inst1'
 
     // Seed: pretend a sticky/done agent was previously stored on the instance.
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [{ name: 'kept', status: 'done', metadata: { conversationId: 'conv-xyz', visibility: 'sticky' } }],
@@ -114,7 +114,7 @@ describe('engine_agent_state snapshot contract', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
 
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [
@@ -137,7 +137,7 @@ describe('engine_agent_state snapshot contract', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
 
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [{ name: 'old', status: 'done' }],
@@ -151,21 +151,21 @@ describe('engine_agent_state snapshot contract', () => {
 
   it('ignores events when key has no instance component', () => {
     const { state, slice } = buildHarness()
-    const beforePanes = state.enginePanes
+    const beforePanes = state.conversationPanes
 
     slice.handleEngineEvent('tab1', {
       type: 'engine_agent_state',
       agents: [{ name: 'x', status: 'running' }],
     } as any)
 
-    // No colon in key → handler returns early, enginePanes unchanged.
-    expect(state.enginePanes).toBe(beforePanes)
+    // No colon in key → handler returns early, conversationPanes unchanged.
+    expect(state.conversationPanes).toBe(beforePanes)
   })
 
-  it('writes a new enginePanes Map (no in-place mutation)', () => {
+  it('writes a new conversationPanes Map (no in-place mutation)', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
-    const before = state.enginePanes
+    const before = state.conversationPanes
 
     slice.handleEngineEvent(key, {
       type: 'engine_agent_state',
@@ -173,7 +173,7 @@ describe('engine_agent_state snapshot contract', () => {
     } as any)
 
     // The slice should construct a new Map so React detects the change.
-    expect(state.enginePanes).not.toBe(before)
+    expect(state.conversationPanes).not.toBe(before)
   })
 })
 
@@ -183,7 +183,7 @@ describe('engine_dead flips running agents to error', () => {
     const key = 'tab1:inst1'
 
     // Seed agents in various statuses
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [
@@ -212,25 +212,25 @@ describe('engine_dead flips running agents to error', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
 
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     const originalAgents = [
       { name: 'a', status: 'done', metadata: {} },
       { name: 'b', status: 'idle', metadata: {} },
     ]
     pane.instances[0] = { ...pane.instances[0], agentStates: originalAgents }
-    const beforePanes = state.enginePanes
+    const beforePanes = state.conversationPanes
 
     slice.handleEngineEvent(key, { type: 'engine_dead', exitCode: 1 } as any)
 
     // No running agents → withRunningAgentsErrored returns original Map
-    expect(state.enginePanes).toBe(beforePanes)
+    expect(state.conversationPanes).toBe(beforePanes)
   })
 
   it('does not flip agents on clean exit (exitCode 0)', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
 
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [{ name: 'a', status: 'running', metadata: {} }],
@@ -249,7 +249,7 @@ describe('engine_error flips running agents to error', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
 
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [
@@ -268,7 +268,7 @@ describe('engine_error flips running agents to error', () => {
     expect(stored![1].metadata).toEqual({ elapsed: 10 })
 
     // Also verify the error message was added to messages
-    const inst = state.enginePanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
+    const inst = state.conversationPanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
     expect(inst.messages).toHaveLength(1)
     expect(inst.messages[0].content).toBe('Error: something broke')
   })
@@ -277,7 +277,7 @@ describe('engine_error flips running agents to error', () => {
     const { state, slice } = buildHarness()
     const key = 'tab1:inst1'
 
-    const pane = state.enginePanes.get('tab1')
+    const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
       ...pane.instances[0],
       agentStates: [
@@ -296,7 +296,7 @@ describe('engine_error flips running agents to error', () => {
     expect(stored![0].status).toBe('error')
 
     // No system message added to the conversation stream
-    const inst = state.enginePanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
+    const inst = state.conversationPanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
     expect(inst.messages).toHaveLength(0)
 
     // Notification toast added instead
@@ -317,7 +317,7 @@ describe('engine_error flips running agents to error', () => {
     } as any)
 
     // No system message in the conversation stream
-    const inst = state.enginePanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
+    const inst = state.conversationPanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
     expect(inst.messages).toHaveLength(0)
 
     // Notification toast added
@@ -337,7 +337,7 @@ describe('engine_error flips running agents to error', () => {
       errorCode: 'extension_load_failed',
     } as any)
 
-    const inst = state.enginePanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
+    const inst = state.conversationPanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
     expect(inst.messages).toHaveLength(0)
 
     const notifs = state.engineNotifications.get(key)
@@ -359,7 +359,7 @@ describe('engine_extension_dead_permanent routes to notifications', () => {
     } as any)
 
     // No system message in the conversation stream
-    const inst = state.enginePanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
+    const inst = state.conversationPanes.get('tab1').instances.find((i: any) => i.id === 'inst1')
     expect(inst.messages).toHaveLength(0)
 
     // Notification toast added

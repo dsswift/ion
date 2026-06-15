@@ -100,9 +100,9 @@ func TestBuildUserContentBlocks_EmptyPromptAllInvalidAttachments(t *testing.T) {
 	}
 	blocks := buildUserContentBlocks("", atts)
 	if len(blocks) != 1 {
-		t.Fatalf("want 1 fallback empty-text block, got %d", len(blocks))
+		t.Fatalf("want 1 fallback placeholder block, got %d", len(blocks))
 	}
-	if blocks[0].Type != "text" || blocks[0].Text != "" {
-		t.Fatalf("want empty text fallback, got type=%q text=%q", blocks[0].Type, blocks[0].Text)
+	if blocks[0].Type != "text" || blocks[0].Text == "" {
+		t.Fatalf("want non-empty placeholder text, got type=%q text=%q", blocks[0].Type, blocks[0].Text)
 	}
 }

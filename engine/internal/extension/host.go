@@ -2,6 +2,7 @@ package extension
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -153,6 +154,18 @@ type Host struct {
 	// after the extension is fully loaded. Not guarded by async.mu
 	// (resource declarations are pure registration, no veto path).
 	pendingInitResources []types.ResourceDeclaration
+
+	// inflightLLMCalls maps an ext/llm_call RPC id to the CancelFunc of the
+	// context that drives that call. It lets a TS-side AbortSignal cancel a
+	// specific in-flight one-shot via the ext/llm_call_cancel notification
+	// (keyed by the same request id), independent of a session-wide abort.
+	// Both paths converge on the same derived context: the session root
+	// (set on RunOptions.ParentCtx upstream) cancels every call, and this
+	// per-call cancel cancels exactly one. Entries are inserted before the
+	// call goroutine launches and deleted when it completes. Guarded by
+	// inflightLLMMu. See host_llm_call_cancel.go.
+	inflightLLMCalls map[int64]context.CancelFunc
+	inflightLLMMu    sync.Mutex
 }
 
 

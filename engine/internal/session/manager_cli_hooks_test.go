@@ -82,6 +82,55 @@ func TestFireBeforePromptCli_AppendsToExistingSystem(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// fireBeforeAgentStart tests
+// ---------------------------------------------------------------------------
+
+// TestFireBeforeAgentStart_RootCallSiteSetsIsRoot pins the root-injection call
+// site (issue #227). The primary system-prompt injection path must fire
+// before_agent_start with AgentInfo{IsRoot: true} so consumers can tell the
+// root loop apart from a sub-agent launch. If the call site is reverted to a
+// bare AgentInfo{}, the handler observes IsRoot=false and this test goes red —
+// which is exactly the regression #227 was filed about. Asserting the value
+// the handler receives (not merely that the hook fired) is what makes this a
+// real regression guard rather than false coverage.
+func TestFireBeforeAgentStart_RootCallSiteSetsIsRoot(t *testing.T) {
+	cb := backend.NewCliBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("agentstart1")
+
+	var (
+		mu       sync.Mutex
+		received extension.AgentInfo
+		fired    bool
+	)
+	host := extension.NewHost()
+	host.SDK().On(extension.HookBeforeAgentStart, func(ctx *extension.Context, payload interface{}) (interface{}, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = payload.(extension.AgentInfo)
+		fired = true
+		return nil, nil
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+
+	opts := types.RunOptions{Prompt: "hello"}
+	mgr.fireBeforeAgentStart(s, "agentstart1", group, false, &opts)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !fired {
+		t.Fatal("expected before_agent_start to fire on the root injection path")
+	}
+	if !received.IsRoot {
+		t.Error("root call site must pass AgentInfo{IsRoot: true}; got IsRoot=false")
+	}
+	if received.Name != "" {
+		t.Errorf("root firing must have empty Name; got %q", received.Name)
+	}
+}
+
 func TestFireBeforePromptCli_NoopForNonCliBackend(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)

@@ -349,29 +349,51 @@ func TestHandleRunExit_ClearsRequestID(t *testing.T) {
 	}
 }
 
-func TestHandleRunExit_SetsConversationID(t *testing.T) {
+// TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID verifies the
+// corrected two-identity-space contract: the backend-reported sessionID
+// (claude's UUID for the CLI backend) is captured into cliSessionID and fed
+// to --resume via CliResumeSessionID on the next run, while Ion's
+// conversationID (the durable conversation-file identity) is NEVER
+// overwritten. Previously this test asserted the (defective) behavior of
+// overwriting conversationID with the backend value; that conflated the two
+// identity spaces and corrupted Ion-side file lookups for CLI sessions.
+func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 
 	_, _ = mgr.StartSession("sessid", defaultConfig())
+
+	// Capture the Ion-minted conversation id before the run.
+	mgr.mu.RLock()
+	ionConvID := mgr.sessions["sessid"].conversationID
+	mgr.mu.RUnlock()
+	if ionConvID == "" {
+		t.Fatal("expected a pre-minted Ion conversationID after StartSession")
+	}
+
 	_ = mgr.SendPrompt("sessid", "go", nil)
 
 	keys := mb.startedKeys()
 	code := 0
 	mb.emitExit(keys[0], &code, nil, "session-abc")
 
-	// After exit, the conversationID should be set. We verify by checking
-	// the internal session state directly (same package).
+	// After exit, cliSessionID holds the backend value and conversationID is
+	// unchanged (still the Ion id).
 	mgr.mu.RLock()
 	s := mgr.sessions["sessid"]
-	cs := s.conversationID
+	gotCli := s.cliSessionID
+	gotConv := s.conversationID
 	mgr.mu.RUnlock()
 
-	if cs != "session-abc" {
-		t.Errorf("expected conversationID='session-abc', got %q", cs)
+	if gotCli != "session-abc" {
+		t.Errorf("expected cliSessionID='session-abc', got %q", gotCli)
+	}
+	if gotConv != ionConvID {
+		t.Errorf("conversationID must be unchanged: got %q, want %q", gotConv, ionConvID)
 	}
 
-	// Also verify the next prompt passes the session ID through.
+	// The next prompt resumes with the captured backend value via
+	// CliResumeSessionID and keeps the Ion id as SessionID.
 	// Sleep 1ms to avoid timestamp collision in request ID.
 	time.Sleep(time.Millisecond)
 	_ = mgr.SendPrompt("sessid", "follow up", nil)
@@ -380,8 +402,11 @@ func TestHandleRunExit_SetsConversationID(t *testing.T) {
 	for _, k := range keys2 {
 		if k != keys[0] {
 			opts, _ := mb.getStarted(k)
-			if opts.SessionID != "session-abc" {
-				t.Errorf("expected sessionID 'session-abc', got %q", opts.SessionID)
+			if opts.CliResumeSessionID != "session-abc" {
+				t.Errorf("expected CliResumeSessionID 'session-abc', got %q", opts.CliResumeSessionID)
+			}
+			if opts.SessionID != ionConvID {
+				t.Errorf("expected SessionID %q (Ion id), got %q", ionConvID, opts.SessionID)
 			}
 			return
 		}

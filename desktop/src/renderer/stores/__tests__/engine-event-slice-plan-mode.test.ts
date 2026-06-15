@@ -3,7 +3,7 @@
  *
  * Pins the contract that engine_plan_mode_changed { planModeEnabled: true }
  * appends a "── Plan created at <time> ──" system message into the instance's
- * messages in enginePanes for the corresponding instance key. Mirrors the
+ * messages in conversationPanes for the corresponding instance key. Mirrors the
  * CLI-tab equivalent in event-slice-plan-mode.test.ts.
  *
  * Also pins the negative case: planModeEnabled=false (the model called
@@ -30,7 +30,7 @@ function buildHarness() {
   const state: any = {
     tabs: [{
       id: 'tab1',
-      isEngine: true,
+      hasEngineExtension: true,
       status: 'running',
       lastEventAt: 0,
       permissionDenied: null,
@@ -43,7 +43,7 @@ function buildHarness() {
     enginePinnedPrompt: new Map(),
     engineUsage: new Map(),
     engineModelFallbacks: new Map(),
-    enginePanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
+    conversationPanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial
@@ -55,7 +55,7 @@ function buildHarness() {
 }
 
 function getMessages(state: any, tabId: string, instanceId: string) {
-  const pane = state.enginePanes.get(tabId)
+  const pane = state.conversationPanes.get(tabId)
   return pane?.instances.find((i: any) => i.id === instanceId)?.messages ?? []
 }
 

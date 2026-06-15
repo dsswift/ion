@@ -303,7 +303,7 @@ Handle these by checking the `method` field on incoming messages alongside the e
 ## Key implementation notes
 
 1. **Flush stdout after every write.** Buffered output will cause the engine to hang waiting for responses.
-2. **Handle unknown hooks gracefully.** The engine sends all 55 hooks to subprocess extensions. Return null for hooks you don't care about.
+2. **Handle unknown hooks gracefully.** The engine may send any hook to subprocess extensions. Return null for hooks you don't care about.
 3. **Respect the RPC timeout.** The engine drops calls that don't respond within the configured timeout (default: 30 seconds, configurable via `timeouts.extensionRpcMs` in `engine.json`).
 4. **Never write non-JSON to stdout.** Debug output goes to stderr.
 5. **Parse the `_ctx` field** from hook and tool params if you need session context (cwd, model, config).

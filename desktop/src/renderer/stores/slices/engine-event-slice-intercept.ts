@@ -1,25 +1,26 @@
 import type { StoreSet } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
-import type { EnginePaneState } from '../../../shared/types'
+import type { ConversationPane } from '../../../shared/types'
 import type { Message } from '../../../shared/types-session'
+import { parseSessionKey } from '../../../shared/session-key'
 
 /**
- * Return a new enginePanes Map with `instance.messages` replaced for the
+ * Return a new conversationPanes Map with `instance.messages` replaced for the
  * instance identified by `key` (`${tabId}:${instanceId}`). No-ops silently
  * when the pane or instance is not found (event arrived before pane was
  * registered — safe to ignore).
  */
 function withInstanceMessages(
-  enginePanes: Map<string, EnginePaneState>,
+  conversationPanes: Map<string, ConversationPane>,
   key: string,
   messages: Message[],
-): Map<string, EnginePaneState> {
-  const [tabId, instanceId] = key.split(':')
-  const pane = enginePanes.get(tabId)
-  if (!pane) return enginePanes
+): Map<string, ConversationPane> {
+  const { tabId, instanceId } = parseSessionKey(key)
+  const pane = conversationPanes.get(tabId)
+  if (!pane) return conversationPanes
   const idx = pane.instances.findIndex((i) => i.id === instanceId)
-  if (idx === -1) return enginePanes
-  const updated = new Map(enginePanes)
+  if (idx === -1) return conversationPanes
+  const updated = new Map(conversationPanes)
   const instances = pane.instances.slice()
   instances[idx] = { ...instances[idx], messages }
   updated.set(tabId, { ...pane, instances })
@@ -53,8 +54,8 @@ export function handleEngineInterceptEvent(
   const levelPrefix = event.interceptLevel === 'redirect' ? 'Conversation redirected: ' : ''
   const content = `**${levelPrefix}${event.interceptTitle}**\n\n${event.interceptMessage}`
   set((state) => {
-    const [tabId, instanceId] = key.split(':')
-    const pane = state.enginePanes.get(tabId)
+    const { tabId, instanceId } = parseSessionKey(key)
+    const pane = state.conversationPanes.get(tabId)
     const inst = pane?.instances.find((i) => i.id === instanceId)
     const msgs = [...(inst?.messages || []), {
       id: nextMsgId(),
@@ -63,7 +64,7 @@ export function handleEngineInterceptEvent(
       timestamp: Date.now(),
       interceptLevel: event.interceptLevel,
     }]
-    const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-    return { enginePanes }
+    const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+    return { conversationPanes }
   })
 }

@@ -1,10 +1,12 @@
 import type { EngineBridge } from './engine-bridge'
-import type { EngineEvent, NormalizedEvent, TabStatus, EnrichedError } from '../shared/types'
-import { log as _log, debug as _debug, error as _error } from './logger'
+import type { EngineEvent, NormalizedEvent, TabStatus, EnrichedError, EngineConfig } from '../shared/types'
+import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
+import { handleExportEvent } from './engine-export-handler'
 
 const TAG = 'SessionPlane'
 function log(msg: string): void { _log(TAG, msg) }
 function debug(msg: string): void { _debug(TAG, msg) }
+function warn(msg: string): void { _warn(TAG, msg) }
 function error(msg: string): void { _error(TAG, msg) }
 
 export interface TabEntry {
@@ -291,6 +293,18 @@ export function handleEngineEvent(
       log(`intercept: tabId=${tabId} level=${event.interceptLevel} title=${event.interceptTitle}`)
       ctx.emit('engine_intercept', tabId, event)
       break
+
+    case 'engine_export':
+      // The engine has rendered a /export payload. Surface the save-as
+      // dialog so the user can write it to disk. The engine_command_result
+      // arrives next and is handled by the existing result-routing path.
+      // exportFormat is the engine-resolved format (markdown/json/html/jsonl);
+      // the handler maps it to a file extension without sniffing the payload.
+      log(`export: tabId=${tabId} format=${event.exportFormat ?? 'absent'} payloadBytes=${event.message?.length ?? 0}`)
+      // Fire-and-forget: the dialog is async but the engine event stream
+      // continues without waiting. Errors are logged inside the handler.
+      void handleExportEvent(event.message || '', event.exportFormat)
+      break
   }
 }
 
@@ -304,8 +318,35 @@ function handleStatusEvent(
   log(`engine_status: tabId=${tabId} state=${event.fields.state} sessionId=${event.fields.sessionId ?? 'none'} cost=$${event.fields.totalCostUsd ?? 0}`)
   if (event.fields.state === 'idle') {
     if (event.fields.sessionId) {
-      tab.conversationId = event.fields.sessionId
-      ctx.bridge.updateSessionConversationId(tabId, event.fields.sessionId)
+      if (!tab.conversationId) {
+        // First-ever bind: adopt the engine's id (normal first-start path).
+        tab.conversationId = event.fields.sessionId
+        ctx.bridge.updateSessionConversationId(tabId, event.fields.sessionId)
+      } else if (tab.conversationId === event.fields.sessionId) {
+        // Matching id: no-op (normal heartbeat tick or stable idle).
+        ctx.bridge.updateSessionConversationId(tabId, event.fields.sessionId)
+      } else {
+        // Divergence: the engine has a different id. This is the post-restart
+        // pre-mint footgun (issue #230 B1). Do NOT clobber the tracked id.
+        // Drive a resume so the engine rebinds the key to the real conversation.
+        //
+        // Carry the tab's REAL config into the resume (workingDirectory,
+        // extensions, model) rather than empty placeholders: a bare config would
+        // start a degraded session (wrong cwd, no extensions). The bridge holds
+        // the last EngineConfig used for this key; we reuse it and override only
+        // sessionId so the engine resumes the original conversation with the same
+        // working session. Falls back to a minimal config only if the bridge has
+        // no record (should not happen for a started session). (#231)
+        const priorConfig = ctx.bridge.getSessionConfig(tabId)
+        const resumeConfig: EngineConfig = priorConfig
+          ? { ...priorConfig, sessionId: tab.conversationId, forceNewConversation: false }
+          : { profileId: 'default', extensions: [], workingDirectory: '', sessionId: tab.conversationId }
+        warn(
+          `engine_status: tabId=${tabId} engine sessionId=${event.fields.sessionId} diverges from tracked conversationId=${tab.conversationId} — driving resume to restore original conversation (dir=${resumeConfig.workingDirectory || 'none'} model=${resumeConfig.model ?? 'default'} extensions=${resumeConfig.extensions.length})`,
+        )
+        ctx.bridge.updateSessionConversationId(tabId, tab.conversationId)
+        void ctx.bridge.startSession(tabId, resumeConfig)
+      }
     }
 
     if (tab.status === 'completed' || tab.status === 'idle' || tab.status === 'connecting') {

@@ -8,7 +8,7 @@ interface EngineDialogProps {
 
 export function EngineDialog({ tabId }: EngineDialogProps) {
   const dialog = useSessionStore(s => {
-    const p = s.enginePanes.get(tabId)
+    const p = s.conversationPanes.get(tabId)
     const k = p?.activeInstanceId ? `${tabId}:${p.activeInstanceId}` : ''
     return k ? (s.engineDialogs.get(k) || null) : null
   })

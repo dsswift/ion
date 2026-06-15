@@ -11,6 +11,7 @@ import { PlanViewer } from './PlanViewer'
 import { ImageViewer } from './ImageViewer'
 import { BriefingViewer } from './BriefingViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
+import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
 
 /* ─── Extension sets for icon picking ─── */
@@ -69,17 +70,12 @@ export function AttachmentsButton() {
   const { messages, planFilePath, activeTabId, workingDir, briefings } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      // Source messages from the right place per tab type:
-      //  - Conversation tabs: `tab.messages`, the per-tab message
-      //    array maintained by event-slice.
-      //  - Engine tabs: `instance.messages` on the active instance in enginePanes,
-      //    the per-instance message array maintained by engine-event-slice.
-      let msgs: MsgLike[] = tab?.messages ?? []
-      if (tab?.isEngine) {
-        const pane = s.enginePanes.get(s.activeTabId)
-        const inst = pane?.activeInstanceId ? pane.instances.find(i => i.id === pane.activeInstanceId) : null
-        msgs = (inst?.messages || []) as MsgLike[]
-      }
+      // Messages and plan state now live on the active `ConversationInstance`
+      // for every tab type (normal tabs carry a single `main` instance), so
+      // there is no longer a `tab.hasEngineExtension` fork — `activeInstance` resolves
+      // the right instance uniformly.
+      const inst = tab ? activeInstance(s.conversationPanes, tab.id) : null
+      const msgs: MsgLike[] = (inst?.messages ?? []) as MsgLike[]
       // Conversation-scoped resources: filter global resources to items whose
       // conversationId matches the current tab's conversation.
       const tabConvId = tab?.conversationId ?? null
@@ -88,14 +84,14 @@ export function AttachmentsButton() {
         : []
       return {
         messages: msgs,
-        // `tab.planFilePath` is only populated by the conversation
+        // `instance.planFilePath` is only populated by the conversation
         // `plan_proposal` event path. Engine tabs surface their
         // current plan through the system divider message (parsed
         // inside `parseAttachmentsFromMessages`) or through a
         // `Write`/`Edit` tool call against `**/plans/*.md` (also
-        // parsed inside). Either way, pass `tab.planFilePath` through
-        // as a sentinel so explicit conversation-tab flows still work.
-        planFilePath: tab?.planFilePath ?? null,
+        // parsed inside). Either way, pass `instance.planFilePath`
+        // through as a sentinel so explicit conversation-tab flows still work.
+        planFilePath: inst?.planFilePath ?? null,
         activeTabId: s.activeTabId,
         workingDir: tab?.workingDirectory ?? '~',
         briefings: convBriefings,

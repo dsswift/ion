@@ -73,8 +73,8 @@ extension DiagnosticLog {
         case .transportReconnecting:
             log("EVENT: transportReconnecting")
 
-        case .inputPrefill(let tabId, let text, let switchTo):
-            log("EVENT: inputPrefill tabId=\(tabId.prefix(8)) len=\(text.count) switchTo=\(switchTo)")
+        case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
+            log("EVENT: inputPrefill tabId=\(tabId.prefix(8)) len=\(text.count) switchTo=\(switchTo) instance=\(instanceId?.prefix(8) ?? "nil")")
 
         case .terminalOutput(let tabId, let instId, let data):
             log("EVENT: terminalOutput tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8)) len=\(data.count)")
@@ -225,6 +225,14 @@ extension DiagnosticLog {
             let err = commandError ?? "<none>"
             let msgPreview = message?.prefix(60) ?? ""
             log("EVENT: engineCommandResult tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") command=\(cmd) error=\(err) msg=\"\(msgPreview)\"")
+
+        case .engineExport(let tabId, let instId, let message, let exportFormat):
+            // Engine has rendered a /export payload. Logged at byte-count
+            // granularity only — the full payload may be many KB of the
+            // conversation's content and the log file would grow
+            // pathologically. The share sheet pickup is logged
+            // separately at the view layer.
+            log("EVENT: engineExport tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") format=\(exportFormat ?? "nil") bytes=\(message.count)")
 
         case .desktopSettingsSnapshot(let settings, let schema, let groups):
             // Snapshot of the desktop's projectable user preferences.

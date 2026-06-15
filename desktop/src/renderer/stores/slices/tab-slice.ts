@@ -2,7 +2,8 @@ import type { TabState } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { makeLocalTab, isBlankConversationTab } from '../session-store-helpers'
+import { makeLocalTab, isBlankConversationTab, initialModelOverride } from '../session-store-helpers'
+import { makeMainPane, commitInstance, activeInstance, instanceMessageCount } from '../conversation-instance'
 import { cleanupTabDeltas } from './engine-event-slice'
 
 export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -27,22 +28,22 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     setPermissionMode: (mode, source) => {
       const { activeTabId } = get()
       const activeTab = get().tabs.find((t) => t.id === activeTabId)
-      if (activeTab?.isEngine) {
+      if (activeTab?.hasEngineExtension) {
         // Engine tabs: write permissionMode directly onto the active instance.
-        const pane = get().enginePanes.get(activeTabId)
+        const pane = get().conversationPanes.get(activeTabId)
         const instanceId = pane?.activeInstanceId
         if (instanceId) {
           const compoundKey = `${activeTabId}:${instanceId}`
           set((s) => {
-            const enginePanes = new Map(s.enginePanes)
-            const paneInner = enginePanes.get(activeTabId)
+            const conversationPanes = new Map(s.conversationPanes)
+            const paneInner = conversationPanes.get(activeTabId)
             if (!paneInner) return {}
             const idx = paneInner.instances.findIndex((i) => i.id === instanceId)
             if (idx === -1) return {}
             const instances = paneInner.instances.slice()
             instances[idx] = { ...instances[idx], permissionMode: mode }
-            enginePanes.set(activeTabId, { ...paneInner, instances })
-            return { enginePanes }
+            conversationPanes.set(activeTabId, { ...paneInner, instances })
+            return { conversationPanes }
           })
           window.ion.engineSetPlanMode(compoundKey, mode === 'plan')
         }
@@ -69,7 +70,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const hasChosen = !!defaultBase
 
       const existingBlank = get().tabs.find(
-        (t) => isBlankConversationTab(t, startDir)
+        (t) => isBlankConversationTab(t, startDir, instanceMessageCount(activeInstance(get().conversationPanes, t.id)))
       )
       if (existingBlank) {
         const tallConv = usePreferencesStore.getState().defaultTallConversation
@@ -119,6 +120,10 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       set((s) => ({
         tabs: [...s.tabs, tab],
+        // Seed the single-instance `main` pane so message/draft/model state has
+        // a home from creation (2A invariant). Carry the plan-model split
+        // override onto the instance since modelOverride no longer lives on the tab.
+        conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({ modelOverride: initialModelOverride() })),
         activeTabId: tab.id,
         tallViewTabId: usePreferencesStore.getState().defaultTallConversation ? tab.id : null,
         terminalTallTabId: null,
@@ -129,7 +134,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
     createTabInDirectory: async (dir, useWorktree, skipDuplicateCheck, pinToGroupId) => {
       if (!skipDuplicateCheck) {
-        const existingBlank = get().tabs.find((t) => isBlankConversationTab(t, dir))
+        const existingBlank = get().tabs.find((t) => isBlankConversationTab(t, dir, instanceMessageCount(activeInstance(get().conversationPanes, t.id))))
         if (existingBlank) {
           const tallConv = usePreferencesStore.getState().defaultTallConversation
           set({
@@ -194,6 +199,10 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       set((s) => ({
         tabs: [...s.tabs, tab],
+        // Seed the single-instance `main` pane so message/draft/model state has
+        // a home from creation (2A invariant). Carry the plan-model split
+        // override onto the instance since modelOverride no longer lives on the tab.
+        conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({ modelOverride: initialModelOverride() })),
         activeTabId: tab.id,
         tallViewTabId: usePreferencesStore.getState().defaultTallConversation ? tab.id : null,
         terminalTallTabId: null,
@@ -220,8 +229,8 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const targetTab = prev.tabs.find(t => t.id === tabId)
         const isTerminalOnlyTall = targetTab?.isTerminalOnly && prefs.defaultTallTerminal
         const shouldTall = targetTab && !targetTab.isTerminalOnly && (
-          (targetTab.isEngine && prefs.defaultTallEngine) ||
-          (!targetTab.isEngine && prefs.defaultTallConversation)
+          (targetTab.hasEngineExtension && prefs.defaultTallEngine) ||
+          (!targetTab.hasEngineExtension && prefs.defaultTallConversation)
         )
         return {
           activeTabId: tabId,
@@ -238,10 +247,16 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // can route notifications to the active tab. Fire-and-forget.
       window.ion.notifyTabFocus(tabId)
 
-      // If skeleton tab (messages not yet loaded), load them asynchronously
+      // If skeleton tab (messages not yet loaded), load them asynchronously.
+      // Skeleton state now lives on the active instance: a persisted
+      // messageCount > 0 with an empty messages array means the scrollback
+      // hasn't been hydrated from disk yet.
       const targetTabAfter = get().tabs.find(t => t.id === tabId)
-      if (targetTabAfter?.messages === null && targetTabAfter.conversationId) {
-        get().loadSkeletonMessages(tabId)
+      if (targetTabAfter?.conversationId) {
+        const inst = activeInstance(get().conversationPanes, tabId)
+        if (inst && inst.messages.length === 0 && (inst.messageCount ?? 0) > 0) {
+          get().loadSkeletonMessages(tabId)
+        }
       }
     },
 
@@ -276,9 +291,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // dispatched-agent concept and their existing Cmd+W → confirm
       // flow is correct as-is. The guard is engine-tab-only because
       // engine tabs are where the dispatched-agent kill footgun lives.
-      if (closingTab?.isEngine) {
+      if (closingTab?.hasEngineExtension) {
         const s = get() as any
-        const pane = s.enginePanes?.get?.(tabId)
+        const pane = s.conversationPanes?.get?.(tabId)
         if (pane && pane.instances) {
           let orchestratorRunning = false
           const childCounts: Array<{ id: string; count: number }> = []
@@ -330,20 +345,20 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       } else {
         set({ terminalPanes: panes })
       }
-      if (closingTab?.isEngine) {
+      if (closingTab?.hasEngineExtension) {
         const engineWorkingMessages = new Map(get().engineWorkingMessages)
         const engineNotifications = new Map(get().engineNotifications)
         const engineDialogs = new Map(get().engineDialogs)
         const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
         const engineUsage = new Map(get().engineUsage)
-        const enginePanes = new Map(get().enginePanes)
+        const conversationPanes = new Map(get().conversationPanes)
         for (const k of engineWorkingMessages.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineWorkingMessages.delete(k)
         for (const k of engineNotifications.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineNotifications.delete(k)
         for (const k of engineDialogs.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineDialogs.delete(k)
         for (const k of enginePinnedPrompt.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) enginePinnedPrompt.delete(k)
         for (const k of engineUsage.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineUsage.delete(k)
-        enginePanes.delete(tabId)
-        set({ engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, enginePanes })
+        conversationPanes.delete(tabId)
+        set({ engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, conversationPanes })
         cleanupTabDeltas(tabId)
       }
       if (closingTab) {
@@ -389,7 +404,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           const newTab = makeLocalTab()
           newTab.workingDirectory = startDir
           newTab.hasChosenDirectory = !!defaultBase
-          set({ tabs: [newTab], activeTabId: newTab.id, gitPanelOpen: false })
+          // Seed the single-instance `main` pane for the replacement tab so its
+          // message/draft/model state has a home (2A invariant).
+          set({
+            tabs: [newTab],
+            activeTabId: newTab.id,
+            gitPanelOpen: false,
+            conversationPanes: new Map(get().conversationPanes).set(newTab.id, makeMainPane({ modelOverride: initialModelOverride() })),
+          })
           return
         }
         const closedIndex = s.tabs.findIndex((t) => t.id === tabId)
@@ -417,10 +439,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     },
 
     setTabModel: (tabId, model) => {
+      // modelOverride now lives on the active conversation instance.
       set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId ? { ...t, modelOverride: model } : t
-        ),
+        conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({ ...inst, modelOverride: model })),
       }))
     },
 
@@ -442,13 +463,23 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
     clearTab: () => {
       const { activeTabId } = get()
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
+      // Conversation state (messages, permissionQueue, permissionDenied) resets
+      // on the active instance; tab-level run state (lastResult, currentActivity,
+      // queuedPrompts) resets on the tab.
+      set((s) => {
+        const conversationPanes = commitInstance(s.conversationPanes, activeTabId, (inst) => ({
+          ...inst,
+          messages: [],
+          permissionQueue: [],
+          permissionDenied: null,
+        }))
+        const tabs = s.tabs.map((t) =>
           t.id === activeTabId
-            ? { ...t, messages: [], lastResult: null, currentActivity: '', permissionQueue: [], permissionDenied: null, queuedPrompts: [] }
+            ? { ...t, lastResult: null, currentActivity: '', queuedPrompts: [] }
             : t
-        ),
-      }))
+        )
+        return { tabs, conversationPanes }
+      })
     },
 
     moveTabToGroup: (tabId, groupId) => {
@@ -542,18 +573,15 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
     addSystemMessage: (content) => {
       const { activeTabId } = get()
+      // System messages append onto the active conversation instance now.
       set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === activeTabId
-            ? {
-                ...t,
-                messages: [
-                  ...(t.messages ?? []),
-                  { id: `msg-${Date.now()}-${Math.random()}`, role: 'system' as const, content, timestamp: Date.now() },
-                ],
-              }
-            : t
-        ),
+        conversationPanes: commitInstance(s.conversationPanes, activeTabId, (inst) => ({
+          ...inst,
+          messages: [
+            ...inst.messages,
+            { id: `msg-${Date.now()}-${Math.random()}`, role: 'system' as const, content, timestamp: Date.now() },
+          ],
+        })),
       }))
     },
   }

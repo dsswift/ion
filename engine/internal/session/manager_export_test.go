@@ -167,4 +167,60 @@ func TestDispatchExport_EmitsResultAfterSuccessfulExport(t *testing.T) {
 	if ordered[exportIdx].EventMessage == "" {
 		t.Errorf("engine_export EventMessage is empty; expected rendered markdown output")
 	}
+
+	// engine_export must carry the resolved format so consumers pick an
+	// extension without sniffing the payload. No-args /export defaults to
+	// "markdown".
+	if got := ordered[exportIdx].ExportFormat; got != "markdown" {
+		t.Errorf("engine_export ExportFormat = %q, want \"markdown\"", got)
+	}
+}
+
+// TestDispatchExport_CarriesRequestedFormat verifies that the format the user
+// passes to /export (e.g. "json") is surfaced verbatim on the engine_export
+// event's ExportFormat field. This pins the precise-format-signal contract so a
+// future regression that drops the format (forcing consumers back to payload
+// sniffing) fails loudly.
+func TestDispatchExport_CarriesRequestedFormat(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+
+	const key = "export-format"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.StopSession(key) })
+
+	convID := "export-format-conv"
+	mgr.mu.Lock()
+	mgr.sessions[key].conversationID = convID
+	mgr.mu.Unlock()
+
+	conv := conversation.CreateConversation(convID, "system", "test-model")
+	conv.Messages = []types.LlmMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "world"},
+	}
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("seed conversation: %v", err)
+	}
+
+	var exportEvt *types.EngineEvent
+	mgr.OnEvent(func(_ string, e types.EngineEvent) {
+		if e.Type == "engine_export" && exportEvt == nil {
+			ev := e
+			exportEvt = &ev
+		}
+	})
+
+	mgr.SendCommand(key, "export", "json")
+
+	if exportEvt == nil {
+		t.Fatal("engine_export event not emitted for /export json")
+	}
+	if got := exportEvt.ExportFormat; got != "json" {
+		t.Errorf("engine_export ExportFormat = %q, want \"json\"", got)
+	}
 }

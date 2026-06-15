@@ -64,7 +64,7 @@ function makeEngineTab(id: string) {
     id,
     title: 'Engine Tab',
     customTitle: null,
-    isEngine: true,
+    hasEngineExtension: true,
     engineProfileId: null,
     workingDirectory: '/tmp',
     hasChosenDirectory: true,
@@ -97,6 +97,7 @@ function makeEngineTab(id: string) {
     bashResults: [],
     contextTokens: null,
     contextPercent: null,
+    contextWindow: null,
     isCompacting: false,
     isTerminalOnly: false,
     sessionModel: null,
@@ -112,7 +113,7 @@ function makeEngineTab(id: string) {
 }
 
 function makeCliTab(id: string) {
-  return { ...makeEngineTab(id), isEngine: false, engineProfileId: undefined }
+  return { ...makeEngineTab(id), hasEngineExtension: false, engineProfileId: undefined }
 }
 
 interface Harness {
@@ -124,7 +125,7 @@ interface Harness {
 function buildHarness(tabs: any[]): Harness {
   const state: any = {
     tabs,
-    enginePanes: new Map(),
+    conversationPanes: new Map(),
     engineWorkingMessages: new Map(),
     engineNotifications: new Map(),
     engineDialogs: new Map(),
@@ -157,7 +158,7 @@ describe('closeTab action-layer guard', () => {
   it('allows close when the engine tab is truly idle', () => {
     const tab = makeEngineTab('tab1')
     const h = buildHarness([tab])
-    h.state.enginePanes.set('tab1', { instances: [{ id: 'inst1', label: 'inst1', statusFields: { state: 'idle' }, agentStates: [] }], activeInstanceId: 'inst1' })
+    h.state.conversationPanes.set('tab1', { instances: [{ id: 'inst1', label: 'inst1', statusFields: { state: 'idle' }, agentStates: [] }], activeInstanceId: 'inst1' })
 
     h.slice.closeTab!('tab1')
 
@@ -169,7 +170,7 @@ describe('closeTab action-layer guard', () => {
   it('refuses close when the orchestrator is running', () => {
     const tab = makeEngineTab('tab1')
     const h = buildHarness([tab])
-    h.state.enginePanes.set('tab1', { instances: [{ id: 'inst1', label: 'inst1', statusFields: { state: 'running' }, agentStates: [] }], activeInstanceId: 'inst1' })
+    h.state.conversationPanes.set('tab1', { instances: [{ id: 'inst1', label: 'inst1', statusFields: { state: 'running' }, agentStates: [] }], activeInstanceId: 'inst1' })
 
     h.slice.closeTab!('tab1')
 
@@ -182,7 +183,7 @@ describe('closeTab action-layer guard', () => {
   it('refuses close when the orchestrator is connecting', () => {
     const tab = makeEngineTab('tab1')
     const h = buildHarness([tab])
-    h.state.enginePanes.set('tab1', { instances: [{ id: 'inst1', label: 'inst1', statusFields: { state: 'connecting' }, agentStates: [] }], activeInstanceId: 'inst1' })
+    h.state.conversationPanes.set('tab1', { instances: [{ id: 'inst1', label: 'inst1', statusFields: { state: 'connecting' }, agentStates: [] }], activeInstanceId: 'inst1' })
 
     h.slice.closeTab!('tab1')
 
@@ -194,7 +195,7 @@ describe('closeTab action-layer guard', () => {
   it('refuses close when the orchestrator is idle but background children are running', () => {
     const tab = makeEngineTab('tab1')
     const h = buildHarness([tab])
-    h.state.enginePanes.set('tab1', {
+    h.state.conversationPanes.set('tab1', {
       instances: [{
         id: 'inst1', label: 'inst1',
         statusFields: { state: 'idle' },
@@ -214,7 +215,7 @@ describe('closeTab action-layer guard', () => {
   it('refuses close when a sibling instance has running children', () => {
     const tab = makeEngineTab('tab1')
     const h = buildHarness([tab])
-    h.state.enginePanes.set('tab1', {
+    h.state.conversationPanes.set('tab1', {
       instances: [
         { id: 'inst1', label: 'inst1', statusFields: { state: 'idle' }, agentStates: [] },
         { id: 'inst2', label: 'inst2', statusFields: { state: 'idle' }, agentStates: [{ name: 'agent-a', status: 'running' }] },
@@ -244,7 +245,7 @@ describe('closeTab action-layer guard', () => {
   it('allows close once all children flip to terminal status', () => {
     const tab = makeEngineTab('tab1')
     const h = buildHarness([tab])
-    h.state.enginePanes.set('tab1', {
+    h.state.conversationPanes.set('tab1', {
       instances: [{
         id: 'inst1', label: 'inst1',
         statusFields: { state: 'idle' },

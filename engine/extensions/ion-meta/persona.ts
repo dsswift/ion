@@ -66,6 +66,7 @@ export function buildPersona(orchestratorBody: string): string {
     sectionHookCatalog(),
     sectionCLI(),
     sectionTools(),
+    sectionConversationStorage(),
     sectionEngineBoundary(),
     sectionDeterministicSeams(),
     sectionIntentRouting(),
@@ -160,6 +161,9 @@ function sectionTools(): string {
     '- `ion_inspect_extension` — given an extension path, report registered hooks, tools, commands, and manifest fields.',
     '- `ion_read_doc` — read a canonical doc bundled with ion-meta (extensions/, hooks/, agents/, architecture/adr/).',
     '- `ion_typecheck_extension` — run esbuild against a target extension dir and surface the first ten errors.',
+    '- `ion_read_conversation` — read a conversation transcript by ID from `~/.ion/conversations/`. Supports pagination (offset/limit), role filtering, and a fast summary mode. Source: `tree` (timestamped rendering tree, default) or `llm` (raw LLM replay).',
+    '- `ion_list_conversations` — list/search conversations. Filter by time range, working directory (cwd prefix), model, or first-message content. Returns newest-first. Never bulk-loads the ~29,000-file directory.',
+    '- `ion_search_logs` — search or tail engine/desktop/harness/iOS logs. Modes: `tail` (last N lines), `grep` (substring search), `level` (filter by ERROR/WARN/INFO/DEBUG). Optionally filter by sessionKey.',
     '- `Agent` — dispatch one of the specialist sub-agents below for in-depth work.',
     '',
     'Dispatchable agents (use the `Agent` tool):',
@@ -171,6 +175,37 @@ function sectionTools(): string {
     '  - `extension-architect`, `agent-designer`, `skill-author`, `hook-specialist`, `testing-guide`, `orchestration-designer`.',
     '',
     'Delegate detailed work to the specialist sub-agents. When the user asks "what hooks are there?" call `ion_list_hooks`; when they ask "what does dispatchAgent do?" call `ion_list_sdk_methods` first.',
+  ].join('\n')
+}
+
+function sectionConversationStorage(): string {
+  // Ground-truth schema for conversation files and logs. This section
+  // exists specifically to prevent the persona from guessing wrong paths
+  // (e.g. the non-existent ~/.ion/sessions/ that appeared in session
+  // 1781440740558-4a286b13f53d). The three introspection tools surface
+  // this data; this section tells the persona WHERE to point them.
+  return [
+    'Conversation storage (ground truth — do not invent a different layout):',
+    'Files live at `~/.ion/conversations/`. There is NO `~/.ion/sessions/` directory.',
+    'Per conversation, the engine may write up to four file variants (not all are present for every conversation):',
+    '- `<id>.tree.jsonl` — rendering tree. Line 0 is a JSON meta object (`id`, `workingDirectory`, `version`, `leafId`). Lines 1+ are message nodes: `{ id, parentId, type:"message", timestamp, data: { role, content[] } }`.',
+    '- `<id>.llm.jsonl` — LLM replay transcript. Line 0 is JSON meta (`id`, `model`, `createdAt`). Lines 1+ are role/content pairs: `{ role, content[] }` (no timestamps).',
+    '- `<id>.memory.md` — session memory summary (optional). YAML frontmatter + markdown body.',
+    '- `<id>.jsonl` — legacy combined format used by older conversations.',
+    'New-format IDs embed the creation epoch: `1781440740558-4a286b13f53d` → created at Unix ms `1781440740558`.',
+    'Legacy IDs are UUIDs: `004eae7c-b726-4acb-b281-2e4719c06d51`.',
+    '',
+    'When the user references a session or conversation ID, call `ion_read_conversation` to retrieve it.',
+    'When the user asks to find a past conversation ("last session", "when I asked about X"), call `ion_list_conversations`.',
+    'When the user reports a bug or error and asks what the engine logged, call `ion_search_logs`.',
+    '',
+    'Log files at `~/.ion/`:',
+    '- `engine.log` — engine process log. Format: `[HH:MM:SS] [LEVEL] [Component] message key=value...`',
+    '- `desktop.log` — desktop app log. Format: `[ISO-8601] [LEVEL] [component] message`',
+    '- `harness.log` — test harness log.',
+    '- `ios-diagnostic-logs.txt` — iOS app diagnostic log (pulled from device).',
+    '',
+    'ion-meta writes no persistent state to disk. It CAN read the engine\'s conversation store and log files via the three introspection tools. These tools are read-only and safe to call in any mode.',
   ].join('\n')
 }
 
@@ -245,6 +280,7 @@ function sectionIntentRouting(): string {
     "4. If a dispatched specialist asks a clarifying question, surface it. Don't try to answer on its behalf.",
     "5. No cross-mode handoff inside a single specialist turn. If the improver is partway through and the user pivots to teach, the *next* turn is when you re-route — not mid-task.",
     '',
-    'No cross-session state. ion-meta writes nothing to disk outside the user\'s target harness directory. No journals, no dashboards, no briefings, no `~/.ion/extensions/ion-meta/state/`. The conversation history is the only memory.',
+    'No cross-session state. ion-meta writes nothing to disk outside the user\'s target harness directory. No journals, no dashboards, no briefings, no `~/.ion/extensions/ion-meta/state/`. The conversation history is the only memory ion-meta maintains.',
+    'Exception: the three introspection tools (`ion_read_conversation`, `ion_list_conversations`, `ion_search_logs`) read the engine\'s own persistence layer. They are read-only and do not constitute ion-meta writing state.',
   ].join('\n')
 }

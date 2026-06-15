@@ -33,8 +33,8 @@ struct EngineView: View {
     /// Slash command autocomplete: nil = menu hidden; non-nil = the current "/" prefix text.
     @State private var slashFilter: String?
 
-    private var instances: [EngineInstanceInfo] {
-        viewModel.engineInstances[tabId] ?? []
+    private var instances: [ConversationInstanceInfo] {
+        viewModel.conversationInstances[tabId] ?? []
     }
     private var activeInstanceId: String {
         viewModel.activeEngineInstance[tabId] ?? instances.first?.id ?? ""
@@ -340,7 +340,23 @@ struct EngineView: View {
                 Group {
                     switch item {
                     case .single(let msg):
-                        EngineMessageRow(message: msg)
+                        // Rewind is offered on user messages only, and only
+                        // while the instance is idle — mirrors the desktop
+                        // MessageActions gate (variant === 'user' && isIdle).
+                        // Fork is intentionally not offered for engine
+                        // instances (desktop doesn't either). The command is
+                        // per-instance: it targets the active engine instance.
+                        if msg.role == .user && !isRunning {
+                            EngineMessageRow(message: msg, onRewind: { messageId in
+                                viewModel.engineRewindInstance(
+                                    tabId: tabId,
+                                    instanceId: activeInstanceId,
+                                    messageId: messageId
+                                )
+                            })
+                        } else {
+                            EngineMessageRow(message: msg)
+                        }
                     case .toolGroup(let tools):
                         EngineToolGroupRow(tools: tools)
                     case .compaction(let msg):
@@ -547,6 +563,7 @@ struct EngineView: View {
                     preferredModel: fields.model,
                     contextPercent: fields.contextPercent,
                     contextTokens: nil,
+                    engineContextWindow: fields.contextWindow > 0 ? fields.contextWindow : nil,
                     isRunning: isRunning,
                     permissionMode: viewModel.tab(for: tabId)?.permissionMode,
                     availableModels: viewModel.availableModels,
@@ -562,7 +579,7 @@ struct EngineView: View {
                     onTapAttachments: {
                         showAttachments = true
                     },
-                    isEngine: true,
+                    hasEngineExtension: true,
                     extensionName: fields.extensionName,
                     statusState: fields.state,
                     runningAgentCount: runningAgentCount

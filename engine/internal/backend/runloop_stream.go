@@ -148,7 +148,18 @@ func (b *ApiBackend) processStream(
 				if block.Type == "tool_use" || block.Type == "server_tool_use" {
 					raw := currentPartialJSON.String()
 					if raw == "" {
-						block.Input = map[string]any{}
+						// Defect-1 guard: a duplicate content_block_stop for the
+						// same block (e.g. OpenRouter emitting a trailing
+						// finish_reason chunk after the tool-call turn) arrives
+						// with an empty accumulator because the first stop already
+						// parsed and reset it. Only default to {} when the input
+						// has not already been set — never clobber a parsed input.
+						if block.Input == nil {
+							utils.Debug("ApiBackend", fmt.Sprintf("content_block_stop: empty accumulator, defaulting input to {} (toolID=%s name=%s idx=%d)", block.ID, block.Name, currentBlockIndex))
+							block.Input = map[string]any{}
+						} else {
+							utils.Debug("ApiBackend", fmt.Sprintf("content_block_stop: empty accumulator but input already set, preserving (toolID=%s name=%s idx=%d)", block.ID, block.Name, currentBlockIndex))
+						}
 					} else {
 						var input map[string]any
 						if err := json.Unmarshal([]byte(raw), &input); err == nil {

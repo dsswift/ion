@@ -34,7 +34,16 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             });
           });
           var tabs = s.tabs.map(function(t) {
-            var msgs = t.messages || [];
+            // Resolve the ACTIVE conversation instance once. Every tab (plain
+            // or extension-hosted) stores messages / permissionDenied /
+            // permissionQueue / permissionMode on a ConversationInstance in
+            // conversationPanes (a plain conversation has a single 'main'
+            // instance). This is the unified read source; no tab-level fork.
+            var cPane = s.conversationPanes && s.conversationPanes.get ? s.conversationPanes.get(t.id) : null;
+            var activeInstId = cPane ? (cPane.activeInstanceId || (cPane.instances && cPane.instances[0] && cPane.instances[0].id)) : null;
+            var activeInst = (activeInstId && cPane) ? cPane.instances.find(function(i) { return i.id === activeInstId; }) : null;
+
+            var msgs = activeInst ? (activeInst.messages || []) : [];
             var lastMsg = null;
             var lastTs = 0;
             for (var i = msgs.length - 1; i >= 0; i--) {
@@ -44,76 +53,37 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                 break;
               }
             }
-            // For engine tabs, scan the active instance's messages field for last activity
-            if (t.isEngine && !lastTs) {
-              var ep = s.enginePanes && s.enginePanes.get ? s.enginePanes.get(t.id) : null;
-              var activeInstId = ep ? (ep.activeInstanceId || (ep.instances && ep.instances[0] && ep.instances[0].id)) : null;
-              var activeInst = activeInstId && ep ? ep.instances.find(function(i) { return i.id === activeInstId; }) : null;
-              var eMsgs = activeInst ? (activeInst.messages || []) : [];
-              for (var j = eMsgs.length - 1; j >= 0; j--) {
-                if (eMsgs[j].role === 'assistant' || eMsgs[j].role === 'user') {
-                  lastTs = eMsgs[j].timestamp || 0;
-                  break;
-                }
-              }
-            }
-            var queue = (t.permissionQueue || []).slice();
-            // Promote PER-ENGINE-INSTANCE denials into the parent tab's
-            // permissionQueue so the iOS card path (which keys off the
-            // tab-level queue) continues to work unchanged at the
-            // conversation level. We pick the *active* instance's
-            // denial — sibling instances under the same tab are
-            // independent sub-conversations and iOS only navigates one
-            // engine sub-tab at a time.
-            //
-            // NB: iOS does NOT consume per-instance waitingState into
-            // any parent-tab field; the parent pill glows because the
-            // promoted denial is in permissionQueue. The per-instance
-            // waitingState (set below on engineInstances[i]) drives the
-            // iOS sub-tab pill dot in EngineInstanceBar, not the
-            // parent-tab pill. If you ever want to bubble per-instance
-            // state into the parent tab fields directly (separate from
-            // queue promotion), do it here — not by piping waitingState
-            // through to RemoteTabState top-level.
-            if (t.isEngine === true) {
-              var ePane = s.enginePanes && s.enginePanes.get ? s.enginePanes.get(t.id) : null;
-              var activeInstId2 = ePane ? (ePane.activeInstanceId || (ePane.instances && ePane.instances[0] && ePane.instances[0].id)) : null;
-              var activeInstObj = activeInstId2 && ePane ? ePane.instances.find(function(i) { return i.id === activeInstId2; }) : null;
-              if (activeInstObj) {
-                var pdEntry = activeInstObj.permissionDenied;
-                var pdTools = pdEntry && pdEntry.tools;
-                if (pdTools && pdTools.length > 0) {
-                  for (var pdi = 0; pdi < pdTools.length; pdi++) {
-                    // instanceId scopes the promoted entry to the engine
-                    // sub-tab that produced it so iOS can hide the card
-                    // when the user views a sibling sub-conversation.
-                    queue.push({
-                      questionId: 'denied-' + pdTools[pdi].toolUseId,
-                      toolName: pdTools[pdi].toolName,
-                      toolTitle: pdTools[pdi].toolName,
-                      toolInput: pdTools[pdi].toolInput,
-                      options: [],
-                      instanceId: activeInstId2,
-                    });
-                  }
-                }
-              }
-            } else if (t.status !== 'failed' && t.status !== 'dead') {
-              // CLI tabs: unchanged path. permissionDenied lives on the
-              // tab itself.
-              var denied = t.permissionDenied && t.permissionDenied.tools;
-              if (denied && denied.length > 0) {
-                for (var d = 0; d < denied.length; d++) {
-                  if (t.status === 'completed' &&
-                      denied[d].toolName !== 'ExitPlanMode' &&
-                      denied[d].toolName !== 'AskUserQuestion') continue;
-                  queue.push({
-                    questionId: 'denied-' + denied[d].toolUseId,
-                    toolName: denied[d].toolName,
-                    toolTitle: denied[d].toolName,
-                    toolInput: denied[d].toolInput,
-                    options: [],
-                  });
+            // Live interactive permission requests live on the active instance.
+            var queue = (activeInst && activeInst.permissionQueue ? activeInst.permissionQueue : []).slice();
+            // Promote the active instance's non-interactive denials into the
+            // queue so the iOS card path (which keys off the tab-level queue)
+            // works uniformly for every tab. An extension-hosted tab stamps the
+            // promoted entry with instanceId so iOS can scope the card to the
+            // owning sub-conversation; a plain conversation's single main
+            // instance carries the denial and omits the scope (so the iOS
+            // active-instance filter passes). The per-instance waitingState
+            // (set below on conversationInstances[i]) drives the iOS sub-tab
+            // pill; the parent pill glows because the denial is in the queue.
+            if (activeInst && t.status !== 'failed' && t.status !== 'dead') {
+              var pdEntry = activeInst.permissionDenied;
+              var pdTools = pdEntry && pdEntry.tools;
+              if (pdTools && pdTools.length > 0) {
+                for (var pdi = 0; pdi < pdTools.length; pdi++) {
+                  // A completed PLAIN conversation only surfaces ExitPlanMode /
+                  // AskUserQuestion denials (historical filter); an
+                  // extension-hosted instance surfaces all of its denials.
+                  if (!t.hasEngineExtension && t.status === 'completed' &&
+                      pdTools[pdi].toolName !== 'ExitPlanMode' &&
+                      pdTools[pdi].toolName !== 'AskUserQuestion') continue;
+                  var pdEntryOut = {
+                    questionId: 'denied-' + pdTools[pdi].toolUseId,
+                    toolName: pdTools[pdi].toolName,
+                    toolTitle: pdTools[pdi].toolName,
+                    toolInput: pdTools[pdi].toolInput,
+                    options: []
+                  };
+                  if (t.hasEngineExtension) pdEntryOut.instanceId = activeInstId;
+                  queue.push(pdEntryOut);
                 }
               }
             }
@@ -126,16 +96,18 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               });
               activeTerminalInstanceId = pane.activeInstanceId || pane.instances[0].id;
             }
-            var ePanes = s.enginePanes;
-            var ePaneForList = ePanes && ePanes.get ? ePanes.get(t.id) : null;
-            var engineInstances = undefined;
-            var activeEngineInstanceId = undefined;
+            // Reuse the active-instance resolution from above. cPane is the
+            // tab's conversation pane (every tab has one); list its instances
+            // so iOS can render the per-sub-tab EngineInstanceBar.
+            var ePaneForList = cPane;
+            var conversationInstances = undefined;
+            var activeConversationInstanceId = undefined;
             if (ePaneForList && ePaneForList.instances && ePaneForList.instances.length > 0) {
               // For each instance, derive its individual waitingState
               // from enginePermissionDenied so iOS can show a per-sub-tab
               // status dot in EngineInstanceBar. 'question' outranks
               // 'plan-ready' (matches desktop's getWaitingState helper).
-              engineInstances = ePaneForList.instances.map(function(inst) {
+              conversationInstances = ePaneForList.instances.map(function(inst) {
                 var ws = null;
                 var pdEntry = inst.permissionDenied;
                 var pdTools = pdEntry && pdEntry.tools;
@@ -194,7 +166,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                 }
                 return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined };
               });
-              activeEngineInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
+              activeConversationInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
             }
             // Aggregate running state across all engine instances so the
             // iOS tab-list dot pulses when ANY instance is running, even
@@ -207,10 +179,10 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             // runningAgentCount we just derived. See CLAUDE.md §
             // "Common parity surfaces" parity table row.
             var anyInstanceHasRunningChildren = false;
-            if (engineInstances) {
-              for (var ei = 0; ei < engineInstances.length; ei++) {
-                if (engineInstances[ei].isRunning) anyInstanceRunning = true;
-                if ((engineInstances[ei].runningAgentCount || 0) > 0) anyInstanceHasRunningChildren = true;
+            if (conversationInstances) {
+              for (var ei = 0; ei < conversationInstances.length; ei++) {
+                if (conversationInstances[ei].isRunning) anyInstanceRunning = true;
+                if ((conversationInstances[ei].runningAgentCount || 0) > 0) anyInstanceHasRunningChildren = true;
                 if (anyInstanceRunning && anyInstanceHasRunningChildren) break;
               }
             }
@@ -249,7 +221,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             // process via executeJavaScript and cannot import from
             // main-process modules. Reviewers verify by visual diff.
             var derivedStatus = t.status;
-            if (t.isEngine === true) {
+            if (t.hasEngineExtension === true) {
               if (anyInstanceRunning) {
                 derivedStatus = 'running';
               } else if (t.status === 'dead' || t.status === 'failed') {
@@ -280,30 +252,32 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               status: derivedStatus,
               workingDirectory: t.workingDirectory,
               permissionMode: (function() {
-                if (t.isEngine && ePaneForList) {
-                  var aId = activeEngineInstanceId;
-                  var aInst = aId ? ePaneForList.instances.find(function(i) { return i.id === aId; }) : null;
-                  return (aInst && aInst.permissionMode) || 'auto';
+                // Extension-hosted: each sub-conversation has its own mode, so
+                // the active instance is authoritative. Plain: permissionMode
+                // is a tab-level setting (t.permissionMode).
+                if (t.hasEngineExtension) {
+                  return (activeInst && activeInst.permissionMode) || 'auto';
                 }
                 return t.permissionMode;
               })(),
               permissionQueue: queue,
               contextTokens: t.contextTokens,
-              messageCount: msgs.length,
+              contextWindow: t.contextWindow ?? null,
+              messageCount: (msgs.length > 0 ? msgs.length : (activeInst && activeInst.messageCount) || 0),
               queuedPrompts: t.queuedPrompts || [],
               isTerminalOnly: t.isTerminalOnly || undefined,
-              isEngine: t.isEngine || undefined,
-              engineInstances: engineInstances,
-              activeEngineInstanceId: activeEngineInstanceId,
+              hasEngineExtension: t.hasEngineExtension || undefined,
+              conversationInstances: conversationInstances,
+              activeConversationInstanceId: activeConversationInstanceId,
               terminalInstances: terminalInstances,
               activeTerminalInstanceId: activeTerminalInstanceId,
               groupId: t.groupId || null,
-              modelOverride: t.modelOverride || null,
+              modelOverride: (activeInst && activeInst.modelOverride) || null,
               groupPinned: t.groupPinned || false,
               // Top-level aggregate of "any sub-instance has running
               // background children". iOS reads this on the parent tab
               // pill so the yellow "awaiting children" dot fires without
-              // folding across engineInstances client-side. Mirrors the
+              // folding across conversationInstances client-side. Mirrors the
               // desktop's anyEngineInstanceHasRunningChildren helper.
               hasRunningChildren: anyInstanceHasRunningChildren || undefined,
               conversationId: t.conversationId || null,
@@ -409,12 +383,13 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
         }),
         lastMessage: t.lastMessageContent || lastMessagePreview.get(t.id) || null,
         contextTokens: t.contextTokens || null,
+        contextWindow: t.contextWindow ?? null,
         messageCount: t.messageCount || 0,
         queuedPrompts: t.queuedPrompts || [],
         isTerminalOnly: t.isTerminalOnly || undefined,
-        isEngine: t.isEngine || undefined,
-        engineInstances: t.engineInstances || undefined,
-        activeEngineInstanceId: t.activeEngineInstanceId || undefined,
+        hasEngineExtension: t.hasEngineExtension || undefined,
+        conversationInstances: t.conversationInstances || undefined,
+        activeConversationInstanceId: t.activeConversationInstanceId || undefined,
         terminalInstances: t.terminalInstances || undefined,
         activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
         groupId: t.groupId || null,
@@ -460,6 +435,10 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
     for (let i = 0; i < persistedTabs.length; i++) {
       const t = persistedTabs[i]
       const h = t.conversationId ? healthBySession[t.conversationId] : undefined
+      // Cold-start best-effort: read the persisted main-instance count from the
+      // unified conversationPane when present (post-migration shape). Corrected
+      // on the first real store-backed snapshot.
+      const coldMain = t.conversationPane?.instances?.find((x: any) => x.id === 'main') ?? t.conversationPane?.instances?.[0]
       results.push({
         id: h?.tabId || `persisted-${i}`,
         title: t.customTitle || t.title || `Tab ${i + 1}`,
@@ -470,9 +449,10 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
         permissionQueue: [],
         lastMessage: null,
         contextTokens: t.contextTokens || null,
-        messageCount: 0,
+        contextWindow: t.contextWindow ?? null,
+        messageCount: coldMain?.messageCount ?? 0,
         queuedPrompts: t.queuedPrompts || [],
-        modelOverride: null,
+        modelOverride: coldMain?.modelOverride ?? null,
         lastActivityAt: h?.lastActivityAt || undefined,
       })
     }
@@ -488,6 +468,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
         permissionQueue: [],
         lastMessage: null,
         contextTokens: null,
+        contextWindow: null,
         messageCount: 0,
         queuedPrompts: [],
         lastActivityAt: t.lastActivityAt || undefined,

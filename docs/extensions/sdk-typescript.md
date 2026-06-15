@@ -326,6 +326,45 @@ await ctx.dispatchAgent({
 const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
 ```
 
+**`llmCall(opts)`** -- run a single-turn, no-tools LLM completion through the engine's provider registry. Resolves with an `LLMCallResult` (text plus token/cost telemetry). This is the lightweight one-shot primitive for extraction, classification, routing, and summarisation prompts — it has no agent loop and no tool access. Going through `llmCall` (rather than calling a provider SDK directly) keeps the call visible to Ion's hook surface (it fires `before_provider_request` once per invocation) and to per-call observability (the `engine_llm_call` event).
+
+```typescript
+const { content } = await ctx.llmCall({
+  model: 'claude-sonnet-4-6',
+  system: 'Classify the message. Reply with one word: bug | feature | question.',
+  prompt: userMessage,
+  temperature: 0.1,
+  jsonMode: false,
+})
+```
+
+```typescript
+interface LLMCallOpts {
+  model: string          // required; resolves through the session's provider registry
+  system?: string        // optional system prompt
+  prompt: string         // required; the single user-role message
+  jsonMode?: boolean      // request JSON output (see enforcement note below)
+  maxTokens?: number     // response cap; 0 (or omitted) = provider default
+  temperature?: number   // sampling temperature; omit for provider default
+  signal?: AbortSignal   // optional per-call cancellation
+}
+
+interface LLMCallResult {
+  content: string        // concatenated assistant text ('' if the model emitted none)
+  inputTokens: number    // provider-reported usage
+  outputTokens: number
+  cost: number           // USD estimate; 0 means "unknown" (model not in registry), not "free"
+}
+```
+
+**`jsonMode` enforcement is per-provider.** On OpenAI-compatible providers the engine sets `response_format: { type: 'json_object' }`, so the provider guarantees valid JSON. On Anthropic (and any provider with no native request-level JSON switch) the flag is **advisory** — forwarded only in observability metadata — so parse defensively there. The flag is always surfaced on the `engine_llm_call` event regardless of provider.
+
+**`temperature` distinguishes "unset" from an explicit `0`.** Omit the field to request the provider default; pass `0` for fully deterministic sampling. The SDK forwards an internal `temperatureSet` flag alongside the value so the JSON `omitempty` tag does not silently erase a deliberate `0`. Use low values (e.g. `0.1`–`0.2`) for reproducible extraction/classification output.
+
+**`signal` wires per-call cancellation.** When the supplied `AbortSignal` aborts, the engine cancels the in-flight provider request and the returned promise rejects. It composes with session-level abort — either source cancels the call. The signal itself never crosses the wire (it is non-serializable); the SDK translates it into a cancellation notification keyed to the in-flight call.
+
+Useful for: classifying or routing user input before the main turn, extracting structured fields from free text, generating a one-off summary, and any "ask the model a quick question" pattern that should not spin up a full agent loop.
+
 **`getContextUsage()`** -- query the active conversation's current token usage and percent of the model's context window. Returns `null` when no conversation is active (e.g. called from `session_start` before the first prompt). Reads the live counters maintained by the engine's session manager — no socket round-trip is needed for repeated calls within a single hook.
 
 ```typescript

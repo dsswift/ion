@@ -143,7 +143,7 @@ extension RemoteEvent {
 
         case .engineInstanceAdded:
             let tabId = try container.decode(String.self, forKey: .tabId)
-            let instance = try container.decode(EngineInstancePayload.self, forKey: .instance)
+            let instance = try container.decode(ConversationInstancePayload.self, forKey: .instance)
             return .engineInstanceAdded(tabId: tabId, instanceId: instance.id, label: instance.label)
 
         case .engineInstanceRemoved:
@@ -312,6 +312,23 @@ extension RemoteEvent {
                 message: message,
                 command: command,
                 commandError: commandError
+            )
+
+        case .engineExport:
+            // Engine has rendered a /export payload. iOS surfaces it
+            // via a share sheet (see SessionViewModel handler). The
+            // engine reports the resolved format on `exportFormat`
+            // (markdown by default) so the share sheet can attach a
+            // correctly-typed file; nil when the engine predates the field.
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let message = try container.decode(String.self, forKey: .message)
+            let exportFormat = try container.decodeIfPresent(String.self, forKey: .exportFormat)
+            return .engineExport(
+                tabId: tabId,
+                instanceId: instanceId,
+                message: message,
+                exportFormat: exportFormat
             )
 
         case .desktopSettingsSnapshot:

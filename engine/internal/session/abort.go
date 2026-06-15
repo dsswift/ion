@@ -21,6 +21,17 @@ func (m *Manager) SendAbort(key string) {
 	rid := s.requestID
 	m.mu.RUnlock()
 
+	// Cancel the session's cancellation root first. This cascades through
+	// the Go context tree to every descendant that derived from it — the
+	// backend run (via RunOptions.ParentCtx), dispatched child agents'
+	// in-process contexts, and any in-flight ctx.llmCall(). The explicit
+	// backend.Cancel(rid) and abortAllDescendants calls below remain as
+	// belt-and-suspenders: backend.Cancel drives the per-run watchdog /
+	// terminal-status emission contract, and abortAllDescendants performs
+	// the OS-process kill that a context cancel alone cannot do for child
+	// agents running as separate processes.
+	s.cancelSessionRoot("user abort")
+
 	if rid != "" {
 		utils.Info("Session", fmt.Sprintf("SendAbort: cancelling requestID=%s for key=%s", rid, key))
 		m.backend.Cancel(rid)

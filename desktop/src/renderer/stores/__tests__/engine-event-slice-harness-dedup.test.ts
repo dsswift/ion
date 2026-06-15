@@ -1,7 +1,7 @@
 /**
  * engine-event-slice — `engine_harness_message` dedup convention
  * (See full comment in original file; test behavior unchanged, assertions
- * now read from instance.messages in enginePanes instead of engineMessages Map.)
+ * now read from instance.messages in conversationPanes instead of engineMessages Map.)
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -24,14 +24,14 @@ function makeInstance(id: string) {
 
 function buildHarness() {
   const state: any = {
-    tabs: [{ id: 'tab1', isEngine: true, lastEventAt: 0 }],
+    tabs: [{ id: 'tab1', hasEngineExtension: true, lastEventAt: 0 }],
     engineWorkingMessages: new Map(),
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
     engineUsage: new Map(),
     engineModelFallbacks: new Map(),
-    enginePanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
+    conversationPanes: new Map([['tab1', { instances: [makeInstance('inst1')], activeInstanceId: 'inst1' }]]),
   }
   const set = (partial: any) => {
     const patch = typeof partial === 'function' ? partial(state) : partial
@@ -43,7 +43,7 @@ function buildHarness() {
 }
 
 function getMessages(state: any, tabId: string, instanceId: string) {
-  const pane = state.enginePanes.get(tabId)
+  const pane = state.conversationPanes.get(tabId)
   return pane?.instances.find((i: any) => i.id === instanceId)?.messages ?? []
 }
 

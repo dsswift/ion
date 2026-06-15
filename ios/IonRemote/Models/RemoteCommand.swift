@@ -51,6 +51,20 @@ enum RemoteCommand: Codable, Sendable {
     case renameTerminalInstance(tabId: String, instanceId: String, label: String)
     case rewind(tabId: String, messageId: String)
     case forkFromMessage(tabId: String, messageId: String)
+    /// Rewind an engine-tab instance's conversation to a chosen message.
+    /// Mirrors the desktop `engine_rewind` remote command: the desktop
+    /// stops the engine session, starts a fresh one, truncates the
+    /// instance's messages, and replies with an `input_prefill` carrying
+    /// the rewound user message. Distinct from `rewind` (CLI tabs) because
+    /// engine tabs are per-instance — the instanceId selects which engine
+    /// instance within the tab to rewind.
+    ///
+    /// `userTurnIndex` is the 0-based index of the target among role==.user
+    /// messages. The desktop uses it to resolve the rewind point when its
+    /// id lookup misses — which it always does for iOS, because iOS renders
+    /// the just-typed turn from an optimistic UUID the desktop never minted.
+    /// Nil only for callers that can guarantee a desktop-minted id.
+    case engineRewind(tabId: String, instanceId: String, messageId: String, userTurnIndex: Int?)
     case unpair
     case createEngineTab(workingDirectory: String?, profileId: String?)
     case enginePrompt(tabId: String, text: String, instanceId: String? = nil, attachments: [CommandAttachment]? = nil, implementationPhase: Bool? = nil)
@@ -176,6 +190,7 @@ enum RemoteCommand: Codable, Sendable {
         case renameTerminalInstance = "rename_terminal_instance"
         case rewind
         case forkFromMessage = "fork_from_message"
+        case engineRewind = "engine_rewind"
         case unpair
         case createEngineTab = "create_engine_tab"
         case enginePrompt = "engine_prompt"
@@ -269,6 +284,11 @@ enum RemoteCommand: Codable, Sendable {
         // share no wire key with any existing command field.
         case resourceId
         case kind
+        // engine_rewind payload. `tabId`/`instanceId`/`messageId` are shared
+        // with other commands above; `userTurnIndex` is unique to this command
+        // — the 0-based ordinal among user messages the desktop uses to resolve
+        // the rewind point when its id lookup misses.
+        case userTurnIndex
     }
 
     // `init(from decoder:)` is in RemoteCommand+Decode.swift to keep this

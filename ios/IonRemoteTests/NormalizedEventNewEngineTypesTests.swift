@@ -215,4 +215,60 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
             XCTFail("Expected engineDispatchStart, got \(event)")
         }
     }
+
+    // MARK: - engine_export
+
+    func testDecodeEngineExport() throws {
+        let json = """
+        {"type":"engine_export","tabId":"t1","instanceId":"i1","message":"# Conversation\\n\\nHello world","exportFormat":"markdown"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineExport(let tabId, let instanceId, let message, let exportFormat) = event else {
+            XCTFail("Expected engineExport, got \(event)")
+            return
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertEqual(instanceId, "i1")
+        XCTAssertEqual(message, "# Conversation\n\nHello world")
+        XCTAssertEqual(exportFormat, "markdown")
+    }
+
+    func testRoundTripEngineExport() throws {
+        // Encode -> decode the same event back. The payload may carry
+        // arbitrary markdown / JSON / HTML; we want the round-trip to
+        // preserve it byte-for-byte, including the export format.
+        let payload = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+        let original: RemoteEvent = .engineExport(
+            tabId: "t1",
+            instanceId: nil,
+            message: payload,
+            exportFormat: "json"
+        )
+        let encoded = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: encoded)
+        guard case .engineExport(let tabId, let instanceId, let message, let exportFormat) = decoded else {
+            XCTFail("Round-trip engineExport failed")
+            return
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertNil(instanceId)
+        XCTAssertEqual(message, payload)
+        XCTAssertEqual(exportFormat, "json")
+    }
+
+    func testDecodeEngineExportWithoutInstanceId() throws {
+        let json = """
+        {"type":"engine_export","tabId":"t1","message":"plain text"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineExport(let tabId, let instanceId, let message, let exportFormat) = event else {
+            XCTFail("Expected engineExport, got \(event)")
+            return
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertNil(instanceId)
+        XCTAssertEqual(message, "plain text")
+        // exportFormat absent in the JSON (legacy engine) decodes to nil.
+        XCTAssertNil(exportFormat)
+    }
 }

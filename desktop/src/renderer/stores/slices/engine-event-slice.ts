@@ -1,5 +1,6 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
+import { parseSessionKey, tabIdFromKey, instanceIdFromKey, isCompoundKey } from '../../../shared/session-key'
 import { handleEngineStatusEvent } from './engine-event-status'
 import { handleEngineInterceptEvent } from './engine-event-slice-intercept'
 import {
@@ -36,10 +37,10 @@ function flushPendingDeltas(): void {
     const batch = new Map(pendingDeltas)
     pendingDeltas.clear()
     deltaFlushSet((state) => {
-      let enginePanes = state.enginePanes
+      let conversationPanes = state.conversationPanes
       for (const [batchKey, text] of batch) {
-        const [tabIdInner, instanceId] = batchKey.split(':')
-        const pane = enginePanes.get(tabIdInner)
+        const { tabId: tabIdInner, instanceId } = parseSessionKey(batchKey)
+        const pane = conversationPanes.get(tabIdInner)
         const inst = pane?.instances.find((i) => i.id === instanceId)
         const msgs = [...(inst?.messages || [])]
         const last = msgs[msgs.length - 1]
@@ -48,9 +49,9 @@ function flushPendingDeltas(): void {
         } else {
           msgs.push({ id: nextMsgId(), role: 'assistant', content: text, timestamp: Date.now() })
         }
-        enginePanes = withInstanceMessages(enginePanes, batchKey, msgs)
+        conversationPanes = withInstanceMessages(conversationPanes, batchKey, msgs)
       }
-      return { enginePanes }
+      return { conversationPanes }
     })
   }
 
@@ -84,14 +85,26 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
   return {
     handleEngineEvent: (key, event) => {
       // engine_command_registry and engine_command_result are CROSS-CUTTING
-      // events that apply to both CLI tabs (bare tabId key) and engine tabs
-      // (compound tabId:instanceId key). We dispatch on them BEFORE the
-      // engine-tab-only guard below so they reach the correct slice.
+      // events that apply to BOTH streams (the normalized stream that drives a
+      // plain conversation, keyed bare `tabId`, and the raw extension stream
+      // that drives an extension-hosted instance, keyed `${tabId}:${instanceId}`).
+      // We dispatch on them BEFORE the stream discriminator below so they reach
+      // the correct slice regardless of which stream/key shape they arrive on.
       if (handleCrossEngineEvent(set, _get, key, event)) return
 
-      if (!key.includes(':')) return
+      // STREAM DISCRIMINATOR — not a key-shape branch. This `handleEngineEvent`
+      // path is the RAW EXTENSION STREAM (onEngineEvent → raw `engine_*` events)
+      // that drives extension-hosted conversation instances, which the engine
+      // keys `${tabId}:${instanceId}`. A bare key here is a plain conversation's
+      // raw event; those are ALREADY applied via the NORMALIZED STREAM
+      // (handleNormalizedEvent, from the control plane) — re-applying them in the
+      // per-instance switch below would double-apply status/agent-state. So we
+      // drop bare-keyed events here by design. (Per the key-spine DECISION: the
+      // engine wire/event-routing key is frozen; a plain conversation's raw
+      // events keep arriving bare, and this discriminator stays load-bearing.)
+      if (!isCompoundKey(key)) return
 
-      const tabId = key.split(':')[0]
+      const tabId = tabIdFromKey(key)
       switch (event.type) {
         case 'engine_agent_state': {
           // Engine contract: `engine_agent_state` is a COMPLETE SNAPSHOT
@@ -112,8 +125,8 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           const statusSummary = agents.map((a: any) => `${a.name}:${a.status}`).join(',')
           console.log(`[store] agent_state: key=${key} count=${agents.length} replaced [${statusSummary}]`)
           set((state) => {
-            const enginePanes = withInstanceAgentStates(state.enginePanes, key, agents)
-            return { enginePanes }
+            const conversationPanes = withInstanceAgentStates(state.conversationPanes, key, agents)
+            return { conversationPanes }
           })
           break
         }
@@ -178,8 +191,8 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           const dedupKey =
             typeof dedupKeyRaw === 'string' && dedupKeyRaw.length > 0 ? dedupKeyRaw : undefined
           set((state) => {
-            const [tabIdInner, instanceId] = key.split(':')
-            const pane = state.enginePanes.get(tabIdInner)
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const pane = state.conversationPanes.get(tabIdInner)
             const inst = pane?.instances.find((i) => i.id === instanceId)
             const msgs = [...(inst?.messages || [])]
             if (dedupKey) {
@@ -205,8 +218,8 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
               timestamp: Date.now(),
               ...(dedupKey ? { dedupKey } : {}),
             })
-            const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-            return { enginePanes }
+            const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+            return { conversationPanes }
           })
           break
         }
@@ -248,8 +261,8 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
             const pendingText = pendingDeltas.get(key)!
             pendingDeltas.delete(key)
             set((state) => {
-              const [tabIdInner, instanceId] = key.split(':')
-              const pane = state.enginePanes.get(tabIdInner)
+              const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+              const pane = state.conversationPanes.get(tabIdInner)
               const inst = pane?.instances.find((i) => i.id === instanceId)
               const msgs = [...(inst?.messages || [])]
               const last = msgs[msgs.length - 1]
@@ -258,8 +271,8 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
               } else {
                 msgs.push({ id: nextMsgId(), role: 'assistant', content: pendingText, timestamp: Date.now() })
               }
-              const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-              return { enginePanes }
+              const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+              return { conversationPanes }
             })
           }
           // IMPORTANT: `engine_message_end` fires at the end of EVERY LLM
@@ -292,10 +305,14 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
                 cost: event.usage.cost,
               })
             }
-            const pane = state.enginePanes.get(tabId)
-            const isActive = !pane || pane.activeInstanceId === key.split(':')[1]
+            const pane = state.conversationPanes.get(tabId)
+            const isActive = !pane || pane.activeInstanceId === instanceIdFromKey(key)
             const tabs = isActive && event.usage ? state.tabs.map((t) => {
               if (t.id !== tabId) return t
+              // engine_message_end carries contextPercent and tokens but
+              // NOT contextWindow — the window comes through engine_status
+              // (see engine-event-status.ts). Renderer reads tab.contextWindow
+              // as the denominator; this slice just carries the tokens/percent.
               return {
                 ...t,
                 contextTokens: event.usage!.inputTokens,
@@ -307,15 +324,15 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           // Seal the current assistant message so the next engine_text_delta
           // creates a new message instead of appending to this one.
           set((state) => {
-            const [tabIdInner, instanceId] = key.split(':')
-            const pane = state.enginePanes.get(tabIdInner)
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const pane = state.conversationPanes.get(tabIdInner)
             const inst = pane?.instances.find((i) => i.id === instanceId)
             const msgs = [...(inst?.messages || [])]
             const last = msgs[msgs.length - 1]
             if (last && last.role === 'assistant') {
               msgs[msgs.length - 1] = { ...last, sealed: true }
-              const enginePanes = withInstanceMessages(state.enginePanes, key, msgs)
-              return { enginePanes }
+              const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+              return { conversationPanes }
             }
             return {}
           })

@@ -602,6 +602,33 @@ to local `.md` template expansion."
 | `message`      | string (omitempty)         | Human-readable note. Often empty on success.                                                                                         |
 | `commandError` | string (omitempty)         | Set when the dispatch failed. Special value `"unknown_command"` is reserved for the engine disclaiming the name (treat as "the engine does not own this command, route it locally"). Any other value is an extension-thrown error message. |
 
+#### engine_export
+
+Carries the rendered output of a built-in `/export [format]` command. The
+engine's `dispatchExport` loads the conversation, renders it in the
+requested format, and emits this event **before** the matching
+`engine_command_result`, so a consumer awaiting the dispatch receives the
+payload before the completion signal.
+
+`exportFormat` is the format the engine resolved from the `/export` args:
+one of `"markdown"`, `"json"`, `"html"`, or `"jsonl"`. When the user runs
+`/export` with no args, the engine defaults to `"markdown"`. Consumers use
+`exportFormat` to choose a file extension / MIME type directly — they do
+**not** need to sniff the payload bytes.
+
+The engine attaches no rendering or persistence semantics. Reference
+consumers interpret the payload per their own UX: the desktop opens a
+save-as dialog, iOS presents a share sheet writing a typed temp file, and
+a headless consumer (CLI orchestrator, custom harness) may pipe the
+payload to stdout, write it to a predetermined path, or stream it over its
+own transport.
+
+| Field          | Type                | Description                                                                                                  |
+|----------------|---------------------|--------------------------------------------------------------------------------------------------------------|
+| `type`         | `"engine_export"`   | Event type                                                                                                   |
+| `message`      | string              | The full rendered export payload (markdown / json / html / jsonl).                                           |
+| `exportFormat` | string (omitempty)  | Resolved format: `"markdown"` (default), `"json"`, `"html"`, or `"jsonl"`. Use to pick a file extension / MIME type. |
+
 #### engine_early_stop_decision_request
 
 Wire-protocol surface for the `before_early_stop_decision` extension

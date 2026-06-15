@@ -157,7 +157,10 @@ export const AssistantMessage = React.memo(function AssistantMessage({
 
   const inner = (
     <div className="group/msg relative">
-      <div className="text-[13px] leading-[1.6] prose-cloud min-w-0 max-w-[92%] overflow-hidden">
+      <div
+        className="leading-[1.6] prose-cloud min-w-0 max-w-[92%] overflow-hidden"
+        style={{ fontSize: 'var(--ion-conv-font-size, 13px)' }}
+      >
         <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
           {displayContent}
         </Markdown>
