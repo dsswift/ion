@@ -4,6 +4,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden, totalInputTokens, scheduleDoneGroupMove } from '../session-store-helpers'
 import { formatPlanCreatedDivider, formatSteerAppliedDivider } from '../../../shared/clear-divider'
 import { activeInstance, commitInstance } from '../conversation-instance'
+import { maybeGenerateTabTitle } from './event-slice-titling'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -350,20 +351,13 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               } else {
                 console.log(`[auto-move:done] skipped: tab=${tabId.slice(0, 8)} prevStatus=${tab.status} permMode=${updated.permissionMode} permDenied=${instPatch.permissionDenied !== null}`)
               }
-              if (
-                !updated.customTitle &&
-                usePreferencesStore.getState().aiGeneratedTitles
-              ) {
-                const firstUserMsg = messages.find((m) => m.role === 'user')
-                if (firstUserMsg) {
-                  const capturedTabId = tabId
-                  window.ion.generateTitle(firstUserMsg.content).then((title) => {
-                    if (title) {
-                      get().renameTab(capturedTabId, title)
-                    }
-                  }).catch(() => { /* keep truncated fallback */ })
-                }
-              }
+              // Title resolution (slash short-circuit vs. LLM generation)
+              // lives in event-slice-titling.ts to keep this file under the
+              // file-size cap. The helper owns the full decision: it no-ops
+              // when a customTitle exists or the aiGeneratedTitles preference
+              // is off, skips LLM titling for slash commands, and otherwise
+              // fires the async generation. renameTab is read at call time.
+              maybeGenerateTabTitle(tabId, updated.customTitle, updated.title, messages, get().renameTab)
               break
 
             case 'error':
