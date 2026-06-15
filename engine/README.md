@@ -121,9 +121,9 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/server` | Unix socket server, multi-client broadcast |
 | `internal/session` | SessionManager: session lifecycle, event routing |
 | `internal/backend` | RunBackend interface, ApiBackend (agent loop) |
-| `internal/providers` | LlmProvider interface, 16 provider implementations |
-| `internal/tools` | Tool registry, 15 built-in tools |
-| `internal/extension` | SDK (66 hooks), Host (subprocess JSON-RPC) |
+| `internal/providers` | LlmProvider interface, provider implementations |
+| `internal/tools` | Tool registry, built-in tools |
+| `internal/extension` | SDK (hook registry), Host (subprocess JSON-RPC) |
 | `internal/conversation` | Tree sessions, JSONL persistence, branching |
 | `internal/config` | 4-layer config, enterprise MDM, merge |
 | `internal/compaction` | Fact extraction, summary, cascade |
@@ -240,7 +240,7 @@ func main() {
 }
 ```
 
-### Extension hooks (66 total)
+### Extension hooks
 
 | Category | Hooks |
 |----------|-------|
@@ -251,7 +251,7 @@ func main() {
 | **Agent** | `agent_start`, `agent_end` |
 | **Provider** | `before_provider_request`, `model_select`, `context` |
 | **Error** | `on_error` |
-| **Per-tool** | `{bash,read,write,edit,grep,glob,agent}_tool_{call,result}` (14 hooks) |
+| **Per-tool** | `{bash,read,write,edit,grep,glob,agent}_tool_{call,result}` (per-tool call + result hooks) |
 | **Context** | `context_discover`, `context_load`, `instruction_load`, `context_inject` |
 | **Permission** | `permission_request`, `permission_denied`, `permission_classify` |
 | **File** | `file_changed`, `workspace_file_changed` |
@@ -359,7 +359,7 @@ Enterprise config paths:
 
 ## Providers
 
-16 providers, all implemented as raw HTTP with SSE parsing. No SDK dependencies.
+Providers, all implemented as raw HTTP with SSE parsing. No SDK dependencies.
 
 **Native providers:** Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, Vertex AI, Azure AI Foundry.
 

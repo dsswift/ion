@@ -37,7 +37,7 @@ govulncheck ./...                                         # vuln scan
 | `session_lifecycle_test.go` | Start/stop, prompt, abort, plan mode, events |
 | `api_backend_test.go` | Agent loop: text, tools, budget, cancel, hooks |
 | `conversation_roundtrip_test.go` | JSONL round-trip, branching, migration, compaction |
-| `protocol_contract_test.go` | Wire format, NDJSON framing, all 16 commands |
+| `protocol_contract_test.go` | Wire format, NDJSON framing, the full command-type set |
 | `normalizer_test.go` | Normalize pipeline, event round-trip |
 | `tools_test.go` | Real Read/Write/Edit/Bash/Grep/Glob execution |
 
@@ -63,7 +63,7 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/session` | SessionManager: lifecycle, event routing (decomposing) |
 | `internal/backend` | RunBackend interface, ApiBackend (agent loop), CliBackend (Claude Code subprocess), HybridBackend (routes per-run by model) |
 | `internal/providers` | LlmProvider interface + implementations + retry |
-| `internal/tools` | Registry, 14 core tools, BashOperations |
+| `internal/tools` | Registry, core tools, BashOperations |
 | `internal/extension` | SDK, Host (subprocess JSON-RPC), agent discovery (decomposing) |
 | `internal/conversation` | Tree sessions, JSONL persistence, migration |
 | `internal/config` | 4-layer config, enterprise MDM, merge |
@@ -123,7 +123,7 @@ If you forget step 2, `go test ./internal/types/` fails. If you forget step 4, d
 
 ## Socket protocol
 
-`~/.ion/engine.sock`. Client → Server: NDJSON `ClientCommand`. Server → Client: NDJSON `ServerMessage` (broadcast). 16 command types. See `protocol/protocol.go`.
+`~/.ion/engine.sock`. Client → Server: NDJSON `ClientCommand`. Server → Client: NDJSON `ServerMessage` (broadcast). See `protocol/protocol.go` for the command set.
 
 ## Providers
 
