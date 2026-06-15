@@ -286,10 +286,23 @@ type TurnInfo struct {
 	TurnNumber int `json:"turnNumber"`
 }
 
-// AgentInfo describes an agent lifecycle event.
+// AgentInfo describes an agent lifecycle event. Shared by the agent_start,
+// agent_end, and before_agent_start hooks.
+//
+// before_agent_start is dual-purpose: it fires once per sub-agent launch with
+// a populated Name/Task, AND once per root prompt for primary system-prompt
+// injection. The two firings were previously distinguishable only by an
+// undocumented empty-Name sentinel. IsRoot is the explicit discriminator:
+// consumers that inject a sub-agent-only preamble should branch on !IsRoot
+// rather than the legacy Name == "" check.
 type AgentInfo struct {
 	Name string `json:"name"`
 	Task string `json:"task,omitempty"`
+	// IsRoot is true only on the before_agent_start root-loop firing (primary
+	// system-prompt injection), where Name and Task are empty. It is always
+	// false for sub-agent before_agent_start firings and for the agent_start /
+	// agent_end hooks (which only ever describe sub-agents).
+	IsRoot bool `json:"isRoot,omitempty"`
 }
 
 // BeforeProviderRequestInfo describes a pending outbound LLM provider request.

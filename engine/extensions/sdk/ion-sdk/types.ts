@@ -901,6 +901,15 @@ export interface TurnInfo {
 export interface AgentInfo {
   name: string
   task?: string
+  /**
+   * True only on the `before_agent_start` root-loop firing (primary
+   * system-prompt injection), where `name`/`task` are empty. Always
+   * `false`/absent for sub-agent `before_agent_start` firings and for the
+   * `agent_start` / `agent_end` hooks (which only ever describe sub-agents).
+   * Branch on `!isRoot` to inject a sub-agent-only preamble rather than the
+   * legacy `name !== ""` sentinel.
+   */
+  isRoot?: boolean
 }
 
 /**
