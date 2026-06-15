@@ -322,7 +322,7 @@ enum RemoteEvent: Sendable {
 
     /// Full content for a single resource item, fetched on demand.
     /// Sent by the desktop in response to a `request_resource_content`
-    /// command when the user taps a briefing card to expand it. iOS
+    /// command when the user taps a resource card to expand it. iOS
     /// calls `ResourceStore.updateContent` to populate the item's body.
     case resourceContent(resourceId: String, kind: String, content: String)
 

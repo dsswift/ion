@@ -91,7 +91,11 @@ struct FsRenameResultResponse: Codable, Sendable, Equatable {
 
 /// An attachment entry from the desktop's full message history scan.
 struct TabAttachmentEntry: Codable, Sendable {
-    let type: String   // "image", "file", or "plan"
+    let type: String   // "image", "file", "plan", or "resource"
     let name: String
     let path: String
+    /// For type=="resource", the real resource kind the producing extension
+    /// declared (e.g. "briefing", "report"). Drives kind-agnostic icon and
+    /// label selection. Absent for non-resource attachment types.
+    let kind: String?
 }
