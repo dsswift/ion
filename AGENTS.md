@@ -69,8 +69,11 @@ Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook 
 | Desktop tests | `cd desktop && npm test` |
 | Desktop audit | `cd desktop && npm audit --audit-level=high --omit=dev` |
 | iOS build | `make ios-check` |
+| **Linux parity** | `make test-linux` (runs `engine-test` + `desktop-test` in Linux containers) |
 
 CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (per-PR).
+
+> **Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`.** `go test -race ./...` (the `engine-test` job) and `npm test` (the `desktop-test` job) run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. Run `make test-linux` (Docker required) for any `engine/` or `desktop/` change before opening a PR. The `/create-pr` command runs this gate automatically before pushing and pauses if Docker isn't running, so the common path needs no manual step; `make test-linux` (and `make test-linux-engine` / `make test-linux-desktop`) is the manual escape hatch.
 
 ## Branch workflow
 
