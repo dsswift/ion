@@ -118,7 +118,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
         let json = """
         {
-            "type": "engine_plan_proposal",
+            "type": "desktop_plan_proposal",
             "tabId": "t1",
             "instanceId": "i1",
             "planProposalKind": "exit",
@@ -176,7 +176,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
         let json = """
         {
-            "type": "engine_plan_mode_auto_exit",
+            "type": "desktop_plan_mode_auto_exit",
             "tabId": "t1",
             "instanceId": "i1",
             "planModeAutoExitStopReason": "end_turn",
@@ -252,7 +252,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
         let json = """
         {
-            "type": "engine_run_stalled",
+            "type": "desktop_run_stalled",
             "tabId": "t1",
             "instanceId": "i1",
             "runStalledDuration": 45.2,
@@ -316,7 +316,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineEarlyStopDecisionRequestDecode() throws {
         let json = """
         {
-            "type": "engine_early_stop_decision_request",
+            "type": "desktop_early_stop_decision_request",
             "tabId": "t1",
             "instanceId": "inst-a",
             "earlyStopRequestId": "req-42",
@@ -381,7 +381,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineEarlyStopDecisionRequestDecodeMinimal() throws {
         let json = """
         {
-            "type": "engine_early_stop_decision_request",
+            "type": "desktop_early_stop_decision_request",
             "tabId": "t1"
         }
         """.data(using: .utf8)!
@@ -431,7 +431,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineCommandRegistryDecode() throws {
         let json = """
         {
-            "type": "engine_command_registry",
+            "type": "desktop_command_registry",
             "tabId": "t1",
             "instanceId": "inst-a",
             "commands": [
@@ -464,7 +464,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineCommandRegistryDecodeEmpty() throws {
         let json = """
         {
-            "type": "engine_command_registry",
+            "type": "desktop_command_registry",
             "tabId": "t1",
             "instanceId": "inst-a",
             "commands": []
@@ -491,7 +491,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         // message present.
         let successJson = """
         {
-            "type": "engine_command_result",
+            "type": "desktop_command_result",
             "tabId": "t1",
             "instanceId": "inst-a",
             "message": "Cleared 8 conversation turns.",
@@ -512,7 +512,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         // Failure path: extension threw or unknown command.
         let failureJson = """
         {
-            "type": "engine_command_result",
+            "type": "desktop_command_result",
             "tabId": "t1",
             "command": "not-a-real-command",
             "commandError": "unknown_command"
@@ -533,7 +533,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         // fields are independently optional per the wire contract).
         let minimalJson = """
         {
-            "type": "engine_command_result",
+            "type": "desktop_command_result",
             "tabId": "t1"
         }
         """.data(using: .utf8)!
@@ -553,7 +553,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineToolUpdateDecode() throws {
         let json = """
-        {"type":"engine_tool_update","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolUpdate(let tabId, let instanceId) = event {
@@ -566,7 +566,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineToolCompleteDecode() throws {
         let json = """
-        {"type":"engine_tool_complete","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_complete","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolComplete(let tabId, let instanceId) = event {
@@ -579,7 +579,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineScheduleFiredDecode() throws {
         let json = """
-        {"type":"engine_schedule_fired","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_schedule_fired","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineScheduleFired(let tabId, let instanceId) = event {
@@ -592,7 +592,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineLlmCallDecode() throws {
         let json = """
-        {"type":"engine_llm_call","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_llm_call","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineLlmCall(let tabId, let instanceId) = event {
@@ -605,7 +605,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineDispatchStartDecode() throws {
         let json = """
-        {"type":"engine_dispatch_start","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_dispatch_start","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineDispatchStart(let tabId, let instanceId) = event {

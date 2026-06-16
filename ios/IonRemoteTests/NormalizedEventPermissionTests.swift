@@ -10,7 +10,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
 
     func testDecodePermissionRequest() throws {
         let json = """
-        {"type":"permission_request","tabId":"t1","questionId":"q1","toolName":"bash","toolInput":{"command":"rm -rf /"},"options":[{"id":"allow","label":"Allow","kind":"approve"},{"id":"deny","label":"Deny","kind":"reject"}]}
+        {"type":"desktop_permission_request","tabId":"t1","questionId":"q1","toolName":"bash","toolInput":{"command":"rm -rf /"},"options":[{"id":"allow","label":"Allow","kind":"approve"},{"id":"deny","label":"Deny","kind":"reject"}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, let toolInput, let options) = event {
@@ -37,7 +37,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
         // Engine-view denials carry the owning sub-tab's instanceId so the
         // card can be scoped to the active engine instance.
         let json = """
-        {"type":"permission_request","tabId":"t1","instanceId":"inst-7","questionId":"q3","toolName":"ExitPlanMode","toolInput":{"planContent":"# Plan"},"options":[]}
+        {"type":"desktop_permission_request","tabId":"t1","instanceId":"inst-7","questionId":"q3","toolName":"ExitPlanMode","toolInput":{"planContent":"# Plan"},"options":[]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, _, _) = event {
@@ -52,7 +52,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
 
     func testDecodePermissionRequestWithNullToolInput() throws {
         let json = """
-        {"type":"permission_request","tabId":"t1","questionId":"q2","toolName":"read","toolInput":null,"options":[{"id":"ok","label":"OK","kind":null}]}
+        {"type":"desktop_permission_request","tabId":"t1","questionId":"q2","toolName":"read","toolInput":null,"options":[{"id":"ok","label":"OK","kind":null}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .permissionRequest(_, _, _, _, let toolInput, let options) = event {
@@ -66,7 +66,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
 
     func testDecodePermissionResolved() throws {
         let json = """
-        {"type":"permission_resolved","tabId":"t1","questionId":"q1"}
+        {"type":"desktop_permission_resolved","tabId":"t1","questionId":"q1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .permissionResolved(let tabId, let questionId) = event {
@@ -134,7 +134,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
         let cmd = RemoteCommand.respondPermission(tabId: "t2", questionId: "q5", optionId: "allow")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "respond_permission")
+        XCTAssertEqual(json["type"] as? String, "desktop_respond_permission")
         XCTAssertEqual(json["tabId"] as? String, "t2")
         XCTAssertEqual(json["questionId"] as? String, "q5")
         XCTAssertEqual(json["optionId"] as? String, "allow")
@@ -144,7 +144,7 @@ final class NormalizedEventPermissionTests: XCTestCase {
         let cmd = RemoteCommand.setPermissionMode(tabId: "t1", mode: .plan)
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "set_permission_mode")
+        XCTAssertEqual(json["type"] as? String, "desktop_set_permission_mode")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["mode"] as? String, "plan")
     }

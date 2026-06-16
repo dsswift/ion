@@ -146,7 +146,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         )
         let encoded = try encoder.encode(original)
         let json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-        XCTAssertEqual(json?["type"] as? String, "set_desktop_setting")
+        XCTAssertEqual(json?["type"] as? String, "desktop_set_desktop_setting")
         XCTAssertEqual(json?["key"] as? String, "enableEarlyStopContinuation")
         XCTAssertEqual(json?["value"] as? Bool, false)
 

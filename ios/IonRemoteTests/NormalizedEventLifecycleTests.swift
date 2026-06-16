@@ -19,7 +19,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
 
     func testDecodeSnapshot() throws {
         let json = """
-        {"type":"snapshot","tabs":[\(sampleTabJSON)]}
+        {"type":"desktop_snapshot","tabs":[\(sampleTabJSON)]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event {
@@ -40,7 +40,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
 
     func testDecodeTabCreated() throws {
         let json = """
-        {"type":"tab_created","tab":\(sampleTabJSON)}
+        {"type":"desktop_tab_created","tab":\(sampleTabJSON)}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .tabCreated(let tab) = event {
@@ -53,7 +53,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
 
     func testDecodeTabClosed() throws {
         let json = """
-        {"type":"tab_closed","tabId":"t42"}
+        {"type":"desktop_tab_closed","tabId":"t42"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .tabClosed(let tabId) = event {
@@ -65,7 +65,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
 
     func testDecodeTabStatus() throws {
         let json = """
-        {"type":"tab_status","tabId":"t1","status":"running"}
+        {"type":"desktop_tab_status","tabId":"t1","status":"running"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .tabStatus(let tabId, let status) = event {
@@ -87,7 +87,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         ]
         for (raw, expected) in statuses {
             let json = """
-            {"type":"tab_status","tabId":"t1","status":"\(raw)"}
+            {"type":"desktop_tab_status","tabId":"t1","status":"\(raw)"}
             """.data(using: .utf8)!
             let event = try decoder.decode(RemoteEvent.self, from: json)
             if case .tabStatus(_, let status) = event {
@@ -103,7 +103,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"id":"t2","title":"Tab 2","customTitle":"My Tab","status":"running","workingDirectory":"/home","permissionMode":"plan","permissionQueue":[],"lastMessage":"working...","contextTokens":1024}
         """
         let json = """
-        {"type":"snapshot","tabs":[\(sampleTabJSON),\(tab2)]}
+        {"type":"desktop_snapshot","tabs":[\(sampleTabJSON),\(tab2)]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event {
@@ -122,7 +122,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
 
     func testDecodeSnapshotEmptyTabs() throws {
         let json = """
-        {"type":"snapshot","tabs":[]}
+        {"type":"desktop_snapshot","tabs":[]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event {
@@ -227,7 +227,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.sync
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "sync")
+        XCTAssertEqual(json["type"] as? String, "desktop_sync")
         // sync has no extra fields beyond type
         XCTAssertEqual(json.count, 1)
     }
@@ -236,7 +236,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.createTab(workingDirectory: "/home/user/project")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "create_tab")
+        XCTAssertEqual(json["type"] as? String, "desktop_create_tab")
         XCTAssertEqual(json["workingDirectory"] as? String, "/home/user/project")
     }
 
@@ -244,7 +244,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.createTab(workingDirectory: nil)
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "create_tab")
+        XCTAssertEqual(json["type"] as? String, "desktop_create_tab")
         // workingDirectory should be absent (encodeIfPresent skips nil)
         XCTAssertNil(json["workingDirectory"])
     }
@@ -253,7 +253,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.closeTab(tabId: "t99")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "close_tab")
+        XCTAssertEqual(json["type"] as? String, "desktop_close_tab")
         XCTAssertEqual(json["tabId"] as? String, "t99")
     }
 
@@ -261,7 +261,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.cancel(tabId: "t3")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "cancel")
+        XCTAssertEqual(json["type"] as? String, "desktop_cancel")
         XCTAssertEqual(json["tabId"] as? String, "t3")
     }
 
@@ -269,7 +269,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.renameTab(tabId: "t1", customTitle: "My Tab")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "rename_tab")
+        XCTAssertEqual(json["type"] as? String, "desktop_rename_tab")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["customTitle"] as? String, "My Tab")
     }
@@ -278,7 +278,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let cmd = RemoteCommand.renameTab(tabId: "t1", customTitle: nil)
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "rename_tab")
+        XCTAssertEqual(json["type"] as? String, "desktop_rename_tab")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertTrue(json["customTitle"] == nil || json["customTitle"] is NSNull)
     }
@@ -382,7 +382,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
     func testDecodeEnginePlanModeChanged() throws {
         let json = """
         {
-            "type": "engine_plan_mode_changed",
+            "type": "desktop_plan_mode_changed",
             "tabId": "t1",
             "instanceId": "i1",
             "planModeEnabled": true,
@@ -429,7 +429,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
     func testDecodeEnginePlanModeChangedWithoutOptionalFields() throws {
         let json = """
         {
-            "type": "engine_plan_mode_changed",
+            "type": "desktop_plan_mode_changed",
             "tabId": "t1",
             "planModeEnabled": false
         }
@@ -455,7 +455,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
     func testDecodeEngineSteerInjected() throws {
         let json = """
         {
-            "type": "engine_steer_injected",
+            "type": "desktop_steer_injected",
             "tabId": "t1",
             "instanceId": "i1",
             "steerMessageLength": 42
@@ -494,7 +494,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
     func testDecodeEngineSteerInjectedWithoutInstanceId() throws {
         let json = """
         {
-            "type": "engine_steer_injected",
+            "type": "desktop_steer_injected",
             "tabId": "t1",
             "steerMessageLength": 5
         }

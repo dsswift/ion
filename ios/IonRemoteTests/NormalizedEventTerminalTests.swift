@@ -19,7 +19,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     func testDecodeTerminalOutput() throws {
         let json = """
-        {"type":"terminal_output","tabId":"t1","instanceId":"inst1","data":"hello\\r\\n"}
+        {"type":"desktop_terminal_output","tabId":"t1","instanceId":"inst1","data":"hello\\r\\n"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .terminalOutput(let tabId, let instanceId, let data) = event {
@@ -33,7 +33,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     func testDecodeTerminalExit() throws {
         let json = """
-        {"type":"terminal_exit","tabId":"t1","instanceId":"inst1","exitCode":0}
+        {"type":"desktop_terminal_exit","tabId":"t1","instanceId":"inst1","exitCode":0}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .terminalExit(let tabId, let instanceId, let exitCode) = event {
@@ -47,7 +47,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     func testDecodeTerminalInstanceAdded() throws {
         let json = """
-        {"type":"terminal_instance_added","tabId":"t1","instance":{"id":"inst2","label":"Shell","kind":"user","readOnly":false,"cwd":"/tmp"}}
+        {"type":"desktop_terminal_instance_added","tabId":"t1","instance":{"id":"inst2","label":"Shell","kind":"user","readOnly":false,"cwd":"/tmp"}}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .terminalInstanceAdded(let tabId, let instance) = event {
@@ -64,7 +64,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     func testDecodeTerminalInstanceRemoved() throws {
         let json = """
-        {"type":"terminal_instance_removed","tabId":"t1","instanceId":"inst2"}
+        {"type":"desktop_terminal_instance_removed","tabId":"t1","instanceId":"inst2"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .terminalInstanceRemoved(let tabId, let instanceId) = event {
@@ -77,7 +77,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     func testDecodeTerminalSnapshot() throws {
         let json = """
-        {"type":"terminal_snapshot","tabId":"t1","instances":[{"id":"inst1","label":"Shell","kind":"user","readOnly":false,"cwd":"/home"}],"activeInstanceId":"inst1","buffers":{"inst1":"scrollback data"}}
+        {"type":"desktop_terminal_snapshot","tabId":"t1","instances":[{"id":"inst1","label":"Shell","kind":"user","readOnly":false,"cwd":"/home"}],"activeInstanceId":"inst1","buffers":{"inst1":"scrollback data"}}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .terminalSnapshot(let tabId, let instances, let activeInstanceId, let buffers) = event {
@@ -93,7 +93,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     func testDecodeTerminalSnapshotWithoutBuffers() throws {
         let json = """
-        {"type":"terminal_snapshot","tabId":"t1","instances":[],"activeInstanceId":null}
+        {"type":"desktop_terminal_snapshot","tabId":"t1","instances":[],"activeInstanceId":null}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .terminalSnapshot(_, let instances, let activeInstanceId, let buffers) = event {
@@ -155,7 +155,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.createTerminalTab(workingDirectory: "/home/user")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "create_terminal_tab")
+        XCTAssertEqual(json["type"] as? String, "desktop_create_terminal_tab")
         XCTAssertEqual(json["workingDirectory"] as? String, "/home/user")
     }
 
@@ -163,7 +163,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.terminalInput(tabId: "t1", instanceId: "i1", data: "ls\n")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "terminal_input")
+        XCTAssertEqual(json["type"] as? String, "desktop_terminal_input")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["instanceId"] as? String, "i1")
         XCTAssertEqual(json["data"] as? String, "ls\n")
@@ -173,7 +173,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.terminalResize(tabId: "t1", instanceId: "i1", cols: 120, rows: 40)
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "terminal_resize")
+        XCTAssertEqual(json["type"] as? String, "desktop_terminal_resize")
         XCTAssertEqual(json["cols"] as? Int, 120)
         XCTAssertEqual(json["rows"] as? Int, 40)
     }
@@ -182,7 +182,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.terminalAddInstance(tabId: "t1")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "terminal_add_instance")
+        XCTAssertEqual(json["type"] as? String, "desktop_terminal_add_instance")
         XCTAssertEqual(json["tabId"] as? String, "t1")
     }
 
@@ -190,7 +190,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.terminalRemoveInstance(tabId: "t1", instanceId: "i2")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "terminal_remove_instance")
+        XCTAssertEqual(json["type"] as? String, "desktop_terminal_remove_instance")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["instanceId"] as? String, "i2")
     }
@@ -199,7 +199,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.terminalSelectInstance(tabId: "t1", instanceId: "i3")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "terminal_select_instance")
+        XCTAssertEqual(json["type"] as? String, "desktop_terminal_select_instance")
         XCTAssertEqual(json["instanceId"] as? String, "i3")
     }
 
@@ -270,7 +270,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let cmd = RemoteCommand.requestTerminalSnapshot(tabId: "tab-99")
         let data = try encoder.encode(cmd)
         let dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(dict["type"] as? String, "request_terminal_snapshot")
+        XCTAssertEqual(dict["type"] as? String, "desktop_request_terminal_snapshot")
         XCTAssertEqual(dict["tabId"] as? String, "tab-99")
     }
 

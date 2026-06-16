@@ -30,7 +30,7 @@ final class RemoteCommandPillTests: XCTestCase {
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        XCTAssertEqual(json["type"] as? String, "set_pill_color")
+        XCTAssertEqual(json["type"] as? String, "desktop_set_pill_color")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["pillColor"] as? String, "#f08c4a")
     }
@@ -56,7 +56,7 @@ final class RemoteCommandPillTests: XCTestCase {
 
     func testDecodeSetPillColorNonNil() throws {
         let json = """
-        {"type":"set_pill_color","tabId":"t1","pillColor":"#42a5f5"}
+        {"type":"desktop_set_pill_color","tabId":"t1","pillColor":"#42a5f5"}
         """.data(using: .utf8)!
 
         let cmd = try decoder.decode(RemoteCommand.self, from: json)
@@ -70,7 +70,7 @@ final class RemoteCommandPillTests: XCTestCase {
 
     func testDecodeSetPillColorNull() throws {
         let json = """
-        {"type":"set_pill_color","tabId":"t1","pillColor":null}
+        {"type":"desktop_set_pill_color","tabId":"t1","pillColor":null}
         """.data(using: .utf8)!
 
         let cmd = try decoder.decode(RemoteCommand.self, from: json)
@@ -113,7 +113,7 @@ final class RemoteCommandPillTests: XCTestCase {
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        XCTAssertEqual(json["type"] as? String, "set_pill_icon")
+        XCTAssertEqual(json["type"] as? String, "desktop_set_pill_icon")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["pillIcon"] as? String, "diamond")
     }
@@ -131,7 +131,7 @@ final class RemoteCommandPillTests: XCTestCase {
 
     func testDecodeSetPillIconNonNil() throws {
         let json = """
-        {"type":"set_pill_icon","tabId":"t1","pillIcon":"star"}
+        {"type":"desktop_set_pill_icon","tabId":"t1","pillIcon":"star"}
         """.data(using: .utf8)!
 
         let cmd = try decoder.decode(RemoteCommand.self, from: json)
@@ -145,7 +145,7 @@ final class RemoteCommandPillTests: XCTestCase {
 
     func testDecodeSetPillIconNull() throws {
         let json = """
-        {"type":"set_pill_icon","tabId":"t1","pillIcon":null}
+        {"type":"desktop_set_pill_icon","tabId":"t1","pillIcon":null}
         """.data(using: .utf8)!
 
         let cmd = try decoder.decode(RemoteCommand.self, from: json)
@@ -188,14 +188,14 @@ final class RemoteCommandPillTests: XCTestCase {
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        XCTAssertEqual(json["type"] as? String, "reset_engine_session")
+        XCTAssertEqual(json["type"] as? String, "desktop_reset_engine_session")
         XCTAssertEqual(json["tabId"] as? String, "tab-a")
         XCTAssertEqual(json["instanceId"] as? String, "inst-1")
     }
 
     func testDecodeResetEngineSession() throws {
         let json = """
-        {"type":"reset_engine_session","tabId":"tab-a","instanceId":"inst-1"}
+        {"type":"desktop_reset_engine_session","tabId":"tab-a","instanceId":"inst-1"}
         """.data(using: .utf8)!
 
         let cmd = try decoder.decode(RemoteCommand.self, from: json)

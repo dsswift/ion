@@ -19,7 +19,7 @@ final class EngineMoveCodecTests: XCTestCase {
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        XCTAssertEqual(json["type"] as? String, "engine_move_instance")
+        XCTAssertEqual(json["type"] as? String, "desktop_engine_move_instance")
         XCTAssertEqual(json["sourceTabId"] as? String, "tab-a")
         XCTAssertEqual(json["instanceId"] as? String, "inst-1")
         XCTAssertEqual(json["targetTabId"] as? String, "tab-b")
@@ -30,7 +30,7 @@ final class EngineMoveCodecTests: XCTestCase {
     func testDecodeEngineMoveInstance() throws {
         let json = """
         {
-            "type": "engine_move_instance",
+            "type": "desktop_engine_move_instance",
             "sourceTabId": "tab-a",
             "instanceId": "inst-1",
             "targetTabId": "tab-b"
@@ -73,7 +73,7 @@ final class EngineMoveCodecTests: XCTestCase {
     func testDecodeEngineInstanceMovedEvent() throws {
         let json = """
         {
-            "type": "engine_instance_moved",
+            "type": "desktop_instance_moved",
             "sourceTabId": "tab-a",
             "instanceId": "inst-1",
             "targetTabId": "tab-b"
@@ -102,7 +102,7 @@ final class EngineMoveCodecTests: XCTestCase {
         let data = try encoder.encode(event)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        XCTAssertEqual(json["type"] as? String, "engine_instance_moved")
+        XCTAssertEqual(json["type"] as? String, "desktop_instance_moved")
         XCTAssertEqual(json["sourceTabId"] as? String, "tab-x")
         XCTAssertEqual(json["instanceId"] as? String, "inst-9")
         XCTAssertEqual(json["targetTabId"] as? String, "tab-y")

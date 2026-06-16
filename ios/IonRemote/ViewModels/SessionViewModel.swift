@@ -87,6 +87,10 @@ final class SessionViewModel {
     /// engineResourceSnapshot and engineResourceDelta events.
     let resourceStore = ResourceStore()
 
+    /// Paged plan content assembler (plan gentle-perching-lemon). Populated
+    /// by plan_content events in response to requestPlanContent commands.
+    let planContentStore = PlanContentStore()
+
     var tabs: [RemoteTabState] = []
     var tabIds: Set<String> = []
     var liveText: [String: String] = [:]

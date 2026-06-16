@@ -198,7 +198,7 @@ final class ContractSyncTests: XCTestCase {
     func testEngineStatusDecode() throws {
         let json = """
         {
-            "type": "engine_status",
+            "type": "desktop_status",
             "tabId": "t1",
             "fields": {
                 "label": "Running",
@@ -229,7 +229,7 @@ final class ContractSyncTests: XCTestCase {
     func testEngineSessionStatusDecode() throws {
         let json = """
         {
-            "type": "engine_session_status",
+            "type": "desktop_session_status",
             "tabId": "t1",
             "instanceId": "inst-2",
             "sessionStatus": {
@@ -317,10 +317,10 @@ final class ContractSyncTests: XCTestCase {
     /// trust both routes.
     func testEngineStatusAndSessionStatusBothDecode() throws {
         let legacyJSON = """
-        {"type":"engine_status","tabId":"t1","fields":{"label":"","state":"running","model":"","contextPercent":0,"contextWindow":0}}
+        {"type":"desktop_status","tabId":"t1","fields":{"label":"","state":"running","model":"","contextPercent":0,"contextWindow":0}}
         """.data(using: .utf8)!
         let typedJSON = """
-        {"type":"engine_session_status","tabId":"t1","sessionStatus":{"key":"t1","state":"running","lastEmittedAt":1}}
+        {"type":"desktop_session_status","tabId":"t1","sessionStatus":{"key":"t1","state":"running","lastEmittedAt":1}}
         """.data(using: .utf8)!
 
         let legacy = try decoder.decode(RemoteEvent.self, from: legacyJSON)
@@ -339,7 +339,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineTextDeltaDecode() throws {
         let json = """
-        {"type":"engine_text_delta","tabId":"t1","text":"hello"}
+        {"type":"desktop_text_delta","tabId":"t1","text":"hello"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineTextDelta(_, _, let text) = event {
@@ -351,7 +351,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineToolStartDecode() throws {
         let json = """
-        {"type":"engine_tool_start","tabId":"t1","toolName":"bash","toolId":"tid-1"}
+        {"type":"desktop_tool_start","tabId":"t1","toolName":"bash","toolId":"tid-1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolStart(_, _, let name, let id) = event {
@@ -364,7 +364,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineToolEndDecode() throws {
         let json = """
-        {"type":"engine_tool_end","tabId":"t1","toolId":"tid-1","result":"ok","isError":false}
+        {"type":"desktop_tool_end","tabId":"t1","toolId":"tid-1","result":"ok","isError":false}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolEnd(_, _, let id, let result, let isError) = event {
@@ -378,7 +378,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineDeadDecode() throws {
         let json = """
-        {"type":"engine_dead","tabId":"t1","exitCode":1,"signal":null,"stderrTail":["error"]}
+        {"type":"desktop_dead","tabId":"t1","exitCode":1,"signal":null,"stderrTail":["error"]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineDead(_, _, let exitCode, let signal, let tail) = event {
@@ -392,7 +392,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineMessageEndDecode() throws {
         let json = """
-        {"type":"engine_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01}}
+        {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01}}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineMessageEnd(_, _, let input, let output, let pct, let cost) = event {
@@ -407,7 +407,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineDialogDecode() throws {
         let json = """
-        {"type":"engine_dialog","tabId":"t1","dialogId":"d1","method":"select","title":"Pick","options":["a","b"]}
+        {"type":"desktop_dialog","tabId":"t1","dialogId":"d1","method":"select","title":"Pick","options":["a","b"]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineDialog(_, _, let dialogId, let method, let title, let opts, _) = event {
@@ -422,7 +422,7 @@ final class ContractSyncTests: XCTestCase {
 
     func testEngineAgentStateDecode() throws {
         let json = """
-        {"type":"engine_agent_state","tabId":"t1","agents":[{"name":"coder","status":"running","metadata":{"displayName":"Coder","type":"specialist","visibility":"always","invited":true}}]}
+        {"type":"desktop_agent_state","tabId":"t1","agents":[{"name":"coder","status":"running","metadata":{"displayName":"Coder","type":"specialist","visibility":"always","invited":true}}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineAgentState(_, _, let agents) = event {

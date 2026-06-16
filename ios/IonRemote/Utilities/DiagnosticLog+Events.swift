@@ -307,6 +307,9 @@ extension DiagnosticLog {
 
         case .resourceContent(let resourceId, let kind, let content):
             log("EVENT: resourceContent resourceId=\(resourceId.prefix(12)) kind=\(kind) contentLen=\(content.count)")
+
+        case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
+            log("EVENT: planContent qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) contentLen=\(content.count) totalBytes=\(totalBytes) hasMore=\(hasMore)")
         }
     }
 }

@@ -73,6 +73,10 @@ enum RemoteCommand: Codable, Sendable {
     case engineAddInstance(tabId: String)
     case engineRemoveInstance(tabId: String, instanceId: String)
     case engineRenameInstance(tabId: String, instanceId: String, label: String)
+    // Note: engineRenameInstance above was the old case. It is now unified with
+    // renameTerminalInstance at the wire level (both use "desktop_rename_terminal_instance").
+    // The associated value case is preserved for backward compat within iOS code;
+    // encoding and decoding both route through the renameTerminalInstance TypeKey.
     case engineSelectInstance(tabId: String, instanceId: String)
     case engineMoveInstance(sourceTabId: String, instanceId: String, targetTabId: String)
     case loadEngineConversation(tabId: String, instanceId: String?)
@@ -166,81 +170,105 @@ enum RemoteCommand: Codable, Sendable {
     /// subscribers (desktop + iOS) remove the item from their collections.
     case deleteResource(kind: String, resourceId: String)
 
+    // MARK: - Plan implement intent (plan gentle-perching-lemon)
+
+    /// Ask the desktop to run the implement pipeline for an ExitPlanMode
+    /// permission entry. iOS sends intent only — no plan body crosses the
+    /// wire. The desktop resolves the plan file path from its renderer
+    /// store, reads the plan from disk, runs setPermissionMode→auto,
+    /// inserts the implement divider, and calls processIncomingPrompt with
+    /// implementationPhase=true + the plan attachment.
+    ///
+    /// `clearContext` maps to the "Implement, clear context" button: the
+    /// desktop resets the engine session before implementing. Omit or pass
+    /// false for the regular Implement action (preserves conversation).
+    case implementPlan(tabId: String, questionId: String, instanceId: String?, clearContext: Bool)
+
+    /// Request a bounded byte-range window of the plan file from the desktop.
+    /// iOS pages through the plan in 64 KB windows by sending successive
+    /// commands with increasing offsets until the server responds with
+    /// `hasMore: false`. `length: 0` signals "use server default (64 KB)".
+    /// The desktop replies with a `plan_content` event carrying the window.
+    case requestPlanContent(tabId: String, questionId: String, planFilePath: String, offset: Int, length: Int)
+
     // MARK: - Codable
 
     enum TypeKey: String, Codable {
-        case sync
-        case createTab = "create_tab"
-        case createTerminalTab = "create_terminal_tab"
-        case closeTab = "close_tab"
-        case resetTabSession = "reset_tab_session"
-        case resetEngineSession = "reset_engine_session"
-        case prompt
-        case cancel
-        case respondPermission = "respond_permission"
-        case setPermissionMode = "set_permission_mode"
-        case loadConversation = "load_conversation"
-        case terminalInput = "terminal_input"
-        case terminalResize = "terminal_resize"
-        case terminalAddInstance = "terminal_add_instance"
-        case terminalRemoveInstance = "terminal_remove_instance"
-        case terminalSelectInstance = "terminal_select_instance"
-        case requestTerminalSnapshot = "request_terminal_snapshot"
-        case renameTab = "rename_tab"
-        case renameTerminalInstance = "rename_terminal_instance"
-        case rewind
-        case forkFromMessage = "fork_from_message"
-        case engineRewind = "engine_rewind"
-        case unpair
-        case createEngineTab = "create_engine_tab"
-        case enginePrompt = "engine_prompt"
-        case engineAbort = "engine_abort"
-        case engineDialogResponse = "engine_dialog_response"
-        case engineAddInstance = "engine_add_instance"
-        case engineRemoveInstance = "engine_remove_instance"
-        case engineRenameInstance = "engine_rename_instance"
-        case engineSelectInstance = "engine_select_instance"
-        case engineMoveInstance = "engine_move_instance"
-        case loadEngineConversation = "load_engine_conversation"
-        case loadAgentConversation = "load_agent_conversation"
-        case setTabGroupMode = "set_tab_group_mode"
-        case moveTabToGroup = "move_tab_to_group"
-        case toggleTabGroupPin = "toggle_tab_group_pin"
-        case reorderTabGroups = "reorder_tab_groups"
-        case engineSetModel = "engine_set_model"
-        case setTabModel = "set_tab_model"
-        case setPreferredModel = "set_preferred_model"
-        case setEngineDefaultModel = "set_engine_default_model"
-        case gitChanges = "git_changes"
-        case gitGraph = "git_graph"
-        case gitDiff = "git_diff"
-        case gitStage = "git_stage"
-        case gitUnstage = "git_unstage"
-        case gitCommit = "git_commit"
-        case gitDiscard = "git_discard"
-        case gitFetch = "git_fetch"
-        case gitPull = "git_pull"
-        case gitPush = "git_push"
-        case gitCommitFiles = "git_commit_files"
-        case gitCommitFileDiff = "git_commit_file_diff"
-        case fsListDir = "fs_list_dir"
-        case fsReadFile = "fs_read_file"
-        case fsReadImage = "fs_read_image"
-        case fsWriteFile = "fs_write_file"
-        case fsRename = "fs_rename"
-        case discoverCommands = "discover_commands"
-        case uploadAttachment = "upload_attachment"
-        case loadAttachments = "load_attachments"
-        case voiceConfig = "voice_config"
-        case diagnosticLogsResponse = "diagnostic_logs_response"
-        case setRemoteDisplay = "set_remote_display"
-        case setDesktopSetting = "set_desktop_setting"
-        case setPillColor = "set_pill_color"
-        case setPillIcon = "set_pill_icon"
-        case reportFocus = "report_focus"
-        case requestResourceContent = "request_resource_content"
-        case markResourceRead = "mark_resource_read"
-        case deleteResource = "delete_resource"
+        case sync = "desktop_sync"
+        case createTab = "desktop_create_tab"
+        case createTerminalTab = "desktop_create_terminal_tab"
+        case closeTab = "desktop_close_tab"
+        case resetTabSession = "desktop_reset_tab_session"
+        case resetEngineSession = "desktop_reset_engine_session"
+        case prompt = "desktop_prompt"
+        case cancel = "desktop_cancel"
+        case respondPermission = "desktop_respond_permission"
+        case setPermissionMode = "desktop_set_permission_mode"
+        case loadConversation = "desktop_load_conversation"
+        case terminalInput = "desktop_terminal_input"
+        case terminalResize = "desktop_terminal_resize"
+        case terminalAddInstance = "desktop_terminal_add_instance"
+        case terminalRemoveInstance = "desktop_terminal_remove_instance"
+        case terminalSelectInstance = "desktop_terminal_select_instance"
+        case requestTerminalSnapshot = "desktop_request_terminal_snapshot"
+        case renameTab = "desktop_rename_tab"
+        case renameTerminalInstance = "desktop_rename_terminal_instance"
+        case rewind = "desktop_rewind"
+        case forkFromMessage = "desktop_fork_from_message"
+        case engineRewind = "desktop_engine_rewind"
+        case unpair = "desktop_unpair"
+        case createEngineTab = "desktop_create_engine_tab"
+        case enginePrompt = "desktop_engine_prompt"
+        case engineAbort = "desktop_engine_abort"
+        case engineDialogResponse = "desktop_engine_dialog_response"
+        case engineAddInstance = "desktop_engine_add_instance"
+        case engineRemoveInstance = "desktop_engine_remove_instance"
+        // Note: engineRenameInstance was aligned with renameTerminalInstance.
+        // Both now map to "desktop_rename_terminal_instance" -- use renameTerminalInstance.
+        case engineSelectInstance = "desktop_engine_select_instance"
+        case engineMoveInstance = "desktop_engine_move_instance"
+        case loadEngineConversation = "desktop_load_engine_conversation"
+        case loadAgentConversation = "desktop_load_agent_conversation"
+        case setTabGroupMode = "desktop_set_tab_group_mode"
+        case moveTabToGroup = "desktop_move_tab_to_group"
+        case toggleTabGroupPin = "desktop_toggle_tab_group_pin"
+        case reorderTabGroups = "desktop_reorder_tab_groups"
+        case engineSetModel = "desktop_engine_set_model"
+        case setTabModel = "desktop_set_tab_model"
+        case setPreferredModel = "desktop_set_preferred_model"
+        case setEngineDefaultModel = "desktop_set_engine_default_model"
+        case gitChanges = "desktop_git_changes"
+        case gitGraph = "desktop_git_graph"
+        case gitDiff = "desktop_git_diff"
+        case gitStage = "desktop_git_stage"
+        case gitUnstage = "desktop_git_unstage"
+        case gitCommit = "desktop_git_commit"
+        case gitDiscard = "desktop_git_discard"
+        case gitFetch = "desktop_git_fetch"
+        case gitPull = "desktop_git_pull"
+        case gitPush = "desktop_git_push"
+        case gitCommitFiles = "desktop_git_commit_files"
+        case gitCommitFileDiff = "desktop_git_commit_file_diff"
+        case fsListDir = "desktop_fs_list_dir"
+        case fsReadFile = "desktop_fs_read_file"
+        case fsReadImage = "desktop_fs_read_image"
+        case fsWriteFile = "desktop_fs_write_file"
+        case fsRename = "desktop_fs_rename"
+        case discoverCommands = "desktop_discover_commands"
+        case uploadAttachment = "desktop_upload_attachment"
+        case loadAttachments = "desktop_load_attachments"
+        case voiceConfig = "desktop_voice_config"
+        case diagnosticLogsResponse = "desktop_diagnostic_logs_response"
+        case setRemoteDisplay = "desktop_set_remote_display"
+        case setDesktopSetting = "desktop_set_desktop_setting"
+        case setPillColor = "desktop_set_pill_color"
+        case setPillIcon = "desktop_set_pill_icon"
+        case reportFocus = "desktop_report_focus"
+        case requestResourceContent = "desktop_request_resource_content"
+        case markResourceRead = "desktop_mark_resource_read"
+        case deleteResource = "desktop_delete_resource"
+        case implementPlan = "desktop_implement_plan"
+        case requestPlanContent = "desktop_request_plan_content"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -289,6 +317,18 @@ enum RemoteCommand: Codable, Sendable {
         // — the 0-based ordinal among user messages the desktop uses to resolve
         // the rewind point when its id lookup misses.
         case userTurnIndex
+        // implement_plan payload. `questionId`/`tabId`/`instanceId` are shared
+        // above. `clearContext` is the flag for the "clear context" variant —
+        // omitted on the wire when false (encodeIfPresent pattern).
+        case clearContext
+        // request_plan_content payload. `tabId`/`questionId`/`planFilePath` are
+        // shared above (`filePath` already covers `planFilePath` in other cmds;
+        // the wire key here is literally "planFilePath" so we add a distinct
+        // CodingKey that serialises to the canonical wire name).
+        case planFilePath
+        case offset
+        // `length` is unique to request_plan_content — no collision in the existing set.
+        case length
     }
 
     // `init(from decoder:)` is in RemoteCommand+Decode.swift to keep this

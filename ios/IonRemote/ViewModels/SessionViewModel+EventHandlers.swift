@@ -475,6 +475,19 @@ extension SessionViewModel {
         case .resourceContent(let resourceId, let kind, let content):
             resourceStore.updateContent(kind: kind, resourceId: resourceId, content: content)
 
+        case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
+            // Assemble paged plan_content into the full body via planContentStore.
+            // If hasMore is true, request the next page immediately.
+            planContentStore.applyPage(questionId: questionId, content: content, totalBytes: totalBytes, hasMore: hasMore)
+            if hasMore {
+                // Derive the next offset from the byte length of content received so far.
+                let nextOffset = offset + content.utf8.count
+                // Re-resolve planFilePath and tabId from the store for the next request.
+                // We don't have tabId here but we track it in planContentStore's state.
+                // For the continuation we use the planFilePath from this event + stored tabId.
+                requestNextPlanPage(questionId: questionId, planFilePath: planFilePath, nextOffset: nextOffset)
+            }
+
         case .engineIntercept(let tabId, let instanceId, let level, let title, let message, _, _):
             handleEngineIntercept(tabId: tabId, instanceId: instanceId, level: level, title: title, message: message)
         }

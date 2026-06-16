@@ -227,6 +227,12 @@ extension DiagnosticLog {
 
         case .deleteResource(let kind, let resourceId):
             log("CMD: deleteResource kind=\(kind) resourceId=\(resourceId.prefix(12))")
+
+        case .implementPlan(let tabId, let questionId, let instanceId, let clearContext):
+            log("CMD: implementPlan tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) inst=\(instanceId?.prefix(8) ?? "nil") clearContext=\(clearContext)")
+
+        case .requestPlanContent(let tabId, let questionId, let planFilePath, let offset, let length):
+            log("CMD: requestPlanContent tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) len=\(length)")
         }
     }
 }
