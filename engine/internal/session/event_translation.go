@@ -8,6 +8,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -259,6 +260,31 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			// outstanding denials to re-emit.
 			s2.lastPermissionDenials = tc.PermissionDenials
 			utils.Log("Session", fmt.Sprintf("task_complete: key=%s retained %d permission_denials for reconcile", key, len(tc.PermissionDenials)))
+
+			// Emit a run-level telemetry event. This is the one place every
+			// backend's TaskCompleteEvent converges, so a single guarded
+			// emission here gives uniform run-level coverage across all
+			// backends — including CliBackend, which emits no per-call
+			// telemetry spans of its own (ApiBackend keeps its finer-grained
+			// llm.call / tool.execute spans regardless). Additive only:
+			// guarded on a non-nil collector, and the collector itself is a
+			// no-op when telemetry is disabled. The model comes from
+			// s2.lastModel (set in prompt_dispatch when the run started); the
+			// cost/duration/turn/usage fields come straight from the event.
+			if s2.telemetry != nil {
+				payload := map[string]any{
+					"model":                    s2.lastModel,
+					"costUsd":                  tc.CostUsd,
+					"durationMs":               tc.DurationMs,
+					"numTurns":                 tc.NumTurns,
+					"inputTokens":              derefInt(tc.Usage.InputTokens),
+					"outputTokens":             derefInt(tc.Usage.OutputTokens),
+					"cacheReadInputTokens":     derefInt(tc.Usage.CacheReadInputTokens),
+					"cacheCreationInputTokens": derefInt(tc.Usage.CacheCreationInputTokens),
+				}
+				s2.telemetry.Event(telemetry.RunComplete, payload, nil)
+				utils.Log("Session", fmt.Sprintf("run.complete telemetry emitted: key=%s model=%s costUsd=%f numTurns=%d", key, s2.lastModel, tc.CostUsd, tc.NumTurns))
+			}
 		}
 		m.mu.Unlock()
 		m.emit(key, types.EngineEvent{

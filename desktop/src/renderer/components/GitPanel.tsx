@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  CaretDown, CaretRight, ArrowsClockwise, X, ListBullets, TreeStructure,
+  CaretDown, CaretRight, ArrowsClockwise, X, ListBullets, TreeStructure, Info,
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
@@ -146,6 +146,14 @@ export function GitPanel() {
             </span>
           </span>
         </div>
+        {repoState?.watcherIgnored && (
+          <span
+            title="Live watching is off for this directory. The panel refreshes automatically when you open it, switch tabs, or focus the window. Use refresh for an immediate update."
+            style={{ color: colors.textTertiary, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}
+          >
+            <Info size={11} />
+          </span>
+        )}
         <button
           onClick={refresh}
           className="p-0.5 rounded transition-colors"

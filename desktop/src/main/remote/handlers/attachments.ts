@@ -126,11 +126,20 @@ export async function handleLoadAttachments(
             var pp = planPath.split('/');
             result.push({ type: 'plan', name: pp[pp.length - 1] || 'plan.md', path: planPath });
           }
-          // Include conversation-scoped resources (briefings) for this tab.
-          // These are keyed by conversationId in s.resources and are not
-          // attached to messages — they arrive through the resource broker.
-          // Encode as type='briefing' with path='resource:<id>' so iOS can
-          // look them up in its ResourceStore without a file read roundtrip.
+          // Include conversation-scoped resources for this tab. These are
+          // keyed by conversationId in s.resources and are not attached to
+          // messages — they arrive through the resource broker for ANY kind
+          // an extension declares. Encode generically as type='resource' with
+          // path='resource:<id>' and carry the real kind so iOS buckets and
+          // labels by kind, never by a hardcoded type. (Previously this
+          // hardcoded type='briefing', baking one extension's kind into the
+          // client; the pipeline is now kind-agnostic.)
+          //
+          // SHAPE CONTRACT: this object MUST match resourceToAttachmentEntry()
+          // in ./resource-attachment-entry.ts (the unit-tested source of truth
+          // for the entry shape). This code runs inside executeJavaScript and
+          // cannot import that module, so the shape is duplicated by necessity
+          // — keep the two in sync.
           var convId = tab.conversationId || null;
           if (convId) {
             var resources = s.resources || {};
@@ -143,8 +152,9 @@ export async function handleLoadAttachments(
                   if (!seen[resourcePath]) {
                     seen[resourcePath] = true;
                     result.push({
-                      type: 'briefing',
-                      name: item.title || item.kind || 'Briefing',
+                      type: 'resource',
+                      kind: item.kind || '',
+                      name: item.title || item.kind || 'Resource',
                       path: resourcePath,
                     });
                   }

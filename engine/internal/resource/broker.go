@@ -163,8 +163,11 @@ func (b *Broker) Publish(kind string, delta types.ResourceDelta) error {
 		return fmt.Errorf("resource broker: no producer for kind %q", kind)
 	}
 	// Snapshot the subscriber slice so we can release the lock before delivering.
+	// Wildcard subscribers (kind="*") receive deltas for every kind, so they
+	// are folded into the recipient set here.
 	subs := make([]*Subscription, len(b.subscribers[kind]))
 	copy(subs, b.subscribers[kind])
+	subs = append(subs, b.wildcardSubscribersLocked()...)
 	b.mu.RUnlock()
 
 	utils.Debug("resource", fmt.Sprintf("publish kind=%s op=%s recipients=%d", kind, delta.Op, len(subs)))
@@ -194,6 +197,7 @@ func (b *Broker) PublishDirect(kind string, delta types.ResourceDelta) {
 	b.mu.RLock()
 	subs := make([]*Subscription, len(b.subscribers[kind]))
 	copy(subs, b.subscribers[kind])
+	subs = append(subs, b.wildcardSubscribersLocked()...)
 	b.mu.RUnlock()
 
 	utils.Debug("resource", fmt.Sprintf("publishDirect kind=%s op=%s recipients=%d", kind, delta.Op, len(subs)))

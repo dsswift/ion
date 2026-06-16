@@ -429,7 +429,11 @@ func TestResolvePlanModeAutoExit_Precedence(t *testing.T) {
 
 // Test 14: synthesizedToolUseID embeds the runID and turn for log
 // correlation, and is unique across rapid calls so two synthesis
-// firings on the same run cannot collide on the denial ID.
+// firings on the same run cannot collide on the denial ID. Uniqueness
+// is guaranteed by an atomic counter, not by wall-clock granularity:
+// the loop below issues many calls in a tight burst — the exact pattern
+// that collided on the timestamp alone before the counter was added —
+// and asserts every ID is distinct.
 func TestSynthesizedToolUseID_FormatAndUniqueness(t *testing.T) {
 	id1 := synthesizedToolUseID("run-A", 3)
 	id2 := synthesizedToolUseID("run-A", 3)
@@ -439,5 +443,17 @@ func TestSynthesizedToolUseID_FormatAndUniqueness(t *testing.T) {
 	}
 	if id1 == id2 {
 		t.Errorf("expected distinct IDs across calls, got %q twice", id1)
+	}
+
+	// Rapid-burst uniqueness: a clock-only ID would collide here on any
+	// machine fast enough to issue two calls within one nanosecond.
+	const burst = 10000
+	seen := make(map[string]struct{}, burst)
+	for i := 0; i < burst; i++ {
+		id := synthesizedToolUseID("run-B", 1)
+		if _, dup := seen[id]; dup {
+			t.Fatalf("duplicate synthesized ID on iteration %d: %q", i, id)
+		}
+		seen[id] = struct{}{}
 	}
 }

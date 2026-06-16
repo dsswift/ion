@@ -1,6 +1,6 @@
 ---
 description: Push the current branch and open a pull request into main with a structured description derived from the branch's commits and issue references.
-allowed-tools: Bash(git *), Bash(gh pr *), Bash(gh issue view *)
+allowed-tools: Bash(git *), Bash(gh pr *), Bash(gh issue view *), Bash(docker *), Bash(make test-linux*)
 ---
 
 You are running the `/create-pr` command. Your job is to push the current feature branch and open a pull request into `main` with a well-structured description. The PR title and body are derived from the branch's commits and the issues they reference.
@@ -10,7 +10,7 @@ You are running the `/create-pr` command. Your job is to push the current featur
 - Never run on `main`. Abort if the current branch is `main`.
 - Only run `git push` as part of this command. No other `git push` outside this flow.
 - Never merge to `main`. The PR is opened — the user merges.
-- Do not create a PR with failing CI. If CI is already known to be failing, stop and report.
+- Do not create a PR with failing CI. If CI is already known to be failing, stop and report. **Run the Linux parity gate (Step 3) before pushing** so a Linux-only failure is caught locally — not after burning paid Actions minutes on a red PR.
 
 ---
 
@@ -42,7 +42,53 @@ If there are uncommitted changes, stop:
 
 ---
 
-## Step 3: Push the branch
+## Step 3: Linux parity gate (catch Linux-only CI failures before pushing)
+
+CI runs `engine-test` (`go test -race ./...`) and `desktop-test` (`npm test`) on **`ubuntu-latest`**. Local development is on macOS, so OS-sensitive failures — path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts` — pass locally and only fail in CI. This step runs the **same commands CI runs, in Linux containers**, so those failures surface here instead of on the PR.
+
+### 3a. Determine touched components
+
+```bash
+git diff main..HEAD --name-only
+```
+
+- If any path starts with `engine/`, the **engine** gate applies.
+- If any path starts with `desktop/`, the **desktop** gate applies.
+- If neither `engine/` nor `desktop/` is touched, **skip this step entirely** and go to Step 4. (Pure `ios/`, `relay/`, `docs/`, or `repo` changes have no Linux-divergent test gate here.)
+
+### 3b. Docker preflight
+
+The gate runs in Docker. Check the daemon is reachable:
+
+```bash
+docker info
+```
+
+If `docker` is not installed **or** `docker info` fails (daemon not running), **stop and tell the user naturally** — this is a pause, not a hard failure. For example:
+
+> Docker isn't running, so I can't run the Linux parity check locally before pushing. Start Docker and tell me to continue, or tell me to proceed without it — the PR's own CI gates still protect the merge either way.
+
+Then wait. The user may start Docker and say "go" (re-run from 3c), or say "proceed anyway" (skip to Step 4). **It is the user's call.** Skipping the local check never sacrifices safety: the PR-validation gates (`engine-test`, `desktop-test`) are the authoritative merge guard and will still block a bad merge. Do not treat "Docker down" as a reason to abort the whole command.
+
+### 3c. Run the gate for touched components
+
+```bash
+# engine touched:
+make test-linux-engine
+# desktop touched:
+make test-linux-desktop
+# (or `make test-linux` when both are touched)
+```
+
+### 3d. Act on the result
+
+- **Gate passes** → proceed to Step 4.
+- **Gate fails** → **abort PR creation. Do not push. Do not open the PR.** Report the failing tests to the user so they can fix them first. This is the "do not create a PR with failing CI" hard rule, enforced locally instead of after the fact.
+- **User opted to skip** (Docker down, proceed anyway) → proceed to Step 4; note in the final report that the Linux gate was skipped.
+
+---
+
+## Step 4: Push the branch
 
 ```bash
 git push -u origin {branch}
@@ -52,7 +98,7 @@ If the push fails, report the error and stop.
 
 ---
 
-## Step 4: Check for an existing PR
+## Step 5: Check for an existing PR
 
 ```bash
 gh pr view {branch} --json number,url,state 2>/dev/null
@@ -67,7 +113,7 @@ If an open PR already exists:
 
 ---
 
-## Step 5: Collect commits
+## Step 6: Collect commits
 
 Gather the commits on this branch:
 
@@ -86,7 +132,7 @@ git log main..{branch} --no-merges --format="%b" | grep -E "Fixes|Closes"
 
 ---
 
-## Step 6: Generate the PR title
+## Step 7: Generate the PR title
 
 Analyze the commits and write the PR title.
 
@@ -99,7 +145,7 @@ Rules:
 
 ---
 
-## Step 7: Generate the PR body
+## Step 8: Generate the PR body
 
 Write a concise PR description:
 
@@ -132,7 +178,7 @@ Closes #138
 
 ---
 
-## Step 8: Create the PR
+## Step 9: Create the PR
 
 ```bash
 gh pr create --base main --title "{title}" --body "{body}"
@@ -140,12 +186,13 @@ gh pr create --base main --title "{title}" --body "{body}"
 
 ---
 
-## Step 9: Report
+## Step 10: Report
 
 ```
 ✅ PR #{number} created: {URL}
    {title}
    {N} commits, scopes: {list}
+   Linux parity gate: passed | skipped (Docker down, user opted to proceed) | n/a (no engine/desktop changes)
 
 Next step: Wait for CI. When it passes, the PR is ready to merge.
 ```
@@ -156,4 +203,5 @@ If an existing PR was updated instead:
 ✅ PR #{number} updated: {URL}
    {title}
    {N} commits, scopes: {list}
+   Linux parity gate: passed | skipped | n/a
 ```

@@ -150,7 +150,7 @@ enum RemoteCommand: Codable, Sendable {
     /// on behalf of this device.
     case reportFocus(tabId: String?, interceptEnabled: Bool)
     /// Request the full content for a single resource item from the
-    /// desktop's renderer store. Sent when the user taps a briefing card
+    /// desktop's renderer store. Sent when the user taps a resource card
     /// to expand it. The snapshot carries only metadata (id, kind, title,
     /// createdAt, read) to keep the payload small; content arrives via
     /// the `resource_content` event in response to this command.
@@ -280,8 +280,8 @@ enum RemoteCommand: Codable, Sendable {
         // is new and unique to this command.
         case interceptEnabled
         // requestResourceContent payload. `kind` identifies the resource
-        // type (e.g. "briefing"); `resourceId` is the item ID. These
-        // share no wire key with any existing command field.
+        // type (any extension-declared kind); `resourceId` is the item ID.
+        // These share no wire key with any existing command field.
         case resourceId
         case kind
         // engine_rewind payload. `tabId`/`instanceId`/`messageId` are shared

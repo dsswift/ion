@@ -13,6 +13,7 @@ function baseSnap(over: Partial<RepoSnapshot> = {}): RepoSnapshot {
     mergeState: 'none',
     groups: { index: [], workingTree: [], untracked: [], merge: [] },
     revision: 1,
+    watcherIgnored: false,
     ...over,
   }
 }
@@ -80,5 +81,17 @@ describe('gitStore reducer', () => {
     expect(r.branch).toBe('feature')
     expect(r.ahead).toBe(2)
     expect(r.behind).toBe(5)
+  })
+
+  it('applySnapshot with watcherIgnored:true exposes true in repo state', () => {
+    useGitStore.getState().applySnapshot(baseSnap({ watcherIgnored: true }))
+    const r = useGitStore.getState().repos[REPO]
+    expect(r.watcherIgnored).toBe(true)
+  })
+
+  it('applySnapshot with watcherIgnored:false exposes false in repo state', () => {
+    useGitStore.getState().applySnapshot(baseSnap({ watcherIgnored: false }))
+    const r = useGitStore.getState().repos[REPO]
+    expect(r.watcherIgnored).toBe(false)
   })
 })

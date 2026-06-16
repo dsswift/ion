@@ -5,6 +5,7 @@ import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
+import { BashAllowlistEditor } from './BashAllowlistEditor'
 import type { GitOpsMode, WorktreeCompletionStrategy } from '../../../shared/types'
 
 export function GitCategory() {
@@ -21,6 +22,8 @@ export function GitCategory() {
   const setCommitCommand = usePreferencesStore((s) => s.setCommitCommand)
   const gitChangesTreeView = usePreferencesStore((s) => s.gitChangesTreeView)
   const setGitChangesTreeView = usePreferencesStore((s) => s.setGitChangesTreeView)
+  const gitWatcherIgnoredDirectories = usePreferencesStore((s) => s.gitWatcherIgnoredDirectories)
+  const setGitWatcherIgnoredDirectories = usePreferencesStore((s) => s.setGitWatcherIgnoredDirectories)
 
   return (
     <>
@@ -185,6 +188,19 @@ export function GitCategory() {
           }}
           onFocus={(e) => { e.currentTarget.style.borderColor = colors.accent }}
           onBlur={(e) => { e.currentTarget.style.borderColor = colors.containerBorder }}
+        />
+      </SettingSection>
+
+      <SettingHeading>Watcher</SettingHeading>
+
+      <SettingSection
+        label="Ignored Directories"
+        description="Paths where the git file watcher is suppressed. The panel still refreshes on focus and tab switch. Supports ~ and $HOME. Default: ~/.ion"
+      >
+        <BashAllowlistEditor
+          value={gitWatcherIgnoredDirectories}
+          onChange={setGitWatcherIgnoredDirectories}
+          placeholder="e.g. ~/.ion"
         />
       </SettingSection>
 

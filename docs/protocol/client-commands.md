@@ -477,13 +477,26 @@ Subscribe to resource updates for a specific kind. The engine streams a snapshot
 |------------------|-------------------------|----------|------------------------------------------------------------------------------|
 | `cmd`            | `"resource_subscribe"`  | yes      | Command discriminator                                                        |
 | `key`            | string                  | yes      | Session key                                                                  |
-| `resourceKind`   | string                  | yes      | Resource kind to subscribe to (e.g. `"tasks"`, `"notifications"`)            |
+| `resourceKind`   | string                  | yes      | Resource kind to subscribe to (e.g. `"tasks"`, `"notifications"`). The sentinel `"*"` subscribes to every kind on the target broker — see [Wildcard subscription](#wildcard-subscription) below. |
 | `resourceFilter` | ResourceFilter object   | no       | Optional filter applied to the subscription                                  |
 | `resourceGlobal` | boolean                 | no       | When `true`, subscribes to the Manager-level global broker instead of the per-session broker. Default `false`. |
 | `requestId`      | string                  | no       | Correlates with ServerResult                                                 |
 
 ```json
 {"cmd":"resource_subscribe","key":"abc-123","resourceKind":"tasks","requestId":"r20"}
+```
+
+#### Wildcard subscription
+
+The sentinel `resourceKind: "*"` subscribes to **every** resource kind on the target broker — every kind that has a producer registered now, plus every kind registered or published later. A consumer can therefore drop hardcoded kind lists entirely and receive whatever any extension declares.
+
+- **Real kind in every envelope.** Each snapshot and delta still carries the real item `kind` (never `"*"`), so the consumer buckets items by their true kind.
+- **Per-session wildcard** (`resourceGlobal` omitted/`false`): the engine aggregates an initial snapshot by querying every registered producer, delivering one snapshot per producing kind, then streams all future kinds' deltas. It never errors on "no producer" — a broker with zero producers yields zero snapshots and still receives future kinds.
+- **Global wildcard** (`resourceGlobal: true`): a producer-less subscription across all kinds on the Manager-level broker. No initial producer query is performed (workspace-scoped resources published by clients may have no producer), so the subscriber receives the live delta stream only.
+- **Pure data routing.** The wildcard is a routing addition; the engine encodes no render or UI policy. Exact-kind subscriptions are unchanged.
+
+```json
+{"cmd":"resource_subscribe","key":"abc-123","resourceKind":"*","requestId":"r20"}
 ```
 
 **Response:** `ServerResult` with `data: { subscriptionId: string }`. Use `subscriptionId` to unsubscribe later.

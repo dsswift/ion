@@ -60,16 +60,28 @@ func (c *captureEngineStatus) last(key string) (types.EngineEvent, bool) {
 }
 
 // TestHeartbeat_EmitsForEveryAttachedSession verifies the steady-state
-// case: the manager's heartbeat goroutine ticks at the configured
-// cadence and re-emits engine_status for every attached session. A
-// freshly-attached desktop that missed the organic emission still
-// converges within one heartbeat interval.
+// contract: each heartbeat tick re-emits engine_status for every attached
+// session, with idle state for an idle session. A freshly-attached desktop
+// that missed the organic emission still converges within one heartbeat.
+//
+// The behavioral contract ("every attached session gets an emission per
+// tick") is asserted by driving emitHeartbeatTick() directly — the same
+// helper the goroutine calls — rather than waiting on the wall-clock ticker.
+// The previous version waited up to 2 s for a 50 ms ticker to fire ≥2 times;
+// under a CPU-pressured Linux -race runner the heartbeat goroutine is starved
+// (lock contention on m.mu against the whole package's tests) and emitted 0
+// times in the window, so the test flaked with "got 0". Driving the tick
+// directly is deterministic and strengthens the assertion (it pins the exact
+// per-tick fan-out, not "the scheduler eventually ran the goroutine").
+// TestHeartbeat_GoroutineFiresOnTimer below separately covers that the
+// NewManager-spawned goroutine actually fires on its timer.
 func TestHeartbeat_EmitsForEveryAttachedSession(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 	defer mgr.Shutdown()
-	// Aggressive cadence so the test does not block on the default 30 s.
-	mgr.SetHeartbeatInterval(50 * time.Millisecond)
+	// Quiet the background goroutine so it cannot race with the direct
+	// ticks this test drives. We assert on emitHeartbeatTick() directly.
+	mgr.SetHeartbeatInterval(10 * time.Second)
 
 	_, _ = mgr.StartSession("hb-session-a", defaultConfig())
 	_, _ = mgr.StartSession("hb-session-b", defaultConfig())
@@ -77,27 +89,57 @@ func TestHeartbeat_EmitsForEveryAttachedSession(t *testing.T) {
 	cap := newCaptureEngineStatus()
 	mgr.OnEvent(cap.handler())
 
-	// Wait for at least two ticks so we know the goroutine is firing.
-	// Each tick should emit one engine_status per session.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if cap.countFor("hb-session-a") >= 2 && cap.countFor("hb-session-b") >= 2 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// Two explicit ticks. Each tick must emit engine_status once per
+	// attached session, so after two ticks each session has exactly two.
+	mgr.emitHeartbeatTick()
+	mgr.emitHeartbeatTick()
 
-	if cap.countFor("hb-session-a") < 2 {
-		t.Errorf("expected at least 2 heartbeat emissions for hb-session-a, got %d", cap.countFor("hb-session-a"))
+	if got := cap.countFor("hb-session-a"); got != 2 {
+		t.Errorf("expected exactly 2 heartbeat emissions for hb-session-a, got %d", got)
 	}
-	if cap.countFor("hb-session-b") < 2 {
-		t.Errorf("expected at least 2 heartbeat emissions for hb-session-b, got %d", cap.countFor("hb-session-b"))
+	if got := cap.countFor("hb-session-b"); got != 2 {
+		t.Errorf("expected exactly 2 heartbeat emissions for hb-session-b, got %d", got)
 	}
 	// Both sessions are idle; heartbeat must reflect that.
 	if last, ok := cap.last("hb-session-a"); ok {
 		if last.Fields == nil || last.Fields.State != "idle" {
 			t.Errorf("expected heartbeat state=idle for hb-session-a, got %+v", last.Fields)
 		}
+	}
+}
+
+// TestHeartbeat_GoroutineFiresOnTimer verifies the wiring that the
+// per-Manager goroutine spawned by NewManager actually fires on its timer
+// (as opposed to emitHeartbeatTick, which the test above drives directly).
+//
+// This is intentionally tolerant: it asserts at least ONE emission within a
+// generous deadline, not an exact count on a tight cadence. Asserting an
+// exact tick count against the wall clock is what made the old test flake on
+// a CPU-pressured Linux -race runner — the goroutine can be scheduler-starved
+// and still be correctly wired. "At least one emission within 3 s for a 25 ms
+// ticker" tolerates heavy starvation while still failing if the goroutine is
+// never started or never reaches the handler.
+func TestHeartbeat_GoroutineFiresOnTimer(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	defer mgr.Shutdown()
+	mgr.SetHeartbeatInterval(25 * time.Millisecond)
+
+	_, _ = mgr.StartSession("hb-timer", defaultConfig())
+
+	cap := newCaptureEngineStatus()
+	mgr.OnEvent(cap.handler())
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cap.countFor("hb-timer") >= 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if cap.countFor("hb-timer") < 1 {
+		t.Errorf("expected the heartbeat goroutine to emit at least once within the deadline, got 0")
 	}
 }
 
@@ -143,7 +185,9 @@ func TestHeartbeat_ClearsStaleRequestIDOnTick(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 	defer mgr.Shutdown()
-	mgr.SetHeartbeatInterval(40 * time.Millisecond)
+	// Quiet the background goroutine; drive the tick directly so the
+	// assertion does not depend on the wall-clock ticker firing under load.
+	mgr.SetHeartbeatInterval(10 * time.Second)
 
 	_, _ = mgr.StartSession("hb-stale", defaultConfig())
 	mgr.mu.Lock()
@@ -153,13 +197,8 @@ func TestHeartbeat_ClearsStaleRequestIDOnTick(t *testing.T) {
 	cap := newCaptureEngineStatus()
 	mgr.OnEvent(cap.handler())
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if last, ok := cap.last("hb-stale"); ok && last.Fields != nil && last.Fields.State == "idle" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// One tick must clear the stranded requestID and report idle.
+	mgr.emitHeartbeatTick()
 
 	last, ok := cap.last("hb-stale")
 	if !ok {
@@ -286,11 +325,18 @@ func TestSetHeartbeatInterval_RestoresDefaultOnZero(t *testing.T) {
 // passive convergence mechanism for agent state — if a reconnecting
 // client missed the one-shot reconcile, its agent panel converges
 // within one heartbeat interval.
+//
+// Driven via emitHeartbeatTick() directly (not the wall-clock ticker) so the
+// per-tick fan-out is asserted deterministically and the test does not flake
+// under CPU-pressured Linux -race load — see the note on
+// TestHeartbeat_EmitsForEveryAttachedSession.
 func TestHeartbeat_EmitsAgentStateForEverySession(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
 	defer mgr.Shutdown()
-	mgr.SetHeartbeatInterval(50 * time.Millisecond)
+	// Quiet the background goroutine so it cannot add stray emissions while
+	// we assert exact per-tick counts from the direct ticks below.
+	mgr.SetHeartbeatInterval(10 * time.Second)
 
 	_, _ = mgr.StartSession("hb-agent-a", defaultConfig())
 	_, _ = mgr.StartSession("hb-agent-b", defaultConfig())
@@ -305,25 +351,16 @@ func TestHeartbeat_EmitsAgentStateForEverySession(t *testing.T) {
 		}
 	})
 
-	// Wait for at least two ticks.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		aCount := agentEvents["hb-agent-a"]
-		bCount := agentEvents["hb-agent-b"]
-		mu.Unlock()
-		if aCount >= 2 && bCount >= 2 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// Two explicit ticks → exactly two agent_state emissions per session.
+	mgr.emitHeartbeatTick()
+	mgr.emitHeartbeatTick()
 
 	mu.Lock()
 	defer mu.Unlock()
-	if agentEvents["hb-agent-a"] < 2 {
-		t.Errorf("expected at least 2 agent_state heartbeat emissions for hb-agent-a, got %d", agentEvents["hb-agent-a"])
+	if agentEvents["hb-agent-a"] != 2 {
+		t.Errorf("expected exactly 2 agent_state heartbeat emissions for hb-agent-a, got %d", agentEvents["hb-agent-a"])
 	}
-	if agentEvents["hb-agent-b"] < 2 {
-		t.Errorf("expected at least 2 agent_state heartbeat emissions for hb-agent-b, got %d", agentEvents["hb-agent-b"])
+	if agentEvents["hb-agent-b"] != 2 {
+		t.Errorf("expected exactly 2 agent_state heartbeat emissions for hb-agent-b, got %d", agentEvents["hb-agent-b"])
 	}
 }

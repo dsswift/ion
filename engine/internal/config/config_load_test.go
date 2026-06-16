@@ -14,6 +14,9 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLoadConfig_WithFiles(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and override the defaults this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {
@@ -45,6 +48,9 @@ func TestLoadConfig_WithFiles(t *testing.T) {
 }
 
 func TestLoadConfig_NoProjectDir(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and override the defaults this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	cfg := LoadConfig("")
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
@@ -55,6 +61,9 @@ func TestLoadConfig_NoProjectDir(t *testing.T) {
 }
 
 func TestLoadConfig_MissingProjectDir(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and override the defaults this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	cfg := LoadConfig("/nonexistent/path/that/does/not/exist")
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
@@ -135,6 +144,9 @@ func TestLoadConfig_PartialOverride(t *testing.T) {
 }
 
 func TestLoadConfig_WithBackendAndModel(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and override the values this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {
@@ -158,6 +170,9 @@ func TestLoadConfig_WithBackendAndModel(t *testing.T) {
 }
 
 func TestLoadConfig_EmptyJSON(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and override the defaults this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {
@@ -178,6 +193,9 @@ func TestLoadConfig_EmptyJSON(t *testing.T) {
 }
 
 func TestLoadConfig_McpServers(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and perturb the MCP servers this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {
@@ -213,6 +231,9 @@ func TestLoadConfig_McpServers(t *testing.T) {
 }
 
 func TestLoadConfig_Providers(t *testing.T) {
+	// Isolate HOME so a contributor's real ~/.ion/engine.json does not bleed
+	// into the merged config and perturb the providers this test asserts on.
+	t.Setenv("HOME", t.TempDir())
 	projectDir := t.TempDir()
 	ionDir := filepath.Join(projectDir, ".ion")
 	if err := os.MkdirAll(ionDir, 0o755); err != nil {

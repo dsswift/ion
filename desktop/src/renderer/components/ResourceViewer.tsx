@@ -7,13 +7,13 @@ import { useNavigableText, NavigableText, NavigableCode } from '../hooks/useNavi
 
 const REMARK_PLUGINS = [remarkGfm]
 
-interface BriefingViewerProps {
+interface ResourceViewerProps {
   title: string
   content: string
   onClose: () => void
 }
 
-export function BriefingViewer({ title, content, onClose }: BriefingViewerProps) {
+export function ResourceViewer({ title, content, onClose }: ResourceViewerProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
 

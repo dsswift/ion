@@ -225,7 +225,7 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
 
     setEditorGeometry: (geo) => set({ editorGeometry: geo }),
     setPlanGeometry: (geo) => set({ planGeometry: geo }),
-    setBriefingGeometry: (geo) => set({ briefingGeometry: geo }),
+    setResourceViewerGeometry: (geo) => set({ resourceViewerGeometry: geo }),
     setAgentDetailGeometry: (geo) => set({ agentDetailGeometry: geo }),
   }
 }

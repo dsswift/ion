@@ -164,7 +164,7 @@ describe('projectable-settings allowlist', () => {
     // Settings dialog categories 1:1. Locking the IDs here means a
     // desktop rename of one of these categories triggers this test —
     // forcing the projection groups to be kept in sync.
-    const expected = new Set(['general', 'ai', 'appearance', 'tabs', 'git', 'quicktools'])
+    const expected = new Set(['general', 'ai', 'appearance', 'tabs', 'git', 'quicktools', 'notifications'])
     const actual = new Set<string>(PROJECTABLE_GROUP_ORDER)
     expect(actual).toEqual(expected)
   })

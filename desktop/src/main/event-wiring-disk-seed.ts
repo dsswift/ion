@@ -24,25 +24,29 @@ function log(msg: string): void {
   _log('main', msg)
 }
 
-// Kinds that persist items to ~/.ion/resources/global/<id>.json and can be
-// seeded from disk on cold start. Add new disk-backed kinds here.
-const DISK_BACKED_KINDS = new Set(['briefing'])
-
 /**
  * Inject disk-persisted resource items into the renderer store when the engine
- * delivers an empty snapshot for a disk-backed kind.
+ * delivers an empty snapshot for any kind.
+ *
+ * Kind-agnostic: any resource kind whose items were persisted to
+ * `~/.ion/resources/global/<id>.json` is seedable. There is no per-kind
+ * allowlist — the disk read filters by `data.kind === kind` and no-ops when no
+ * matching files exist, so attempting a seed for a kind with no disk presence
+ * is cheap and harmless. This lets any extension's kind cold-start-seed with
+ * zero desktop changes.
  *
  * Only fires when:
- *   - `kind` is in DISK_BACKED_KINDS
  *   - The engine snapshot contained zero items (items.length === 0)
  *   - The renderer store's window.__Ion_SESSION_STORE__ is available
+ *   - At least one persisted file on disk matches `kind`
  *
  * Safe to call unconditionally on every empty snapshot — the executeJavaScript
  * guard checks whether the store is already populated before writing.
  */
 export function injectDiskResourcesIfEmpty(kind: string, subId: string, key: string): void {
   if (!state.mainWindow) return
-  if (!DISK_BACKED_KINDS.has(kind)) return
+  // No kind allowlist: any kind with persisted global items can be seeded.
+  if (!kind) return
 
   const globalDir = join(homedir(), '.ion', 'resources', 'global')
   const diskItems: any[] = []

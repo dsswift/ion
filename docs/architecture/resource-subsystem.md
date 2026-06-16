@@ -10,6 +10,8 @@ The engine provides a generic resource subsystem for durable structured content.
 
 **Delta fan-out.** The broker broadcasts incremental deltas (create, update, delete, mark_read) to all matching subscribers. Subscribers filter by kind and optionally by conversationId.
 
+**Wildcard subscription.** A client may subscribe with the sentinel kind `"*"` to receive every kind on a broker — every kind with a producer now, plus every kind registered or published later — without enumerating kinds. Each snapshot and delta still carries the real item kind (never `"*"`), so the consumer buckets by the true kind. This is the primitive that lets consumers drop hardcoded kind lists, which are exactly the baked-in opinion this subsystem is designed to avoid. Per-session wildcard aggregates one snapshot per producing kind then streams all future deltas; global wildcard (`resourceGlobal: true`) streams deltas without an initial producer query. See [`resource_subscribe`](../protocol/client-commands.md#wildcard-subscription) for the wire contract.
+
 ## Component Map
 
 ```

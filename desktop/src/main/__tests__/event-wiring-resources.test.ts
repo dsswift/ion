@@ -55,6 +55,8 @@ import {
   recordActiveSessionKey,
   resubscribeSessionResourceKinds,
   clearResourceSubscriptions,
+  subscribeToResourceKinds,
+  subscribeToGlobalResourceKinds,
 } from '../event-wiring-resources'
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -113,5 +115,44 @@ describe('event-wiring-resources — session key tracking for reconnect', () => 
       .filter((c: any[]) => c[0] === 'resource_subscribe')
       .map((c: any[]) => (c[1] as { key: string }).key)
     expect(keys).toContain('tab5:inst5')
+  })
+})
+
+describe('event-wiring-resources — wildcard subscription (kind-agnostic)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearResourceSubscriptions()
+  })
+
+  it('subscribeToResourceKinds issues a single wildcard ("*") per-session subscription', async () => {
+    await subscribeToResourceKinds('tabW:instW')
+
+    const subs = mockRequest.mock.calls.filter((c: any[]) => c[0] === 'resource_subscribe')
+    // Exactly one subscribe — not a per-kind loop. It uses the wildcard kind.
+    expect(subs).toHaveLength(1)
+    const payload = subs[0][1] as { key: string; resourceKind: string; resourceGlobal?: boolean }
+    expect(payload.key).toBe('tabW:instW')
+    expect(payload.resourceKind).toBe('*')
+    expect(payload.resourceGlobal).toBeUndefined()
+  })
+
+  it('does not hardcode any concrete kind (no "briefing") in the subscription', async () => {
+    await subscribeToResourceKinds('tabW2:instW2')
+    const payloads = mockRequest.mock.calls
+      .filter((c: any[]) => c[0] === 'resource_subscribe')
+      .map((c: any[]) => (c[1] as { resourceKind: string }).resourceKind)
+    expect(payloads).not.toContain('briefing')
+    expect(payloads).toEqual(['*'])
+  })
+
+  it('subscribeToGlobalResourceKinds issues a single global wildcard subscription', async () => {
+    await subscribeToGlobalResourceKinds()
+
+    const subs = mockRequest.mock.calls.filter((c: any[]) => c[0] === 'resource_subscribe')
+    expect(subs).toHaveLength(1)
+    const payload = subs[0][1] as { key: string; resourceKind: string; resourceGlobal?: boolean }
+    expect(payload.resourceKind).toBe('*')
+    expect(payload.resourceGlobal).toBe(true)
+    expect(payload.key).toBe('')
   })
 })

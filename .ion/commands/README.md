@@ -23,3 +23,7 @@ Open a GitHub issue on the `dsswift/ion` repository based on the current convers
 ### `/squash`
 
 Collapse the current branch's commits into clean conventional commits. Creates a backup branch first, analyzes commit messages to identify logical groupings, presents a squash plan for review, then executes the rebase. Does not push.
+
+### `/resolve-dependabot-prs`
+
+Triage the repo's open Dependabot PRs. Runs a read-only analysis pass and returns a terse risk/action summary table, with notes only on special cases (a required follow-up PR, or a close-as-too-risky recommendation). Then enters planning mode and authors an ordered rebase → merge → follow-up → resume resolution plan for the user to review and approve before any merge happens. The command itself never merges, rebases, closes, comments, or pushes — those steps execute only after the plan is approved.

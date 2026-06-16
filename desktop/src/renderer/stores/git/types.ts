@@ -100,7 +100,9 @@ export interface RepoState {
   mergeState: MergeState
   groups: ResourceGroups
   revision: number
-  // Legacy mirror — flat files & branch — kept while consumers migrate.
+  /** True when the git watcher was suppressed for this repo path. */
+  watcherIgnored: boolean
+  // Legacy mirror -- flat files & branch -- kept while consumers migrate.
   files: GitChangedFile[]
   branch: string
   ahead: number
@@ -116,6 +118,7 @@ export function snapshotToRepoState(snap: RepoSnapshot): RepoState {
     mergeState: snap.mergeState,
     groups: snap.groups,
     revision: snap.revision,
+    watcherIgnored: snap.watcherIgnored,
     files,
     branch: snap.head.branch ?? '',
     ahead: snap.upstream.ahead,
@@ -131,6 +134,7 @@ export function emptyRepoState(): RepoState {
     mergeState: 'none',
     groups: { index: [], workingTree: [], untracked: [], merge: [] },
     revision: 0,
+    watcherIgnored: false,
     files: [],
     branch: '',
     ahead: 0,

@@ -4,6 +4,7 @@ import { join } from 'path'
 import { log as _log } from './logger'
 import { atomicWriteFileSync } from './utils/atomicWrite'
 import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
+import { expandHome } from './git/ignore-paths'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -51,6 +52,10 @@ export const SETTINGS_DEFAULTS = {
   // interrupted). Banner-level intercepts are always displayed regardless.
   // iOS has its own independent preference stored in UserDefaults.
   interceptEnabled: true,
+  // Directories where the git file watcher is suppressed. The panel still
+  // refreshes on focus, tab switch, and manual refresh. Supports ~ and $HOME
+  // expansion. Default excludes ~/.ion (high-write log/conversation storage).
+  gitWatcherIgnoredDirectories: ['~/.ion'] as string[],
 }
 
 export function readSettings(): Record<string, any> {
@@ -145,4 +150,27 @@ export function saveSessionChains(data: { chains: Record<string, string[]>; reve
   } catch (err) {
     log(`Failed to save session chains: ${err}`)
   }
+}
+
+/**
+ * Read the gitWatcherIgnoredDirectories setting from disk, expand tilde and
+ * $HOME, and return absolute paths. Falls back to the default ['~/.ion'] when
+ * the key is absent or malformed.
+ *
+ * A stored empty array is honored as "watch everywhere" -- it is not overridden
+ * with the default. Only a missing key or a non-array value triggers fallback.
+ * Individual non-string items within a valid array are silently dropped.
+ */
+export function readGitWatcherIgnoredDirectories(): string[] {
+  const raw = readSettings()
+  const defaultList = SETTINGS_DEFAULTS.gitWatcherIgnoredDirectories
+
+  if (!Object.prototype.hasOwnProperty.call(raw, 'gitWatcherIgnoredDirectories')) {
+    return defaultList.map(expandHome)
+  }
+  const stored = raw.gitWatcherIgnoredDirectories
+  if (!Array.isArray(stored)) {
+    return defaultList.map(expandHome)
+  }
+  return (stored as unknown[]).filter((v): v is string => typeof v === 'string').map(expandHome)
 }

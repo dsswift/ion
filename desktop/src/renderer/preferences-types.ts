@@ -133,6 +133,18 @@ export interface PreferencesState {
   implementModeModel: string
   /** Bash commands allowed to execute without approval in plan mode */
   planModeAllowedBashCommands: string[]
+  /** Directories where the git file watcher is suppressed. Supports ~ and $HOME. */
+  gitWatcherIgnoredDirectories: string[]
+  /**
+   * Resource kinds the user has chosen to hide from the global/workspace
+   * notification tray. Blocklist semantics: empty (the default) shows every
+   * kind any extension declares. Only the global tray honors this list;
+   * conversation-scoped resources always appear in their conversation's
+   * attachments panel regardless. The desktop always subscribes to every
+   * kind via the engine wildcard — this is purely a client-side render
+   * filter, not a subscription opinion.
+   */
+  excludedResourceKinds: string[]
   /**
    * When true, reveals a second action on the plan-approval card:
    * **"Implement, clear context"**. Clicking that button destroys the
@@ -252,6 +264,8 @@ export interface PreferencesState {
   setPlanModeModel: (model: string) => void
   setImplementModeModel: (model: string) => void
   setPlanModeAllowedBashCommands: (cmds: string[]) => void
+  setGitWatcherIgnoredDirectories: (dirs: string[]) => void
+  setExcludedResourceKinds: (kinds: string[]) => void
   setShowImplementClearContext: (enabled: boolean) => void
   /** Called by OS theme change listener -- updates system value */
   setSystemTheme: (isDark: boolean) => void
@@ -259,4 +273,4 @@ export interface PreferencesState {
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, conversationFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, planModeAllowedBashCommands: ['gh'] as string[] }
+export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, conversationFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, planModeAllowedBashCommands: ['gh'] as string[], gitWatcherIgnoredDirectories: ['~/.ion'] as string[], excludedResourceKinds: [] as string[] }

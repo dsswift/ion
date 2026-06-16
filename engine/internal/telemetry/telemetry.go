@@ -22,6 +22,11 @@ const (
 	ToolExecute  = "tool.execute"
 	Compaction   = "compaction"
 	ErrorEvent   = "error"
+	// RunComplete is emitted once per run at the session layer (in the
+	// TaskCompleteEvent handler) so every backend — including CliBackend,
+	// which emits no per-call spans — gets uniform run-level telemetry
+	// (model, cost, duration, turn count, token usage).
+	RunComplete = "run.complete"
 )
 
 // Event is a single telemetry data point.
@@ -131,6 +136,18 @@ func (c *Collector) StartSpan(name string, attrs map[string]any) *SpanHandle {
 		attrs:     attrs,
 		collector: c,
 	}
+}
+
+// BufferedEvents returns a copy of the events currently buffered but not yet
+// flushed. Intended for observability and for consumers (and tests) that need
+// to inspect what the collector has recorded without draining it. Returns a
+// snapshot under the lock so callers never race the buffer.
+func (c *Collector) BufferedEvents() []Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]Event, len(c.buffer))
+	copy(out, c.buffer)
+	return out
 }
 
 // Flush exports all buffered events to the configured targets and clears the buffer.

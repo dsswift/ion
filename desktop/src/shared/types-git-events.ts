@@ -43,6 +43,8 @@ export interface RepoSnapshot {
   mergeState: MergeState
   groups: ResourceGroups
   revision: number
+  /** True when the git file watcher was not started because the path is in gitWatcherIgnoredDirectories. */
+  watcherIgnored: boolean
 }
 
 export type GitEvent =

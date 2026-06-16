@@ -100,13 +100,40 @@ func TestRunloopWatchdogCancelsStalledRun(t *testing.T) {
 
 	cfg := &RunConfig{
 		Timeouts: &types.TimeoutsConfig{
-			RunStallMs: 100, // 100ms threshold so we can see it fire in well under 1s
+			// 500ms threshold. This must be comfortably larger than the
+			// time it takes the run goroutine to start and reach
+			// provider.Stream() — on a CPU-pressured CI runner under the
+			// race detector, goroutine startup can be starved for far
+			// longer than the 100ms this test originally used, so the
+			// watchdog could declare a stall before Stream() was ever
+			// called (streamCalls==0) and Assertion 1 flaked. The sibling
+			// TestRunloopWatchdogResetsOnProgress uses 600ms for the same
+			// reason. The fast 20ms tick keeps the test quick once the
+			// threshold is crossed.
+			RunStallMs: 500,
 		},
 	}
 	b.StartRunWithConfig(requestID, types.RunOptions{
 		Prompt: "hello",
 		Model:  watchdogTestModel,
 	}, cfg)
+
+	// Deterministically confirm the run actually started — wait until the
+	// wedge provider's Stream() has been entered before relying on the
+	// watchdog. This removes the race between run-goroutine startup and the
+	// watchdog timer that previously made Assertion 1 flaky: we only proceed
+	// to assert stall-detection once we KNOW the run reached the provider.
+	streamStarted := false
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if provider.streamCalls.Load() > 0 {
+			streamStarted = true
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !streamStarted {
+		t.Fatal("run goroutine never reached provider.Stream() within 2s — runloop startup regressed")
+	}
 
 	if !waitForExit(c, 2*time.Second) {
 		t.Fatal("watchdog did not trigger exit within 2s — stall detection regressed")
@@ -117,7 +144,8 @@ func TestRunloopWatchdogCancelsStalledRun(t *testing.T) {
 
 	// Assertion 1: at least one provider Stream call occurred (the
 	// runloop actually started before stalling — not a "the watchdog
-	// fired on a not-yet-started run" false positive).
+	// fired on a not-yet-started run" false positive). Guaranteed by the
+	// streamStarted wait above; re-checked here for clarity.
 	if got := provider.streamCalls.Load(); got == 0 {
 		t.Errorf("expected provider.Stream() to be called at least once, got %d", got)
 	}

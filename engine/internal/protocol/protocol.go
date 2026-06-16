@@ -158,6 +158,14 @@ type ClientCommand struct {
 	CompactMemoryEnabled  *bool   `json:"compactMemoryEnabled,omitempty"`
 
 	// resource_subscribe / resource_unsubscribe
+	//
+	// ResourceKind names the resource kind to subscribe to. The sentinel
+	// value "*" subscribes to every kind on the target broker — every kind
+	// with a producer now plus every kind registered or published later.
+	// Wildcard delivery carries the real item kind in each snapshot/delta
+	// (never "*"), so consumers bucket by the true kind. This is pure data
+	// routing; the engine encodes no render policy. An exact kind string
+	// subscribes to that one kind only (unchanged behavior).
 	ResourceKind   string                `json:"resourceKind,omitempty"`
 	ResourceFilter *types.ResourceFilter `json:"resourceFilter,omitempty"`
 	ResourceSubID  string                `json:"resourceSubId,omitempty"`

@@ -46,24 +46,29 @@ private struct ExtractedAttachment: Identifiable, Hashable {
     let type: AttachmentKind
     let name: String
     let path: String
+    /// For `.resource` attachments, the real resource kind the producing
+    /// extension declared (e.g. "briefing", "report"). Empty for other types.
+    var resourceKind: String = ""
 
     enum AttachmentKind: String {
-        case image, file, plan, briefing
+        case image, file, plan, resource
     }
 
-    /// SF Symbol name for this attachment.
+    /// SF Symbol name for this attachment. Resource attachments are
+    /// kind-agnostic: any extension-declared kind renders with a generic
+    /// document glyph rather than a per-kind hardcoded icon.
     var iconName: String {
         switch type {
         case .plan:     return "doc.text"
         case .image:    return "photo"
-        case .briefing: return "book.pages"
+        case .resource: return "doc.richtext"
         case .file:     return "doc"
         }
     }
 
-    /// For briefing entries, extract the resource ID from the `resource:<id>` path.
+    /// For resource entries, extract the resource ID from the `resource:<id>` path.
     var resourceId: String? {
-        guard type == .briefing, path.hasPrefix("resource:") else { return nil }
+        guard type == .resource, path.hasPrefix("resource:") else { return nil }
         return String(path.dropFirst("resource:".count))
     }
 }
@@ -72,12 +77,14 @@ private struct ExtractedAttachment: Identifiable, Hashable {
 
 /// Sheet that lists all attachments and plans referenced in a conversation.
 /// Scans user messages for `[Attached (image|file|plan): path]` markers,
-/// deduplicates by path, and groups into Plans, Files, and Briefings sections.
+/// deduplicates by path, and groups into Plans, Files, and Resources sections.
 ///
-/// Briefings are conversation-scoped resources delivered via the resource
-/// broker. The desktop includes them in the `tab_attachments` response with
-/// type="briefing" and path="resource:<id>". Content is read directly from
-/// the local ResourceStore — no additional network request is needed.
+/// Resources are conversation-scoped items of ANY extension-declared kind,
+/// delivered via the resource broker. The desktop includes them in the
+/// `tab_attachments` response with type="resource", kind="<real kind>", and
+/// path="resource:<id>". Content is read directly from the local
+/// ResourceStore — no additional network request is needed. Nothing here is
+/// hardcoded to a specific kind such as "briefing".
 struct ConversationAttachmentsSheet: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
@@ -86,7 +93,7 @@ struct ConversationAttachmentsSheet: View {
     @State private var selectedPlanPath: IdentifiablePath?
     @State private var selectedFilePath: IdentifiablePath?
     @State private var imagePreview: (image: UIImage, name: String)?
-    @State private var selectedBriefing: ResourceItem?
+    @State private var selectedResource: ResourceItem?
 
     // MARK: - Computed
 
@@ -102,7 +109,7 @@ struct ConversationAttachmentsSheet: View {
         var seen = Set<String>()
         var result: [ExtractedAttachment] = []
 
-        // Desktop cache first — has the complete history (including briefings)
+        // Desktop cache first — has the complete history (including resources)
         for a in desktopItems {
             guard !seen.contains(a.path) else { continue }
             seen.insert(a.path)
@@ -110,10 +117,13 @@ struct ConversationAttachmentsSheet: View {
             switch a.type {
             case "image":    kind = .image
             case "plan":     kind = .plan
-            case "briefing": kind = .briefing
+            case "resource": kind = .resource
             default:         kind = .file
             }
-            result.append(ExtractedAttachment(id: a.path, type: kind, name: a.name, path: a.path))
+            result.append(ExtractedAttachment(
+                id: a.path, type: kind, name: a.name, path: a.path,
+                resourceKind: a.kind ?? "",
+            ))
         }
 
         // Then message-extracted — catches anything sent after the request
@@ -130,8 +140,8 @@ struct ConversationAttachmentsSheet: View {
         attachments.filter { $0.type == .plan }
     }
 
-    private var briefings: [ExtractedAttachment] {
-        attachments.filter { $0.type == .briefing }
+    private var resources: [ExtractedAttachment] {
+        attachments.filter { $0.type == .resource }
     }
 
     private var files: [ExtractedAttachment] {
@@ -173,8 +183,8 @@ struct ConversationAttachmentsSheet: View {
                     AttachmentImagePreview(image: preview.image, name: preview.name)
                 }
             }
-            .sheet(item: $selectedBriefing) { item in
-                BriefingDetailView(item: item, resourceStore: viewModel.resourceStore, viewModel: viewModel)
+            .sheet(item: $selectedResource) { item in
+                ResourceDetailView(item: item, resourceStore: viewModel.resourceStore, viewModel: viewModel)
             }
             .task {
                 let preCacheCount = viewModel.tabAttachmentCache[tabId]?.count ?? -1
@@ -241,17 +251,17 @@ struct ConversationAttachmentsSheet: View {
                 }
             }
 
-            if !briefings.isEmpty {
+            if !resources.isEmpty {
                 Section {
-                    ForEach(briefings) { attachment in
+                    ForEach(resources) { attachment in
                         attachmentRow(attachment)
                             .onTapGesture {
                                 Haptic.light()
-                                openBriefing(attachment)
+                                openResource(attachment)
                             }
                     }
                 } header: {
-                    Label("Briefings", systemImage: "book.pages")
+                    Label("Resources", systemImage: "doc.richtext")
                         .foregroundStyle(.purple)
                         .font(.caption.weight(.semibold))
                         .textCase(nil)
@@ -267,14 +277,14 @@ struct ConversationAttachmentsSheet: View {
         HStack(spacing: 12) {
             Image(systemName: attachment.iconName)
                 .font(.title3)
-                .foregroundStyle(attachment.type == .plan ? .green : attachment.type == .briefing ? .purple : .secondary)
+                .foregroundStyle(attachment.type == .plan ? .green : attachment.type == .resource ? .purple : .secondary)
                 .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.name)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
-                if attachment.type != .briefing {
+                if attachment.type != .resource {
                     Text(attachment.path)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
@@ -292,24 +302,25 @@ struct ConversationAttachmentsSheet: View {
         .contentShape(Rectangle())
     }
 
-    // MARK: - Briefing Tap
+    // MARK: - Resource Tap
 
-    /// Opens a briefing by looking up its ResourceItem in the local ResourceStore.
-    /// The path is `resource:<id>` — extract the ID and find the item.
-    /// `BriefingDetailView` handles on-demand content fetch if the snapshot
-    /// arrived without inline content.
-    private func openBriefing(_ attachment: ExtractedAttachment) {
+    /// Opens a resource by looking up its ResourceItem in the local
+    /// ResourceStore. The path is `resource:<id>` — extract the ID and find
+    /// the item across all kinds. `ResourceDetailView` handles on-demand
+    /// content fetch if the snapshot arrived without inline content. Works for
+    /// any extension-declared kind; nothing here is briefing-specific.
+    private func openResource(_ attachment: ExtractedAttachment) {
         guard let resourceId = attachment.resourceId else { return }
 
         // Search all kinds in the resource store for this ID.
         for items in viewModel.resourceStore.items.values {
             if let item = items.first(where: { $0.id == resourceId }) {
-                selectedBriefing = item
+                selectedResource = item
                 return
             }
         }
 
-        DiagnosticLog.log("ATTACHMENTS: briefing resource not found in store id=\(resourceId.prefix(12))")
+        DiagnosticLog.log("ATTACHMENTS: resource not found in store id=\(resourceId.prefix(12))")
     }
 
     // MARK: - Image Preview

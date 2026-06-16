@@ -9,11 +9,16 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('../git-runner', () => ({ runGit: vi.fn(async () => '') }))
 vi.mock('../logger', () => ({ log: vi.fn(), error: vi.fn() }))
+// Default: no ignored directories. Individual tests override via mockReturnValue.
+vi.mock('../settings-store', () => ({
+  readGitWatcherIgnoredDirectories: vi.fn().mockReturnValue([]),
+}))
 
 import { GitRepository } from '../git/repository'
 import { createGitWatcher } from '../git/watcher'
 import type { ParcelModule } from '../git/watcher'
 import { focusState } from '../git/focus-state'
+import { readGitWatcherIgnoredDirectories } from '../settings-store'
 
 type WatchCb = (err: Error | null, events: Array<{ path: string; type: string }>) => void
 interface FakeSub { dir: string; cb: WatchCb; unsubscribe: ReturnType<typeof vi.fn> }
@@ -161,8 +166,116 @@ describe('GitRepository watcher lifecycle', () => {
     expect(repo.revision).toBeGreaterThan(rev0)
     await repo.refreshSnapshot()
 
-    // No actual git change between snapshots → no status delta event.
+    // No actual git change between snapshots -> no status delta event.
     // Test asserts the path runs without throwing and the revision bumped.
     expect(repo.revision).toBeGreaterThan(rev0)
+  })
+})
+
+// ─── Watcher gate (ignored-directories) ─────────────────────────────────────
+//
+// Regression contract: when a repo path is in the ignored list, retain() must
+// NOT call watcher.start(). If the gate is removed from retain(), the first
+// test in this block fails ("never called" becomes "called once").
+
+describe('GitRepository watcher gate (ignored paths)', () => {
+  beforeEach(() => {
+    focusState.setFocused(true)
+    // Reset to no-ignored default before each test in this block.
+    vi.mocked(readGitWatcherIgnoredDirectories).mockReturnValue([])
+  })
+
+  it('watcher.start is NOT called for ignored path; watcherIgnored is true; snapshot hydrates', async () => {
+    vi.mocked(readGitWatcherIgnoredDirectories).mockReturnValue(['/tmp/ignored'])
+
+    const fakeWatcher = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      setSuspended: vi.fn(),
+      get active() { return (this.start as ReturnType<typeof vi.fn>).mock.calls.length > 0 },
+    }
+
+    const repo = new GitRepository('/tmp/ignored', fakeWatcher as any)
+    repo.retain()
+    await microtask(); await microtask()
+    await repo.waitForReady()
+
+    // REGRESSION GATE: this assertion fails if the watcher gate is removed from retain().
+    expect(fakeWatcher.start).not.toHaveBeenCalled()
+    expect(repo.watcherIgnored).toBe(true)
+    // Initial snapshot still ran (refreshSnapshot was called despite no watcher).
+    expect(repo.snapshot).not.toBeNull()
+  })
+
+  it('watcher.start IS called for non-ignored path; watcherIgnored is false', async () => {
+    vi.mocked(readGitWatcherIgnoredDirectories).mockReturnValue(['/tmp/ignored'])
+
+    const fakeWatcher = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      setSuspended: vi.fn(),
+      get active() { return (this.start as ReturnType<typeof vi.fn>).mock.calls.length > 0 },
+    }
+
+    const repo = new GitRepository('/tmp/not-ignored', fakeWatcher as any)
+    repo.retain()
+    await microtask(); await microtask()
+
+    expect(fakeWatcher.start).toHaveBeenCalledOnce()
+    expect(repo.watcherIgnored).toBe(false)
+  })
+
+  it('snapshot.watcherIgnored matches the gate decision', async () => {
+    vi.mocked(readGitWatcherIgnoredDirectories).mockReturnValue(['/tmp/ignored'])
+
+    const fakeWatcher = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      setSuspended: vi.fn(),
+      get active() { return (this.start as ReturnType<typeof vi.fn>).mock.calls.length > 0 },
+    }
+
+    const repo = new GitRepository('/tmp/ignored', fakeWatcher as any)
+    repo.retain()
+    await microtask(); await microtask()
+    await repo.waitForReady()
+
+    expect(repo.snapshot?.watcherIgnored).toBe(true)
+  })
+
+  it('focus-return triggers refreshSnapshot for ignored-path repo (no watcher)', async () => {
+    // Checkpoint 4: even though the watcher is suppressed, the focus-return
+    // handler must still be registered so the snapshot re-hydrates when the
+    // window regains focus.
+    vi.mocked(readGitWatcherIgnoredDirectories).mockReturnValue(['/tmp/ignored'])
+
+    const fakeWatcher = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      setSuspended: vi.fn(),
+      get active() { return (this.start as ReturnType<typeof vi.fn>).mock.calls.length > 0 },
+    }
+
+    const repo = new GitRepository('/tmp/ignored', fakeWatcher as any)
+    const refreshSpy = vi.spyOn(repo, 'refreshSnapshot')
+
+    repo.retain()
+    await microtask(); await microtask()
+    await repo.waitForReady()
+
+    // Initial refresh ran. Reset the spy count so we can detect the focus-return call.
+    const callsAfterRetain = refreshSpy.mock.calls.length
+
+    // Simulate window blur then focus-return.
+    focusState.setFocused(false)
+    focusState.setFocused(true)
+    await microtask(); await microtask()
+
+    // refreshSnapshot must have been called at least once more after focus returned.
+    expect(refreshSpy.mock.calls.length).toBeGreaterThan(callsAfterRetain)
+    // Watcher was never started throughout.
+    expect(fakeWatcher.start).not.toHaveBeenCalled()
+
+    repo.release()
   })
 })

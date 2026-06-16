@@ -3,6 +3,7 @@ package backend
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -255,12 +256,25 @@ func (b *ApiBackend) maybeSynthesizeExitPlanMode(
 	return true
 }
 
+// synthIDCounter guarantees uniqueness of synthesized tool_use IDs
+// independent of wall-clock granularity. Two synthesis firings within the
+// same nanosecond (possible on fast machines, and reliably reproducible under
+// parallel test load) would otherwise collide on the timestamp alone. The
+// atomic counter is the precise uniqueness mechanism; the timestamp is kept
+// only for human log correlation, not for collision-freedom.
+var synthIDCounter atomic.Uint64
+
 // synthesizedToolUseID generates a deterministic tool_use ID for a
 // synthesized ExitPlanMode denial. The ID never collides with provider-
 // issued tool_use IDs because providers use "toolu_..." or "tool_..."
 // prefixes; the "synth-exit-plan-..." prefix is unmistakably engine
 // origin. The runID + turn suffix lets logs reconstruct which run /
 // turn produced the synthesis without searching the conversation tree.
+//
+// Uniqueness across rapid successive calls is guaranteed by a process-wide
+// atomic counter (the final "-cN" segment), not by the timestamp — see
+// synthIDCounter. The timestamp segment remains for log correlation only.
 func synthesizedToolUseID(runID string, turn int) string {
-	return fmt.Sprintf("synth-exit-plan-%s-t%d-%d", runID, turn, time.Now().UnixNano())
+	seq := synthIDCounter.Add(1)
+	return fmt.Sprintf("synth-exit-plan-%s-t%d-%d-c%d", runID, turn, time.Now().UnixNano(), seq)
 }

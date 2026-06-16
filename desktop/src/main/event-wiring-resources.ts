@@ -2,8 +2,8 @@
 //
 // Extracted from event-wiring.ts to keep that file under the 600-line cap.
 // This module handles:
-//   - Per-session resource subscriptions (briefing kind)
-//   - Global resource subscriptions (desktop.focus kind)
+//   - Per-session resource subscriptions (wildcard — every kind)
+//   - Global resource subscriptions (wildcard — every workspace kind)
 //   - Tab focus publishing (desktop.focus resource on tab switch)
 //   - Read-state persistence to disk (~/.ion/resource-read-state.json)
 
@@ -96,20 +96,19 @@ export function isResourceRead(resourceId: string): boolean {
 
 // ── Resource subscription ──────────────────────────────────────────────────
 //
-// Known resource kinds the desktop subscribes to on every engine session.
-// Add new kinds here as extensions declare them.
-const SUBSCRIBED_RESOURCE_KINDS = ['briefing']
-
-// Global resource kinds the desktop subscribes to once at engine connect
-// (not per-session). These use the Manager-level global broker for
-// workspace-scoped resources that don't belong to any single conversation.
+// The desktop subscribes to EVERY resource kind generically using the engine's
+// wildcard sentinel ("*"). It never enumerates kinds — any kind any extension
+// declares "just works" with zero desktop code change. This is the
+// transport-level default and is not user-configurable; the engine fans every
+// kind to the wildcard subscriber, and the desktop decides (client-side) which
+// kinds to *show* in the global tray via the user's exclusion preference.
 //
-// NOTE: 'briefing' is intentionally NOT here. The briefing producer registers
-// on session brokers (via CommitPendingResourceDecls), not the global broker.
-// A global SubscribeDirect subscription for 'briefing' delivers an empty
-// snapshot immediately (no producer → no data), which wipes the store.
-// Briefings arrive via per-session subscriptions in SUBSCRIBED_RESOURCE_KINDS.
-const GLOBAL_RESOURCE_KINDS: string[] = ['desktop.focus']
+// Categorization is by data, not by a hardcoded kind:
+//   - conversation-scoped resources (conversationId set) → that conversation's
+//     attachments panel; always subscribed, never filtered.
+//   - workspace/global resources (conversationId empty) → the global tray;
+//     subject to the user's excludedResourceKinds blocklist at render time.
+const WILDCARD_RESOURCE_KIND = '*'
 
 // Active subscriptions keyed by `${sessionKey}:${kind}` → subscriptionId.
 // Prevents double-subscribing when engine_command_registry fires more than
@@ -125,46 +124,44 @@ export function clearResourceSubscriptions(): void {
 }
 
 export async function subscribeToResourceKinds(key: string): Promise<void> {
-  for (const kind of SUBSCRIBED_RESOURCE_KINDS) {
-    const subKey = `${key}:${kind}`
-    if (resourceSubscriptionIds.has(subKey)) {
-      log(`resource_subscribe: already subscribed key=${key} kind=${kind} — skipping`)
-      continue
-    }
-    log(`resource_subscribe: key=${key} kind=${kind}`)
-    const result = await engineBridge.request<{ subscriptionId: string }>(
-      'resource_subscribe',
-      { key, resourceKind: kind },
-    )
-    if (result.ok && result.data?.subscriptionId) {
-      resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
-      // Track this key so it can be resubscribed on engine reconnect.
-      recordActiveSessionKey(key)
-      log(`resource_subscribe: ok key=${key} kind=${kind} subId=${result.data.subscriptionId}`)
-    } else {
-      log(`resource_subscribe: no producer key=${key} kind=${kind} err=${result.error ?? 'no data'}`)
-    }
+  const kind = WILDCARD_RESOURCE_KIND
+  const subKey = `${key}:${kind}`
+  if (resourceSubscriptionIds.has(subKey)) {
+    log(`resource_subscribe: already wildcard-subscribed key=${key} — skipping`)
+    return
+  }
+  log(`resource_subscribe: wildcard key=${key} kind=${kind}`)
+  const result = await engineBridge.request<{ subscriptionId: string }>(
+    'resource_subscribe',
+    { key, resourceKind: kind },
+  )
+  if (result.ok && result.data?.subscriptionId) {
+    resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
+    // Track this key so it can be resubscribed on engine reconnect.
+    recordActiveSessionKey(key)
+    log(`resource_subscribe: ok key=${key} kind=${kind} subId=${result.data.subscriptionId}`)
+  } else {
+    log(`resource_subscribe: failed key=${key} kind=${kind} err=${result.error ?? 'no data'}`)
   }
 }
 
 export async function subscribeToGlobalResourceKinds(): Promise<void> {
-  for (const kind of GLOBAL_RESOURCE_KINDS) {
-    const subKey = `global:${kind}`
-    if (resourceSubscriptionIds.has(subKey)) {
-      log(`resource_subscribe_global: already subscribed kind=${kind} — skipping`)
-      continue
-    }
-    log(`resource_subscribe_global: kind=${kind}`)
-    const result = await engineBridge.request<{ subscriptionId: string }>(
-      'resource_subscribe',
-      { key: '', resourceKind: kind, resourceGlobal: true },
-    )
-    if (result.ok && result.data?.subscriptionId) {
-      resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
-      log(`resource_subscribe_global: ok kind=${kind} subId=${result.data.subscriptionId}`)
-    } else {
-      log(`resource_subscribe_global: failed kind=${kind} err=${result.error ?? 'no data'}`)
-    }
+  const kind = WILDCARD_RESOURCE_KIND
+  const subKey = `global:${kind}`
+  if (resourceSubscriptionIds.has(subKey)) {
+    log(`resource_subscribe_global: already wildcard-subscribed — skipping`)
+    return
+  }
+  log(`resource_subscribe_global: wildcard kind=${kind}`)
+  const result = await engineBridge.request<{ subscriptionId: string }>(
+    'resource_subscribe',
+    { key: '', resourceKind: kind, resourceGlobal: true },
+  )
+  if (result.ok && result.data?.subscriptionId) {
+    resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
+    log(`resource_subscribe_global: ok kind=${kind} subId=${result.data.subscriptionId}`)
+  } else {
+    log(`resource_subscribe_global: failed kind=${kind} err=${result.error ?? 'no data'}`)
   }
 }
 
@@ -206,7 +203,7 @@ export function wireTabFocusHandler(): void {
 
 // ── Mark-read publishing ────────────────────────────────────────────────────
 //
-// When the user opens a briefing on desktop, the renderer calls
+// When the user opens a resource on desktop, the renderer calls
 // markResourceRead via the preload bridge. The main process publishes a
 // mark_read delta back to the engine so all other subscribers (e.g. iOS)
 // see the item as read.

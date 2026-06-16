@@ -9,7 +9,7 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { PlanViewer } from './PlanViewer'
 import { ImageViewer } from './ImageViewer'
-import { BriefingViewer } from './BriefingViewer'
+import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
@@ -56,7 +56,7 @@ export function AttachmentsButton() {
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
   const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
-  const [briefingData, setBriefingData] = useState<{ title: string; content: string } | null>(null)
+  const [viewerData, setViewerData] = useState<{ title: string; content: string } | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
 
   const toggleSection = useCallback((key: string) => {
@@ -67,7 +67,7 @@ export function AttachmentsButton() {
     })
   }, [])
 
-  const { messages, planFilePath, activeTabId, workingDir, briefings } = useSessionStore(
+  const { messages, planFilePath, activeTabId, workingDir, resources: convResources } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
       // Messages and plan state now live on the active `ConversationInstance`
@@ -79,7 +79,7 @@ export function AttachmentsButton() {
       // Conversation-scoped resources: filter global resources to items whose
       // conversationId matches the current tab's conversation.
       const tabConvId = tab?.conversationId ?? null
-      const convBriefings: ResourceItem[] = tabConvId
+      const convResources: ResourceItem[] = tabConvId
         ? Object.values(s.resources).flat().filter((r) => r.conversationId === tabConvId)
         : []
       return {
@@ -94,7 +94,7 @@ export function AttachmentsButton() {
         planFilePath: inst?.planFilePath ?? null,
         activeTabId: s.activeTabId,
         workingDir: tab?.workingDirectory ?? '~',
-        briefings: convBriefings,
+        resources: convResources,
       }
     }),
   )
@@ -182,7 +182,7 @@ export function AttachmentsButton() {
 
   /* ─── Render ─── */
 
-  const count = attachments.length + briefings.length
+  const count = attachments.length + convResources.length
 
   return (
     <>
@@ -381,8 +381,8 @@ export function AttachmentsButton() {
                 </div>
               )}
 
-              {/* Separator before briefings */}
-              {(plans.length > 0 || files.length > 0) && briefings.length > 0 && (
+              {/* Separator before conversation-scoped resources */}
+              {(plans.length > 0 || files.length > 0) && convResources.length > 0 && (
                 <div
                   style={{
                     height: 1,
@@ -392,12 +392,12 @@ export function AttachmentsButton() {
                 />
               )}
 
-              {/* Briefings section - conversation-scoped resources */}
-              {briefings.length > 0 && (
+              {/* Resources section - conversation-scoped resources of any kind */}
+              {convResources.length > 0 && (
                 <div>
                   <button
                     type="button"
-                    onClick={() => toggleSection('briefings')}
+                    onClick={() => toggleSection('resources')}
                     className="flex items-center gap-1 w-full"
                     style={{
                       fontSize: 9,
@@ -417,18 +417,18 @@ export function AttachmentsButton() {
                       style={{
                         flexShrink: 0,
                         transition: 'transform 0.15s',
-                        transform: collapsedSections.has('briefings') ? 'rotate(0deg)' : 'rotate(90deg)',
+                        transform: collapsedSections.has('resources') ? 'rotate(0deg)' : 'rotate(90deg)',
                       }}
                     />
-                    <span>Briefings ({briefings.length})</span>
+                    <span>Resources ({convResources.length})</span>
                   </button>
-                  {!collapsedSections.has('briefings') && briefings.map((item) => {
-                    const title = item.title || item.kind || 'Briefing'
+                  {!collapsedSections.has('resources') && convResources.map((item) => {
+                    const title = item.title || item.kind || 'Resource'
                     return (
                       <button
                         key={item.id}
                         onClick={() => {
-                          setBriefingData({ title, content: item.content })
+                          setViewerData({ title, content: item.content })
                           setOpen(false)
                         }}
                         className="flex items-center gap-2 w-full text-left transition-colors"
@@ -491,12 +491,12 @@ export function AttachmentsButton() {
         />
       )}
 
-      {/* BriefingViewer modal */}
-      {briefingData && (
-        <BriefingViewer
-          title={briefingData.title}
-          content={briefingData.content}
-          onClose={() => setBriefingData(null)}
+      {/* ResourceViewer modal */}
+      {viewerData && (
+        <ResourceViewer
+          title={viewerData.title}
+          content={viewerData.content}
+          onClose={() => setViewerData(null)}
         />
       )}
     </>

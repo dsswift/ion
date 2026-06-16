@@ -76,6 +76,7 @@ export type ProjectableGroup =
   | 'tabs'
   | 'git'
   | 'quicktools'
+  | 'notifications'
   | 'advanced'
 
 /**

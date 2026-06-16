@@ -1,11 +1,12 @@
 /**
  * event-wiring-disk-seed — cold-start resource store injection
  *
- * When the engine delivers an empty resource snapshot for a disk-backed kind
- * (e.g. briefing), `injectDiskResourcesIfEmpty` reads persisted JSON files
+ * When the engine delivers an empty resource snapshot for any kind,
+ * `injectDiskResourcesIfEmpty` reads persisted JSON files
  * from ~/.ion/resources/global/ and injects them into the renderer store via
  * executeJavaScript. This corrects the cold-start gap where the extension
- * subprocess dies during HandleQuery.
+ * subprocess dies during HandleQuery. The seed is kind-agnostic — no per-kind
+ * allowlist.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
@@ -100,7 +101,26 @@ describe('injectDiskResourcesIfEmpty', () => {
     expect(mockExecuteJavaScript).not.toHaveBeenCalled()
   })
 
-  it('does not inject for kinds that are not disk-backed', () => {
+  it('injects ANY kind that has matching disk files (kind-agnostic, no allowlist)', async () => {
+    // A non-briefing kind with persisted items must seed too — the disk-seed
+    // is generic. Previously a 'briefing'-only allowlist blocked this.
+    withDiskFiles({
+      'report-001.json': JSON.stringify({ id: 'report-001', kind: 'report', title: 'Q3', content: 'x', createdAt: '2026-01-01T00:00:00.000Z' }),
+    })
+
+    injectDiskResourcesIfEmpty('report', 'sub-1', 'tab1:inst1')
+    await Promise.resolve()
+
+    expect(mockExecuteJavaScript).toHaveBeenCalledTimes(1)
+    const code: string = mockExecuteJavaScript.mock.calls[0][0]
+    expect(code).toContain('"report"')
+    expect(code).toContain('report-001')
+  })
+
+  it('does not inject when no disk file matches the requested kind', () => {
+    // The kind has no persisted items on disk → nothing to seed. This is the
+    // generic no-op (no allowlist involved): the only briefing file present
+    // does not match the requested 'unknown-kind'.
     withDiskFiles({ 'some-id.json': makeBriefingJson('some-id') })
 
     injectDiskResourcesIfEmpty('unknown-kind', 'sub-1', 'tab1:inst1')

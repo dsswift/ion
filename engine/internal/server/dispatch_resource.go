@@ -41,6 +41,8 @@ func (s *Server) dispatchResourceSubscribe(conn net.Conn, cmd *protocol.ClientCo
 		filter.Kind = cmd.ResourceKind
 	}
 
+	wildcard := resource.IsWildcard(cmd.ResourceKind)
+
 	// Global subscription: use the Manager-level broker.
 	if cmd.ResourceGlobal {
 		broker := s.manager.GlobalResourceBroker()
@@ -48,10 +50,21 @@ func (s *Server) dispatchResourceSubscribe(conn net.Conn, cmd *protocol.ClientCo
 			s.sendResult(conn, cmd, fmt.Errorf("resource_subscribe: global broker not available"), nil)
 			return
 		}
-		sub := broker.SubscribeDirect(cmd.ResourceKind, filter, func(msg resource.ResourceMessage) {
-			s.deliverResourceEvent(conn, cmd.Key, msg)
-		})
-		utils.Log("Server", fmt.Sprintf("resource_subscribe: global kind=%s subId=%s", cmd.ResourceKind, sub.ID))
+		var sub *resource.Subscription
+		if wildcard {
+			// Global wildcard: producer-less direct subscription across all
+			// kinds. The global broker hosts client-published workspace
+			// resources that may have no producer, so no snapshot query.
+			sub = broker.SubscribeDirectWildcard(filter, func(msg resource.ResourceMessage) {
+				s.deliverResourceEvent(conn, cmd.Key, msg)
+			})
+			utils.Log("Server", fmt.Sprintf("resource_subscribe: global wildcard subId=%s", sub.ID))
+		} else {
+			sub = broker.SubscribeDirect(cmd.ResourceKind, filter, func(msg resource.ResourceMessage) {
+				s.deliverResourceEvent(conn, cmd.Key, msg)
+			})
+			utils.Log("Server", fmt.Sprintf("resource_subscribe: global kind=%s subId=%s", cmd.ResourceKind, sub.ID))
+		}
 		s.sendResult(conn, cmd, nil, map[string]string{"subscriptionId": sub.ID})
 		return
 	}
@@ -60,6 +73,17 @@ func (s *Server) dispatchResourceSubscribe(conn net.Conn, cmd *protocol.ClientCo
 	broker := s.manager.ResourceBroker(cmd.Key)
 	if broker == nil {
 		s.sendResult(conn, cmd, fmt.Errorf("resource_subscribe: no session or broker for key %q", cmd.Key), nil)
+		return
+	}
+
+	// Per-session wildcard: aggregate a snapshot across every registered
+	// producer and stream all future kinds. Never errors on "no producer".
+	if wildcard {
+		sub := broker.SubscribeWildcard(filter, func(msg resource.ResourceMessage) {
+			s.deliverResourceEvent(conn, cmd.Key, msg)
+		})
+		utils.Log("Server", fmt.Sprintf("resource_subscribe: session wildcard key=%s subId=%s", cmd.Key, sub.ID))
+		s.sendResult(conn, cmd, nil, map[string]string{"subscriptionId": sub.ID})
 		return
 	}
 

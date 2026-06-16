@@ -109,6 +109,60 @@ func TestResource_E2E_DeclareAndQuery(t *testing.T) {
 	}
 }
 
+// TestResource_E2E_WildcardSubscription verifies that a wildcard ("*")
+// subscription against the canary extension receives the briefing kind's
+// snapshot without naming the kind — proving a client can subscribe to every
+// kind generically, with the real kind carried on each message.
+func TestResource_E2E_WildcardSubscription(t *testing.T) {
+	host := loadResourceCanary(t)
+
+	broker := resource.NewBroker()
+	if errs := host.CommitPendingResourceDecls(broker); len(errs) != 0 {
+		t.Fatalf("CommitPendingResourceDecls: %v", errs)
+	}
+
+	var msgs []resource.ResourceMessage
+	sub := broker.SubscribeWildcard(types.ResourceFilter{}, func(msg resource.ResourceMessage) {
+		msgs = append(msgs, msg)
+	})
+	if sub == nil {
+		t.Fatal("SubscribeWildcard returned nil")
+	}
+
+	// The wildcard subscriber should have received the briefing kind's
+	// snapshot — aggregated across every registered producer — carrying the
+	// real kind, never "*".
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 wildcard snapshot (one per producing kind), got %d", len(msgs))
+	}
+	snap := msgs[0]
+	if snap.Type != "snapshot" {
+		t.Errorf("message type: want snapshot, got %q", snap.Type)
+	}
+	if snap.Kind != "briefing" {
+		t.Errorf("wildcard snapshot must carry real kind 'briefing', got %q", snap.Kind)
+	}
+	if len(snap.Items) != 1 || snap.Items[0].ID != "briefing-1" {
+		t.Fatalf("wildcard snapshot items wrong: %+v", snap.Items)
+	}
+
+	// A subsequent publish on the briefing kind must also reach the wildcard
+	// subscriber as a delta carrying the real kind.
+	msgs = nil
+	if err := broker.Publish("briefing", types.ResourceDelta{
+		Op:   "create",
+		Item: types.ResourceItem{ID: "briefing-9", Kind: "briefing", Content: "late"},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Type != "delta" || msgs[0].Kind != "briefing" {
+		t.Fatalf("expected 1 briefing delta on wildcard sub, got %+v", msgs)
+	}
+	if msgs[0].Delta.Item.ID != "briefing-9" {
+		t.Errorf("wildcard delta item ID: want briefing-9, got %q", msgs[0].Delta.Item.ID)
+	}
+}
+
 // TestResource_E2E_FullCycle drives the complete lifecycle:
 // snapshot on subscribe → publish create → update → delete → unsubscribe.
 func TestResource_E2E_FullCycle(t *testing.T) {

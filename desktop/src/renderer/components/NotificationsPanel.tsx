@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Bell, X } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
+import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
-import { BriefingViewer } from './BriefingViewer'
+import { ResourceViewer } from './ResourceViewer'
+import { selectTrayResources } from './notifications-tray-filter'
 import type { ResourceItem } from '../../shared/types-engine'
 
 function formatTime(iso: string): string {
@@ -92,13 +94,15 @@ function ResourceCard({
 }
 
 export function NotificationsPanel() {
-  // Collect ALL resource kinds, not just briefings. The notifications
-  // panel shows any workspace-level resource the engine delivers.
+  // Collect ALL resource kinds, not just one hardcoded kind. The notifications
+  // panel shows any workspace-level resource the engine delivers, minus the
+  // kinds the user has chosen to exclude (blocklist; empty by default).
   const allResources = useSessionStore((s) => s.resources)
   const readResourceIds = useSessionStore((s) => s.readResourceIds)
   const markResourceRead = useSessionStore((s) => s.markResourceRead)
   const deleteResource = useSessionStore((s) => s.deleteResource)
   const isExpanded = useSessionStore((s) => s.isExpanded)
+  const excludedResourceKinds = usePreferencesStore((s) => s.excludedResourceKinds)
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
 
@@ -106,13 +110,13 @@ export function NotificationsPanel() {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ right: number; top?: number; bottom?: number; maxHeight?: number }>({ right: 0 })
-  const [briefingData, setBriefingData] = useState<{ title: string; content: string } | null>(null)
+  const [viewerData, setViewerData] = useState<{ title: string; content: string } | null>(null)
 
-  // Flatten all resource kinds into one sorted list, excluding conversation-scoped
-  // items - those are shown in the per-conversation attachments panel instead.
-  const allItems: ResourceItem[] = Object.values(allResources).flat()
-    .filter((item) => !item.conversationId) // Only global/workspace items
-  const sorted = [...allItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  // Flatten all resource kinds into the global tray list via the shared,
+  // unit-tested selector: workspace-only items, minus the user's blocklist,
+  // newest first. Conversation-scoped items are excluded here (they live in
+  // the per-conversation attachments panel) and are never blocklist-filtered.
+  const sorted = selectTrayResources(allResources, excludedResourceKinds)
   const unreadCount = sorted.filter((item) => !readResourceIds.has(item.id)).length
 
   const updatePos = useCallback(() => {
@@ -225,7 +229,7 @@ export function NotificationsPanel() {
                   colors={colors}
                   onOpen={(data) => {
                     markResourceRead(item.id)
-                    setBriefingData(data)
+                    setViewerData(data)
                     setOpen(false)
                   }}
                   onDelete={() => deleteResource(item.kind, item.id)}
@@ -237,12 +241,12 @@ export function NotificationsPanel() {
         popoverLayer,
       )}
 
-      {/* BriefingViewer modal */}
-      {briefingData && (
-        <BriefingViewer
-          title={briefingData.title}
-          content={briefingData.content}
-          onClose={() => setBriefingData(null)}
+      {/* ResourceViewer modal */}
+      {viewerData && (
+        <ResourceViewer
+          title={viewerData.title}
+          content={viewerData.content}
+          onClose={() => setViewerData(null)}
         />
       )}
     </>

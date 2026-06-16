@@ -27,6 +27,8 @@ import type {
 } from '../../shared/types-git-events'
 import type { GitChangedFile } from '../../shared/types-session'
 import { log as _log } from '../logger'
+import { isPathIgnoredByGitWatcher } from './ignore-paths'
+import { readGitWatcherIgnoredDirectories } from '../settings-store'
 
 function log(msg: string): void { _log('main', msg) }
 
@@ -74,6 +76,7 @@ export class GitRepository extends EventEmitter {
 
   private _revision = 0
   private _refCount = 0
+  private _watcherIgnored = false
   private readonly _watcher: GitWatcher
   private readonly _onFocusChange = (focused: boolean): void => {
     this._watcher.setSuspended(!focused)
@@ -97,14 +100,24 @@ export class GitRepository extends EventEmitter {
   get revision(): number { return this._revision }
   get refCount(): number { return this._refCount }
   get watcherActive(): boolean { return this._watcher.active }
+  get watcherIgnored(): boolean { return this._watcherIgnored }
   get snapshot(): RepoSnapshot | null { return this._snapshot }
 
   retain(): void {
     this._refCount++
     if (this._refCount === 1) {
-      this._watcher.start(this.path, (event) => this.handleWatchEvent(event))
-      this._watcher.setSuspended(!focusState.focused)
-      focusState.on('change', this._onFocusChange)
+      const ignoredDirs = readGitWatcherIgnoredDirectories()
+      this._watcherIgnored = isPathIgnoredByGitWatcher(this.path, ignoredDirs)
+      if (this._watcherIgnored) {
+        log(`Git watcher suppressed for ignored path: ${this.path}`)
+        // Still register focus-return refresh so the panel updates on window focus.
+        focusState.on('change', this._onFocusChange)
+      } else {
+        log(`Git watcher starting for: ${this.path}`)
+        this._watcher.start(this.path, (event) => this.handleWatchEvent(event))
+        this._watcher.setSuspended(!focusState.focused)
+        focusState.on('change', this._onFocusChange)
+      }
       this._initialRefresh = this.refreshSnapshot().catch((err: Error) => {
         log(`Initial snapshot failed for ${this.path}: ${err.message}`)
       })
@@ -222,6 +235,7 @@ export class GitRepository extends EventEmitter {
       mergeState: 'none',
       groups: { index: [], workingTree: [], untracked: [], merge: [] },
       revision: this._revision,
+      watcherIgnored: this._watcherIgnored,
     }
     try {
       await runGit(this.path, ['rev-parse', '--is-inside-work-tree'])
@@ -264,6 +278,7 @@ export class GitRepository extends EventEmitter {
       mergeState: await this.detectMergeState(),
       groups: { index: groups.index, workingTree: groups.workingTree, untracked: groups.untracked, merge: groups.merge },
       revision: this._revision,
+      watcherIgnored: this._watcherIgnored,
     }
   }
 

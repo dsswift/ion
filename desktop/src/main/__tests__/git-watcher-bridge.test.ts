@@ -10,6 +10,16 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 vi.mock('../git-runner', () => ({ runGit: vi.fn(async () => '') }))
 vi.mock('../logger', () => ({ log: vi.fn(), error: vi.fn() }))
 vi.mock('../remote/git-broadcast', () => ({ broadcastGitChanges: vi.fn(async () => {}) }))
+// repository.ts imports settings-store (for readGitWatcherIgnoredDirectories),
+// which transitively imports utils/secretStore → 'electron'. Under
+// `npm ci --ignore-scripts` (CI) the Electron binary is not installed, so an
+// eager electron import throws "Electron failed to install correctly" and this
+// test file fails to load. Mock settings-store the same way git-repository.test.ts
+// and the other repository-importing tests do — the watcher-bridge test drives a
+// fake parcel watcher and does not care about real settings or the keychain.
+vi.mock('../settings-store', () => ({
+  readGitWatcherIgnoredDirectories: vi.fn().mockReturnValue([]),
+}))
 
 import { GitRepository } from '../git/repository'
 import { createGitWatcher } from '../git/watcher'

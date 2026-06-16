@@ -106,6 +106,7 @@ export const PROJECTABLE_GROUP_ORDER: readonly ProjectableGroup[] = [
   'tabs',
   'git',
   'quicktools',
+  'notifications',
 ]
 
 /**
@@ -119,6 +120,7 @@ export const PROJECTABLE_GROUP_LABELS: Record<ProjectableGroup, string> = {
   tabs: 'Tabs & Panels',
   git: 'Git',
   quicktools: 'Quick Tools',
+  notifications: 'Notifications',
   advanced: 'Advanced',
 }
 
