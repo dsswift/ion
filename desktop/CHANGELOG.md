@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.54.0](https://github.com/dsswift/ion/compare/desktop-v1.53.2...desktop-v1.54.0) (2026-06-16)
+
+### Features
+
+* **desktop:** add git-watcher ignored-directories config (#235) ([0bda88d](https://github.com/dsswift/ion/commit/0bda88df73da6093123634bfc9b17a44f66ba42c))
+* **desktop:** kind-agnostic resource delivery and tray filter (#179) ([297ff64](https://github.com/dsswift/ion/commit/297ff6469ea16394416a012617724ad48f6251a3))
+
+### Bug Fixes
+
+* **desktop:** mock settings-store in git-watcher-bridge test (#239) ([a57856a](https://github.com/dsswift/ion/commit/a57856afb03bfc679d6b14b74891aa893d049bfd))
+
 ## [1.53.2](https://github.com/dsswift/ion/compare/desktop-v1.53.1...desktop-v1.53.2) (2026-06-15)
 
 ## [1.53.1](https://github.com/dsswift/ion/compare/desktop-v1.53.0...desktop-v1.53.1) (2026-06-15)

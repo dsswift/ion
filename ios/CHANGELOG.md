@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.41.0](https://github.com/dsswift/ion/compare/ios-v1.40.0...ios-v1.41.0) (2026-06-16)
+
+### Features
+
+* **ios:** kind-agnostic resource rendering (#179) ([0f5ac8d](https://github.com/dsswift/ion/commit/0f5ac8d5c02446817d768598361429c809a8f0e2))
+
 ## [1.40.0](https://github.com/dsswift/ion/compare/ios-v1.39.0...ios-v1.40.0) (2026-06-15)
 
 ### Features

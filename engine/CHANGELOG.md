@@ -13,6 +13,20 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.40.0](https://github.com/dsswift/ion/compare/engine-v1.39.1...engine-v1.40.0) (2026-06-16)
+
+### Features
+
+* **engine:** emit run.complete telemetry for all backends (#234) ([4de6dcc](https://github.com/dsswift/ion/commit/4de6dcc8633524ed0cedab0c1c264cadb2d6837b))
+* **engine:** add wildcard resource subscription (#179) ([744a5b0](https://github.com/dsswift/ion/commit/744a5b036997ec0a63dbc6503451a9b0e7541ee5))
+
+### Bug Fixes
+
+* **engine:** isolate HOME in config load tests ([5d2f9c9](https://github.com/dsswift/ion/commit/5d2f9c9f36eb64865bf082f1c7e87e14814a4abd))
+* **engine:** guarantee synthesized tool_use ID uniqueness ([0a30f43](https://github.com/dsswift/ion/commit/0a30f43a95fdd8c2cb175bc54289612250117466))
+* **engine:** make heartbeat tests load-robust under linux -race (#239) ([f746969](https://github.com/dsswift/ion/commit/f746969d67d6b1941c222b40e0ac2063d686de73))
+* **engine:** de-flake watchdog stall test under linux -race (#239) ([e517312](https://github.com/dsswift/ion/commit/e517312c21086f2eea91d4c6dffb04bcf58bbf6f))
+
 ## [1.39.1](https://github.com/dsswift/ion/compare/engine-v1.39.0...engine-v1.39.1) (2026-06-15)
 
 ## [1.39.0](https://github.com/dsswift/ion/compare/engine-v1.38.0...engine-v1.39.0) (2026-06-15)
