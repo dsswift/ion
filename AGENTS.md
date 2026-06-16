@@ -54,26 +54,39 @@ Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook 
 
 **Never run `make desktop`.** It builds, packages, installs to `/Applications`, and relaunches the desktop app. If you are running inside an Ion session, this kills the engine process hosting your conversation and often loses conversation state. The user runs `make desktop` manually when they are ready. If a desktop rebuild is needed, tell the user to run it.
 
-## Quality gates (must pass before merge)
+## Quality gates (run while developing)
+
+These are the gates to run **during normal development** — they are cheap, fast, and scoped to the work in front of you. Run them as you iterate. Do **not** run the heavy gates listed in the next subsection while developing.
 
 | Gate | Command |
 |------|---------|
 | File-size cap | `make check-file-sizes` |
-| Contract sync | `make check-contracts` |
-| Engine tests + race | `cd engine && go test -race ./...` |
-| Engine integration | `cd engine && go test -race -tags integration ./tests/integration/...` |
-| Engine vuln | `cd engine && govulncheck ./...` |
-| Engine lint | `cd engine && golangci-lint run` (full mode on both PR and main) |
-| Relay tests + race | `cd relay && go test -race ./...` |
+| Contract sync | `make check-contracts` (only when you change a shared type — see "Cross-language contract sync") |
+| Engine lint | `cd engine && golangci-lint run` (scope to touched packages while iterating: `golangci-lint run ./internal/<pkg>/...`) |
+| Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. |
 | Desktop typecheck | `cd desktop && npm run typecheck` |
-| Desktop tests | `cd desktop && npm test` |
-| Desktop audit | `cd desktop && npm audit --audit-level=high --omit=dev` |
-| iOS build | `make ios-check` |
-| **Linux parity** | `make test-linux` (runs `engine-test` + `desktop-test` in Linux containers) |
+| Desktop tests (scoped) | `cd desktop && npm test -- <pattern>` for the area you touched. The full `npm test` run belongs to the pre-PR sweep. |
 
 CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (per-PR).
 
-> **Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`.** `go test -race ./...` (the `engine-test` job) and `npm test` (the `desktop-test` job) run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. Run `make test-linux` (Docker required) for any `engine/` or `desktop/` change before opening a PR. The `/create-pr` command runs this gate automatically before pushing and pauses if Docker isn't running, so the common path needs no manual step; `make test-linux` (and `make test-linux-engine` / `make test-linux-desktop`) is the manual escape hatch.
+### Heavy gates — never run during development
+
+The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because they run once, authoritatively, at PR time.
+
+| Heavy gate | Command |
+|------------|---------|
+| Linux parity | `make test-linux` (and `make test-linux-engine` / `make test-linux-desktop`) |
+| Full engine race suite | `cd engine && go test -race ./...` |
+| Engine integration | `cd engine && go test -race -tags integration ./tests/integration/...` |
+| Engine vuln | `cd engine && govulncheck ./...` |
+| Relay tests + race | `cd relay && go test -race ./...` |
+| Desktop audit | `cd desktop && npm audit --audit-level=high --omit=dev` |
+| Full desktop suite | `cd desktop && npm test` |
+| iOS build | `make ios-check` |
+
+**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the full race suite + desktop tests inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
+
+> **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` (the `engine-test` job) and `npm test` (the `desktop-test` job) run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
 
 ## Branch workflow
 
@@ -83,7 +96,7 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
   1. Do work on the current feature branch, commit locally.
   2. When an external PR lands on `main` that your branch depends on or should incorporate: merge it on GitHub (`gh pr merge <number> --merge`), then `git checkout main && git pull` to sync local `main`, then `git checkout <feature-branch> && git rebase main` to rebase the feature branch onto the updated `main`.
   3. Open a PR from the feature branch into `main` (`gh pr create`). Never push directly to `main`.
-- CI must pass on the PR before merge. Run quality gates locally first (see table below).
+- CI must pass on the PR before merge. Run the development-time quality gates as you iterate (see "Quality gates (run while developing)"); the heavy gates are run once by `/create-pr` before pushing — do not run them yourself during development.
 
 ## Commits
 
@@ -237,13 +250,21 @@ The engine stores nothing. Extensions that declare resource kinds are responsibl
 
 `ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads (per D-009). The push body is a doorbell string ("New briefing ready"), not content. The `resourceId` field enables deep-linking: iOS reads it from the push payload's `userInfo` to navigate to the specific resource.
 
-## Contract stability (never break the client)
+## Contract stability
 
-The client is the consumer of the Ion engine — desktop, iOS, and harness extensions all depend on published contracts. **Never ship a breaking change to a published contract.**
+Not all wire contracts carry the same stability obligation. The rules differ by owner.
 
-Event-shape contracts are not just about field names. Event **semantics** (snapshot vs. incremental, replace vs. merge, idempotency) are also part of the contract. See [docs/architecture/agent-state.md](docs/architecture/agent-state.md) for the canonical example: `engine_agent_state` is always a complete snapshot, and consumers replace local state with the payload.
+### Engine wire - scrutinized contract
 
-### What counts as a contract
+The engine wire is a **scrutinized contract**. External integrators build custom clients, shell scripts, and automation pipelines directly against the engine NDJSON socket. Ion cannot reach those consumers to coordinate a migration. A breaking change to the engine wire must be a conscious, surfaced decision — never committed silently.
+
+**Never ship a breaking change to the engine wire contract without explicit operator approval.**
+
+Event-shape contracts are not just about field names. Event **semantics** (snapshot vs. incremental, replace vs. merge, idempotency) are also part of the engine contract. See [docs/architecture/agent-state.md](docs/architecture/agent-state.md) for the canonical example: `engine_agent_state` is always a complete snapshot, and consumers replace local state with the payload.
+
+Correcting an improper legacy name on the engine wire **may** be committed as a breaking change in a future version using `fix` (not `feat!`) unless the rename is genuinely application-sweeping. The operator decides; the agent surfaces the decision, never makes it alone.
+
+#### What counts as an engine contract
 
 | Surface | Key files |
 |---------|-----------|
@@ -253,13 +274,13 @@ Event-shape contracts are not just about field names. Event **semantics** (snaps
 | Hook names & payload shapes | All hooks registered in `engine/internal/extension/sdk_hooks_*.go` |
 | Engine events consumed by clients | Any event type or field a client reads to render UI |
 
-### Allowed (non-breaking)
+#### Allowed (non-breaking engine changes)
 
 - **Add** new fields with zero-value defaults, new event variants, new hooks, new optional parameters.
 - **Fix** bugs in existing methods (behavior change that corrects a documented or obvious defect).
 - **Version** a new alternative when a design must evolve (e.g. `ToolCallV2`) — leave the original intact.
 
-### Forbidden (breaking)
+#### Forbidden (breaking engine changes)
 
 - Remove or rename a field, type, constant, hook name, or event variant.
 - Change a field's type (e.g. `string` → `int`, `[]T` → `map`).
@@ -268,6 +289,29 @@ Event-shape contracts are not just about field names. Event **semantics** (snaps
 - Change wire-protocol message framing or envelope structure.
 
 If you believe a break is truly necessary, stop and discuss with the user — never commit it silently.
+
+### Desktop↔iOS wire and future client wires - lockstep, not scrutinized
+
+The desktop↔iOS wire (and any future client wire such as desktop↔Android or desktop↔web) operates under a **lockstep model**. All clients that share a wire are co-located in this repo. A wire rename ships to every side in one PR — there is no deployment window where one side has the new string and the other has the old one. These wire changes are not breaking changes in the external-integrator sense.
+
+**Do not push back on desktop↔iOS wire changes as though they were published-contract breaks.** They are not. The only obligation is **parity**: every side of the wire is updated in the same PR. If you are reviewing or implementing a desktop↔iOS wire rename and all clients are updated together, the change conforms to this policy.
+
+Parity check: confirm `desktop/src/main/remote/protocol.ts`, the iOS `RemoteCommand.swift` and `NormalizedEvent.swift` TypeKey raw values, and any ViewModel or handler that switches on the string are all updated in the same commit (or PR).
+
+### Wire event naming - prefix by owner (ADR 008)
+
+Wire events are prefixed by the **owner of the contract**. See [docs/architecture/adr/008-wire-event-naming-and-ownership.md](docs/architecture/adr/008-wire-event-naming-and-ownership.md) for the full rationale.
+
+| Owner | Prefix | Wire |
+|-------|--------|------|
+| Engine | `engine_` | Engine NDJSON socket |
+| Desktop | `desktop_` | Desktop↔iOS WebSocket |
+| Android (future) | `android_` | Desktop↔Android WebSocket |
+| Web (future) | `web_` | Desktop↔Web WebSocket |
+
+The engine's outbound event set is uniformly `engine_`-prefixed (see `engine/internal/types/engine_event.go`). All `RemoteEvent` and `RemoteCommand` members on the desktop↔iOS wire carry the `desktop_` prefix. Any new member introduced to either wire must carry the correct prefix from its first commit. PRs that introduce unprefixed or cross-prefixed members are non-conforming.
+
+**Internal vs. wire names.** `NormalizedEvent` uses bare names internally. These never reach a consumer: `translateToEngineEvent()` converts them to `engine_*` before anything is written to the socket. The bare internal names and the wire names are distinct layers.
 
 ### Cross-language contract sync
 
