@@ -29,6 +29,10 @@ const (
 	EventSteerInjected     = "steer_injected"
 	EventModelFallback     = "model_fallback"
 	EventRunStalled        = "run_stalled"
+	// EventPlanContent is emitted in response to a get_plan_content command.
+	// It carries a bounded byte-range window of a plan file so remote clients
+	// can page through large plans without filesystem access to the engine host.
+	EventPlanContent = "engine_plan_content"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -117,6 +121,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ModelFallbackEvent{}
 	case EventRunStalled:
 		target = &RunStalledEvent{}
+	case EventPlanContent:
+		target = &PlanContentEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -532,3 +538,37 @@ type ModelFallbackEvent struct {
 }
 
 func (ModelFallbackEvent) eventType() string { return EventModelFallback }
+
+// PlanContentEvent is emitted in response to a get_plan_content command.
+// It delivers a bounded byte-range window of a plan file so remote clients
+// (e.g. iOS) can page through large plans without needing filesystem access
+// to the engine host.
+//
+// Paging semantics:
+//   - Offset is the byte offset of the first byte in this window.
+//   - Content is the UTF-8 window string for this page.
+//   - TotalBytes is the file size at read time (may change between pages
+//     if the model is still writing; treat as advisory).
+//   - HasMore is true when offset+len(content) < TotalBytes, signaling
+//     that the client should request the next page with offset+=len(content).
+//
+// Security: the engine validates that Path is inside the session's plan
+// directory before reading. Requests with paths outside that directory are
+// rejected with an error event, not a plan_content event.
+//
+// Incremental (not a snapshot). The engine does not replay on reconnect.
+type PlanContentEvent struct {
+	// PlanFilePath is the absolute path of the plan file that was read.
+	// Clients can use it as a cache key when assembling multi-page fetches.
+	PlanFilePath string `json:"planFilePath"`
+	// Offset is the byte offset of the first byte of Content within the file.
+	Offset int `json:"offset"`
+	// Content is the UTF-8 string for this byte-range window.
+	Content string `json:"content"`
+	// TotalBytes is the file size in bytes at read time.
+	TotalBytes int `json:"totalBytes"`
+	// HasMore is true when more data follows (offset+len(content) < TotalBytes).
+	HasMore bool `json:"hasMore"`
+}
+
+func (PlanContentEvent) eventType() string { return EventPlanContent }

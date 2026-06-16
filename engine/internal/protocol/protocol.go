@@ -239,6 +239,13 @@ var validCommands = map[string]bool{
 	"resource_subscribe":   true,
 	"resource_unsubscribe": true,
 	"resource_publish":     true,
+	// get_plan_content: fetch a bounded byte-range window of a plan file.
+	// Key (session key) scopes the plan directory for the security check.
+	// Path is the absolute plan file path the engine emitted in a prior
+	// plan_mode_changed / plan_proposal / plan_mode_auto_exit event.
+	// Offset + Limit select the window (Limit 0 = server default 64 KB).
+	// The engine replies with a plan_content event on the same connection.
+	"get_plan_content": true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -435,6 +442,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceSubId")
 	case "resource_publish":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceOp")
+	case "get_plan_content":
+		// key scopes the plan directory; path is the target plan file.
+		// offset and limit are optional (both default to 0 = start/server-default).
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "path")
 	}
 	return false
 }

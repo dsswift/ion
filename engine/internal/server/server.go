@@ -676,6 +676,10 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "resource_publish":
 		s.dispatchResourcePublish(conn, cmd)
 
+	case "get_plan_content":
+		// Implementation in dispatch_plan_content.go.
+		s.dispatchGetPlanContent(conn, cmd)
+
 	case "shutdown":
 		_ = s.Stop()
 

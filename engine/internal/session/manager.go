@@ -612,6 +612,20 @@ func (m *Manager) GlobalResourceBroker() *resource.Broker {
 	return m.globalBroker
 }
 
+// SessionWorkingDir returns the working directory for the session identified
+// by key, or the empty string when no session is found. Used by the
+// get_plan_content handler to resolve the valid plan directory for the
+// session so it can enforce the path-containment security check.
+func (m *Manager) SessionWorkingDir(key string) string {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	return s.config.WorkingDirectory
+}
+
 // ReconcileState re-emits the current agent states and status for the given
 // session so that a freshly-connected (or reconnected) client can catch up
 // without waiting for the next organic state change.

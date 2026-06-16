@@ -8,6 +8,13 @@
       "strategy",
       "summary"
     ],
+    "engine_plan_content": [
+      "content",
+      "hasMore",
+      "offset",
+      "planFilePath",
+      "totalBytes"
+    ],
     "error": [
       "errorCode",
       "httpStatus",
@@ -134,6 +141,7 @@
     "command",
     "commandError",
     "commands",
+    "content",
     "defaultValue",
     "dialogId",
     "dispatchAgent",
@@ -169,6 +177,7 @@
     "fallbackReason",
     "fallbackRequestedModel",
     "fields",
+    "hasMore",
     "httpStatus",
     "index",
     "interceptLevel",
@@ -196,6 +205,7 @@
     "notifyScope",
     "notifySound",
     "notifyTitle",
+    "offset",
     "options",
     "partialInput",
     "permOptions",
@@ -238,6 +248,7 @@
     "toolElapsed",
     "toolId",
     "toolName",
+    "totalBytes",
     "type",
     "url",
     "usage"
