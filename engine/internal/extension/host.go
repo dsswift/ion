@@ -71,7 +71,7 @@ type Host struct {
 	// holds h.mu for the entire init handshake, and notifications can
 	// arrive mid-handshake before the init response.
 	notifMu        sync.RWMutex
-	onSendMessage  func(text string)
+	onSendMessage  func(SendPromptPayload)
 	persistentEmit func(types.EngineEvent)
 
 	// persistentPublishResource is the fallback for ext/publish_resource
@@ -250,10 +250,36 @@ func (h *Host) SetExtensionDir(dir string) {
 	h.loadedConfig.ExtensionDir = dir
 }
 
+// SendPromptPayload is the full set of per-prompt options carried when an
+// extension queues a follow-up prompt via ext/send_message (or ext/send_prompt
+// without an active hook context). It mirrors the fields the active-hook path
+// threads through to PromptOverrides so the two dispatch paths converge on
+// identical run-configuration — there is no per-feature divergence between a
+// prompt sent from a live hook context and one sent from a timer/scheduler
+// background callback.
+//
+// Carried as a struct (rather than positional callback args) so future
+// per-prompt options become struct fields instead of forcing every
+// onSendMessage wiring site to re-widen a positional signature. This is the
+// same rationale PromptOverrides exists for on the session side.
+type SendPromptPayload struct {
+	// Text is the prompt text to dispatch. Required.
+	Text string
+	// Model is an optional per-prompt model override (tier alias or model id).
+	// Empty means "use the session's resolved model".
+	Model string
+	// BashAllowlistAdditions are per-prompt, run-scoped plan-mode Bash command
+	// prefixes, unioned with the session allowlist for the single run this
+	// prompt starts. Never persisted on the session. Empty/nil is a no-op.
+	BashAllowlistAdditions []string
+}
+
 // SetOnSendMessage sets the callback invoked when the extension sends an
 // ext/send_message notification. The session manager uses this to queue
-// follow-up prompts from extension-initiated messages.
-func (h *Host) SetOnSendMessage(fn func(text string)) {
+// follow-up prompts from extension-initiated messages. The callback receives
+// the full SendPromptPayload (text + model + bash-allowlist additions) so the
+// fallback path carries the same run configuration as the active-hook path.
+func (h *Host) SetOnSendMessage(fn func(SendPromptPayload)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.onSendMessage = fn

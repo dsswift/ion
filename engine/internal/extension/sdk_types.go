@@ -105,11 +105,27 @@ type Context struct {
 	// extension is responsible for guarding its own loops (e.g. with a
 	// per-session "in-flight" flag stored on a sessionKey-keyed Map).
 	//
-	// When invoked outside an active hook dispatch (e.g. from a timer or
-	// scheduler callback), the per-call `model` override is ignored; the
-	// session default is used. This is a fallback path used by the host RPC
-	// handler only — direct in-process callers always honor `model`.
-	SendPrompt func(text string, model string) error
+	// The per-call `model` override is honored on ALL dispatch paths,
+	// including when invoked outside an active hook dispatch (e.g. from a
+	// timer or scheduler callback). The fallback path carries the full
+	// SendPromptPayload (text + model + bash-allowlist additions) to the
+	// session manager via onSendMessage, which builds PromptOverrides from it
+	// the same way the active-hook path does. Empty `model` means "use the
+	// session default".
+	//
+	// `bashAllowlistAdditions` carries per-prompt, run-scoped plan-mode Bash
+	// command-prefix allowances. They are unioned with the session-scoped
+	// allowlist for the single run this prompt starts and are NEVER persisted
+	// on the session — they apply only for the scope of this prompt's
+	// execution turn. This is the mechanism a slash command dispatched as an
+	// extension command (e.g. one loaded from a `.ion/commands/*.md` file with
+	// an `allowed_bash_commands` frontmatter list) uses to perform its side
+	// effect — running an allowed Bash command — while plan mode is active,
+	// instead of waiting for plan-mode exit. An empty/nil slice is a no-op.
+	// Like `model`, additions flow on every dispatch path — the active-hook /
+	// command-execute path AND the timer/scheduler fallback path. There is no
+	// per-feature divergence between the two paths.
+	SendPrompt func(text string, model string, bashAllowlistAdditions []string) error
 
 	// Engine-native agent dispatch. Creates a child session within the engine
 	// with optional extension loading, system prompt injection, and event streaming.

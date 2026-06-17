@@ -333,6 +333,13 @@ func (b *ApiBackend) executeTools(
 				toolCtx = types.WithTimeouts(toolCtx, run.cfg.Timeouts)
 			}
 
+			// Inject shell config so the Bash tool can run commands through the
+			// user's login shell when EngineRuntimeConfig.Shell.UseLoginShell
+			// is set. Nil-safe: omitted config leaves the default bash -c path.
+			if run.cfg != nil && run.cfg.Shell != nil {
+				toolCtx = types.WithShellConfig(toolCtx, run.cfg.Shell)
+			}
+
 			var toolResult *types.ToolResult
 			var err error
 

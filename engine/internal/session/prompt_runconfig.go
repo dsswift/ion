@@ -46,6 +46,13 @@ func (m *Manager) buildRunConfig(
 		runCfg.Timeouts = m.config.Timeouts
 	}
 
+	// Thread shell config so the Bash tool can run commands through the user's
+	// login shell when EngineRuntimeConfig.Shell.UseLoginShell is set. Nil
+	// leaves the default non-login bash -c path.
+	if m.config != nil && m.config.Shell != nil {
+		runCfg.Shell = m.config.Shell
+	}
+
 	// Thread the early-stop continuation config so the runloop can resolve
 	// engine.json defaults. Nil here means "use built-in defaults" — the
 	// runloop falls back via types.EarlyStopDefaults().

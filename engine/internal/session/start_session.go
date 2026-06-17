@@ -54,10 +54,10 @@ func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }
 // session_root_context.go.
 func (a *sessionAccessor) RootContext() context.Context { return a.s.rootContext() }
 
-func (a *sessionAccessor) SendPrompt(text string, model string) error {
-	var overrides *PromptOverrides
-	if model != "" {
-		overrides = &PromptOverrides{Model: model}
+func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdditions []string) error {
+	overrides := buildPromptOverrides(model, bashAllowlistAdditions)
+	if len(bashAllowlistAdditions) > 0 {
+		utils.Info("PlanMode", fmt.Sprintf("sessionAccessor.SendPrompt: key=%s threading %d bash-allowlist additions for this prompt: %v", a.key, len(bashAllowlistAdditions), bashAllowlistAdditions))
 	}
 	return a.m.SendPrompt(a.key, text, overrides)
 }
@@ -688,12 +688,11 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 	// Wire send_message and persistent emit on each host
 	for _, host := range group.Hosts() {
 		capturedKey := key
-		host.SetOnSendMessage(func(text string) {
-			go func() {
-				if err := m.SendPrompt(capturedKey, text, nil); err != nil {
-					utils.Log("Session", fmt.Sprintf("ext/send_message failed: %v", err))
-				}
-			}()
+		host.SetOnSendMessage(func(payload extension.SendPromptPayload) {
+			// Shared dispatch body (prompt_options.go) so the active-hook path
+			// and this fallback path produce identical run configuration.
+			// Model + bash-allowlist additions flow through; nothing is dropped.
+			go m.dispatchSendPromptPayload(capturedKey, "start_session", payload)
 		})
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {

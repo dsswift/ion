@@ -76,6 +76,13 @@ type EngineRuntimeConfig struct {
 	Relay        *RelayConfig               `json:"relay,omitempty"`
 	Timeouts     *TimeoutsConfig            `json:"timeouts,omitempty"`
 	WebSearch    *WebSearchConfig           `json:"webSearch,omitempty"`
+	// Shell controls how the Bash tool selects the shell used to execute
+	// commands. Pointer so engine.json can fully omit the block and inherit
+	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
+	// Bash tool runs each command through the user's login shell so rc files
+	// (PATH, aliases, functions, exported env) are sourced. See
+	// types.ShellConfig.
+	Shell *ShellConfig `json:"shell,omitempty"`
 	// Workspace holds engine-wide filesystem-watch and session-lifecycle
 	// limits (orphaned-session reap grace window, per-watcher directory cap).
 	// Pointer so engine.json can omit the block and inherit the compiled

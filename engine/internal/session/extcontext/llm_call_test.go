@@ -54,7 +54,7 @@ func (a *llmCallTestAccessor) RootContext() context.Context {
 	}
 	return a.rootCtx
 }
-func (a *llmCallTestAccessor) SendPrompt(_, _ string) error                                       { return nil }
+func (a *llmCallTestAccessor) SendPrompt(_, _ string, _ []string) error                           { return nil }
 func (a *llmCallTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }

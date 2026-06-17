@@ -286,6 +286,111 @@ func TestMergeConfigs_CompactionOverride(t *testing.T) {
 	}
 }
 
+// TestMergeConfigs_ShellOverride pins that the Bash login-shell config block
+// from a JSON layer (~/.ion/engine.json) survives the merge. This is the
+// direct regression guard for the bug where shell.useLoginShell was silently
+// dropped because mergeInto had no case for the Shell field — the config
+// parsed fine but never reached RunConfig.Shell, so the Bash tool always ran
+// the default bash -c.
+func TestMergeConfigs_ShellOverride(t *testing.T) {
+	base := DefaultConfig()
+	overlay := &types.EngineRuntimeConfig{
+		Shell: &types.ShellConfig{UseLoginShell: true, ShellPath: "/bin/zsh"},
+	}
+	result := MergeConfigs(nil, base, overlay)
+	if result.Shell == nil {
+		t.Fatal("expected shell config to survive merge, got nil (silently dropped)")
+	}
+	if !result.Shell.UseLoginShell {
+		t.Fatal("expected UseLoginShell=true after merge")
+	}
+	if result.Shell.ShellPath != "/bin/zsh" {
+		t.Fatalf("expected ShellPath=/bin/zsh, got %q", result.Shell.ShellPath)
+	}
+}
+
+// TestMergeConfigs_OptionalPointerBlocksSurvive pins that every optional
+// pointer block consumed by a downstream layer (session, cmd_serve, prompt
+// options) survives a JSON-layer merge. mergeInto hand-copies each field; a
+// field added to EngineRuntimeConfig but forgotten here is silently dropped
+// from user/project engine.json. This test fails the moment such a block is
+// dropped — exactly the class of bug that hid shell.useLoginShell.
+func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
+	base := DefaultConfig()
+	enabled := true
+	overlay := &types.EngineRuntimeConfig{
+		Security:     &types.SecurityConfig{RedactSecrets: true},
+		FeatureFlags: &types.FeatureFlagsConfig{Source: "static"},
+		Relay:        &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
+		WebSearch:    &types.WebSearchConfig{Mode: "server"},
+		Webhooks:     &types.WebhooksConfig{Enabled: &enabled},
+		Scheduling:   &types.SchedulingConfig{DefaultTz: "America/Chicago"},
+	}
+	result := MergeConfigs(nil, base, overlay)
+
+	if result.Security == nil || !result.Security.RedactSecrets {
+		t.Error("Security block dropped by merge")
+	}
+	if result.FeatureFlags == nil || result.FeatureFlags.Source != "static" {
+		t.Error("FeatureFlags block dropped by merge")
+	}
+	if result.Relay == nil || result.Relay.URL != "wss://relay.example" {
+		t.Error("Relay block dropped by merge")
+	}
+	if result.WebSearch == nil || result.WebSearch.Mode != "server" {
+		t.Error("WebSearch block dropped by merge")
+	}
+	if result.Webhooks == nil || result.Webhooks.Enabled == nil || !*result.Webhooks.Enabled {
+		t.Error("Webhooks block dropped by merge")
+	}
+	if result.Scheduling == nil || result.Scheduling.DefaultTz != "America/Chicago" {
+		t.Error("Scheduling block dropped by merge")
+	}
+}
+
+// TestMergeConfigs_WebhooksScheduling_FromRawJSON exercises the exact
+// path from issue #242: a raw engine.json map (not a pre-built struct)
+// carrying a "webhooks" / "scheduling" block, round-tripped through
+// fromMap and folded by MergeConfigs. The struct-based
+// TestMergeConfigs_OptionalPointerBlocksSurvive does not cover the
+// fromMap JSON-tag round-trip, so a mis-named JSON tag or a dropped
+// merge case would slip past it. This pins the JSON -> merged-config
+// chain end-to-end: a user who sets webhooks.port / bindInterface in
+// ~/.ion/engine.json must see those values survive into the merged
+// config that downstream webhookConfigFrom reads.
+func TestMergeConfigs_WebhooksScheduling_FromRawJSON(t *testing.T) {
+	global := fromMap(map[string]any{
+		"webhooks": map[string]any{
+			"port":          8765,
+			"bindInterface": "0.0.0.0",
+		},
+		"scheduling": map[string]any{
+			"defaultTz": "America/Chicago",
+		},
+	})
+	if global == nil {
+		t.Fatal("fromMap returned nil for a non-empty engine.json map")
+	}
+
+	merged := MergeConfigs(nil, DefaultConfig(), global)
+
+	if merged.Webhooks == nil {
+		t.Fatal("Webhooks block dropped: merged.Webhooks == nil (the #242 regression)")
+	}
+	if merged.Webhooks.Port != 8765 {
+		t.Errorf("Webhooks.Port = %d, want 8765", merged.Webhooks.Port)
+	}
+	if merged.Webhooks.BindInterface != "0.0.0.0" {
+		t.Errorf("Webhooks.BindInterface = %q, want \"0.0.0.0\"", merged.Webhooks.BindInterface)
+	}
+	if merged.Scheduling == nil {
+		t.Fatal("Scheduling block dropped: merged.Scheduling == nil (the #242 regression)")
+	}
+	if merged.Scheduling.DefaultTz != "America/Chicago" {
+		t.Errorf("Scheduling.DefaultTz = %q, want \"America/Chicago\"", merged.Scheduling.DefaultTz)
+	}
+}
+
 func TestMergeConfigs_DoesNotMutateProviders(t *testing.T) {
 	base := DefaultConfig()
 	base.Providers["anthropic"] = types.ProviderConfig{APIKey: "base-key"}

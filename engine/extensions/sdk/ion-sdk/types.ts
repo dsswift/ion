@@ -730,6 +730,29 @@ export interface SessionListEntry {
 export interface SendPromptOpts {
   /** Per-prompt model override. Empty/undefined uses the session default. */
   model?: string
+
+  /**
+   * Per-prompt, run-scoped plan-mode Bash command-prefix allowances.
+   *
+   * Each entry is a command prefix (e.g. `'gh issue create'`) that the
+   * engine adds to the plan-mode Bash allowlist for the single run this
+   * prompt starts. They are unioned with the session-scoped allowlist and
+   * are **never persisted** — they apply only for the scope of this
+   * prompt's execution turn, then are dropped at run end.
+   *
+   * This is how a slash command dispatched as an extension command (e.g.
+   * one loaded from a `.ion/commands/*.md` file whose frontmatter declares
+   * `allowed_bash_commands`) performs its side effect — running an allowed
+   * Bash command such as `gh issue create` — while plan mode is active,
+   * rather than waiting until plan mode exits.
+   *
+   * Like `model`, additions are only honored when sendPrompt is called from
+   * an active hook / command-execute context. When called from a timer or
+   * scheduler callback (no active dispatch context), they are dropped.
+   *
+   * An empty/omitted array is a no-op.
+   */
+  bashAllowlistAdditions?: string[]
 }
 
 export interface ElicitOptions {

@@ -480,6 +480,28 @@ Same merge semantics as other config fields: higher-priority layers override low
 }
 ```
 
+## shell
+
+Controls how the `Bash` tool selects the shell used to execute commands. Omit the block to inherit the default: a non-login, non-interactive shell that sources no rc files (`bash -c` on POSIX, PowerShell `-NoProfile -Command` on Windows). This is the historical behavior.
+
+When `useLoginShell` is `true`, the engine runs each `Bash` command through the user's **login** shell (e.g. `zsh -lc`), so `.zprofile` / `.zshrc` are sourced for every command. This picks up the user's `PATH`, aliases, shell functions, and rc-exported environment that a non-login shell never sees — useful when the engine is launched from a GUI context (e.g. a macOS app bundle) that inherits a truncated `PATH`. Because each command re-sources the rc files, login-shell mode is robust to mid-session environment changes.
+
+**POSIX only.** On Windows the PowerShell branch is unchanged; `useLoginShell` has no effect there, as Windows has no analogous "login shell" concept.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `useLoginShell` | bool | `false` | When `true`, run `Bash` commands through the user's login shell (sourcing rc files) instead of the default non-login `bash -c`. POSIX only. |
+| `shellPath` | string | `""` | Pins the shell binary to use when `useLoginShell` is `true`. Empty auto-resolves in order: `$SHELL`, else `/bin/zsh`, else `/bin/bash`. |
+
+```json
+{
+  "shell": {
+    "useLoginShell": true,
+    "shellPath": "/bin/zsh"
+  }
+}
+```
+
 ## featureFlags
 
 Feature flag source configuration.

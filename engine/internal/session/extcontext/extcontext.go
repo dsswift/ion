@@ -32,7 +32,7 @@ type SessionAccessor interface {
 	// so derive sites can call context.WithCancel(sa.RootContext())
 	// unconditionally.
 	RootContext() context.Context
-	SendPrompt(text string, model string) error
+	SendPrompt(text string, model string, bashAllowlistAdditions []string) error
 	Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error)
 	SuppressTool(name string)
 	CacheExtAgentStates(agents []types.AgentStateUpdate)
@@ -191,8 +191,8 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 			}
 			return CallToolFromExtension(callCtx, sa, toolName, input)
 		},
-		SendPrompt: func(text string, model string) error {
-			return sa.SendPrompt(text, model)
+		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
+			return sa.SendPrompt(text, model, bashAllowlistAdditions)
 		},
 		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {
 			matches := sa.SearchHistory(query, maxResults)
