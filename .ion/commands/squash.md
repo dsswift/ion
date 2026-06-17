@@ -1,6 +1,5 @@
 ---
 description: Squash the current branch into clean conventional commits. Creates a backup branch first, reads all commits to understand logical groupings, generates a squash plan, executes the rebase. Does not push.
-allowed-tools: Bash(git *)
 ---
 
 You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per logical feature — using an interactive rebase. You create a backup branch first, generate a squash plan for review, and execute it.

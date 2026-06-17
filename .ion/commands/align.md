@@ -1,17 +1,18 @@
 ---
-description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan before implementation. Outside plan mode: reviews all branch changes against Ion quality gates and principles. Supports PR mode (in PR #N), branch mode (in branch <name>), and optional focus narrowing. Analyze-only — never edits source files.
-allowed-tools: Bash(ls *), Bash(stat *), Bash(git *), Bash(gh pr view *), Bash(gh pr diff *), Bash(gh pr list *), Bash(gh pr checks *), Read, Grep, Glob
+description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality gates and principles, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, may implement the fixes and commit them. Supports PR mode (in PR #N), branch mode (in branch <name>), and optional focus narrowing. Never squashes, rebases, pushes, or opens PRs.
+allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks]
 ---
 
 You are running the `/align` command. This command operates in two modes depending on context. Detect the active mode first, then follow the instructions for that mode.
 
 **Hard rules. These apply in both modes.**
 
-- You will not edit, create, or delete any source file.
-- You will not stage, commit, amend, rebase, push, or open a PR.
-- You will not run `gh pr create`, `gh pr merge`, `gh pr review`, `gh pr comment`, `git commit`, `git push`, or any mutating command.
-- Your output is a single markdown report in this chat response. That is the entire deliverable.
-- After the report, stop. The user reads the findings and decides what to do next.
+- You will not squash, rebase, amend, force-push, push, or open/modify a PR. The commit-rewrite lifecycle (`/squash`) and the PR lifecycle (`/create-pr`) belong to the operator and are invoked when the operator decides.
+- You will not run `gh pr create`, `gh pr merge`, `gh pr review`, `gh pr comment`, `git push`, `git rebase`, `git commit --amend`, `git push --force`, or any other commit-rewriting or remote-mutating command.
+- **Committing is allowed — and only in Mode B, only after the operator approves the fix plan.** When Mode B implements an approved fix plan (B-Step 6), it commits the completed work with conventional, correctly-scoped commits, exactly as any implementation session would (see root `AGENTS.md` § "Commits"). It never squashes those commits together, never rebases, and never pushes — the operator handles squashing and PRs. Mode A never commits (no code exists yet — there is nothing to commit). During the review/plan phase of either mode (everything before an approved Mode B plan), no `git commit` happens.
+- **You review the *content* of the work, never the *commit-shaping or PR lifecycle*.** You will not author findings, amendments, recommendations, plan steps, or open items that direct the operator to squash, split/re-cut/rebase commits, choose a merge strategy, or open/sequence a pull request. Commit-shaping (one-scope-per-commit, squash seams) is owned by `/squash`; PR creation is owned by `/create-pr`. Both are the operator's lifecycle, invoked when the operator decides — running `/align` never implies a squash or a PR is the next step. You may *mention* in the report's prose that a follow-up squash or PR will eventually happen, but never as a finding, plan step, amendment, recommendation, or open item.
+- Your analysis output is a single markdown report in this chat response. After the report, Mode A writes only the plan file (folding in the amendments); Mode B writes the plan file and then — once the operator approves — implements the fix plan, which edits source and commits the result. No other lifecycle action (squash, rebase, push, PR) is permitted in either mode.
+- The report is followed by the mode's plan write — Mode A applies the amendments to the audited plan, Mode B authors a fix plan in planning mode. Mode A stops after the plan write and never implements. Mode B stops after authoring the plan and waits for operator approval; only after approval does it implement the fixes and commit them (B-Step 6).
 
 ---
 
@@ -70,6 +71,7 @@ This rule applies in both modes. When evaluating whether a plan entry (Mode A) o
 - **"Add a `console.warn` / `log.Warn` when the bad case happens"** as the fix. Logging the symptom is not preventing it.
 - **"Mark this for the next decomposition phase" / "address in Phase N"** without a corresponding code change in this branch. Phase markers without phase work are aspirational.
 - **"Flag this in the PR description so reviewers know"** as the resolution. Reviewer-aware notes don't close defects.
+- **"Run `/squash`", "split / re-cut / rebase these commits", "decide the merge strategy", "before `/create-pr` …", or any step that routes the operator through the commit-rewrite or PR lifecycle.** These are not align resolutions — they are operator-lifecycle work owned by `/squash` and `/create-pr`. A finding about commit *content* (a malformed commit message, a missing issue trailer) is resolved by fixing that content, not by directing a squash, rebase, merge-strategy choice, or PR. Commit partitioning / squash shape is not a finding align raises at all (see the Commit-message-quality dimension). Such steps must not appear as a finding resolution, amendment, plan step, or open item in either mode.
 - **Plain narrative comments establishing the intentional scope of a known-fragile implementation** — same anti-pattern as the TODO marker, with the marker stripped. The defect is still documented, not fixed.
 
 Each resolution must be one of:
@@ -90,11 +92,11 @@ The plan and any fix plan generated from this review are themselves subject to t
 
 # Mode A: Plan Alignment (pre-implementation)
 
-You are reviewing the current plan before any code is written. The goal is to catch misalignment with Ion's architectural principles while the plan is still cheap to change. You produce findings and propose amendments — you do not edit the plan file.
+You are reviewing the current plan before any code is written. The goal is to catch misalignment with Ion's architectural principles while the plan is still cheap to change. You produce findings, then apply the amendments to the plan file so the plan is aligned and ready to execute.
 
 **Additional hard rules for Mode A.**
 
-- You will not edit the plan file. Amendments are *proposed* inline in this response, never applied.
+- After the report, you apply the amendments to the resolved plan file. The amendments are folded in, not merely proposed. The user can revert any amendment afterward.
 - You will not start implementing the plan.
 
 **Sister command:** Mode B reviews the same dimensions against actual code (post-implementation). If you add a grounding document, dimension, or plan-resolution rule to Mode A, add it to Mode B too.
@@ -293,7 +295,7 @@ A numbered list of concrete amendments to the plan, in priority order. Each amen
 - **Remove** — a step that should not happen at all.
 - **Replace** — wording or approach in a specific plan section.
 
-For every amendment, quote the plan section it modifies and write the proposed replacement text or addition. Be concrete enough for copy/paste application — but do **not** edit the plan file yourself.
+For every amendment, quote the plan section it modifies and write the proposed replacement text or addition. Be concrete enough for copy/paste application — these amendments are applied to the plan file in A-Step 5.
 
 ### 5. ⚠️ Destructive Plan Steps (only render if any exist)
 
@@ -366,17 +368,28 @@ Include the actual counts. The verdict is conservative: any unresolved BLOCKER �
 
 The verdict is the final line on screen. Place it last; nothing else follows.
 
-## A-Step 5: Stop
+## A-Step 5: Apply the amendments to the plan
+
+After emitting the report, edit the resolved plan file to fold in the amendments. This is the step that makes the alignment durable — the plan that lands in implementation is the aligned plan, not the original.
+
+- **Apply every CONSTRUCTIVE amendment** (Add / Move / Replace / Strengthen) directly at the plan section it cites.
+- **Apply every DESTRUCTIVE amendment too** (Remove / Revert planned change / Narrow scope). These already cleared the four-check destructive-amendment gate in A-Step 4 to even be recommended, so they are applied — but in the report (and in a one-line note at the top of the edited plan section) call out exactly what was removed so the user can revert it. The user can always revert; applying is the default.
+- **Preserve the plan's existing structure and headings.** Integrate each amendment at the cited section — replace the affected lines, insert the added step in place, relocate the moved step to its new layer. Do not append a dump of amendments to the end of the plan.
+- **Do not introduce a forbidden resolution while applying.** The "Plan resolution rules — no document-instead-of-fix moves" section above governs the amended plan exactly as it governs the original: no TODO/FIXME/HACK/XXX markers, no "open a follow-up issue", no narrative-scope comments standing in for a fix. An amendment that would inject one of these is itself non-conforming — fix it properly or record it as an explicit do-nothing with rationale.
+
+The verdict, counts, and findings in the report are computed against the plan **as audited** (before this edit). Do not recompute them after applying.
+
+## A-Step 6: Stop
 
 Print:
 
-`✅ Alignment check complete — {verdict} with {N blockers, N concerns, N nits}.`
+`✅ Alignment check complete — {verdict} with {N blockers, N concerns, N nits}. Plan updated with the amendments.`
 
 End with:
 
-> Alignment check complete. I will not edit the plan file, make code changes, or start implementation from this command. Read the findings and proposed amendments above. When you are ready, tell me which amendments to apply and we will update the plan together before any code is written.
+> Alignment check complete and the plan has been updated with the amendments above. I have not made code changes or started implementation from this command. Review the amended plan; if any amendment isn't what you wanted, tell me to revert it — the original wording is in the findings above. When you are ready, we move to implementation.
 
-Stop. Do not offer to implement. Do not edit the plan.
+Stop. Do not offer to implement. Do not start implementation.
 
 ---
 
@@ -384,12 +397,13 @@ Stop. Do not offer to implement. Do not edit the plan.
 
 # Mode B: Post-Changes Alignment (pre-PR gate)
 
-You are running the final alignment gate before a pull request is opened. Your job is to analyze the branch changes against Ion's quality standards, report findings, and recommend fixes. You do not make any changes.
+You are running the alignment gate. Your job is to analyze the branch changes against Ion's quality standards, report findings, author a fix plan, and — after the operator approves that plan — implement and commit the fixes.
 
 **Additional hard rules for Mode B.**
 
-- After the report, stop. The user reads the findings and we discuss them before any PR is created.
-- Do not offer to start fixing. The user drives the next step.
+- After the report, you enter planning mode and author a fix plan for the findings (B-Step 5). During the review-and-plan phase, the only write is the plan file — you do not edit source, commit, push, squash, rebase, or open/modify a PR yet.
+- **Do not start fixing before the plan is approved.** Author the fix plan and wait. Implementation happens only after the operator approves the plan through the normal plan-approval flow.
+- **After approval, implement the fix plan and commit the result (B-Step 6).** You edit source to resolve the findings, run the scoped quality gates, and commit the completed work with conventional, correctly-scoped commits (root `AGENTS.md` § "Commits"). You still never squash, rebase, push, or touch a PR — the operator owns squashing and the PR lifecycle.
 
 **Sister command:** Mode A reviews the same dimensions against a plan (pre-implementation). If you add a grounding document, dimension, or plan-resolution rule to Mode B, add it to Mode A too.
 
@@ -581,14 +595,15 @@ For every engine behavior change: corresponding `*_test.go` or integration test?
 - Contract changes: `TestContractManifest` rerun?
 - Desktop logic changes: corresponding `*.test.ts` updated?
 
-### Commit hygiene
+### Commit message quality
 
-Walk every commit on the branch:
+Walk every commit on the branch and check each commit *message* is well-formed:
 - Conventional Commits with required scope: `type(scope): subject`
 - Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`
 - Allowed scopes: `engine`, `desktop`, `relay`, `ios`, `docs`, `repo`
-- Only one directory scope per commit scope. You cannot include ios scope changes in a commit for desktop scope. They must be broken into separate commits, one for each scope. If you bundle scopes the Release Damnit CI/CD stage will not properly detect the changes for the scope or update the versions, and the release will never happen.
 - Issue association (when working from an issue): subject must end with ` (#N)` AND body must include `Fixes #N` or `Closes #N` trailer. Both are required.
+
+**Out of scope for `/align`:** commit *partitioning* and *squash shape* — one-scope-per-commit, the Release-Damnit version-detection seams, whether commits should be re-cut or split. That is owned by `/squash` (see `squash.md` § "Scope enforcement"). Do not flag cross-commit bundling here, and do not propose re-cutting, splitting, squashing, or rebasing commits in any finding, recommendation, or plan step. Align reviews whether each commit *message* is correct, not how the commits are partitioned.
 
 ### Necessity and correctness
 
@@ -775,26 +790,53 @@ After all per-PR sub-reports, emit a **Cross-PR section** if and only if the PRs
 
 Emit a **Batch verdict** line: e.g. `🛑 Batch verdict: BLOCKED (PR #138 has 2 blockers)` or `✅ Batch verdict: READY (all 3 PRs clean)`. The most severe per-PR verdict wins for the batch.
 
-## B-Step 5: Stop
+## B-Step 5: Enter planning mode and author the fix plan
+
+After emitting the report, **enter planning mode and author a fix plan** that resolves the findings. This applies in **all three sub-modes** (Local, Branch, PR): after any alignment review the natural next step is to plan the fixes, so the command always produces a plan. If the user does not want the fixes, they close the tab.
+
+Entering planning mode creates the plan artifact automatically, and the user reviews and approves it through the normal plan-approval flow — **do not re-encode that mechanism**; just enter planning mode and author the plan. This mirrors `/resolve-dependabot-prs`: emit the summary, enter planning mode, author the plan, stop. While in planning mode the only write is the plan file — no source edits, no commits, no pushes, no PR mutations. Source edits and commits happen later, in B-Step 6, only after the operator approves the plan.
+
+**What the fix plan contains:**
+
+- A resolution for **every BLOCKER, CONCERN, and NIT** in the report. Each finding maps to one or more plan steps.
+- Steps that obey the "Plan resolution rules — no document-instead-of-fix moves" section above: every finding is resolved by a **code change, contract change, code deletion, a test that pins behavior, or an explicit do-nothing with stated rationale**. Never "add a TODO", "open a follow-up issue", "add a narrative comment", or "address in Phase N" as a resolution.
+- **The fix plan resolves only the *content* findings.** It never includes a squash, a commit split / re-cut / rebase, a merge-strategy decision, or a PR-creation / PR-sequencing step or open item. If the branch's commit shape is non-ideal, that is for `/squash` (operator-invoked) and `/create-pr` — the fix plan does not mention, sequence, or gate on them. A fix plan that ends with "then run `/squash`" or "decide split-vs-accept before the PR" is non-conforming; strip it.
+- In **PR mode**, the plan covers the findings across the reviewed PR(s) — the same way as the other sub-modes. The user's next step after reviewing a PR is to plan the changes (whether they land on this branch or are requested on the PR).
+
+**If there are zero findings** (verdict `READY` / `ALIGNED`), still enter planning mode and author a short stub plan that states no alignment issues were found and there is nothing to fix. The plan being empty is the correct, expected outcome of a clean review — not a reason to skip planning mode.
 
 Print:
 
-Local mode: `✅ Review complete — {verdict} with {N blockers, N concerns, N nits}.`
-Branch mode: `✅ Branch review complete — {verdict} with {N blockers, N concerns, N nits}.`
-PR mode: `✅ PR review complete — {batch verdict} across {N} PRs.`
+Local mode: `✅ Review complete — {verdict} with {N blockers, N concerns, N nits}. Fix plan authored.`
+Branch mode: `✅ Branch review complete — {verdict} with {N blockers, N concerns, N nits}. Fix plan authored.`
+PR mode: `✅ PR review complete — {batch verdict} across {N} PRs. Fix plan authored.`
 
 End with the appropriate handoff paragraph:
 
 Local mode:
 
-> Review complete. I will not make edits, stage files, amend commits, or open a PR from this command. Read the findings above. When you are ready, we will discuss them together and put a fix plan in place before the pull request is created.
+> Review complete and a fix plan addressing the findings has been authored in planning mode. I have not edited source, committed, squashed, pushed, or opened a PR yet. Review and approve the plan through the normal flow; once you approve, I implement the fixes and commit them (I will not squash, push, or open a PR — you own those). If there was nothing to fix, the plan is empty — close the tab and move on.
 
 Branch mode:
 
-> Review complete. I will not make edits, stage files, amend commits, or open a PR from this command. Read the findings above. When you are ready, we will discuss them together and decide whether the branch is ready for a pull request.
+> Review complete and a fix plan addressing the findings has been authored in planning mode. I have not edited source, committed, squashed, pushed, or opened a PR yet. Review and approve the plan through the normal flow; once you approve, I implement the fixes and commit them (I will not squash, push, or open a PR — you own those). If there was nothing to fix, the plan is empty — close the tab and move on.
 
 PR mode:
 
-> Review complete. I will not edit, comment on, approve, request changes on, or merge any of these pull requests from this command. Read the findings above. When you are ready, we will discuss them together and decide which PRs are safe to merge, which need changes requested, and which need a follow-up plan.
+> Review complete and a fix plan addressing the findings across the reviewed PR(s) has been authored in planning mode. I have not edited, commented on, approved, requested changes on, or merged any of these pull requests. Review and approve the plan through the normal flow; once you approve, I implement the fixes and commit them on the working branch (I will not squash, push, or touch the PRs — you own those). If there was nothing to fix, the plan is empty — close the tab and move on.
 
-After that line, the response ends. Do not offer to start fixing. Do not propose patches inline. Do not run any further commands. The user drives the next step.
+After authoring the plan, stop and wait for operator approval. Do not implement, edit source, commit, or run further mutating commands before approval. Once the operator approves the plan, proceed to B-Step 6.
+
+## B-Step 6: Implement the approved fix plan and commit (post-approval only)
+
+This step runs **only after the operator approves the fix plan** authored in B-Step 5. Before approval, do nothing here.
+
+When the operator approves:
+
+1. **Implement every plan step.** Edit source to resolve each finding exactly as the plan specifies — code change, contract change, code deletion, or a test that pins behavior. Honor the "Plan resolution rules — no document-instead-of-fix moves" section: no TODO/FIXME/HACK/XXX markers, no "open a follow-up issue", no narrative-scope comments standing in for a fix.
+2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, and `make check-contracts` when a shared type changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
+3. **For a bug-fix finding, confirm the test fails on the unfixed code** before claiming it pins the fix (revert the fix mentally or temporarily, watch the test go red). A test that passes with the fix reverted does not pin the fix.
+4. **Commit the completed work** with conventional, correctly-scoped commits (root `AGENTS.md` § "Commits"): `type(scope): subject`, scope matching the primary path, subject ≤ 65 chars, body wrapped ≤ 100 chars (commitlint enforces this), and the issue trailer (`Fixes #N` / `Closes #N` + ` (#N)` subject suffix) when the work came from an issue. Split into separate commits at clean scope seams when the fixes span scopes (e.g. one `chore(engine)`, one `chore(desktop)`, one `docs(repo)`).
+5. **Never** squash, rebase, amend across the operator's prior commits, force-push, push, or open/modify a PR. Commit only. The operator runs `/squash` and `/create-pr` when ready.
+
+After committing, report what landed (the commits, the gates that passed) and stop. Tell the operator the work is committed and ready, and that you have not squashed, pushed, or opened a PR. Do not run `/squash` or `/create-pr` and do not suggest them as a next step you will take — they are the operator's to invoke.
