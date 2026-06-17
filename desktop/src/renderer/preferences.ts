@@ -69,6 +69,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   relayApiKey: saved.relayApiKey,
   lanServerPort: saved.lanServerPort,
   pairedDevices: saved.pairedDevices,
+  streamThinkingToRemote: saved.streamThinkingToRemote,
   remoteDisplay: saved.remoteDisplay,
   engineDefaultModel: saved.engineDefaultModel,
   engineProfiles: saved.engineProfiles,
@@ -420,6 +421,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setLanServerPort: (port) => {
     set({ lanServerPort: port })
+    saveSettings(getAllSettings(get))
+  },
+  setStreamThinkingToRemote: (enabled) => {
+    set({ streamThinkingToRemote: enabled })
     saveSettings(getAllSettings(get))
   },
   addPairedDevice: (device) => {

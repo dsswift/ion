@@ -3,7 +3,7 @@ import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log } from './logger'
 import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedEngineTabStatus } from './state'
 import { broadcast } from './broadcast'
-import { currentBackend } from './settings-store'
+import { currentBackend, shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
 import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
@@ -242,7 +242,34 @@ export function wireEngineBridgeEvents(): void {
           default:                             return `desktop_${engineType.replace('engine_', '')}`
         }
       }
-      state.remoteTransport.send({ type: engineToWireType(event.type), tabId, instanceId, ...event })
+      // Low-bandwidth mode (issue #158): gate the per-token reasoning stream.
+      // `engine_thinking_delta` becomes `desktop_thinking_delta` on the wire.
+      // When `streamThinkingToRemote` is OFF for this desktop we DROP the
+      // delta (do not forward) to save bandwidth — but we ALWAYS forward the
+      // block_start / block_end boundaries below so the phone still renders
+      // the "💭 Thought for Ns" summary and never looks stalled mid-turn.
+      // Both branches log so the operational log explains exactly why a
+      // given iOS device did or did not receive the reasoning stream.
+      //
+      // Spread order matters: `...event` carries the engine's own
+      // `type: 'engine_thinking_*'`, so it MUST come before the `type:`
+      // override or it clobbers the computed wire type and iOS (which decodes
+      // `desktop_thinking_*`) never matches. The text-delta path above
+      // constructs its envelope explicitly for the same reason.
+      if (event.type === 'engine_thinking_delta') {
+        if (!shouldStreamThinkingToRemote()) {
+          log(`thinking: dropped engine_thinking_delta key=${key} (streamThinkingToRemote=off) — boundaries still forwarded`)
+        } else {
+          log(`thinking: forwarding engine_thinking_delta key=${key} (streamThinkingToRemote=on)`)
+          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+        }
+      } else if (event.type === 'engine_thinking_block_start' || event.type === 'engine_thinking_block_end') {
+        // Boundaries always forward (never gated) so the phone renders the
+        // "💭 Thought for Ns" summary and never looks stalled mid-turn.
+        state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+      } else {
+        state.remoteTransport.send({ type: engineToWireType(event.type), tabId, instanceId, ...event })
+      }
 
       // Synthesize a `permission_request` envelope for iOS when an
       // engine-view `engine_status` event carries AskUserQuestion or

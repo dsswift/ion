@@ -254,6 +254,166 @@ export function createEngineEventSlice(set: StoreSet, _get: StoreGet): Partial<S
           }
           break
         }
+        case 'engine_thinking_block_start': {
+          // Extended thinking (issue #158). The model began a reasoning
+          // block. Open a fresh `role: 'thinking'` message on this instance
+          // so the turn view can render the collapsed thinking affordance
+          // above the tool row. `thinkingActive: true` drives the live
+          // pulse/"thinking…" indicator until block_end arrives.
+          //
+          // A thinking block is OPTIONAL per turn; this case only fires
+          // when the model actually reasoned. Boundaries (start/end) always
+          // arrive when reasoning happened — deltas may be suppressed by
+          // engine config — so the block must be openable from the boundary
+          // alone (summary-only path). We open with empty content; if no
+          // deltas come, block_end leaves content empty and the renderer
+          // falls back to the summary state.
+          console.log(`[store] thinking_block_start: key=${key} opening thinking row`)
+          set((state) => {
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const pane = state.conversationPanes.get(tabIdInner)
+            const inst = pane?.instances.find((i) => i.id === instanceId)
+            const msgs = [...(inst?.messages || []), {
+              id: nextMsgId(),
+              role: 'thinking' as const,
+              content: '',
+              thinkingActive: true,
+              timestamp: Date.now(),
+            }]
+            const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+            return { conversationPanes }
+          })
+          break
+        }
+        case 'engine_thinking_delta': {
+          // Incremental reasoning text. Append to the open (active) thinking
+          // message on this instance. Deltas are gated engine-side by a
+          // default-on config, so this case may never fire for a given block
+          // even though block_start/block_end did — that is the summary-only
+          // path and is handled by leaving content empty.
+          //
+          // Unlike engine_text_delta we do NOT route thinking through the
+          // 60fps batching accumulator: reasoning deltas are lower-volume
+          // than assistant text, the thinking row is collapsed-by-default
+          // (only the last 2-3 lines are visible while streaming), and
+          // keeping the write synchronous avoids a second cross-cutting
+          // buffer that would also need flushing on block_end / stream_reset.
+          const text = event.thinkingText || ''
+          if (!text) break
+          set((state) => {
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const pane = state.conversationPanes.get(tabIdInner)
+            const inst = pane?.instances.find((i) => i.id === instanceId)
+            const msgs = [...(inst?.messages || [])]
+            // Find the most recent active thinking row to append into. If
+            // none exists (a delta arrived before we saw block_start — e.g.
+            // a dropped/reordered start), open one defensively so the text
+            // is not lost.
+            let idx = -1
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].role === 'thinking' && msgs[i].thinkingActive) { idx = i; break }
+            }
+            if (idx === -1) {
+              console.log(`[store] thinking_delta: key=${key} no active thinking row — opening one defensively`)
+              msgs.push({
+                id: nextMsgId(),
+                role: 'thinking' as const,
+                content: text,
+                thinkingActive: true,
+                timestamp: Date.now(),
+              })
+            } else {
+              msgs[idx] = { ...msgs[idx], content: msgs[idx].content + text }
+            }
+            const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+            return { conversationPanes }
+          })
+          break
+        }
+        case 'engine_thinking_block_end': {
+          // The reasoning block finished. Seal the active thinking row:
+          // clear thinkingActive (stops the pulse) and stamp the summary
+          // fields (elapsed seconds, token estimate, redacted flag). The
+          // renderer uses these for the historical/summary render states.
+          //
+          // thinkingRedacted=true means encrypted reasoning with no readable
+          // text — no deltas arrived, content stays empty, and the renderer
+          // shows the "🔒 redacted reasoning" affordance instead of an empty
+          // block. We honor it by stamping the flag on the row.
+          const redacted = !!event.thinkingRedacted
+          console.log(
+            `[store] thinking_block_end: key=${key} elapsed=${event.thinkingElapsedSeconds ?? '?'}s ` +
+            `tokens=${event.thinkingTotalTokens ?? '?'} redacted=${redacted}`,
+          )
+          set((state) => {
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const pane = state.conversationPanes.get(tabIdInner)
+            const inst = pane?.instances.find((i) => i.id === instanceId)
+            const msgs = [...(inst?.messages || [])]
+            let idx = -1
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].role === 'thinking' && msgs[i].thinkingActive) { idx = i; break }
+            }
+            if (idx === -1) {
+              // block_end with no active row (start was dropped, or block_end
+              // arrived twice). Synthesize a summary-only row so the user
+              // still sees that the model reasoned this turn.
+              console.log(`[store] thinking_block_end: key=${key} no active thinking row — synthesizing summary-only row`)
+              msgs.push({
+                id: nextMsgId(),
+                role: 'thinking' as const,
+                content: '',
+                thinkingActive: false,
+                thinkingElapsedSeconds: event.thinkingElapsedSeconds,
+                thinkingTotalTokens: event.thinkingTotalTokens,
+                thinkingRedacted: redacted,
+                timestamp: Date.now(),
+              })
+            } else {
+              msgs[idx] = {
+                ...msgs[idx],
+                thinkingActive: false,
+                thinkingElapsedSeconds: event.thinkingElapsedSeconds,
+                thinkingTotalTokens: event.thinkingTotalTokens,
+                thinkingRedacted: redacted,
+              }
+            }
+            const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+            return { conversationPanes }
+          })
+          break
+        }
+        case 'engine_stream_reset': {
+          // The engine is retrying mid-turn. Discard the in-progress thinking
+          // accumulator for this instance, exactly as partial assistant text
+          // is discarded today (event-slice.ts handles the normalized-stream
+          // assistant-text discard; this is the raw-stream thinking analogue).
+          //
+          // We drop ONLY a still-active thinking row (thinkingActive=true) —
+          // a completed (sealed) thinking row from an earlier message in the
+          // same turn is real history and must survive the retry, mirroring
+          // how only the trailing un-sealed assistant message is discarded.
+          set((state) => {
+            const { tabId: tabIdInner, instanceId } = parseSessionKey(key)
+            const pane = state.conversationPanes.get(tabIdInner)
+            const inst = pane?.instances.find((i) => i.id === instanceId)
+            if (!inst) return {}
+            const hadActive = (inst.messages || []).some(
+              (m) => m.role === 'thinking' && m.thinkingActive,
+            )
+            if (!hadActive) {
+              console.log(`[store] stream_reset: key=${key} no active thinking row to discard`)
+              return {}
+            }
+            console.log(`[store] stream_reset: key=${key} discarding in-progress thinking accumulator`)
+            const msgs = (inst.messages || []).filter(
+              (m) => !(m.role === 'thinking' && m.thinkingActive),
+            )
+            const conversationPanes = withInstanceMessages(state.conversationPanes, key, msgs)
+            return { conversationPanes }
+          })
+          break
+        }
         case 'engine_message_end': {
           // Flush any pending text deltas before processing message_end
           // to ensure the final message content is complete before sealing.

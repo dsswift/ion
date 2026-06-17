@@ -168,6 +168,21 @@ describe('projectable-settings allowlist', () => {
     const actual = new Set<string>(PROJECTABLE_GROUP_ORDER)
     expect(actual).toEqual(expected)
   })
+
+  it('projects streamThinkingToRemote as a default-on boolean in the General group (issue #158)', () => {
+    // Low-bandwidth mode facet 1. The setting MUST be projected so iOS
+    // can see/toggle it (the desktop UI lives in the Remote category, but
+    // `remote` is not on the iOS allowlist — pairing/transport is iOS-
+    // local — so the iOS-visible home is General). Default ON: the phone
+    // receives the reasoning stream unless the user opts out.
+    const entry = PROJECTABLE_SETTINGS.find((s) => s.key === 'streamThinkingToRemote')
+    expect(entry, 'streamThinkingToRemote must be on the allowlist').toBeTruthy()
+    expect(entry?.type).toBe('boolean')
+    expect(entry?.group).toBe('general')
+    expect(entry?.defaultValue).toBe(true)
+    // The group must be a real, projected group (general is in the order).
+    expect(PROJECTABLE_GROUP_ORDER).toContain(entry!.group)
+  })
 })
 
 describe('projectableSchema / projectableGroups', () => {
@@ -315,6 +330,15 @@ describe('validateSettingValue', () => {
   it('accepts a boolean for a boolean key', () => {
     expect(validateSettingValue('enableEarlyStopContinuation', true)).toBeNull()
     expect(validateSettingValue('enableEarlyStopContinuation', false)).toBeNull()
+  })
+
+  it('accepts/rejects values for streamThinkingToRemote like any boolean (issue #158)', () => {
+    expect(validateSettingValue('streamThinkingToRemote', true)).toBeNull()
+    expect(validateSettingValue('streamThinkingToRemote', false)).toBeNull()
+    // Non-booleans rejected so the iOS write cannot drift the type.
+    expect(validateSettingValue('streamThinkingToRemote', 'true')).not.toBeNull()
+    expect(validateSettingValue('streamThinkingToRemote', 1)).not.toBeNull()
+    expect(validateSettingValue('streamThinkingToRemote', null)).not.toBeNull()
   })
 
   it('rejects a non-boolean for a boolean key', () => {

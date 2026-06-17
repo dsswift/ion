@@ -240,3 +240,90 @@ describe('groupMessages unified turn view', () => {
     expect(turn.isActive).toBe(true)
   })
 })
+
+// ─── thinking-row grouping (issue #158) ───
+//
+// A `role: 'thinking'` message is hoisted into the turn it belongs to. In
+// the unified turn view it rides on the agent-turn item (`thinking` field),
+// so AgentTurnGroup can render it ABOVE the tool row. When a turn has no
+// tools (text-only) the thinking row is emitted as a standalone `thinking`
+// item before the assistant text. In the non-unified view every thinking
+// row is a standalone `thinking` item in stream order.
+
+function tmsg(role: 'user' | 'assistant' | 'tool' | 'thinking', content = '', extra: Partial<Message> = {}): Message {
+  return { id: `${role}-${Math.random().toString(36).slice(2, 8)}`, role, content, timestamp: Date.now(), ...extra } as Message
+}
+
+describe('groupMessages — thinking row hoisting (unified turn view)', () => {
+  it('hoists a thinking row onto the agent-turn that has tools', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('thinking', 'let me reason', { thinkingActive: false, thinkingElapsedSeconds: 4 }),
+      tmsg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+      tmsg('assistant', 'done'),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+
+    expect(result).toHaveLength(2)
+    expect(result[0].kind).toBe('user')
+    const turn = result[1] as Extract<GroupedItem, { kind: 'agent-turn' }>
+    expect(turn.kind).toBe('agent-turn')
+    // The thinking row rides on the turn (rendered above the tool row).
+    expect(turn.thinking).toBeTruthy()
+    expect(turn.thinking?.role).toBe('thinking')
+    expect(turn.thinking?.content).toBe('let me reason')
+    expect(turn.tools).toHaveLength(1)
+    expect(turn.assistantMessages).toHaveLength(1)
+  })
+
+  it('emits a standalone thinking item before text when the turn has no tools', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('thinking', 'reasoning', { thinkingActive: false }),
+      tmsg('assistant', 'the answer'),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+
+    // [user, thinking, assistant] — thinking precedes the assistant output.
+    expect(result).toHaveLength(3)
+    expect(result[0].kind).toBe('user')
+    expect(result[1].kind).toBe('thinking')
+    expect((result[1] as Extract<GroupedItem, { kind: 'thinking' }>).message.content).toBe('reasoning')
+    expect(result[2].kind).toBe('assistant')
+  })
+
+  it('turns without a thinking row leave the turn.thinking field undefined', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+      tmsg('assistant', 'done'),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+    const turn = result[1] as Extract<GroupedItem, { kind: 'agent-turn' }>
+    expect(turn.kind).toBe('agent-turn')
+    expect(turn.thinking).toBeUndefined()
+  })
+
+  it('renders thinking rows as standalone items in the non-unified view', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('thinking', 'reasoning', { thinkingActive: false }),
+      tmsg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+      tmsg('assistant', 'done'),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: false })
+
+    // Non-unified: thinking is its own item, emitted before the tool group.
+    const kinds = result.map((r) => r.kind)
+    expect(kinds).toContain('thinking')
+    const thinkingIdx = kinds.indexOf('thinking')
+    const toolGroupIdx = kinds.indexOf('tool-group')
+    expect(thinkingIdx).toBeGreaterThanOrEqual(0)
+    // Thinking precedes the tool group that follows it in stream order.
+    expect(thinkingIdx).toBeLessThan(toolGroupIdx)
+  })
+})

@@ -65,6 +65,7 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'remote', label: 'Enable Remote Control', keywords: 'remote control enable ios companion app' },
   { categoryId: 'remote', label: 'Paired Devices', keywords: 'paired devices pairing code ios phone' },
   { categoryId: 'remote', label: 'Relay Server', keywords: 'relay server url api key discovery' },
+  { categoryId: 'remote', label: 'Stream Reasoning to Phone', keywords: 'stream reasoning thinking phone low bandwidth mode remote ios deltas' },
   { categoryId: 'remote', label: 'Disable LAN Server', keywords: 'disable lan server local network relay debug' },
 
   // Advanced

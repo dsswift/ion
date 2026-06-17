@@ -19,6 +19,8 @@ export function RemoteCategory() {
   const pairedDevices = usePreferencesStore((s) => s.pairedDevices)
   const removePairedDevice = usePreferencesStore((s) => s.removePairedDevice)
   const addPairedDevice = usePreferencesStore((s) => s.addPairedDevice)
+  const streamThinkingToRemote = usePreferencesStore((s) => s.streamThinkingToRemote)
+  const setStreamThinkingToRemote = usePreferencesStore((s) => s.setStreamThinkingToRemote)
 
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [transportState, setTransportState] = useState<RemoteTransportState>('disconnected')
@@ -165,6 +167,20 @@ export function RemoteCategory() {
             setDiscoveredRelays={setDiscoveredRelays}
             isDiscovering={isDiscovering}
             setIsDiscovering={setIsDiscovering}
+          />
+
+          {/* ── Low-bandwidth mode (issue #158) ──
+              First facet of a planned broader low-bandwidth mode. When off,
+              the desktop stops forwarding the model's per-token reasoning
+              stream to paired phones but still sends the block boundaries, so
+              iOS shows the "Thought for Ns" summary without the bandwidth of
+              the full reasoning text. Also projected to iOS under General. */}
+          <SettingHeading>Low-bandwidth mode</SettingHeading>
+          <SettingToggle
+            label="Stream reasoning to phone"
+            description="Forward the model's live reasoning text to paired devices. Turn off to save bandwidth — the phone still shows that the model thought (and for how long), just not the per-token stream."
+            checked={streamThinkingToRemote}
+            onChange={setStreamThinkingToRemote}
           />
 
           {/* ── Debug: Disable LAN Server ── */}

@@ -73,6 +73,42 @@ export function writeSettings(data: Record<string, any>): void {
   if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
   const encrypted = encryptSensitiveSettings(data)
   atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(encrypted, null, 2), 0o600)
+  // Any settings write may have flipped a hot-path-cached projectable flag.
+  // Invalidate the cache here, at the single write helper, so the next read
+  // re-pulls from disk. Cheap (clears a primitive); correctness over saving
+  // one disk read.
+  invalidateStreamThinkingToRemoteCache()
+}
+
+// ─── streamThinkingToRemote hot-path cache (issue #158) ───
+//
+// `streamThinkingToRemote` (default true) gates whether the desktop forwards
+// `engine_thinking_delta` events to paired iOS devices. That gate is read on
+// the iOS forward path in event-wiring.ts, which can fire many times per
+// second during an extended-thinking turn. Re-reading settings.json from disk
+// on every delta would be wasteful, so we cache the resolved boolean and
+// invalidate it on every settings write (the single funnel above) — settings
+// changes are infrequent, deltas are not.
+let streamThinkingCache: boolean | null = null
+
+/** Drop the cached `streamThinkingToRemote` value; next read re-pulls disk. */
+export function invalidateStreamThinkingToRemoteCache(): void {
+  streamThinkingCache = null
+}
+
+/**
+ * Resolve `streamThinkingToRemote` from settings.json, cached for the hot
+ * forward path. Defaults to `true` (stream ON) when the key is absent or
+ * not a boolean — matching SETTINGS_DEFAULTS. The cache is invalidated by
+ * `writeSettings` so a toggle change takes effect on the next delta.
+ */
+export function shouldStreamThinkingToRemote(): boolean {
+  if (streamThinkingCache !== null) return streamThinkingCache
+  const raw = readSettings()
+  const v = raw.streamThinkingToRemote
+  // Default ON: only an explicit `false` disables streaming.
+  streamThinkingCache = v === false ? false : true
+  return streamThinkingCache
 }
 
 export function readEngineConfig(): Record<string, any> {

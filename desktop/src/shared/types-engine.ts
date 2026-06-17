@@ -374,6 +374,16 @@ export type EngineEvent =
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
   | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
+  // Extended-thinking events (issue #158). Surface the model's reasoning
+  // activity so consumers can distinguish active reasoning from a stall and
+  // render a "thinking" view. Emitted only when the provider streams reasoning
+  // (Anthropic extended thinking); a thinking block is OPTIONAL per turn.
+  // Boundaries (start/end) always emit; engine_thinking_delta is gated by the
+  // engine's ThinkingConfig.StreamDeltas (default on). See
+  // engine/internal/types/normalized_event.go (Thinking*Event).
+  | { type: 'engine_thinking_block_start' }
+  | { type: 'engine_thinking_delta'; thinkingText: string }
+  | { type: 'engine_thinking_block_end'; thinkingTotalTokens?: number; thinkingElapsedSeconds?: number; thinkingRedacted?: boolean }
   | { type: 'engine_extension_died'; extensionName: string; exitCode: number | null; signal: string | null; stderrTail?: string[] }
   | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }
   | { type: 'engine_events_dropped'; count: number }

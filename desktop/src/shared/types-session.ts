@@ -156,7 +156,7 @@ export interface TabState {
 
 export interface Message {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'harness'
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'harness' | 'thinking'
   content: string
   toolName?: string
   toolInput?: string
@@ -205,6 +205,41 @@ export interface Message {
    * opens a fresh assistant message instead of appending to this one.
    */
   sealed?: boolean
+  // ─── Extended-thinking fields (issue #158) ───
+  // Populated ONLY on `role: 'thinking'` messages, which the renderer
+  // synthesizes from the engine's `engine_thinking_block_start` /
+  // `engine_thinking_delta` / `engine_thinking_block_end` event trio.
+  // A thinking block is OPTIONAL per turn; most turns carry none. The
+  // ThinkingBlock component (rendered above the tool row in a turn)
+  // reads these to pick one of three render states:
+  //   - Live:         thinkingActive=true (between start and end). Pulse
+  //                   indicator + tail of `content` streaming in.
+  //   - Historical:   thinkingActive=false with non-empty `content`
+  //                   (deltas were captured). Collapsed → tail; expand →
+  //                   full text.
+  //   - Summary-only: thinkingActive=false with empty `content` — deltas
+  //                   were disabled engine-side, the block was redacted,
+  //                   or the message was rehydrated from persistence
+  //                   without text. Renders the elapsed/token summary (or
+  //                   the redacted affordance) and never promises text.
+  // All three are local UI state derived from engine events; none are
+  // part of the Go wire contract. Thinking messages are intentionally
+  // dropped from persistence (see serialize-conversation-pane.ts) so the
+  // tabs file does not balloon with streamed reasoning text; a rehydrated
+  // conversation simply has no thinking rows, which is the correct
+  // summary-absent default.
+  /** True while the block is streaming (between block_start and block_end). */
+  thinkingActive?: boolean
+  /** Wall-clock seconds the reasoning block took, from block_end. */
+  thinkingElapsedSeconds?: number
+  /** Token count the model spent reasoning, from block_end (when present). */
+  thinkingTotalTokens?: number
+  /**
+   * True when the engine reported the block as encrypted/redacted
+   * reasoning with no readable text. The ThinkingBlock renders a
+   * "🔒 redacted reasoning" affordance rather than an empty block.
+   */
+  thinkingRedacted?: boolean
 }
 
 export interface RunResult {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { SpinnerGap, ArrowCircleRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { groupMessages, ToolGroup, AssistantMessage, MessageBubble, AgentTurnGroup } from './conversation'
+import { groupMessages, ToolGroup, AssistantMessage, MessageBubble, AgentTurnGroup, ThinkingBlock } from './conversation'
 import { meta, formatDuration } from './agent-panel-helpers'
 import { DispatchPager } from './DispatchPager'
 import type { DispatchInfo } from './agent-panel-helpers'
@@ -165,7 +165,10 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
               return <ToolGroup key={`tg-${idx}`} tools={item.messages} skipMotion />
             }
             if (item.kind === 'agent-turn') {
-              return <AgentTurnGroup key={`at-${idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} skipMotion />
+              return <AgentTurnGroup key={`at-${idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} thinking={item.thinking} skipMotion />
+            }
+            if (item.kind === 'thinking') {
+              return <ThinkingBlock key={item.message.id} message={item.message} skipMotion />
             }
             return null
           })}
