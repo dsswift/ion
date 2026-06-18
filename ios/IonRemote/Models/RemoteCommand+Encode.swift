@@ -52,6 +52,10 @@ extension RemoteCommand {
             try container.encode(TypeKey.setPermissionMode, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(mode, forKey: .mode)
+        case .setThinkingEffort(let tabId, let effort):
+            try container.encode(TypeKey.setThinkingEffort, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(effort, forKey: .effort)
         case .loadConversation(let tabId, let before):
             try container.encode(TypeKey.loadConversation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

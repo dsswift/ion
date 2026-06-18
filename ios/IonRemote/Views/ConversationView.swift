@@ -330,6 +330,11 @@ struct ConversationView: View {
                 },
                 onTapAttachments: {
                     showAttachments = true
+                },
+                thinkingGloballyEnabled: viewModel.thinkingGloballyEnabled,
+                thinkingEffort: tab?.thinkingEffort ?? "off",
+                onSelectThinkingEffort: { level in
+                    viewModel.setThinkingEffort(tabId: tabId, effort: level)
                 }
             )
 

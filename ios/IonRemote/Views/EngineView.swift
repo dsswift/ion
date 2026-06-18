@@ -593,7 +593,12 @@ struct EngineView: View {
                     hasEngineExtension: true,
                     extensionName: fields.extensionName,
                     statusState: fields.state,
-                    runningAgentCount: runningAgentCount
+                    runningAgentCount: runningAgentCount,
+                    thinkingGloballyEnabled: viewModel.thinkingGloballyEnabled,
+                    thinkingEffort: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.thinkingEffort ?? "off",
+                    onSelectThinkingEffort: { level in
+                        viewModel.setThinkingEffort(tabId: tabId, effort: level)
+                    }
                 )
             }
             Divider()

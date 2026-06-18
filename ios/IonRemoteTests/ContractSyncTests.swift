@@ -501,6 +501,7 @@ final class ContractSyncTests: XCTestCase {
             "id", "providerId", "contextWindow",
             "costPer1kInput", "costPer1kOutput",
             "supportsCaching", "supportsThinking", "supportsImages",
+            "thinkingMode", "thinkingEfforts",
             "isCustom",
         ]
         let goSet = Set(goFields)

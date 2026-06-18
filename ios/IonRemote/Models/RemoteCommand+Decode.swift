@@ -64,6 +64,11 @@ extension RemoteCommand {
             let mode = try container.decode(PermissionMode.self, forKey: .mode)
             self = .setPermissionMode(tabId: tabId, mode: mode)
 
+        case .setThinkingEffort:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let effort = try container.decode(String.self, forKey: .effort)
+            self = .setThinkingEffort(tabId: tabId, effort: effort)
+
         case .loadConversation:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let before = try container.decodeIfPresent(String.self, forKey: .before)

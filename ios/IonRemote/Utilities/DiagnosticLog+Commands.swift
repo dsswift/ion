@@ -37,6 +37,9 @@ extension DiagnosticLog {
         case .setPermissionMode(let tabId, let mode):
             log("CMD: setPermissionMode tabId=\(tabId.prefix(8)) mode=\(mode.rawValue)")
 
+        case .setThinkingEffort(let tabId, let effort):
+            log("CMD: setThinkingEffort tabId=\(tabId.prefix(8)) effort=\(effort)")
+
         case .loadConversation(let tabId, let before):
             log("CMD: loadConversation tabId=\(tabId.prefix(8)) before=\(before?.prefix(8) ?? "nil")")
 

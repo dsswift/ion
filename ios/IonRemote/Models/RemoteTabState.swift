@@ -9,6 +9,10 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var status: TabStatus
     var workingDirectory: String
     var permissionMode: PermissionMode
+    /// Per-conversation extended-thinking effort ("low"|"medium"|"high"), or
+    /// nil/absent when off. Drives the iOS thinking control. Mirrors the
+    /// desktop snapshot's RemoteTabState.thinkingEffort.
+    var thinkingEffort: String?
     var permissionQueue: [PermissionRequest]
     var lastMessage: String?
     var contextTokens: Int?
@@ -136,6 +140,10 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// tabs before the engine reconnects, or tabs where an extension
     /// failed at startup before any prompt was sent).
     var conversationIds: [String]? = nil
+    /// Per-engine-instance extended-thinking effort ("low"|"medium"|"high"),
+    /// or nil/absent when off. Mirrors the desktop snapshot's per-instance
+    /// thinkingEffort so iOS shows the right level for the active sub-tab.
+    var thinkingEffort: String? = nil
 
     // Non-Codable conversation state — populated by ConversationInstance,
     // not decoded from the snapshot JSON.
@@ -154,6 +162,7 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
         case runningAgentCount
         case modelFallback
         case conversationIds
+        case thinkingEffort
     }
 }
 

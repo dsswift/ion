@@ -40,6 +40,11 @@ enum RemoteCommand: Codable, Sendable {
     case cancel(tabId: String)
     case respondPermission(tabId: String, questionId: String, optionId: String)
     case setPermissionMode(tabId: String, mode: PermissionMode)
+    /// Per-conversation extended-thinking effort change. effort is one of
+    /// "off"|"low"|"medium"|"high". The desktop applies it to the same
+    /// per-conversation state its own prompts read, so the next prompt from
+    /// either client carries the level. Lockstep desktop↔iOS wire.
+    case setThinkingEffort(tabId: String, effort: String)
     case loadConversation(tabId: String, before: String?)
     case terminalInput(tabId: String, instanceId: String, data: String)
     case terminalResize(tabId: String, instanceId: String, cols: Int, rows: Int)
@@ -204,6 +209,7 @@ enum RemoteCommand: Codable, Sendable {
         case cancel = "desktop_cancel"
         case respondPermission = "desktop_respond_permission"
         case setPermissionMode = "desktop_set_permission_mode"
+        case setThinkingEffort = "desktop_set_thinking_effort"
         case loadConversation = "desktop_load_conversation"
         case terminalInput = "desktop_terminal_input"
         case terminalResize = "desktop_terminal_resize"
@@ -329,6 +335,9 @@ enum RemoteCommand: Codable, Sendable {
         case offset
         // `length` is unique to request_plan_content — no collision in the existing set.
         case length
+        // setThinkingEffort payload. `tabId` is shared above; `effort` is the
+        // canonical wire key ("off"|"low"|"medium"|"high"), unique here.
+        case effort
     }
 
     // `init(from decoder:)` is in RemoteCommand+Decode.swift to keep this
