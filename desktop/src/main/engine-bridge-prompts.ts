@@ -20,6 +20,12 @@ export interface SendPromptArgs {
   appendSystemPrompt?: string
   imageAttachments?: ImageAttachmentPayload[]
   implementationPhase?: boolean
+  /**
+   * Per-prompt extended-thinking effort (live per-conversation control).
+   * 'off'/undefined → no thinking directive. Mapped onto the wire
+   * `thinkingEffort` field, which the engine turns into RunOptions.Thinking.
+   */
+  thinkingEffort?: string
   enterPlanModeDescription?: string
   planModeSparseReminder?: string
   planFilePath?: string
@@ -50,6 +56,10 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // is omitempty, so this round-trips cleanly. See ADR-003 framing in
   // the plan-mode docs for why structured flags beat prompt prose.
   if (args.implementationPhase) msg.implementationPhase = true
+  // Per-prompt thinking effort. Only attach a meaningful, non-"off" level so
+  // the engine's omitempty ThinkingEffort round-trips cleanly and "off"/absent
+  // both mean "no thinking this prompt".
+  if (args.thinkingEffort && args.thinkingEffort !== 'off') msg.thinkingEffort = args.thinkingEffort
   // Harness-supplied EnterPlanMode tool description (ADR-004). The
   // engine's RunOptions.EnterPlanModeDescription field is omitempty —
   // only send when non-empty so the wire format stays minimal. The

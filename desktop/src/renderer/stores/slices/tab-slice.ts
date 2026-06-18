@@ -5,6 +5,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isBlankConversationTab, initialModelOverride } from '../session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance, instanceMessageCount } from '../conversation-instance'
 import { cleanupTabDeltas } from './engine-event-slice'
+import { applySetThinkingEffort } from './tab-slice-thinking'
 
 export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -61,6 +62,12 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (planModelSplitEnabled && mode === 'plan' && planModeModel) {
         get().setTabModel(activeTabId, planModeModel)
       }
+    },
+
+    setThinkingEffort: (effort) => {
+      // Delegated to tab-slice-thinking.ts (file-cap split). Per-conversation,
+      // isolated per-tab/per-instance, applied live on the next prompt.
+      applySetThinkingEffort(set, get, effort)
     },
 
     createTab: async (useWorktree) => {

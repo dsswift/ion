@@ -94,6 +94,13 @@ export interface State {
 
   initStaticInfo: () => Promise<void>
   setPermissionMode: (mode: 'auto' | 'plan', source?: string) => void
+  /**
+   * Set the per-conversation extended-thinking effort for the active
+   * conversation. Isolated per-tab (bare) and per-instance (engine subtab),
+   * exactly like setPermissionMode. Applied live on the next prompt — no
+   * session restart. 'off' clears thinking for the conversation.
+   */
+  setThinkingEffort: (effort: import('../../shared/types-session').ThinkingEffort) => void
   createTab: (useWorktree?: boolean) => Promise<string>
   createTabInDirectory: (dir: string, useWorktree?: boolean, skipDuplicateCheck?: boolean, pinToGroupId?: string) => Promise<string>
   selectTab: (tabId: string) => void

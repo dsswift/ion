@@ -18,8 +18,8 @@ export function registerEngineIpc(): void {
     return engineBridge.startSession(key, config)
   })
 
-  ipcMain.handle(IPC.ENGINE_PROMPT, async (_event, { key, text, model, appendSystemPrompt, imageAttachments, rawAttachments, implementationPhase }: { key: string; text: string; model?: string; appendSystemPrompt?: string; imageAttachments?: import('../../shared/types').ImageAttachmentPayload[]; rawAttachments?: import('../../shared/types-session').FileAttachment[]; implementationPhase?: boolean }) => {
-    log(`IPC ENGINE_PROMPT: key=${key} model=${model ?? 'default'} hasSysPrompt=${!!appendSystemPrompt} images=${imageAttachments?.length ?? 0} rawAttachments=${rawAttachments?.length ?? 0} implementationPhase=${implementationPhase ?? false}`)
+  ipcMain.handle(IPC.ENGINE_PROMPT, async (_event, { key, text, model, appendSystemPrompt, imageAttachments, rawAttachments, implementationPhase, thinkingEffort }: { key: string; text: string; model?: string; appendSystemPrompt?: string; imageAttachments?: import('../../shared/types').ImageAttachmentPayload[]; rawAttachments?: import('../../shared/types-session').FileAttachment[]; implementationPhase?: boolean; thinkingEffort?: string }) => {
+    log(`IPC ENGINE_PROMPT: key=${key} model=${model ?? 'default'} hasSysPrompt=${!!appendSystemPrompt} images=${imageAttachments?.length ?? 0} rawAttachments=${rawAttachments?.length ?? 0} implementationPhase=${implementationPhase ?? false} thinkingEffort=${thinkingEffort ?? 'off'}`)
     // Encode raw file attachments when present (desktop InputBar path).
     // This mirrors the remote handler pattern at handlers/engine.ts:108-114.
     let resolvedText = text
@@ -101,6 +101,7 @@ export function registerEngineIpc(): void {
         model,
         imageAttachments: resolvedImageAttachments,
         implementationPhase,
+        thinkingEffort,
         projectPath,
         planFilePath,
       })

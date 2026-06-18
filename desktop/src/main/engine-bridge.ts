@@ -400,12 +400,12 @@ export class EngineBridge extends EventEmitter {
     return entry ? { ...entry.config } : undefined
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[]): Promise<{ ok: boolean; error?: string }> {
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string): Promise<{ ok: boolean; error?: string }> {
     // Message construction and the diagnostic log line live in
     // engine-bridge-prompts.ts so this file stays under the 600-line cap
     // as the send_prompt wire surface grows. See that sibling for the
     // per-field omitempty pattern and the bash-additions log convention.
-    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt }
+    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort }
     log(buildSendPromptLogLine(args))
     await this.connect()
     return this._sendWithResult(buildSendPromptMessage(args))

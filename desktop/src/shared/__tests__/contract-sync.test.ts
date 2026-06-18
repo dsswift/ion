@@ -169,6 +169,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'supportsCaching',
     'supportsImages',
     'supportsThinking',
+    'thinkingEfforts',
+    'thinkingMode',
   ],
   ProviderEntry: [
     'apiKeyRef',

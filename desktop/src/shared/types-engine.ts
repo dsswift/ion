@@ -126,6 +126,8 @@ export interface ConversationInstance {
   sessionModel: string | null
   /** Permission mode for this instance */
   permissionMode: 'auto' | 'plan'
+  /** Per-instance extended-thinking effort (engine subtab). Default 'off'. Applied live on the next prompt. */
+  thinkingEffort?: import('./types-session').ThinkingEffort
   /** Pending permission-denied tools (null = no pending denial) */
   permissionDenied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
   /**

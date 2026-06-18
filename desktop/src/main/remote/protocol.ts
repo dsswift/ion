@@ -49,6 +49,13 @@ export interface RemoteTabState {
   status: TabStatus
   workingDirectory: string
   permissionMode: 'auto' | 'plan'
+  /**
+   * Per-conversation extended-thinking effort (bare conversation / active
+   * instance). 'low' | 'medium' | 'high' when set; omitted when off. iOS
+   * renders the per-conversation thinking control from this. Mirrors
+   * TabState.thinkingEffort / ConversationInstance.thinkingEffort.
+   */
+  thinkingEffort?: 'low' | 'medium' | 'high'
   permissionQueue: PermissionRequest[]
   lastMessage: string | null
   contextTokens: number | null
@@ -69,7 +76,7 @@ export interface RemoteTabState {
    *  by iOS (RemoteTabState.swift). Not a backend flag. */
   hasEngineExtension?: boolean
   engineProfileId?: string | null
-  conversationInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; runningAgentCount?: number; modelFallback?: { requestedModel: string; fallbackModel: string }; conversationIds?: string[] }>
+  conversationInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; runningAgentCount?: number; modelFallback?: { requestedModel: string; fallbackModel: string }; conversationIds?: string[]; thinkingEffort?: 'low' | 'medium' | 'high' }>
   activeConversationInstanceId?: string | null
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
@@ -143,6 +150,12 @@ export type RemoteCommand =
   | { type: 'desktop_cancel'; tabId: string }
   | { type: 'desktop_respond_permission'; tabId: string; questionId: string; optionId: string }
   | { type: 'desktop_set_permission_mode'; tabId: string; mode: 'auto' | 'plan' }
+  // Per-conversation extended-thinking effort change from iOS. The desktop
+  // applies it to the same per-conversation state used for its own prompts
+  // (tab.thinkingEffort or active instance.thinkingEffort), so the next prompt
+  // from either client carries the level. 'off' clears thinking. Lockstep
+  // desktop↔iOS wire — added to RemoteCommand.swift in the same change.
+  | { type: 'desktop_set_thinking_effort'; tabId: string; effort: 'off' | 'low' | 'medium' | 'high' }
   | { type: 'desktop_reset_tab_session'; tabId: string }
   // Engine-instance counterpart to desktop_reset_tab_session: stops the engine
   // session keyed by `${tabId}:${instanceId}` and wipes the renderer-side
@@ -259,7 +272,7 @@ export type RemoteCommand =
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[] }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; content: string }
   | { type: 'desktop_tab_created'; tab: RemoteTabState }
   | { type: 'desktop_tab_closed'; tabId: string }

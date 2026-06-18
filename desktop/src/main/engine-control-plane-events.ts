@@ -268,6 +268,47 @@ export function handleEngineEvent(
       } as NormalizedEvent)
       break
 
+    case 'engine_thinking_block_start':
+      // Extended thinking (issue #158), plain-conversation path. The model
+      // began a reasoning block. Translate to the normalized-stream
+      // `thinking_block_start` so event-slice.ts opens a `role: 'thinking'`
+      // row. Boundaries always arrive when reasoning happened; the per-token
+      // delta may be suppressed engine-side (summary-only path). Mirrors the
+      // extension-hosted path in engine-event-slice.ts.
+      log(`thinking_block_start: tabId=${tabId}`)
+      ctx.emit('event', tabId, { type: 'thinking_block_start' } as NormalizedEvent)
+      break
+
+    case 'engine_thinking_delta':
+      // Incremental reasoning text — peer of engine_text_delta for the
+      // thinking channel. Only arrives when the engine's ThinkingConfig
+      // .StreamDeltas is on (boundaries always flow regardless). Translate to
+      // the normalized `thinking_delta` so the renderer appends it to the open
+      // thinking row.
+      log(`thinking_delta: tabId=${tabId} len=${event.thinkingText?.length ?? 0}`)
+      ctx.emit('event', tabId, {
+        type: 'thinking_delta',
+        text: event.thinkingText,
+      } as NormalizedEvent)
+      break
+
+    case 'engine_thinking_block_end':
+      // The reasoning block finished. Carries a summary (elapsed seconds,
+      // token estimate, redacted flag) so the renderer can show "💭 Thought
+      // for Ns" even when deltas were suppressed. Translate to the normalized
+      // `thinking_block_end` so event-slice.ts seals the active thinking row.
+      log(
+        `thinking_block_end: tabId=${tabId} elapsed=${event.thinkingElapsedSeconds ?? '?'}s ` +
+        `tokens=${event.thinkingTotalTokens ?? '?'} redacted=${!!event.thinkingRedacted}`,
+      )
+      ctx.emit('event', tabId, {
+        type: 'thinking_block_end',
+        totalTokens: event.thinkingTotalTokens,
+        elapsedSeconds: event.thinkingElapsedSeconds,
+        redacted: event.thinkingRedacted,
+      } as NormalizedEvent)
+      break
+
     case 'engine_agent_state':
       ctx.emit('event', tabId, event as any)
       break

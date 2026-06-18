@@ -1,5 +1,14 @@
 import type { UsageData } from './types-events'
 
+// ─── Thinking ───
+
+/**
+ * Per-conversation extended-thinking effort. 'off' = no thinking directive;
+ * other levels map to the engine's effort dial (resolved per-model). Stored
+ * per-tab and per-instance, applied live on the next prompt.
+ */
+export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high'
+
 // ─── Tab Grouping ───
 
 export const DEFAULT_TAB_GROUP_LABELS = ['Planning', 'On Deck', 'In Progress', 'Testing'] as const
@@ -90,6 +99,8 @@ export interface TabState {
   additionalDirs: string[]
   /** Per-tab permission mode: 'auto' auto-approves, 'plan' uses CLI plan mode */
   permissionMode: 'auto' | 'plan'
+  /** Per-tab extended-thinking effort (bare conversation). Default 'off'. */
+  thinkingEffort?: ThinkingEffort
   /** Pending bash command results to send as context with next prompt */
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
   /** Whether a bash command is currently executing in this tab */
@@ -287,6 +298,12 @@ export interface RunOptions {
    */
   implementationPhase?: boolean
   /**
+   * Per-prompt extended-thinking effort for this CLI/conversation prompt.
+   * 'off'/undefined → no thinking directive. Threaded to send_prompt as
+   * `thinkingEffort`; read from the tab's level, gated by thinkingEnabled.
+   */
+  thinkingEffort?: string
+  /**
    * Harness-supplied description prose for the EnterPlanMode sentinel
    * tool that the engine injects during auto-mode runs. The desktop
    * supplies this from the ENTER_PLAN_MODE_DESCRIPTION constant in
@@ -456,66 +473,13 @@ export interface TerminalPaneState {
 }
 
 // ─── Git Types ───
-
-export interface GitCommit {
-  hash: string
-  fullHash: string
-  parents: string[]
-  authorName: string
-  authorDate: string
-  subject: string
-  refs: GitRef[]
-}
-
-export interface GitRef {
-  name: string
-  type: 'head' | 'remote' | 'tag'
-  isCurrent: boolean
-}
-
-export interface GitCommitDetail {
-  filesChanged: number
-  insertions: number
-  deletions: number
-}
-
-export interface GitCommitFile {
-  path: string
-  status: 'added' | 'modified' | 'deleted' | 'renamed'
-  oldPath?: string
-}
-
-export interface GitGraphData {
-  commits: GitCommit[]
-  isGitRepo: boolean
-  totalCount: number
-}
-
-export type GitConflictKind = 'UU' | 'AA' | 'DD' | 'AU' | 'UA' | 'DU' | 'UD'
-
-export interface GitChangedFile {
-  path: string
-  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflict'
-  staged: boolean
-  oldPath?: string
-  conflictKind?: GitConflictKind
-  isSubmodule?: boolean
-}
-
-export interface GitChangesData {
-  files: GitChangedFile[]
-  branch: string
-  isGitRepo: boolean
-  ahead: number
-  behind: number
-}
-
-export interface GitBranchInfo {
-  name: string
-  isCurrent: boolean
-  upstream: string | null
-  isRemote: boolean
-}
+//
+// Git types live in types-git.ts (extracted to keep this file under the
+// 600-line cap). Re-exported here so existing import paths keep working.
+export type {
+  GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
+  GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
+} from './types-git'
 
 // ─── Worktree Types ───
 

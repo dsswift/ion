@@ -165,7 +165,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                     mfOut = { requestedModel: mf.requestedModel, fallbackModel: mf.fallbackModel };
                   }
                 }
-                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined };
+                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined, thinkingEffort: (inst.thinkingEffort && inst.thinkingEffort !== 'off') ? inst.thinkingEffort : undefined };
               });
               activeConversationInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
             }
@@ -262,6 +262,15 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                 return t.permissionMode;
               })(),
               permissionQueue: queue,
+              // Per-conversation extended-thinking effort. Extension-hosted:
+              // active instance is authoritative. Plain: tab-level. Omitted
+              // when 'off'/absent so the iOS control defaults to off.
+              thinkingEffort: (function() {
+                var eff = t.hasEngineExtension
+                  ? (activeInst && activeInst.thinkingEffort)
+                  : t.thinkingEffort;
+                return (eff && eff !== 'off') ? eff : undefined;
+              })(),
               contextTokens: t.contextTokens,
               contextWindow: t.contextWindow ?? null,
               messageCount: (msgs.length > 0 ? msgs.length : (activeInst && activeInst.messageCount) || 0),

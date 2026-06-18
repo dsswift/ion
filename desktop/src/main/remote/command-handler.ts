@@ -9,6 +9,7 @@ import {
   handlePrompt,
   handleCancel,
   handleSetPermissionMode,
+  handleSetThinkingEffort,
   handleLoadConversation,
   handleDiscoverCommands,
   handleSetTabModel,
@@ -104,6 +105,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
       sessionPlane.respondToPermission(cmd.tabId, cmd.questionId, cmd.optionId)
       break
     case 'desktop_set_permission_mode': await handleSetPermissionMode(cmd); break
+    case 'desktop_set_thinking_effort': await handleSetThinkingEffort(cmd); break
     case 'desktop_reset_tab_session': sessionPlane.resetTabSession(cmd.tabId); break
     case 'desktop_reset_engine_session': await handleResetEngineSession(cmd); break
     case 'desktop_load_conversation': await handleLoadConversation(cmd, deviceId); break

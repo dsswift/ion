@@ -162,6 +162,22 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // dedicated Models picker for those.
   // ═══════════════════════════════════════════════════════════════════
   {
+    // Global gate for extended thinking / reasoning. Default OFF (Ion is
+    // API-billed; thinking tokens bill at output rates and can multiply a
+    // turn's cost). When ON, a per-conversation thinking control appears in
+    // the status bar on both clients (off/low/medium/high), isolated per
+    // conversation/subtab, applied live on the next prompt. When OFF, the
+    // control is hidden and no prompt carries a thinking directive. Read by
+    // the renderer at prompt-submit time (shouldEnableThinking in
+    // settings-store.ts).
+    key: 'thinkingEnabled',
+    type: 'boolean',
+    group: 'ai',
+    label: 'Enable extended thinking',
+    description: 'Let models reason before answering. When on, each conversation gets an off/low/medium/high thinking control in its status bar. Thinking improves hard multi-step tasks but bills reasoning as output tokens, so it adds cost. Off by default.',
+    defaultValue: false,
+  },
+  {
     key: 'planModelSplitEnabled',
     type: 'boolean',
     group: 'ai',

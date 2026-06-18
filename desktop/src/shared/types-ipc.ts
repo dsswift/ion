@@ -201,6 +201,7 @@ export const IPC = {
   REMOTE_USER_MESSAGE: 'ion:remote-user-message',
   REMOTE_BASH_COMMAND: 'ion:remote-bash-command',
   REMOTE_SET_PERMISSION_MODE: 'ion:remote-set-permission-mode',
+  REMOTE_SET_THINKING_EFFORT: 'ion:remote-set-thinking-effort',
   REMOTE_CLOSE_TAB: 'ion:remote-close-tab',
   REMOTE_RENAME_TAB: 'ion:remote-rename-tab',
   REMOTE_RENAME_TERMINAL_INSTANCE: 'ion:remote-rename-terminal-instance',

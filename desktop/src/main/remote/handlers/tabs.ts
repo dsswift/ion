@@ -290,6 +290,23 @@ export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type
   broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId: cmd.tabId, mode })
 }
 
+/**
+ * Apply a per-conversation thinking-effort change sent from iOS. There is no
+ * engine command — thinking is a per-prompt override — so the handler simply
+ * broadcasts to the renderer, which writes the level onto the targeted tab /
+ * active instance (the same state the desktop's own prompt-submit reads). The
+ * next prompt from either client then carries the level. 'off' clears it.
+ */
+export async function handleSetThinkingEffort(cmd: Extract<RemoteCommand, { type: 'desktop_set_thinking_effort' }>): Promise<void> {
+  const effort = cmd.effort
+  if (effort !== 'off' && effort !== 'low' && effort !== 'medium' && effort !== 'high') {
+    log(`Remote set_thinking_effort: invalid effort "${effort}"`)
+    return
+  }
+  log(`Remote set_thinking_effort: tab=${cmd.tabId} effort=${effort}`)
+  broadcast(IPC.REMOTE_SET_THINKING_EFFORT, { tabId: cmd.tabId, effort })
+}
+
 export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_conversation' }>, deviceId: string): Promise<void> {
   const PAGE_SIZE = 10
   try {

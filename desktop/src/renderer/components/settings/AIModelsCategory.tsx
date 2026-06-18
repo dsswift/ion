@@ -25,6 +25,8 @@ export function AIModelsCategory() {
   const setImplementModeModel = usePreferencesStore((s) => s.setImplementModeModel)
   const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
+  const thinkingEnabled = usePreferencesStore((s) => s.thinkingEnabled)
+  const setThinkingEnabled = usePreferencesStore((s) => s.setThinkingEnabled)
   const planModeAllowedBashCommands = usePreferencesStore((s) => s.planModeAllowedBashCommands)
   const setPlanModeAllowedBashCommands = usePreferencesStore((s) => s.setPlanModeAllowedBashCommands)
 
@@ -161,6 +163,15 @@ export function AIModelsCategory() {
           </div>
         )}
       </SettingSection>
+
+      <SettingHeading>Extended Thinking</SettingHeading>
+
+      <SettingToggle
+        label="Enable extended thinking"
+        description="Let models reason before answering. When on, each conversation gets an Off/Low/Medium/High thinking control in its status bar (per conversation, applied on the next prompt). Thinking improves hard multi-step tasks but bills reasoning as output tokens, so it adds cost. Off by default. Only models that support reasoning show the control."
+        checked={thinkingEnabled}
+        onChange={setThinkingEnabled}
+      />
 
       <SettingHeading>Plan & Implement Models</SettingHeading>
 

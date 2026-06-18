@@ -5,6 +5,7 @@ import { nextMsgId, playNotificationIfHidden, totalInputTokens, scheduleDoneGrou
 import { formatPlanCreatedDivider, formatSteerAppliedDivider } from '../../../shared/clear-divider'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { maybeGenerateTabTitle } from './event-slice-titling'
+import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -36,6 +37,14 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const tabs = s.tabs.map((tab) => {
           if (tab.id !== tabId) return tab
           const updated = { ...tab, lastEventAt: Date.now() }
+
+          // Extended thinking (issue #158), plain-conversation path. The three
+          // thinking_* events delegate to event-slice-thinking.ts (mirrors
+          // engine-event-slice.ts). Applied before the main switch so the
+          // reducer carries one call, not three cases; for any non-thinking
+          // event this returns the messages array unchanged and the switch
+          // below handles it as before (no thinking_* case remains there).
+          messages = handleThinkingEvent(messages, event) ?? messages
 
           switch (event.type) {
             case 'session_init':
@@ -70,10 +79,15 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
 
             case 'stream_reset': {
+              // Engine retrying mid-turn: discard trailing in-progress
+              // assistant text AND any still-active thinking row (a sealed
+              // thinking row from earlier in the turn survives). Mirrors
+              // engine-event-slice.ts.
               const lastMsgReset = messages[messages.length - 1]
               if (lastMsgReset?.role === 'assistant' && !lastMsgReset.toolName) {
                 messages = messages.slice(0, -1)
               }
+              messages = discardActiveThinking(messages)
               break
             }
 

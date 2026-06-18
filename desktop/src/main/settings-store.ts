@@ -56,6 +56,14 @@ export const SETTINGS_DEFAULTS = {
   // refreshes on focus, tab switch, and manual refresh. Supports ~ and $HOME
   // expansion. Default excludes ~/.ion (high-write log/conversation storage).
   gitWatcherIgnoredDirectories: ['~/.ion'] as string[],
+  // Global gate for extended thinking / reasoning. Default OFF — Ion is
+  // API-billed, where thinking tokens bill as output tokens at full rate and
+  // can multiply a turn's cost several-fold. When OFF, no prompt carries a
+  // thinking directive and the per-conversation thinking control is hidden on
+  // both clients. When ON, the per-conversation control appears and the
+  // selected effort rides on each prompt. See StatusBarThinkingPicker.tsx and
+  // the engine's resolveThinking helper.
+  thinkingEnabled: false,
 }
 
 export function readSettings(): Record<string, any> {
@@ -109,6 +117,19 @@ export function shouldStreamThinkingToRemote(): boolean {
   // Default ON: only an explicit `false` disables streaming.
   streamThinkingCache = v === false ? false : true
   return streamThinkingCache
+}
+
+/**
+ * Resolve the global `thinkingEnabled` gate from settings.json. Defaults to
+ * `false` (thinking OFF) when the key is absent or not a boolean — matching
+ * SETTINGS_DEFAULTS. This is the hard gate: when false the renderer hides the
+ * per-conversation thinking control and never sends `thinkingEffort` on a
+ * prompt. Not hot-path (read at prompt-submit time, not per-delta), so no
+ * cache is needed.
+ */
+export function shouldEnableThinking(): boolean {
+  const raw = readSettings()
+  return raw.thinkingEnabled === true
 }
 
 export function readEngineConfig(): Record<string, any> {
