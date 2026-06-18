@@ -5,9 +5,11 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"runtime"
 	"sync"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // BashOperations is a pluggable interface for command execution.
@@ -43,7 +45,7 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	shell, args := shellCommand(command)
+	shell, args := shellCommand(ctx, command)
 	cmd := exec.CommandContext(ctx, shell, args...)
 	cmd.Dir = cwd
 	cmd.Stdin = nil
@@ -90,12 +92,20 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 }
 
 // shellCommand returns the platform-appropriate shell and arguments for executing
-// a command string. On Windows, uses PowerShell; on all other platforms, uses bash.
-func shellCommand(command string) (string, []string) {
-	if runtime.GOOS == "windows" {
-		return "powershell", []string{"-NoProfile", "-Command", command}
+// a command string. By default this is a non-login bash -c on POSIX and
+// PowerShell on Windows. When a ShellConfig with UseLoginShell is present on the
+// context (injected by the runloop from EngineRuntimeConfig.Shell), POSIX
+// platforms instead run the user's login shell (e.g. zsh -lc) so rc files are
+// sourced. The selection and resolved shell path are logged for observability.
+func shellCommand(ctx context.Context, command string) (string, []string) {
+	sc := types.ShellConfigFrom(ctx)
+	shell, args, loginShell := sc.Resolve(command)
+	if loginShell {
+		utils.Debug("Bash", "shell=login resolved="+shell+" args=-lc")
+	} else {
+		utils.Debug("Bash", "shell=default resolved="+shell)
 	}
-	return "bash", []string{"-c", command}
+	return shell, args
 }
 
 // Module-level singleton, protected by RWMutex.

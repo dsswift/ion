@@ -76,7 +76,11 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 		fn := h.onSendMessage
 		h.notifMu.RUnlock()
 		if fn != nil && notif.Params.Text != "" {
-			fn(notif.Params.Text)
+			// The ext/send_message notification shape carries text only (no
+			// model / bash-allowlist fields), so the payload is text-only here.
+			// Extensions that need per-prompt model or bash grants use the
+			// ext/send_prompt request, which carries the full payload below.
+			fn(SendPromptPayload{Text: notif.Params.Text})
 		}
 	case "log":
 		// Native SDK logging channel. Routes structured log calls (and
@@ -453,8 +457,9 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	case "ext/send_prompt":
 		var req struct {
 			Params struct {
-				Text  string `json:"text"`
-				Model string `json:"model,omitempty"`
+				Text                   string   `json:"text"`
+				Model                  string   `json:"model,omitempty"`
+				BashAllowlistAdditions []string `json:"bashAllowlistAdditions,omitempty"`
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -466,10 +471,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			return
 		}
 		if ctx != nil && ctx.SendPrompt != nil {
-			// Active hook context: use hook-aware path (supports model override, recursion guard).
-			utils.Debug("extension", fmt.Sprintf("ext/send_prompt: hook ctx path model=%q", req.Params.Model))
+			// Active hook context: use hook-aware path (supports model override,
+			// per-prompt bash-allowlist additions, recursion guard).
+			utils.Debug("extension", fmt.Sprintf("ext/send_prompt: hook ctx path model=%q bashAllowlistAdditions=%d", req.Params.Model, len(req.Params.BashAllowlistAdditions)))
 			go func() {
-				if err := ctx.SendPrompt(req.Params.Text, req.Params.Model); err != nil {
+				if err := ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions); err != nil {
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
@@ -479,7 +485,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 		// No active hook context (e.g. called from a timer/scheduler): fall back to
 		// the session-level SendPrompt wired by the session manager via onSendMessage.
-		// Model override is not supported on this path.
+		// The fallback path now carries the FULL payload (model override +
+		// bash-allowlist additions), identical to the active-hook path above —
+		// onSendMessage takes a SendPromptPayload, and both session wiring sites
+		// build PromptOverrides from it via the shared buildPromptOverrides helper.
+		// There is no per-feature divergence between the two dispatch paths.
 		h.notifMu.RLock()
 		fn := h.onSendMessage
 		h.notifMu.RUnlock()
@@ -488,12 +498,13 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "sendPrompt not available: no active session"})
 			return
 		}
-		if req.Params.Model != "" {
-			utils.Debug("extension", fmt.Sprintf("ext/send_prompt: fallback path, dropping model override %q", req.Params.Model))
-		}
-		utils.Debug("extension", "ext/send_prompt: fallback path via onSendMessage")
+		utils.Info("extension", fmt.Sprintf("ext/send_prompt: fallback path via onSendMessage forwarding full payload model=%q bashAllowlistAdditions=%d", req.Params.Model, len(req.Params.BashAllowlistAdditions)))
 		go func() {
-			fn(req.Params.Text)
+			fn(SendPromptPayload{
+				Text:                   req.Params.Text,
+				Model:                  req.Params.Model,
+				BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
+			})
 			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 		}()
 

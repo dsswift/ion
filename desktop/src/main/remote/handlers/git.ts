@@ -11,13 +11,13 @@ function log(msg: string): void {
   _log('main', msg)
 }
 
-export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'git_changes' }>, deviceId: string): Promise<void> {
+export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desktop_git_changes' }>, deviceId: string): Promise<void> {
   const { directory } = cmd
   try {
     try {
       await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
     } catch {
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files: [], branch: '', isGitRepo: false, ahead: 0, behind: 0 })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_changes_response', directory, files: [], branch: '', isGitRepo: false, ahead: 0, behind: 0 })
       return
     }
 
@@ -70,20 +70,20 @@ export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'git_
     const stagedCount = files.filter(f => f.staged).length
     const unstagedCount = files.filter(f => !f.staged).length
 
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind, stagedCount, unstagedCount })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind, stagedCount, unstagedCount })
   } catch (err) {
     log(`git_changes error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_changes_response', directory, files: [], branch: '', isGitRepo: true, ahead: 0, behind: 0, stagedCount: 0, unstagedCount: 0 })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_changes_response', directory, files: [], branch: '', isGitRepo: true, ahead: 0, behind: 0, stagedCount: 0, unstagedCount: 0 })
   }
 }
 
-export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'git_graph' }>, deviceId: string): Promise<void> {
+export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'desktop_git_graph' }>, deviceId: string): Promise<void> {
   const { directory, skip = 0, limit = 100 } = cmd
   try {
     try {
       await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
     } catch {
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'git_graph_response', directory, commits: [], isGitRepo: false, totalCount: 0 })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_graph_response', directory, commits: [], isGitRepo: false, totalCount: 0 })
       return
     }
 
@@ -136,14 +136,14 @@ export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'git_gr
       passThroughLanes: node.passThroughLanes,
     }))
 
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_graph_response', directory, commits, isGitRepo: true, totalCount, graphLayout })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_graph_response', directory, commits, isGitRepo: true, totalCount, graphLayout })
   } catch (err) {
     log(`git_graph error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_graph_response', directory, commits: [], isGitRepo: true, totalCount: 0 })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_graph_response', directory, commits: [], isGitRepo: true, totalCount: 0 })
   }
 }
 
-export async function handleGitDiff(cmd: Extract<RemoteCommand, { type: 'git_diff' }>, deviceId: string): Promise<void> {
+export async function handleGitDiff(cmd: Extract<RemoteCommand, { type: 'desktop_git_diff' }>, deviceId: string): Promise<void> {
   const { directory, path: filePath, staged } = cmd
   try {
     let diff: string
@@ -164,14 +164,14 @@ export async function handleGitDiff(cmd: Extract<RemoteCommand, { type: 'git_dif
         }
       }
     }
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_diff_response', diff, fileName: basename(filePath) })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff, fileName: basename(filePath) })
   } catch (err) {
     log(`git_diff error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_diff_response', diff: '', fileName: basename(filePath) })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff: '', fileName: basename(filePath) })
   }
 }
 
-export async function handleGitStage(cmd: Extract<RemoteCommand, { type: 'git_stage' }>): Promise<void> {
+export async function handleGitStage(cmd: Extract<RemoteCommand, { type: 'desktop_git_stage' }>): Promise<void> {
   const { directory, paths } = cmd
   let ok = true
   try {
@@ -180,12 +180,12 @@ export async function handleGitStage(cmd: Extract<RemoteCommand, { type: 'git_st
     log(`git_stage error: ${(err as Error).message}`)
     ok = false
   }
-  state.remoteTransport?.send({ type: 'git_stage_result', directory, ok })
+  state.remoteTransport?.send({ type: 'desktop_git_stage_result', directory, ok })
   // Auto-refresh changes and broadcast to all devices
   await broadcastGitChanges(directory)
 }
 
-export async function handleGitUnstage(cmd: Extract<RemoteCommand, { type: 'git_unstage' }>): Promise<void> {
+export async function handleGitUnstage(cmd: Extract<RemoteCommand, { type: 'desktop_git_unstage' }>): Promise<void> {
   const { directory, paths } = cmd
   let ok = true
   try {
@@ -194,12 +194,12 @@ export async function handleGitUnstage(cmd: Extract<RemoteCommand, { type: 'git_
     log(`git_unstage error: ${(err as Error).message}`)
     ok = false
   }
-  state.remoteTransport?.send({ type: 'git_unstage_result', directory, ok })
+  state.remoteTransport?.send({ type: 'desktop_git_unstage_result', directory, ok })
   // Auto-refresh changes and broadcast to all devices
   await broadcastGitChanges(directory)
 }
 
-export async function handleGitCommit(cmd: Extract<RemoteCommand, { type: 'git_commit' }>): Promise<void> {
+export async function handleGitCommit(cmd: Extract<RemoteCommand, { type: 'desktop_git_commit' }>): Promise<void> {
   const { directory, message } = cmd
   let ok = true
   let error: string | undefined
@@ -210,13 +210,13 @@ export async function handleGitCommit(cmd: Extract<RemoteCommand, { type: 'git_c
     ok = false
     error = (err as Error).message
   }
-  state.remoteTransport?.send({ type: 'git_commit_result', directory, ok, error })
+  state.remoteTransport?.send({ type: 'desktop_git_commit_result', directory, ok, error })
   // Auto-refresh both changes and graph, broadcast to all devices
   await broadcastGitChanges(directory)
   await broadcastGitGraph(directory)
 }
 
-export async function handleGitCommitFiles(cmd: Extract<RemoteCommand, { type: 'git_commit_files' }>, deviceId: string): Promise<void> {
+export async function handleGitCommitFiles(cmd: Extract<RemoteCommand, { type: 'desktop_git_commit_files' }>, deviceId: string): Promise<void> {
   const { directory, hash } = cmd
   try {
     // Run both queries in parallel — both are lightweight index-only reads
@@ -251,26 +251,26 @@ export async function handleGitCommitFiles(cmd: Extract<RemoteCommand, { type: '
     }
 
     const stats = { filesChanged: files.length, insertions: totalInsertions, deletions: totalDeletions }
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_commit_files_response', directory, hash, files, stats })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_files_response', directory, hash, files, stats })
   } catch (err) {
     log(`git_commit_files error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_commit_files_response', directory, hash, files: [], stats: { filesChanged: 0, insertions: 0, deletions: 0 } })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_files_response', directory, hash, files: [], stats: { filesChanged: 0, insertions: 0, deletions: 0 } })
   }
 }
 
-export async function handleGitCommitFileDiff(cmd: Extract<RemoteCommand, { type: 'git_commit_file_diff' }>, deviceId: string): Promise<void> {
+export async function handleGitCommitFileDiff(cmd: Extract<RemoteCommand, { type: 'desktop_git_commit_file_diff' }>, deviceId: string): Promise<void> {
   const { directory, hash, path: filePath } = cmd
   try {
     const output = await runGit(directory, ['diff-tree', '-p', '--root', hash, '--', filePath])
     const fileName = basename(filePath)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_commit_file_diff_response', hash, path: filePath, diff: output, fileName })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: output, fileName })
   } catch (err) {
     log(`git_commit_file_diff error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'git_commit_file_diff_response', hash, path: filePath, diff: '', fileName: basename(filePath) })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: '', fileName: basename(filePath) })
   }
 }
 
-export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'git_discard' }>): Promise<void> {
+export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'desktop_git_discard' }>): Promise<void> {
   const { directory, paths } = cmd
   try {
     const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall', '--', ...paths])
@@ -305,7 +305,7 @@ export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'git_
   await broadcastGitChanges(directory)
 }
 
-export async function handleGitFetch(cmd: Extract<RemoteCommand, { type: 'git_fetch' }>): Promise<void> {
+export async function handleGitFetch(cmd: Extract<RemoteCommand, { type: 'desktop_git_fetch' }>): Promise<void> {
   const { directory } = cmd
   try {
     await runGit(directory, ['fetch', '--all'])
@@ -316,7 +316,7 @@ export async function handleGitFetch(cmd: Extract<RemoteCommand, { type: 'git_fe
   await broadcastGitGraph(directory)
 }
 
-export async function handleGitPull(cmd: Extract<RemoteCommand, { type: 'git_pull' }>): Promise<void> {
+export async function handleGitPull(cmd: Extract<RemoteCommand, { type: 'desktop_git_pull' }>): Promise<void> {
   const { directory } = cmd
   try {
     await runGit(directory, ['pull'])
@@ -327,7 +327,7 @@ export async function handleGitPull(cmd: Extract<RemoteCommand, { type: 'git_pul
   await broadcastGitGraph(directory)
 }
 
-export async function handleGitPush(cmd: Extract<RemoteCommand, { type: 'git_push' }>): Promise<void> {
+export async function handleGitPush(cmd: Extract<RemoteCommand, { type: 'desktop_git_push' }>): Promise<void> {
   const { directory } = cmd
   try {
     await runGit(directory, ['push'])

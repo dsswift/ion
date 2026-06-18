@@ -100,6 +100,18 @@ type activeRun struct {
 	cumulativeOutputTokens int
 	lastContinuationDelta  int
 
+	// thinkingTokens accumulates the estimated reasoning-token count across
+	// every thinking block in this run (issue #158). Providers fold thinking
+	// into the final output-token usage, so this is an estimate derived from
+	// accumulated reasoning text length (see ThinkingBlockEndEvent.TotalTokens).
+	// Surfaced on DispatchAgentResult.ThinkingTokens / engine_dispatch_end so
+	// cost/audit consumers can separate reasoning spend from user-facing
+	// output. Atomic because processStream runs on the run goroutine while the
+	// dispatch result is assembled after the run completes — the value is read
+	// once the run goroutine has finished, but atomic keeps it race-free under
+	// the detector regardless of read/write ordering.
+	thinkingTokens atomic.Int64
+
 	// lastProgressAt is the unix-nanos timestamp of the last observed
 	// forward-progress event on this run. Bumped on every emit (so
 	// every provider stream chunk, tool result, status update, error

@@ -93,7 +93,7 @@ export function registerSettingsIpc(): void {
         const relayUrl = (data.relayUrl as string) || ''
         const relayApiKey = (data.relayApiKey as string) || ''
         if (relayUrl) {
-          state.remoteTransport.send({ type: 'relay_config', relayUrl, relayApiKey })
+          state.remoteTransport.send({ type: 'desktop_relay_config', relayUrl, relayApiKey })
         }
       }
     } catch (err) {

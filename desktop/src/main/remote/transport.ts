@@ -67,10 +67,10 @@ export class RemoteTransport extends EventEmitter {
 
   // Critical event types that must never be dropped
   private static readonly CRITICAL_TYPES = new Set([
-    'permission_request', 'snapshot', 'tab_created', 'tab_closed',
-    'conversation_history', 'heartbeat', 'terminal_snapshot',
-    'engine_conversation_history',
-    'engine_agent_state', 'engine_status', 'engine_message_end', 'engine_error',
+    'desktop_permission_request', 'desktop_snapshot', 'desktop_tab_created', 'desktop_tab_closed',
+    'desktop_conversation_history', 'desktop_heartbeat', 'desktop_terminal_snapshot',
+    'desktop_engine_conversation_history',
+    'desktop_agent_state', 'desktop_status', 'desktop_message_end', 'desktop_engine_error',
   ])
 
   constructor(config: RemoteTransportConfig) {
@@ -262,7 +262,7 @@ export class RemoteTransport extends EventEmitter {
     // Compress: raw DEFLATE (no gzip header) + 0x01 version prefix.
     // iOS uses Apple Compression framework with COMPRESSION_ZLIB to decompress.
     const wire = compressPayload(plaintext)
-    if (event.type === 'snapshot') {
+    if (event.type === 'desktop_snapshot') {
       log(`snapshot payload: ${plaintext.length} bytes → ${wire.length} bytes compressed, ${(event as any).tabs?.length ?? 0} tabs`)
     }
     let sentAny = false
@@ -511,7 +511,7 @@ export class RemoteTransport extends EventEmitter {
   private _startHeartbeat(): void {
     this._stopHeartbeat()
     this.heartbeatTimer = setInterval(() => {
-      this.send({ type: 'heartbeat', seq: this.seq, ts: Date.now(), buffered: this.sendQueue.length })
+      this.send({ type: 'desktop_heartbeat', seq: this.seq, ts: Date.now(), buffered: this.sendQueue.length })
     }, RemoteTransport.HEARTBEAT_INTERVAL_MS)
   }
 

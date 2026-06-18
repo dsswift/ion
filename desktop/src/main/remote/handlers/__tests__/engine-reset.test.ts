@@ -76,7 +76,7 @@ beforeEach(() => {
 describe('handleResetEngineSession', () => {
   it('calls bridge.stopSession with the compound key ${tabId}:${instanceId}', async () => {
     await handleResetEngineSession({
-      type: 'reset_engine_session',
+      type: 'desktop_reset_engine_session',
       tabId: 'tab-abc',
       instanceId: 'inst-xyz',
     })
@@ -87,7 +87,7 @@ describe('handleResetEngineSession', () => {
 
   it('invokes the renderer resetEngineInstance action with tabId and instanceId', async () => {
     await handleResetEngineSession({
-      type: 'reset_engine_session',
+      type: 'desktop_reset_engine_session',
       tabId: 'tab-abc',
       instanceId: 'inst-xyz',
     })
@@ -102,7 +102,7 @@ describe('handleResetEngineSession', () => {
     // handler mirrors the escape pattern used by every other engine-instance
     // handler in this file (see handleEngineRemoveInstance).
     await handleResetEngineSession({
-      type: 'reset_engine_session',
+      type: 'desktop_reset_engine_session',
       tabId: "tab'x",
       instanceId: "inst\\y",
     })
@@ -121,7 +121,7 @@ describe('handleResetEngineSession', () => {
     mocks.executeJsMock.mockRejectedValueOnce(new Error('renderer dead'))
 
     await handleResetEngineSession({
-      type: 'reset_engine_session',
+      type: 'desktop_reset_engine_session',
       tabId: 'tab-abc',
       instanceId: 'inst-xyz',
     })

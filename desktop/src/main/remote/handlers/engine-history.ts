@@ -105,7 +105,7 @@ export async function broadcastEngineHistory(tabId: string, instanceId: string |
   try {
     const { instanceId: resolvedInstanceId, messages } = await readEngineHistoryFromStore(tabId, instanceId)
     log(`broadcastEngineHistory: tabId=${tabId} instanceId=${resolvedInstanceId} broadcasting ${messages.length} messages to all devices`)
-    state.remoteTransport.send({ type: 'engine_conversation_history', tabId, instanceId: resolvedInstanceId, messages })
+    state.remoteTransport.send({ type: 'desktop_engine_conversation_history', tabId, instanceId: resolvedInstanceId, messages })
   } catch (err) {
     log(`broadcastEngineHistory error: ${(err as Error).message}`)
   }

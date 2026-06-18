@@ -58,12 +58,12 @@ function notifyTabCreated(tabId: string): void {
     try {
       const { tabs } = await getRemoteTabStates()
       const newTab = tabs.find((t: any) => t.id === tabId)
-      if (newTab) state.remoteTransport?.send({ type: 'tab_created', tab: newTab })
+      if (newTab) state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab })
     } catch {}
   }, 500)
 }
 
-export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'create_tab' }>): Promise<void> {
+export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_tab' }>): Promise<void> {
   // When the iOS client requests pinning into a specific group (e.g. the
   // per-group "+" button next to a group header), forward the group id as
   // the 4th positional argument to createTabInDirectory. The renderer-side
@@ -83,7 +83,7 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'creat
   if (tabId) notifyTabCreated(tabId)
 }
 
-export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type: 'create_terminal_tab' }>): Promise<void> {
+export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_terminal_tab' }>): Promise<void> {
   const tabId = await createTabFromCommand(cmd, 'createTerminalTab')
   if (tabId) {
     // Eagerly create a terminal instance + PTY so remote clients can use it
@@ -106,7 +106,7 @@ export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type
         const key = `${tabId}:${instance.id}`
         terminalManager.create(key, instance.cwd || cmd.workingDirectory || '~')
         state.remoteTransport?.send({
-          type: 'terminal_instance_added',
+          type: 'desktop_terminal_instance_added',
           tabId,
           instance: { id: instance.id, label: instance.label || 'Shell', kind: instance.kind || 'user', readOnly: false, cwd: instance.cwd || '' },
         })
@@ -118,7 +118,7 @@ export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type
   }
 }
 
-export async function handleCreateEngineTab(cmd: Extract<RemoteCommand, { type: 'create_engine_tab' }>): Promise<void> {
+export async function handleCreateEngineTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_engine_tab' }>): Promise<void> {
   let dir = cmd.workingDirectory
   if (!dir) {
     const s = readSettings()
@@ -144,13 +144,13 @@ export async function handleCreateEngineTab(cmd: Extract<RemoteCommand, { type: 
   }
 }
 
-export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'close_tab' }>): void {
+export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_close_tab' }>): void {
   const tabId = cmd.tabId
   sessionPlane.closeTab(tabId)
   terminalManager.destroyByPrefix(`${tabId}:`)
   engineBridge.stopByPrefix(`${tabId}:`)
   broadcast(IPC.REMOTE_CLOSE_TAB, tabId)
-  state.remoteTransport?.send({ type: 'tab_closed', tabId })
+  state.remoteTransport?.send({ type: 'desktop_tab_closed', tabId })
 
   // Clean up all per-tab main-process state to prevent memory leaks.
   activeAssistantMessages.delete(tabId)
@@ -190,7 +190,7 @@ async function resolveTabProjectPath(tabId: string): Promise<string | undefined>
   }
 }
 
-export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'prompt' }>): Promise<void> {
+export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_prompt' }>): Promise<void> {
   const reqId = cmd.clientMsgId || `remote-${Date.now()}`
   // Echo the user's typed text back to iOS with a canonical ms timestamp so
   // iOS replaces its optimistic entry by id (fixing the "56 years ago"
@@ -207,7 +207,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'prompt' 
   // confirmations, not the only ones — but for the non-slash path this
   // echo is the only one.
   state.remoteTransport?.send({
-    type: 'message_added',
+    type: 'desktop_message_added',
     tabId: cmd.tabId,
     message: { id: reqId, role: 'user', content: cmd.text, timestamp: Date.now(), source: 'remote' },
   })
@@ -235,14 +235,14 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'prompt' 
   })
 }
 
-export function handleCancel(cmd: Extract<RemoteCommand, { type: 'cancel' }>): void {
+export function handleCancel(cmd: Extract<RemoteCommand, { type: 'desktop_cancel' }>): void {
   if (!sessionPlane.cancelTab(cmd.tabId)) {
     log(`remote cancel: tab ${cmd.tabId} not in sessionPlane, sending abort directly`)
     engineBridge.sendAbort(cmd.tabId)
   }
 }
 
-export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type: 'set_permission_mode' }>): Promise<void> {
+export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type: 'desktop_set_permission_mode' }>): Promise<void> {
   const mode = cmd.mode
   if (mode !== 'auto' && mode !== 'plan') {
     log(`Remote set_permission_mode: invalid mode "${mode}"`)
@@ -290,12 +290,29 @@ export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type
   broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId: cmd.tabId, mode })
 }
 
-export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type: 'load_conversation' }>, deviceId: string): Promise<void> {
+/**
+ * Apply a per-conversation thinking-effort change sent from iOS. There is no
+ * engine command — thinking is a per-prompt override — so the handler simply
+ * broadcasts to the renderer, which writes the level onto the targeted tab /
+ * active instance (the same state the desktop's own prompt-submit reads). The
+ * next prompt from either client then carries the level. 'off' clears it.
+ */
+export async function handleSetThinkingEffort(cmd: Extract<RemoteCommand, { type: 'desktop_set_thinking_effort' }>): Promise<void> {
+  const effort = cmd.effort
+  if (effort !== 'off' && effort !== 'low' && effort !== 'medium' && effort !== 'high') {
+    log(`Remote set_thinking_effort: invalid effort "${effort}"`)
+    return
+  }
+  log(`Remote set_thinking_effort: tab=${cmd.tabId} effort=${effort}`)
+  broadcast(IPC.REMOTE_SET_THINKING_EFFORT, { tabId: cmd.tabId, effort })
+}
+
+export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_conversation' }>, deviceId: string): Promise<void> {
   const PAGE_SIZE = 10
   try {
     if (!state.mainWindow) {
       log(`load_conversation: mainWindow not available`)
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
       return
     }
 
@@ -412,7 +429,7 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     }))
 
     state.remoteTransport?.sendToDevice(deviceId, {
-      type: 'conversation_history',
+      type: 'desktop_conversation_history',
       tabId: cmd.tabId,
       messages: msgs,
       hasMore: result.hasMore || false,
@@ -420,11 +437,11 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     })
   } catch (err) {
     log(`load_conversation error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
   }
 }
 
-export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type: 'discover_commands' }>, deviceId: string): Promise<void> {
+export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type: 'desktop_discover_commands' }>, deviceId: string): Promise<void> {
   const { directory } = cmd
   try {
     const all = await discoverCommands(directory)
@@ -447,14 +464,14 @@ export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type:
     } else {
       log(`discover_commands: claudeCompat=true, returning ${commands.length} entries (device=${deviceId})`)
     }
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'discover_commands_response', directory, commands })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_discover_commands_response', directory, commands })
   } catch (err) {
     log(`discover_commands error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'discover_commands_response', directory, commands: [] })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_discover_commands_response', directory, commands: [] })
   }
 }
 
-export async function handleSetTabModel(cmd: Extract<RemoteCommand, { type: 'set_tab_model' }>): Promise<void> {
+export async function handleSetTabModel(cmd: Extract<RemoteCommand, { type: 'desktop_set_tab_model' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -470,7 +487,7 @@ export async function handleSetTabModel(cmd: Extract<RemoteCommand, { type: 'set
   }
 }
 
-export async function handleSetPreferredModel(cmd: Extract<RemoteCommand, { type: 'set_preferred_model' }>): Promise<void> {
+export async function handleSetPreferredModel(cmd: Extract<RemoteCommand, { type: 'desktop_set_preferred_model' }>): Promise<void> {
   try {
     const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     await state.mainWindow?.webContents.executeJavaScript(`
@@ -485,7 +502,7 @@ export async function handleSetPreferredModel(cmd: Extract<RemoteCommand, { type
   }
 }
 
-export async function handleSetEngineDefaultModel(cmd: Extract<RemoteCommand, { type: 'set_engine_default_model' }>): Promise<void> {
+export async function handleSetEngineDefaultModel(cmd: Extract<RemoteCommand, { type: 'desktop_set_engine_default_model' }>): Promise<void> {
   try {
     const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     await state.mainWindow?.webContents.executeJavaScript(`

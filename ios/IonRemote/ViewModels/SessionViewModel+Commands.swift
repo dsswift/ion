@@ -228,6 +228,32 @@ extension SessionViewModel {
         send(.setPermissionMode(tabId: tabId, mode: mode))
     }
 
+    /// Whether the desktop's global "Enable extended thinking" setting is on.
+    /// Reads the projectable `thinkingEnabled` value from the latest desktop
+    /// settings snapshot; defaults to false until a snapshot arrives.
+    var thinkingGloballyEnabled: Bool {
+        (desktopSettings?.currentValue(for: "thinkingEnabled")?.value as? Bool) ?? false
+    }
+
+    /// Set the per-conversation extended-thinking effort. Optimistically
+    /// updates the local tab (bare) or active engine instance, then sends the
+    /// desktop_set_thinking_effort command so the next prompt from either
+    /// client carries the level. effort is "off"|"low"|"medium"|"high".
+    func setThinkingEffort(tabId: String, effort: String) {
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            if tabs[idx].hasEngineExtension == true,
+               let instId = activeEngineInstance[tabId],
+               var insts = tabs[idx].conversationInstances,
+               let iIdx = insts.firstIndex(where: { $0.id == instId }) {
+                insts[iIdx].thinkingEffort = effort == "off" ? nil : effort
+                tabs[idx].conversationInstances = insts
+            } else {
+                tabs[idx].thinkingEffort = effort == "off" ? nil : effort
+            }
+        }
+        send(.setThinkingEffort(tabId: tabId, effort: effort))
+    }
+
     // The plan→implement flow (`implementPlan`) lives in
     // SessionViewModel+ImplementPlan.swift to keep this file under the
     // Swift size cap. See CLAUDE.md → "When a file exceeds the cap".

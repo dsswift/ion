@@ -21,7 +21,7 @@ final class EngineRewindCodecTests: XCTestCase {
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        XCTAssertEqual(json["type"] as? String, "engine_rewind")
+        XCTAssertEqual(json["type"] as? String, "desktop_engine_rewind")
         XCTAssertEqual(json["tabId"] as? String, "tab-a")
         XCTAssertEqual(json["instanceId"] as? String, "inst-1")
         XCTAssertEqual(json["messageId"] as? String, "msg-7")
@@ -46,7 +46,7 @@ final class EngineRewindCodecTests: XCTestCase {
     func testDecodeEngineRewind() throws {
         let json = """
         {
-            "type": "engine_rewind",
+            "type": "desktop_engine_rewind",
             "tabId": "tab-a",
             "instanceId": "inst-1",
             "messageId": "msg-7",
@@ -69,7 +69,7 @@ final class EngineRewindCodecTests: XCTestCase {
     func testDecodeEngineRewindWithoutUserTurnIndex() throws {
         let json = """
         {
-            "type": "engine_rewind",
+            "type": "desktop_engine_rewind",
             "tabId": "tab-a",
             "instanceId": "inst-1",
             "messageId": "msg-7"
@@ -113,7 +113,7 @@ final class EngineRewindCodecTests: XCTestCase {
     func testDecodeInputPrefillWithInstanceId() throws {
         let json = """
         {
-            "type": "input_prefill",
+            "type": "desktop_input_prefill",
             "tabId": "tab-a",
             "text": "the rewound prompt",
             "instanceId": "inst-1"
@@ -137,7 +137,7 @@ final class EngineRewindCodecTests: XCTestCase {
     func testDecodeInputPrefillWithoutInstanceId() throws {
         let json = """
         {
-            "type": "input_prefill",
+            "type": "desktop_input_prefill",
             "tabId": "tab-a",
             "text": "cli prompt"
         }

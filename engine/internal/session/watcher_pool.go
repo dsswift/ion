@@ -54,11 +54,14 @@ func poolKey(root string, ignores []string) string {
 
 // acquire returns a shared watcher for the given root+ignores, creating one
 // if this is the first subscriber. The sessionKey identifies the subscriber
-// for fan-out and later release. onEvent is the per-session callback.
+// for fan-out and later release. onEvent is the per-session callback. maxDirs
+// caps the directory count of a newly-created watcher (zero = watcher package
+// default); it is only consulted when this acquire creates the watcher, since
+// shared watchers keep the cap they were created with.
 //
 // Returns a release function the caller must invoke when the session stops.
 // The release function is idempotent.
-func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, onEvent func(watcher.Info)) (release func(), err error) {
+func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, maxDirs int, onEvent func(watcher.Info)) (release func(), err error) {
 	key := poolKey(root, ignores)
 
 	p.mu.Lock()
@@ -75,7 +78,7 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 	}
 
 	// First subscriber: create and start the watcher.
-	w, err := watcher.New(root, ignores)
+	w, err := watcher.NewWithMaxDirs(root, ignores, maxDirs)
 	if err != nil {
 		return nil, err
 	}

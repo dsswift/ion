@@ -352,3 +352,207 @@ func TestWatcher_StartTwiceErrors(t *testing.T) {
 		t.Fatal("expected error on double Start")
 	}
 }
+
+// withMaxWatchedDirs temporarily lowers the directory cap for the duration of
+// a test and restores it on cleanup. Lets the cap tests exercise truncation
+// without materializing 50_000 directories.
+func withMaxWatchedDirs(t *testing.T, n int) {
+	t.Helper()
+	prev := maxWatchedDirs
+	maxWatchedDirs = n
+	t.Cleanup(func() { maxWatchedDirs = prev })
+}
+
+// withCapWarnCounter swaps the cap-warning sink for a counting one and returns
+// a func that reads the current count. Restored on cleanup.
+func withCapWarnCounter(t *testing.T) (count func() int) {
+	t.Helper()
+	var mu sync.Mutex
+	n := 0
+	prev := capWarnLogger
+	capWarnLogger = func(tag, msg string) {
+		mu.Lock()
+		n++
+		mu.Unlock()
+	}
+	t.Cleanup(func() { capWarnLogger = prev })
+	return func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return n
+	}
+}
+
+// snapshotState reads the cap-related fields under the watcher lock.
+func (w *Watcher) snapshotState() (truncated bool, attached int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.truncated, w.attachedCount
+}
+
+// TestWatcher_StartRespectsDirCap builds a tree with more directories than the
+// (lowered) cap and asserts the Start() walk stops attaching at the cap, sets
+// the truncated flag, and logs the cap-hit warning exactly once.
+//
+// Regression guard: reverting the cap enforcement in Start() lets attachedCount
+// climb to the full directory count and leaves truncated false, failing the
+// assertions below.
+func TestWatcher_StartRespectsDirCap(t *testing.T) {
+	const cap = 5
+	const dirCount = 12
+	withMaxWatchedDirs(t, cap)
+	warnCount := withCapWarnCounter(t)
+
+	root := t.TempDir()
+	// Create dirCount sibling directories under root. With the root itself,
+	// the walk sees dirCount+1 directories, comfortably above the cap.
+	for i := 0; i < dirCount; i++ {
+		if err := os.MkdirAll(filepath.Join(root, "d"+string(rune('a'+i))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w, err := New(root, nil)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	c := newCollector()
+	if err := w.Start(context.Background(), c.onEvent); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer w.Close()
+
+	truncated, attached := w.snapshotState()
+	if !truncated {
+		t.Errorf("truncated = false, want true when tree exceeds cap")
+	}
+	if attached != cap {
+		t.Errorf("attachedCount = %d, want exactly cap=%d", attached, cap)
+	}
+	if attached > cap {
+		t.Errorf("attachedCount = %d exceeded cap=%d", attached, cap)
+	}
+	if got := warnCount(); got != 1 {
+		t.Errorf("cap-hit warning fired %d times, want exactly 1", got)
+	}
+}
+
+// TestWatcher_NewWithMaxDirs_HonorsExplicitCap proves the per-watcher cap
+// argument overrides the package default: a watcher constructed with an
+// explicit small cap truncates at that cap regardless of the (large) package
+// default. This is the configurability path used by engine.json's
+// workspace.maxWatchedDirs.
+func TestWatcher_NewWithMaxDirs_HonorsExplicitCap(t *testing.T) {
+	// Leave the package default at its real (large) value: the explicit cap
+	// must win on its own.
+	warnCount := withCapWarnCounter(t)
+	const explicitCap = 3
+	const dirCount = 9
+
+	root := t.TempDir()
+	for i := 0; i < dirCount; i++ {
+		if err := os.MkdirAll(filepath.Join(root, "x"+string(rune('a'+i))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w, err := NewWithMaxDirs(root, nil, explicitCap)
+	if err != nil {
+		t.Fatalf("NewWithMaxDirs failed: %v", err)
+	}
+	c := newCollector()
+	if err := w.Start(context.Background(), c.onEvent); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer w.Close()
+
+	truncated, attached := w.snapshotState()
+	if !truncated {
+		t.Error("truncated = false, want true with explicit small cap")
+	}
+	if attached != explicitCap {
+		t.Errorf("attachedCount = %d, want explicit cap=%d", attached, explicitCap)
+	}
+	if got := warnCount(); got != 1 {
+		t.Errorf("cap-hit warning fired %d times, want exactly 1", got)
+	}
+}
+
+// TestWatcher_NewWithMaxDirsZeroUsesDefault proves that a zero cap falls back
+// to the package default (the "config omitted" path).
+func TestWatcher_NewWithMaxDirsZeroUsesDefault(t *testing.T) {
+	withMaxWatchedDirs(t, 4) // lower the default so the test is cheap
+
+	root := t.TempDir()
+	for i := 0; i < 8; i++ {
+		if err := os.MkdirAll(filepath.Join(root, "z"+string(rune('a'+i))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w, err := NewWithMaxDirs(root, nil, 0) // zero → use default (now 4)
+	if err != nil {
+		t.Fatalf("NewWithMaxDirs failed: %v", err)
+	}
+	c := newCollector()
+	if err := w.Start(context.Background(), c.onEvent); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer w.Close()
+
+	_, attached := w.snapshotState()
+	if attached != 4 {
+		t.Errorf("attachedCount = %d, want package default cap=4 when maxDirs=0", attached)
+	}
+}
+
+// TestWatcher_SubtreeAttachRespectsDirCap asserts the lifetime cap is also
+// enforced on the dynamic attachSubtree path: once Start() has consumed the
+// whole cap, a newly-created subtree attaches no further directories and the
+// warning still fires exactly once across both walks.
+func TestWatcher_SubtreeAttachRespectsDirCap(t *testing.T) {
+	const cap = 2
+	withMaxWatchedDirs(t, cap)
+	warnCount := withCapWarnCounter(t)
+
+	root := t.TempDir()
+	// One subdir so Start() attaches root + sub = 2 dirs, hitting the cap.
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := New(root, nil)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	c := newCollector()
+	if err := w.Start(context.Background(), c.onEvent); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer w.Close()
+	time.Sleep(20 * time.Millisecond)
+
+	_, attachedAfterStart := w.snapshotState()
+	if attachedAfterStart != cap {
+		t.Fatalf("attachedCount after Start = %d, want cap=%d", attachedAfterStart, cap)
+	}
+
+	// Create a fresh subtree after the cap is already exhausted. attachSubtree
+	// must not push attachedCount past the cap.
+	nested := filepath.Join(root, "late", "deep")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(150 * time.Millisecond)
+
+	truncated, attached := w.snapshotState()
+	if !truncated {
+		t.Errorf("truncated = false, want true after subtree attach hit cap")
+	}
+	if attached != cap {
+		t.Errorf("attachedCount = %d, want it pinned at cap=%d after subtree attach", attached, cap)
+	}
+	if got := warnCount(); got != 1 {
+		t.Errorf("cap-hit warning fired %d times across both walks, want exactly 1", got)
+	}
+}

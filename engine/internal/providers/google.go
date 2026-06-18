@@ -277,6 +277,20 @@ func (p *googleProvider) buildRequestBody(opts types.LlmStreamOptions) map[strin
 		"generationConfig": map[string]any{"maxOutputTokens": maxTokens},
 	}
 
+	// Gemini thinking — resolve the per-model mechanism via the shared
+	// capability resolver. Gemini 2.5 models take a thinkingConfig with a
+	// budget mapped from the effort level; includeThoughts requests thought
+	// summaries so the thinking renderer has content to show. Only models
+	// declared with ThinkingMode=="gemini" produce a directive.
+	if res := resolveThinking(opts.Model, opts.Thinking); res.Mode == "gemini" {
+		if gc, ok := body["generationConfig"].(map[string]any); ok {
+			gc["thinkingConfig"] = map[string]any{
+				"includeThoughts": true,
+				"thinkingBudget":  res.Budget,
+			}
+		}
+	}
+
 	if opts.System != "" {
 		body["systemInstruction"] = map[string]any{
 			"role":  "user",

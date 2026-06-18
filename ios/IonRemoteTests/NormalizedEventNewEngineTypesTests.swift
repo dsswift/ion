@@ -20,7 +20,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineToolUpdate() throws {
         let json = """
-        {"type":"engine_tool_update","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolUpdate(let tabId, let instanceId) = event {
@@ -45,7 +45,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineToolUpdateWithoutInstanceId() throws {
         let json = """
-        {"type":"engine_tool_update","tabId":"t1"}
+        {"type":"desktop_tool_update","tabId":"t1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolUpdate(let tabId, let instanceId) = event {
@@ -60,7 +60,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineToolComplete() throws {
         let json = """
-        {"type":"engine_tool_complete","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_complete","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolComplete(let tabId, let instanceId) = event {
@@ -85,7 +85,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineToolCompleteWithoutInstanceId() throws {
         let json = """
-        {"type":"engine_tool_complete","tabId":"t1"}
+        {"type":"desktop_tool_complete","tabId":"t1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolComplete(let tabId, let instanceId) = event {
@@ -100,7 +100,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineScheduleFired() throws {
         let json = """
-        {"type":"engine_schedule_fired","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_schedule_fired","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineScheduleFired(let tabId, let instanceId) = event {
@@ -125,7 +125,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineScheduleFiredWithoutInstanceId() throws {
         let json = """
-        {"type":"engine_schedule_fired","tabId":"t1"}
+        {"type":"desktop_schedule_fired","tabId":"t1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineScheduleFired(let tabId, let instanceId) = event {
@@ -140,7 +140,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineLlmCall() throws {
         let json = """
-        {"type":"engine_llm_call","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_llm_call","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineLlmCall(let tabId, let instanceId) = event {
@@ -165,7 +165,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineLlmCallWithoutInstanceId() throws {
         let json = """
-        {"type":"engine_llm_call","tabId":"t1"}
+        {"type":"desktop_llm_call","tabId":"t1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineLlmCall(let tabId, let instanceId) = event {
@@ -180,7 +180,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineDispatchStart() throws {
         let json = """
-        {"type":"engine_dispatch_start","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_dispatch_start","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineDispatchStart(let tabId, let instanceId) = event {
@@ -205,7 +205,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineDispatchStartWithoutInstanceId() throws {
         let json = """
-        {"type":"engine_dispatch_start","tabId":"t1"}
+        {"type":"desktop_dispatch_start","tabId":"t1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineDispatchStart(let tabId, let instanceId) = event {
@@ -220,7 +220,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineExport() throws {
         let json = """
-        {"type":"engine_export","tabId":"t1","instanceId":"i1","message":"# Conversation\\n\\nHello world","exportFormat":"markdown"}
+        {"type":"desktop_export","tabId":"t1","instanceId":"i1","message":"# Conversation\\n\\nHello world","exportFormat":"markdown"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         guard case .engineExport(let tabId, let instanceId, let message, let exportFormat) = event else {
@@ -258,7 +258,7 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineExportWithoutInstanceId() throws {
         let json = """
-        {"type":"engine_export","tabId":"t1","message":"plain text"}
+        {"type":"desktop_export","tabId":"t1","message":"plain text"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         guard case .engineExport(let tabId, let instanceId, let message, let exportFormat) = event else {

@@ -5,6 +5,7 @@ import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { ToolGroup } from './ToolGroup'
 import { AssistantMessage } from './AssistantMessage'
+import { ThinkingBlock } from './ThinkingBlock'
 import { CopyButton } from './CopyButton'
 import type { Message } from '../../../shared/types'
 
@@ -14,6 +15,12 @@ interface AgentTurnGroupProps {
   tools: Message[]
   assistantMessages: Message[]
   isActive: boolean
+  /**
+   * Optional extended-thinking row for this turn (issue #158). Rendered as
+   * the turn's top group, ABOVE the collapsible tool row. undefined when
+   * the model did not reason this turn (the common case).
+   */
+  thinking?: Message
   skipMotion?: boolean
 }
 
@@ -21,6 +28,7 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
   tools,
   assistantMessages,
   isActive,
+  thinking,
   skipMotion,
 }: AgentTurnGroupProps) {
   const colors = useColors()
@@ -67,6 +75,9 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
 
   const inner = (
     <div className="group/turn relative">
+      {/* Extended-thinking row — the turn's top group, above the tool row. */}
+      {thinking && <ThinkingBlock message={thinking} skipMotion={skipMotion} />}
+
       {/* Collapsible activity panel */}
       {activityHeader}
 

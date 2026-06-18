@@ -1,5 +1,14 @@
 import type { UsageData } from './types-events'
 
+// ─── Thinking ───
+
+/**
+ * Per-conversation extended-thinking effort. 'off' = no thinking directive;
+ * other levels map to the engine's effort dial (resolved per-model). Stored
+ * per-tab and per-instance, applied live on the next prompt.
+ */
+export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high'
+
 // ─── Tab Grouping ───
 
 export const DEFAULT_TAB_GROUP_LABELS = ['Planning', 'On Deck', 'In Progress', 'Testing'] as const
@@ -90,6 +99,8 @@ export interface TabState {
   additionalDirs: string[]
   /** Per-tab permission mode: 'auto' auto-approves, 'plan' uses CLI plan mode */
   permissionMode: 'auto' | 'plan'
+  /** Per-tab extended-thinking effort (bare conversation). Default 'off'. */
+  thinkingEffort?: ThinkingEffort
   /** Pending bash command results to send as context with next prompt */
   bashResults: Array<{ command: string; stdout: string; stderr: string }>
   /** Whether a bash command is currently executing in this tab */
@@ -156,7 +167,7 @@ export interface TabState {
 
 export interface Message {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'harness'
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'harness' | 'thinking'
   content: string
   toolName?: string
   toolInput?: string
@@ -205,6 +216,41 @@ export interface Message {
    * opens a fresh assistant message instead of appending to this one.
    */
   sealed?: boolean
+  // ─── Extended-thinking fields (issue #158) ───
+  // Populated ONLY on `role: 'thinking'` messages, which the renderer
+  // synthesizes from the engine's `engine_thinking_block_start` /
+  // `engine_thinking_delta` / `engine_thinking_block_end` event trio.
+  // A thinking block is OPTIONAL per turn; most turns carry none. The
+  // ThinkingBlock component (rendered above the tool row in a turn)
+  // reads these to pick one of three render states:
+  //   - Live:         thinkingActive=true (between start and end). Pulse
+  //                   indicator + tail of `content` streaming in.
+  //   - Historical:   thinkingActive=false with non-empty `content`
+  //                   (deltas were captured). Collapsed → tail; expand →
+  //                   full text.
+  //   - Summary-only: thinkingActive=false with empty `content` — deltas
+  //                   were disabled engine-side, the block was redacted,
+  //                   or the message was rehydrated from persistence
+  //                   without text. Renders the elapsed/token summary (or
+  //                   the redacted affordance) and never promises text.
+  // All three are local UI state derived from engine events; none are
+  // part of the Go wire contract. Thinking messages are intentionally
+  // dropped from persistence (see serialize-conversation-pane.ts) so the
+  // tabs file does not balloon with streamed reasoning text; a rehydrated
+  // conversation simply has no thinking rows, which is the correct
+  // summary-absent default.
+  /** True while the block is streaming (between block_start and block_end). */
+  thinkingActive?: boolean
+  /** Wall-clock seconds the reasoning block took, from block_end. */
+  thinkingElapsedSeconds?: number
+  /** Token count the model spent reasoning, from block_end (when present). */
+  thinkingTotalTokens?: number
+  /**
+   * True when the engine reported the block as encrypted/redacted
+   * reasoning with no readable text. The ThinkingBlock renders a
+   * "🔒 redacted reasoning" affordance rather than an empty block.
+   */
+  thinkingRedacted?: boolean
 }
 
 export interface RunResult {
@@ -251,6 +297,12 @@ export interface RunOptions {
    * contract instead of in prompt prose.
    */
   implementationPhase?: boolean
+  /**
+   * Per-prompt extended-thinking effort for this CLI/conversation prompt.
+   * 'off'/undefined → no thinking directive. Threaded to send_prompt as
+   * `thinkingEffort`; read from the tab's level, gated by thinkingEnabled.
+   */
+  thinkingEffort?: string
   /**
    * Harness-supplied description prose for the EnterPlanMode sentinel
    * tool that the engine injects during auto-mode runs. The desktop
@@ -421,66 +473,13 @@ export interface TerminalPaneState {
 }
 
 // ─── Git Types ───
-
-export interface GitCommit {
-  hash: string
-  fullHash: string
-  parents: string[]
-  authorName: string
-  authorDate: string
-  subject: string
-  refs: GitRef[]
-}
-
-export interface GitRef {
-  name: string
-  type: 'head' | 'remote' | 'tag'
-  isCurrent: boolean
-}
-
-export interface GitCommitDetail {
-  filesChanged: number
-  insertions: number
-  deletions: number
-}
-
-export interface GitCommitFile {
-  path: string
-  status: 'added' | 'modified' | 'deleted' | 'renamed'
-  oldPath?: string
-}
-
-export interface GitGraphData {
-  commits: GitCommit[]
-  isGitRepo: boolean
-  totalCount: number
-}
-
-export type GitConflictKind = 'UU' | 'AA' | 'DD' | 'AU' | 'UA' | 'DU' | 'UD'
-
-export interface GitChangedFile {
-  path: string
-  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflict'
-  staged: boolean
-  oldPath?: string
-  conflictKind?: GitConflictKind
-  isSubmodule?: boolean
-}
-
-export interface GitChangesData {
-  files: GitChangedFile[]
-  branch: string
-  isGitRepo: boolean
-  ahead: number
-  behind: number
-}
-
-export interface GitBranchInfo {
-  name: string
-  isCurrent: boolean
-  upstream: string | null
-  isRemote: boolean
-}
+//
+// Git types live in types-git.ts (extracted to keep this file under the
+// 600-line cap). Re-exported here so existing import paths keep working.
+export type {
+  GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
+  GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
+} from './types-git'
 
 // ─── Worktree Types ───
 

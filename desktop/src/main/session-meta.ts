@@ -296,7 +296,7 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
           if (block.type === 'text' && block.text) {
             const cleaned = cleanCliTags(block.text)
             if (cleaned) textParts.push(cleaned)
-          } else if (block.type === 'tool_result' && block.tool_use_id) {
+          } else if (block.type === 'desktop_tool_result' && block.tool_use_id) {
             const idx = toolCallIndex[block.tool_use_id]
             if (idx !== undefined) {
               let resultContent = ''
@@ -393,7 +393,7 @@ export function loadClaudeSessionMessages(sessionId: string, projectPath?: strin
           if (block.type === 'text' && block.text) {
             const cleaned = cleanCliTags(block.text)
             if (cleaned) textParts.push(cleaned)
-          } else if (block.type === 'tool_result' && block.tool_use_id) {
+          } else if (block.type === 'desktop_tool_result' && block.tool_use_id) {
             const idx = toolCallIndex[block.tool_use_id]
             if (idx !== undefined) {
               let resultContent = ''

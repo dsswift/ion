@@ -98,12 +98,14 @@ struct EngineView: View {
         case single(Message)
         case toolGroup([Message])
         case compaction(Message)
+        case thinking(Message)
         case agentTurn(tools: [Message], assistantMessages: [Message], isActive: Bool)
         var id: String {
             switch self {
             case .single(let msg): return msg.id
             case .toolGroup(let msgs): return "tg-\(msgs.first?.id ?? "")"
             case .compaction(let msg): return "cp-\(msg.id)"
+            case .thinking(let msg): return "th-\(msg.id)"
             case .agentTurn(let tools, let assistants, _):
                 let anchor = tools.first?.id ?? assistants.first?.id ?? ""
                 return "at-\(anchor)"
@@ -170,6 +172,8 @@ struct EngineView: View {
                 switch item {
                 case .user(let m), .assistant(let m), .system(let m):
                     result.append(.single(m))
+                case .thinking(let m):
+                    result.append(.thinking(m))
                 case .toolGroup(let tools):
                     result.append(.toolGroup(tools))
                 case .compaction(let m):
@@ -215,6 +219,11 @@ struct EngineView: View {
                 } else if msg.content.hasPrefix("[Compaction]") {
                     flushBootstrap()
                     result.append(.compaction(msg))
+                } else if msg.role == .thinking {
+                    // Extended-thinking reasoning block (issue #158) —
+                    // standalone collapsed row in turn order.
+                    flushBootstrap()
+                    result.append(.thinking(msg))
                 } else {
                     flushBootstrap()
                     result.append(.single(msg))
@@ -361,6 +370,8 @@ struct EngineView: View {
                         EngineToolGroupRow(tools: tools)
                     case .compaction(let msg):
                         CompactionRowView(message: msg)
+                    case .thinking(let msg):
+                        ThinkingRowView(message: msg)
                     case .agentTurn(let tools, let assistants, let isActive):
                         AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive)
                     }
@@ -582,7 +593,12 @@ struct EngineView: View {
                     hasEngineExtension: true,
                     extensionName: fields.extensionName,
                     statusState: fields.state,
-                    runningAgentCount: runningAgentCount
+                    runningAgentCount: runningAgentCount,
+                    thinkingGloballyEnabled: viewModel.thinkingGloballyEnabled,
+                    thinkingEffort: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.thinkingEffort ?? "off",
+                    onSelectThinkingEffort: { level in
+                        viewModel.setThinkingEffort(tabId: tabId, effort: level)
+                    }
                 )
             }
             Divider()

@@ -96,8 +96,8 @@ export function buildClearDividerRemoteEvent(
   key: string,
   at: Date,
 ):
-  | { type: 'engine_harness_message'; tabId: string; instanceId: string; message: string; source: string }
-  | { type: 'message_added'; tabId: string; message: { id: string; role: 'system'; content: string; timestamp: number; source: 'desktop' } } {
+  | { type: 'desktop_harness_message'; tabId: string; instanceId: string; message: string; source: string }
+  | { type: 'desktop_message_added'; tabId: string; message: { id: string; role: 'system'; content: string; timestamp: number; source: 'desktop' } } {
   return buildDividerRemoteEvent(key, formatClearDivider(at), at)
 }
 
@@ -111,20 +111,20 @@ export function buildClearDividerRemoteEvent(
  *
  * The `key` parameter determines the event shape:
  *
- *   - `${tabId}:${instanceId}` → `engine_harness_message`
- *   - bare `${tabId}`          → `message_added`
+ *   - `${tabId}:${instanceId}` → `desktop_harness_message`
+ *   - bare `${tabId}`          → `desktop_message_added`
  */
 export function buildDividerRemoteEvent(
   key: string,
   content: string,
   at: Date,
 ):
-  | { type: 'engine_harness_message'; tabId: string; instanceId: string; message: string; source: string }
-  | { type: 'message_added'; tabId: string; message: { id: string; role: 'system'; content: string; timestamp: number; source: 'desktop' } } {
+  | { type: 'desktop_harness_message'; tabId: string; instanceId: string; message: string; source: string }
+  | { type: 'desktop_message_added'; tabId: string; message: { id: string; role: 'system'; content: string; timestamp: number; source: 'desktop' } } {
   const colonIdx = key.indexOf(':')
   if (colonIdx >= 0) {
     return {
-      type: 'engine_harness_message',
+      type: 'desktop_harness_message',
       tabId: key.slice(0, colonIdx),
       instanceId: key.slice(colonIdx + 1),
       message: content,
@@ -132,7 +132,7 @@ export function buildDividerRemoteEvent(
     }
   }
   return {
-    type: 'message_added',
+    type: 'desktop_message_added',
     tabId: key,
     message: {
       id: `clear-${at.getTime()}`,

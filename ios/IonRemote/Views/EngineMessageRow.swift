@@ -52,6 +52,10 @@ struct EngineMessageRow: View {
                 toolMessage
             case .system:
                 systemMessage
+            case .thinking:
+                // Extended-thinking reasoning block (issue #158). Collapsed
+                // by default; ThinkingRowView owns all three render states.
+                ThinkingRowView(message: message)
             }
         }
         .sheet(isPresented: Binding(

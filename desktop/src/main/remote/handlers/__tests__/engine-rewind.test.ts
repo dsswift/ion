@@ -53,7 +53,7 @@ beforeEach(() => {
 describe('handleEngineRewind — userTurnIndex pass-through', () => {
   it('threads a numeric userTurnIndex into the injected rewindEngineInstance call', async () => {
     await handleEngineRewind({
-      type: 'engine_rewind',
+      type: 'desktop_engine_rewind',
       tabId: 'tab-abc',
       instanceId: 'inst-xyz',
       messageId: 'UUID-1',
@@ -66,7 +66,7 @@ describe('handleEngineRewind — userTurnIndex pass-through', () => {
 
   it('passes null for userTurnIndex when the command omits it (desktop-initiated)', async () => {
     await handleEngineRewind({
-      type: 'engine_rewind',
+      type: 'desktop_engine_rewind',
       tabId: 'tab-abc',
       instanceId: 'inst-xyz',
       messageId: 'real-id',
@@ -77,7 +77,7 @@ describe('handleEngineRewind — userTurnIndex pass-through', () => {
 
   it('escapes single quotes and backslashes in ids', async () => {
     await handleEngineRewind({
-      type: 'engine_rewind',
+      type: 'desktop_engine_rewind',
       tabId: "tab'x",
       instanceId: "inst\\y",
       messageId: "m'z",
@@ -96,7 +96,7 @@ describe('broadcastEngineHistory', () => {
     await broadcastEngineHistory('tab-1', 'inst-1')
     expect(mocks.sendMock).toHaveBeenCalledTimes(1)
     const event = mocks.sendMock.mock.calls[0][0]
-    expect(event.type).toBe('engine_conversation_history')
+    expect(event.type).toBe('desktop_engine_conversation_history')
     expect(event.tabId).toBe('tab-1')
     expect(event.instanceId).toBe('inst-1')
     expect(event.messages).toEqual([{ id: 'u-0', role: 'user', content: 'hi', timestamp: 1 }])

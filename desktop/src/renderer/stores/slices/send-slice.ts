@@ -240,6 +240,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         appendSystemPrompt: effectiveSystemPrompt,
         extensions,
         implementationPhase,
+        thinkingEffort: usePreferencesStore.getState().thinkingEnabled && tab.thinkingEffort && tab.thinkingEffort !== 'off' ? tab.thinkingEffort : undefined,
         planFilePath: sendInst?.planFilePath || undefined,
       }).catch((err: Error) => {
         get().handleError(activeTabId, {

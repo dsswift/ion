@@ -17,6 +17,20 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { parseSessionKey } from '../../../shared/session-key'
+import type { ConversationInstance } from '../../../shared/types-engine'
+
+/**
+ * Resolve the per-prompt thinking effort for an engine instance. Returns the
+ * instance's selected effort ONLY when the global `thinkingEnabled` setting is
+ * on; otherwise returns undefined so the prompt carries no thinking directive.
+ * This is the hard gate from the global toggle. 'off' is also treated as "no
+ * directive" (passed through; the wire layer drops it).
+ */
+function resolveThinkingEffortForInstance(inst: ConversationInstance | undefined): string | undefined {
+  if (!usePreferencesStore.getState().thinkingEnabled) return undefined
+  const eff = inst?.thinkingEffort
+  return eff && eff !== 'off' ? eff : undefined
+}
 
 export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -130,7 +144,7 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
         })
       }
 
-      window.ion.enginePrompt(key, text, modelOverride, effectiveSystemPrompt, imageAttachments, rawAttachments, implementationPhase).then((result) => {
+      window.ion.enginePrompt(key, text, modelOverride, effectiveSystemPrompt, imageAttachments, rawAttachments, implementationPhase, resolveThinkingEffortForInstance(inst)).then((result) => {
         if (result && !result.ok) {
           set((state) => {
             const conversationPanes = new Map(state.conversationPanes)

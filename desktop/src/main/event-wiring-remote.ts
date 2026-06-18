@@ -43,7 +43,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           msg = { id: `assistant-${Date.now()}-${tabId}`, content: event.text }
           activeAssistantMessages.set(tabId, msg)
           state.remoteTransport.send({
-            type: 'message_added',
+            type: 'desktop_message_added',
             tabId,
             message: {
               id: msg.id,
@@ -55,7 +55,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
         } else {
           msg.content += event.text
           state.remoteTransport.send({
-            type: 'message_updated',
+            type: 'desktop_message_updated',
             tabId,
             messageId: msg.id,
             content: msg.content,
@@ -66,7 +66,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
       case 'tool_call': {
         activeAssistantMessages.delete(tabId)
         state.remoteTransport.send({
-          type: 'message_added',
+          type: 'desktop_message_added',
           tabId,
           message: {
             id: event.toolId,
@@ -86,7 +86,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
         const current = (tabTools.get(event.toolId) || '') + event.partialInput
         tabTools.set(event.toolId, current)
         state.remoteTransport.send({
-          type: 'message_updated',
+          type: 'desktop_message_updated',
           tabId,
           messageId: event.toolId,
           toolInput: current,
@@ -98,7 +98,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           ? event.content.substring(0, 2048) + '\n... [truncated]'
           : event.content
         state.remoteTransport.send({
-          type: 'message_updated',
+          type: 'desktop_message_updated',
           tabId,
           messageId: event.toolId,
           content,
@@ -170,7 +170,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           }
 
           state.remoteTransport.send({
-            type: 'permission_request',
+            type: 'desktop_permission_request',
             tabId,
             questionId: `denied-${exitPlanDenial.toolUseId}`,
             toolName: 'ExitPlanMode',
@@ -189,7 +189,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
         if (askDenial && state.remoteTransport) {
           log(`task_complete: forwarding AskUserQuestion denial to remote questionId=denied-${askDenial.toolUseId}`)
           state.remoteTransport.send({
-            type: 'permission_request',
+            type: 'desktop_permission_request',
             tabId,
             questionId: `denied-${askDenial.toolUseId}`,
             toolName: 'AskUserQuestion',
@@ -212,7 +212,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           let content = parts.join(' · ')
           if (event.summary) content += '\n\n' + event.summary
           state.remoteTransport.send({
-            type: 'message_added',
+            type: 'desktop_message_added',
             tabId,
             message: {
               id: `compaction-${Date.now()}-${tabId}`,
@@ -293,7 +293,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
         ? 'Plan ready for your review'
         : `Permission needed: ${data.toolName}`
     state.remoteTransport.send({
-      type: 'permission_request', tabId,
+      type: 'desktop_permission_request', tabId,
       questionId: data.questionId, toolName: data.toolName,
       toolInput, options: data.options,
     }, true, { title: pushTitle, body: pushBody })
@@ -303,7 +303,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
         if (status === 'idle' || status === 'failed' || status === 'dead') {
           sessionPlane.off('tab-status-change', resolveOnIdle)
           state.remoteTransport?.send({
-            type: 'permission_resolved', tabId,
+            type: 'desktop_permission_resolved', tabId,
             questionId: data.questionId,
           })
         }
@@ -321,6 +321,6 @@ export function wireRemoteSessionPlaneForwarding(): void {
     const pushMeta = pushOnIdle
       ? { title: 'Task completed', body: lastMessagePreview.get(tabId) || 'Tab is now idle' }
       : undefined
-    state.remoteTransport.send({ type: 'tab_status', tabId, status: newStatus as any }, pushOnIdle, pushMeta)
+    state.remoteTransport.send({ type: 'desktop_tab_status', tabId, status: newStatus as any }, pushOnIdle, pushMeta)
   })
 }

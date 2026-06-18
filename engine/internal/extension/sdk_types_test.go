@@ -64,3 +64,39 @@ func TestDispatchAgentResult_CacheTokenFields_JSON(t *testing.T) {
 		t.Errorf("zero-value JSON should omit cacheCreationInputTokens: %s", zeroRaw)
 	}
 }
+
+// TestDispatchAgentResult_ThinkingTokens_JSON pins the issue #158 telemetry
+// field: ThinkingTokens serializes when non-zero and is omitted when zero.
+func TestDispatchAgentResult_ThinkingTokens_JSON(t *testing.T) {
+	orig := DispatchAgentResult{
+		Output:         "done",
+		InputTokens:    100,
+		OutputTokens:   50,
+		ThinkingTokens: 30,
+	}
+	data, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"thinkingTokens":30`) {
+		t.Errorf("JSON missing thinkingTokens=30: %s", string(data))
+	}
+
+	var decoded DispatchAgentResult
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.ThinkingTokens != 30 {
+		t.Errorf("ThinkingTokens = %d, want 30", decoded.ThinkingTokens)
+	}
+
+	// Omitempty: zero thinking tokens must be absent.
+	zero := DispatchAgentResult{Output: "done"}
+	zeroData, err := json.Marshal(zero)
+	if err != nil {
+		t.Fatalf("marshal zero: %v", err)
+	}
+	if strings.Contains(string(zeroData), "thinkingTokens") {
+		t.Errorf("zero-value JSON should omit thinkingTokens: %s", string(zeroData))
+	}
+}

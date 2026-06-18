@@ -447,9 +447,9 @@ rl.on("line", (line) => {
 		msgMu    sync.Mutex
 		messages []string
 	)
-	host.SetOnSendMessage(func(text string) {
+	host.SetOnSendMessage(func(p extension.SendPromptPayload) {
 		msgMu.Lock()
-		messages = append(messages, text)
+		messages = append(messages, p.Text)
 		msgMu.Unlock()
 	})
 
@@ -731,7 +731,7 @@ rl.on("line", async (line) => {
 	ctx := &extension.Context{
 		SessionKey: "sendPrompt-test",
 		Cwd:        "/tmp",
-		SendPrompt: func(text string, model string) error {
+		SendPrompt: func(text string, model string, _ []string) error {
 			mu.Lock()
 			calls = append(calls, sendCall{text: text, model: model})
 			mu.Unlock()
@@ -822,7 +822,7 @@ rl.on("line", async (line) => {
 	ctx := &extension.Context{
 		SessionKey: "sendPrompt-err",
 		Cwd:        "/tmp",
-		SendPrompt: func(text string, model string) error {
+		SendPrompt: func(text string, model string, _ []string) error {
 			return fmt.Errorf("simulated queue full")
 		},
 	}

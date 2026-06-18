@@ -106,6 +106,26 @@ export interface PreferencesState {
   /** Remote control: paired iOS devices */
   pairedDevices: RemotePairedDevice[]
   /**
+   * Low-bandwidth projection toggle (issue #158). When true (default), the
+   * desktop forwards the model's extended-thinking deltas
+   * (`engine_thinking_delta`) to paired iOS devices alongside the block
+   * boundaries. When false, the desktop DROPS the deltas before
+   * `remoteTransport.send` while still forwarding `engine_thinking_block_start`
+   * and `engine_thinking_block_end`, so the phone always sees the reasoning
+   * boundaries (and never looks stalled) but skips the per-token reasoning
+   * stream. Read by the main process at the forward path in event-wiring.ts.
+   * This is the first facet of a future broader low-bandwidth mode.
+   */
+  streamThinkingToRemote: boolean
+  /**
+   * Global gate for extended thinking / reasoning. Default OFF. When on, a
+   * per-conversation off/low/medium/high thinking control appears in the
+   * status bar (StatusBarThinkingPicker) and the selected effort rides on each
+   * prompt; when off, the control is hidden and no prompt carries a thinking
+   * directive. Mirrors the projectable `thinkingEnabled` setting.
+   */
+  thinkingEnabled: boolean
+  /**
    * Per-desktop display override that is broadcast to all paired iOS devices.
    * `null` means "use the OS hostname + default icon". `updatedAt` is used
    * for last-write-wins reconciliation between iOS edits and desktop edits.
@@ -245,6 +265,8 @@ export interface PreferencesState {
   setRelayUrl: (url: string) => void
   setRelayApiKey: (key: string) => void
   setLanServerPort: (port: number) => void
+  setStreamThinkingToRemote: (enabled: boolean) => void
+  setThinkingEnabled: (enabled: boolean) => void
   addPairedDevice: (device: RemotePairedDevice) => void
   removePairedDevice: (deviceId: string) => void
   /**
@@ -273,4 +295,4 @@ export interface PreferencesState {
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, conversationFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, planModeAllowedBashCommands: ['gh'] as string[], gitWatcherIgnoredDirectories: ['~/.ion'] as string[], excludedResourceKinds: [] as string[] }
+export const SETTINGS_DEFAULTS = { themeMode: 'dark' as ThemeMode, selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, preferredOpenWith: 'cli' as 'cli' | 'vscode', defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelSplitRatio: 0.4, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, conversationFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: true, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], streamThinkingToRemote: true, thinkingEnabled: false, remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', engineProfiles: [] as EngineProfile[], preferredModel: 'claude-opus-4-6', defaultTallConversation: false, defaultTallTerminal: false, defaultTallEngine: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, planModeAllowedBashCommands: ['gh'] as string[], gitWatcherIgnoredDirectories: ['~/.ion'] as string[], excludedResourceKinds: [] as string[] }

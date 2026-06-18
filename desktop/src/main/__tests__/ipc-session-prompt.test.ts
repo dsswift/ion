@@ -149,7 +149,7 @@ describe('IPC.PROMPT handler', () => {
       options: { prompt: 'typed in desktop' },
     })
     expect(mocks.remoteSend).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'message_added',
+      type: 'desktop_message_added',
       tabId: 'tab-4',
       message: expect.objectContaining({ id: 'req-4', role: 'user', content: 'typed in desktop' }),
     }))

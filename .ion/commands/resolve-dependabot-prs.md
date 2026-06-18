@@ -1,6 +1,6 @@
 ---
 description: Triage open Dependabot PRs, return a quick risk/action summary table, then enter planning mode with an ordered rebase→merge→follow-up→resume resolution plan.
-allowed-tools: Bash(gh pr list *), Bash(gh pr view *), Bash(gh pr diff *), Bash(gh pr checks *), Bash(git *), Read, Grep, Glob
+allowed_bash_commands: [gh pr list, gh pr view, gh pr diff, gh pr checks, git]
 ---
 
 You are running the `/resolve-dependabot-prs` command. Your job is a **two-phase** workflow:

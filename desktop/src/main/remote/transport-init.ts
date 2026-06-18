@@ -78,7 +78,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const tabGroupMode = peerSettings.tabGroupMode || 'off'
         const tabGroups = Array.isArray(peerSettings.tabGroups) ? peerSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
         state.remoteTransport?.send({
-          type: 'snapshot',
+          type: 'desktop_snapshot',
           tabs,
           recentDirectories: peerRecentDirs,
           tabGroupMode,
@@ -91,10 +91,10 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const peerRelayUrl = (peerSettings.relayUrl as string) || ''
         const peerRelayApiKey = (peerSettings.relayApiKey as string) || ''
         if (peerRelayUrl) {
-          state.remoteTransport?.send({ type: 'relay_config', relayUrl: peerRelayUrl, relayApiKey: peerRelayApiKey })
+          state.remoteTransport?.send({ type: 'desktop_relay_config', relayUrl: peerRelayUrl, relayApiKey: peerRelayApiKey })
         }
         const profiles = Array.isArray(peerSettings.engineProfiles) ? peerSettings.engineProfiles : []
-        state.remoteTransport?.send({ type: 'engine_profiles', profiles })
+        state.remoteTransport?.send({ type: 'desktop_engine_profiles', profiles })
       } catch {}
 
       // Start the git watcher bridge so tab directories get push-driven freshness

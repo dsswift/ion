@@ -29,6 +29,19 @@ const (
 	EventSteerInjected     = "steer_injected"
 	EventModelFallback     = "model_fallback"
 	EventRunStalled        = "run_stalled"
+	// EventPlanContent is emitted in response to a get_plan_content command.
+	// It carries a bounded byte-range window of a plan file so remote clients
+	// can page through large plans without filesystem access to the engine host.
+	EventPlanContent = "engine_plan_content"
+	// Extended-thinking events surface the model's reasoning activity as a
+	// first-class signal (issue #158). The engine receives Anthropic
+	// thinking_delta stream events; these variants make them observable so
+	// consumers can distinguish active reasoning from a genuine stall, and
+	// render a "thinking" view. Emitted only when the provider supplies a
+	// reasoning stream — thinking blocks are optional per turn.
+	EventThinkingBlockStart = "thinking_block_start"
+	EventThinkingDelta      = "thinking_delta"
+	EventThinkingBlockEnd   = "thinking_block_end"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -117,6 +130,14 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ModelFallbackEvent{}
 	case EventRunStalled:
 		target = &RunStalledEvent{}
+	case EventPlanContent:
+		target = &PlanContentEvent{}
+	case EventThinkingBlockStart:
+		target = &ThinkingBlockStartEvent{}
+	case EventThinkingDelta:
+		target = &ThinkingDeltaEvent{}
+	case EventThinkingBlockEnd:
+		target = &ThinkingBlockEndEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -532,3 +553,102 @@ type ModelFallbackEvent struct {
 }
 
 func (ModelFallbackEvent) eventType() string { return EventModelFallback }
+
+// PlanContentEvent is emitted in response to a get_plan_content command.
+// It delivers a bounded byte-range window of a plan file so remote clients
+// (e.g. iOS) can page through large plans without needing filesystem access
+// to the engine host.
+//
+// Paging semantics:
+//   - Offset is the byte offset of the first byte in this window.
+//   - Content is the UTF-8 window string for this page.
+//   - TotalBytes is the file size at read time (may change between pages
+//     if the model is still writing; treat as advisory).
+//   - HasMore is true when offset+len(content) < TotalBytes, signaling
+//     that the client should request the next page with offset+=len(content).
+//
+// Security: the engine validates that Path is inside the session's plan
+// directory before reading. Requests with paths outside that directory are
+// rejected with an error event, not a plan_content event.
+//
+// Incremental (not a snapshot). The engine does not replay on reconnect.
+type PlanContentEvent struct {
+	// PlanFilePath is the absolute path of the plan file that was read.
+	// Clients can use it as a cache key when assembling multi-page fetches.
+	PlanFilePath string `json:"planFilePath"`
+	// Offset is the byte offset of the first byte of Content within the file.
+	Offset int `json:"offset"`
+	// Content is the UTF-8 string for this byte-range window.
+	Content string `json:"content"`
+	// TotalBytes is the file size in bytes at read time.
+	TotalBytes int `json:"totalBytes"`
+	// HasMore is true when more data follows (offset+len(content) < TotalBytes).
+	HasMore bool `json:"hasMore"`
+}
+
+func (PlanContentEvent) eventType() string { return EventPlanContent }
+
+// --- Extended-thinking events (issue #158) ---
+//
+// These three variants surface the model's reasoning activity as a first-class
+// signal so consumers can (a) distinguish "actively reasoning" from "genuinely
+// stalled" during long reasoning phases that produce no user-facing text, and
+// (b) render a "thinking" view (collapsed-by-default reasoning panel) the way
+// products like Claude and ChatGPT do.
+//
+// Emission contract:
+//   - The engine emits these ONLY when the provider supplies a reasoning
+//     stream (Anthropic extended thinking). Providers that don't stream
+//     reasoning emit nothing — consumers must treat a thinking block as
+//     OPTIONAL per turn and must not assume one exists.
+//   - Boundaries (ThinkingBlockStartEvent / ThinkingBlockEndEvent) always emit
+//     when a reasoning block is present; the per-token ThinkingDeltaEvent
+//     stream is gated by ThinkingConfig.StreamDeltas (default on). A consumer
+//     that disables delta streaming still receives the boundaries, so the
+//     liveness signal and the block summary survive.
+//   - signature_delta (Anthropic's opaque per-block signature) is NOT display
+//     text and is never surfaced as a ThinkingDeltaEvent; it rides only in the
+//     persisted assistant block.
+//   - redacted_thinking blocks (encrypted, no readable text) emit
+//     ThinkingBlockStartEvent and a ThinkingBlockEndEvent with Redacted=true
+//     and produce no ThinkingDeltaEvent.
+
+// ThinkingBlockStartEvent marks the start of a reasoning block. Empty payload;
+// its arrival is the signal. Consumers create a "thinking" UI affordance and
+// start a pulse/elapsed timer on receipt.
+type ThinkingBlockStartEvent struct{}
+
+func (ThinkingBlockStartEvent) eventType() string { return EventThinkingBlockStart }
+
+// ThinkingDeltaEvent carries an incremental chunk of reasoning text — the peer
+// of TextChunkEvent for the thinking channel. Gated by
+// ThinkingConfig.StreamDeltas (default on).
+type ThinkingDeltaEvent struct {
+	Text string `json:"text"`
+}
+
+func (ThinkingDeltaEvent) eventType() string { return EventThinkingDelta }
+
+// ThinkingBlockEndEvent marks the end of a reasoning block and carries a
+// summary so consumers can render "💭 Thought for 14s" without having
+// accumulated the deltas (and so consumers that disabled delta streaming, or
+// that loaded the block from history without persisted text, still have a
+// summary).
+type ThinkingBlockEndEvent struct {
+	// TotalTokens is an APPROXIMATE thinking-token count for this block.
+	// Providers fold thinking into the final output-token usage (Anthropic
+	// does not break out a per-block thinking-token count), so the engine
+	// estimates this from accumulated reasoning text length (~chars/4) when
+	// no authoritative count is available. Treat as advisory, not billing
+	// ground truth.
+	TotalTokens int `json:"totalTokens,omitempty"`
+	// ElapsedSeconds is the wall-clock duration from block start to block end.
+	ElapsedSeconds float64 `json:"elapsedSeconds,omitempty"`
+	// Redacted is true for redacted_thinking blocks (encrypted reasoning with
+	// no readable text). Consumers render a "redacted reasoning" affordance
+	// rather than an empty block. When true, no ThinkingDeltaEvent was emitted
+	// for this block.
+	Redacted bool `json:"redacted,omitempty"`
+}
+
+func (ThinkingBlockEndEvent) eventType() string { return EventThinkingBlockEnd }

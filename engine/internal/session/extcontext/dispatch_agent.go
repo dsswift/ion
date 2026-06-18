@@ -182,6 +182,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		var childDone sync.WaitGroup
 		childDone.Add(1)
 
+		// Estimated reasoning-token total for the child run (issue #158),
+		// accumulated from the child's ThinkingBlockEndEvent stream. Surfaced
+		// on DispatchAgentResult.ThinkingTokens / engine_dispatch_end so cost
+		// and audit consumers can separate reasoning spend from user-facing
+		// output. Estimate caveat: see ThinkingBlockEndEvent.TotalTokens.
+		var totalThinkingTokens int
+
 		// Phase 2: Lifecycle callback accumulators.
 		var toolCount int
 		var accumulatedText string
@@ -249,6 +256,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 
 			// Track plan mode state from child events.
 			switch pe := ev.Data.(type) {
+			case *types.ThinkingBlockEndEvent:
+				// Accumulate the child's estimated reasoning tokens. Redacted
+				// blocks carry 0 (no readable text), so this naturally counts
+				// only readable reasoning.
+				totalThinkingTokens += pe.TotalTokens
 			case *types.PlanModeChangedEvent:
 				if pe.PlanFilePath != "" {
 					childPlanFilePath = pe.PlanFilePath
@@ -397,6 +409,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				Cost:                     totalCost,
 				InputTokens:              totalInputTokens,
 				OutputTokens:             totalOutputTokens,
+				ThinkingTokens:           totalThinkingTokens,
 				CacheReadInputTokens:     totalCacheReadTokens,
 				CacheCreationInputTokens: totalCacheCreationTokens,
 				SessionID:                childSessionID,
@@ -446,14 +459,15 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 
 			// Phase 3: Emit dispatch_end telemetry on the parent session.
 			sa.Emit(types.EngineEvent{
-				Type:                "engine_dispatch_end",
-				DispatchAgent:       opts.Name,
-				DispatchExitCode:    exitCode,
-				DispatchElapsed:     elapsed,
-				DispatchCost:        totalCost,
-				DispatchInputTokens: totalInputTokens,
-				DispatchOutputTokens: totalOutputTokens,
-				DispatchToolCount:   toolCount,
+				Type:                   "engine_dispatch_end",
+				DispatchAgent:          opts.Name,
+				DispatchExitCode:       exitCode,
+				DispatchElapsed:        elapsed,
+				DispatchCost:           totalCost,
+				DispatchInputTokens:    totalInputTokens,
+				DispatchOutputTokens:   totalOutputTokens,
+				DispatchToolCount:      toolCount,
+				DispatchThinkingTokens: totalThinkingTokens,
 			})
 
 			utils.Log("Dispatch", fmt.Sprintf(
@@ -678,11 +692,11 @@ func fireLifecycleCallbacks(
 		// TaskCompleteEvent only. For per-turn reporting we pass what we have.
 		if opts.OnUsage != nil {
 			opts.OnUsage(extension.DispatchUsageInfo{
-				InputTokens:           turnInput,
-				OutputTokens:          turnOutput,
-				CumulativeInputTokens: *cumulativeInputTokens,
+				InputTokens:            turnInput,
+				OutputTokens:           turnOutput,
+				CumulativeInputTokens:  *cumulativeInputTokens,
 				CumulativeOutputTokens: *cumulativeOutputTokens,
-				CumulativeCost:        *cumulativeCost,
+				CumulativeCost:         *cumulativeCost,
 			})
 		}
 

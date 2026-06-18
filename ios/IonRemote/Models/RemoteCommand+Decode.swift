@@ -64,6 +64,11 @@ extension RemoteCommand {
             let mode = try container.decode(PermissionMode.self, forKey: .mode)
             self = .setPermissionMode(tabId: tabId, mode: mode)
 
+        case .setThinkingEffort:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let effort = try container.decode(String.self, forKey: .effort)
+            self = .setThinkingEffort(tabId: tabId, effort: effort)
+
         case .loadConversation:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let before = try container.decodeIfPresent(String.self, forKey: .before)
@@ -168,11 +173,11 @@ extension RemoteCommand {
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             self = .engineRemoveInstance(tabId: tabId, instanceId: instanceId)
 
-        case .engineRenameInstance:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decode(String.self, forKey: .instanceId)
-            let label = try container.decode(String.self, forKey: .label)
-            self = .engineRenameInstance(tabId: tabId, instanceId: instanceId, label: label)
+        // engineRenameInstance TypeKey was unified with renameTerminalInstance.
+        // Incoming "desktop_rename_terminal_instance" wire messages are decoded
+        // by the .renameTerminalInstance case above. The .engineRenameInstance
+        // associated-value case is still used by SessionViewModel+Commands.swift
+        // to send rename-instance commands; encoding routes through renameTerminalInstance TypeKey.
 
         case .engineSelectInstance:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -397,6 +402,25 @@ extension RemoteCommand {
             let kind = try container.decode(String.self, forKey: .kind)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
             self = .deleteResource(kind: kind, resourceId: resourceId)
+
+        case .implementPlan:
+            // iOS only sends this command (never decodes it from the wire),
+            // but the Codable conformance requires the path.
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let questionId = try container.decode(String.self, forKey: .questionId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let clearContext = try container.decodeIfPresent(Bool.self, forKey: .clearContext) ?? false
+            self = .implementPlan(tabId: tabId, questionId: questionId, instanceId: instanceId, clearContext: clearContext)
+
+        case .requestPlanContent:
+            // iOS only sends this command (never decodes it from the wire),
+            // but the Codable conformance requires the path.
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let questionId = try container.decode(String.self, forKey: .questionId)
+            let planFilePath = try container.decode(String.self, forKey: .planFilePath)
+            let offset = try container.decode(Int.self, forKey: .offset)
+            let length = try container.decode(Int.self, forKey: .length)
+            self = .requestPlanContent(tabId: tabId, questionId: questionId, planFilePath: planFilePath, offset: offset, length: length)
         }
     }
 

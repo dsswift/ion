@@ -8,6 +8,7 @@ import { BackendIndicator } from './StatusBarBackendIndicator'
 import { ModelPicker } from './StatusBarModelPicker'
 import { ContextIndicator } from './StatusBarContextIndicator'
 import { PermissionModePicker } from './StatusBarPermissionModePicker'
+import { ThinkingPicker } from './StatusBarThinkingPicker'
 import { AttachmentsButton } from './StatusBarAttachmentsButton'
 import { OpenWithPicker } from './StatusBarOpenWithPicker'
 import { TallViewToggle } from './StatusBarTallViewToggle'
@@ -145,6 +146,11 @@ export function StatusBar() {
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 
         <PermissionModePicker />
+
+        {/* Per-conversation extended-thinking control. Self-hides when the
+            global thinkingEnabled setting is off or the model doesn't support
+            reasoning. */}
+        <ThinkingPicker />
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
         <AttachmentsButton />

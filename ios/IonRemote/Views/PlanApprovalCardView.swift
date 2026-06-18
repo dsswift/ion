@@ -9,35 +9,54 @@ struct PlanApprovalCardView: View {
     @State private var implementAndUnpinOnDismiss = false
     @State private var isExpanded = true
 
-    private var planContent: String? {
-        request.toolInput?["planContent"]?.value as? String
+    // MARK: - Plan data (preview path, plan gentle-perching-lemon)
+    //
+    // The snapshot no longer carries `planContent` (full body). It now carries:
+    //   planContentPreview: String   — first 4 KB for instant card render
+    //   planSizeBytes: Int           — full file size in bytes
+    //   planTruncated: Bool          — true when file > 4 KB
+    //
+    // iOS renders the preview immediately. On expand (showFullPlan) or
+    // "Copy Plan", it fetches the full body via PlanContentStore (paged
+    // request_plan_content commands). The legacy `planContent` key is no
+    // longer read — do NOT reference it.
+
+    private var planContentPreview: String? {
+        request.toolInput?["planContentPreview"]?.value as? String
+    }
+
+    private var planSizeBytes: Int {
+        (request.toolInput?["planSizeBytes"]?.value as? Int) ?? 0
+    }
+
+    private var planTruncated: Bool {
+        (request.toolInput?["planTruncated"]?.value as? Bool) ?? false
     }
 
     private var planFilePath: String? {
         request.toolInput?["planFilePath"]?.value as? String
     }
 
+    /// Content to display in the inline preview. Uses the preview string from
+    /// the snapshot. Never reads the old `planContent` key.
+    private var displayContent: String? {
+        guard let preview = planContentPreview, !preview.isEmpty else { return nil }
+        return preview
+    }
+
+    /// Full plan body assembled from paged fetches, once complete.
+    private var fullPlanContent: String? {
+        viewModel.planContentStore.fullContent(for: request.questionId)
+    }
+
     private var tab: RemoteTabState? {
         viewModel.tabs.first(where: { $0.id == tabId })
     }
 
-    /// Show the split "Implement and Unpin" / "Implement" row only for
-    /// pinned conversation tabs. Engine tabs are multiplexed (multiple
-    /// sub-conversations under one tab) and shouldn't auto-move between
-    /// groups, so pin/unpin is irrelevant — always show a single
-    /// "Implement" button.
     private var showUnpinOption: Bool {
         tab?.groupPinned == true && tab?.hasEngineExtension != true
     }
 
-    /// Reveals a secondary "Implement, clear context" button below the
-    /// primary Implement row. Mirrors the desktop's
-    /// `showImplementClearContext` preference (read from the projected
-    /// settings snapshot). Default false. The regular Implement button
-    /// always preserves the planning conversation; this opt-in action
-    /// starts a fresh conversation for the implement phase. See
-    /// SessionViewModel+ImplementPlan.swift::implementPlan for the
-    /// branching behavior.
     private var showClearContextOption: Bool {
         guard let settings = viewModel.desktopSettings,
               let val = settings.currentValue(for: "showImplementClearContext"),
@@ -69,8 +88,11 @@ struct PlanApprovalCardView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                if planContent != nil {
-                    Button { showFullPlan = true } label: {
+                if displayContent != nil || planSizeBytes > 0 {
+                    Button {
+                        ensurePlanFetched()
+                        showFullPlan = true
+                    } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -81,8 +103,8 @@ struct PlanApprovalCardView: View {
             }
 
             if isExpanded {
-                // Plan content
-                if let content = planContent, !content.isEmpty {
+                // Plan content — render preview immediately; no blocking on fetch
+                if let content = displayContent, !content.isEmpty {
                     ScrollView {
                         planTextView(content)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,7 +123,7 @@ struct PlanApprovalCardView: View {
                     )
                     .contextMenu {
                         Button {
-                            UIPasteboard.general.string = content
+                            copyPlanToClipboard()
                         } label: {
                             Label("Copy Plan", systemImage: "doc.on.doc")
                         }
@@ -119,8 +141,6 @@ struct PlanApprovalCardView: View {
                 if showUnpinOption {
                     GeometryReader { geo in
                         let spacing: CGFloat = 8
-                        // Subtract the card's .padding() insets (16pt each side) so
-                        // the buttons don't overflow the card boundary.
                         let availableWidth = geo.size.width - 32
                         let smallWidth = (availableWidth - spacing) * 0.38
                         let largeWidth = availableWidth - spacing - smallWidth
@@ -169,11 +189,6 @@ struct PlanApprovalCardView: View {
                     .tint(.green)
                 }
 
-                // Secondary "Implement, clear context" action — revealed
-                // only when the desktop's `showImplementClearContext`
-                // preference is on. Per-click opt-in to a fresh
-                // conversation for the implement phase; the regular
-                // Implement button above always preserves context.
                 if showClearContextOption {
                     Button {
                         Haptic.medium()
@@ -200,31 +215,44 @@ struct PlanApprovalCardView: View {
                 implement()
             }
         }) {
-            if let content = planContent {
-                PlanFullScreenView(content: content) {
-                    implementOnDismiss = true
-                    showFullPlan = false
-                }
+            // Use the full assembled body when available; fall back to preview.
+            let content = fullPlanContent ?? planContentPreview ?? ""
+            let isFetching = viewModel.planContentStore.isFetching(questionId: request.questionId)
+            PlanFullScreenView(content: content, isFetching: isFetching) {
+                implementOnDismiss = true
+                showFullPlan = false
             }
         }
     }
 
+    // MARK: - Actions
+
     private func implement(clearContext: Bool = false) {
-        let prompt: String
-        if let content = planContent, !content.isEmpty {
-            prompt = "Implement the following plan:\n\n\(content)"
-        } else {
-            prompt = "Implement the plan."
-        }
         viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-        viewModel.implementPlan(tabId: tabId, prompt: prompt, clearContext: clearContext)
+        viewModel.sendImplementPlanIntent(tabId: tabId, questionId: request.questionId, clearContext: clearContext)
     }
 
     private func implementAndUnpin(clearContext: Bool = false) {
-        // Unpin first so the desktop's auto-move guard fires when
-        // implementPlan switches the tab to auto mode.
         viewModel.toggleTabGroupPin(tabId: tabId)
         implement(clearContext: clearContext)
+    }
+
+    /// Initiate the paged fetch of the full plan body if not already fetched.
+    /// Called on expand button tap and on "Copy Plan".
+    private func ensurePlanFetched() {
+        guard let filePath = planFilePath else { return }
+        viewModel.startPlanContentFetch(tabId: tabId, questionId: request.questionId, planFilePath: filePath)
+    }
+
+    private func copyPlanToClipboard() {
+        // Use the full assembled body if already fetched; otherwise use preview
+        // and trigger the fetch in the background so copy on next long-press works.
+        if let full = fullPlanContent {
+            UIPasteboard.general.string = full
+        } else {
+            UIPasteboard.general.string = planContentPreview ?? ""
+            ensurePlanFetched()
+        }
     }
 
     @ViewBuilder

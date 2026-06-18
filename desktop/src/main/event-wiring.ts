@@ -3,7 +3,7 @@ import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log } from './logger'
 import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedEngineTabStatus } from './state'
 import { broadcast } from './broadcast'
-import { currentBackend } from './settings-store'
+import { currentBackend, shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
 import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
@@ -65,7 +65,7 @@ export function wireEngineBridgeEvents(): void {
         // map bare → 'main' and change the forwarded wire shape).
         const dtabId = deltaKey.split(':')[0]
         const dinstanceId = deltaKey.split(':')[1] || null
-        state.remoteTransport.send({ type: 'engine_text_delta', tabId: dtabId, instanceId: dinstanceId, text })
+        state.remoteTransport.send({ type: 'desktop_text_delta', tabId: dtabId, instanceId: dinstanceId, text })
       }
     }
     pendingTextDeltas.clear()
@@ -230,7 +230,46 @@ export function wireEngineBridgeEvents(): void {
       // the event for diagnostic visibility only — the desktop is the
       // authoritative responder via early-stop-policy.ts — but the wire
       // protocol is now uniform across consumers.
-      state.remoteTransport.send({ type: `engine_${event.type.replace('engine_', '')}`, tabId, instanceId, ...event })
+      // Map engine event type strings to desktop_ wire event types. Most
+      // engine_* events strip the engine_ prefix and add desktop_ (e.g.
+      // engine_status → desktop_status). Exceptions below preserve the
+      // engine_ segment in the output name so iOS decoders stay unambiguous.
+      const engineToWireType = (engineType: string): string => {
+        switch (engineType) {
+          case 'engine_error':                 return 'desktop_engine_error'
+          case 'engine_conversation_history':  return 'desktop_engine_conversation_history'
+          case 'engine_profiles':              return 'desktop_engine_profiles'
+          default:                             return `desktop_${engineType.replace('engine_', '')}`
+        }
+      }
+      // Low-bandwidth mode (issue #158): gate the per-token reasoning stream.
+      // `engine_thinking_delta` becomes `desktop_thinking_delta` on the wire.
+      // When `streamThinkingToRemote` is OFF for this desktop we DROP the
+      // delta (do not forward) to save bandwidth — but we ALWAYS forward the
+      // block_start / block_end boundaries below so the phone still renders
+      // the "💭 Thought for Ns" summary and never looks stalled mid-turn.
+      // Both branches log so the operational log explains exactly why a
+      // given iOS device did or did not receive the reasoning stream.
+      //
+      // Spread order matters: `...event` carries the engine's own
+      // `type: 'engine_thinking_*'`, so it MUST come before the `type:`
+      // override or it clobbers the computed wire type and iOS (which decodes
+      // `desktop_thinking_*`) never matches. The text-delta path above
+      // constructs its envelope explicitly for the same reason.
+      if (event.type === 'engine_thinking_delta') {
+        if (!shouldStreamThinkingToRemote()) {
+          log(`thinking: dropped engine_thinking_delta key=${key} (streamThinkingToRemote=off) — boundaries still forwarded`)
+        } else {
+          log(`thinking: forwarding engine_thinking_delta key=${key} (streamThinkingToRemote=on)`)
+          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+        }
+      } else if (event.type === 'engine_thinking_block_start' || event.type === 'engine_thinking_block_end') {
+        // Boundaries always forward (never gated) so the phone renders the
+        // "💭 Thought for Ns" summary and never looks stalled mid-turn.
+        state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+      } else {
+        state.remoteTransport.send({ type: engineToWireType(event.type), tabId, instanceId, ...event })
+      }
 
       // Synthesize a `permission_request` envelope for iOS when an
       // engine-view `engine_status` event carries AskUserQuestion or
@@ -277,7 +316,7 @@ export function wireEngineBridgeEvents(): void {
           // sub-tab under the same parent tab. `instanceId` is non-null
           // here — the enclosing guard requires it.
           state.remoteTransport.send({
-            type: 'permission_request',
+            type: 'desktop_permission_request',
             tabId,
             instanceId,
             questionId,
@@ -287,8 +326,6 @@ export function wireEngineBridgeEvents(): void {
           }, true, { title: 'Ion needs your attention', body: pushBody })
         }
       }
-
-      // Synthesize a `tab_status` event for iOS when an engine-view
       // `engine_status` reports a state transition. Engine-view events
       // bypass EngineControlPlane (compound-key mismatch), so no
       // `tab-status-change` fires on the sessionPlane — iOS never learns
@@ -319,7 +356,7 @@ export function wireEngineBridgeEvents(): void {
         if (derivedStatus && lastForwardedEngineTabStatus.get(tabId) !== derivedStatus) {
           lastForwardedEngineTabStatus.set(tabId, derivedStatus)
           log(`engine_status: synthesizing tab_status for remote tabId=${tabId} instance=${instanceId} derivedStatus=${derivedStatus}`)
-          state.remoteTransport.send({ type: 'tab_status', tabId, status: derivedStatus as any })
+          state.remoteTransport.send({ type: 'desktop_tab_status', tabId, status: derivedStatus as any })
         }
       }
 
@@ -349,7 +386,7 @@ export function wireEngineBridgeEvents(): void {
         const divider = formatClearDivider(new Date())
         if (instanceId) {
           state.remoteTransport.send({
-            type: 'engine_harness_message',
+            type: 'desktop_harness_message',
             tabId,
             instanceId,
             message: divider,
@@ -357,7 +394,7 @@ export function wireEngineBridgeEvents(): void {
           })
         } else {
           state.remoteTransport.send({
-            type: 'message_added',
+            type: 'desktop_message_added',
             tabId,
             message: {
               id: `clear-${Date.now()}`,

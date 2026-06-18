@@ -76,6 +76,18 @@ type EngineRuntimeConfig struct {
 	Relay        *RelayConfig               `json:"relay,omitempty"`
 	Timeouts     *TimeoutsConfig            `json:"timeouts,omitempty"`
 	WebSearch    *WebSearchConfig           `json:"webSearch,omitempty"`
+	// Shell controls how the Bash tool selects the shell used to execute
+	// commands. Pointer so engine.json can fully omit the block and inherit
+	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
+	// Bash tool runs each command through the user's login shell so rc files
+	// (PATH, aliases, functions, exported env) are sourced. See
+	// types.ShellConfig.
+	Shell *ShellConfig `json:"shell,omitempty"`
+	// Workspace holds engine-wide filesystem-watch and session-lifecycle
+	// limits (orphaned-session reap grace window, per-watcher directory cap).
+	// Pointer so engine.json can omit the block and inherit the compiled
+	// defaults. See types.WorkspaceConfig.
+	Workspace *WorkspaceConfig `json:"workspace,omitempty"`
 	// EarlyStopContinue configures the Claude-Code-style "keep working"
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
@@ -91,6 +103,17 @@ type EngineRuntimeConfig struct {
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
 	LogLevel   string            `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
+}
+
+// GetWorkspace returns the Workspace config block, or nil for a nil receiver
+// or unset block. Nil-safe: WorkspaceConfig's accessors all tolerate a nil
+// receiver and return the compiled default, so callers can chain
+// cfg.GetWorkspace().SessionReapGrace() without a nil check.
+func (c *EngineRuntimeConfig) GetWorkspace() *WorkspaceConfig {
+	if c == nil {
+		return nil
+	}
+	return c.Workspace
 }
 
 // RelayConfig configures the WebSocket relay connection for mobile remote access.

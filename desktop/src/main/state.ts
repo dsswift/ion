@@ -76,7 +76,7 @@ export const state: MutableState = {
 
 /** Cached model list from engine, populated by LIST_MODELS IPC and included in remote snapshots. */
 export const modelCache = {
-  models: [] as Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean }>,
+  models: [] as Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[] }>,
   lastFetched: 0,
 }
 

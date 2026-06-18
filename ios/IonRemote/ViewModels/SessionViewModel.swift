@@ -87,6 +87,10 @@ final class SessionViewModel {
     /// engineResourceSnapshot and engineResourceDelta events.
     let resourceStore = ResourceStore()
 
+    /// Paged plan content assembler (plan gentle-perching-lemon). Populated
+    /// by plan_content events in response to requestPlanContent commands.
+    let planContentStore = PlanContentStore()
+
     var tabs: [RemoteTabState] = []
     var tabIds: Set<String> = []
     var liveText: [String: String] = [:]
@@ -115,6 +119,14 @@ final class SessionViewModel {
     var enginePinnedPrompt: [String: String] = [:]
     var engineConversationLoaded: Set<String> = []               // compoundKeys that have loaded history
     var engineTurnHasText: Set<String> = []                      // compoundKeys where current LLM sub-turn produced text
+    /// In-progress thinking-block accumulator, keyed by engine compound key
+    /// (tabId or tabId:instanceId). Holds the `Message.id` of the live
+    /// `.thinking` message that block_start created so thinking_delta can
+    /// append to it and thinking_block_end can finalize it. Absent when no
+    /// reasoning block is in progress. Cleared on stream reset / history
+    /// reload so a stale in-progress block never lingers. See
+    /// SessionViewModel+ThinkingEvents.swift.
+    var thinkingInProgress: [String: String] = [:]               // compoundKey -> live thinking message id
     // Agent dispatch conversation history (per conversationId for dispatch pager)
     var agentConversationMessages: [String: [Message]] = [:]     // conversationId -> messages
     var agentConversationLoading: Set<String> = []               // conversationIds currently loading

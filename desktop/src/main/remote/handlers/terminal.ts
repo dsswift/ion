@@ -9,17 +9,17 @@ function log(msg: string): void {
   _log('main', msg)
 }
 
-export function handleTerminalInput(cmd: Extract<RemoteCommand, { type: 'terminal_input' }>): void {
+export function handleTerminalInput(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_input' }>): void {
   const key = `${cmd.tabId}:${cmd.instanceId}`
   terminalManager.write(key, cmd.data)
 }
 
-export function handleTerminalResize(cmd: Extract<RemoteCommand, { type: 'terminal_resize' }>): void {
+export function handleTerminalResize(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_resize' }>): void {
   const key = `${cmd.tabId}:${cmd.instanceId}`
   terminalManager.resize(key, cmd.cols, cmd.rows)
 }
 
-export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { type: 'terminal_add_instance' }>): Promise<void> {
+export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_add_instance' }>): Promise<void> {
   try {
     const escaped = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const result = await state.mainWindow?.webContents.executeJavaScript(`
@@ -38,7 +38,7 @@ export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { ty
       const key = `${cmd.tabId}:${result.id}`
       terminalManager.create(key, result.cwd || '~')
       state.remoteTransport?.send({
-        type: 'terminal_instance_added',
+        type: 'desktop_terminal_instance_added',
         tabId: cmd.tabId,
         instance: { id: result.id, label: result.label || 'Shell', kind: result.kind || 'user', readOnly: false, cwd: result.cwd || '' },
       })
@@ -48,7 +48,7 @@ export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { ty
   }
 }
 
-export async function handleTerminalRemoveInstance(cmd: Extract<RemoteCommand, { type: 'terminal_remove_instance' }>): Promise<void> {
+export async function handleTerminalRemoveInstance(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_remove_instance' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -60,13 +60,13 @@ export async function handleTerminalRemoveInstance(cmd: Extract<RemoteCommand, {
       })()
     `)
     terminalManager.destroy(`${cmd.tabId}:${cmd.instanceId}`)
-    state.remoteTransport?.send({ type: 'terminal_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
+    state.remoteTransport?.send({ type: 'desktop_terminal_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
   } catch (err) {
     log(`terminal_remove_instance error: ${(err as Error).message}`)
   }
 }
 
-export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, { type: 'request_terminal_snapshot' }>, deviceId: string): Promise<void> {
+export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, { type: 'desktop_request_terminal_snapshot' }>, deviceId: string): Promise<void> {
   try {
     const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const tabState = await state.mainWindow?.webContents.executeJavaScript(`
@@ -101,7 +101,7 @@ export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, 
         }
       }
       state.remoteTransport?.sendToDevice(deviceId, {
-        type: 'terminal_snapshot',
+        type: 'desktop_terminal_snapshot',
         tabId: cmd.tabId,
         instances: tabState.instances,
         activeInstanceId: tabState.activeInstanceId,
@@ -113,7 +113,7 @@ export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, 
   }
 }
 
-export async function handleTerminalSelectInstance(cmd: Extract<RemoteCommand, { type: 'terminal_select_instance' }>): Promise<void> {
+export async function handleTerminalSelectInstance(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_select_instance' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -129,18 +129,18 @@ export async function handleTerminalSelectInstance(cmd: Extract<RemoteCommand, {
   }
 }
 
-export function handleRenameTab(cmd: Extract<RemoteCommand, { type: 'rename_tab' }>): void {
+export function handleRenameTab(cmd: Extract<RemoteCommand, { type: 'desktop_rename_tab' }>): void {
   broadcast(IPC.REMOTE_RENAME_TAB, cmd.tabId, cmd.customTitle)
 }
 
-export function handleRenameTerminalInstance(cmd: Extract<RemoteCommand, { type: 'rename_terminal_instance' }>): void {
+export function handleRenameTerminalInstance(cmd: Extract<RemoteCommand, { type: 'desktop_rename_terminal_instance' }>): void {
   broadcast(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, cmd.tabId, cmd.instanceId, cmd.label)
 }
 
-export function handleSetPillColor(cmd: Extract<RemoteCommand, { type: 'set_pill_color' }>): void {
+export function handleSetPillColor(cmd: Extract<RemoteCommand, { type: 'desktop_set_pill_color' }>): void {
   broadcast(IPC.REMOTE_SET_PILL_COLOR, cmd.tabId, cmd.pillColor)
 }
 
-export function handleSetPillIcon(cmd: Extract<RemoteCommand, { type: 'set_pill_icon' }>): void {
+export function handleSetPillIcon(cmd: Extract<RemoteCommand, { type: 'desktop_set_pill_icon' }>): void {
   broadcast(IPC.REMOTE_SET_PILL_ICON, cmd.tabId, cmd.pillIcon)
 }

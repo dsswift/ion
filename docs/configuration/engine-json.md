@@ -460,6 +460,48 @@ These follow the same merge semantics as other config fields: higher-priority la
 }
 ```
 
+## workspace
+
+Engine-wide limits for the filesystem-watch and session-lifecycle subsystems. Omit the block (or set a field to `0`) to use the compiled default. These protect the engine's process file-descriptor table: each watched directory consumes one descriptor, and a leaked session keeps its watcher's descriptors open.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `sessionReapGraceMs` | int64 | `300000` (5 min) | How long a session whose last owning client connection has disconnected is kept alive before the engine reaps it (full teardown, releasing its workspace watcher). A client that reconnects and re-addresses the same session key within this window cancels the reap, so a transient socket flap or a desktop relaunch never tears down a live session. Raise it if your clients reconnect slowly; lower it to bound file-descriptor growth more aggressively. |
+| `maxWatchedDirs` | int | `50000` | Cap on the number of directories a single workspace watcher attaches a descriptor to. When reached, the watcher keeps working for the directories it did attach and stops descending. Raise it for genuinely huge monorepos; lower it to keep a tighter bound on per-watcher descriptors. |
+
+Same merge semantics as other config fields: higher-priority layers override lower ones. Zero means "use the compiled default."
+
+```json
+{
+  "workspace": {
+    "sessionReapGraceMs": 120000,
+    "maxWatchedDirs": 100000
+  }
+}
+```
+
+## shell
+
+Controls how the `Bash` tool selects the shell used to execute commands. Omit the block to inherit the default: a non-login, non-interactive shell that sources no rc files (`bash -c` on POSIX, PowerShell `-NoProfile -Command` on Windows). This is the historical behavior.
+
+When `useLoginShell` is `true`, the engine runs each `Bash` command through the user's **login** shell (e.g. `zsh -lc`), so `.zprofile` / `.zshrc` are sourced for every command. This picks up the user's `PATH`, aliases, shell functions, and rc-exported environment that a non-login shell never sees — useful when the engine is launched from a GUI context (e.g. a macOS app bundle) that inherits a truncated `PATH`. Because each command re-sources the rc files, login-shell mode is robust to mid-session environment changes.
+
+**POSIX only.** On Windows the PowerShell branch is unchanged; `useLoginShell` has no effect there, as Windows has no analogous "login shell" concept.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `useLoginShell` | bool | `false` | When `true`, run `Bash` commands through the user's login shell (sourcing rc files) instead of the default non-login `bash -c`. POSIX only. |
+| `shellPath` | string | `""` | Pins the shell binary to use when `useLoginShell` is `true`. Empty auto-resolves in order: `$SHELL`, else `/bin/zsh`, else `/bin/bash`. |
+
+```json
+{
+  "shell": {
+    "useLoginShell": true,
+    "shellPath": "/bin/zsh"
+  }
+}
+```
+
 ## featureFlags
 
 Feature flag source configuration.

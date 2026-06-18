@@ -457,7 +457,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		utils.Debug("Session", fmt.Sprintf("dispatching queued prompt: key=%s", key))
 		go func() {
 			var ov *PromptOverrides
-			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions || len(nextPrompt.attachments) > 0 || nextPrompt.implementationPhase {
+			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions || len(nextPrompt.attachments) > 0 || nextPrompt.implementationPhase || nextPrompt.thinkingEffort != "" {
 				ov = &PromptOverrides{
 					Model:               nextPrompt.model,
 					MaxTurns:            nextPrompt.maxTurns,
@@ -466,6 +466,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 					NoExtensions:        nextPrompt.noExtensions,
 					Attachments:         nextPrompt.attachments,
 					ImplementationPhase: nextPrompt.implementationPhase,
+					ThinkingEffort:      nextPrompt.thinkingEffort,
 				}
 			}
 			if err := m.SendPrompt(key, nextPrompt.text, ov); err != nil {
@@ -711,6 +712,29 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			FallbackRequestedModel: e.RequestedModel,
 			FallbackModel:          e.FallbackModel,
 			FallbackReason:         e.Reason,
+		}
+
+	case *types.ThinkingBlockStartEvent:
+		// Reasoning block began. No payload — arrival is the signal.
+		// Consumers create a "thinking" affordance and start a pulse/elapsed
+		// timer. See normalized_event.go for the per-block emission contract.
+		return types.EngineEvent{Type: "engine_thinking_block_start"}
+
+	case *types.ThinkingDeltaEvent:
+		// Incremental reasoning text — peer of engine_text_delta for the
+		// thinking channel. Only reaches here when ThinkingConfig.StreamDeltas
+		// is on (the runloop gates emission); boundaries always flow.
+		return types.EngineEvent{Type: "engine_thinking_delta", ThinkingText: e.Text}
+
+	case *types.ThinkingBlockEndEvent:
+		// Reasoning block finished. Carries a summary so consumers can render
+		// "💭 Thought for Ns" without having accumulated deltas (and so
+		// delta-disabled / history-loaded consumers still get a summary).
+		return types.EngineEvent{
+			Type:                   "engine_thinking_block_end",
+			ThinkingTotalTokens:    e.TotalTokens,
+			ThinkingElapsedSeconds: e.ElapsedSeconds,
+			ThinkingRedacted:       e.Redacted,
 		}
 
 	default:

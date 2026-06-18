@@ -46,7 +46,7 @@ export interface RelayConfig {
  * Events:
  *  - 'code-generated' (code: string) -- display this code in the UI
  *  - 'paired' (result: PairingResult) -- pairing complete
- *  - 'error' (message: string) -- pairing failed
+ *  - 'desktop_error' (message: string) -- pairing failed
  *  - 'expired' -- pairing code expired
  */
 export class PairingManager extends EventEmitter {

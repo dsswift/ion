@@ -209,6 +209,7 @@ extension SessionViewModel {
         activeTools.removeValue(forKey: removedKey)
         engineConversationLoaded.remove(removedKey)
         engineTurnHasText.remove(removedKey)
+        thinkingInProgress.removeValue(forKey: removedKey)
     }
 
     // MARK: - Agent conversation history

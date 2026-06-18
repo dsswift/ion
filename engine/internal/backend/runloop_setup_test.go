@@ -923,6 +923,51 @@ func TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState(t *testing.T) {
 	}
 }
 
+// TestBuildToolDefs_PerPromptBashAdditionsOnly_NoSessionAllowlist is the
+// regression test for the bug where a slash command dispatched as an extension
+// command (e.g. /create-issue) could not run its allowed Bash side effect
+// during plan mode. The session has NO bash allowlist; the only allowances are
+// per-prompt additions carried on RunOptions (the path the extension SDK's
+// sendPrompt now feeds). The engine must, for this run only:
+//   (a) include Bash in the plan-mode tool list, and
+//   (b) install the additions on activeRun.planModeAllowedBashCommands so the
+//       runtime gate enforces exactly those prefixes.
+//
+// Before the fix, an extension-command dispatch carried no additions, so the
+// effective allowlist was empty, Bash was excluded, and the command's
+// `gh issue create` was default-denied until plan mode exited. Reverting the
+// additions plumbing (so RunOptions.BashAllowlistAdditionsForThisPrompt no
+// longer reaches the run) makes this test fail: Bash is absent and the run
+// state is empty.
+func TestBuildToolDefs_PerPromptBashAdditionsOnly_NoSessionAllowlist(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{requestID: "additions-only", planMode: true, planFilePath: "/tmp/plan.md"}
+	opts := types.RunOptions{
+		PlanMode:     true,
+		PlanFilePath: "/tmp/plan.md",
+		// No PlanModeAllowedBashCommands — the session has no allowlist.
+		BashAllowlistAdditionsForThisPrompt: []string{"gh issue create"},
+	}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	hasBash := false
+	for _, td := range toolDefs {
+		if td.Name == "Bash" {
+			hasBash = true
+			break
+		}
+	}
+	if !hasBash {
+		t.Error("expected Bash in plan-mode tool list when per-prompt additions are the only allowance")
+	}
+
+	got := run.planModeAllowedBashCommands
+	if len(got) != 1 || got[0] != "gh issue create" {
+		t.Fatalf("expected run.planModeAllowedBashCommands=[gh issue create], got %v", got)
+	}
+}
+
 // --- PlanModeSafe external tool tests ---
 
 // TestBuildToolDefs_PlanModeSafe_SurvivesFilter verifies that an external tool

@@ -132,6 +132,27 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
       { value: 'vscode', label: 'VS Code' },
     ],
   },
+  {
+    // Low-bandwidth mode, facet 1 (issue #158): stream the model's
+    // extended-thinking deltas to paired iOS devices. Default ON. When
+    // OFF, the desktop DROPS `engine_thinking_delta` events before
+    // forwarding to iOS but ALWAYS forwards the block_start / block_end
+    // boundaries, so the phone still shows the "💭 Thought for Ns" summary
+    // and never looks stalled — it just skips the per-token reasoning
+    // stream over the wire. This is the first toggle of a planned broader
+    // low-bandwidth mode; later facets (tool-output truncation, etc.) will
+    // join it under the same heading. Projected under `general` because the
+    // `remote` desktop category is NOT on the iOS allowlist (pairing and
+    // transport state are iOS-local); the desktop UI for this toggle lives
+    // in RemoteCategory, but its iOS-visible home is the General section.
+    // Read by the main process at the iOS forward path (event-wiring.ts).
+    key: 'streamThinkingToRemote',
+    type: 'boolean',
+    group: 'general',
+    label: 'Stream reasoning to phone (low-bandwidth mode)',
+    description: 'Forward the model\'s live reasoning text to paired iOS devices. When off, the phone still sees that the model thought (and for how long) but skips the per-token reasoning stream to save bandwidth. The first facet of a broader low-bandwidth mode.',
+    defaultValue: true,
+  },
 
   // ═══════════════════════════════════════════════════════════════════
   // AI & MODELS
@@ -140,6 +161,22 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // (`preferredModel`, `engineDefaultModel`) are excluded — iOS has a
   // dedicated Models picker for those.
   // ═══════════════════════════════════════════════════════════════════
+  {
+    // Global gate for extended thinking / reasoning. Default OFF (Ion is
+    // API-billed; thinking tokens bill at output rates and can multiply a
+    // turn's cost). When ON, a per-conversation thinking control appears in
+    // the status bar on both clients (off/low/medium/high), isolated per
+    // conversation/subtab, applied live on the next prompt. When OFF, the
+    // control is hidden and no prompt carries a thinking directive. Read by
+    // the renderer at prompt-submit time (shouldEnableThinking in
+    // settings-store.ts).
+    key: 'thinkingEnabled',
+    type: 'boolean',
+    group: 'ai',
+    label: 'Enable extended thinking',
+    description: 'Let models reason before answering. When on, each conversation gets an off/low/medium/high thinking control in its status bar. Thinking improves hard multi-step tasks but bills reasoning as output tokens, so it adds cost. Off by default.',
+    defaultValue: false,
+  },
   {
     key: 'planModelSplitEnabled',
     type: 'boolean',

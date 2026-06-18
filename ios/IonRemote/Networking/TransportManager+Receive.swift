@@ -176,7 +176,7 @@ extension TransportManager {
         // Check for heartbeat: extract ts/buffered and surface to the app
         // for connection quality tracking.
         if let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-           let type = json["type"] as? String, type == "heartbeat" {
+           let type = json["type"] as? String, type == "desktop_heartbeat" {
             let senderTs = json["ts"] as? Double ?? 0
             let buffered = json["buffered"] as? Int ?? 0
             eventContinuation.yield(.heartbeat(senderTs: senderTs, buffered: buffered))

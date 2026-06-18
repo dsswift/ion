@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -191,6 +194,72 @@ func TestBashToolPipedCommands(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "hello_world") {
 		t.Errorf("expected piped output, got %q", result.Content)
+	}
+}
+
+// TestShellCommandDefault pins that, with no ShellConfig on the context, the
+// Bash tool selects the historical non-login bash -c invocation. Regression
+// guard: this must keep returning bash -c after the login-shell feature.
+func TestShellCommandDefault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only; Windows uses PowerShell")
+	}
+	shell, args := shellCommand(context.Background(), "echo hi")
+	if shell != "bash" || len(args) != 2 || args[0] != "-c" || args[1] != "echo hi" {
+		t.Errorf("shellCommand(default) = %q %v, want bash [-c echo hi]", shell, args)
+	}
+}
+
+// TestShellCommandLoginShell pins that a ShellConfig with UseLoginShell on the
+// context flips shellCommand to the resolved login shell with -lc. ShellPath
+// pins the binary so the test does not depend on the developer's $SHELL.
+// Mentally reverting the login-shell change makes this go red (it would return
+// bash -c instead).
+func TestShellCommandLoginShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only; Windows uses PowerShell")
+	}
+	ctx := types.WithShellConfig(context.Background(), &types.ShellConfig{
+		UseLoginShell: true,
+		ShellPath:     "/usr/bin/fakelogin",
+	})
+	shell, args := shellCommand(ctx, "echo hi")
+	if shell != "/usr/bin/fakelogin" || len(args) != 2 || args[0] != "-lc" || args[1] != "echo hi" {
+		t.Errorf("shellCommand(login) = %q %v, want /usr/bin/fakelogin [-lc echo hi]", shell, args)
+	}
+}
+
+// TestBashToolLoginShellEndToEnd proves the login-shell path actually executes
+// the configured shell: it points ShellPath at a temp script that exports a
+// marker variable (simulating an rc file) and asserts the command sees it.
+// Without login-shell mode the default bash -c would not run this script, so
+// the marker would be absent — making this a genuine end-to-end pin.
+func TestBashToolLoginShellEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only; Windows uses PowerShell")
+	}
+
+	// A minimal wrapper that behaves like a login shell: it sets a marker
+	// (as an rc file would) and then runs the command passed via -lc.
+	dir := t.TempDir()
+	shellPath := filepath.Join(dir, "fakelogin.sh")
+	script := "#!/bin/bash\nexport RC_MARKER=sourced_from_login_shell\n# -lc <command>: $2 holds the command string\neval \"$2\"\n"
+	if err := os.WriteFile(shellPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake shell: %v", err)
+	}
+
+	ctx := types.WithShellConfig(context.Background(), &types.ShellConfig{
+		UseLoginShell: true,
+		ShellPath:     shellPath,
+	})
+
+	ops := &LocalBashOperations{}
+	result, err := ops.Exec(ctx, "echo $RC_MARKER", dir, ExecOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Stdout, "sourced_from_login_shell") {
+		t.Errorf("expected rc marker from login shell, got %q (stderr %q)", result.Stdout, result.Stderr)
 	}
 }
 

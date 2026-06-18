@@ -44,6 +44,10 @@ extension RemoteEvent: Codable {
             self = event
             return
         }
+        if let event = try Self.decodeThinking(type: type, container: container) {
+            self = event
+            return
+        }
         if let event = try Self.decodeResource(type: type, container: container) {
             self = event
             return
@@ -74,6 +78,7 @@ extension RemoteEvent: Codable {
         if try encodePermission(into: &container) { return }
         if try encodeTerminal(into: &container) { return }
         if try encodeEngine(into: &container) { return }
+        if try encodeThinking(into: &container) { return }
         if try encodeResource(into: &container) { return }
         if try encodeGit(into: &container) { return }
         if try encodeFiles(into: &container) { return }

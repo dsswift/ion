@@ -39,6 +39,34 @@ import (
 // one frame.
 const debounceWindow = 50 * time.Millisecond
 
+// defaultMaxWatchedDirs caps the number of directories a single Watcher will
+// attach an fsnotify/kqueue descriptor to. Each attached directory consumes
+// one file descriptor on macOS (kqueue) and one inotify watch on Linux, so an
+// unbounded walk of a pathologically large tree (a symlink cycle, a monorepo
+// with hundreds of thousands of directories, or a root mistakenly pointed at
+// `/` or `$HOME`) can exhaust the per-process FD limit (default 10240 soft /
+// 61440 hard on macOS) and take down DNS, sockets, and subprocess forks for
+// the entire engine.
+//
+// 50_000 is comfortably above any realistic single repository (the Ion repo is
+// ~4800 directories) yet far below the FD ceiling even when several watchers
+// run concurrently. When the cap is hit the watcher keeps functioning for the
+// directories it did attach; it simply stops descending. This is strictly
+// better than the previous unbounded behavior that could exhaust the process.
+//
+// This is the COMPILED DEFAULT only. Consumers override it per engine via
+// engine.json's workspace.maxWatchedDirs, which flows through the session
+// watcher pool into NewWithMaxDirs. It is a package-level var, not a const, so
+// that fallback resolution (and tests that lower it) can read it. Production
+// code never reassigns it; the configured value is passed explicitly.
+var maxWatchedDirs = 50_000
+
+// capWarnLogger is the sink for the one-shot "directory cap reached" warning.
+// It defaults to utils.Warn and is a package var only so tests can substitute
+// a counting sink to assert the warning fires exactly once per watcher.
+// Production code never reassigns it.
+var capWarnLogger = utils.Warn
+
 // Action enumerates the normalized event kinds delivered to the callback.
 // Rename is deliberately absent: cross-editor rename detection is unreliable
 // (vim writes via .swp + rename, JetBrains writes via temp + rename, atomic
@@ -80,6 +108,27 @@ type Watcher struct {
 	closed   bool
 	onEvent  func(Info)
 	doneCh   chan struct{}
+
+	// maxDirs is the per-watcher directory cap. Resolved at construction from
+	// the New/NewWithMaxDirs argument: a positive value is used verbatim; zero
+	// falls back to the package default maxWatchedDirs. Stored per-instance so
+	// different watchers can carry different caps (e.g. a future per-root
+	// override) and so tests can construct a low-cap watcher directly.
+	maxDirs int
+	// truncated is set when the directory walk hit the cap and stopped
+	// attaching descriptors. Guarded by mu. Observable for tests and for
+	// operators investigating "why aren't events firing under subtree X".
+	truncated bool
+	// attachedCount is the running total of directories this watcher has
+	// attached an fsnotify descriptor to, across the initial Start() walk and
+	// every later attachSubtree() walk. Guarded by mu. The cap is enforced
+	// against this lifetime total, not a per-walk count, so a watcher cannot
+	// creep past the cap by accumulating many small subtree attaches.
+	attachedCount int
+	// capWarnOnce ensures the cap-hit WARN is logged exactly once per watcher,
+	// even though the cap can be reached in both the Start() walk and any
+	// later attachSubtree() walk.
+	capWarnOnce sync.Once
 }
 
 // pendingEvent tracks an in-flight debounced event. action is the latest
@@ -97,7 +146,20 @@ type pendingEvent struct {
 //
 // New does NOT attach any inotify descriptors -- call Start() to begin
 // watching.
+//
+// New uses the package-default directory cap (maxWatchedDirs). Callers that
+// need a configured cap use NewWithMaxDirs.
 func New(root string, ignores []string) (*Watcher, error) {
+	return NewWithMaxDirs(root, ignores, 0)
+}
+
+// NewWithMaxDirs is New with an explicit per-watcher directory cap. A positive
+// maxDirs caps the number of directories this watcher will attach a descriptor
+// to; zero falls back to the package default (maxWatchedDirs). The cap exists
+// so a single watcher cannot exhaust the process file-descriptor table when
+// rooted at a pathologically large tree. Plumbed from
+// EngineRuntimeConfig.Workspace.MaxWatchedDirs via the session watcher pool.
+func NewWithMaxDirs(root string, ignores []string, maxDirs int) (*Watcher, error) {
 	if root == "" {
 		return nil, errors.New("watcher: root is empty")
 	}
@@ -123,11 +185,17 @@ func New(root string, ignores []string) (*Watcher, error) {
 			return nil, errors.New("watcher: invalid ignore pattern " + pat + ": " + err.Error())
 		}
 	}
-	utils.Info("watcher", "New: constructed root="+abs+" ignores="+countStr(len(ignores)))
+	// Resolve the effective cap: positive value wins; zero means default.
+	cap := maxDirs
+	if cap <= 0 {
+		cap = maxWatchedDirs
+	}
+	utils.Info("watcher", "New: constructed root="+abs+" ignores="+countStr(len(ignores))+" maxDirs="+countStr(cap))
 	utils.Info("watcher", "New: ignore patterns root="+abs+" patterns=["+strings.Join(ignores, ", ")+"]")
 	return &Watcher{
 		root:    abs,
 		ignores: ignores,
+		maxDirs: cap,
 		pending: make(map[string]*pendingEvent),
 		doneCh:  make(chan struct{}),
 	}, nil
@@ -184,7 +252,20 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 			utils.Debug("watcher", "Start: walk ignore dir rel="+rel)
 			return filepath.SkipDir
 		}
+		// Enforce the directory cap before attaching another descriptor so a
+		// pathologically large tree cannot exhaust the process FD table. Once
+		// the cap is hit we stop descending entirely (SkipDir on the current
+		// dir prunes its subtree; subsequent siblings are still visited but
+		// also short-circuit here). filepath.Walk is deterministic (lexical
+		// order) so the truncation point is reproducible, not racy.
+		if !w.tryReserveAttach() {
+			w.markTruncated()
+			return filepath.SkipDir
+		}
 		if err := fsw.Add(path); err != nil {
+			// Release the reserved slot: we did not actually attach a
+			// descriptor, so it must not count against the cap.
+			w.releaseAttach()
 			utils.Debug("watcher", "Start: fsw.Add failed path="+path+" err="+err.Error())
 			return nil
 		}
@@ -367,7 +448,16 @@ func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 			if w.shouldIgnore(rel, true) {
 				return filepath.SkipDir
 			}
+			// Enforce the same lifetime directory cap here as in Start(): a
+			// burst of directory-create events under a huge new subtree must
+			// not let the watcher creep past maxWatchedDirs and exhaust the
+			// process FD table.
+			if !w.tryReserveAttach() {
+				w.markTruncated()
+				return filepath.SkipDir
+			}
 			if err := fsw.Add(path); err != nil {
+				w.releaseAttach()
 				utils.Debug("watcher", "attachSubtree: fsw.Add failed path="+path+" err="+err.Error())
 				return nil
 			}
@@ -443,6 +533,45 @@ func (w *Watcher) deliverFunc(path, rel string) func() {
 		}
 		utils.Info("watcher", "deliverFunc: fire path="+path+" rel="+rel+" action="+action)
 		cb(Info{Path: path, RelPath: rel, Action: action})
+	}
+}
+
+// markTruncated records that a walk hit maxWatchedDirs and stopped attaching
+// descriptors. Sets the truncated flag (under mu) and logs a single WARN with
+// the root and cap so the condition is observable without spamming the log on
+// a busy tree. Safe to call from multiple walk closures.
+func (w *Watcher) markTruncated() {
+	w.mu.Lock()
+	w.truncated = true
+	w.mu.Unlock()
+	w.capWarnOnce.Do(func() {
+		capWarnLogger("watcher", "directory cap reached, not attaching further dirs root="+w.root+" cap="+countStr(w.maxDirs))
+	})
+}
+
+// tryReserveAttach atomically checks the lifetime directory cap and, if there
+// is room, reserves a slot by incrementing attachedCount. Returns true when
+// the caller may attach another directory, false when the cap is reached. The
+// check-and-increment is done under mu so concurrent attachSubtree walks (a
+// fast burst of MkdirAll events) cannot collectively overshoot the cap.
+func (w *Watcher) tryReserveAttach() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.attachedCount >= w.maxDirs {
+		return false
+	}
+	w.attachedCount++
+	return true
+}
+
+// releaseAttach gives back a slot reserved by tryReserveAttach when the
+// subsequent fsw.Add failed, so a failed attach does not permanently consume
+// cap headroom. Never drops below zero.
+func (w *Watcher) releaseAttach() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.attachedCount > 0 {
+		w.attachedCount--
 	}
 }
 

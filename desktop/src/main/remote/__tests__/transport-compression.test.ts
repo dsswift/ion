@@ -35,7 +35,7 @@ describe('transport compression round-trip', () => {
   }
 
   it('round-trips a small JSON object', () => {
-    const original = { type: 'heartbeat', seq: 42, ts: Date.now(), buffered: 0 }
+    const original = { type: 'desktop_heartbeat', seq: 42, ts: Date.now(), buffered: 0 }
     const { nonce, ciphertext } = compressAndEncrypt(original)
     const result = decryptAndDecompress(nonce, ciphertext)
     expect(result).toEqual(original)
@@ -52,7 +52,7 @@ describe('transport compression round-trip', () => {
       conversationInstances: [{ id: `inst-${i}`, label: 'default' }],
       lastActivityAt: Date.now() - i * 1000,
     }))
-    const original = { type: 'snapshot', tabs, recentDirectories: ['/Users/dev'] }
+    const original = { type: 'desktop_snapshot', tabs, recentDirectories: ['/Users/dev'] }
     const { nonce, ciphertext } = compressAndEncrypt(original)
     const result = decryptAndDecompress(nonce, ciphertext)
     expect(result).toEqual(original)
@@ -68,7 +68,7 @@ describe('transport compression round-trip', () => {
       conversationInstances: [{ id: `inst-${i}`, label: 'default' }],
       lastActivityAt: Date.now() - i * 1000,
     }))
-    const plaintext = JSON.stringify({ type: 'snapshot', tabs })
+    const plaintext = JSON.stringify({ type: 'desktop_snapshot', tabs })
     const compressed = deflateRawSync(Buffer.from(plaintext, 'utf-8'))
 
     // Expect at least 5× compression (typically 10–15× for repetitive JSON).
@@ -77,7 +77,7 @@ describe('transport compression round-trip', () => {
 
   it('handles backward-compatible uncompressed payloads (no 0x01 prefix)', () => {
     // Simulate a legacy payload: encrypted directly from UTF-8 string, no compression.
-    const original = { type: 'heartbeat', seq: 1, ts: 12345, buffered: 0 }
+    const original = { type: 'desktop_heartbeat', seq: 1, ts: 12345, buffered: 0 }
     const plaintext = JSON.stringify(original)
     const { nonce, ciphertext } = encrypt(Buffer.from(plaintext, 'utf-8'), key)
 
@@ -103,7 +103,7 @@ describe('transport compression round-trip', () => {
   })
 
   it('version byte 0x01 is always the first byte of compressed payloads', () => {
-    const original = { type: 'snapshot', tabs: [{ id: 't1' }] }
+    const original = { type: 'desktop_snapshot', tabs: [{ id: 't1' }] }
     const plaintext = JSON.stringify(original)
     const compressed = deflateRawSync(Buffer.from(plaintext, 'utf-8'))
     const wire = Buffer.concat([Buffer.from([0x01]), compressed])

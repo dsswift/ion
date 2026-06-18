@@ -14,7 +14,7 @@ import {
   groupMessages,
   ToolGroup, AssistantMessage, SystemMessage, InterruptButton,
   UserMessage, QueuedMessage, MessageActions, EmptyState,
-  CompactionRow, AgentTurnGroup, InterceptBanner,
+  CompactionRow, AgentTurnGroup, InterceptBanner, ThinkingBlock,
 } from './conversation'
 import { buildPermissionDeniedHandlers } from './conversation/usePermissionDeniedHandlers'
 
@@ -232,7 +232,9 @@ export function ConversationView() {
               case 'tool-group':
                 return <ToolGroup key={`tg-${item.messages[0].id}`} tools={item.messages} skipMotion={isHistorical} />
               case 'agent-turn':
-                return <AgentTurnGroup key={`at-${item.tools[0]?.id ?? idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} skipMotion={isHistorical} />
+                return <AgentTurnGroup key={`at-${item.tools[0]?.id ?? idx}`} tools={item.tools} assistantMessages={item.assistantMessages} isActive={item.isActive} thinking={item.thinking} skipMotion={isHistorical} />
+              case 'thinking':
+                return <ThinkingBlock key={item.message.id} message={item.message} skipMotion={isHistorical} />
               case 'compaction':
                 return <CompactionRow key={item.message.id} message={item.message} skipMotion={isHistorical} />
               case 'system':

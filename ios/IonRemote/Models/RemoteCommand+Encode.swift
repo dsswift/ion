@@ -52,6 +52,10 @@ extension RemoteCommand {
             try container.encode(TypeKey.setPermissionMode, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(mode, forKey: .mode)
+        case .setThinkingEffort(let tabId, let effort):
+            try container.encode(TypeKey.setThinkingEffort, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(effort, forKey: .effort)
         case .loadConversation(let tabId, let before):
             try container.encode(TypeKey.loadConversation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -157,7 +161,8 @@ extension RemoteCommand {
             try container.encode(instanceId, forKey: .instanceId)
 
         case .engineRenameInstance(let tabId, let instanceId, let label):
-            try container.encode(TypeKey.engineRenameInstance, forKey: .type)
+            // Unified with renameTerminalInstance at wire level.
+            try container.encode(TypeKey.renameTerminalInstance, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
             try container.encode(label, forKey: .label)
@@ -407,6 +412,30 @@ extension RemoteCommand {
             try container.encode(TypeKey.deleteResource, forKey: .type)
             try container.encode(kind, forKey: .kind)
             try container.encode(resourceId, forKey: .resourceId)
+
+        case .implementPlan(let tabId, let questionId, let instanceId, let clearContext):
+            // iOS → desktop: trigger the implement pipeline for an ExitPlanMode
+            // permission entry. No plan body on the wire — desktop resolves the
+            // plan from disk and drives the full onImplement pipeline internally.
+            // clearContext is omitted when false to keep the wire slim.
+            try container.encode(TypeKey.implementPlan, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(questionId, forKey: .questionId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            if clearContext {
+                try container.encode(true, forKey: .clearContext)
+            }
+
+        case .requestPlanContent(let tabId, let questionId, let planFilePath, let offset, let length):
+            // iOS → desktop: request a bounded byte-range window of the plan
+            // file. Desktop replies with a plan_content event. length=0 signals
+            // "use server default (64 KB)".
+            try container.encode(TypeKey.requestPlanContent, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(questionId, forKey: .questionId)
+            try container.encode(planFilePath, forKey: .planFilePath)
+            try container.encode(offset, forKey: .offset)
+            try container.encode(length, forKey: .length)
         }
     }
 }

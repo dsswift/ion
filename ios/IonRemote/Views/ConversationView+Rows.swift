@@ -117,6 +117,12 @@ extension ConversationView {
         case .compaction(let message):
             CompactionRowView(message: message)
 
+        case .thinking(let message):
+            // Extended-thinking reasoning block (issue #158). Collapsed-by-
+            // default row; ThinkingRowView owns the live / historical /
+            // summary-only render states.
+            ThinkingRowView(message: message)
+
         case .agentTurn(let tools, let assistantMessages, let isActive):
             AgentTurnRow(tools: tools, assistantMessages: assistantMessages, isActive: isActive)
         }

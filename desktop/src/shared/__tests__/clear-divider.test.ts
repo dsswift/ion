@@ -76,8 +76,8 @@ describe('buildClearDividerRemoteEvent', () => {
   describe('engine-tab key (tabId:instanceId)', () => {
     it('produces an engine_harness_message envelope', () => {
       const ev = buildClearDividerRemoteEvent('tab-abc:inst-xyz', at)
-      expect(ev.type).toBe('engine_harness_message')
-      if (ev.type !== 'engine_harness_message') return // discriminate
+      expect(ev.type).toBe('desktop_harness_message')
+      if (ev.type !== 'desktop_harness_message') return // discriminate
       expect(ev.tabId).toBe('tab-abc')
       expect(ev.instanceId).toBe('inst-xyz')
       expect(ev.message.startsWith('── Cleared at ')).toBe(true)
@@ -89,7 +89,7 @@ describe('buildClearDividerRemoteEvent', () => {
       // would still resolve tabId correctly. (Real instance ids are UUIDs
       // — no colons — but the split semantics matter for future-proofing.)
       const ev = buildClearDividerRemoteEvent('tab-abc:weird:inst', at)
-      if (ev.type !== 'engine_harness_message') {
+      if (ev.type !== 'desktop_harness_message') {
         throw new Error('expected engine_harness_message envelope')
       }
       expect(ev.tabId).toBe('tab-abc')
@@ -100,8 +100,8 @@ describe('buildClearDividerRemoteEvent', () => {
   describe('CLI-tab key (bare tabId)', () => {
     it('produces a message_added envelope with role=system', () => {
       const ev = buildClearDividerRemoteEvent('tab-cli', at)
-      expect(ev.type).toBe('message_added')
-      if (ev.type !== 'message_added') return
+      expect(ev.type).toBe('desktop_message_added')
+      if (ev.type !== 'desktop_message_added') return
       expect(ev.tabId).toBe('tab-cli')
       expect(ev.message.role).toBe('system')
       expect(ev.message.content.startsWith('── Cleared at ')).toBe(true)
@@ -200,8 +200,8 @@ describe('buildDividerRemoteEvent', () => {
   it('produces engine_harness_message for engine-tab keys', () => {
     const content = '── Session started at 10:30 AM ──'
     const ev = buildDividerRemoteEvent('tab-abc:inst-xyz', content, at)
-    expect(ev.type).toBe('engine_harness_message')
-    if (ev.type !== 'engine_harness_message') return
+    expect(ev.type).toBe('desktop_harness_message')
+    if (ev.type !== 'desktop_harness_message') return
     expect(ev.tabId).toBe('tab-abc')
     expect(ev.instanceId).toBe('inst-xyz')
     expect(ev.message).toBe(content)
@@ -210,8 +210,8 @@ describe('buildDividerRemoteEvent', () => {
   it('produces message_added for CLI-tab keys', () => {
     const content = '── Implementing plan at 10:30 AM ──'
     const ev = buildDividerRemoteEvent('tab-cli', content, at)
-    expect(ev.type).toBe('message_added')
-    if (ev.type !== 'message_added') return
+    expect(ev.type).toBe('desktop_message_added')
+    if (ev.type !== 'desktop_message_added') return
     expect(ev.tabId).toBe('tab-cli')
     expect(ev.message.role).toBe('system')
     expect(ev.message.content).toBe(content)

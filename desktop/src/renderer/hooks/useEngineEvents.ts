@@ -151,6 +151,32 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
 
+    // Remote thinking-effort change (from iOS). Write the level onto the
+    // targeted tab (bare) or its active instance (engine), mirroring the
+    // renderer's own setThinkingEffort routing. No engine call — the level is
+    // a per-prompt override read at the next submit. 'off' clears it.
+    const remoteSetThinkingHandler = (_e: any, data: { tabId: string; effort: 'off' | 'low' | 'medium' | 'high' }) => {
+      const targetTab = useSessionStore.getState().tabs.find((t) => t.id === data.tabId)
+      if (targetTab?.hasEngineExtension) {
+        useSessionStore.setState((s) => {
+          const conversationPanes = new Map(s.conversationPanes)
+          const pane = conversationPanes.get(data.tabId)
+          if (!pane?.activeInstanceId) return {}
+          const idx = pane.instances.findIndex((i) => i.id === pane.activeInstanceId)
+          if (idx === -1) return {}
+          const instances = pane.instances.slice()
+          instances[idx] = { ...instances[idx], thinkingEffort: data.effort }
+          conversationPanes.set(data.tabId, { ...pane, instances })
+          return { conversationPanes }
+        })
+      } else {
+        useSessionStore.setState((s) => ({
+          tabs: s.tabs.map((t) => (t.id === data.tabId ? { ...t, thinkingEffort: data.effort } : t)),
+        }))
+      }
+    }
+    window.ion.on(IPC.REMOTE_SET_THINKING_EFFORT, remoteSetThinkingHandler)
+
     // Remote close tab (from iOS swipe-to-delete)
     const remoteCloseTabHandler = (_e: any, tabId: string) => {
       const store = useSessionStore.getState()
@@ -211,6 +237,7 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
       window.ion.off(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
       window.ion.off(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
+      window.ion.off(IPC.REMOTE_SET_THINKING_EFFORT, remoteSetThinkingHandler)
       window.ion.off(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
       window.ion.off(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
       window.ion.off(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)

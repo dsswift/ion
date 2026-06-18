@@ -41,7 +41,18 @@ struct FileEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(isDirty)
             .toolbar { toolbarContent }
-            .task { viewModel.requestFsReadFile(filePath: filePath) }
+            .task {
+                viewModel.requestFsReadFile(filePath: filePath)
+                // Seed from any already-cached content immediately. The
+                // view-model `fileContent` cache persists across opens, so
+                // on a re-open of the same file the desktop reply re-assigns
+                // an *equal* value and `.onChange(of: …?.content)` never
+                // fires (SwiftUI suppresses equal-value changes). Without
+                // this seed, `isLoaded` would stay false and the body would
+                // render the blank `Color.clear` branch. Reading the cached
+                // value here makes the view independent of a value *change*.
+                handleContentLoaded(viewModel.fileContent[filePath]?.content)
+            }
             .onChange(of: viewModel.fileContent[filePath]?.content) { _, newContent in
                 handleContentLoaded(newContent)
             }
@@ -291,8 +302,22 @@ struct FileEditorView: View {
         viewModel.requestFsWriteFile(filePath: filePath, content: editedContent)
     }
 
+    /// Pure decision for whether a piece of (possibly cached) content should
+    /// be adopted into the editor buffer. Returns the content string to adopt,
+    /// or `nil` when there is nothing to adopt (no content yet, or the buffer
+    /// is already loaded and must not be clobbered mid-edit).
+    ///
+    /// Factored out so the re-open regression can be pinned without a SwiftUI
+    /// host: the bug is that a *cached, unchanged* value must still be adopted
+    /// on a fresh view (`isLoaded == false`), which `.onChange` cannot deliver
+    /// because the value did not change. See `FileEditorReopenTests`.
+    static func adoptedContent(cached: String?, isLoaded: Bool) -> String? {
+        guard let cached, !isLoaded else { return nil }
+        return cached
+    }
+
     private func handleContentLoaded(_ newContent: String?) {
-        if let content = newContent, !isLoaded {
+        if let content = Self.adoptedContent(cached: newContent, isLoaded: isLoaded) {
             originalContent = content
             editedContent = content
             isLoaded = true

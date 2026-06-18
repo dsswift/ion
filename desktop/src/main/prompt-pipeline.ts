@@ -157,6 +157,8 @@ export interface IncomingPrompt {
    * prose.
    */
   implementationPhase?: boolean
+  /** Per-prompt extended-thinking effort. 'off'/undefined → no thinking. Forwarded to sendPrompt + REMOTE_ENGINE_PROMPT. */
+  thinkingEffort?: string
   /** When provided, used verbatim as the RunOptions for CLI submission. The
    *  pipeline mutates `prompt` and `appendSystemPrompt` on this object during
    *  `.md` expansion. */
@@ -327,6 +329,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
         appendSystemPrompt: p.appendSystemPrompt,
         imageAttachments: p.imageAttachments,
         implementationPhase: p.implementationPhase,
+        thinkingEffort: p.thinkingEffort,
         planFilePath: p.planFilePath,
         // Per-prompt bash-allowlist additions ride the broadcast so the
         // renderer's engine-slice can attach them to its subsequent
@@ -349,7 +352,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     // case and the description value goes unused) so the call site stays
     // simple — no branching. Also forward the sparse-reminder override so
     // the per-turn reminder is consistent with the full prompt framing.
-    await engineBridge.sendPrompt(key, p.text, p.model, p.appendSystemPrompt, p.imageAttachments, p.implementationPhase, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER, p.planFilePath, p.bashAllowlistAdditionsForThisPrompt)
+    await engineBridge.sendPrompt(key, p.text, p.model, p.appendSystemPrompt, p.imageAttachments, p.implementationPhase, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER, p.planFilePath, p.bashAllowlistAdditionsForThisPrompt, p.thinkingEffort)
     return
   }
 

@@ -27,6 +27,8 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
     label: getModelDisplayLabel(m),
     contextWindow: m.contextWindow,
     hasAuth: providerAuth.get(m.providerId) ?? false,
+    thinkingMode: m.thinkingMode,
+    thinkingEfforts: m.thinkingEfforts,
   }))
   modelCache.lastFetched = Date.now()
 }

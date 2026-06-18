@@ -240,6 +240,40 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		dst.Compaction = src.Compaction
 	}
 
+	// Shell: override the whole pointer if set. The engine.json shell block
+	// (useLoginShell / shellPath) is small and atomic, so whole-pointer
+	// replacement matches the Permissions/Network/Telemetry convention above
+	// and avoids a field-by-field merge that would add no value.
+	if src.Shell != nil {
+		dst.Shell = src.Shell
+	}
+
+	// Optional pointer blocks that are consumed from the merged config by
+	// downstream layers (cmd_serve, the session layer, prompt options) but
+	// were historically not carried through this merge. Each is overridden
+	// as a whole pointer when the source layer sets it, matching the
+	// Permissions/Network/Telemetry convention. Without these, a user who
+	// sets the block in ~/.ion/engine.json or a project .ion/engine.json
+	// has it silently dropped. See TestMergeCarriesOptionalPointerBlocks.
+	if src.Security != nil {
+		dst.Security = src.Security
+	}
+	if src.FeatureFlags != nil {
+		dst.FeatureFlags = src.FeatureFlags
+	}
+	if src.Relay != nil {
+		dst.Relay = src.Relay
+	}
+	if src.WebSearch != nil {
+		dst.WebSearch = src.WebSearch
+	}
+	if src.Webhooks != nil {
+		dst.Webhooks = src.Webhooks
+	}
+	if src.Scheduling != nil {
+		dst.Scheduling = src.Scheduling
+	}
+
 	// LogLevel: project-level overrides global
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
@@ -275,6 +309,11 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	// Timeouts: merge non-zero fields
 	if src.Timeouts != nil {
 		dst.Timeouts = types.MergeTimeouts(dst.Timeouts, src.Timeouts)
+	}
+
+	// Workspace: merge non-zero fields (reap grace window, watcher dir cap)
+	if src.Workspace != nil {
+		dst.Workspace = types.MergeWorkspace(dst.Workspace, src.Workspace)
 	}
 }
 

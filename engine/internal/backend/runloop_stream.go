@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -25,6 +26,17 @@ func (b *ApiBackend) processStream(
 	var stopReason string
 	var cumUsage types.LlmUsage
 	var toolCallIndex int
+
+	// Per-thinking-block tracking. A reasoning block spans a
+	// content_block_start{type:"thinking"|"redacted_thinking"} →
+	// content_block_delta{thinking_delta}* → content_block_stop sequence.
+	// We track whether the current block is a thinking block, when it
+	// started (for ElapsedSeconds), how much reasoning text accumulated (for
+	// the token estimate), and whether it is redacted. See issue #158.
+	thinkingActive := false
+	thinkingRedacted := false
+	var thinkingStartedAt time.Time
+	var thinkingTextLen int
 
 	for ev := range events {
 		if ctx.Err() != nil {
@@ -69,6 +81,28 @@ func (b *ApiBackend) processStream(
 			}
 			currentBlockIndex = ev.BlockIndex
 			assistantBlocks = appendOrGrow(assistantBlocks, currentBlockIndex, block)
+
+			// Extended-thinking block start (issue #158). Anthropic emits a
+			// "thinking" block (readable reasoning, streamed via thinking_delta)
+			// or a "redacted_thinking" block (encrypted, no readable text).
+			// Emit ThinkingBlockStartEvent for either; the block remains in
+			// assistantBlocks for history. Boundaries always emit (the
+			// per-token delta stream is gated separately).
+			if cb.Type == "thinking" || cb.Type == "redacted_thinking" {
+				thinkingActive = true
+				thinkingRedacted = cb.Type == "redacted_thinking"
+				thinkingStartedAt = time.Now()
+				thinkingTextLen = 0
+				utils.Debug("ApiBackend", fmt.Sprintf(
+					"thinking block start: type=%s blockIndex=%d runID=%s",
+					cb.Type, currentBlockIndex, run.requestID))
+				b.emit(run, types.NormalizedEvent{Data: &types.ThinkingBlockStartEvent{}})
+			} else {
+				// Non-thinking block opened: any prior thinking block was
+				// already closed by its content_block_stop. Defensive reset so
+				// stray state never bleeds across blocks.
+				thinkingActive = false
+			}
 
 			if cb.Type == "tool_use" {
 				b.emit(run, types.NormalizedEvent{Data: &types.ToolCallEvent{
@@ -138,7 +172,78 @@ func (b *ApiBackend) processStream(
 				}
 			}
 
+			// Extended-thinking deltas (issue #158).
+			//
+			// thinking_delta carries readable reasoning text. We accumulate it
+			// into the block's Thinking field (so the persistence layer can
+			// retain it when persistThinking is on — Phase 2 gates retention)
+			// and emit ThinkingDeltaEvent gated by ThinkingConfig.StreamDeltas
+			// (default on). Boundaries always emit regardless of the gate.
+			//
+			// signature_delta carries Anthropic's opaque per-block signature.
+			// It is NOT display text: we append it to the block for history /
+			// round-trip fidelity but never surface it as a ThinkingDeltaEvent.
+			if delta.Type == "thinking_delta" && delta.Thinking != "" {
+				if currentBlockIndex < len(assistantBlocks) {
+					assistantBlocks[currentBlockIndex].Thinking += delta.Thinking
+				}
+				thinkingTextLen += len(delta.Thinking)
+				if streamThinkingDeltas(run) {
+					b.emit(run, types.NormalizedEvent{Data: &types.ThinkingDeltaEvent{
+						Text: delta.Thinking,
+					}})
+				} else {
+					utils.Debug("ApiBackend", fmt.Sprintf(
+						"thinking delta suppressed (streamDeltas off): len=%d runID=%s",
+						len(delta.Thinking), run.requestID))
+				}
+			}
+
+			if delta.Type == "signature_delta" {
+				// Signature is not display text. Persist for fidelity; never
+				// emit. (LlmStreamDelta carries the signature in a field the
+				// engine does not currently model separately; the block's
+				// thinking signature is reconstructed by the provider layer on
+				// re-submission, which is moot here because sanitize strips
+				// thinking before submission.)
+				utils.Debug("ApiBackend", fmt.Sprintf(
+					"signature_delta received (not emitted as display text) runID=%s", run.requestID))
+			}
+
 		case "content_block_stop":
+			// Extended-thinking block end (issue #158). Fires when the block
+			// that just closed was a thinking / redacted_thinking block. Emit
+			// ThinkingBlockEndEvent with the elapsed time and an estimated
+			// token count (chars/4 — providers fold thinking into output-token
+			// usage, so no authoritative per-block count exists). Accumulate
+			// the estimate onto the run for DispatchAgentResult.ThinkingTokens.
+			if thinkingActive {
+				elapsed := time.Since(thinkingStartedAt).Seconds()
+				// chars/4 is the standard rough token estimate; redacted blocks
+				// carry no readable text so their estimate is 0.
+				estTokens := 0
+				if !thinkingRedacted {
+					estTokens = thinkingTextLen / 4
+				}
+				run.thinkingTokens.Add(int64(estTokens))
+				utils.Debug("ApiBackend", fmt.Sprintf(
+					"thinking block end: redacted=%t estTokens=%d elapsed=%.2fs runID=%s",
+					thinkingRedacted, estTokens, elapsed, run.requestID))
+				b.emit(run, types.NormalizedEvent{Data: &types.ThinkingBlockEndEvent{
+					TotalTokens:    estTokens,
+					ElapsedSeconds: elapsed,
+					Redacted:       thinkingRedacted,
+				}})
+				thinkingActive = false
+				thinkingRedacted = false
+				thinkingTextLen = 0
+				// A thinking block never carries tool input and is not a
+				// tool_use, so fall through is unnecessary — but the
+				// ToolCallCompleteEvent below is harmless (it carries only the
+				// block index). We continue to emit it for index symmetry with
+				// every other content_block_stop, matching prior behavior.
+			}
+
 			// Parse accumulated tool input JSON (client or server tool).
 			// On parse failure we coerce to an empty map and warn — the API
 			// rejects messages whose tool_use.input is not a JSON object,
@@ -199,4 +304,88 @@ func (b *ApiBackend) processStream(
 	}
 
 	return assistantBlocks, stopReason, &cumUsage, streamErr
+}
+
+// streamThinkingDeltas reports whether per-token engine_thinking_delta events
+// should be emitted for this run. Default ON (issue #158): the run streams
+// reasoning text unless a consumer explicitly opted out via
+// ThinkingConfig.StreamDeltas=false. Block-boundary events
+// (ThinkingBlockStartEvent / ThinkingBlockEndEvent) are never gated by this —
+// they always emit when a reasoning block is present, so the liveness signal
+// and block summary survive even when delta streaming is disabled.
+//
+// Resolution: read the per-run RunOptions.Thinking (run.opts.Thinking). A nil
+// ThinkingConfig or a nil StreamDeltas pointer both resolve to ON. Only an
+// explicit &false suppresses the deltas.
+func streamThinkingDeltas(run *activeRun) bool {
+	if run == nil || run.opts == nil {
+		return true
+	}
+	return thinkingStreamDeltasEnabled(run.opts.Thinking)
+}
+
+// thinkingStreamDeltasEnabled resolves ThinkingConfig.StreamDeltas with the
+// default-ON pointer-bool semantics. Exposed (lowercase, package-scoped) so the
+// config-carry test can assert the resolution directly. nil config ⇒ on; nil
+// pointer ⇒ on; explicit value ⇒ that value.
+func thinkingStreamDeltasEnabled(cfg *types.ThinkingConfig) bool {
+	if cfg == nil || cfg.StreamDeltas == nil {
+		return true
+	}
+	return *cfg.StreamDeltas
+}
+
+// thinkingPersistEnabled resolves ThinkingConfig.Persist with the default-ON
+// pointer-bool semantics. When on, the engine retains reasoning TEXT in
+// conversation history; when off, the persisted thinking block carries no text
+// (bare {"type":"thinking"}). This NEVER affects provider re-submission —
+// SanitizeMessages strips thinking on the submission path regardless. nil
+// config ⇒ on; nil pointer ⇒ on; explicit value ⇒ that value.
+func thinkingPersistEnabled(cfg *types.ThinkingConfig) bool {
+	if cfg == nil || cfg.Persist == nil {
+		return true
+	}
+	return *cfg.Persist
+}
+
+// blocksForPersistence applies the persist-thinking gate (issue #158) to the
+// assistant blocks about to enter conversation history. When persistThinking is
+// on (default), the blocks pass through unchanged and the reasoning text is
+// retained for display ("show thinking" on historical turns). When off, the
+// reasoning TEXT is stripped (bare {"type":"thinking"} retained), matching the
+// pre-#158 shape. This is a persistence-only choice — the provider-submission
+// path always strips thinking entirely via SanitizeMessages, so persisted text
+// never reaches the model regardless of this gate.
+func (b *ApiBackend) blocksForPersistence(run *activeRun, blocks []types.LlmContentBlock) []types.LlmContentBlock {
+	var cfg *types.ThinkingConfig
+	if run != nil && run.opts != nil {
+		cfg = run.opts.Thinking
+	}
+	if thinkingPersistEnabled(cfg) {
+		return blocks
+	}
+	runID := ""
+	if run != nil {
+		runID = run.requestID
+	}
+	utils.Debug("ApiBackend", fmt.Sprintf(
+		"persistThinking off: stripping reasoning text from assistant blocks runID=%s", runID))
+	return stripThinkingText(blocks)
+}
+
+// stripThinkingText returns a copy of blocks with the reasoning TEXT removed
+// from every thinking block (the Thinking field zeroed) while keeping the block
+// itself. Used when persistThinking is off: history retains a bare
+// {"type":"thinking"} block (pre-#158 shape) without the reasoning prose. Does
+// not mutate the input slice — the live assistantBlocks must keep their text so
+// any in-flight consumer reading them is unaffected.
+func stripThinkingText(blocks []types.LlmContentBlock) []types.LlmContentBlock {
+	out := make([]types.LlmContentBlock, len(blocks))
+	copy(out, blocks)
+	for i := range out {
+		if out[i].Type == "thinking" || out[i].Type == "redacted_thinking" {
+			out[i].Thinking = ""
+		}
+	}
+	return out
 }

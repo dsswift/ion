@@ -33,7 +33,15 @@ export function serializeConversationPane(
     // Persist message CONTENT only for extension-hosted instances; plain
     // conversations reload content from the conversation file on open.
     if (opts.hasEngineExtension) {
-      const msgs = (inst.messages ?? []).filter((m) => !isExtensionErrorMessage(m))
+      // Drop extension-error system messages (operational noise) AND
+      // `role: 'thinking'` messages. Thinking rows carry streamed
+      // reasoning text that can be large and high-frequency; persisting
+      // it would balloon the tabs file on every flush. A rehydrated
+      // conversation simply has no thinking rows — the ThinkingBlock's
+      // summary-absent default — which is the intended behavior.
+      const msgs = (inst.messages ?? []).filter(
+        (m) => !isExtensionErrorMessage(m) && m.role !== 'thinking',
+      )
       if (msgs.length > 0) {
         out.messages = msgs.map((m) => ({
           role: m.role,

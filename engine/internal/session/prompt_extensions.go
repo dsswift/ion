@@ -53,12 +53,11 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 
 	for _, host := range group.Hosts() {
 		capturedKey := key
-		host.SetOnSendMessage(func(text string) {
-			go func() {
-				if err := m.SendPrompt(capturedKey, text, nil); err != nil {
-					utils.Log("Session", fmt.Sprintf("ext/send_message failed: %v", err))
-				}
-			}()
+		host.SetOnSendMessage(func(payload extension.SendPromptPayload) {
+			// Shared dispatch body (prompt_options.go) so this late-loaded-
+			// extension path produces identical run configuration to the
+			// primary wiring in start_session.go. The two sites must not diverge.
+			go m.dispatchSendPromptPayload(capturedKey, "prompt_extensions", payload)
 		})
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {

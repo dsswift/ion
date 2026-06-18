@@ -42,7 +42,7 @@ export function startTabSnapshotPolling(): void {
       const tabGroupMode = settings.tabGroupMode || 'off'
       const tabGroups = Array.isArray(settings.tabGroups) ? settings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
       const snapshotEvent: Record<string, unknown> = {
-        type: 'snapshot',
+        type: 'desktop_snapshot',
         tabs,
         recentDirectories,
         tabGroupMode,

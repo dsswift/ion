@@ -42,7 +42,7 @@ export async function sendSync(send: (event: any) => void): Promise<void> {
   const remoteDisplay = readRemoteDisplay()
   log(`SNAP-SEND: tabs=${tabs.length} dirs=${recentDirectories.length} remoteDisplay=${remoteDisplay ? `name=${remoteDisplay.customName === null ? 'null' : 'set'} icon=${remoteDisplay.customIcon ?? 'null'} ts=${remoteDisplay.updatedAt}` : 'unset'}`)
   send({
-    type: 'snapshot',
+    type: 'desktop_snapshot',
     tabs,
     recentDirectories,
     tabGroupMode,
@@ -56,7 +56,7 @@ export async function sendSync(send: (event: any) => void): Promise<void> {
     resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
   })
   const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
-  send({ type: 'engine_profiles', profiles: engineProfiles })
+  send({ type: 'desktop_engine_profiles', profiles: engineProfiles })
   // Desktop projectable settings snapshot. Carried alongside the main
   // `snapshot` payload so iOS sees the desktop's user preferences from
   // the moment of pairing. Snapshot semantics — consumers replace their
@@ -100,7 +100,7 @@ export async function sendSync(send: (event: any) => void): Promise<void> {
           }
         }
         send({
-          type: 'terminal_snapshot',
+          type: 'desktop_terminal_snapshot',
           tabId: tab.id,
           instances: tab.terminalInstances,
           activeInstanceId: tab.activeTerminalInstanceId || null,

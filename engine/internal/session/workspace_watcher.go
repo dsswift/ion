@@ -101,7 +101,16 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		})
 	}
 
-	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, onEvent)
+	// Resolve the configurable per-watcher directory cap from engine config.
+	// Nil-safe: MaxWatchedDirsOr returns the watcher package default for a nil
+	// Workspace block, and watcher.NewWithMaxDirs treats zero as "use default"
+	// — so an unset config still yields the compiled default.
+	maxDirs := 0
+	if m.config != nil {
+		maxDirs = m.config.GetWorkspace().MaxWatchedDirsOr()
+	}
+
+	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, onEvent)
 	if err != nil {
 		utils.Error("session", fmt.Sprintf("startWorkspaceWatcher: acquire failed key=%s cwd=%s err=%v", key, s.config.WorkingDirectory, err))
 		return nil

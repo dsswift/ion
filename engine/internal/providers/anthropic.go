@@ -246,15 +246,31 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 		body["tools"] = allTools
 	}
 
-	// Extended thinking
-	if opts.Thinking != nil && opts.Thinking.Enabled {
-		budget := 10000
-		if opts.Thinking.BudgetTokens > 0 {
-			budget = opts.Thinking.BudgetTokens
+	// Extended thinking — resolve the per-model mechanism via the shared
+	// capability resolver. Current Anthropic models use adaptive thinking +
+	// effort; older models fall back to the legacy budget mechanism. An
+	// unsupported model or disabled config resolves to "none" and emits no
+	// directive (fail-loud; the resolver logs the reason).
+	switch res := resolveThinking(opts.Model, opts.Thinking); res.Mode {
+	case "adaptive":
+		// Adaptive thinking: the model self-regulates depth, steered by effort.
+		// display:"summarized" is set so newer models (which default to
+		// "omitted") still return summary text for the thinking renderer.
+		thinking := map[string]any{
+			"type":    "adaptive",
+			"display": "summarized",
 		}
+		body["thinking"] = thinking
+		if res.Effort != "" {
+			// Effort rides on the request's output config per Anthropic's
+			// effort parameter.
+			body["output_config"] = map[string]any{"effort": res.Effort}
+		}
+	case "budget":
+		// Legacy mechanism for older models that lack adaptive support.
 		body["thinking"] = map[string]any{
 			"type":          "enabled",
-			"budget_tokens": budget,
+			"budget_tokens": res.Budget,
 		}
 	}
 

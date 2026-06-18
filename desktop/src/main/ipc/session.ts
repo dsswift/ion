@@ -67,7 +67,7 @@ export function registerSessionIpc(): void {
       getRemoteTabStates().then(({ tabs: tabStates }) => {
         const newTab = tabStates.find(t => t.id === tabId)
         if (newTab) {
-          state.remoteTransport?.send({ type: 'tab_created', tab: newTab })
+          state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab })
         }
       })
     }
@@ -117,7 +117,7 @@ export function registerSessionIpc(): void {
     // the optimistic entry locally and the pipeline will echo back to it.
     if (state.remoteTransport && options.source !== 'remote') {
       state.remoteTransport.send({
-        type: 'message_added',
+        type: 'desktop_message_added',
         tabId,
         message: {
           id: requestId,
@@ -192,7 +192,7 @@ export function registerSessionIpc(): void {
     engineBridge.stopByPrefix(`${tabId}:`)
 
     if (state.remoteTransport) {
-      state.remoteTransport.send({ type: 'tab_closed', tabId })
+      state.remoteTransport.send({ type: 'desktop_tab_closed', tabId })
     }
 
     // Clean up all per-tab main-process state to prevent memory leaks.

@@ -13,7 +13,7 @@ function log(msg: string): void {
 const deviceVoiceConfig = new Map<string, { enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }>()
 
 export function handleVoiceConfig(
-  cmd: Extract<RemoteCommand, { type: 'voice_config' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_voice_config' }>,
   deviceId: string,
 ): void {
   log(`voice_config: device=${deviceId} enabled=${cmd.enabled} mode=${cmd.mode} hasPrompt=${!!cmd.systemPrompt}`)
@@ -26,7 +26,7 @@ export function getVoiceSystemPrompt(deviceId: string): string | undefined {
   return cfg.systemPrompt
 }
 
-export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'engine_prompt' }>, deviceId: string): Promise<void> {
+export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_engine_prompt' }>, deviceId: string): Promise<void> {
   try {
     if (!state.mainWindow) {
       log('engine_prompt: no mainWindow, ignoring')
@@ -71,7 +71,7 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
       `)
       if (instanceInfo) {
         state.remoteTransport?.send({
-          type: 'engine_instance_added',
+          type: 'desktop_instance_added',
           tabId: cmd.tabId,
           instance: instanceInfo,
         })
@@ -83,7 +83,7 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
       )
       if (modelOverride) {
         state.remoteTransport?.send({
-          type: 'engine_model_override',
+          type: 'desktop_model_override',
           tabId: cmd.tabId,
           instanceId,
           model: modelOverride,
@@ -176,7 +176,7 @@ export async function handleEnginePrompt(cmd: Extract<RemoteCommand, { type: 'en
   }
 }
 
-export function handleEngineAbort(cmd: Extract<RemoteCommand, { type: 'engine_abort' }>): void {
+export function handleEngineAbort(cmd: Extract<RemoteCommand, { type: 'desktop_engine_abort' }>): void {
   const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
   engineBridge.sendAbort(hKey)
 }
@@ -193,7 +193,7 @@ export function handleEngineAbort(cmd: Extract<RemoteCommand, { type: 'engine_ab
  * tabs the engine session is keyed by the compound `${tabId}:${instanceId}`,
  * so bare-tabId stop is silently a no-op. This handler closes that gap.
  */
-export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { type: 'reset_engine_session' }>): Promise<void> {
+export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { type: 'desktop_reset_engine_session' }>): Promise<void> {
   const key = `${cmd.tabId}:${cmd.instanceId}`
   log(`reset_engine_session: tabId=${cmd.tabId} instanceId=${cmd.instanceId} key=${key}`)
   // Stop the engine session at the wire level. Same primitive
@@ -220,12 +220,12 @@ export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { typ
   }
 }
 
-export function handleEngineDialogResponse(cmd: Extract<RemoteCommand, { type: 'engine_dialog_response' }>): void {
+export function handleEngineDialogResponse(cmd: Extract<RemoteCommand, { type: 'desktop_engine_dialog_response' }>): void {
   const hKey = cmd.instanceId ? `${cmd.tabId}:${cmd.instanceId}` : cmd.tabId
   engineBridge.sendDialogResponse(hKey, cmd.dialogId, cmd.value)
 }
 
-export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type: 'engine_add_instance' }>): Promise<void> {
+export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type: 'desktop_engine_add_instance' }>): Promise<void> {
   try {
     const escaped = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const instanceId = await state.mainWindow?.webContents.executeJavaScript(`
@@ -249,7 +249,7 @@ export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type
       `)
       if (instanceInfo) {
         state.remoteTransport?.send({
-          type: 'engine_instance_added',
+          type: 'desktop_instance_added',
           tabId: cmd.tabId,
           instance: instanceInfo,
         })
@@ -260,7 +260,7 @@ export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type
         )
         if (modelOverride) {
           state.remoteTransport?.send({
-            type: 'engine_model_override',
+            type: 'desktop_model_override',
             tabId: cmd.tabId,
             instanceId,
             model: modelOverride,
@@ -273,7 +273,7 @@ export async function handleEngineAddInstance(cmd: Extract<RemoteCommand, { type
   }
 }
 
-export async function handleEngineRemoveInstance(cmd: Extract<RemoteCommand, { type: 'engine_remove_instance' }>): Promise<void> {
+export async function handleEngineRemoveInstance(cmd: Extract<RemoteCommand, { type: 'desktop_engine_remove_instance' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -284,13 +284,13 @@ export async function handleEngineRemoveInstance(cmd: Extract<RemoteCommand, { t
         store.getState().removeEngineInstance('${escapedTab}', '${escapedInst}');
       })()
     `)
-    state.remoteTransport?.send({ type: 'engine_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
+    state.remoteTransport?.send({ type: 'desktop_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
   } catch (err) {
     log(`engine_remove_instance error: ${(err as Error).message}`)
   }
 }
 
-export async function handleEngineMoveInstance(cmd: Extract<RemoteCommand, { type: 'engine_move_instance' }>): Promise<void> {
+export async function handleEngineMoveInstance(cmd: Extract<RemoteCommand, { type: 'desktop_engine_move_instance' }>): Promise<void> {
   try {
     log(`engine_move_instance: ${cmd.sourceTabId}:${cmd.instanceId} -> ${cmd.targetTabId}`)
     const escapedSrc = cmd.sourceTabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -304,7 +304,7 @@ export async function handleEngineMoveInstance(cmd: Extract<RemoteCommand, { typ
       })()
     `)
     state.remoteTransport?.send({
-      type: 'engine_instance_moved',
+      type: 'desktop_instance_moved',
       sourceTabId: cmd.sourceTabId,
       instanceId: cmd.instanceId,
       targetTabId: cmd.targetTabId,
@@ -314,7 +314,7 @@ export async function handleEngineMoveInstance(cmd: Extract<RemoteCommand, { typ
   }
 }
 
-export async function handleEngineSelectInstance(cmd: Extract<RemoteCommand, { type: 'engine_select_instance' }>): Promise<void> {
+export async function handleEngineSelectInstance(cmd: Extract<RemoteCommand, { type: 'desktop_engine_select_instance' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -330,7 +330,7 @@ export async function handleEngineSelectInstance(cmd: Extract<RemoteCommand, { t
   }
 }
 
-export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: 'engine_set_model' }>): Promise<void> {
+export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: 'desktop_engine_set_model' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -346,23 +346,23 @@ export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: '
   }
 }
 
-export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, { type: 'load_engine_conversation' }>, deviceId: string): Promise<void> {
+export async function handleLoadEngineConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_engine_conversation' }>, deviceId: string): Promise<void> {
   try {
     log(`load_engine_conversation: tabId=${cmd.tabId}, instanceId=${cmd.instanceId || 'null'}`)
     if (!state.mainWindow) {
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
       return
     }
     const { instanceId, messages: msgs, escapedKey } = await readEngineHistoryFromStore(cmd.tabId, cmd.instanceId || null)
     log(`load_engine_conversation: tabId=${cmd.tabId} found ${msgs.length} messages, instanceId=${instanceId}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_engine_conversation_history', tabId: cmd.tabId, instanceId, messages: msgs })
 
     // Also send current engine state so iOS has agent panel, status bar,
     // and working message even when connecting to an already-running session.
     await sendCurrentEngineState(cmd.tabId, instanceId, escapedKey)
   } catch (err) {
     log(`load_engine_conversation error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_engine_conversation_history', tabId: cmd.tabId, instanceId: cmd.instanceId || null, messages: [] })
   }
 }
 
@@ -409,21 +409,21 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
 
     // Always send the authoritative agent snapshot — including empty.
     state.remoteTransport.send({
-      type: 'engine_agent_state', tabId, instanceId, agents,
+      type: 'desktop_agent_state', tabId, instanceId, agents,
     })
 
     if (snapshot.status) {
       state.remoteTransport.send({
-        type: 'engine_status', tabId, instanceId, fields: snapshot.status,
+        type: 'desktop_status', tabId, instanceId, fields: snapshot.status,
       })
     }
     // Always forward working message (use '' to clear stale banner on resync).
     state.remoteTransport.send({
-      type: 'engine_working_message', tabId, instanceId, message: snapshot.working || '',
+      type: 'desktop_working_message', tabId, instanceId, message: snapshot.working || '',
     })
     if (snapshot.modelOverride) {
       state.remoteTransport.send({
-        type: 'engine_model_override', tabId, instanceId, model: snapshot.modelOverride,
+        type: 'desktop_model_override', tabId, instanceId, model: snapshot.modelOverride,
       })
     }
   } catch (err) {
@@ -431,11 +431,11 @@ async function sendCurrentEngineState(tabId: string, instanceId: string | null, 
   }
 }
 
-export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { type: 'load_agent_conversation' }>, deviceId: string): Promise<void> {
+export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_agent_conversation' }>, deviceId: string): Promise<void> {
   try {
     log(`load_agent_conversation: conversationIds=${cmd.conversationIds.join(',')}`)
     if (!engineBridge || cmd.conversationIds.length === 0) {
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName: '', messages: [] })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_agent_conversation_history', agentName: '', messages: [] })
       return
     }
 
@@ -513,9 +513,9 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
     // Echo back the conversationId when loading a single dispatch so the
     // iOS client can cache per-dispatch conversations independently.
     const singleConvId = cmd.conversationIds.length === 1 ? cmd.conversationIds[0] : undefined
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName, conversationId: singleConvId, messages: allMessages })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_agent_conversation_history', agentName, conversationId: singleConvId, messages: allMessages })
   } catch (err) {
     log(`load_agent_conversation error: ${(err as Error).message}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'agent_conversation_history', agentName: '', messages: [] })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_agent_conversation_history', agentName: '', messages: [] })
   }
 }

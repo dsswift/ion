@@ -118,7 +118,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
         let json = """
         {
-            "type": "engine_plan_proposal",
+            "type": "desktop_plan_proposal",
             "tabId": "t1",
             "instanceId": "i1",
             "planProposalKind": "exit",
@@ -176,7 +176,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
         let json = """
         {
-            "type": "engine_plan_mode_auto_exit",
+            "type": "desktop_plan_mode_auto_exit",
             "tabId": "t1",
             "instanceId": "i1",
             "planModeAutoExitStopReason": "end_turn",
@@ -252,7 +252,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
         let json = """
         {
-            "type": "engine_run_stalled",
+            "type": "desktop_run_stalled",
             "tabId": "t1",
             "instanceId": "i1",
             "runStalledDuration": 45.2,
@@ -316,7 +316,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineEarlyStopDecisionRequestDecode() throws {
         let json = """
         {
-            "type": "engine_early_stop_decision_request",
+            "type": "desktop_early_stop_decision_request",
             "tabId": "t1",
             "instanceId": "inst-a",
             "earlyStopRequestId": "req-42",
@@ -381,7 +381,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineEarlyStopDecisionRequestDecodeMinimal() throws {
         let json = """
         {
-            "type": "engine_early_stop_decision_request",
+            "type": "desktop_early_stop_decision_request",
             "tabId": "t1"
         }
         """.data(using: .utf8)!
@@ -431,7 +431,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineCommandRegistryDecode() throws {
         let json = """
         {
-            "type": "engine_command_registry",
+            "type": "desktop_command_registry",
             "tabId": "t1",
             "instanceId": "inst-a",
             "commands": [
@@ -464,7 +464,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
     func testEngineCommandRegistryDecodeEmpty() throws {
         let json = """
         {
-            "type": "engine_command_registry",
+            "type": "desktop_command_registry",
             "tabId": "t1",
             "instanceId": "inst-a",
             "commands": []
@@ -491,7 +491,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         // message present.
         let successJson = """
         {
-            "type": "engine_command_result",
+            "type": "desktop_command_result",
             "tabId": "t1",
             "instanceId": "inst-a",
             "message": "Cleared 8 conversation turns.",
@@ -512,7 +512,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         // Failure path: extension threw or unknown command.
         let failureJson = """
         {
-            "type": "engine_command_result",
+            "type": "desktop_command_result",
             "tabId": "t1",
             "command": "not-a-real-command",
             "commandError": "unknown_command"
@@ -533,7 +533,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         // fields are independently optional per the wire contract).
         let minimalJson = """
         {
-            "type": "engine_command_result",
+            "type": "desktop_command_result",
             "tabId": "t1"
         }
         """.data(using: .utf8)!
@@ -549,11 +549,244 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         }
     }
 
+    // MARK: - Extended-thinking events (issue #158)
+
+    /// thinking_block_start carries no payload beyond the standard tabId /
+    /// instanceId correlators — its arrival is the signal. Verify it decodes
+    /// into the iOS variant and that the Go manifest entry has no fields the
+    /// Swift side must track (it is `null` / empty in the manifest).
+    func testThinkingBlockStartDecode() throws {
+        let manifest = try loadManifest()
+        // thinking_block_start has no payload fields; the manifest entry is
+        // null (Go ThinkingBlockStartEvent is an empty struct). Assert we
+        // tracked that — a future field addition would make this non-nil.
+        let goFields = manifest.normalizedEvents["thinking_block_start"] ?? nil
+        XCTAssertTrue(
+            (goFields ?? []).isEmpty,
+            "Go thinking_block_start gained fields the Swift decoder ignores: \((goFields ?? []).sorted())"
+        )
+
+        let json = """
+        {
+            "type": "desktop_thinking_block_start",
+            "tabId": "t1",
+            "instanceId": "i1"
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineThinkingBlockStart(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+        } else {
+            XCTFail("Expected engineThinkingBlockStart, got \(event)")
+        }
+    }
+
+    /// thinking_block_start with no instanceId (CLI-tab / nil emitter) must
+    /// still decode — instanceId is optional on the wire.
+    func testThinkingBlockStartDecodeNoInstance() throws {
+        let json = """
+        {"type":"desktop_thinking_block_start","tabId":"t1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineThinkingBlockStart(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+        } else {
+            XCTFail("Expected engineThinkingBlockStart, got \(event)")
+        }
+    }
+
+    /// thinking_delta carries the incremental reasoning text on `thinkingText`
+    /// (the desktop's projection of the engine's bare `text` field). Verify
+    /// the payload decodes and the manifest's field set is tracked.
+    func testThinkingDeltaDecode() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["thinking_delta"] else {
+            XCTFail("thinking_delta not found in Go manifest")
+            return
+        }
+
+        let json = """
+        {
+            "type": "desktop_thinking_delta",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "thinkingText": "Let me reason about this step by step."
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineThinkingDelta(let tabId, let instanceId, let text) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(text, "Let me reason about this step by step.")
+        } else {
+            XCTFail("Expected engineThinkingDelta, got \(event)")
+        }
+
+        // Manifest tracks the engine variant's bare field name ("text"); the
+        // iOS wire key is "thinkingText" (desktop projection). Track the bare
+        // name so a Go field addition trips this test.
+        let swiftHandled: Set<String> = ["text"]
+        let goSet = Set(goFields ?? [])
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go thinking_delta has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
+    /// thinking_block_end with the full summary present (the delta-streaming,
+    /// non-redacted case). All three summary fields decode, and the Go
+    /// manifest field set is tracked.
+    func testThinkingBlockEndDecodeFull() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["thinking_block_end"] else {
+            XCTFail("thinking_block_end not found in Go manifest")
+            return
+        }
+
+        let json = """
+        {
+            "type": "desktop_thinking_block_end",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "thinkingTotalTokens": 412,
+            "thinkingElapsedSeconds": 14.5,
+            "thinkingRedacted": false
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineThinkingBlockEnd(let tabId, let instanceId, let tokens, let elapsed, let redacted) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(tokens, 412)
+            XCTAssertEqual(elapsed ?? 0, 14.5, accuracy: 0.001)
+            XCTAssertEqual(redacted, false)
+        } else {
+            XCTFail("Expected engineThinkingBlockEnd, got \(event)")
+        }
+
+        // Manifest tracks the engine variant's bare names (elapsedSeconds /
+        // redacted / totalTokens); the iOS wire keys carry the thinking
+        // prefix (desktop projection). Track the bare names.
+        let swiftHandled: Set<String> = ["elapsedSeconds", "redacted", "totalTokens"]
+        let goSet = Set(goFields ?? [])
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go thinking_block_end has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
+    /// thinking_block_end with ALL summary fields absent (older desktop, or
+    /// the engine had no authoritative token count). decodeIfPresent must
+    /// leave them nil rather than fail or invent zeros — this is the
+    /// forward-compat posture for the optional fields.
+    func testThinkingBlockEndDecodeMinimal() throws {
+        let json = """
+        {"type":"desktop_thinking_block_end","tabId":"t1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineThinkingBlockEnd(let tabId, let instanceId, let tokens, let elapsed, let redacted) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+            XCTAssertNil(tokens)
+            XCTAssertNil(elapsed)
+            XCTAssertNil(redacted)
+        } else {
+            XCTFail("Expected engineThinkingBlockEnd, got \(event)")
+        }
+    }
+
+    /// thinking_block_end for a redacted (encrypted) reasoning block: only
+    /// `thinkingRedacted` is set; tokens/elapsed may be absent. The decoder
+    /// must surface redacted=true so the UI shows "🔒 redacted reasoning".
+    func testThinkingBlockEndDecodeRedacted() throws {
+        let json = """
+        {
+            "type": "desktop_thinking_block_end",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "thinkingRedacted": true
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineThinkingBlockEnd(_, _, let tokens, let elapsed, let redacted) = event {
+            XCTAssertNil(tokens)
+            XCTAssertNil(elapsed)
+            XCTAssertEqual(redacted, true)
+        } else {
+            XCTFail("Expected engineThinkingBlockEnd (redacted), got \(event)")
+        }
+    }
+
+    /// Round-trip: encode a block_end with NO summary fields, decode it back,
+    /// and assert the absent fields stay absent (nil) — i.e. the encoder uses
+    /// encodeIfPresent so a legacy-desktop event never gains spurious JSON
+    /// nulls on re-encode. This pins the forward-compat contract.
+    func testThinkingBlockEndRoundTripAbsentFieldsStayAbsent() throws {
+        let original = RemoteEvent.engineThinkingBlockEnd(
+            tabId: "t1",
+            instanceId: nil,
+            thinkingTotalTokens: nil,
+            thinkingElapsedSeconds: nil,
+            thinkingRedacted: nil
+        )
+        let data = try encoder.encode(original)
+
+        // Inspect the raw JSON: the optional keys must be absent entirely.
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertNotNil(obj)
+        XCTAssertNil(obj?["instanceId"], "absent instanceId must not encode")
+        XCTAssertNil(obj?["thinkingTotalTokens"], "absent tokens must not encode")
+        XCTAssertNil(obj?["thinkingElapsedSeconds"], "absent elapsed must not encode")
+        XCTAssertNil(obj?["thinkingRedacted"], "absent redacted must not encode")
+
+        // And the decode round-trips back to all-nil.
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineThinkingBlockEnd(let tabId, let instanceId, let tokens, let elapsed, let redacted) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+            XCTAssertNil(tokens)
+            XCTAssertNil(elapsed)
+            XCTAssertNil(redacted)
+        } else {
+            XCTFail("Expected engineThinkingBlockEnd round-trip, got \(decoded)")
+        }
+    }
+
+    /// Round-trip with the summary fields PRESENT: encode → decode must
+    /// preserve every value (no widening / truncation of the token Int or
+    /// elapsed Double).
+    func testThinkingBlockEndRoundTripPresentFields() throws {
+        let original = RemoteEvent.engineThinkingBlockEnd(
+            tabId: "t1",
+            instanceId: "i1",
+            thinkingTotalTokens: 412,
+            thinkingElapsedSeconds: 14.5,
+            thinkingRedacted: true
+        )
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineThinkingBlockEnd(_, let instanceId, let tokens, let elapsed, let redacted) = decoded {
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(tokens, 412)
+            XCTAssertEqual(elapsed ?? 0, 14.5, accuracy: 0.001)
+            XCTAssertEqual(redacted, true)
+        } else {
+            XCTFail("Expected engineThinkingBlockEnd round-trip, got \(decoded)")
+        }
+    }
+
     // MARK: - engine_tool_update / engine_tool_complete / engine_schedule_fired / engine_llm_call / engine_dispatch_start
 
     func testEngineToolUpdateDecode() throws {
         let json = """
-        {"type":"engine_tool_update","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolUpdate(let tabId, let instanceId) = event {
@@ -566,7 +799,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineToolCompleteDecode() throws {
         let json = """
-        {"type":"engine_tool_complete","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_complete","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineToolComplete(let tabId, let instanceId) = event {
@@ -579,7 +812,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineScheduleFiredDecode() throws {
         let json = """
-        {"type":"engine_schedule_fired","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_schedule_fired","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineScheduleFired(let tabId, let instanceId) = event {
@@ -592,7 +825,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineLlmCallDecode() throws {
         let json = """
-        {"type":"engine_llm_call","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_llm_call","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineLlmCall(let tabId, let instanceId) = event {
@@ -605,7 +838,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineDispatchStartDecode() throws {
         let json = """
-        {"type":"engine_dispatch_start","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_dispatch_start","tabId":"t1","instanceId":"i1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .engineDispatchStart(let tabId, let instanceId) = event {

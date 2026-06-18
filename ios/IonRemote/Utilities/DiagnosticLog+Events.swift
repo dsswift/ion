@@ -116,6 +116,17 @@ extension DiagnosticLog {
         case .engineSteerInjected(let tabId, let instId, let messageLength):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)")
 
+        // Extended-thinking events (issue #158). A thinking block is OPTIONAL
+        // per turn; the delta may be suppressed by the desktop's low-bandwidth
+        // streamThinkingToRemote toggle, leaving start+end only. Log all three
+        // boundaries so the reasoning lifecycle is reconstructable from logs.
+        case .engineThinkingBlockStart(let tabId, let instId):
+            log("EVENT: engineThinkingBlockStart tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
+        case .engineThinkingDelta(let tabId, let instId, let thinkingText):
+            log("EVENT: engineThinkingDelta tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(thinkingText.count)")
+        case .engineThinkingBlockEnd(let tabId, let instId, let totalTokens, let elapsedSeconds, let redacted):
+            log("EVENT: engineThinkingBlockEnd tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tokens=\(totalTokens.map(String.init) ?? "nil") elapsed=\(elapsedSeconds.map { String(format: "%.1f", $0) } ?? "nil") redacted=\(redacted ?? false)")
+
         case .engineToolUpdate(let tabId, let instId):
             log("EVENT: engineToolUpdate tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")")
         case .engineToolComplete(let tabId, let instId):
@@ -307,6 +318,9 @@ extension DiagnosticLog {
 
         case .resourceContent(let resourceId, let kind, let content):
             log("EVENT: resourceContent resourceId=\(resourceId.prefix(12)) kind=\(kind) contentLen=\(content.count)")
+
+        case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
+            log("EVENT: planContent qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) contentLen=\(content.count) totalBytes=\(totalBytes) hasMore=\(hasMore)")
         }
     }
 }

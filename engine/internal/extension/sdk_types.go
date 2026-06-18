@@ -105,11 +105,27 @@ type Context struct {
 	// extension is responsible for guarding its own loops (e.g. with a
 	// per-session "in-flight" flag stored on a sessionKey-keyed Map).
 	//
-	// When invoked outside an active hook dispatch (e.g. from a timer or
-	// scheduler callback), the per-call `model` override is ignored; the
-	// session default is used. This is a fallback path used by the host RPC
-	// handler only — direct in-process callers always honor `model`.
-	SendPrompt func(text string, model string) error
+	// The per-call `model` override is honored on ALL dispatch paths,
+	// including when invoked outside an active hook dispatch (e.g. from a
+	// timer or scheduler callback). The fallback path carries the full
+	// SendPromptPayload (text + model + bash-allowlist additions) to the
+	// session manager via onSendMessage, which builds PromptOverrides from it
+	// the same way the active-hook path does. Empty `model` means "use the
+	// session default".
+	//
+	// `bashAllowlistAdditions` carries per-prompt, run-scoped plan-mode Bash
+	// command-prefix allowances. They are unioned with the session-scoped
+	// allowlist for the single run this prompt starts and are NEVER persisted
+	// on the session — they apply only for the scope of this prompt's
+	// execution turn. This is the mechanism a slash command dispatched as an
+	// extension command (e.g. one loaded from a `.ion/commands/*.md` file with
+	// an `allowed_bash_commands` frontmatter list) uses to perform its side
+	// effect — running an allowed Bash command — while plan mode is active,
+	// instead of waiting for plan-mode exit. An empty/nil slice is a no-op.
+	// Like `model`, additions flow on every dispatch path — the active-hook /
+	// command-execute path AND the timer/scheduler fallback path. There is no
+	// per-feature divergence between the two paths.
+	SendPrompt func(text string, model string, bashAllowlistAdditions []string) error
 
 	// Engine-native agent dispatch. Creates a child session within the engine
 	// with optional extension loading, system prompt injection, and event streaming.
@@ -370,16 +386,23 @@ type DispatchAgentOpts struct {
 
 // DispatchAgentResult holds the outcome of a dispatched agent.
 type DispatchAgentResult struct {
-	Name                     string  `json:"name"`
-	Output                   string  `json:"output"`
-	ExitCode                 int     `json:"exitCode"`
-	Elapsed                  float64 `json:"elapsed"`
-	Cost                     float64 `json:"cost"`
-	InputTokens              int     `json:"inputTokens"`
-	OutputTokens             int     `json:"outputTokens"`
-	CacheReadInputTokens     int     `json:"cacheReadInputTokens,omitempty"`
-	CacheCreationInputTokens int     `json:"cacheCreationInputTokens,omitempty"`
-	SessionID                string  `json:"sessionId,omitempty"`
+	Name         string  `json:"name"`
+	Output       string  `json:"output"`
+	ExitCode     int     `json:"exitCode"`
+	Elapsed      float64 `json:"elapsed"`
+	Cost         float64 `json:"cost"`
+	InputTokens  int     `json:"inputTokens"`
+	OutputTokens int     `json:"outputTokens"`
+	// ThinkingTokens is the estimated reasoning-token count for the dispatch
+	// (issue #158), a subset of OutputTokens that providers fold into the
+	// output usage. Estimated from accumulated reasoning text — see
+	// ThinkingBlockEndEvent.TotalTokens for the estimate caveat. Lets
+	// cost/audit consumers separate reasoning spend from user-facing output.
+	// Zero when the model produced no extended thinking.
+	ThinkingTokens           int    `json:"thinkingTokens,omitempty"`
+	CacheReadInputTokens     int    `json:"cacheReadInputTokens,omitempty"`
+	CacheCreationInputTokens int    `json:"cacheCreationInputTokens,omitempty"`
+	SessionID                string `json:"sessionId,omitempty"`
 
 	// PlanFilePath is the absolute path of the plan file written by the
 	// child session. Non-empty only when the child was in plan mode and
@@ -477,9 +500,10 @@ type DispatchPlanProposalInfo struct {
 // later entries override earlier entries with the same agent name (stem).
 //
 // Named sources:
-//   "extension" -- {extensionDir}/agents/ (agents packaged with the extension)
-//   "user"      -- ~/.ion/agents/ (user-level agents)
-//   "project"   -- {workingDir}/.ion/agents/ (project-scoped agents)
+//
+//	"extension" -- {extensionDir}/agents/ (agents packaged with the extension)
+//	"user"      -- ~/.ion/agents/ (user-level agents)
+//	"project"   -- {workingDir}/.ion/agents/ (project-scoped agents)
 //
 // Example: ["extension", "user", "project"] means extension agents are defaults,
 // user agents override them, project agents override both.

@@ -51,7 +51,7 @@ export function registerRemoteControlIpc(): void {
 
     if (state.remoteTransport) {
       log('[Remote] sending unpair event to iOS device ' + deviceId)
-      state.remoteTransport.sendToDevice(deviceId, { type: 'unpair' })
+      state.remoteTransport.sendToDevice(deviceId, { type: 'desktop_unpair' })
       setTimeout(() => {
         state.remoteTransport?.disconnectDevice(deviceId, 4000, 'unpair')
         state.remoteTransport?.removeDevice(deviceId)

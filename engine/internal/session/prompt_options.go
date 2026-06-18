@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"strings"
 
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
@@ -8,7 +9,59 @@ import (
 	"github.com/dsswift/ion/engine/internal/gitcontext"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// buildPromptOverrides constructs the *PromptOverrides for a per-prompt
+// dispatch from the two run-scoped options every sendPrompt entry point
+// carries: an optional model override and optional plan-mode Bash allowlist
+// additions. Returns nil when both are empty so callers pass nil (the
+// "no overrides" sentinel) rather than an empty struct.
+//
+// This is the single seam every sendPrompt path routes through so the active-
+// hook path (sessionAccessor.SendPrompt) and the fallback path (the
+// onSendMessage closures wired in start_session.go and prompt_extensions.go)
+// produce identical overrides for identical input. Centralizing it here is the
+// "one pipeline" guarantee — there is no way for one entry point to build
+// overrides differently from another.
+//
+// The bash additions are unioned with the session allowlist for this single
+// run via opts.BashAllowlistAdditionsForThisPrompt (applied in buildRunOptions
+// below) and the run loop's effectiveBashAllowlist; they are never persisted on
+// the engineSession. See extension.Context.SendPrompt for the contract.
+func buildPromptOverrides(model string, bashAllowlistAdditions []string) *PromptOverrides {
+	if model == "" && len(bashAllowlistAdditions) == 0 {
+		return nil
+	}
+	overrides := &PromptOverrides{Model: model}
+	if len(bashAllowlistAdditions) > 0 {
+		overrides.BashAllowlistAdditionsForThisPrompt = bashAllowlistAdditions
+	}
+	return overrides
+}
+
+// dispatchSendPromptPayload is the single onSendMessage callback body shared by
+// every extension-wiring site (start_session.go's loadAndWireExtensions and
+// prompt_extensions.go's lateLoadExtensions). Both sites install this exact
+// method as the host's onSendMessage callback, so a follow-up prompt queued by
+// an extension carries identical run configuration regardless of which wiring
+// path created the host. Extracting it here removes the previously-duplicated
+// closure bodies — the duplication was itself a "two ways to do one thing"
+// hazard that could drift — and creates a directly-testable seam that pins the
+// full payload (text + model + bash-allowlist additions) flows through to
+// m.SendPrompt and is not dropped.
+//
+// origin is a short label ("start_session" / "prompt_extensions") used only in
+// the log line so an operator can tell which wiring site queued the prompt.
+func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extension.SendPromptPayload) {
+	overrides := buildPromptOverrides(payload.Model, payload.BashAllowlistAdditions)
+	if len(payload.BashAllowlistAdditions) > 0 {
+		utils.Info("PlanMode", fmt.Sprintf("onSendMessage(%s): key=%s forwarding %d bash-allowlist additions: %v", origin, key, len(payload.BashAllowlistAdditions), payload.BashAllowlistAdditions))
+	}
+	if err := m.SendPrompt(key, payload.Text, overrides); err != nil {
+		utils.Log("Session", fmt.Sprintf("ext/send_message failed: %v", err))
+	}
+}
 
 func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) types.RunOptions {
 	opts := types.RunOptions{
@@ -52,6 +105,17 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		// regardless, so the flag has no effect there.
 		if overrides.ImplementationPhase {
 			opts.ImplementationPhase = true
+		}
+		// Per-prompt thinking effort (live per-conversation control). A
+		// non-empty, non-"off" level sets RunOptions.Thinking for this run;
+		// "off"/"" explicitly clears it so the prompt carries no thinking
+		// directive even if a session default existed. This is the single
+		// place the per-prompt effort lands on the run; the provider
+		// body-builders resolve the per-model mechanism downstream.
+		if eff := overrides.ThinkingEffort; eff != "" && eff != "off" {
+			opts.Thinking = &types.ThinkingConfig{Enabled: true, Effort: eff}
+		} else if eff == "off" {
+			opts.Thinking = nil
 		}
 		// Forward the harness-supplied EnterPlanMode tool description.
 		// Empty string means "fall back to engine default" — runloop_setup

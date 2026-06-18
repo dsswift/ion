@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { readPlanPreviewCached } from './plan-content-cache'
 import { state, sessionPlane, lastMessagePreview } from '../state'
 import { TABS_FILE } from '../settings-store'
 import { isResourceRead } from '../event-wiring-resources'
@@ -164,7 +165,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                     mfOut = { requestedModel: mf.requestedModel, fallbackModel: mf.fallbackModel };
                   }
                 }
-                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined };
+                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined, thinkingEffort: (inst.thinkingEffort && inst.thinkingEffort !== 'off') ? inst.thinkingEffort : undefined };
               });
               activeConversationInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
             }
@@ -261,6 +262,15 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
                 return t.permissionMode;
               })(),
               permissionQueue: queue,
+              // Per-conversation extended-thinking effort. Extension-hosted:
+              // active instance is authoritative. Plain: tab-level. Omitted
+              // when 'off'/absent so the iOS control defaults to off.
+              thinkingEffort: (function() {
+                var eff = t.hasEngineExtension
+                  ? (activeInst && activeInst.thinkingEffort)
+                  : t.thinkingEffort;
+                return (eff && eff !== 'off') ? eff : undefined;
+              })(),
               contextTokens: t.contextTokens,
               contextWindow: t.contextWindow ?? null,
               messageCount: (msgs.length > 0 ? msgs.length : (activeInst && activeInst.messageCount) || 0),
@@ -323,7 +333,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               byKind[item.kind].push(item)
             }
             resourceManifest = byKind
-            log('snapshot', `resource manifest cold-loaded from disk: ${items.length} items`)
+            log('desktop_snapshot', `resource manifest cold-loaded from disk: ${items.length} items`)
           }
         }
       }
@@ -347,7 +357,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
     for (const t of rendererTabs) {
       if (t.permissionQueue?.length > 0) {
         const qIds = (t.permissionQueue || []).map((p: any) => `${p.toolTitle || p.toolName}(${p.questionId?.slice(-8)})`).join(', ')
-        log('snapshot', `tab=${t.id?.slice(0, 8)} status=${t.status} permQueue=[${qIds}]`)
+        log('desktop_snapshot', `tab=${t.id?.slice(0, 8)} status=${t.status} permQueue=[${qIds}]`)
       }
     }
     const mapped = rendererTabs
@@ -373,10 +383,22 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             // tabs and for renderer queue entries that predate the field.
             instanceId: p.instanceId || undefined,
           }
-          // Enrich ExitPlanMode entries with planContent by reading the plan file
-          if (entry.toolName === 'ExitPlanMode' && entry.toolInput?.planFilePath && !entry.toolInput?.planContent) {
+          // Enrich ExitPlanMode entries with bounded preview + metadata.
+          // The full plan body is no longer embedded in the snapshot — iOS fetches
+          // it on demand via request_plan_content. This removes the per-tick full-
+          // file read (perf #2) and prevents truncated plan content from corrupting
+          // the implement action (problem 1). See plan gentle-perching-lemon.md.
+          if (entry.toolName === 'ExitPlanMode' && entry.toolInput?.planFilePath) {
             try {
-              entry.toolInput = { ...entry.toolInput, planContent: readFileSync(entry.toolInput.planFilePath as string, 'utf-8') }
+              const PREVIEW_BYTES = 4 * 1024  // 4 KB inline preview for instant card render
+              const planFilePath = entry.toolInput.planFilePath as string
+              const { preview, totalBytes, truncated } = readPlanPreviewCached(planFilePath, PREVIEW_BYTES)
+              entry.toolInput = {
+                ...entry.toolInput,
+                planContentPreview: preview,
+                planSizeBytes: totalBytes,
+                planTruncated: truncated,
+              }
             } catch {}
           }
           return entry

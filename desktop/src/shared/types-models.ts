@@ -10,6 +10,15 @@ export interface ModelEntry {
   supportsCaching?: boolean
   supportsThinking?: boolean
   supportsImages?: boolean
+  /**
+   * Reasoning mechanism this model uses on the wire (mirrors Go ModelEntry):
+   * "adaptive" | "budget" | "reasoning_effort" | "gemini" | "none" | "".
+   * Clients use it together with thinkingEfforts to show/gray the
+   * per-conversation thinking control honestly.
+   */
+  thinkingMode?: string
+  /** Effort levels this model accepts, e.g. ["low","medium","high"]. Empty ⇒ thinking control hidden. */
+  thinkingEfforts?: string[]
   isCustom?: boolean
 }
 

@@ -38,6 +38,16 @@ struct ConversationStatusBar: View {
     /// that don't carry the field.
     var runningAgentCount: Int = 0
 
+    // Extended-thinking (per-conversation). When `thinkingGloballyEnabled` is
+    // true AND the active model declares thinking efforts, a Think menu
+    // (Off/Low/Medium/High) renders next to the permission toggle. The level
+    // is isolated per conversation/subtab and applied live on the next prompt.
+    // Declared after the engine params so both call sites (engine + bare) can
+    // pass these as trailing arguments in declaration order.
+    var thinkingGloballyEnabled: Bool = false
+    var thinkingEffort: String = "off"
+    var onSelectThinkingEffort: (String) -> Void = { _ in }
+
     @State private var showModeConfirm = false
 
     /// The effective model: override > preferred > default fallback.
@@ -81,6 +91,26 @@ struct ConversationStatusBar: View {
         if pct >= 80 { return .red }
         if pct >= 60 { return .orange }
         return .secondary
+    }
+
+    /// Effort levels the active model accepts (empty ⇒ unsupported).
+    private var thinkingEfforts: [String] {
+        availableModels.first(where: { $0.id == effectiveModel })?.thinkingEfforts ?? []
+    }
+
+    /// Whether the per-conversation thinking control should render: the global
+    /// setting is on AND the active model supports reasoning.
+    private var showThinkingControl: Bool {
+        thinkingGloballyEnabled && !thinkingEfforts.isEmpty
+    }
+
+    private var thinkingLabel: String {
+        switch thinkingEffort {
+        case "low": return "Low"
+        case "medium": return "Medium"
+        case "high": return "High"
+        default: return "Off"
+        }
     }
 
     var body: some View {
@@ -194,6 +224,39 @@ struct ConversationStatusBar: View {
                         .background(Capsule().fill(Color(.tertiarySystemFill)))
                     }
                     .buttonStyle(.plain)
+                }
+            }
+
+            // Per-conversation extended-thinking menu. Self-hides when the
+            // global setting is off or the active model has no efforts.
+            if showThinkingControl {
+                Menu {
+                    ForEach(["off", "low", "medium", "high"], id: \.self) { level in
+                        // Off is always offered; other levels only when the
+                        // model declares them (e.g. grok-mini omits medium).
+                        if level == "off" || thinkingEfforts.contains(level) {
+                            Button {
+                                onSelectThinkingEffort(level)
+                            } label: {
+                                HStack {
+                                    Text(level == "off" ? "Off" : level.capitalized)
+                                    if level == thinkingEffort {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "brain")
+                        Text(thinkingLabel)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundStyle(thinkingEffort == "off" ? Color.secondary : theme.accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color(.tertiarySystemFill)))
                 }
             }
 

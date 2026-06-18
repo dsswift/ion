@@ -85,6 +85,18 @@ type ClientCommand struct {
 	// in engine/internal/types/types.go for the full rationale.
 	ImplementationPhase bool `json:"implementationPhase,omitempty"`
 
+	// send_prompt: per-prompt extended-thinking effort for this run. One of
+	// "low" | "medium" | "high"; "" or "off" means NO thinking directive for
+	// this prompt (overriding any session default to off). This is the LIVE
+	// per-conversation control — a client changes the level and it takes
+	// effect on the very next prompt with no session restart, mirroring the
+	// ImplementationPhase per-prompt override pattern above. The engine maps a
+	// non-empty value onto RunOptions.Thinking{Enabled:true, Effort:<level>};
+	// the provider body-builders then resolve the per-model mechanism via the
+	// shared resolveThinking helper. Additive optional field on the scrutinized
+	// engine wire — non-breaking.
+	ThinkingEffort string `json:"thinkingEffort,omitempty"`
+
 	// send_prompt: harness-supplied description prose for the
 	// EnterPlanMode sentinel tool that the engine injects during
 	// auto-mode runs. When non-empty, the engine forwards this string
@@ -239,6 +251,13 @@ var validCommands = map[string]bool{
 	"resource_subscribe":   true,
 	"resource_unsubscribe": true,
 	"resource_publish":     true,
+	// get_plan_content: fetch a bounded byte-range window of a plan file.
+	// Key (session key) scopes the plan directory for the security check.
+	// Path is the absolute plan file path the engine emitted in a prior
+	// plan_mode_changed / plan_proposal / plan_mode_auto_exit event.
+	// Offset + Limit select the window (Limit 0 = server default 64 KB).
+	// The engine replies with a plan_content event on the same connection.
+	"get_plan_content": true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -435,6 +454,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceSubId")
 	case "resource_publish":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceOp")
+	case "get_plan_content":
+		// key scopes the plan directory; path is the target plan file.
+		// offset and limit are optional (both default to 0 = start/server-default).
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "path")
 	}
 	return false
 }

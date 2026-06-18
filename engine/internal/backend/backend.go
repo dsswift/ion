@@ -290,6 +290,11 @@ type RunConfig struct {
 	Telemetry     TelemetryCollector
 	Timeouts      *types.TimeoutsConfig
 
+	// Shell carries EngineRuntimeConfig.Shell so the Bash tool can run
+	// commands through the user's login shell when Shell.UseLoginShell is
+	// set. Nil means "use the default non-login bash -c path".
+	Shell *types.ShellConfig
+
 	// DefaultModel is the engine-wide default model from EngineConfig.
 	// Used as a fallback when the requested model doesn't resolve to a
 	// provider (e.g. an unrecognized tier alias in an agent .md).

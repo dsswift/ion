@@ -86,7 +86,7 @@ export function setRemoteDisplay(
     if (source === 'ios' && sourceDeviceId) {
       log(`DISPLAY-RECONCILE: device=${sourceDeviceId.slice(0, 8)} sending current ts=${stored.updatedAt}`)
       state.remoteTransport?.sendToDevice(sourceDeviceId, {
-        type: 'remote_display',
+        type: 'desktop_remote_display',
         customName: stored.customName,
         customIcon: stored.customIcon,
         updatedAt: stored.updatedAt,
@@ -122,7 +122,7 @@ export function setRemoteDisplay(
   const connectedIds = state.remoteTransport?.getConnectedDeviceIds?.() ?? []
   log(`DISPLAY-BROADCAST: n=${connectedIds.length} ts=${updatedAt}`)
   state.remoteTransport?.send({
-    type: 'remote_display',
+    type: 'desktop_remote_display',
     customName: normalizedName,
     customIcon: normalizedIcon,
     updatedAt,
@@ -133,7 +133,7 @@ export function setRemoteDisplay(
 
 /** Wire-level handler for the `set_remote_display` command from iOS. */
 export async function handleSetRemoteDisplay(
-  cmd: Extract<RemoteCommand, { type: 'set_remote_display' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_set_remote_display' }>,
   deviceId: string,
 ): Promise<void> {
   log(`DISPLAY-CMD: from device=${deviceId.slice(0, 8)} name=${cmd.customName === null ? 'null' : 'set'} icon=${cmd.customIcon ?? 'null'} ts=${cmd.updatedAt}`)

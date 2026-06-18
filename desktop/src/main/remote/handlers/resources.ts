@@ -20,7 +20,7 @@ function log(msg: string): void {
  * content is fetched on demand.
  */
 export async function handleRequestResourceContent(
-  cmd: Extract<RemoteCommand, { type: 'request_resource_content' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_request_resource_content' }>,
   deviceId: string,
 ): Promise<void> {
   const { kind, resourceId } = cmd
@@ -71,7 +71,7 @@ export async function handleRequestResourceContent(
     }
   }
   state.remoteTransport?.sendToDevice(deviceId, {
-    type: 'resource_content',
+    type: 'desktop_resource_content',
     resourceId,
     kind,
     content,
@@ -87,7 +87,7 @@ export async function handleRequestResourceContent(
  * flow: persist locally + publish a mark_read delta through the engine.
  */
 export async function handleMarkResourceRead(
-  cmd: Extract<RemoteCommand, { type: 'mark_resource_read' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_mark_resource_read' }>,
 ): Promise<void> {
   const { kind, resourceId } = cmd
   log(`mark_resource_read: kind=${kind} resourceId=${resourceId.slice(0, 12)}`)
@@ -129,7 +129,7 @@ export async function handleMarkResourceRead(
  * for the engine round-trip.
  */
 export async function handleDeleteResource(
-  cmd: Extract<RemoteCommand, { type: 'delete_resource' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_delete_resource' }>,
 ): Promise<void> {
   const { kind, resourceId } = cmd
   log(`delete_resource: kind=${kind} resourceId=${resourceId.slice(0, 12)}`)

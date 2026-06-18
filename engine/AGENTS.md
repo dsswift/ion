@@ -14,12 +14,16 @@ Single static binary. Communicates over `~/.ion/engine.sock` (NDJSON).
 make build                                                # -> bin/ion
 make build-linux                                          # cross-compile linux/amd64
 make docker                                               # Docker image from scratch
-go test -race ./...                                       # unit
-go test -race -tags integration ./tests/integration/...   # integration
+go test ./internal/<pkg>/...                              # scoped unit (dev loop; add -race for concurrency)
+golangci-lint run ./internal/<pkg>/...                    # scoped lint (dev loop)
+go test -race ./...                                       # FULL unit suite — heavy, PR-time only (see root AGENTS.md)
+go test -race -tags integration ./tests/integration/...   # integration — heavy, PR-time only
 go test -tags e2e -v ./tests/e2e/...                      # e2e (needs API keys)
-golangci-lint run                                         # only-new-issues
-govulncheck ./...                                         # vuln scan
+golangci-lint run                                         # full lint
+govulncheck ./...                                         # vuln scan — heavy, PR-time only
 ```
+
+> The full `go test -race ./...`, integration, and `govulncheck` commands above are **heavy gates** — do not run them during normal development. They run at PR time: CI is authoritative, and `/create-pr` runs the Linux parity subset before pushing. See root [`AGENTS.md`](../AGENTS.md) § "Heavy gates — never run during development".
 
 ## E2E config
 
@@ -108,6 +112,14 @@ The engine's typed events are part of the public contract. Two invariants matter
 - **`engine_agent_state` is a complete snapshot.** Every emission contains every agent the engine considers live at that instant. Consumers replace their local view with the payload — they do not merge incremental updates and they do not invent retention rules. Every code path that ends an agent's run must transition the registry to a terminal status (done/error/cancelled) and emit a follow-up snapshot. Tests in `internal/session/manager_agent_lifecycle_test.go` enforce this per-path. See [docs/architecture/agent-state.md](../docs/architecture/agent-state.md).
 - **No UI assumptions.** Events are typed data. Do not encode renderer-flavored language ("clear the panel", "show as cancelled") in engine code or engine docs. If a consumer wants to derive UI state from an event, that is the consumer's problem.
 
+### Wire naming rule (ADR 008)
+
+The engine owns its outbound wire contract. Every engine wire event carries the `engine_` prefix (see `engine/internal/types/engine_event.go` for the authoritative list). This is a hard invariant — new engine events must follow this convention from their first commit.
+
+**Internal vs. wire names.** `NormalizedEvent` (`internal/types/normalized_event.go`) uses bare names internally. `translateToEngineEvent()` converts them to `engine_*` `EngineEvent` values before anything is written to the socket. Bare internal names never reach a consumer; they are not part of the wire contract.
+
+The engine wire is a **scrutinized contract** (see root `AGENTS.md` § "Contract stability"). Breaking it requires explicit operator approval. Correcting a legacy name that violates the `engine_` convention may be committed as `fix` — not `feat!` — unless it is application-sweeping.
+
 ## Contract manifest (cross-language sync)
 
 Go is the source of truth for shared types. `internal/types/contract_test.go` uses reflection to extract JSON field names from all shared structs into `internal/types/testdata/contracts.json`. TS and Swift tests validate against this file at CI time.
@@ -159,8 +171,9 @@ Key behavioral patterns for agents working with hooks:
 
 ## Done criteria
 
-1. `go test -race ./...` passes.
-2. Public-surface changes: `go test -race -tags integration ./tests/integration/...`
-3. `golangci-lint run` clean.
-4. `make check-file-sizes` passes.
-5. Don't `git push`.
+While developing, run only the **scoped** gates for what you touched — see root [`AGENTS.md`](../AGENTS.md) § "Quality gates (run while developing)". Do **not** run the full `go test -race ./...` sweep, integration tests, or `govulncheck` mid-development; those are heavy gates that run at PR time — CI is authoritative, and `/create-pr` runs the Linux parity subset once before pushing.
+
+1. `go test ./internal/<touched-pkg>/...` passes (add `-race` when concurrency is involved). Run the packages you changed, not the whole tree.
+2. `golangci-lint run ./internal/<touched-pkg>/...` clean for the packages you touched.
+3. `make check-file-sizes` passes.
+4. Don't `git push`. The full race suite, integration tests, and `govulncheck` run at PR time (CI is authoritative; `/create-pr` runs the Linux subset) — not here.

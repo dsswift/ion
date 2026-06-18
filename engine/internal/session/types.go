@@ -38,6 +38,11 @@ type pendingPrompt struct {
 	// flag and the engine would inject EnterPlanMode against the user's
 	// already-approved intent.
 	implementationPhase bool
+	// thinkingEffort carries the client's ClientCommand.ThinkingEffort
+	// through the queue so a queued prompt's live thinking level survives
+	// queueing on a busy session. Without it, a prompt queued behind a
+	// running turn would lose its selected effort.
+	thinkingEffort string
 }
 
 // engineSession holds the state for a single session managed by the Manager.

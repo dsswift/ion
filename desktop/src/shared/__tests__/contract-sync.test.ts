@@ -96,6 +96,10 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   steer_injected: ['messageLength'],
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],
   run_stalled: ['lastActivity', 'stalledDuration'],
+  engine_plan_content: ['content', 'hasMore', 'offset', 'planFilePath', 'totalBytes'],
+  thinking_block_start: [],
+  thinking_delta: ['text'],
+  thinking_block_end: ['elapsedSeconds', 'redacted', 'totalTokens'],
 }
 
 // ─── TS SharedTypes field map ───
@@ -165,6 +169,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'supportsCaching',
     'supportsImages',
     'supportsThinking',
+    'thinkingEfforts',
+    'thinkingMode',
   ],
   ProviderEntry: [
     'apiKeyRef',

@@ -77,7 +77,34 @@ type EngineConfig struct {
 // ThinkingConfig controls extended thinking for API-backend runs.
 type ThinkingConfig struct {
 	Enabled      bool `json:"enabled"`
-	BudgetTokens int  `json:"budgetTokens,omitempty"`
+	// Effort is the cross-provider reasoning level: "low" | "medium" | "high".
+	// It is the forward-compatible control that the whole provider landscape
+	// has converged on (Anthropic adaptive `effort`, OpenAI `reasoning_effort`,
+	// Gemini `thinkingConfig` budget mapped from the level). Precedence with
+	// the legacy BudgetTokens field:
+	//   - Enabled && Effort != "" ⇒ effort-based resolution (preferred path).
+	//   - Enabled && Effort == "" ⇒ legacy budget path (back-compat only; used
+	//     for older models whose capability mode is "budget").
+	//   - !Enabled ⇒ no thinking directive emitted, regardless of other fields.
+	// The provider body-builders translate (mode, effort, budget) via the
+	// shared resolveThinking helper; see engine/internal/providers.
+	Effort       string `json:"effort,omitempty"`
+	BudgetTokens int    `json:"budgetTokens,omitempty"`
+	// StreamDeltas gates per-token engine_thinking_delta emission on the
+	// engine wire (issue #158). Pointer-bool: nil/absent ⇒ ON (default).
+	// Block-boundary events (engine_thinking_block_start / _end) always emit
+	// regardless of this flag, so disabling deltas keeps the liveness signal
+	// and the block summary. A headless harness that never wants reasoning
+	// text on its socket sets this to false.
+	StreamDeltas *bool `json:"streamDeltas,omitempty"`
+	// Persist gates retention of reasoning TEXT in conversation history
+	// (.tree.jsonl / .llm.jsonl). Pointer-bool: nil/absent ⇒ ON (default).
+	// When off, the persisted thinking block carries no text (bare
+	// {"type":"thinking"}), matching the pre-#158 behavior. This NEVER affects
+	// provider re-submission — SanitizeMessages strips thinking on the
+	// submission path regardless, because Anthropic rejects re-submitted
+	// thinking. Persisting is for display-only (historical "show thinking").
+	Persist *bool `json:"persist,omitempty"`
 }
 
 // AgentStateUpdate describes the current state of an agent.
@@ -227,7 +254,6 @@ type SessionStatus struct {
 	ExtensionName string `json:"extensionName,omitempty"`
 }
 
-
 // MessageEndUsage reports token usage at the end of a message.
 type MessageEndUsage struct {
 	InputTokens    int     `json:"inputTokens"`
@@ -235,7 +261,6 @@ type MessageEndUsage struct {
 	ContextPercent int     `json:"contextPercent"`
 	Cost           float64 `json:"cost"`
 }
-
 
 // EarlyStopContinueConfig holds the engine-wide defaults for the early-stop
 // continuation feature. Lives under `earlyStopContinue` in ~/.ion/engine.json.

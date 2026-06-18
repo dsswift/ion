@@ -340,7 +340,7 @@ describe('processIncomingPrompt — slash, engine reports unknown, no .md', () =
       isEngineTab: false,
     })
     const systemMessages = mocks.remoteSendMock.mock.calls.map((c: any[]) => c[0])
-      .filter((e: any) => e.type === 'message_added' && e.message.role === 'system')
+      .filter((e: any) => e.type === 'desktop_message_added' && e.message.role === 'system')
     expect(systemMessages.length).toBeGreaterThan(0)
     expect(systemMessages[0].message.content).toContain('Unknown command: /typo-no-such-command')
   })
@@ -360,7 +360,7 @@ describe('processIncomingPrompt — slash, engine reports unknown, no .md', () =
       isEngineTab: false,
     })
     const messages = mocks.remoteSendMock.mock.calls.map((c: any[]) => c[0])
-      .filter((e: any) => e.type === 'message_added')
+      .filter((e: any) => e.type === 'desktop_message_added')
     const userEcho = messages.find((e: any) => e.message.role === 'user')
     const systemEcho = messages.find((e: any) => e.message.role === 'system')
     expect(userEcho?.message.id).toBe('user-msg-id-123')
@@ -522,8 +522,8 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
     const dividerSends = mocks.remoteSendMock.mock.calls
       .map((c: any[]) => c[0])
       .filter((e: any) => {
-        if (e.type === 'message_added' && e.message?.content?.includes('── Cleared')) return true
-        if (e.type === 'engine_harness_message' && e.message?.includes('── Cleared')) return true
+        if (e.type === 'desktop_message_added' && e.message?.content?.includes('── Cleared')) return true
+        if (e.type === 'desktop_harness_message' && e.message?.includes('── Cleared')) return true
         return false
       })
     expect(dividerSends.length).toBeGreaterThan(0)

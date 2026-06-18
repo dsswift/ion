@@ -224,7 +224,18 @@ function buildContext(ctxData: any): IonContext {
       }
     },
     async sendPrompt(text: string, opts?: SendPromptOpts): Promise<void> {
-      await request('ext/send_prompt', { text, model: opts?.model || '' })
+      // Forward per-prompt, run-scoped plan-mode bash-allowlist additions only
+      // when present so the omitempty contract on the engine side holds (an
+      // empty array would otherwise serialize as []). The engine unions these
+      // with the session allowlist for this one run and never persists them.
+      const params: { text: string; model: string; bashAllowlistAdditions?: string[] } = {
+        text,
+        model: opts?.model || '',
+      }
+      if (opts?.bashAllowlistAdditions && opts.bashAllowlistAdditions.length > 0) {
+        params.bashAllowlistAdditions = opts.bashAllowlistAdditions
+      }
+      await request('ext/send_prompt', params)
     },
     async dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult> {
       const {

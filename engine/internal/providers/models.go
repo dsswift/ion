@@ -11,14 +11,16 @@ import (
 // catalogEntry mirrors the JSON shape in models.json. Booleans default to
 // false when omitted from the JSON, which matches the Go zero-value semantics.
 type catalogEntry struct {
-	ID               string  `json:"id"`
-	ProviderID       string  `json:"providerId"`
-	ContextWindow    int     `json:"contextWindow"`
-	CostPer1kInput   float64 `json:"costPer1kInput"`
-	CostPer1kOutput  float64 `json:"costPer1kOutput"`
-	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
-	SupportsThinking bool    `json:"supportsThinking,omitempty"`
-	SupportsImages   bool    `json:"supportsImages,omitempty"`
+	ID               string   `json:"id"`
+	ProviderID       string   `json:"providerId"`
+	ContextWindow    int      `json:"contextWindow"`
+	CostPer1kInput   float64  `json:"costPer1kInput"`
+	CostPer1kOutput  float64  `json:"costPer1kOutput"`
+	SupportsCaching  bool     `json:"supportsCaching,omitempty"`
+	SupportsThinking bool     `json:"supportsThinking,omitempty"`
+	SupportsImages   bool     `json:"supportsImages,omitempty"`
+	ThinkingMode     string   `json:"thinkingMode,omitempty"`
+	ThinkingEfforts  []string `json:"thinkingEfforts,omitempty"`
 }
 
 // MergeModelInfo overlays user-config fields onto a catalog (base) entry.
@@ -50,6 +52,15 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	if user.SupportsImages {
 		merged.SupportsImages = true
 	}
+	// Thinking capability: user config can override the mode/efforts (e.g. a
+	// custom model entry declaring its reasoning support). Non-empty wins,
+	// matching the additive "user can add capability" rule above.
+	if user.ThinkingMode != "" {
+		merged.ThinkingMode = user.ThinkingMode
+	}
+	if len(user.ThinkingEfforts) > 0 {
+		merged.ThinkingEfforts = user.ThinkingEfforts
+	}
 	return merged
 }
 
@@ -69,6 +80,8 @@ func loadModelsFromJSON(data []byte) error {
 			SupportsCaching:  e.SupportsCaching,
 			SupportsThinking: e.SupportsThinking,
 			SupportsImages:   e.SupportsImages,
+			ThinkingMode:     e.ThinkingMode,
+			ThinkingEfforts:  e.ThinkingEfforts,
 		})
 	}
 	utils.Log("Registry", fmt.Sprintf("loaded %d models from catalog", len(entries)))

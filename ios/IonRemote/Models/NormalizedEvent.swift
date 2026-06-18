@@ -114,6 +114,17 @@ enum RemoteEvent: Sendable {
     /// that gates approval. See
     /// docs/architecture/adr/003-state-events-vs-workflow-events.md.
     case enginePlanProposal(tabId: String, instanceId: String?, kind: String, planFilePath: String?, planSlug: String?)
+    /// Extended-thinking events (issue #158). Surface the model's reasoning
+    /// activity so iOS can distinguish "actively reasoning" from "stalled" and
+    /// render a collapsed-by-default thinking row. A thinking block is OPTIONAL
+    /// per turn; thinkingDelta may be gated off by the per-pairing
+    /// streamThinkingToRemote desktop setting (boundaries-only summary then).
+    /// Full contract + decode/encode rationale live with the codec in
+    /// NormalizedEvent+Thinking.swift; engine side is engine/internal/types/
+    /// normalized_event.go (Thinking*Event).
+    case engineThinkingBlockStart(tabId: String, instanceId: String?)
+    case engineThinkingDelta(tabId: String, instanceId: String?, thinkingText: String)
+    case engineThinkingBlockEnd(tabId: String, instanceId: String?, thinkingTotalTokens: Int?, thinkingElapsedSeconds: Double?, thinkingRedacted: Bool?)
     /// engine_plan_mode_auto_exit fires when the engine deterministically
     /// synthesizes an ExitPlanMode call at end-of-turn because the model
     /// ended a plan-mode run without invoking ExitPlanMode or
@@ -254,7 +265,7 @@ enum RemoteEvent: Sendable {
     )
     /// Intercept event from an extension via ctx.intercept(). Emitted by the
     /// engine and routed to the target session's stream by the desktop.
-    /// The desktop forwards this as a `RemoteEvent` of type `engine_intercept`
+    /// The desktop forwards this as a `RemoteEvent` of type `desktop_intercept`
     /// after performing its own routing/redirect logic.
     ///
     /// Level hint semantics (same as desktop):
@@ -326,95 +337,111 @@ enum RemoteEvent: Sendable {
     /// calls `ResourceStore.updateContent` to populate the item's body.
     case resourceContent(resourceId: String, kind: String, content: String)
 
+    /// Paged byte-range window of a plan file, in response to a
+    /// `requestPlanContent` command. iOS assembles successive windows
+    /// (keyed by questionId) until hasMore is false, then renders the
+    /// full plan body in PlanFullScreenView or copies it to the clipboard.
+    case planContent(questionId: String, planFilePath: String, offset: Int, content: String, totalBytes: Int, hasMore: Bool)
+
     // MARK: - Codable keys
 
     enum TypeKey: String, Codable {
-        case snapshot
-        case tabCreated = "tab_created"
-        case tabClosed = "tab_closed"
-        case tabStatus = "tab_status"
-        case textChunk = "text_chunk"
-        case toolCall = "tool_call"
-        case toolResult = "tool_result"
-        case taskComplete = "task_complete"
-        case permissionRequest = "permission_request"
-        case permissionResolved = "permission_resolved"
-        case conversationHistory = "conversation_history"
-        case messageAdded = "message_added"
-        case messageUpdated = "message_updated"
-        case queueUpdate = "queue_update"
-        case unpair
-        case relayConfig = "relay_config"
-        case remoteDisplay = "remote_display"
+        case snapshot = "desktop_snapshot"
+        case tabCreated = "desktop_tab_created"
+        case tabClosed = "desktop_tab_closed"
+        case tabStatus = "desktop_tab_status"
+        case textChunk = "desktop_text_chunk"
+        case toolCall = "desktop_tool_call"
+        case toolResult = "desktop_tool_result"
+        case taskComplete = "desktop_task_complete"
+        case permissionRequest = "desktop_permission_request"
+        case permissionResolved = "desktop_permission_resolved"
+        case conversationHistory = "desktop_conversation_history"
+        case messageAdded = "desktop_message_added"
+        case messageUpdated = "desktop_message_updated"
+        case queueUpdate = "desktop_queue_update"
+        case unpair = "desktop_unpair"
+        case relayConfig = "desktop_relay_config"
+        case remoteDisplay = "desktop_remote_display"
         case peerDisconnected = "peer_disconnected"
         case transportReconnecting = "transport_reconnecting"
-        case heartbeat
-        case error
-        case inputPrefill = "input_prefill"
-        case terminalOutput = "terminal_output"
-        case terminalExit = "terminal_exit"
-        case terminalInstanceAdded = "terminal_instance_added"
-        case terminalInstanceRemoved = "terminal_instance_removed"
-        case terminalSnapshot = "terminal_snapshot"
-        case engineAgentState = "engine_agent_state"
-        case engineStatus = "engine_status"
-        case engineSessionStatus = "engine_session_status"
-        case engineWorkingMessage = "engine_working_message"
-        case engineToolStart = "engine_tool_start"
-        case engineToolEnd = "engine_tool_end"
-        case engineToolUpdate = "engine_tool_update"
-        case engineToolComplete = "engine_tool_complete"
-        case engineToolStalled = "engine_tool_stalled"
-        case engineRunStalled = "engine_run_stalled"
-        case engineSteerInjected = "engine_steer_injected"
-        case engineScheduleFired = "engine_schedule_fired"
-        case engineLlmCall = "engine_llm_call"
-        case engineDispatchStart = "engine_dispatch_start"
-        case engineError = "engine_error"
-        case engineNotify = "engine_notify"
-        case engineDialog = "engine_dialog"
-        case engineDialogResolved = "engine_dialog_resolved"
-        case engineTextDelta = "engine_text_delta"
-        case engineMessageEnd = "engine_message_end"
-        case engineDead = "engine_dead"
-        case engineInstanceAdded = "engine_instance_added"
-        case engineInstanceRemoved = "engine_instance_removed"
-        case engineInstanceMoved = "engine_instance_moved"
-        case engineHarnessMessage = "engine_harness_message"
-        case engineConversationHistory = "engine_conversation_history"
-        case agentConversationHistory = "agent_conversation_history"
-        case engineModelOverride = "engine_model_override"
-        case engineProfiles = "engine_profiles"
-        case enginePlanModeChanged = "engine_plan_mode_changed"
-        case enginePlanProposal = "engine_plan_proposal"
-        case enginePlanModeAutoExit = "engine_plan_mode_auto_exit"
-        case engineEarlyStopDecisionRequest = "engine_early_stop_decision_request"
-        case engineCommandRegistry = "engine_command_registry"
-        case engineCommandResult = "engine_command_result"
-        case engineExport = "engine_export"
-        case engineResourceSnapshot = "engine_resource_snapshot"
-        case engineResourceDelta = "engine_resource_delta"
-        case engineNotification = "engine_notification"
-        case engineIntercept = "engine_intercept"
+        case heartbeat = "desktop_heartbeat"
+        case error = "desktop_error"
+        case inputPrefill = "desktop_input_prefill"
+        case terminalOutput = "desktop_terminal_output"
+        case terminalExit = "desktop_terminal_exit"
+        case terminalInstanceAdded = "desktop_terminal_instance_added"
+        case terminalInstanceRemoved = "desktop_terminal_instance_removed"
+        case terminalSnapshot = "desktop_terminal_snapshot"
+        case engineAgentState = "desktop_agent_state"
+        case engineStatus = "desktop_status"
+        case engineSessionStatus = "desktop_session_status"
+        case engineWorkingMessage = "desktop_working_message"
+        case engineToolStart = "desktop_tool_start"
+        case engineToolEnd = "desktop_tool_end"
+        case engineToolUpdate = "desktop_tool_update"
+        case engineToolComplete = "desktop_tool_complete"
+        case engineToolStalled = "desktop_tool_stalled"
+        case engineRunStalled = "desktop_run_stalled"
+        case engineSteerInjected = "desktop_steer_injected"
+        // Extended-thinking events (issue #158). The desktop forwards the
+        // engine's thinking_block_start / thinking_delta / thinking_block_end
+        // events uniformly, stripping the engine_ prefix and adding desktop_.
+        case engineThinkingBlockStart = "desktop_thinking_block_start"
+        case engineThinkingDelta = "desktop_thinking_delta"
+        case engineThinkingBlockEnd = "desktop_thinking_block_end"
+        case engineScheduleFired = "desktop_schedule_fired"
+        case engineLlmCall = "desktop_llm_call"
+        case engineDispatchStart = "desktop_dispatch_start"
+        case engineError = "desktop_engine_error"
+        case engineNotify = "desktop_notify"
+        case engineDialog = "desktop_dialog"
+        case engineDialogResolved = "desktop_dialog_resolved"
+        case engineTextDelta = "desktop_text_delta"
+        case engineMessageEnd = "desktop_message_end"
+        case engineDead = "desktop_dead"
+        case engineInstanceAdded = "desktop_instance_added"
+        case engineInstanceRemoved = "desktop_instance_removed"
+        case engineInstanceMoved = "desktop_instance_moved"
+        case engineHarnessMessage = "desktop_harness_message"
+        case engineConversationHistory = "desktop_engine_conversation_history"
+        case agentConversationHistory = "desktop_agent_conversation_history"
+        case engineModelOverride = "desktop_model_override"
+        case engineProfiles = "desktop_engine_profiles"
+        case enginePlanModeChanged = "desktop_plan_mode_changed"
+        case enginePlanProposal = "desktop_plan_proposal"
+        case enginePlanModeAutoExit = "desktop_plan_mode_auto_exit"
+        case engineEarlyStopDecisionRequest = "desktop_early_stop_decision_request"
+        case engineCommandRegistry = "desktop_command_registry"
+        case engineCommandResult = "desktop_command_result"
+        case engineExport = "desktop_export"
+        case engineResourceSnapshot = "desktop_resource_snapshot"
+        case engineResourceDelta = "desktop_resource_delta"
+        case engineNotification = "desktop_notification"
+        case engineIntercept = "desktop_intercept"
         case desktopSettingsSnapshot = "desktop_settings_snapshot"
-        case gitChangesResponse = "git_changes_response"
-        case gitGraphResponse = "git_graph_response"
-        case gitDiffResponse = "git_diff_response"
-        case gitCommitResult = "git_commit_result"
-        case gitStageResult = "git_stage_result"
-        case gitUnstageResult = "git_unstage_result"
-        case gitCommitFilesResponse = "git_commit_files_response"
-        case gitCommitFileDiffResponse = "git_commit_file_diff_response"
-        case fsDirListing = "fs_dir_listing"
-        case fsFileContent = "fs_file_content"
-        case fsImageContent = "fs_image_content"
-        case fsWriteResult = "fs_write_result"
-        case fsRenameResult = "fs_rename_result"
-        case discoverCommandsResponse = "discover_commands_response"
-        case uploadAttachmentResult = "upload_attachment_result"
-        case tabAttachments = "tab_attachments"
-        case requestDiagnosticLogs = "request_diagnostic_logs"
-        case resourceContent = "resource_content"
+        case gitChangesResponse = "desktop_git_changes_response"
+        case gitGraphResponse = "desktop_git_graph_response"
+        case gitDiffResponse = "desktop_git_diff_response"
+        case gitCommitResult = "desktop_git_commit_result"
+        case gitStageResult = "desktop_git_stage_result"
+        case gitUnstageResult = "desktop_git_unstage_result"
+        case gitCommitFilesResponse = "desktop_git_commit_files_response"
+        case gitCommitFileDiffResponse = "desktop_git_commit_file_diff_response"
+        case fsDirListing = "desktop_fs_dir_listing"
+        case fsFileContent = "desktop_fs_file_content"
+        case fsImageContent = "desktop_fs_image_content"
+        case fsWriteResult = "desktop_fs_write_result"
+        case fsRenameResult = "desktop_fs_rename_result"
+        case discoverCommandsResponse = "desktop_discover_commands_response"
+        case uploadAttachmentResult = "desktop_upload_attachment_result"
+        case tabAttachments = "desktop_tab_attachments"
+        case requestDiagnosticLogs = "desktop_request_diagnostic_logs"
+        case resourceContent = "desktop_resource_content"
+        /// Desktop-forwarded plan content (desktop reads file, sends window to iOS).
+        case planContent = "desktop_plan_content"
+        /// Raw engine wire event for engine_plan_content (distinct from desktop_plan_content).
+        case enginePlanContent = "engine_plan_content"
     }
 
     // CodingKeys and the init(from:)/encode(to:) requirements must live in
@@ -462,6 +489,17 @@ enum RemoteEvent: Sendable {
         // engine_steer_injected — mid-turn steer drain confirmation.
         // Mirrors EngineEvent.SteerMessageLength's JSON tag.
         case steerMessageLength
+        // Extended-thinking events (issue #158). The desktop projects the
+        // engine's bare thinking field names (text / totalTokens /
+        // elapsedSeconds / redacted) onto these prefixed wire keys when it
+        // forwards the events to iOS (see desktop types-engine.ts
+        // engine_thinking_* RemoteEvent variants). thinking_block_start
+        // carries no payload beyond tabId / instanceId. thinking_delta
+        // carries thinkingText. thinking_block_end carries the three
+        // optional summary fields. The prefix avoids colliding with the
+        // generic `text` key already used by engine_text_delta.
+        case thinkingText
+        case thinkingTotalTokens, thinkingElapsedSeconds, thinkingRedacted
         // engine_run_stalled — engine progress watchdog tripped. Mirrors
         // EngineEvent.RunStalledDuration / RunStalledLastActivity JSON tags.
         // See the Go-side RunStalledEvent doc for the watchdog contract;
@@ -516,6 +554,11 @@ enum RemoteEvent: Sendable {
         // engine_notification — notification pipeline event (D-009).
         // The relay handles APNs push; iOS decodes for diagnostic visibility.
         case notifyKind, notifyTitle, notifyBody, notifySound, notifyScope
+        // plan_content — paged plan body fetch response (plan gentle-perching-lemon).
+        // Carries a byte-range window of the plan file keyed by questionId.
+        // totalBytes is the full file size; hasMore is already declared above.
+        // offset, content, planFilePath, questionId are shared above.
+        case totalBytes, offset
         // desktop_settings_snapshot — Part 7 wire event.
         // `settings` is the value map; `schema` carries per-key
         // metadata (type, group, label, description, defaultValue);

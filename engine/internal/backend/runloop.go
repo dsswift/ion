@@ -466,7 +466,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			if turnUsage != nil {
 				llmUsage = *turnUsage
 			}
-			conversation.AddAssistantMessage(conv, assistantBlocks, llmUsage)
+			// Persist-thinking gate (issue #158): when persistThinking is off,
+			// retain a bare {"type":"thinking"} block without the reasoning
+			// text. Never affects provider re-submission (SanitizeMessages
+			// always strips thinking). See blocksForPersistence.
+			blocksToPersist := b.blocksForPersistence(run, assistantBlocks)
+			conversation.AddAssistantMessage(conv, blocksToPersist, llmUsage)
 			conversation.SetAssistantMeta(conv, model, stopReason)
 			// Persist immediately so the assistant turn survives mid-loop crashes.
 			// The end-of-turn Save() below remains as the canonical write that

@@ -39,7 +39,7 @@ function log(msg: string): void {
 
 /** Wire-level handler for the `set_desktop_setting` command from iOS. */
 export async function handleSetDesktopSetting(
-  cmd: Extract<RemoteCommand, { type: 'set_desktop_setting' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_set_desktop_setting' }>,
   deviceId: string,
 ): Promise<void> {
   const tag = `device=${deviceId.slice(0, 8)} key=${cmd.key} valueType=${typeof cmd.value}`

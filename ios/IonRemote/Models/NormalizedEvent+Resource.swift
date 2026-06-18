@@ -72,6 +72,43 @@ extension RemoteEvent {
             let content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
             return .resourceContent(resourceId: resourceId, kind: kind, content: content)
 
+        case .planContent:
+            // Paged byte-range window of a plan file (desktop_plan_content).
+            // Desktop sends: questionId, planFilePath, offset, content, totalBytes, hasMore.
+            let questionId = try container.decode(String.self, forKey: .questionId)
+            let planFilePath = try container.decode(String.self, forKey: .planFilePath)
+            let offset = try container.decode(Int.self, forKey: .offset)
+            let content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+            let totalBytes = try container.decode(Int.self, forKey: .totalBytes)
+            let hasMore = try container.decode(Bool.self, forKey: .hasMore)
+            return .planContent(
+                questionId: questionId,
+                planFilePath: planFilePath,
+                offset: offset,
+                content: content,
+                totalBytes: totalBytes,
+                hasMore: hasMore
+            )
+
+        case .enginePlanContent:
+            // Raw engine_plan_content event (engine wire format -- distinct from desktop_plan_content).
+            // The desktop normally intercepts and re-wraps as desktop_plan_content before forwarding,
+            // but we decode the raw case for completeness and wire uniformity.
+            let questionId = try container.decodeIfPresent(String.self, forKey: .questionId) ?? ""
+            let planFilePath = try container.decodeIfPresent(String.self, forKey: .planFilePath) ?? ""
+            let offset = try container.decodeIfPresent(Int.self, forKey: .offset) ?? 0
+            let content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+            let totalBytes = try container.decodeIfPresent(Int.self, forKey: .totalBytes) ?? 0
+            let hasMore = try container.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
+            return .planContent(
+                questionId: questionId,
+                planFilePath: planFilePath,
+                offset: offset,
+                content: content,
+                totalBytes: totalBytes,
+                hasMore: hasMore
+            )
+
         default:
             return nil
         }
@@ -113,6 +150,16 @@ extension RemoteEvent {
             try container.encode(resourceId, forKey: .resourceId)
             try container.encode(kind, forKey: .resourceKind)
             try container.encode(content, forKey: .content)
+            return true
+
+        case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
+            try container.encode(TypeKey.planContent, forKey: .type)
+            try container.encode(questionId, forKey: .questionId)
+            try container.encode(planFilePath, forKey: .planFilePath)
+            try container.encode(offset, forKey: .offset)
+            try container.encode(content, forKey: .content)
+            try container.encode(totalBytes, forKey: .totalBytes)
+            try container.encode(hasMore, forKey: .hasMore)
             return true
 
         default:

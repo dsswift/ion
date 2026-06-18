@@ -87,13 +87,10 @@ struct ConversationView: View {
             for request in queue {
                 if request.toolName == "ExitPlanMode" {
                     if isRunning { continue }
-                    // Snapshot queue entries lack planContent -- prefer restored card from enriched messages
-                    if request.toolInput?["planContent"]?.value as? String == nil,
-                       let restored = cachedRestoredCard,
-                       restored.toolInput?["planContent"]?.value as? String != nil {
-                        DiagnosticLog.log("PERM-CARD: pendingPermission: using restored ExitPlanMode card (queue entry lacks planContent)")
-                        return restored
-                    }
+                    // The snapshot now carries planContentPreview (first 4 KB) so
+                    // we no longer need to prefer a restored card for plan content.
+                    // The snapshot entry is always usable. Restored-card fallback
+                    // is kept only for the AskUserQuestion case below.
                 }
                 // AskUserQuestion from the queue is always live — the run stopped
                 // specifically to wait for this answer. Status is 'completed' in
@@ -333,6 +330,11 @@ struct ConversationView: View {
                 },
                 onTapAttachments: {
                     showAttachments = true
+                },
+                thinkingGloballyEnabled: viewModel.thinkingGloballyEnabled,
+                thinkingEffort: tab?.thinkingEffort ?? "off",
+                onSelectThinkingEffort: { level in
+                    viewModel.setThinkingEffort(tabId: tabId, effort: level)
                 }
             )
 

@@ -39,7 +39,15 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 		}
 		var filtered []types.LlmContentBlock
 		for _, b := range blocks {
-			if b.Type == "thinking" {
+			// Thinking blocks (readable or redacted) are stripped before
+			// re-submission: Anthropic rejects re-submitted "thinking" blocks,
+			// and the engine's posture is to never replay reasoning to the
+			// model. This strip is UNCONDITIONAL and independent of the
+			// persistThinking config (issue #158): persistence may retain the
+			// reasoning text for display, but the provider-submission path
+			// (which is the only path that calls SanitizeMessages) must always
+			// remove it. Pinned by TestSanitizeStripsThinkingEvenWhenPersisted.
+			if b.Type == "thinking" || b.Type == "redacted_thinking" {
 				removed++
 				continue
 			}

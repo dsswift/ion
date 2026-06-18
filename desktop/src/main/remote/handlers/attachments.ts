@@ -13,7 +13,7 @@ function log(msg: string): void {
  * to the requesting device.
  */
 export async function handleLoadAttachments(
-  cmd: Extract<RemoteCommand, { type: 'load_attachments' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_load_attachments' }>,
   deviceId: string,
 ): Promise<void> {
   const tabId = cmd.tabId
@@ -22,7 +22,7 @@ export async function handleLoadAttachments(
   if (!state.mainWindow) {
     log('load_attachments: mainWindow not available')
     state.remoteTransport?.sendToDevice(deviceId, {
-      type: 'tab_attachments', tabId, attachments: [],
+      type: 'desktop_tab_attachments', tabId, attachments: [],
     })
     return
   }
@@ -169,12 +169,12 @@ export async function handleLoadAttachments(
 
     log(`load_attachments: tab=${tabId} found=${attachments.length}`)
     state.remoteTransport?.sendToDevice(deviceId, {
-      type: 'tab_attachments', tabId, attachments,
+      type: 'desktop_tab_attachments', tabId, attachments,
     })
   } catch (err) {
     log(`load_attachments error: ${(err as Error).message}`)
     state.remoteTransport?.sendToDevice(deviceId, {
-      type: 'tab_attachments', tabId, attachments: [],
+      type: 'desktop_tab_attachments', tabId, attachments: [],
     })
   }
 }

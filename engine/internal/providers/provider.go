@@ -164,6 +164,8 @@ func ListModels() []types.ModelEntry {
 			SupportsCaching:  info.SupportsCaching,
 			SupportsThinking: info.SupportsThinking,
 			SupportsImages:   info.SupportsImages,
+			ThinkingMode:     info.ThinkingMode,
+			ThinkingEfforts:  info.ThinkingEfforts,
 			IsCustom:         info.IsCustom,
 		}
 		if info.IsCustom {
@@ -215,6 +217,8 @@ func ListModels() []types.ModelEntry {
 					dm.SupportsCaching = catalog.SupportsCaching
 					dm.SupportsThinking = catalog.SupportsThinking
 					dm.SupportsImages = catalog.SupportsImages
+					dm.ThinkingMode = catalog.ThinkingMode
+					dm.ThinkingEfforts = catalog.ThinkingEfforts
 				}
 				entries = append(entries, dm)
 				seen[dm.ID] = true

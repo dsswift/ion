@@ -15,9 +15,9 @@ var update = flag.Bool("update", false, "update golden contracts.json")
 
 // contractManifest is the on-disk JSON shape written to testdata/contracts.json.
 type contractManifest struct {
-	NormalizedEvents map[string][]string            `json:"normalizedEvents"`
-	EngineEvent      []string                       `json:"engineEvent"`
-	SharedTypes      map[string][]string            `json:"sharedTypes"`
+	NormalizedEvents map[string][]string `json:"normalizedEvents"`
+	EngineEvent      []string            `json:"engineEvent"`
+	SharedTypes      map[string][]string `json:"sharedTypes"`
 }
 
 // jsonFieldNames returns the sorted JSON field names for a struct type,
@@ -47,28 +47,32 @@ func jsonFieldNames(t reflect.Type) []string {
 // that implements it, covering every variant registered in UnmarshalJSON.
 func normalizedEventVariants() map[string]NormalizedEventData {
 	return map[string]NormalizedEventData{
-		EventSessionInit:       &SessionInitEvent{},
-		EventTextChunk:         &TextChunkEvent{},
-		EventToolCall:          &ToolCallEvent{},
-		EventToolCallUpdate:    &ToolCallUpdateEvent{},
-		EventToolCallComplete:  &ToolCallCompleteEvent{},
-		EventToolResult:        &ToolResultEvent{},
-		EventTaskUpdate:        &TaskUpdateEvent{},
-		EventTaskComplete:      &TaskCompleteEvent{},
-		EventError:             &ErrorEvent{},
-		EventSessionDead:       &SessionDeadEvent{},
-		EventRateLimit:         &RateLimitNormalizedEvent{},
-		EventUsage:             &UsageEvent{},
-		EventPermissionRequest: &PermissionRequestEvent{},
-		EventPlanModeChanged:   &PlanModeChangedEvent{},
-		EventPlanProposal:      &PlanProposalEvent{},
-		EventPlanModeAutoExit:  &PlanModeAutoExitEvent{},
-		EventStreamReset:       &StreamResetEvent{},
-		EventCompacting:        &CompactingEvent{},
-		EventToolStalled:       &ToolStalledEvent{},
-		EventSteerInjected:     &SteerInjectedEvent{},
-		EventModelFallback:     &ModelFallbackEvent{},
-		EventRunStalled:        &RunStalledEvent{},
+		EventSessionInit:        &SessionInitEvent{},
+		EventTextChunk:          &TextChunkEvent{},
+		EventToolCall:           &ToolCallEvent{},
+		EventToolCallUpdate:     &ToolCallUpdateEvent{},
+		EventToolCallComplete:   &ToolCallCompleteEvent{},
+		EventToolResult:         &ToolResultEvent{},
+		EventTaskUpdate:         &TaskUpdateEvent{},
+		EventTaskComplete:       &TaskCompleteEvent{},
+		EventError:              &ErrorEvent{},
+		EventSessionDead:        &SessionDeadEvent{},
+		EventRateLimit:          &RateLimitNormalizedEvent{},
+		EventUsage:              &UsageEvent{},
+		EventPermissionRequest:  &PermissionRequestEvent{},
+		EventPlanModeChanged:    &PlanModeChangedEvent{},
+		EventPlanProposal:       &PlanProposalEvent{},
+		EventPlanModeAutoExit:   &PlanModeAutoExitEvent{},
+		EventStreamReset:        &StreamResetEvent{},
+		EventCompacting:         &CompactingEvent{},
+		EventToolStalled:        &ToolStalledEvent{},
+		EventSteerInjected:      &SteerInjectedEvent{},
+		EventModelFallback:      &ModelFallbackEvent{},
+		EventRunStalled:         &RunStalledEvent{},
+		EventPlanContent:        &PlanContentEvent{},
+		EventThinkingBlockStart: &ThinkingBlockStartEvent{},
+		EventThinkingDelta:      &ThinkingDeltaEvent{},
+		EventThinkingBlockEnd:   &ThinkingBlockEndEvent{},
 	}
 }
 

@@ -116,7 +116,7 @@ export function handlePairRequest(request: PairRequest): void {
     const pairSettings = readSettings()
     const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
     state.remoteTransport?.send({
-      type: 'snapshot',
+      type: 'desktop_snapshot',
       tabs,
       recentDirectories: pairRecentDirs,
       resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,

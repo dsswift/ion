@@ -9,6 +9,10 @@ enum ConversationItem: Identifiable {
     case user(Message)
     case assistant(Message)
     case system(Message)
+    /// Extended-thinking reasoning block (issue #158). Rendered as its own
+    /// collapsed-by-default row (ThinkingRowView) inline in turn order,
+    /// before the assistant text it preceded.
+    case thinking(Message)
     case toolGroup([Message])
     case compaction(Message)
     case agentTurn(tools: [Message], assistantMessages: [Message], isActive: Bool)
@@ -18,6 +22,7 @@ enum ConversationItem: Identifiable {
         case .user(let m):      return m.id
         case .assistant(let m): return m.id
         case .system(let m):    return m.id
+        case .thinking(let m):  return m.id
         case .toolGroup(let msgs):
             // Stable ID based on the first tool in the group.
             return "tg-\(msgs.first?.id ?? "empty")"
@@ -64,6 +69,7 @@ private func groupConversationItemsClassic(_ messages: [Message]) -> [Conversati
             switch msg.role {
             case .user:      result.append(.user(msg))
             case .assistant: result.append(.assistant(msg))
+            case .thinking:  result.append(.thinking(msg))
             case .system, .harness:
                 if msg.content.hasPrefix("[Compaction]") {
                     result.append(.compaction(msg))
@@ -113,6 +119,15 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
         if msg.role == .user {
             flushTurn()
             result.append(.user(msg))
+            continue
+        }
+
+        // Thinking blocks render as their own standalone row in turn order.
+        // Flush any pending turn first so the reasoning row appears before
+        // the tool/assistant output it preceded, then emit it directly.
+        if msg.role == .thinking {
+            flushTurn()
+            result.append(.thinking(msg))
             continue
         }
 

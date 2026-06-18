@@ -354,8 +354,12 @@ func (p *openaiProvider) buildRequestBody(opts types.LlmStreamOptions) map[strin
 		body["tools"] = tools
 	}
 
-	if opts.Thinking != nil && opts.Thinking.Enabled {
-		body["reasoning_effort"] = "high"
+	// Reasoning effort — resolve the per-model level via the shared capability
+	// resolver instead of a hardcoded "high". Only models declared with
+	// ThinkingMode=="reasoning_effort" produce a directive; everything else
+	// (and a disabled/unsupported config) omits the field.
+	if res := resolveThinking(opts.Model, opts.Thinking); res.Mode == "reasoning_effort" && res.Effort != "" {
+		body["reasoning_effort"] = res.Effort
 	}
 
 	// Temperature: forward when the caller set it (pointer non-nil). A

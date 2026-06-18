@@ -20,7 +20,7 @@ function log(msg: string): void {
   _log('main', msg)
 }
 
-export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 'set_tab_group_mode' }>): Promise<void> {
+export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 'desktop_set_tab_group_mode' }>): Promise<void> {
   const mode = cmd.mode
   if (mode !== 'auto' && mode !== 'manual' && mode !== 'off') {
     log(`Remote set_tab_group_mode: invalid mode "${mode}"`)
@@ -88,7 +88,7 @@ export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 
   await broadcastSync()
 }
 
-export async function handleReorderTabGroups(cmd: Extract<RemoteCommand, { type: 'reorder_tab_groups' }>): Promise<void> {
+export async function handleReorderTabGroups(cmd: Extract<RemoteCommand, { type: 'desktop_reorder_tab_groups' }>): Promise<void> {
   const ids = cmd.orderedIds
   if (!Array.isArray(ids) || ids.length === 0) {
     log('reorder_tab_groups: empty or invalid orderedIds')
@@ -123,7 +123,7 @@ export async function handleReorderTabGroups(cmd: Extract<RemoteCommand, { type:
   await broadcastSync()
 }
 
-export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: 'move_tab_to_group' }>): Promise<void> {
+export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: 'desktop_move_tab_to_group' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedGroup = cmd.groupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -140,7 +140,7 @@ export async function handleMoveTabToGroup(cmd: Extract<RemoteCommand, { type: '
   await broadcastSync()
 }
 
-export async function handleToggleTabGroupPin(cmd: Extract<RemoteCommand, { type: 'toggle_tab_group_pin' }>): Promise<void> {
+export async function handleToggleTabGroupPin(cmd: Extract<RemoteCommand, { type: 'desktop_toggle_tab_group_pin' }>): Promise<void> {
   try {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     await state.mainWindow?.webContents.executeJavaScript(`

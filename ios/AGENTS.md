@@ -82,11 +82,26 @@ When adding a test, ensure it's a member of the `IonRemoteTests` target, not `Io
 
 LAN and relay share `RemoteCommand` and `RemoteTabState`. Pairing is ECDH; shared secret derives an AES key. Transport switching (LAN ↔ relay) via the transport manager. Don't bypass it from views.
 
-## Wire-protocol parity
+## Wire-protocol parity and naming (ADR 008)
 
 iOS models (`NormalizedEvent`, `RemoteCommand`, `RemoteTabState`) mirror desktop/engine wire types. When the engine adds an event variant or field, the iOS Swift type must add it too — otherwise relay/LAN messages decode incorrectly. Source of truth: `engine/internal/types/normalized_event.go` and `desktop/src/shared/types.ts`.
 
 **Do not defer event-surface expansion.** When a desktop feature requires iOS to react to an engine event that iOS doesn't yet decode, the proper fix is to add the event to `NormalizedEvent.swift` and handle it in the appropriate ViewModel extension. Do not create workarounds that relay rendered artifacts (e.g. sending a divider as an `engine_harness_message` instead of teaching iOS to decode the real event). Comments like "iOS does not yet act on this" describe known gaps — when a consumer arrives, close the gap.
+
+### Wire naming rule
+
+Two distinct prefixes exist on the iOS side:
+
+- **`engine_`** — events from the engine NDJSON socket. TypeKey raw values in `NormalizedEvent.swift` that decode engine-originated events use this prefix.
+- **`desktop_`** — events on the desktop↔iOS wire (`RemoteCommand`, `RemoteEvent`). The desktop owns this wire; iOS mirrors it. TypeKey raw values for `RemoteCommand`/`RemoteEvent` decode use the `desktop_` prefix.
+
+Do not introduce TypeKey raw values that mix these prefixes or omit them entirely. When the desktop renames a `RemoteEvent` member from an old prefix to `desktop_*`, update the corresponding Swift TypeKey in the same PR (lockstep rule).
+
+### Lockstep model
+
+The desktop↔iOS wire operates under a **lockstep model**: every wire rename ships to all clients in one PR. There is no window where the desktop has the new string and iOS still expects the old one. When reviewing or implementing a desktop↔iOS rename, do not treat it as a published-contract break — it is a parity obligation. The required gate is: `protocol.ts` and the Swift TypeKey raw values are updated together.
+
+See root `AGENTS.md` § "Contract stability" and [docs/architecture/adr/008-wire-event-naming-and-ownership.md](../docs/architecture/adr/008-wire-event-naming-and-ownership.md).
 
 ## Contract sync (cross-language types)
 
@@ -111,8 +126,10 @@ The iOS app is a thin client for the resource subsystem. It subscribes to resour
 
 ## Done criteria
 
-1. `make ios-check` succeeds.
-2. Wire-type or crypto or networking changes: run the relevant `IonRemoteTests/` test.
-3. `make check-file-sizes` passes.
-4. UI changes: smoke-tested on device or simulator. Report what was tested.
+`make ios-check` is a full `xcodebuild` — a heavy gate. Do not run it repeatedly while iterating. While developing, rely on targeted `IonRemoteTests/` tests for the area you touched; the full build runs at PR time — CI builds the iOS app on every PR, and the user may run `make ios-check` locally before pushing. (It is **not** part of `make test-linux`, which is Linux-only, so `/create-pr` does not run it.) See root [`AGENTS.md`](../AGENTS.md) § "Heavy gates — never run during development".
+
+1. Wire-type or crypto or networking changes: run the relevant `IonRemoteTests/` test (scoped — fine during development).
+2. `make check-file-sizes` passes.
+3. UI changes: smoke-tested on device or simulator. Report what was tested.
+4. `make ios-check` — heavy full build. CI runs it on the PR; the user may run it locally before pushing. Don't run it repeatedly while iterating.
 5. Don't `git push`.

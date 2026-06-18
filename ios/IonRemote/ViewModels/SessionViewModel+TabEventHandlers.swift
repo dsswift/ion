@@ -26,6 +26,9 @@ extension SessionViewModel {
         for key in activeTools.keys where key.hasPrefix("\(tabId):") || key == tabId {
             activeTools.removeValue(forKey: key)
         }
+        for key in thinkingInProgress.keys where key == tabId || key.hasPrefix("\(tabId):") {
+            thinkingInProgress.removeValue(forKey: key)
+        }
         engineConversationLoaded = engineConversationLoaded.filter { $0 != tabId && !$0.hasPrefix("\(tabId):") }
         // Drafts are local-only state — clean them up when the tab is closed
         // (don't survive tab close; do survive disconnect / restart).

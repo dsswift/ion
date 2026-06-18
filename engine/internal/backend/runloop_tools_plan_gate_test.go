@@ -550,3 +550,37 @@ func TestPlanGate_BashAllowlist_LowercaseBashName(t *testing.T) {
 		t.Errorf("expected lowercase 'bash' to also be gated, got: %s", res[0].Content)
 	}
 }
+
+// TestPlanGate_BashAllowlist_PerPromptAdditionAllowed pins the runtime gate
+// behavior for the /create-issue scenario: the run's only allowance is a
+// per-prompt addition (3-token prefix "echo issue create"), and the gate
+// must allow a command that starts with that prefix. The session has no
+// allowlist of its own; the addition is what was installed on the run from
+// RunOptions.BashAllowlistAdditionsForThisPrompt via buildToolDefs. This is the
+// gate twin of TestBuildToolDefs_PerPromptBashAdditionsOnly_NoSessionAllowlist.
+//
+// SAFETY: uses `echo` instead of `gh issue create` so the allowed-path
+// test cannot mutate any live repo when the gate correctly passes the
+// command through to real Bash execution.
+func TestPlanGate_BashAllowlist_PerPromptAdditionAllowed(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"echo issue create"})
+	results, isErr := runBashGate(t, b, run, "echo issue create --repo dsswift/ion --title x --body y")
+	if isErr && strings.Contains(results[0].Content, "Plan mode: Bash command") {
+		t.Errorf("expected gate to allow 'echo issue create …' against per-prompt allowlist [echo issue create], got blocked: %s", results[0].Content)
+	}
+}
+
+// TestPlanGate_BashAllowlist_PerPromptAdditionStillDeniesOthers verifies the
+// addition does not widen the gate beyond its prefix: a command outside the
+// per-prompt allowance is still denied. Pins that the run-scoped grant is
+// exactly the declared prefix and nothing more.
+func TestPlanGate_BashAllowlist_PerPromptAdditionStillDeniesOthers(t *testing.T) {
+	b, run, _ := bashGateHelper(t, []string{"echo issue create"})
+	results, isErr := runBashGate(t, b, run, "rm -rf /")
+	if !isErr {
+		t.Fatalf("expected 'rm -rf /' to be blocked against per-prompt allowlist [echo issue create]")
+	}
+	if !strings.Contains(results[0].Content, "not in the allowed list") {
+		t.Errorf("expected blocked-command message, got: %s", results[0].Content)
+	}
+}

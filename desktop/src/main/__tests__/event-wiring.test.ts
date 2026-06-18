@@ -73,13 +73,13 @@ function engineStatus(fields: Record<string, any>): any {
 
 function tabStatusCalls(tabId = 'tab1') {
   return mockSend.mock.calls.filter(
-    (c) => c[0]?.type === 'tab_status' && c[0]?.tabId === tabId,
+    (c) => c[0]?.type === 'desktop_tab_status' && c[0]?.tabId === tabId,
   )
 }
 
 function permRequestCalls(toolName?: string) {
   return mockSend.mock.calls.filter(
-    (c) => c[0]?.type === 'permission_request' && (!toolName || c[0]?.toolName === toolName),
+    (c) => c[0]?.type === 'desktop_permission_request' && (!toolName || c[0]?.toolName === toolName),
   )
 }
 
@@ -100,7 +100,7 @@ describe('wireEngineBridgeEvents — tab_status synthesis for iOS', () => {
 
     const calls = tabStatusCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0][0]).toEqual({ type: 'tab_status', tabId: 'tab1', status: 'idle' })
+    expect(calls[0][0]).toEqual({ type: 'desktop_tab_status', tabId: 'tab1', status: 'idle' })
   })
 
   it('synthesizes tab_status=completed when idle + ExitPlanMode denial', () => {

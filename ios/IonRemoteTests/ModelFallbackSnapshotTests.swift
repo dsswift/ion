@@ -33,13 +33,13 @@ final class ModelFallbackSnapshotTests: XCTestCase {
     /// run currently associated with this instance.
     private func sampleTabWithFallback(requestedModel: String, fallbackModel: String) -> String {
         """
-        {"id":"t1","title":"Tab","customTitle":null,"status":"running","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"isEngine":true,"engineInstances":[{"id":"inst1","label":"Main","modelFallback":{"requestedModel":"\(requestedModel)","fallbackModel":"\(fallbackModel)"}}],"activeEngineInstanceId":"inst1"}
+        {"id":"t1","title":"Tab","customTitle":null,"status":"running","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"conversationInstances":[{"id":"inst1","label":"Main","modelFallback":{"requestedModel":"\(requestedModel)","fallbackModel":"\(fallbackModel)"}}],"activeConversationInstanceId":"inst1"}
         """
     }
 
     func testDecodeSnapshotWithModelFallback() throws {
         let json = """
-        {"type":"snapshot","tabs":[\(sampleTabWithFallback(requestedModel: "standard", fallbackModel: "claude-sonnet-4-6"))]}
+        {"type":"desktop_snapshot","tabs":[\(sampleTabWithFallback(requestedModel: "standard", fallbackModel: "claude-sonnet-4-6"))]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event else {
@@ -47,7 +47,7 @@ final class ModelFallbackSnapshotTests: XCTestCase {
             return
         }
         XCTAssertEqual(tabs.count, 1)
-        let instances = tabs[0].engineInstances ?? []
+        let instances = tabs[0].conversationInstances ?? []
         XCTAssertEqual(instances.count, 1, "expected one engine instance")
         let inst = instances[0]
         XCTAssertNotNil(inst.modelFallback, "modelFallback should decode from the snapshot payload")
@@ -61,14 +61,14 @@ final class ModelFallbackSnapshotTests: XCTestCase {
         // engine-event-status idle branch clears the source map). iOS
         // must decode that as nil so the ⚠ glyph disappears.
         let json = """
-        {"type":"snapshot","tabs":[{"id":"t1","title":"Tab","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"isEngine":true,"engineInstances":[{"id":"inst1","label":"Main"}],"activeEngineInstanceId":"inst1"}]}
+        {"type":"desktop_snapshot","tabs":[{"id":"t1","title":"Tab","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"conversationInstances":[{"id":"inst1","label":"Main"}],"activeConversationInstanceId":"inst1"}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot, got \(event)")
             return
         }
-        let instances = tabs[0].engineInstances ?? []
+        let instances = tabs[0].conversationInstances ?? []
         XCTAssertEqual(instances.count, 1)
         XCTAssertNil(instances[0].modelFallback, "modelFallback should be nil when the field is absent from the wire payload")
     }

@@ -140,7 +140,6 @@ export interface UnknownEvent {
 }
 
 // ─── Canonical Events (normalized from raw stream) ───
-
 export type NormalizedEvent =
   | { type: 'session_init'; sessionId: string; tools: string[]; model: string; mcpServers: Array<{ name: string; status: string }>; skills: string[]; version: string; isWarmup?: boolean }
   | { type: 'text_chunk'; text: string }
@@ -163,3 +162,15 @@ export type NormalizedEvent =
   | { type: 'steer_injected'; messageLength: number }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
   | { type: 'run_stalled'; stalledDuration: number; lastActivity?: string }
+  // Extended-thinking events (issue #158), normalized-stream layer. These are
+  // the bare-name desktop-internal events the renderer consumes for PLAIN
+  // conversations. The control plane (engine-control-plane-events.ts)
+  // translates the engine-wire `engine_thinking_*` events into these so
+  // `event-slice.ts` can materialize `role: 'thinking'` rows — mirroring the
+  // extension-hosted path, where engine-event-slice.ts consumes the
+  // `engine_thinking_*` events directly. A thinking block is OPTIONAL per turn;
+  // boundaries (start/end) always arrive when reasoning happened, the delta may
+  // be suppressed engine-side (summary-only path). See ThinkingBlock.tsx.
+  | { type: 'thinking_block_start' }
+  | { type: 'thinking_delta'; text: string }
+  | { type: 'thinking_block_end'; totalTokens?: number; elapsedSeconds?: number; redacted?: boolean }

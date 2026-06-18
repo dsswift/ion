@@ -116,6 +116,7 @@ extension SessionViewModel {
         move("engineDialogs", &engineDialogs)
         move("enginePinnedPrompt", &enginePinnedPrompt)
         move("activeTools", &activeTools)
+        move("thinkingInProgress", &thinkingInProgress)
         // Sets need bespoke handling.
         if engineConversationLoaded.contains(oldKey) {
             engineConversationLoaded.remove(oldKey)

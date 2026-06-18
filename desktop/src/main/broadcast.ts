@@ -22,7 +22,7 @@ export function broadcast(channel: string, ...args: unknown[]): void {
     if (sep >= 0) {
       const tabId = key.substring(0, sep)
       const instanceId = key.substring(sep + 1)
-      state.remoteTransport.send({ type: 'terminal_exit', tabId, instanceId, exitCode })
+      state.remoteTransport.send({ type: 'desktop_terminal_exit', tabId, instanceId, exitCode })
     }
   }
 }
@@ -36,7 +36,7 @@ export function startTerminalOutputFlushing(): void {
       if (sep < 0) continue
       const tabId = key.substring(0, sep)
       const instanceId = key.substring(sep + 1)
-      state.remoteTransport?.send({ type: 'terminal_output', tabId, instanceId, data })
+      state.remoteTransport?.send({ type: 'desktop_terminal_output', tabId, instanceId, data })
     }
     terminalOutputAccumulator.clear()
   }, 16)

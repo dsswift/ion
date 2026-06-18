@@ -359,16 +359,20 @@ type EngineEvent struct {
 	//   - DispatchInputTokens: total input tokens
 	//   - DispatchOutputTokens: total output tokens
 	//   - DispatchToolCount:   number of tool calls made during dispatch
-	DispatchAgent        string  `json:"dispatchAgent,omitempty"`
-	DispatchTask         string  `json:"dispatchTask,omitempty"`
-	DispatchModel        string  `json:"dispatchModel,omitempty"`
-	DispatchSessionID    string  `json:"dispatchSessionId,omitempty"`
-	DispatchExitCode     int     `json:"dispatchExitCode,omitempty"`
-	DispatchElapsed      float64 `json:"dispatchElapsed,omitempty"`
-	DispatchCost         float64 `json:"dispatchCost,omitempty"`
-	DispatchInputTokens  int     `json:"dispatchInputTokens,omitempty"`
-	DispatchOutputTokens int     `json:"dispatchOutputTokens,omitempty"`
-	DispatchToolCount    int     `json:"dispatchToolCount,omitempty"`
+	//   - DispatchThinkingTokens: estimated reasoning tokens (subset of output;
+	//     see ThinkingBlockEndEvent.TotalTokens for the estimate caveat). Lets
+	//     cost/audit consumers separate reasoning spend from user-facing output.
+	DispatchAgent          string  `json:"dispatchAgent,omitempty"`
+	DispatchTask           string  `json:"dispatchTask,omitempty"`
+	DispatchModel          string  `json:"dispatchModel,omitempty"`
+	DispatchSessionID      string  `json:"dispatchSessionId,omitempty"`
+	DispatchExitCode       int     `json:"dispatchExitCode,omitempty"`
+	DispatchElapsed        float64 `json:"dispatchElapsed,omitempty"`
+	DispatchCost           float64 `json:"dispatchCost,omitempty"`
+	DispatchInputTokens    int     `json:"dispatchInputTokens,omitempty"`
+	DispatchOutputTokens   int     `json:"dispatchOutputTokens,omitempty"`
+	DispatchToolCount      int     `json:"dispatchToolCount,omitempty"`
+	DispatchThinkingTokens int     `json:"dispatchThinkingTokens,omitempty"`
 
 	// --- Resource subsystem events (D-007) ---
 	//
@@ -419,4 +423,46 @@ type EngineEvent struct {
 	InterceptMessage  string                 `json:"interceptMessage,omitempty"`
 	InterceptSource   string                 `json:"interceptSource,omitempty"` // extension name, set by engine
 	InterceptMetadata map[string]interface{} `json:"interceptMetadata,omitempty"`
+
+	// --- engine_plan_content ---
+	//
+	// Emitted in response to a get_plan_content command. Carries a bounded
+	// byte-range window of a plan file so remote clients (e.g. iOS via the
+	// desktop relay) can page through large plans without filesystem access
+	// to the engine host.
+	//
+	// PlanModeFilePath (json:"planFilePath") is REUSED for the plan file path —
+	// the JSON key is identical for plan_mode_changed and plan_content events,
+	// so no new field is needed for the path.
+	//
+	// PlanContentOffset is the byte offset of the first byte of Content.
+	// PlanContentBody is the UTF-8 string for this byte-range window.
+	// PlanContentTotalBytes is the file size at read time.
+	// PlanContentHasMore is true when more data follows.
+	//
+	// The wire JSON keys (offset, content, totalBytes, hasMore) are the
+	// canonical names that the iOS and desktop clients reference (1a9b6a87).
+	PlanContentOffset     int    `json:"offset,omitempty"`
+	PlanContentBody       string `json:"content,omitempty"`
+	PlanContentTotalBytes int    `json:"totalBytes,omitempty"`
+	PlanContentHasMore    bool   `json:"hasMore,omitempty"`
+
+	// --- Extended-thinking events (issue #158) ---
+	//
+	// engine_thinking_block_start: reasoning block began (no fields).
+	// engine_thinking_delta: incremental reasoning text (ThinkingText). Gated
+	//   by ThinkingConfig.StreamDeltas (default on) — boundaries always emit.
+	// engine_thinking_block_end: reasoning block finished, carrying a summary
+	//   (ThinkingTotalTokens, ThinkingElapsedSeconds, ThinkingRedacted).
+	//
+	// Mirror the underlying Thinking*Event NormalizedEvent variants. Surfaced
+	// distinctly (not packed into Metadata) so typed clients (desktop, iOS)
+	// read them without parsing an opaque map. See normalized_event.go for the
+	// per-block emission contract (optional per turn; signature_delta excluded;
+	// redacted_thinking sets ThinkingRedacted). ThinkingTotalTokens is an
+	// estimate — see ThinkingBlockEndEvent.TotalTokens.
+	ThinkingText           string  `json:"thinkingText,omitempty"`
+	ThinkingTotalTokens    int     `json:"thinkingTotalTokens,omitempty"`
+	ThinkingElapsedSeconds float64 `json:"thinkingElapsedSeconds,omitempty"`
+	ThinkingRedacted       bool    `json:"thinkingRedacted,omitempty"`
 }

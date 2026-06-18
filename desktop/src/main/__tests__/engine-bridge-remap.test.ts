@@ -36,7 +36,7 @@ function makeBridge() {
   return { bridge, events }
 }
 
-function injectMessage(bridge: EngineBridge, key: string, type = 'text_chunk') {
+function injectMessage(bridge: EngineBridge, key: string, type = 'desktop_text_chunk') {
   const line = JSON.stringify({ key, event: { type, text: 'hello' } })
   ;(bridge as any)['_handleMessage'](line)
 }
@@ -113,7 +113,7 @@ describe('EngineBridge.remapSession', () => {
     const { bridge, events } = makeBridge()
     bridge.remapSession('OLD:i1', 'NEW:i1')
 
-    const line = JSON.stringify({ key: 'OLD:i1', event: { type: 'engine_status', fields: { label: 'my-label' } } })
+    const line = JSON.stringify({ key: 'OLD:i1', event: { type: 'desktop_status', fields: { label: 'my-label' } } })
     ;(bridge as any)['_handleMessage'](line)
 
     expect(events[0].event.fields.label).toBe('my-label')

@@ -7,7 +7,7 @@ function log(msg: string): void {
   _log('main', msg)
 }
 
-export async function handleRewind(cmd: Extract<RemoteCommand, { type: 'rewind' }>): Promise<void> {
+export async function handleRewind(cmd: Extract<RemoteCommand, { type: 'desktop_rewind' }>): Promise<void> {
   try {
     const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -21,14 +21,14 @@ export async function handleRewind(cmd: Extract<RemoteCommand, { type: 'rewind' 
       })()
     `)
     if (inputText) {
-      state.remoteTransport?.send({ type: 'input_prefill', tabId: cmd.tabId, text: inputText })
+      state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: inputText })
     }
   } catch (err) {
     log(`rewind error: ${(err as Error).message}`)
   }
 }
 
-export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 'fork_from_message' }>): Promise<void> {
+export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 'desktop_fork_from_message' }>): Promise<void> {
   try {
     const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -46,7 +46,7 @@ export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 
     `)
     if (result?.newTabId) {
       state.remoteTransport?.send({
-        type: 'input_prefill',
+        type: 'desktop_input_prefill',
         tabId: result.newTabId,
         text: result.inputText,
         switchTo: true,
@@ -57,7 +57,7 @@ export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 
   }
 }
 
-export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'engine_rewind' }>): Promise<void> {
+export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'desktop_engine_rewind' }>): Promise<void> {
   try {
     const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedInstId = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -79,7 +79,7 @@ export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'en
       })()
     `)
     if (inputText) {
-      state.remoteTransport?.send({ type: 'input_prefill', tabId: cmd.tabId, text: inputText, instanceId: cmd.instanceId })
+      state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: inputText, instanceId: cmd.instanceId })
     }
   } catch (err) {
     log(`engine_rewind error: ${(err as Error).message}`)

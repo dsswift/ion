@@ -11,7 +11,7 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeTextChunk() throws {
         let json = """
-        {"type":"text_chunk","tabId":"t1","text":"Hello world"}
+        {"type":"desktop_text_chunk","tabId":"t1","text":"Hello world"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .textChunk(let tabId, let text) = event {
@@ -24,7 +24,7 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeToolCall() throws {
         let json = """
-        {"type":"tool_call","tabId":"t1","toolName":"bash","toolId":"tool-abc"}
+        {"type":"desktop_tool_call","tabId":"t1","toolName":"bash","toolId":"tool-abc"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .toolCall(let tabId, let toolName, let toolId) = event {
@@ -38,7 +38,7 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeToolResult() throws {
         let json = """
-        {"type":"tool_result","tabId":"t1","toolId":"tool-abc","content":"file created","isError":false}
+        {"type":"desktop_tool_result","tabId":"t1","toolId":"tool-abc","content":"file created","isError":false}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .toolResult(let tabId, let toolId, let content, let isError) = event {
@@ -53,7 +53,7 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeToolResultWithError() throws {
         let json = """
-        {"type":"tool_result","tabId":"t2","toolId":"tool-xyz","content":"permission denied","isError":true}
+        {"type":"desktop_tool_result","tabId":"t2","toolId":"tool-xyz","content":"permission denied","isError":true}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .toolResult(_, _, _, let isError) = event {
@@ -65,7 +65,7 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeTaskComplete() throws {
         let json = """
-        {"type":"task_complete","tabId":"t1","result":"success","costUsd":0.0042}
+        {"type":"desktop_task_complete","tabId":"t1","result":"success","costUsd":0.0042}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .taskComplete(let tabId, let result, let costUsd) = event {
@@ -79,7 +79,7 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeError() throws {
         let json = """
-        {"type":"error","tabId":"t1","message":"Something went wrong"}
+        {"type":"desktop_error","tabId":"t1","message":"Something went wrong"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
         if case .error(let tabId, let message) = event {
@@ -137,7 +137,7 @@ final class NormalizedEventStreamTests: XCTestCase {
         let cmd = RemoteCommand.prompt(tabId: "t1", text: "What is this?")
         let data = try encoder.encode(cmd)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "prompt")
+        XCTAssertEqual(json["type"] as? String, "desktop_prompt")
         XCTAssertEqual(json["tabId"] as? String, "t1")
         XCTAssertEqual(json["text"] as? String, "What is this?")
     }

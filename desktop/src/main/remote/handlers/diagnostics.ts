@@ -59,7 +59,7 @@ export function requestDiagnosticLogs(deviceId: string): Promise<string> {
     pendingRequests.set(deviceId, { resolve, reject, timer })
 
     log(`requesting diagnostic logs from device ${deviceId}`)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'request_diagnostic_logs' })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_request_diagnostic_logs' })
   })
 }
 
@@ -68,7 +68,7 @@ export function requestDiagnosticLogs(deviceId: string): Promise<string> {
  * Resolves any pending promise AND writes logs to disk for engine access.
  */
 export function handleDiagnosticLogsResponse(
-  cmd: Extract<RemoteCommand, { type: 'diagnostic_logs_response' }>,
+  cmd: Extract<RemoteCommand, { type: 'desktop_diagnostic_logs_response' }>,
   deviceId: string,
 ): void {
   log(`received diagnostic logs from device ${deviceId} (${cmd.logs.length} bytes)`)

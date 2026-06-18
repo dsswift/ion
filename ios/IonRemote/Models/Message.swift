@@ -30,22 +30,55 @@ struct Message: Codable, Identifiable, Sendable {
     /// Client-only field — NOT part of the wire protocol, NOT persisted.
     var interceptLevel: String? = nil
 
+    // MARK: - Extended-thinking summary (issue #158)
+    //
+    // These fields are populated ONLY on `role: .thinking` messages, which
+    // are synthesized locally by the thinking accumulator
+    // (SessionViewModel+ThinkingEvents.swift) from the desktop_thinking_*
+    // events. They are client-only render hints — NOT wire-protocol fields
+    // and NOT persisted — so they are excluded from CodingKeys below.
+
+    /// True while a thinking block is in progress (between block_start and
+    /// block_end). Drives the live activity indicator and the "Thinking…"
+    /// label on the thinking row. Set false on block_end.
+    var thinkingActive: Bool = false
+    /// Wall-clock duration of the reasoning block, from block_end's
+    /// `thinkingElapsedSeconds`. Nil until the block ends (or when the
+    /// desktop omitted it). Drives "💭 Thought for {n}s".
+    var thinkingElapsedSeconds: Double? = nil
+    /// Approximate thinking-token estimate from block_end's
+    /// `thinkingTotalTokens`. Nil when the desktop omitted it. Rendered as a
+    /// parenthetical token count when present.
+    var thinkingTotalTokens: Int? = nil
+    /// True for redacted_thinking blocks (encrypted reasoning with no
+    /// readable text). When true the row shows "🔒 redacted reasoning"
+    /// rather than promising text that does not exist.
+    var thinkingRedacted: Bool = false
+
     var isUser: Bool { role == .user }
     var isAssistant: Bool { role == .assistant }
     var isTool: Bool { role == .tool }
     var isSystem: Bool { role == .system }
     var isHarness: Bool { role == .harness }
+    var isThinking: Bool { role == .thinking }
 
     private enum CodingKeys: String, CodingKey {
         case id, role, content, toolName, toolInput, toolId, toolStatus
         case attachments, timestamp, source
         case isInternal = "internal"
-        // bootstrapCollapsedCount is deliberately excluded
+        // bootstrapCollapsedCount, interceptLevel, and the thinking* summary
+        // fields are deliberately excluded — all are client-only render hints.
     }
 }
 
 enum MessageRole: String, Codable, Sendable {
     case user, assistant, tool, system, harness
+    /// Extended-thinking reasoning block (issue #158). Synthesized locally
+    /// from the desktop_thinking_* events — the engine does not persist a
+    /// "thinking" role in conversation history (reasoning rides inside the
+    /// assistant block), so this case is never decoded off the engine
+    /// history wire; the engineJSON decoder maps unknown roles to .system.
+    case thinking
 }
 
 enum ToolStatus: String, Codable, Sendable {

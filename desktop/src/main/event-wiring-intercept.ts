@@ -108,7 +108,7 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
   // ── Forward to focused iOS devices ────────────────────────────────────────
   if (state.remoteTransport && focusedDevices.length > 0) {
     const remotePayload = {
-      type: 'engine_intercept' as const,
+      type: 'desktop_intercept' as const,
       tabId,
       level: effectiveLevel,
       title,

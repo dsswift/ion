@@ -1,6 +1,5 @@
 ---
 description: Push the current branch and open a pull request into main with a structured description derived from the branch's commits and issue references.
-allowed-tools: Bash(git *), Bash(gh pr *), Bash(gh issue view *), Bash(docker *), Bash(make test-linux*)
 ---
 
 You are running the `/create-pr` command. Your job is to push the current feature branch and open a pull request into `main` with a well-structured description. The PR title and body are derived from the branch's commits and the issues they reference.

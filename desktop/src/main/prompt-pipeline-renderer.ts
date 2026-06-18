@@ -45,7 +45,7 @@ export function emitRemoteMessageAdded(p: IncomingPrompt, content: string, role:
   if (p.isEngineTab) {
     if (role === 'system') {
       state.remoteTransport.send({
-        type: 'engine_harness_message',
+        type: 'desktop_harness_message',
         tabId: p.tabId,
         instanceId: p.instanceId ?? null,
         message: content,
@@ -59,7 +59,7 @@ export function emitRemoteMessageAdded(p: IncomingPrompt, content: string, role:
     return
   }
   state.remoteTransport.send({
-    type: 'message_added',
+    type: 'desktop_message_added',
     tabId: p.tabId,
     message: {
       // Reuse the request id ONLY for the user echo so iOS replaces its
@@ -193,5 +193,5 @@ export async function clearConnectingStatus(p: IncomingPrompt): Promise<void> {
     log(`clearConnectingStatus error: ${(err as Error).message}`)
   }
   // Mirror to iOS so its tab status indicator flips too.
-  state.remoteTransport?.send({ type: 'tab_status', tabId: p.tabId, status: 'idle' })
+  state.remoteTransport?.send({ type: 'desktop_tab_status', tabId: p.tabId, status: 'idle' })
 }

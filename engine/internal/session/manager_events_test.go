@@ -1048,3 +1048,73 @@ func TestToolCallAccumulation_SequentialTools(t *testing.T) {
 		t.Errorf("second call: expected agent_name='beta', got %v", calls[1].Input)
 	}
 }
+
+// --- thinking events (issue #158) ---
+
+func TestHandleNormalizedEvent_ThinkingBlockStart(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("think-start", defaultConfig())
+	_ = mgr.SendPrompt("think-start", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ThinkingBlockStartEvent{},
+	})
+
+	if len(ec.byType("engine_thinking_block_start")) == 0 {
+		t.Fatal("expected engine_thinking_block_start event")
+	}
+}
+
+func TestHandleNormalizedEvent_ThinkingDelta(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("think-delta", defaultConfig())
+	_ = mgr.SendPrompt("think-delta", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ThinkingDeltaEvent{Text: "reasoning chunk"},
+	})
+
+	evs := ec.byType("engine_thinking_delta")
+	if len(evs) == 0 {
+		t.Fatal("expected engine_thinking_delta event")
+	}
+	if evs[0].event.ThinkingText != "reasoning chunk" {
+		t.Errorf("expected ThinkingText 'reasoning chunk', got %q", evs[0].event.ThinkingText)
+	}
+}
+
+func TestHandleNormalizedEvent_ThinkingBlockEnd(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("think-end", defaultConfig())
+	_ = mgr.SendPrompt("think-end", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ThinkingBlockEndEvent{TotalTokens: 42, ElapsedSeconds: 14.5, Redacted: true},
+	})
+
+	evs := ec.byType("engine_thinking_block_end")
+	if len(evs) == 0 {
+		t.Fatal("expected engine_thinking_block_end event")
+	}
+	if evs[0].event.ThinkingTotalTokens != 42 {
+		t.Errorf("expected ThinkingTotalTokens 42, got %d", evs[0].event.ThinkingTotalTokens)
+	}
+	if evs[0].event.ThinkingElapsedSeconds != 14.5 {
+		t.Errorf("expected ThinkingElapsedSeconds 14.5, got %f", evs[0].event.ThinkingElapsedSeconds)
+	}
+	if !evs[0].event.ThinkingRedacted {
+		t.Errorf("expected ThinkingRedacted true")
+	}
+}

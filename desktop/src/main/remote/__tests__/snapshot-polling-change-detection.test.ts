@@ -18,7 +18,7 @@ import { hashSnapshot, resetSnapshotHash } from '../snapshot-polling'
 
 function makeSnapshotEvent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    type: 'snapshot',
+    type: 'desktop_snapshot',
     tabs: [
       {
         id: 'tab-1',
@@ -233,7 +233,7 @@ describe('startTabSnapshotPolling — change detection integration', () => {
     await pollCallback()
     expect(mockSend).toHaveBeenCalledTimes(1)
     const sentEvent = mockSend.mock.calls[0][0]
-    expect(sentEvent.type).toBe('snapshot')
+    expect(sentEvent.type).toBe('desktop_snapshot')
   })
 
   it('skips send on a second identical tick', async () => {

@@ -32,6 +32,7 @@ import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { log as _log } from './logger'
+import { getCliEnv } from './cli-env'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -83,13 +84,26 @@ export function spawnEngineServer(socketPath: string, pidPath: string): void {
   const cmd = isJs ? 'node' : binary
   const args = isJs ? [binary, 'serve'] : ['serve']
 
+  // Spawn with the full login-shell environment, not the raw process.env.
+  // A GUI-launched macOS app inherits the launchd-truncated PATH
+  // (/usr/bin:/bin:/usr/sbin:/sbin), so without this the engine — and every
+  // agent Bash tool / MCP server / extension subprocess it spawns — cannot
+  // see Homebrew/nvm/asdf binaries or anything on the user's real PATH.
+  // getCliEnv() resolves the login-shell PATH (already used by the desktop's
+  // own terminal and ipc/bash) and overlays the engine's socket/pid vars.
+  const childEnv = getCliEnv({
+    ION_SOCKET_PATH: socketPath,
+    ION_PID_PATH: pidPath,
+  })
+  const resolvedPath = childEnv.PATH ?? ''
+  log(
+    `Engine env: PATH resolved (${resolvedPath.length} chars, ` +
+      `${resolvedPath.split(':').length} entries); first: ${resolvedPath.split(':')[0] ?? '(none)'}`,
+  )
+
   const child = spawn(cmd, args, {
     stdio: 'ignore',
-    env: {
-      ...process.env,
-      ION_SOCKET_PATH: socketPath,
-      ION_PID_PATH: pidPath,
-    },
+    env: childEnv as NodeJS.ProcessEnv,
   })
   log(`Spawned engine server: PID ${child.pid}`)
 }

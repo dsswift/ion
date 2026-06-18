@@ -287,6 +287,7 @@ extension SessionViewModel {
         engineDialogs = [:]
         enginePinnedPrompt = [:]
         engineConversationLoaded = []
+        thinkingInProgress = [:]
         conversationInstances = [:]
         activeEngineInstance = [:]
         engineProfiles = []

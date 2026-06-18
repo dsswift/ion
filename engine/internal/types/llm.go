@@ -195,21 +195,35 @@ type ModelInfo struct {
 	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
 	SupportsThinking bool    `json:"supportsThinking,omitempty"`
 	SupportsImages   bool    `json:"supportsImages,omitempty"`
-	IsCustom         bool    `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
+	// ThinkingMode is the reasoning mechanism this model uses on the wire:
+	//   "adaptive"         — Anthropic adaptive thinking + effort (current models)
+	//   "budget"           — Anthropic legacy type:"enabled" + budget_tokens (older)
+	//   "reasoning_effort" — OpenAI / OpenAI-compatible reasoning_effort
+	//   "gemini"           — Google Gemini thinkingConfig
+	//   "none" / ""        — no reasoning support
+	// The shared resolveThinking helper reads this to pick the body shape.
+	ThinkingMode string `json:"thinkingMode,omitempty"`
+	// ThinkingEfforts is the set of effort levels this model accepts, e.g.
+	// ["low","medium","high"]. Clients use it to show/gray the per-conversation
+	// thinking control honestly. Empty ⇒ thinking control hidden for this model.
+	ThinkingEfforts []string `json:"thinkingEfforts,omitempty"`
+	IsCustom        bool     `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
 }
 
 // ModelEntry is the wire-format model information returned by list_models.
 // Tracked by contract sync.
 type ModelEntry struct {
-	ID               string  `json:"id"`
-	ProviderID       string  `json:"providerId"`
-	ContextWindow    int     `json:"contextWindow"`
-	CostPer1kInput   float64 `json:"costPer1kInput"`
-	CostPer1kOutput  float64 `json:"costPer1kOutput"`
-	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
-	SupportsThinking bool    `json:"supportsThinking,omitempty"`
-	SupportsImages   bool    `json:"supportsImages,omitempty"`
-	IsCustom         bool    `json:"isCustom,omitempty"`
+	ID               string   `json:"id"`
+	ProviderID       string   `json:"providerId"`
+	ContextWindow    int      `json:"contextWindow"`
+	CostPer1kInput   float64  `json:"costPer1kInput"`
+	CostPer1kOutput  float64  `json:"costPer1kOutput"`
+	SupportsCaching  bool     `json:"supportsCaching,omitempty"`
+	SupportsThinking bool     `json:"supportsThinking,omitempty"`
+	SupportsImages   bool     `json:"supportsImages,omitempty"`
+	ThinkingMode     string   `json:"thinkingMode,omitempty"`
+	ThinkingEfforts  []string `json:"thinkingEfforts,omitempty"`
+	IsCustom         bool     `json:"isCustom,omitempty"`
 }
 
 // ProviderEntry is the wire-format provider information returned by list_models.

@@ -146,7 +146,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         )
         let encoded = try encoder.encode(original)
         let json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-        XCTAssertEqual(json?["type"] as? String, "set_desktop_setting")
+        XCTAssertEqual(json?["type"] as? String, "desktop_set_desktop_setting")
         XCTAssertEqual(json?["key"] as? String, "enableEarlyStopContinuation")
         XCTAssertEqual(json?["value"] as? Bool, false)
 
@@ -401,5 +401,84 @@ final class DesktopSettingsContractTests: XCTestCase {
         let defaultValues = entry?.defaultValue.value as? [AnyCodable]
         XCTAssertEqual(defaultValues?.count, 1)
         XCTAssertEqual(defaultValues?[0].value as? String, "gh")
+    }
+
+    // MARK: - Extended-thinking projection toggle (issue #158)
+
+    /// Parity test for the `streamThinkingToRemote` projection toggle.
+    ///
+    /// This setting is the desktop's per-pairing low-bandwidth control: when
+    /// off, the desktop suppresses thinking_delta events (the iOS UI then
+    /// renders summary-only thinking rows from the block boundaries alone).
+    /// The DESKTOP owns the projection — it adds `streamThinkingToRemote` to
+    /// `PROJECTABLE_SETTINGS_DATA` with a group id (Phase 3, in parallel).
+    /// iOS does NOT hand-render this toggle: `DesktopSettingsView` is fully
+    /// data-driven and auto-renders any boolean schema entry as a
+    /// `booleanRow`. The only iOS obligation is that the snapshot decode +
+    /// state-lookup path surfaces the entry into a known group so it renders.
+    ///
+    /// This test pins exactly that: a boolean `streamThinkingToRemote` entry
+    /// in the snapshot decodes, its value is read back through
+    /// `currentValue(for:)`, and it lands in its declared group (not in the
+    /// forward-compat "Other" orphan section). When the desktop ships its
+    /// projection with a matching group id, the iOS toggle renders with no
+    /// further iOS code change. If the desktop instead projects it into a
+    /// group iOS doesn't list in `groups`, `orphanedEntries()` would surface
+    /// it — this test guards the in-group (auto-render) path.
+    func testStreamThinkingToRemoteAutoRenders() throws {
+        // The group id must match whatever the desktop's CATEGORIES array
+        // uses for the remote section. The desktop projects remote-pairing
+        // settings under the "remote" group; this snapshot mirrors that so
+        // the entry lands in-group rather than orphaned.
+        let json = """
+        {
+            "type": "desktop_settings_snapshot",
+            "settings": {
+                "streamThinkingToRemote": false
+            },
+            "schema": [
+                {
+                    "key": "streamThinkingToRemote",
+                    "type": "boolean",
+                    "group": "remote",
+                    "label": "Stream thinking to phone",
+                    "description": "Send the model's reasoning deltas to paired devices. Turn off on slow links — devices still show a thinking summary.",
+                    "defaultValue": true
+                }
+            ],
+            "groups": [
+                { "id": "remote", "label": "Remote" }
+            ]
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .desktopSettingsSnapshot(let settings, let schema, let groups) = event else {
+            XCTFail("expected desktopSettingsSnapshot, got \(event)")
+            return
+        }
+
+        // The entry decodes as a boolean schema entry → DesktopSettingsView
+        // routes booleans to `booleanRow`, the auto-rendered Toggle.
+        let entry = schema.first { $0.key == "streamThinkingToRemote" }
+        XCTAssertNotNil(entry, "streamThinkingToRemote must decode from the schema")
+        XCTAssertEqual(entry?.type, .boolean, "boolean type drives the auto-rendered Toggle row")
+        XCTAssertEqual(entry?.group, "remote")
+
+        // Build the state model the view binds to and confirm the value and
+        // grouping surface for auto-render (not orphaned).
+        let state = DesktopSettingsState(settings: settings, schema: schema, groups: groups)
+        XCTAssertEqual(
+            state.currentValue(for: "streamThinkingToRemote")?.value as? Bool, false,
+            "the persisted toggle value must read back through currentValue"
+        )
+        XCTAssertEqual(
+            state.entries(in: "remote").map(\.key), ["streamThinkingToRemote"],
+            "the toggle must land in its declared group so DesktopSettingsView renders it"
+        )
+        XCTAssertTrue(
+            state.orphanedEntries().isEmpty,
+            "an in-group entry must NOT fall into the forward-compat Other section"
+        )
     }
 }
