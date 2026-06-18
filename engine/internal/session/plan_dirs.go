@@ -17,11 +17,15 @@ import (
 //   - ~/.ion/plans/ (used by API backend and as the fallback)
 //
 // A plan file path is valid if it is contained within ANY of the returned
-// directories. Callers should use filepath.Rel to test containment:
+// directories. Callers should use filepath.Rel to test containment, testing
+// the ".." path-segment boundary rather than a bare "had a .. prefix" — a
+// bare HasPrefix(rel, "..") over-rejects a legitimate file literally named
+// "..foo". Symlinks should be resolved (filepath.EvalSymlinks) before the
+// test so a symlink inside the dir that targets outside it cannot defeat it:
 //
 //	for _, dir := range PlanDirsForWorkingDir(workingDir) {
 //	    rel, err := filepath.Rel(dir, path)
-//	    if err == nil && !strings.HasPrefix(rel, "..") {
+//	    if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 //	        // path is inside dir — accept
 //	    }
 //	}

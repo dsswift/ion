@@ -71,21 +71,51 @@ func (s *Server) dispatchGetPlanContent(conn net.Conn, cmd *protocol.ClientComma
 	workingDir := s.manager.SessionWorkingDir(key)
 	planDirs := session.PlanDirsForWorkingDir(workingDir)
 
+	// Resolve symlinks before the containment test so a symlink placed INSIDE
+	// a plan dir that targets a file OUTSIDE it cannot defeat the check. If the
+	// target does not exist yet (e.g. the model is mid-write of a not-yet-
+	// created plan file) EvalSymlinks errors; in that case fall back to the
+	// lexical reqPath, which is still subject to the same containment test
+	// below. Log which branch was taken (both sides of the conditional).
+	checkPath := reqPath
+	if resolved, err := filepath.EvalSymlinks(reqPath); err == nil {
+		if resolved != reqPath {
+			utils.Debug("Server", fmt.Sprintf(
+				"get_plan_content: resolved symlink path=%s -> %s", reqPath, resolved,
+			))
+		}
+		checkPath = resolved
+	} else {
+		utils.Debug("Server", fmt.Sprintf(
+			"get_plan_content: EvalSymlinks fell back to lexical path=%s err=%v", reqPath, err,
+		))
+	}
+
 	allowed := false
 	for _, dir := range planDirs {
+		// Resolve the candidate plan dir too, so the comparison is between two
+		// symlink-resolved paths (e.g. /var -> /private/var on macOS). A nil
+		// error from EvalSymlinks on a non-existent dir leaves dir lexical,
+		// which is fine: a non-existent dir cannot contain checkPath anyway.
+		resolvedDir := dir
+		if rd, err := filepath.EvalSymlinks(dir); err == nil {
+			resolvedDir = rd
+		}
 		// filepath.Rel returns an error only if the paths are on different
-		// volumes (Windows). On Unix it always succeeds. A relative path
-		// that starts with ".." means reqPath is outside dir.
-		rel, err := filepath.Rel(dir, reqPath)
-		if err == nil && !strings.HasPrefix(rel, "..") && rel != ".." {
+		// volumes (Windows). On Unix it always succeeds. checkPath is INSIDE
+		// resolvedDir iff rel is neither ".." nor begins with "../" — i.e. the
+		// ".." segment boundary is not crossed. A bare HasPrefix(rel, "..")
+		// would over-reject a legitimate file literally named "..foo".
+		rel, err := filepath.Rel(resolvedDir, checkPath)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			allowed = true
 			break
 		}
 	}
 	if !allowed {
 		utils.Warn("Server", fmt.Sprintf(
-			"get_plan_content: rejected path outside plan dirs key=%s path=%s planDirs=%v",
-			key, reqPath, planDirs,
+			"get_plan_content: rejected path outside plan dirs key=%s path=%s checkPath=%s planDirs=%v",
+			key, reqPath, checkPath, planDirs,
 		))
 		s.sendResult(conn, cmd, fmt.Errorf(
 			"path %q is outside the plan directory for this session", reqPath,

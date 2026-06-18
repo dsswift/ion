@@ -869,3 +869,54 @@ func TestSanitizeStripsThinkingEvenWhenPersisted(t *testing.T) {
 		t.Fatalf("non-thinking text block was incorrectly removed: %+v", out)
 	}
 }
+
+// TestSanitizeStripsRedactedThinking isolates the redacted_thinking strip
+// branch. The message carries a redacted_thinking block (encrypted reasoning,
+// no readable text) as its ONLY reasoning-type block, plus a normal text
+// block. SanitizeMessages must remove the redacted_thinking block (Anthropic
+// rejects re-submitted reasoning; the engine never replays reasoning to the
+// model) while preserving the text. Reverting the
+// `|| b.Type == "redacted_thinking"` clause in sanitize.go turns this test
+// red, pinning that branch explicitly rather than incidentally.
+func TestSanitizeStripsRedactedThinking(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{Role: "user", Content: []types.LlmContentBlock{{Type: "text", Text: "hi"}}},
+		{
+			Role: "assistant",
+			Content: []types.LlmContentBlock{
+				// Redacted thinking: encrypted reasoning, no readable text.
+				// This is the ONLY reasoning-type block in the message, so a
+				// failure here unambiguously implicates the redacted branch.
+				{Type: "redacted_thinking", Thinking: ""},
+				{Type: "text", Text: "Final answer."},
+			},
+		},
+	}
+
+	out := SanitizeMessages(msgs)
+
+	for _, m := range out {
+		blocks, ok := m.Content.([]types.LlmContentBlock)
+		if !ok {
+			continue
+		}
+		for _, b := range blocks {
+			if b.Type == "redacted_thinking" {
+				t.Fatalf("SanitizeMessages must strip redacted_thinking blocks before submission; found one with text %q", b.Thinking)
+			}
+		}
+	}
+
+	// The non-thinking text block must survive the strip.
+	last := out[len(out)-1]
+	blocks, _ := last.Content.([]types.LlmContentBlock)
+	foundText := false
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text == "Final answer." {
+			foundText = true
+		}
+	}
+	if !foundText {
+		t.Fatalf("non-thinking text block was incorrectly removed alongside redacted_thinking: %+v", out)
+	}
+}

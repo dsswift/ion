@@ -313,3 +313,90 @@ func TestGetPlanContent_AbsolutePathOutsidePlanDir(t *testing.T) {
 		t.Errorf("expected ok=false for /etc/hostname, got ok=true")
 	}
 }
+
+// TestGetPlanContent_DotDotPrefixFilenameAccepted verifies that a plan file
+// whose *filename* literally begins with ".." (e.g. "..notes.md") but which
+// lives INSIDE a valid plan dir is read successfully. The ".." segment
+// boundary is not crossed, so this is a legitimate in-dir file — a naive
+// strings.HasPrefix(rel, "..") containment test would wrongly reject it.
+// This test fails on the old HasPrefix form and passes on the boundary-correct
+// form (rel != ".." && !HasPrefix(rel, ".."+Separator)).
+func TestGetPlanContent_DotDotPrefixFilenameAccepted(t *testing.T) {
+	workDir := t.TempDir()
+	srv, conn, planDir := planContentTestEnv(t, workDir)
+	_ = srv
+
+	// A file named "..notes.md" inside the plan dir: rel == "..notes.md",
+	// which has a ".." PREFIX but does not cross the ".." segment boundary.
+	planPath := filepath.Join(planDir, "..notes.md")
+	content := "# Notes\n\nLegit in-dir file with a dotdot-prefixed name.\n"
+	if err := os.WriteFile(planPath, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd":       "get_plan_content",
+		"key":       "plan-test",
+		"path":      planPath,
+		"offset":    0,
+		"limit":     0,
+		"requestId": "req-dotdot-name",
+	})
+
+	lines := readLines(t, conn, 4, 2*time.Second)
+	evt := findPlanContentEvent(t, lines)
+	if evt == nil {
+		t.Fatalf("a dotdot-prefixed FILENAME inside the plan dir must be accepted; "+
+			"got no plan_content event; lines=%v", lines)
+	}
+	if evt.PlanContentBody != content {
+		t.Errorf("content mismatch\n got: %q\nwant: %q", evt.PlanContentBody, content)
+	}
+}
+
+// TestGetPlanContent_SymlinkEscapeRejected verifies that a symlink placed
+// INSIDE a valid plan dir that targets a file OUTSIDE it is rejected. Without
+// symlink resolution (filepath.EvalSymlinks) the lexical path of the symlink
+// is inside the plan dir and would pass the containment test, turning the
+// command into an arbitrary-file-read oracle. This test fails without the
+// EvalSymlinks guard and passes with it.
+func TestGetPlanContent_SymlinkEscapeRejected(t *testing.T) {
+	workDir := t.TempDir()
+	srv, conn, planDir := planContentTestEnv(t, workDir)
+	_ = srv
+
+	// Secret file OUTSIDE the plan dir (sibling of .ion under workDir).
+	secretPath := filepath.Join(workDir, "secret.txt")
+	if err := os.WriteFile(secretPath, []byte("top secret"), 0644); err != nil {
+		t.Fatalf("WriteFile secret: %v", err)
+	}
+
+	// A symlink INSIDE the plan dir pointing at the outside secret.
+	linkPath := filepath.Join(planDir, "escape.md")
+	if err := os.Symlink(secretPath, linkPath); err != nil {
+		t.Skipf("symlink unsupported in this environment: %v", err)
+	}
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd":       "get_plan_content",
+		"key":       "plan-test",
+		"path":      linkPath,
+		"offset":    0,
+		"limit":     0,
+		"requestId": "req-symlink-escape",
+	})
+
+	lines := readLines(t, conn, 3, 2*time.Second)
+
+	// Expect rejection: a result with ok=false and no plan_content event.
+	result := findResult(t, lines)
+	if result == nil {
+		t.Fatalf("no result received; lines=%v", lines)
+	}
+	if result.OK {
+		t.Errorf("expected ok=false for a symlink escaping the plan dir, got ok=true")
+	}
+	if evt := findPlanContentEvent(t, lines); evt != nil {
+		t.Errorf("plan_content event must not be emitted for a symlink escape; got %+v", evt)
+	}
+}

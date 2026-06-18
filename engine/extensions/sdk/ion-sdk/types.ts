@@ -746,9 +746,13 @@ export interface SendPromptOpts {
    * Bash command such as `gh issue create` — while plan mode is active,
    * rather than waiting until plan mode exits.
    *
-   * Like `model`, additions are only honored when sendPrompt is called from
-   * an active hook / command-execute context. When called from a timer or
-   * scheduler callback (no active dispatch context), they are dropped.
+   * Like `model`, additions flow on **every** dispatch path — the
+   * active-hook / command-execute path AND the timer/scheduler fallback path
+   * (no active dispatch context). The engine carries the full
+   * `SendPromptPayload` (text + model + bash-allowlist additions) to the
+   * session manager via `onSendMessage`, which builds the run overrides the
+   * same way the active-hook path does. There is no per-feature divergence
+   * between the two paths.
    *
    * An empty/omitted array is a no-op.
    */
