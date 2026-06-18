@@ -30,6 +30,14 @@ type PromptOverrides struct {
 	// to false. See the field comment on types.RunOptions for the full
 	// rationale.
 	ImplementationPhase bool
+	// ThinkingEffort forwards the client's ClientCommand.ThinkingEffort onto
+	// the run's RunOptions.Thinking for this prompt. One of "low"|"medium"|
+	// "high"; "" or "off" means no thinking directive for this prompt
+	// (overriding any session default to off). The live per-conversation
+	// control: a client changes the level and it applies on the next prompt
+	// with no session restart. Mirrors ImplementationPhase's per-prompt
+	// override semantics.
+	ThinkingEffort string
 	// EnterPlanModeDescription forwards the client's harness-supplied
 	// description prose for the EnterPlanMode sentinel tool. When
 	// non-empty, the engine uses this string verbatim as the tool's
@@ -329,6 +337,7 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 		pp.noExtensions = overrides.NoExtensions
 		pp.attachments = overrides.Attachments
 		pp.implementationPhase = overrides.ImplementationPhase
+		pp.thinkingEffort = overrides.ThinkingEffort
 	}
 	s.promptQueue = append(s.promptQueue, pp)
 	utils.Log("Session", fmt.Sprintf("prompt queued for %s (%d in queue)", key, len(s.promptQueue)))

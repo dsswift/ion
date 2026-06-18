@@ -52,7 +52,9 @@ You need a `models.json` entry when:
           "costPer1kOutput": 0.0,
           "supportsCaching": false,
           "supportsThinking": false,
-          "supportsImages": false
+          "supportsImages": false,
+          "thinkingMode": "reasoning_effort",
+          "thinkingEfforts": ["low", "medium", "high"]
         }
       }
     }
@@ -88,6 +90,8 @@ Register a model under a specific provider. Each entry sets the routing target p
 | `supportsCaching` | bool | false | Provider supports prompt caching for this model. |
 | `supportsThinking` | bool | false | Model exposes a reasoning/thinking channel. |
 | `supportsImages` | bool | false | Model accepts image inputs. |
+| `thinkingMode` | string | `""` | Reasoning mechanism the model uses on the wire. One of `adaptive` (Anthropic adaptive thinking + effort), `budget` (Anthropic legacy `type:"enabled"` + `budget_tokens`), `reasoning_effort` (OpenAI / OpenAI-compatible `reasoning_effort`), `gemini` (Google Gemini `thinkingConfig`), or `none`/`""` (no reasoning). Empty ⇒ the engine emits **no** thinking directive for this model, even when a prompt requests one — declare this field to opt a model in. |
+| `thinkingEfforts` | string[] | `[]` | Effort levels the model accepts, e.g. `["low","medium","high"]`. Clients use this with `thinkingMode` to show or hide the per-conversation thinking control honestly; empty ⇒ the control is hidden for this model. Surfaced on the `list_models` `ModelEntry` wire shape so both desktop and iOS gate the control identically. |
 
 ## Worked example: Ollama with qwen2.5:14b
 

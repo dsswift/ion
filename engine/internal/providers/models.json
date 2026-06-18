@@ -7,7 +7,9 @@
     "costPer1kOutput": 0.075,
     "supportsCaching": true,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "claude-opus-4-7",
@@ -17,7 +19,9 @@
     "costPer1kOutput": 0.075,
     "supportsCaching": true,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "claude-sonnet-4-6",
@@ -27,7 +31,9 @@
     "costPer1kOutput": 0.015,
     "supportsCaching": true,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "claude-haiku-4-5-20251001",
@@ -36,7 +42,10 @@
     "costPer1kInput": 0.0008,
     "costPer1kOutput": 0.004,
     "supportsCaching": true,
-    "supportsImages": true
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "budget",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "gpt-4.1",
@@ -61,7 +70,9 @@
     "costPer1kInput": 0.0011,
     "costPer1kOutput": 0.0044,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "o3",
@@ -70,7 +81,9 @@
     "costPer1kInput": 0.01,
     "costPer1kOutput": 0.04,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "gemini-2.5-pro",
@@ -79,7 +92,9 @@
     "costPer1kInput": 0.00125,
     "costPer1kOutput": 0.01,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "gemini",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "gemini-2.5-flash",
@@ -88,7 +103,9 @@
     "costPer1kInput": 0.00015,
     "costPer1kOutput": 0.0006,
     "supportsThinking": true,
-    "supportsImages": true
+    "supportsImages": true,
+    "thinkingMode": "gemini",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "grok-3",
@@ -112,7 +129,9 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.0003,
     "costPer1kOutput": 0.0005,
-    "supportsThinking": true
+    "supportsThinking": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": ["low", "high"]
   },
   {
     "id": "grok-3-mini-fast",
@@ -120,7 +139,9 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.0006,
     "costPer1kOutput": 0.004,
-    "supportsThinking": true
+    "supportsThinking": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": ["low", "high"]
   },
   {
     "id": "grok-2",
@@ -143,7 +164,9 @@
     "contextWindow": 65536,
     "costPer1kInput": 0.00055,
     "costPer1kOutput": 0.0022,
-    "supportsThinking": true
+    "supportsThinking": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   {
     "id": "llama-3.3-70b-versatile",

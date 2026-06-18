@@ -85,6 +85,18 @@ type ClientCommand struct {
 	// in engine/internal/types/types.go for the full rationale.
 	ImplementationPhase bool `json:"implementationPhase,omitempty"`
 
+	// send_prompt: per-prompt extended-thinking effort for this run. One of
+	// "low" | "medium" | "high"; "" or "off" means NO thinking directive for
+	// this prompt (overriding any session default to off). This is the LIVE
+	// per-conversation control — a client changes the level and it takes
+	// effect on the very next prompt with no session restart, mirroring the
+	// ImplementationPhase per-prompt override pattern above. The engine maps a
+	// non-empty value onto RunOptions.Thinking{Enabled:true, Effort:<level>};
+	// the provider body-builders then resolve the per-model mechanism via the
+	// shared resolveThinking helper. Additive optional field on the scrutinized
+	// engine wire — non-breaking.
+	ThinkingEffort string `json:"thinkingEffort,omitempty"`
+
 	// send_prompt: harness-supplied description prose for the
 	// EnterPlanMode sentinel tool that the engine injects during
 	// auto-mode runs. When non-empty, the engine forwards this string

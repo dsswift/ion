@@ -77,7 +77,19 @@ type EngineConfig struct {
 // ThinkingConfig controls extended thinking for API-backend runs.
 type ThinkingConfig struct {
 	Enabled      bool `json:"enabled"`
-	BudgetTokens int  `json:"budgetTokens,omitempty"`
+	// Effort is the cross-provider reasoning level: "low" | "medium" | "high".
+	// It is the forward-compatible control that the whole provider landscape
+	// has converged on (Anthropic adaptive `effort`, OpenAI `reasoning_effort`,
+	// Gemini `thinkingConfig` budget mapped from the level). Precedence with
+	// the legacy BudgetTokens field:
+	//   - Enabled && Effort != "" ⇒ effort-based resolution (preferred path).
+	//   - Enabled && Effort == "" ⇒ legacy budget path (back-compat only; used
+	//     for older models whose capability mode is "budget").
+	//   - !Enabled ⇒ no thinking directive emitted, regardless of other fields.
+	// The provider body-builders translate (mode, effort, budget) via the
+	// shared resolveThinking helper; see engine/internal/providers.
+	Effort       string `json:"effort,omitempty"`
+	BudgetTokens int    `json:"budgetTokens,omitempty"`
 	// StreamDeltas gates per-token engine_thinking_delta emission on the
 	// engine wire (issue #158). Pointer-bool: nil/absent ⇒ ON (default).
 	// Block-boundary events (engine_thinking_block_start / _end) always emit

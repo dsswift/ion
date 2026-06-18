@@ -106,6 +106,17 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.ImplementationPhase {
 			opts.ImplementationPhase = true
 		}
+		// Per-prompt thinking effort (live per-conversation control). A
+		// non-empty, non-"off" level sets RunOptions.Thinking for this run;
+		// "off"/"" explicitly clears it so the prompt carries no thinking
+		// directive even if a session default existed. This is the single
+		// place the per-prompt effort lands on the run; the provider
+		// body-builders resolve the per-model mechanism downstream.
+		if eff := overrides.ThinkingEffort; eff != "" && eff != "off" {
+			opts.Thinking = &types.ThinkingConfig{Enabled: true, Effort: eff}
+		} else if eff == "off" {
+			opts.Thinking = nil
+		}
 		// Forward the harness-supplied EnterPlanMode tool description.
 		// Empty string means "fall back to engine default" — runloop_setup
 		// resolves the actual prose via tools.EnterPlanModeToolWithDescription.

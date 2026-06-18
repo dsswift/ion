@@ -201,6 +201,18 @@ func UserModels(config map[string]interface{}) map[string]types.ModelInfo {
 				if v, ok := m["supportsImages"].(bool); ok {
 					info.SupportsImages = v
 				}
+				if v, ok := m["thinkingMode"].(string); ok {
+					info.ThinkingMode = v
+				}
+				if v, ok := m["thinkingEfforts"].([]interface{}); ok {
+					efforts := make([]string, 0, len(v))
+					for _, e := range v {
+						if s, ok := e.(string); ok {
+							efforts = append(efforts, s)
+						}
+					}
+					info.ThinkingEfforts = efforts
+				}
 			}
 			result[modelName] = info
 		}

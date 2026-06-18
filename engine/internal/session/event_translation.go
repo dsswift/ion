@@ -457,7 +457,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		utils.Debug("Session", fmt.Sprintf("dispatching queued prompt: key=%s", key))
 		go func() {
 			var ov *PromptOverrides
-			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions || len(nextPrompt.attachments) > 0 || nextPrompt.implementationPhase {
+			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions || len(nextPrompt.attachments) > 0 || nextPrompt.implementationPhase || nextPrompt.thinkingEffort != "" {
 				ov = &PromptOverrides{
 					Model:               nextPrompt.model,
 					MaxTurns:            nextPrompt.maxTurns,
@@ -466,6 +466,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 					NoExtensions:        nextPrompt.noExtensions,
 					Attachments:         nextPrompt.attachments,
 					ImplementationPhase: nextPrompt.implementationPhase,
+					ThinkingEffort:      nextPrompt.thinkingEffort,
 				}
 			}
 			if err := m.SendPrompt(key, nextPrompt.text, ov); err != nil {
