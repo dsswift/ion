@@ -14,6 +14,7 @@ import {
   validateExternalUrl,
   shellSingleQuote,
   escapeAppleScript,
+  resolveDiscoveryWorkingDir,
 } from '../ipc-validation'
 
 // ─── Fixtures ───
@@ -187,5 +188,31 @@ describe('TC-005: shell escaping utilities', () => {
     it('doubles backslashes', () => {
       expect(escapeAppleScript('path\\to\\file')).toBe('path\\\\to\\\\file')
     })
+  })
+})
+
+// ─── resolveDiscoveryWorkingDir (slash-command discovery path mapping) ───
+
+describe('resolveDiscoveryWorkingDir', () => {
+  it("maps '~' to empty (user-only discovery, not rejection)", () => {
+    // Regression: a fresh tab reports workingDir '~'. It must NOT be rejected —
+    // user-level commands (~/.ion, ~/.claude) must still be discovered. Empty
+    // string tells the engine to walk only the home roots.
+    expect(resolveDiscoveryWorkingDir('~')).toBe('')
+  })
+
+  it('maps empty / undefined / null to empty (user-only discovery)', () => {
+    expect(resolveDiscoveryWorkingDir('')).toBe('')
+    expect(resolveDiscoveryWorkingDir(undefined)).toBe('')
+    expect(resolveDiscoveryWorkingDir(null)).toBe('')
+  })
+
+  it('forwards an absolute project path unchanged', () => {
+    expect(resolveDiscoveryWorkingDir('/Users/me/proj')).toBe('/Users/me/proj')
+  })
+
+  it('rejects a present but non-absolute (malformed) path with null', () => {
+    expect(resolveDiscoveryWorkingDir('relative/path')).toBeNull()
+    expect(resolveDiscoveryWorkingDir('/bad\npath')).toBeNull()
   })
 })

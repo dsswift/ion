@@ -53,6 +53,7 @@ export function serializeConversationPane(
           timestamp: m.timestamp,
           ...(m.dedupKey ? { dedupKey: m.dedupKey } : {}),
           ...(m.planFilePath ? { planFilePath: m.planFilePath } : {}),
+          ...(m.slashCommand ? { slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource } : {}),
         }))
       }
     }

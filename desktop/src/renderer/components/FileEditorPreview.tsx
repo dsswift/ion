@@ -28,11 +28,9 @@ function resolveRelativePath(baseDir: string, href: string): string {
 /**
  * Split a markdown document into YAML frontmatter (raw, unparsed) and body.
  *
- * Mirrors `stripFrontmatter` semantics from
- * `desktop/src/main/cli-compat/slash-expand.ts:147` (first line must be
- * exactly `---`, scan downward for the next standalone `---` line; if no
- * closing fence is found, treat the file as having no frontmatter rather
- * than swallowing the entire document).
+ * Frontmatter convention: the first line must be exactly `---`; scan downward
+ * for the next standalone `---` line. If no closing fence is found, treat the
+ * file as having no frontmatter rather than swallowing the entire document.
  *
  * Reimplemented inline rather than imported because the main and renderer
  * processes are separate bundles and the logic is small enough that

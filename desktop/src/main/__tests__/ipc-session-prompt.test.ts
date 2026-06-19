@@ -68,10 +68,6 @@ vi.mock('../remote/snapshot', () => ({
   getRemoteTabStates: vi.fn(),
 }))
 
-vi.mock('../cli-compat/slash-expand', () => ({
-  expandSlashCommand: vi.fn(),
-}))
-
 vi.mock('../settings-store', () => ({
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },

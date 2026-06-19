@@ -132,6 +132,24 @@ export function shouldEnableThinking(): boolean {
   return raw.thinkingEnabled === true
 }
 
+/**
+ * Resolve the user's "Claude Code Compatibility" setting from settings.json.
+ * Defaults to SETTINGS_DEFAULTS.enableClaudeCompat when the key is absent or
+ * not a boolean. This gates whether the engine honors the `.claude` /
+ * `~/.claude` roots (commands AND skills) during slash discovery + resolution —
+ * the desktop reads the setting and hands it to the engine, which holds no
+ * opinion on it. A read failure falls back to the default rather than silently
+ * flipping behavior; callers log the value they pass.
+ */
+export function readClaudeCompat(): boolean {
+  try {
+    const v = readSettings().enableClaudeCompat
+    return typeof v === 'boolean' ? v : SETTINGS_DEFAULTS.enableClaudeCompat
+  } catch {
+    return SETTINGS_DEFAULTS.enableClaudeCompat
+  }
+}
+
 export function readEngineConfig(): Record<string, any> {
   try {
     if (existsSync(ENGINE_CONFIG_FILE)) {

@@ -9,7 +9,7 @@ import { startSession as startSessionImpl, reRegisterSessions as reRegisterSessi
 import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl } from './engine-bridge-state-sync'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import * as conv from './engine-bridge-conversations'
-import type { EngineConfig, EngineEvent, ImageAttachmentPayload } from '../shared/types'
+import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
 
 const TAG = 'EngineBridge'
 function log(msg: string): void { _log(TAG, msg) }
@@ -400,12 +400,12 @@ export class EngineBridge extends EventEmitter {
     return entry ? { ...entry.config } : undefined
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string): Promise<{ ok: boolean; error?: string }> {
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string, resolveSlash?: boolean): Promise<{ ok: boolean; error?: string }> {
     // Message construction and the diagnostic log line live in
     // engine-bridge-prompts.ts so this file stays under the 600-line cap
     // as the send_prompt wire surface grows. See that sibling for the
     // per-field omitempty pattern and the bash-additions log convention.
-    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort }
+    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort, resolveSlash }
     log(buildSendPromptLogLine(args))
     await this.connect()
     return this._sendWithResult(buildSendPromptMessage(args))
@@ -468,25 +468,20 @@ export class EngineBridge extends EventEmitter {
   // single-line delegate — see the sibling file for behavior, logging,
   // and wire-protocol contract notes.
 
-  async listStoredSessions(limit?: number): Promise<any[]> {
-    return conv.listStoredSessions(this, limit)
-  }
+  async listStoredSessions(limit?: number): Promise<any[]> { return conv.listStoredSessions(this, limit) }
 
-  async loadSessionHistory(sessionId: string): Promise<any[]> {
-    return conv.loadSessionHistory(this, sessionId)
-  }
+  async loadSessionHistory(sessionId: string): Promise<any[]> { return conv.loadSessionHistory(this, sessionId) }
 
-  async loadChainHistory(sessionIds: string[]): Promise<any[]> {
-    return conv.loadChainHistory(this, sessionIds)
-  }
+  // Discover filesystem `.md`/skill slash templates (the engine OWNS slash
+  // resolution). `claudeCompat` gates the .claude roots engine-side. Mapping +
+  // contract live in the sibling file.
+  discoverSlashCommands(workingDir: string, claudeCompat: boolean): Promise<DiscoveredCommand[]> { return conv.discoverSlashCommands(this, workingDir, claudeCompat) }
 
-  async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> {
-    return conv.getConversation(this, conversationId, offset, limit)
-  }
+  async loadChainHistory(sessionIds: string[]): Promise<any[]> { return conv.loadChainHistory(this, sessionIds) }
 
-  async clearConversationFile(conversationId: string): Promise<void> {
-    return conv.clearConversationFile(this, conversationId)
-  }
+  async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> { return conv.getConversation(this, conversationId, offset, limit) }
+
+  async clearConversationFile(conversationId: string): Promise<void> { return conv.clearConversationFile(this, conversationId) }
 
   async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
     return conv.saveSessionLabel(this, sessionId, label)

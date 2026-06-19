@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => {
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
   const broadcastMock = (globalThis as any).vi?.fn?.() ?? function () {}
-  const expandSlashMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
   // getTabStatusMock: returns tab-like object. Default: no conversationId.
   const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null }) ?? function () { return { conversationId: null } }
@@ -46,7 +45,6 @@ const mocks = vi.hoisted(() => {
     remoteSendMock,
     executeJsMock,
     broadcastMock,
-    expandSlashMock,
     clearConversationFileMock,
     getTabStatusMock,
     notifyConversationClearedMock,
@@ -60,7 +58,6 @@ mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
 mocks.broadcastMock = vi.fn()
-mocks.expandSlashMock = vi.fn().mockResolvedValue({ expanded: false })
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
 mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
 mocks.notifyConversationClearedMock = vi.fn()
@@ -108,10 +105,6 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../cli-compat/slash-expand', () => ({
-  expandSlashCommand: (...args: any[]) => mocks.expandSlashMock(...args),
-}))
-
 vi.mock('../settings-store', () => ({
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
@@ -135,7 +128,6 @@ beforeEach(() => {
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
   mocks.broadcastMock.mockReset()
-  mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: false })
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
   mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
   mocks.notifyConversationClearedMock.mockReset()

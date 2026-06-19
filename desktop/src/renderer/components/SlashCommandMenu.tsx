@@ -47,6 +47,21 @@ export function getFilteredCommandsWithExtras(filter: string, extraCommands: Sla
   return fuzzyFilterAndSort(filter, merged)
 }
 
+/**
+ * Decide what pressing Enter does while the slash menu is open.
+ *
+ *  - 'complete' — the typed filter matches at least one known command; Enter
+ *    completes the highlighted entry from the menu.
+ *  - 'send'     — the typed text matches NO known command; Enter must close the
+ *    menu and submit the raw text so the prompt pipeline forwards it to the
+ *    engine (resolveSlash) which resolves the template or surfaces "Unknown
+ *    command". Returning 'send' here is what prevents an unknown/typed slash
+ *    command from being unsendable (the menu must not swallow Enter).
+ */
+export function slashMenuEnterAction(filteredCount: number): 'complete' | 'send' {
+  return filteredCount > 0 ? 'complete' : 'send'
+}
+
 export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, extraCommands = [] }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const popoverLayer = usePopoverLayer()

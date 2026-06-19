@@ -43,15 +43,16 @@
  *     │     │     │
  *     │     │     ├─ commandError = "unknown_command"
  *     │     │     │   │   (engine has no such extension or built-in)
- *     │     │     │   ├─ try `.md` expansion via expandSlashCommand
- *     │     │     │   │   │
- *     │     │     │   │   ├─ expanded → re-enter pipeline as normal prompt
- *     │     │     │   │   │             (auto-switch permission mode)
- *     │     │     │   │   │
- *     │     │     │   │   └─ not expanded → emit "unknown command" system
- *     │     │     │   │                       message and stop
- *     │     │     │   │
- *     │     │     │   └─ ── (no other branch — the result is fully classified)
+ *     │     │     │   ├─ /clear → local clear short-circuit
+ *     │     │     │   └─ otherwise → RE-SUBMIT the raw `/command args` to the
+ *     │     │     │       engine with resolveSlash=true. The engine OWNS
+ *     │     │     │       resolution + expansion (template lookup across
+ *     │     │     │       .ion/commands, .claude/commands, skills, project
+ *     │     │     │       roots; $ARGUMENTS + frontmatter), feeds the expanded
+ *     │     │     │       body to the model, and persists the RAW invocation
+ *     │     │     │       as the displayed user turn. If the engine also can't
+ *     │     │     │       resolve it, it emits another unknown_command which
+ *     │     │     │       the desktop surfaces as a system message.
  *     │     │     │
  *     │     │     └─ commandError = "timeout" or extension error
  *     │     │           → emit system message with the error and stop
@@ -96,8 +97,7 @@ import { log as _log } from './logger'
 import { state, sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { parseSlash, type ParsedSlash } from './slash-parse'
-import { dispatchExtensionCommand, tryExpandMarkdownSlash } from './slash-classify'
-import { handleLocalClearShortCircuit } from './slash-clear'
+import { handleSlash as handleSlashBranch } from './prompt-pipeline-slash'
 import { encodeImageAttachments } from './remote/attachment-encoder'
 import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
@@ -141,7 +141,8 @@ export interface IncomingPrompt {
   isEngineTab: boolean
   /** Required when isEngineTab is true. Ignored otherwise. */
   instanceId?: string | null
-  /** Project working directory; used for `.md` template lookup. */
+  /** Project working directory. Forwarded to the engine for context; the
+   *  engine resolves slash templates against its own command roots. */
   projectPath?: string
   /** Engine-tab-only system-prompt append (e.g. voice config). */
   appendSystemPrompt?: string
@@ -160,8 +161,8 @@ export interface IncomingPrompt {
   /** Per-prompt extended-thinking effort. 'off'/undefined → no thinking. Forwarded to sendPrompt + REMOTE_ENGINE_PROMPT. */
   thinkingEffort?: string
   /** When provided, used verbatim as the RunOptions for CLI submission. The
-   *  pipeline mutates `prompt` and `appendSystemPrompt` on this object during
-   *  `.md` expansion. */
+   *  pipeline may mutate `prompt`/`appendSystemPrompt`/`resolveSlash` on this
+   *  object on the slash re-submit path (handleSlash). */
   runOptions?: RunOptions
   /**
    * Persisted plan file path from tab state. Threaded through to the engine
@@ -171,15 +172,26 @@ export interface IncomingPrompt {
   planFilePath?: string
   /**
    * Per-prompt bash-allowlist additions, unioned with the session allowlist
-   * for this one run only. Populated by the slash-classify path when a
-   * slash command's YAML frontmatter declares `allowed_bash_commands` —
-   * the additions are forwarded to engineBridge.sendPrompt so the engine
-   * grants the permissions transiently without persisting them on the
-   * engineSession allowlist (which would leak across subsequent prompts
-   * in the same session). See docs/protocol/client-commands.md
-   * § set_plan_mode for the three-layer configuration model.
+   * for this one run only. Forwarded to engineBridge.sendPrompt so the engine
+   * grants the permissions transiently without persisting them (no leak into
+   * subsequent prompts). See docs/protocol/client-commands.md § set_plan_mode.
+   * The desktop no longer populates this from slash-command frontmatter —
+   * frontmatter handling moved to the engine via resolveSlash — but the field
+   * remains for callers that want transient bash grants for a single run.
    */
   bashAllowlistAdditionsForThisPrompt?: string[]
+  /**
+   * When true, the engine OWNS slash resolution + expansion for this prompt:
+   * it treats `text` as a slash invocation, resolves + expands the template
+   * across its own command roots, feeds the expanded body to the model, and
+   * persists the RAW invocation as the displayed user turn. The desktop sets
+   * this only on the re-submit path in `handleSlash` after the engine
+   * disclaims a slash with `unknown_command` (local `.md` expansion is
+   * retired). Forwarded to `engineBridge.sendPrompt` (engine tabs) /
+   * `RunOptions.resolveSlash` (CLI tabs); the wire field is attached only
+   * when truthy.
+   */
+  resolveSlash?: boolean
 }
 
 /**
@@ -232,9 +244,9 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
 }
 
 /**
- * Submit a regular (non-slash, post-`.md`-expansion, or fall-through) prompt
- * to the engine. The renderer's send-slice / engine-slice already runs by
- * the time we get here for desktop-source prompts (they call IPC.PROMPT
+ * Submit a regular (non-slash, slash-resolve re-submit, or fall-through)
+ * prompt to the engine. The renderer's send-slice / engine-slice already runs
+ * by the time we get here for desktop-source prompts (they call IPC.PROMPT
  * which invokes us); for remote-source prompts we go through the renderer
  * broadcast path so the renderer's slice does the optimistic-bubble work.
  *
@@ -251,7 +263,7 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  * Today the only addendum is `TURN_GROUPING_GUIDANCE` (see
  * ./turn-grouping-guidance.ts for why). When future harness-level
  * coaching is added, it goes here too — never inject from the
- * renderer or from the slash-expansion path, both of which run on
+ * renderer or from the slash re-submit path, both of which run on
  * subsets of the prompt population.
  *
  * The append target is split across two fields:
@@ -261,8 +273,8 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  *   - `p.runOptions?.appendSystemPrompt` — read by the CLI desktop
  *     terminal dispatch at `sessionPlane.submitPrompt(...)`.
  *
- * The slash-expansion path (`handleSlash`) writes both fields to keep
- * them consistent (see lines 438–445), so we mirror that here.
+ * The slash re-submit path (`handleSlash`) writes both fields to keep
+ * them consistent, so we mirror that here.
  *
  * Idempotency
  * ───────────
@@ -352,7 +364,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     // case and the description value goes unused) so the call site stays
     // simple — no branching. Also forward the sparse-reminder override so
     // the per-turn reminder is consistent with the full prompt framing.
-    await engineBridge.sendPrompt(key, p.text, p.model, p.appendSystemPrompt, p.imageAttachments, p.implementationPhase, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER, p.planFilePath, p.bashAllowlistAdditionsForThisPrompt, p.thinkingEffort)
+    await engineBridge.sendPrompt(key, p.text, p.model, p.appendSystemPrompt, p.imageAttachments, p.implementationPhase, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER, p.planFilePath, p.bashAllowlistAdditionsForThisPrompt, p.thinkingEffort, p.resolveSlash)
     return
   }
 
@@ -379,6 +391,12 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       timestamp: Date.now(),
       imageAttachments: encoded.length > 0 ? encoded : undefined,
       implementationPhase: p.implementationPhase,
+      // Carry the engine-resolve-slash flag through the renderer bounce so
+      // the iOS slash re-submit reaches the engine with resolveSlash=true
+      // (the renderer's submitRemotePrompt forwards it onto RunOptions, which
+      // lands back here via IPC.PROMPT → submitAsPrompt). Absent/false for
+      // ordinary remote prompts.
+      resolveSlash: p.resolveSlash,
     })
     return
   }
@@ -402,143 +420,30 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
   if (!p.runOptions.planModeSparseReminder) {
     p.runOptions.planModeSparseReminder = PLAN_MODE_SPARSE_REMINDER
   }
-  log(`pipeline: submit cli prompt via sessionPlane tab=${p.tabId} req=${p.reqId} promptLen=${p.runOptions.prompt.length}`)
+  // Forward the engine-resolve-slash flag onto RunOptions so the control
+  // plane's submitPrompt → bridge.sendPrompt passes it through. Set on the
+  // re-submit path in handleSlash; absent/false on ordinary prompts.
+  if (p.resolveSlash) {
+    p.runOptions.resolveSlash = true
+  }
+  log(`pipeline: submit cli prompt via sessionPlane tab=${p.tabId} req=${p.reqId} promptLen=${p.runOptions.prompt.length} resolveSlash=${p.resolveSlash ?? false}`)
   await sessionPlane.submitPrompt(p.tabId, p.reqId, p.runOptions)
 }
 
 /**
- * Handle a parsed slash: try extension command first, fall back to `.md`,
- * else emit "unknown command". Always echoes the user's original slash text
- * to the remote transport so iOS replaces its optimistic entry's bad
- * timestamp with the canonical one.
- *
- * The actual extension-dispatch + `.md` lookup helpers live in
- * `slash-classify.ts`. This function is the orchestrator that decides
- * which to call based on the engine's response shape — it does not own
- * the dispatch mechanics itself.
+ * Out-of-band: surface a system message when the ENGINE also fails to resolve
+ * the slash on the resolveSlash re-submit. The engine emits
+ * engine_command_result{unknown_command} only on a resolve FAILURE (success
+ * starts a run → no command result), so we act only on unknown_command;
+ * timeout (the success outcome) and any other shape are ignored. The re-submit
+ * does not block on this. Errors are logged, never thrown.
  */
 async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void> {
-  // Echo the raw slash text to iOS so the optimistic timestamp is corrected
-  // (matches Phase 3 of the plan in spirit — even if iOS Phase 3 hasn't been
-  // released, the desktop pipeline echoes a canonical ms-timestamp every
-  // time a remote prompt is processed).
-  if (p.source === 'remote') {
-    emitRemoteMessageAdded(p, p.text, 'user')
-  }
-
-  const result = await dispatchExtensionCommand(engineKey(p), slash)
-
-  if (result.commandError === '') {
-    // Success. Clear the optimistic 'connecting' state because no run will
-    // follow for a pure command. (Extensions that DO start a run will set
-    // status='running' via run_start before this clear executes, and the
-    // clear is a no-op when status isn't 'connecting'.)
-    log(`pipeline: ext cmd success key=${engineKey(p)} cmd=/${slash.command}`)
-    await clearConnectingStatus(p)
-    return
-  }
-
-  if (result.commandError === 'unknown_command') {
-    // Special case: `/clear` when the engine has no session yet (e.g. a fresh
-    // tab where no prompt has been submitted). The engine cannot run
-    // dispatchClear because the session doesn't exist, so it returns
-    // unknown_command. From the user's perspective the conversation IS already
-    // empty — the correct behaviour is a divider, not an "Unknown command"
-    // error. We short-circuit here and render the divider locally, matching
-    // the semantics dispatchClear documents for the "never-talked-to" case.
-    // All other unknown commands continue to the .md expansion path below.
-    if (slash.command === 'clear') {
-      await handleLocalClearShortCircuit(p, engineKey(p))
-      return
-    }
-
-    log(`pipeline: engine disclaimed /${slash.command} → trying .md expansion`)
-    const expansion = await tryExpandMarkdownSlash(p.tabId, slash, p.projectPath, p.runOptions?.sessionId)
-    if (expansion) {
-      // Rewrite the in-flight prompt and re-enter submission. The
-      // expansion helper returns the new user/system prompts but does
-      // NOT mutate the IncomingPrompt itself — keeping the orchestrator
-      // as the single mutator of `p` makes the data flow auditable.
-      if (p.runOptions) {
-        p.runOptions.prompt = expansion.userPrompt
-        p.runOptions.appendSystemPrompt = p.runOptions.appendSystemPrompt
-          ? p.runOptions.appendSystemPrompt + '\n\n' + expansion.systemPrompt
-          : expansion.systemPrompt
-      }
-      p.text = expansion.userPrompt
-      p.appendSystemPrompt = p.appendSystemPrompt
-        ? p.appendSystemPrompt + '\n\n' + expansion.systemPrompt
-        : expansion.systemPrompt
-      // If the expansion specifies allowed bash commands, attach them as
-      // per-prompt additions on the IncomingPrompt. The engine unions them
-      // with the session-scoped allowlist for this one run only — no
-      // session-state mutation, no leak into subsequent prompts. This
-      // replaces a previous engineBridge.sendSetPlanMode call that
-      // persisted slash-command additions on engineSession.planModeAllowedBashCommands
-      // and leaked them across the rest of the session.
-      //
-      // No need to read the user's persisted global allowlist here — the
-      // engine already has it on the session (via the desktop's prior
-      // setPermissionMode → set_plan_mode call) and will union it with
-      // these additions at run-build time. See
-      // docs/protocol/client-commands.md § set_plan_mode for the
-      // three-layer configuration model.
-      if (expansion.allowedBashCommands && expansion.allowedBashCommands.length > 0) {
-        const key = engineKey(p)
-        log(`pipeline: frontmatter bash allowlist additions=${expansion.allowedBashCommands.length} key=${key} (per-prompt, no session mutation)`)
-        p.bashAllowlistAdditionsForThisPrompt = expansion.allowedBashCommands
-      }
-      // If the expansion specifies a model hint (frontmatter `model:`),
-      // apply it onto the appropriate model field. The engine resolves
-      // the value through tier → literal → `defaultModel` (see
-      // `engine/internal/session/prompt_options.go:resolveModelTier`
-      // and `engine/internal/backend/runloop.go:56-65`); the desktop
-      // does not pre-resolve it.
-      //
-      // No-stomp policy: an explicit per-prompt model override (set by
-      // the renderer via `runOptions.model`, or by an engine-tab caller
-      // via `p.model`) takes precedence over the frontmatter hint.
-      // Matches the precedent set by `enterPlanModeDescription` /
-      // `planModeSparseReminder` in `submitAsPrompt`.
-      //
-      // Both branches log (apply + skip-because-already-set) per
-      // `desktop/AGENTS.md` § Logging — operators investigating "why
-      // did the wrong model run?" can replay the decision from
-      // `~/.ion/desktop.log` without attaching a debugger.
-      if (expansion.model) {
-        if (p.runOptions) {
-          if (!p.runOptions.model) {
-            log(`pipeline: frontmatter model applied target=runOptions value=${expansion.model} key=${engineKey(p)}`)
-            p.runOptions.model = expansion.model
-          } else {
-            log(`pipeline: frontmatter model skipped target=runOptions reason=explicit-override existing=${p.runOptions.model} frontmatter=${expansion.model} key=${engineKey(p)}`)
-          }
-        }
-        if (!p.model) {
-          log(`pipeline: frontmatter model applied target=p value=${expansion.model} key=${engineKey(p)}`)
-          p.model = expansion.model
-        } else {
-          log(`pipeline: frontmatter model skipped target=p reason=explicit-override existing=${p.model} frontmatter=${expansion.model} key=${engineKey(p)}`)
-        }
-      }
-      await submitAsPrompt(p)
-      return
-    }
-
-    log(`pipeline: no .md template for /${slash.command} → emitting unknown-command system message`)
-    const msg = `Unknown command: /${slash.command}`
-    await insertRendererSystemMessage(p, msg)
-    if (p.source === 'remote') emitRemoteMessageAdded(p, msg, 'system')
-    await clearConnectingStatus(p)
-    return
-  }
-
-  // Extension error, timeout, or other failure shape.
-  log(`pipeline: ext cmd failed key=${engineKey(p)} cmd=/${slash.command} err=${result.commandError}`)
-  const errMsg = result.message || `Command failed: /${slash.command}: ${result.commandError}`
-  await insertRendererSystemMessage(p, errMsg)
-  if (p.source === 'remote') emitRemoteMessageAdded(p, errMsg, 'system')
-  await clearConnectingStatus(p)
+  // The slash branch lives in prompt-pipeline-slash.ts (extracted to keep this
+  // orchestrator under the file-size cap). It needs two orchestrator-local
+  // helpers — engineKey + submitAsPrompt — which we inject so the seam stays
+  // one-way (slash module never imports back into this file at runtime).
+  await handleSlashBranch(p, slash, { engineKey, submitAsPrompt })
 }
 
 /**
@@ -581,6 +486,18 @@ export async function processIncomingPrompt(p: IncomingPrompt): Promise<void> {
   // Bash shortcut.
   if (handleBashShortcut(p)) {
     log(`pipeline: handled by bash shortcut, returning`)
+    return
+  }
+
+  // resolveSlash short-circuit. When the prompt arrives already flagged for
+  // engine-side slash resolution (the iOS slash re-submit bounced back through
+  // the renderer → IPC.PROMPT, or a retry of a slash prompt), we MUST NOT
+  // re-enter the slash branch: the text is still `/command args`, so
+  // re-dispatching it as an extension command would loop. Submit it straight
+  // to the engine with resolveSlash=true instead.
+  if (p.resolveSlash) {
+    log(`pipeline: resolveSlash already set (re-submit/retry) → submitting raw invocation directly, skipping slash dispatch`)
+    await submitAsPrompt(p)
     return
   }
 

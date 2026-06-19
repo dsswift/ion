@@ -1,4 +1,5 @@
 import type { EngineBridge } from './engine-bridge'
+import type { DiscoveredCommand, EngineDiscoveredCommand } from '../shared/types'
 import { log as _log } from './logger'
 
 function log(msg: string): void { _log('engine-bridge', msg) }
@@ -40,6 +41,62 @@ export async function loadSessionHistory(bridge: EngineBridge, sessionId: string
   log(`loadSessionHistory: sessionId=${sessionId}`)
   const result = await bridge._sendWithData<any[]>({ cmd: 'load_session_history', key: sessionId })
   return result.data || []
+}
+
+/**
+ * Discover filesystem `.md` / skill slash-command templates from the engine.
+ *
+ * This replaces the desktop's own TS filesystem walk (the retired
+ * cli-compat/command-discovery.ts): the engine now OWNS slash resolution, so
+ * it is the authority on which templates exist across `.ion/commands`,
+ * `.claude/commands`, skills, and project roots. The caller (autocomplete IPC
+ * / iOS remote handler) unions this listing with the extension command
+ * registry for the menu.
+ *
+ * `claudeCompat` is the user's "Claude Code Compatibility" setting. The engine
+ * gates ALL `.claude` / `~/.claude` roots (commands AND skills) on it: when
+ * false, only the `.ion` roots are discovered. The desktop reads the setting
+ * and hands it to the engine (the engine holds no opinion on it) via the wire
+ * command's optional Config.
+ *
+ * The engine replies with an array of `{ name, description?, argumentHint?,
+ * source? }` where source is one of "extension"|"ion"|"claude"|"skill"|
+ * "project". We map it onto the desktop's `DiscoveredCommand` shape so the
+ * autocomplete UI can treat engine-discovered templates uniformly. Returns an
+ * empty array on any failure (the autocomplete degrades gracefully).
+ */
+export async function discoverSlashCommands(bridge: EngineBridge, workingDir: string, claudeCompat: boolean): Promise<DiscoveredCommand[]> {
+  await bridge.connect()
+  log(`discoverSlashCommands: path=${workingDir} claudeCompat=${claudeCompat}`)
+  const result = await bridge._sendWithData<EngineDiscoveredCommand[]>({
+    cmd: 'discover_slash_commands',
+    path: workingDir,
+    // The engine reads `claudeCompat` off the optional Config to gate the
+    // .claude roots. Only this field is consulted for discovery.
+    config: { claudeCompat },
+  })
+  const raw = result.data || []
+  log(`discoverSlashCommands: path=${workingDir} count=${raw.length} ok=${result.ok}`)
+  return raw.map((c): DiscoveredCommand => {
+    // The engine's source taxonomy is richer than the desktop's origin/scope
+    // split. Map skills to the skill source; everything else is a command.
+    // `.claude`-family templates map to origin 'claude' (preserved as
+    // provenance for any consumer that wants to distinguish origin); all others
+    // are Ion-native ('ion'). Project-scoped templates report scope 'project'.
+    // Note: the claudeCompat GATE is applied engine-side (the engine skips the
+    // .claude roots entirely when the flag is false), so anything that arrives
+    // here with origin 'claude' was already permitted.
+    const source: DiscoveredCommand['source'] = c.source === 'skill' ? 'skill' : 'command'
+    const origin: DiscoveredCommand['origin'] = c.source === 'claude' ? 'claude' : 'ion'
+    const scope: DiscoveredCommand['scope'] = c.source === 'project' ? 'project' : 'user'
+    return {
+      name: c.name,
+      description: c.description ?? c.argumentHint ?? '',
+      scope,
+      source,
+      origin,
+    }
+  })
 }
 
 export async function loadChainHistory(bridge: EngineBridge, sessionIds: string[]): Promise<any[]> {

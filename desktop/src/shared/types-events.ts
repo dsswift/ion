@@ -20,6 +20,29 @@ export interface DiscoveredCommand {
   origin: 'ion' | 'claude'
 }
 
+/**
+ * Raw shape of one entry in the engine's `discover_slash_commands` reply.
+ *
+ * The engine OWNS slash-command resolution and is therefore the authority on
+ * which filesystem `.md`/skill templates exist. Its taxonomy is richer than
+ * the desktop's `DiscoveredCommand` (origin/scope) split, so the engine
+ * bridge maps this onto `DiscoveredCommand` for the autocomplete menu.
+ *
+ * `source` is one of:
+ *   - "extension" → an engine extension command (rare in this listing; the
+ *                   desktop unions the extension registry separately)
+ *   - "ion"       → `.ion/commands/`
+ *   - "claude"    → `.claude/commands/`
+ *   - "skill"     → a skill template (SKILL.md)
+ *   - "project"   → a project-root-scoped template
+ */
+export interface EngineDiscoveredCommand {
+  name: string
+  description?: string
+  argumentHint?: string
+  source?: 'extension' | 'ion' | 'claude' | 'skill' | 'project'
+}
+
 // ─── CLI Backend Stream Event Types ───
 
 export interface InitEvent {

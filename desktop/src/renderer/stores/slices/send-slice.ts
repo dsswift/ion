@@ -253,7 +253,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       })
     },
 
-    submitRemotePrompt: (tabId, prompt, imageAttachments) => {
+    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash) => {
       const { tabs, staticInfo } = get()
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
@@ -353,6 +353,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         extensions: remoteExtensions,
         imageAttachments,
         planFilePath: remoteInst?.planFilePath || undefined,
+        // When the iOS slash re-submit set this, instruct the engine to
+        // resolve + expand the raw `/command args` text rather than sending
+        // it to the model verbatim. Absent/false for ordinary remote prompts.
+        resolveSlash: resolveSlash || undefined,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,

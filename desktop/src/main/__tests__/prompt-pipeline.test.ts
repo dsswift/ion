@@ -7,9 +7,10 @@
  * `processIncomingPrompt` with raw text and let the pipeline decide.
  *
  * Coverage:
- *   - extension command takes precedence over .md template
- *   - .md template falls back when engine reports unknown_command
- *   - unknown_command + no .md → system message, no LLM call
+ *   - extension command success → done, no re-submit
+ *   - unknown_command → re-submit raw invocation with resolveSlash=true
+ *     (engine owns resolution + expansion; local .md expansion retired)
+ *   - engine ALSO disclaims the resolveSlash send → system message
  *   - non-slash text → submitAsPrompt path (renderer or remote)
  *   - bash shortcut routes to REMOTE_BASH_COMMAND broadcast
  *   - source: 'remote' echoes a canonical message_added back
@@ -39,7 +40,6 @@ const mocks = vi.hoisted(() => {
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
   const broadcastMock = (globalThis as any).vi?.fn?.() ?? function () {}
-  const expandSlashMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
   // getTabStatusMock: returns a tab-like object. Default: fresh tab (no
   // conversationId, no prompts since checkpoint). Override in tests to
@@ -55,7 +55,6 @@ const mocks = vi.hoisted(() => {
     remoteSendMock,
     executeJsMock,
     broadcastMock,
-    expandSlashMock,
     clearConversationFileMock,
     getTabStatusMock,
     notifyConversationClearedMock,
@@ -71,7 +70,6 @@ mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
 mocks.broadcastMock = vi.fn()
-mocks.expandSlashMock = vi.fn().mockResolvedValue({ expanded: false })
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
 mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null, promptCountSinceCheckpoint: 0 })
 mocks.notifyConversationClearedMock = vi.fn()
@@ -127,10 +125,6 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../cli-compat/slash-expand', () => ({
-  expandSlashCommand: (...args: any[]) => mocks.expandSlashMock(...args),
-}))
-
 vi.mock('../settings-store', () => ({
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
@@ -143,7 +137,6 @@ vi.mock('../remote/attachment-encoder', () => ({
 // Pull in the SUT AFTER mocks are set up.
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { _resetAwaitersForTests } from '../command-await'
-import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test fixtures
@@ -160,7 +153,6 @@ beforeEach(() => {
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
   mocks.broadcastMock.mockReset()
-  mocks.expandSlashMock.mockReset().mockResolvedValue({ expanded: false })
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
   mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null, promptCountSinceCheckpoint: 0 })
   mocks.notifyConversationClearedMock.mockReset()
@@ -225,7 +217,6 @@ describe('processIncomingPrompt — slash, engine has command', () => {
     expect(mocks.sendCommandMock).toHaveBeenCalledTimes(1)
     expect(mocks.sendCommandMock).toHaveBeenCalledWith('tab-1', 'clear', '')
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
-    expect(mocks.expandSlashMock).not.toHaveBeenCalled() // success → no .md fallback
   })
 
   it('clears the connecting status after successful pure command', async () => {
@@ -256,16 +247,16 @@ describe('processIncomingPrompt — slash, engine has command', () => {
   })
 })
 
-describe('processIncomingPrompt — slash, engine reports unknown, .md falls back', () => {
+describe('processIncomingPrompt — slash, engine disclaims, re-submit with resolveSlash', () => {
   beforeEach(() => {
+    // Engine reports unknown_command → re-submit raw invocation with
+    // resolveSlash=true (engine owns resolution + expansion; no local .md).
     mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
-      // Engine reports unknown_command — pipeline should fall through to .md.
       setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
     })
   })
 
-  it('expands via .md and submits the expansion as a normal prompt', async () => {
-    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded body', frontmatter: {} })
+  it('re-submits the RAW invocation via sessionPlane.submitPrompt with resolveSlash=true (CLI)', async () => {
     const opts: any = { prompt: '/ion--review 138', projectPath: '/proj' }
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -277,55 +268,40 @@ describe('processIncomingPrompt — slash, engine reports unknown, .md falls bac
       runOptions: opts,
     })
     expect(mocks.sendCommandMock).toHaveBeenCalledWith('tab-1', 'ion--review', '138')
-    expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review 138', '/proj', 'ion')
-    // Pipeline should mutate runOptions and then submit it.
-    expect(opts.prompt).toBe('expanded body')
-    // The CLI dispatch path runs applyHarnessSystemPromptAddenda, which
-    // appends the turn-grouping guidance to runOptions.appendSystemPrompt.
-    // The expansion-supplied "sys" remains as the prefix.
-    expect(opts.appendSystemPrompt).toMatch(/^sys\n\nTool calls are not rendered inline/)
-    expect(opts.appendSystemPrompt).toBe(`sys\n\n${TURN_GROUPING_GUIDANCE}`)
-    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    expect(opts.prompt).toBe('/ion--review 138') // raw invocation, not expanded
+    expect(opts.resolveSlash).toBe(true)
     expect(mocks.submitPromptMock).toHaveBeenCalledWith('tab-1', 'req-6', opts)
   })
 
-  it('auto-switches permission mode to auto on .md expansion', async () => {
-    // Explicitly set first-prompt state so the guard allows the switch.
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, conversationId: null })
-    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'sys', userPrompt: 'expanded', frontmatter: {} })
-    await processIncomingPrompt({
-      tabId: 'tab-1',
-      text: '/ion--review 138',
-      reqId: 'req-7',
-      source: 'desktop',
-      isEngineTab: false,
-      runOptions: { prompt: '/ion--review 138' } as any,
-    })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
-  })
-  // Additional plan→auto guard tests (active conversation, resumed session)
-  // live in prompt-pipeline-plan-mode.test.ts to keep this file under the
-  // 600-line cap.
+  // The plan→auto first-prompt flip (a desktop policy on the slash re-submit
+  // path) is covered comprehensively in prompt-pipeline-plan-mode.test.ts —
+  // fresh tab, post-/clear, and mid-conversation cases — alongside the
+  // isFirstPromptForTab predicate tests it depends on.
 })
 
-describe('processIncomingPrompt — slash, engine reports unknown, no .md', () => {
+describe('processIncomingPrompt — slash, engine ALSO disclaims the resolveSlash send', () => {
   beforeEach(() => {
     mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
       setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
     })
-    mocks.expandSlashMock.mockResolvedValue({ expanded: false })
   })
 
-  it('emits a system message and does NOT submit to the LLM', async () => {
+  it('emits a system message and does NOT leave the slash silently dropped', async () => {
+    const opts: any = { prompt: '/typo-no-such-command' }
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: '/typo-no-such-command',
       reqId: 'req-8',
       source: 'desktop',
       isEngineTab: false,
-      runOptions: { prompt: '/typo-no-such-command' } as any,
+      runOptions: opts,
     })
-    expect(mocks.submitPromptMock).not.toHaveBeenCalled()
+    // Re-submitted with resolveSlash=true; now the engine disclaims the
+    // resolveSlash send too (second unknown_command) and we surface it.
+    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    expect(opts.resolveSlash).toBe(true)
+    emitBridgeEvent('tab-1', { type: 'engine_command_result', command: 'typo-no-such-command', commandError: 'unknown_command', message: 'unknown command' })
+    await new Promise((r) => setTimeout(r, 0))
     expect(mocks.executeJsMock).toHaveBeenCalled()
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
     expect(calls.some((s: string) => s.includes('Unknown command: /typo-no-such-command'))).toBe(true)
@@ -339,6 +315,11 @@ describe('processIncomingPrompt — slash, engine reports unknown, no .md', () =
       source: 'remote',
       isEngineTab: false,
     })
+    // Remote re-submit rides REMOTE_USER_MESSAGE (renderer bounce not
+    // simulated here); the engine disclaims the resolveSlash send too, so
+    // emit that second result for surfaceEngineUnknownCommand to act on.
+    emitBridgeEvent('tab-1', { type: 'engine_command_result', command: 'typo-no-such-command', commandError: 'unknown_command', message: 'unknown command' })
+    await new Promise((r) => setTimeout(r, 0))
     const systemMessages = mocks.remoteSendMock.mock.calls.map((c: any[]) => c[0])
       .filter((e: any) => e.type === 'desktop_message_added' && e.message.role === 'system')
     expect(systemMessages.length).toBeGreaterThan(0)
@@ -346,12 +327,6 @@ describe('processIncomingPrompt — slash, engine reports unknown, no .md', () =
   })
 
   it('uses a DISTINCT id for the system-message echo so iOS does not overwrite the user bubble', async () => {
-    // Regression guard for the bug where a slash failure visibly deleted
-    // the user's message: emitRemoteMessageAdded used p.reqId verbatim
-    // for both the user echo and the system echo, so iOS's id-keyed
-    // message_added replacement overwrote the user turn with the error
-    // string. Confirm here that the system echo carries a sys-prefixed
-    // id distinct from reqId.
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: '/typo-no-such-command',
@@ -359,6 +334,8 @@ describe('processIncomingPrompt — slash, engine reports unknown, no .md', () =
       source: 'remote',
       isEngineTab: false,
     })
+    emitBridgeEvent('tab-1', { type: 'engine_command_result', command: 'typo-no-such-command', commandError: 'unknown_command', message: 'unknown command' })
+    await new Promise((r) => setTimeout(r, 0))
     const messages = mocks.remoteSendMock.mock.calls.map((c: any[]) => c[0])
       .filter((e: any) => e.type === 'desktop_message_added')
     const userEcho = messages.find((e: any) => e.message.role === 'user')
@@ -401,22 +378,19 @@ describe('processIncomingPrompt — bash shortcut', () => {
   })
 })
 
-describe('processIncomingPrompt — engine reports unknown_command, .md template found, project-scoped', () => {
-  // Specifically guards the regression we hit on iOS: a fresh CLI tab whose
-  // engine session hasn't started yet receives an iOS-originated slash
-  // command (e.g. `/ion--review-changes 138,139`). The engine SendCommand
-  // path used to silently drop the dispatch, leaving the desktop awaiter
-  // to time out. The engine now emits unknown_command for missing-session
-  // dispatches, the pipeline falls back to .md expansion using the tab's
-  // working directory, and the expanded prompt submits normally.
+describe('processIncomingPrompt — engine disclaims, remote slash re-submit (iOS), project-scoped', () => {
+  // iOS regression: a fresh CLI tab receives an iOS slash command. The engine
+  // disclaims the extension dispatch; the desktop re-submits the RAW
+  // invocation with resolveSlash=true. For a remote source the re-submit rides
+  // the REMOTE_USER_MESSAGE broadcast (renderer's submitRemotePrompt forwards
+  // resolveSlash onto RunOptions).
   beforeEach(() => {
     mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
       setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
     })
-    mocks.expandSlashMock.mockResolvedValue({ expanded: true, systemPrompt: 'Review changes', userPrompt: 'Please review PRs 138, 139', frontmatter: {} })
   })
 
-  it('passes projectPath through to expandSlashCommand', async () => {
+  it('does NOT walk the filesystem (local .md expansion is retired)', async () => {
     await processIncomingPrompt({
       tabId: 'tab-fresh',
       text: '/ion--review-changes 138,139',
@@ -425,10 +399,9 @@ describe('processIncomingPrompt — engine reports unknown_command, .md template
       isEngineTab: false,
       projectPath: '/Users/me/proj',
     })
-    expect(mocks.expandSlashMock).toHaveBeenCalledWith('/ion--review-changes 138,139', '/Users/me/proj', 'ion')
   })
 
-  it('submits the expansion via REMOTE_USER_MESSAGE for remote-source CLI tabs', async () => {
+  it('broadcasts the RAW invocation via REMOTE_USER_MESSAGE with resolveSlash=true', async () => {
     await processIncomingPrompt({
       tabId: 'tab-fresh',
       text: '/ion--review-changes 138,139',
@@ -439,7 +412,8 @@ describe('processIncomingPrompt — engine reports unknown_command, .md template
     })
     expect(mocks.broadcastMock).toHaveBeenCalledWith(expect.stringMatching(/remote-user-message/i), expect.objectContaining({
       tabId: 'tab-fresh',
-      prompt: 'Please review PRs 138, 139',
+      prompt: '/ion--review-changes 138,139',
+      resolveSlash: true,
     }))
   })
 })
@@ -471,17 +445,39 @@ describe('processIncomingPrompt — engine tab', () => {
       text: 'hello',
     }))
   })
+
+  it('re-submits an unknown desktop-source slash via sendPrompt with the RAW text and resolveSlash=true', async () => {
+    // Engine-tab desktop path re-submits straight through engineBridge.sendPrompt
+    // with the raw text + resolveSlash=true (NOT an expanded body).
+    mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
+      setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
+    })
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: '/diagram the auth flow',
+      reqId: 'req-14',
+      source: 'desktop',
+      isEngineTab: true,
+      instanceId: 'inst-x',
+    })
+    expect(mocks.sendPromptMock).toHaveBeenCalledTimes(1)
+    const call = mocks.sendPromptMock.mock.calls[0]
+    // sendPrompt signature: (key, text, ..., resolveSlash) — text is 2nd
+    // positional (index 1), resolveSlash is the 12th (index 11).
+    expect(call[0]).toBe('tab-1:inst-x')
+    expect(call[1]).toBe('/diagram the auth flow')
+    expect(call[11]).toBe(true)
+  })
 })
 
 // Harness system-prompt addenda (turn-grouping guidance) tests live in
-// `prompt-pipeline-addenda.test.ts` to keep this file under the 600-line
-// TypeScript cap. See CLAUDE.md → "When a file exceeds the cap".
+// `prompt-pipeline-addenda.test.ts` (file-size cap).
 
 describe('processIncomingPrompt — /clear with no engine session (unknown_command short-circuit)', () => {
-  // Regression guard: /clear on a fresh tab (no prior prompt → no engine session)
-  // previously fell through the unknown_command branch, skipped .md expansion,
-  // and emitted "Unknown command: /clear". The short-circuit added in
-  // handleSlash must intercept /clear+unknown_command before that path.
+  // Regression guard: /clear on a fresh tab (no prior prompt → no engine
+  // session) must render the clear divider locally rather than emitting
+  // "Unknown command: /clear". The short-circuit in handleSlash intercepts
+  // /clear + unknown_command before the resolveSlash re-submit path.
   beforeEach(() => {
     mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
       setTimeout(
@@ -501,7 +497,6 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
       runOptions: { prompt: '/clear' } as any,
     })
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
-    expect(mocks.expandSlashMock).not.toHaveBeenCalled()
     // The divider uses the "── Cleared" sentinel (from formatClearDivider).
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
     expect(calls.some((s: string) => s.includes('── Cleared'))).toBe(true)
@@ -535,22 +530,20 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
   })
 
   it('does NOT short-circuit for other unknown slash commands (regression guard)', async () => {
-    mocks.expandSlashMock.mockResolvedValue({ expanded: false })
+    const opts: any = { prompt: '/no-such-command' }
     await processIncomingPrompt({
       tabId: 'tab-fresh',
       text: '/no-such-command',
       reqId: 'req-clear-3',
       source: 'desktop',
       isEngineTab: false,
-      runOptions: { prompt: '/no-such-command' } as any,
+      runOptions: opts,
     })
-    // .md expansion was attempted (then failed), so the unknown-command
-    // system message was emitted — NOT the divider. Two calls: ion scope
-    // first (always), then claude scope (gated, but enableClaudeCompat
-    // defaults to true in the mock settings).
-    expect(mocks.expandSlashMock).toHaveBeenCalledTimes(2)
+    // The /clear short-circuit does NOT fire for non-clear commands — they
+    // re-submit with resolveSlash=true instead. No clear divider appears.
+    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    expect(opts.resolveSlash).toBe(true)
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('Unknown command: /no-such-command'))).toBe(true)
     expect(calls.every((s: string) => !s.includes('── Cleared'))).toBe(true)
   })
 
@@ -576,7 +569,6 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
     expect(calls.every((s: string) => !s.includes('── Cleared'))).toBe(true)
     expect(calls.every((s: string) => !s.includes('Unknown command'))).toBe(true)
-    expect(mocks.expandSlashMock).not.toHaveBeenCalled()
   })
 })
 

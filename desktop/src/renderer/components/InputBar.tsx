@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
 import { activeInstance } from '../stores/conversation-instance'
 import { AttachmentChips } from './AttachmentChips'
-import { SlashCommandMenu, getFilteredCommandsWithExtras, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
+import { SlashCommandMenu, getFilteredCommandsWithExtras, slashMenuEnterAction, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { DiscoveredCommand } from '../../shared/types'
@@ -82,14 +82,23 @@ export function InputBar() {
   const { voiceState, voiceError, stopRecording, cancelRecording, toggleRecording } =
     useVoiceRecording(appendTranscript)
 
-  // Discover commands from filesystem on mount and when working directory changes
+  // Discover slash commands from the engine. Fires on mount, when the working
+  // directory changes, AND whenever the slash menu opens (slashFilter goes
+  // non-null). The menu-open trigger matters on a FRESH tab: the engine's first
+  // discover call after startup is cold (extension/skill loading adds latency),
+  // so the initial mount fetch may still be in flight when the user first types
+  // `/`. Re-fetching on open guarantees the list refreshes as soon as the
+  // (now-warm) engine responds, instead of showing only the built-ins until
+  // some unrelated re-render. The result updates state, so an open menu
+  // re-renders with the commands the moment they arrive.
+  const slashMenuOpen = slashFilter !== null
   useEffect(() => {
     let cancelled = false
     window.ion.discoverCommands(workingDir).then((cmds) => {
       if (!cancelled) setDiscoveredCommands(cmds)
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [workingDir])
+  }, [workingDir, slashMenuOpen])
 
   const discoveredExtra: SlashCommand[] = discoveredCommands.map((dc) => ({
     command: `/${dc.name}`,
@@ -353,7 +362,24 @@ export function InputBar() {
       const filtered = getFilteredCommandsWithExtras(slashFilter!, extraCommands)
       if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex((i) => (i + 1) % filtered.length); return }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex((i) => (i - 1 + filtered.length) % filtered.length); return }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); if (filtered.length > 0) handleSlashSelect(filtered[slashIndex]); return }
+      // Tab always completes from the menu (no-op when there are no matches).
+      if (e.key === 'Tab') { e.preventDefault(); if (filtered.length > 0) handleSlashSelect(filtered[slashIndex]); return }
+      // Enter: if the menu has a match, complete it. If the typed text matches
+      // NO known command (filtered empty), do NOT swallow Enter — close the
+      // menu and submit the raw text. The prompt pipeline forwards it to the
+      // engine with resolveSlash=true; the engine resolves the template or
+      // surfaces "Unknown command". Swallowing Enter here would make an
+      // unknown/typed slash command unsendable.
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        if (slashMenuEnterAction(filtered.length) === 'complete') {
+          handleSlashSelect(filtered[slashIndex])
+        } else {
+          setSlashFilter(null)
+          handleSend()
+        }
+        return
+      }
       if (e.key === 'Escape') { e.preventDefault(); setSlashFilter(null); return }
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }

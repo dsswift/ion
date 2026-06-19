@@ -227,6 +227,9 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           toolInput: m.toolInput,
           toolStatus: m.toolName ? 'completed' as const : undefined,
           userExecuted: m.userExecuted,
+          slashCommand: m.slashCommand,
+          slashArgs: m.slashArgs,
+          slashSource: m.slashSource,
           attachments: m.attachments,
           timestamp: m.timestamp,
         }))
@@ -317,6 +320,9 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
             toolInput: m.toolInput,
             toolStatus: m.toolName ? 'completed' as const : undefined,
             userExecuted: m.userExecuted,
+            slashCommand: m.slashCommand,
+            slashArgs: m.slashArgs,
+            slashSource: m.slashSource,
             attachments: m.attachments,
             timestamp: m.timestamp,
           }))
@@ -369,6 +375,9 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
               toolInput: m.toolInput,
               toolStatus: m.toolName ? 'completed' as const : undefined,
               userExecuted: m.userExecuted,
+              slashCommand: m.slashCommand,
+              slashArgs: m.slashArgs,
+              slashSource: m.slashSource,
               attachments: m.attachments,
               timestamp: m.timestamp,
             })
@@ -386,6 +395,9 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
             toolInput: m.toolInput,
             toolStatus: m.toolName ? 'completed' as const : undefined,
             userExecuted: m.userExecuted,
+            slashCommand: m.slashCommand,
+            slashArgs: m.slashArgs,
+            slashSource: m.slashSource,
             attachments: m.attachments,
             timestamp: m.timestamp,
           })

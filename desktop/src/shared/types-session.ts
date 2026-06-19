@@ -201,6 +201,23 @@ export interface Message {
    */
   planFilePath?: string
   /**
+   * Engine-provided slash-command metadata for rendering a command PILL.
+   * Populated from `SessionMessage.slashCommand` (and siblings) returned by
+   * `load_session_history` when the displayed user turn was a slash
+   * invocation. When `slashCommand` is non-empty, `content` already holds
+   * the RAW invocation (the engine stored the raw invocation as the display
+   * turn; the expanded body lives only in the LLM history). The renderer
+   * renders the pill from these fields rather than re-parsing `content`.
+   * Client-render fields — round-trip the engine's values; persisted
+   * alongside the message (see serialize-conversation-pane.ts and
+   * types-persistence.ts) so the pill survives app restart.
+   */
+  slashCommand?: string
+  /** Slash args (the text after `/name`), from `SessionMessage.slashArgs`. */
+  slashArgs?: string
+  /** Origin of the resolved template: "extension"|"ion"|"claude"|"skill"|"project". */
+  slashSource?: string
+  /**
    * Intercept level carried from `engine_intercept.interceptLevel`.
    * Populated only on `role: 'harness'` messages pushed by the
    * `engine_intercept` handler in engine-event-slice.ts.
@@ -354,6 +371,21 @@ export interface RunOptions {
    * unchanged.
    */
   planFilePath?: string
+  /**
+   * When true, the engine treats `prompt` as a slash invocation
+   * (`/name args`): it resolves the command template across its own command
+   * roots (`.ion/commands`, `.claude/commands`, skills, project roots),
+   * expands it ($ARGUMENTS substitution + frontmatter), feeds the EXPANDED
+   * body to the model, and persists the RAW invocation as the displayed user
+   * turn. Default/omitted → plain message (unchanged behavior).
+   *
+   * The desktop sets this only on the slash re-submit path
+   * (`prompt-pipeline.ts:handleSlash`) after the engine disclaims a slash with
+   * `unknown_command` — handing the raw invocation back so the engine owns
+   * resolution + expansion (local `.md` expansion is retired). Sent on the
+   * wire only when truthy (mirrors the engine's omitempty `resolveSlash`).
+   */
+  resolveSlash?: boolean
 }
 
 /** Pre-encoded image bytes that ride alongside a user prompt. */
@@ -443,6 +475,10 @@ export interface SessionLoadMessage {
   attachments?: Attachment[]
   timestamp: number
   internal?: boolean
+  /** Engine-provided slash-command metadata (see Message.slashCommand). */
+  slashCommand?: string
+  slashArgs?: string
+  slashSource?: string
 }
 
 // ─── Terminal Multiplexing ───

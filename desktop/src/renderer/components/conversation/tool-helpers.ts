@@ -234,10 +234,9 @@ function groupMessagesUnified(
 // Strip a single leading `cd <path> && ` (or `cd <path>; `) from a bash command
 // for display purposes only. The underlying toolInput is never mutated — this
 // is purely a cosmetic transform so tool rows show the meaningful command
-// instead of being dominated by an absolute-path prefix. Matches Claude Code's
-// behavior (see public/claude-code/src/utils/api.ts:586 which strips
-// `cd ${cwd} && ` before display). Only strips one leading hop, so chained
-// `cd a && cd b && cmd` becomes `cd b && cmd` rather than vanishing entirely.
+// instead of being dominated by an absolute-path prefix. Only strips one leading
+// hop, so chained `cd a && cd b && cmd` becomes `cd b && cmd` rather than
+// vanishing entirely.
 const CD_PREFIX_RE = /^\s*cd\s+(?:"[^"]+"|'[^']+'|\S+)\s*(?:&&|;)\s*/
 
 export function stripCdPrefix(cmd: string): string {

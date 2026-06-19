@@ -5,12 +5,12 @@ import { log as _log } from '../../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, activeToolInputs, lastMessagePreview, lastForwardedEngineTabStatus, extensionCommandRegistry } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
-import { readSettings, SETTINGS_DEFAULTS } from '../../settings-store'
+import { readSettings, readClaudeCompat } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
-import { discoverCommands } from '../../cli-compat/command-discovery'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { broadcastSync, sendSync } from './tabs-sync'
 import { processIncomingPrompt } from '../../prompt-pipeline'
+import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -358,6 +358,9 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
               toolName: m.toolName, toolInput: m.toolInput,
               toolId: m.toolId, toolStatus: m.toolStatus,
               timestamp: m.timestamp,
+              // Slash-command provenance from the engine SessionMessage, so iOS
+              // renders the command pill for resolved slash invocations.
+              slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource,
               attachments: (m.attachments || []).map(function(a) {
                 return { id: a.id, type: a.type, name: a.name, path: a.path };
               }),
@@ -444,26 +447,24 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
 export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type: 'desktop_discover_commands' }>, deviceId: string): Promise<void> {
   const { directory } = cmd
   try {
-    const all = await discoverCommands(directory)
-    // Mirror the desktop IPC handler's enableClaudeCompat filter so the iOS
-    // autocomplete shows the same list the desktop does. Ion-native
-    // commands are always returned; .claude/* entries are gated by the
-    // user's Claude Code Compatibility setting. See
-    // `desktop/src/main/ipc/sessions-list.ts` for the matching filter and
-    // `desktop/src/main/slash-classify.ts` for the expansion-time gate.
-    let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
-    try {
-      const s = readSettings()
-      claudeCompat = s.enableClaudeCompat ?? claudeCompat
-    } catch (err) {
-      log(`discover_commands: readSettings failed reading enableClaudeCompat; defaulting to ${claudeCompat}: ${err}`)
-    }
-    const commands = claudeCompat ? all : all.filter((c) => c.origin === 'ion')
-    if (!claudeCompat) {
-      log(`discover_commands: claudeCompat=false, returning ${commands.length} ion entries, filtered ${all.length - commands.length} claude entries (device=${deviceId})`)
-    } else {
-      log(`discover_commands: claudeCompat=true, returning ${commands.length} entries (device=${deviceId})`)
-    }
+    // The engine OWNS slash resolution + expansion, so it is the authority
+    // on which filesystem `.md`/skill templates exist. Ask it via
+    // discover_slash_commands instead of walking the filesystem in TS so the
+    // iOS autocomplete shows the same list the desktop does. The
+    // enableClaudeCompat setting gates whether the engine honors the `.claude`
+    // / `~/.claude` roots (commands AND skills); the desktop reads the setting
+    // and hands it to the engine (which holds no opinion on it). This keeps the
+    // iOS autocomplete consistent with the desktop's IPC.DISCOVER_COMMANDS path.
+    //
+    // Normalize '~' / empty to an empty working dir so the engine walks only the
+    // user-level roots (~/.ion, ~/.claude) and does not treat a literal '~' as a
+    // project root. Matches the IPC.DISCOVER_COMMANDS handler. A malformed
+    // present path resolves to null → treat as user-only rather than erroring
+    // the iOS autocomplete entirely.
+    const workingDir = resolveDiscoveryWorkingDir(directory) ?? ''
+    const claudeCompat = readClaudeCompat()
+    const commands = await engineBridge.discoverSlashCommands(workingDir, claudeCompat)
+    log(`discover_commands: engine returned ${commands.length} entries (device=${deviceId}, claudeCompat=${claudeCompat})`)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_discover_commands_response', directory, commands })
   } catch (err) {
     log(`discover_commands error: ${(err as Error).message}`)

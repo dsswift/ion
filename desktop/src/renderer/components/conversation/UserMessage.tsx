@@ -4,34 +4,19 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PencilSimple } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
-import { usePreferencesStore } from '../../preferences'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { TableScrollWrapper, ImageCard } from './AssistantMessage'
 import { MessageActions } from './MessageActions'
 import { MessageAttachments } from './MessageAttachments'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
+import { resolveSlashPill, parseSlashCommand } from './slash-pill'
 import type { Message } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
 
-/**
- * Parse a leading slash command from message content.
- * Returns `{ command, args }` when content starts with `/cmd [args]`,
- * or `null` when no slash command is detected.
- *
- * The regex requires the command to start with a letter so that paths
- * like `/usr/bin/foo` (which contain multiple slashes) don't match.
- */
-function parseSlashCommand(content: string): { command: string; args: string } | null {
-  const match = content.match(/^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/)
-  if (!match) return null
-  return { command: `/${match[1]}`, args: match[2] }
-}
-
 /** User message bubble (right-aligned). */
 export const UserMessage = React.memo(function UserMessage({ message, skipMotion }: { message: Message; skipMotion?: boolean }) {
   const colors = useColors()
-  const enableClaudeCompat = usePreferencesStore((s) => s.enableClaudeCompat)
   const isBashCmd = !!message.userExecuted
   const { onOpenFile, onOpenUrl } = useNavigableText()
 
@@ -44,8 +29,10 @@ export const UserMessage = React.memo(function UserMessage({ message, skipMotion
   const hasInlineImages = inlineImages.length > 0
   const hasAttachments = message.attachments && message.attachments.length > 0
 
-  // Detect slash command when claude compat is enabled
-  const slashParsed = enableClaudeCompat ? parseSlashCommand(displayContent) : null
+  // Render a command PILL whenever the message is a slash invocation. The
+  // decision (engine metadata preferred, content-parse fallback) lives in the
+  // pure `resolveSlashPill` helper — and is NOT gated on enableClaudeCompat.
+  const slashParsed = resolveSlashPill(message, displayContent)
 
   const userMarkdownComponents = useMemo(() => ({
     table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
@@ -147,9 +134,11 @@ export const UserMessage = React.memo(function UserMessage({ message, skipMotion
 /** Queued user message (waiting for previous turn to finish). */
 export const QueuedMessage = React.memo(function QueuedMessage({ content, onEdit }: { content: string; onEdit?: () => void }) {
   const colors = useColors()
-  const enableClaudeCompat = usePreferencesStore((s) => s.enableClaudeCompat)
 
-  const slashParsed = enableClaudeCompat ? parseSlashCommand(content) : null
+  // Pill rendering is NOT gated on enableClaudeCompat (slash commands are an
+  // engine-owned concept). Queued messages have only raw text (no engine
+  // metadata yet), so the fallback content parse is the only source here.
+  const slashParsed = parseSlashCommand(content)
 
   return (
     <motion.div

@@ -19,6 +19,26 @@ export function isValidProjectPath(path: string): boolean {
 }
 
 /**
+ * Resolve the working directory to forward to the engine's slash-command
+ * discovery from a renderer/iOS-supplied path.
+ *
+ * A tab that hasn't chosen a directory reports '~' (or empty). That is NOT an
+ * invalid path — it means "no project root", and user-level command/skill roots
+ * (~/.ion, ~/.claude) must still be discovered. We map '~'/empty to an empty
+ * string so the engine walks only the home roots (it skips project roots when
+ * the dir is empty). A present, non-'~' value must be an absolute path to be
+ * forwarded as a project root; anything else is malformed.
+ *
+ * Returns the working dir to forward ('' = user-only), or null when the path is
+ * present but malformed (caller should reject and return no commands).
+ */
+export function resolveDiscoveryWorkingDir(path: string | undefined | null): string | null {
+  if (!path || path === '~') return ''
+  if (!isValidProjectPath(path)) return null
+  return path
+}
+
+/**
  * Validate a sessionId. Accepts UUIDs and engine-generated IDs (e.g. "1776636257802").
  * Rejects path traversal and special characters since IDs may be used as filenames by the engine.
  */

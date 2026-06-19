@@ -5,9 +5,8 @@ import { homedir } from 'os'
 import { basename, join } from 'path'
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
-import { sessionPlane } from '../state'
-import { isValidProjectPath, isValidSessionId } from '../ipc-validation'
-import { discoverCommands } from '../cli-compat/command-discovery'
+import { sessionPlane, engineBridge } from '../state'
+import { isValidProjectPath, isValidSessionId, resolveDiscoveryWorkingDir } from '../ipc-validation'
 import {
   cleanCliTags,
   collapseSessionChains,
@@ -19,10 +18,9 @@ import {
   parseSessionMeta,
 } from '../session-meta'
 import {
-  SETTINGS_DEFAULTS,
   currentBackend,
   loadSessionLabels,
-  readSettings,
+  readClaudeCompat,
 } from '../settings-store'
 
 function log(msg: string): void {
@@ -35,34 +33,27 @@ export function registerSessionsListIpc(): void {
   ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
     log(`IPC DISCOVER_COMMANDS (path=${projectPath})`)
     try {
-      if (!isValidProjectPath(projectPath)) {
+      // '~' / empty → user-only discovery (walk ~/.ion, ~/.claude); a present,
+      // non-'~' value must be an absolute project root. resolveDiscoveryWorkingDir
+      // returns null for a malformed present path.
+      const workingDir = resolveDiscoveryWorkingDir(projectPath)
+      if (workingDir === null) {
         log(`DISCOVER_COMMANDS: rejected invalid projectPath: ${projectPath}`)
         return []
       }
-      let claudeCompat = SETTINGS_DEFAULTS.enableClaudeCompat
-      try {
-        const s = readSettings()
-        claudeCompat = s.enableClaudeCompat ?? claudeCompat
-      } catch (err) {
-        // Per desktop/AGENTS.md "no silent catch": surface the fallback so
-        // a settings-read failure doesn't silently change the autocomplete
-        // composition. The default flips claude-compat ON, so this matters.
-        log(`DISCOVER_COMMANDS: readSettings failed reading enableClaudeCompat; defaulting to ${claudeCompat}: ${err}`)
-      }
-      const all = await discoverCommands(projectPath)
-      if (claudeCompat) {
-        log(`DISCOVER_COMMANDS: claudeCompat=true, returning ${all.length} entries (ion + claude)`)
-        return all
-      }
-      // Claude Code Compatibility off: return only ion-native entries.
-      // Ion-native commands (~/.ion/commands, {project}/.ion/commands) are
-      // never gated by this setting — only .claude/commands and
-      // .claude/skills are. See `slash-classify.ts` for the matching
-      // expansion-time gate.
-      const ionOnly = all.filter((c) => c.origin === 'ion')
-      const claudeFiltered = all.length - ionOnly.length
-      log(`DISCOVER_COMMANDS: claudeCompat=false, returning ${ionOnly.length} ion entries, filtered ${claudeFiltered} claude entries`)
-      return ionOnly
+      // The engine OWNS slash resolution + expansion, so it is the authority
+      // on which filesystem `.md`/skill templates exist across .ion/commands,
+      // .claude/commands, skills, and project roots. Ask it via
+      // discover_slash_commands instead of walking the filesystem in TS. The
+      // enableClaudeCompat setting gates whether the engine honors the .claude /
+      // ~/.claude roots (commands AND skills); the desktop reads the setting and
+      // hands it to the engine (which holds no opinion on it). Extension commands
+      // (engine_command_registry) are unioned by the renderer's autocomplete UI,
+      // not here.
+      const claudeCompat = readClaudeCompat()
+      const commands = await engineBridge.discoverSlashCommands(workingDir, claudeCompat)
+      log(`DISCOVER_COMMANDS: engine returned ${commands.length} entries (workingDir=${workingDir || '(user-only)'}, claudeCompat=${claudeCompat})`)
+      return commands
     } catch (err) {
       log(`DISCOVER_COMMANDS error: ${err}`)
       return []

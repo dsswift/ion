@@ -23,7 +23,7 @@ export interface PersistedConversationInstance {
   /** Scrollback. Plain tabs persist message content here too (the old shape
    *  persisted only a count for plain tabs and full messages for engine tabs;
    *  the unified shape persists messages uniformly, gated by size as before). */
-  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string }>
+  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string; slashCommand?: string; slashArgs?: string; slashSource?: string }>
   /** Blank-tab / lazy-load proxy when messages are omitted. */
   messageCount?: number
   modelOverride?: string | null

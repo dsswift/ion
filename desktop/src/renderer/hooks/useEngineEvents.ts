@@ -94,8 +94,8 @@ export function useEngineEvents() {
 
     // Remote user messages (sent from iOS) — submit through the renderer's normal flow
     // so the tab's working directory, session ID, model, and addDirs are used automatically.
-    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[] }) => {
-      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments)
+    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; resolveSlash?: boolean }) => {
+      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash)
     }
     window.ion.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
 

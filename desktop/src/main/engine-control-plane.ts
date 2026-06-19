@@ -345,7 +345,7 @@ export class EngineControlPlane extends EventEmitter {
 
     this._setStatus(tabId, 'running')
 
-    let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, options.imageAttachments, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort)
+    let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, options.imageAttachments, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort, options.resolveSlash)
 
     if (!result.ok && result.error?.includes('not found')) {
       warn(`sendPrompt session lost, re-creating: tabId=${tabId}`)
@@ -364,7 +364,7 @@ export class EngineControlPlane extends EventEmitter {
         thinking: config.thinking,
       })
       if (startResult.ok) {
-        result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, undefined, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort)
+        result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, undefined, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort, options.resolveSlash)
       } else {
         error(`session re-create failed: tabId=${tabId} err=${startResult.error}`)
         result = startResult

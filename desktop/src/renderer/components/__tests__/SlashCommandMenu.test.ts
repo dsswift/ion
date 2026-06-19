@@ -26,7 +26,7 @@ vi.mock('../../../shared/fuzzy-match', () => ({
   fuzzyFilterAndSort: (_: string, items: unknown[]) => items,
 }))
 
-import { SLASH_COMMANDS } from '../SlashCommandMenu'
+import { SLASH_COMMANDS, slashMenuEnterAction } from '../SlashCommandMenu'
 
 describe('SLASH_COMMANDS', () => {
   it('includes the three engine built-ins', () => {
@@ -44,5 +44,21 @@ describe('SLASH_COMMANDS', () => {
     for (const cmd of SLASH_COMMANDS) {
       expect(cmd.description.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('slashMenuEnterAction', () => {
+  it('completes from the menu when there is at least one match', () => {
+    expect(slashMenuEnterAction(1)).toBe('complete')
+    expect(slashMenuEnterAction(5)).toBe('complete')
+  })
+
+  it('sends (does not swallow Enter) when the typed command matches nothing', () => {
+    // Regression: an unknown/typed slash command (no fuzzy matches) must remain
+    // sendable. The menu must NOT swallow Enter — it closes and submits so the
+    // pipeline forwards to the engine (resolveSlash) → resolves or "Unknown
+    // command". Returning 'send' for a zero-match filter is what fixes the
+    // "refuses to send" regression.
+    expect(slashMenuEnterAction(0)).toBe('send')
   })
 })
