@@ -137,6 +137,27 @@ Engine executes, harness decides. Engine never blocks for user input, never pers
 
 When labeling work: engine, harness, or client. If a harness gap is caused by missing engine capability, note both.
 
+## Opinionless mechanics, extensible opinions
+
+The engine owns the **mechanism** — the dirty, load-bearing work that every consumer would otherwise have to reimplement — and ships the **most generic, least-opinionated standard behavior** for it. Consumers and extensions own and customize the **opinions**. This is the core engine-design principle: provide standards generically, and let opinions be modified and extended *off* the core mechanics. The engine is an opinionless core that anyone can build opinionated layers over.
+
+The principle stands on its own. It is **not** "match whatever a competitor does." When prior art informs a standard, adopt the generic shape of the mechanism; do not import another product's opinions as the engine's defaults, and never document engine behavior by reference to an external product's source (those references rot — see § "Aspirational comments" and § "Volatile counts").
+
+### The two obligations
+
+1. **Own the mechanism; carry the least-opinionated standard.** The engine does the work (discovery, parsing, scheduling, transport, persistence) and ships one generic, predictable default behavior. It does not bake in a consumer's workflow, UI shape, or policy.
+2. **Every opinion is configurable and extensible.** Any behavior that is an *opinion* — anything a reasonable consumer might want to do differently — must be exposed as a config field **and** reachable through a hook/SDK seam, so a consumer can observe, override, or augment it. **Forcing a consumer to do something exactly one way is the anti-pattern.** If you find the engine dictating a single fixed behavior where consumers would reasonably differ, that is a defect to fix, not a constraint to defend.
+
+### Canonical examples
+
+| Feature | Engine owns (mechanism) | Consumer owns (opinion) |
+|---------|-------------------------|--------------------------|
+| **Schedules** | The scheduler — timing, persistence, firing | What a schedule *does* when it fires |
+| **Webhooks** | The HTTP-server mechanics — listening, routing, lifecycle | The action taken on an inbound webhook; the consumer just registers it |
+| **Slash commands** | Discovery across the conventional roots, frontmatter parsing (full map preserved), precedence resolution, `$ARGUMENTS` expansion, the persisted-invocation-vs-expanded-content split | Whether non-standard activation modes are enabled (config), and specialized handling via a resolution hook that sees the full frontmatter + invocation metadata — so the same `/command` can behave differently in an extension-hosted conversation than in a plain one |
+
+When you add a feature to the engine, decide explicitly: what is the mechanism (engine-owned, generic) and what is the opinion (consumer-owned, configurable + hookable)? Ship the mechanism with a least-opinionated default and a seam for every opinion. A feature that hardcodes an opinion with no override is incomplete.
+
 ## Engine consumers
 
 > **The Ion Engine is the product. The desktop, iOS, and relay applications in this repo are reference implementations — opinionated demonstrations of how to consume the engine. They are not the canonical consumer set. The canonical consumer is every external developer building against the wire protocol and SDK.**
