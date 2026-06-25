@@ -142,7 +142,7 @@
     "@types/ws": "^8.18.1",
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^5.2.0",
-    "autoprefixer": "^10.5.0",
+    "autoprefixer": "^10.5.2",
     "electron": "^35.7.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
