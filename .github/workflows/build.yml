@@ -41,7 +41,7 @@ jobs:
             runner: ubuntu-latest
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
@@ -187,7 +187,7 @@ jobs:
     if: contains(fromJSON(inputs.release_report).components, 'engine')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
@@ -225,7 +225,7 @@ jobs:
     if: contains(fromJSON(inputs.release_report).components, 'relay')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
@@ -263,7 +263,7 @@ jobs:
     if: contains(fromJSON(inputs.release_report).components, 'desktop')
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
