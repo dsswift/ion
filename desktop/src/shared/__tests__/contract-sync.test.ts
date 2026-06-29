@@ -81,6 +81,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     'toolName',
   ],
   plan_mode_changed: ['enabled', 'planFilePath', 'planSlug'],
+  plan_file_written: ['operation', 'planFilePath', 'planSlug'],
   plan_proposal: ['kind', 'planFilePath', 'planSlug'],
   plan_mode_auto_exit: [
     'planFilePath',

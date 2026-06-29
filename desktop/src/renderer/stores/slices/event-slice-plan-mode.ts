@@ -55,37 +55,12 @@ export function handlePlanModeEvent(ctx: PlanModeCtx, event: any): boolean {
         // done-group move) is eliminated by never writing the parent.
         ctx.instPatch.permissionMode = 'plan'
         ctx.instTouched = true
-        // Created-vs-updated divider decision. The engine emits
-        // engine_plan_mode_changed{enabled:true} both when a plan is first
-        // created (model calls EnterPlanMode) AND when a run starts while the
-        // session is already in plan mode (a subsequent turn writing the SAME
-        // plan). Both carry the plan path/slug (engine fix: runloop_setup.go
-        // now populates them). The FIRST divider for a given planFilePath in
-        // this instance's scrollback is "Plan created"; any SUBSEQUENT divider
-        // for the same path is "Plan updated" — it's the same plan being
-        // written again. We scan the live message list (scoped to this
-        // instance) for an existing system divider carrying the same
-        // planFilePath. On a fresh post-restore message list with no prior
-        // divider this correctly yields "created"; a list that already has the
-        // created divider yields "updated". Both dividers carry planFilePath so
-        // the renderer can make the slug clickable (opens the plan preview).
-        const planFilePath = event.planFilePath
-        const alreadyHasDivider = planFilePath
-          ? ctx.messages.some((m) => m.role === 'system' && (m as any).planFilePath === planFilePath)
-          : false
-        const dividerContent = alreadyHasDivider
-          ? formatPlanUpdatedDivider(new Date(), event.planSlug)
-          : formatPlanCreatedDivider(new Date(), event.planSlug)
-        ctx.messages = [
-          ...ctx.messages,
-          {
-            id: nextMsgId(),
-            role: 'system' as const,
-            content: dividerContent,
-            timestamp: Date.now(),
-            planFilePath,
-          },
-        ]
+        // NOTE: this arm no longer inserts a "Plan created" divider. Plan-mode
+        // ENTRY happens before the model has written anything — the plan file
+        // does not yet exist on disk, so a divider here would be mispositioned
+        // (before any narrative) and its link would not resolve. The divider is
+        // now driven by engine_plan_file_written, which fires the moment a
+        // Write/Edit actually lands on the plan file (see that arm below).
       }
       // Only update planFilePath when entering plan mode.
       // When planModeEnabled=false this is a proposal event (ExitPlanMode
@@ -95,6 +70,40 @@ export function handlePlanModeEvent(ctx: PlanModeCtx, event: any): boolean {
         ctx.instTouched = true
       }
       return true
+
+    case 'engine_plan_file_written': {
+      // The engine confirmed a Write/Edit landed on the canonical plan file.
+      // This is the accurate point to insert the plan-lifecycle divider: the
+      // file now exists with content, so the marker is correctly positioned in
+      // the transcript (right after the write, following the model's narrative)
+      // and the slug link resolves. The engine carries the created-vs-updated
+      // discriminator (planWriteOperation) because only it can observe the
+      // file's prior state; we trust it rather than re-deriving from scrollback.
+      const planFilePath = event.planFilePath
+      const op = event.planWriteOperation === 'updated' ? 'updated' : 'created'
+      const dividerContent =
+        op === 'updated'
+          ? formatPlanUpdatedDivider(new Date(), event.planSlug)
+          : formatPlanCreatedDivider(new Date(), event.planSlug)
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system' as const,
+          content: dividerContent,
+          timestamp: Date.now(),
+          planFilePath,
+        },
+      ]
+      // Keep the instance's planFilePath in sync so downstream consumers
+      // (attachments panel, implement handler) have the path even if the
+      // entry event was lost.
+      if (planFilePath && ctx.inst0?.planFilePath !== planFilePath) {
+        ctx.instPatch.planFilePath = planFilePath
+        ctx.instTouched = true
+      }
+      return true
+    }
 
     case 'engine_plan_proposal': {
       // Workflow event from the engine: the model has proposed a

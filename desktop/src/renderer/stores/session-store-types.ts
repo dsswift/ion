@@ -288,7 +288,7 @@ export interface State {
    * injected as a system prompt on the next send (one-shot).
    */
   rewindEngineInstance: (tabId: string, instanceId: string, messageId: string, userTurnIndex?: number) => void
-  addEngineSystemMessage: (tabId: string, content: string) => void
+  addEngineSystemMessage: (tabId: string, content: string, planFilePath?: string) => void
   /** Insert a user-role message into the active conversation instance for a
    *  remote-originated prompt that bypassed the renderer's submit() path. Used
    *  by the pipeline when an extension command succeeds synchronously (the

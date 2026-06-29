@@ -333,6 +333,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             }
 
             case 'engine_plan_mode_changed' as any:
+            case 'engine_plan_file_written' as any:
             case 'engine_plan_proposal' as any: {
               // Plan-mode arms extracted to event-slice-plan-mode.ts (Fix 1:
               // keep this reducer under the size cap). The handler mutates a

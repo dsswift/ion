@@ -48,6 +48,12 @@ export type EngineEvent =
   | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
+  // engine_plan_file_written fires when a Write/Edit lands on the canonical
+  // plan file during plan mode — the accurate trigger for the "plan created /
+  // updated" conversation marker (the file now exists with content, so the
+  // marker is correctly positioned and any link resolves). `planWriteOperation`
+  // discriminates "created" (first content) from "updated" (a revision).
+  | { type: 'engine_plan_file_written'; planWriteOperation: 'created' | 'updated' | string; planFilePath?: string; planSlug?: string }
   // engine_plan_proposal is the workflow-level counterpart to
   // engine_plan_mode_changed: it fires when the model *proposes* a plan-mode
   // transition (e.g. by calling ExitPlanMode) but the actual mode change is

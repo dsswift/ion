@@ -322,6 +322,19 @@ export function handleEngineEvent(
       ctx.emit('event', tabId, event as any)
       break
 
+    case 'engine_plan_file_written':
+      // A Write/Edit landed on the canonical plan file. This is the accurate
+      // trigger for the "plan created / updated" conversation marker — the
+      // file now exists with content, so the marker is correctly positioned
+      // and any link resolves. Forward to the renderer reducer, which inserts
+      // the divider (event-slice-plan-mode.ts). Distinct from
+      // engine_plan_mode_changed, which only flips plan-mode state.
+      log(
+        `plan_file_written: tabId=${tabId} op=${event.planWriteOperation} planFilePath=${event.planFilePath ?? ''} planSlug=${event.planSlug ?? ''}`,
+      )
+      ctx.emit('event', tabId, event as any)
+      break
+
     case 'engine_plan_mode_auto_exit':
       // Engine synthesized an ExitPlanMode at end-of-turn. Emit as a
       // NormalizedEvent so the single reducer (event-slice.ts) can clear

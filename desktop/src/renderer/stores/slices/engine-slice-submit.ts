@@ -35,12 +35,21 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
       window.ion.engineDialogResponse(tabId, dialogId, value)
     },
 
-    addEngineSystemMessage: (tabId, content) => {
+    addEngineSystemMessage: (tabId, content, planFilePath) => {
       // Append a system message onto the active conversation instance.
       // commitInstance resolves the active instance internally — no compound
       // key needed since Phase 4b collapsed every tab to a single 'main' instance.
+      // `planFilePath` is optional and only set on plan-lifecycle dividers
+      // (e.g. the "Implementing plan" divider) so the renderer can make the
+      // slug a clickable link to the plan preview.
       set((state) => {
-        const msg = { id: nextMsgId(), role: 'system' as const, content, timestamp: Date.now() }
+        const msg = {
+          id: nextMsgId(),
+          role: 'system' as const,
+          content,
+          timestamp: Date.now(),
+          ...(planFilePath ? { planFilePath } : {}),
+        }
         const conversationPanes = commitInstance(state.conversationPanes, tabId, (inst) => ({
           ...inst,
           messages: [...(inst.messages || []), msg],

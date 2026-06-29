@@ -200,12 +200,22 @@ describe('Defect 2 — engine_plan_mode_changed (normalized path)', () => {
     expect(state.tabs[0].permissionMode).toBeUndefined()
   })
 
-  it('inserts a divider message when plan_mode_changed fires with new planFilePath', () => {
+  it('inserts a divider message when engine_plan_file_written fires (the write)', () => {
     const { state, slice } = buildHarness({ permissionMode: 'auto', messages: [] })
 
+    // Plan-mode entry alone no longer draws a divider; the actual plan-file
+    // write does. Fire entry first (state only), then the write (divider).
     slice.handleNormalizedEvent('tab1', {
       type: 'engine_plan_mode_changed' as any,
       planModeEnabled: true,
+      planFilePath: '/tmp/plan.md',
+      planSlug: 'my-plan',
+    } as any)
+    expect(activeInstance(state.conversationPanes, 'tab1')?.messages.length).toBe(0)
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'created',
       planFilePath: '/tmp/plan.md',
       planSlug: 'my-plan',
     } as any)

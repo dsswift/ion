@@ -9,7 +9,7 @@
 
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
-import { formatImplementDivider } from '../../shared/clear-divider'
+import { formatImplementDivider, planSlugFromPath } from '../../shared/clear-divider'
 import { commitInstance } from '../stores/conversation-instance'
 
 /** Shape of the denial entry for extracting planFilePath from toolInput. */
@@ -49,8 +49,26 @@ export async function runHandleImplement(
 
   // Insert an "Implementing plan" divider so the user can see the
   // boundary between planning and implementation phases — mirrors the
-  // CLI tab path in usePermissionDeniedHandlers.ts.
-  useSessionStore.getState().addEngineSystemMessage(tabId, formatImplementDivider(new Date()))
+  // CLI tab path in usePermissionDeniedHandlers.ts. Resolve the plan file
+  // path first (from the tab-level field, falling back to the ExitPlanMode
+  // denial's toolInput) so the divider carries the slug + path and the
+  // renderer can make the slug a clickable link to the plan preview — the
+  // same treatment as the plan-created / plan-updated dividers.
+  let planFilePath: string | null = tabPlanFilePath || null
+  if (!planFilePath && permissionDenied?.tools) {
+    const exitDenial = permissionDenied.tools.find(
+      (t: { toolName: string; toolInput?: Record<string, unknown> }) =>
+        t.toolName === 'ExitPlanMode' && t.toolInput
+    )
+    if (exitDenial?.toolInput?.planFilePath) {
+      planFilePath = exitDenial.toolInput.planFilePath as string
+    }
+  }
+  useSessionStore.getState().addEngineSystemMessage(
+    tabId,
+    formatImplementDivider(new Date(), planSlugFromPath(planFilePath)),
+    planFilePath || undefined,
+  )
 
   // Flip the AUTHORITATIVE permission mode to 'auto' for this tab. The
   // permission mode lives in different places per tab type — on the active
@@ -106,19 +124,7 @@ export async function runHandleImplement(
     }
   }
 
-  // Extract plan file path: tab state (engine event) > denial toolInput
-  let planFilePath: string | null = tabPlanFilePath || null
-  if (!planFilePath && permissionDenied?.tools) {
-    const exitDenial = permissionDenied.tools.find(
-      (t: { toolName: string; toolInput?: Record<string, unknown> }) =>
-        t.toolName === 'ExitPlanMode' && t.toolInput
-    )
-    if (exitDenial?.toolInput?.planFilePath) {
-      planFilePath = exitDenial.toolInput.planFilePath as string
-    }
-  }
-
-  // Read plan content
+  // Read plan content (planFilePath was resolved above for the divider).
   let planContent: string | null = null
   if (planFilePath) {
     try {

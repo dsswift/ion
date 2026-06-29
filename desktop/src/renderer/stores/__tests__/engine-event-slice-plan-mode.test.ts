@@ -88,7 +88,7 @@ function getMessages(state: any) {
 }
 
 describe('engine_plan_mode_changed — handleNormalizedEvent (WI-001 single path)', () => {
-  it('inserts a "Plan created" divider system message when planModeEnabled=true', () => {
+  it('does NOT insert a divider on planModeEnabled=true (entry no longer draws the marker)', () => {
     const { state, slice } = buildHarness()
 
     slice.handleNormalizedEvent('tab1', {
@@ -98,9 +98,9 @@ describe('engine_plan_mode_changed — handleNormalizedEvent (WI-001 single path
       planSlug: 'my-plan',
     } as any)
 
-    const msgs = getMessages(state)
-    expect(msgs.length).toBe(1)
-    expect(msgs[0].role).toBe('system')
+    // Plan-mode entry happens before the file exists — the divider is now
+    // driven by engine_plan_file_written, not by plan-mode entry.
+    expect(getMessages(state).length).toBe(0)
   })
 
   it('updates instance.planFilePath when planModeEnabled=true', () => {
@@ -159,41 +159,44 @@ describe('engine_plan_mode_changed — handleNormalizedEvent (WI-001 single path
     expect(getInstance(state)?.planFilePath).toBeNull()
   })
 
-  it('deduplicates divider on session resume (same planFilePath already present)', () => {
+  it('engine_plan_file_written inserts one divider per write event (created then updated)', () => {
     const { state, slice } = buildHarness()
 
     slice.handleNormalizedEvent('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'created',
       planFilePath: '/tmp/plan.md',
       planSlug: 'my-plan',
     } as any)
     expect(getMessages(state).length).toBe(1)
+    expect(getMessages(state)[0].content).toMatch(/^── Plan created at /)
 
-    // Second emission (e.g. session resume re-emits plan_mode_changed)
+    // A second write to the same plan is an UPDATE — the engine carries the
+    // discriminator, so a second divider lands (the plan really changed).
     slice.handleNormalizedEvent('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'updated',
       planFilePath: '/tmp/plan.md',
       planSlug: 'my-plan',
     } as any)
 
-    // No duplicate divider.
-    expect(getMessages(state).length).toBe(1)
+    const msgs = getMessages(state)
+    expect(msgs.length).toBe(2)
+    expect(msgs[1].content).toMatch(/^── Plan updated at /)
   })
 
-  it('repeated events with different planFilePaths each insert one divider (no accumulation)', () => {
+  it('engine_plan_file_written for different plans inserts one divider each', () => {
     const { state, slice } = buildHarness()
 
     slice.handleNormalizedEvent('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'created',
       planFilePath: '/tmp/plan-1.md',
       planSlug: 'first',
     } as any)
     slice.handleNormalizedEvent('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'created',
       planFilePath: '/tmp/plan-2.md',
       planSlug: 'second',
     } as any)

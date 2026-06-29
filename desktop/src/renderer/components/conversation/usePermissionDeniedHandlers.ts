@@ -2,7 +2,7 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { usePreferencesStore } from '../../preferences'
 import { nextMsgId } from '../../stores/session-store-helpers'
 import { activeInstance, commitInstance } from '../../stores/conversation-instance'
-import { formatImplementDivider } from '../../../shared/clear-divider'
+import { formatImplementDivider, planSlugFromPath } from '../../../shared/clear-divider'
 import type { TabState, Attachment } from '../../../shared/types'
 
 interface Handlers {
@@ -176,8 +176,9 @@ export function buildPermissionDeniedHandlers(
             {
               id: nextMsgId(),
               role: 'system' as const,
-              content: formatImplementDivider(new Date()),
+              content: formatImplementDivider(new Date(), planSlugFromPath(planFilePath)),
               timestamp: Date.now(),
+              ...(planFilePath ? { planFilePath } : {}),
             },
           ],
           planFilePath: null,
@@ -226,8 +227,9 @@ export function buildPermissionDeniedHandlers(
             {
               id: nextMsgId(),
               role: 'system' as const,
-              content: formatImplementDivider(new Date()),
+              content: formatImplementDivider(new Date(), planSlugFromPath(planFilePath)),
               timestamp: Date.now(),
+              ...(planFilePath ? { planFilePath } : {}),
             },
           ],
           planFilePath: null,

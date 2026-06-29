@@ -15,6 +15,8 @@ import {
   formatClearDivider,
   isClearDivider,
   formatImplementDivider,
+  isImplementDivider,
+  planSlugFromPath,
   formatSessionStartDivider,
   formatPlanCreatedDivider,
   isPlanCreatedDivider,
@@ -60,6 +62,24 @@ describe('formatImplementDivider', () => {
     const out = formatImplementDivider(new Date('2024-01-01T15:42:00'))
     expect(out.startsWith('── Implementing plan at ')).toBe(true)
     expect(out.endsWith(' ──')).toBe(true)
+    expect(out.includes(' · ')).toBe(false)
+  })
+
+  it('includes the slug when provided (same shape as plan-created/updated)', () => {
+    const out = formatImplementDivider(new Date('2024-01-01T15:42:00'), 'frosty-twirling-finch')
+    expect(out.startsWith('── Implementing plan at ')).toBe(true)
+    expect(out.includes(' · frosty-twirling-finch')).toBe(true)
+    expect(out.endsWith(' ──')).toBe(true)
+  })
+
+  it('omits the slug separator when slug is empty', () => {
+    const out = formatImplementDivider(new Date('2024-01-01T15:42:00'), '')
+    expect(out.includes(' · ')).toBe(false)
+  })
+
+  it('is detected by isImplementDivider, with and without slug', () => {
+    expect(isImplementDivider(formatImplementDivider(new Date()))).toBe(true)
+    expect(isImplementDivider(formatImplementDivider(new Date(), 'slug'))).toBe(true)
   })
 
   it('is not detected as a clear divider', () => {
@@ -69,6 +89,36 @@ describe('formatImplementDivider', () => {
   it('starts with the generic `──` prefix used for divider rendering', () => {
     const out = formatImplementDivider(new Date())
     expect(out.startsWith('──')).toBe(true)
+  })
+})
+
+describe('isImplementDivider', () => {
+  it('rejects unrelated dividers and system messages', () => {
+    expect(isImplementDivider(formatClearDivider(new Date()))).toBe(false)
+    expect(isImplementDivider(formatPlanCreatedDivider(new Date(), 'slug'))).toBe(false)
+    expect(isImplementDivider(formatPlanUpdatedDivider(new Date(), 'slug'))).toBe(false)
+    expect(isImplementDivider(formatSessionStartDivider(new Date()))).toBe(false)
+    expect(isImplementDivider('')).toBe(false)
+  })
+})
+
+describe('planSlugFromPath', () => {
+  it('returns the basename minus the .md extension', () => {
+    expect(planSlugFromPath('/home/u/.ion/plans/happy-jumping-rabbit.md')).toBe('happy-jumping-rabbit')
+  })
+
+  it('handles Windows-style separators', () => {
+    expect(planSlugFromPath('C:\\\\plans\\\\frosty-finch.md')).toBe('frosty-finch')
+  })
+
+  it('round-trips a legacy hex filename as the raw hex string', () => {
+    expect(planSlugFromPath('/p/ef072eb2660d.md')).toBe('ef072eb2660d')
+  })
+
+  it('returns empty string for null/undefined/empty', () => {
+    expect(planSlugFromPath(null)).toBe('')
+    expect(planSlugFromPath(undefined)).toBe('')
+    expect(planSlugFromPath('')).toBe('')
   })
 })
 

@@ -132,12 +132,11 @@ describe('event-slice — engine_plan_mode_changed', () => {
     expect(state.tabs[0].permissionMode).toBe('auto')
   })
 
-  it('appends a "Plan created" divider system message on planModeEnabled=true', () => {
-    // Regression test: the event-slice handler also seeds a divider into
-    // the CLI tab's `main` instance messages so the user can see when the
-    // plan phase started. The earlier test only verified permissionMode;
-    // this one pins the divider-insertion path that engine-event-slice.ts
-    // mirrors for the engine-tab path.
+  it('does NOT append a divider on planModeEnabled=true (entry no longer draws the marker)', () => {
+    // Plan-mode ENTRY happens before the model has written the plan file, so a
+    // divider here would be mispositioned and its link would not resolve. The
+    // divider is now driven by engine_plan_file_written (the actual write), not
+    // by plan-mode entry. Entry still flips permissionMode + planFilePath.
     const { state, slice } = buildHarness()
     const messagesBefore = mainInstance(state.conversationPanes, 'tab1')!.messages.length
 
@@ -148,12 +147,11 @@ describe('event-slice — engine_plan_mode_changed', () => {
       planSlug: 'my-plan',
     } as any)
 
-    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore + 1)
-    const last = mainInstance(state.conversationPanes, 'tab1')!.messages.at(-1)!
-    expect(last.role).toBe('system')
-    expect(last.content).toMatch(/^── Plan created at /)
-    expect(last.content).toContain('my-plan')
-    expect(last.planFilePath).toBe('/tmp/plan.md')
+    // No divider inserted on entry.
+    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore)
+    // But state still updates: permissionMode → plan, planFilePath propagated.
+    expect(mainInstance(state.conversationPanes, 'tab1')?.permissionMode).toBe('plan')
+    expect(mainInstance(state.conversationPanes, 'tab1')?.planFilePath).toBe('/tmp/plan.md')
   })
 
   it('does NOT append a divider on planModeEnabled=false', () => {
@@ -171,94 +169,76 @@ describe('event-slice — engine_plan_mode_changed', () => {
 
     expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore)
   })
+})
 
-  it('inserts a "Plan updated" divider when same planFilePath already in messages', () => {
-    // A second engine_plan_mode_changed{enabled:true} for the SAME planFilePath
-    // means the same plan is being written again (the engine emits this when a
-    // run starts while the session is already in plan mode — a subsequent turn
-    // updating the existing plan). The FIRST divider for a path is "Plan
-    // created"; a subsequent divider for the same path is "Plan updated". Both
-    // carry planFilePath so the slug stays clickable. (The engine does not
-    // re-emit on a bare reconnect — no run, no emit — so this never fires
-    // spuriously on pure resume; it fires only when a real turn re-enters plan
-    // mode for an existing plan.)
+describe('event-slice — engine_plan_file_written (divider trigger)', () => {
+  it('appends a "Plan created" divider on operation=created, carrying planFilePath', () => {
+    // The accurate divider trigger: the engine confirms a Write/Edit landed on
+    // the plan file. operation="created" → "Plan created" marker. The divider
+    // carries planFilePath so its slug is a clickable link to the plan preview.
     const { state, slice } = buildHarness()
+    const messagesBefore = mainInstance(state.conversationPanes, 'tab1')!.messages.length
 
-    // Seed the created divider as if it came from a prior turn / restore.
-    const inst = mainInstance(state.conversationPanes, 'tab1')!
-    const existingDivider = {
-      id: 'prior-divider',
-      role: 'system' as const,
-      content: '── Plan created at 10:00 AM · old-plan ──',
-      timestamp: 1000,
-      planFilePath: '/tmp/plan.md',
-    }
-    inst.messages = [existingDivider]
-
-    // Engine emits enabled:true again for the same plan (a continuation turn).
     slice.handleNormalizedEvent!('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'created',
       planFilePath: '/tmp/plan.md',
       planSlug: 'my-plan',
     } as any)
 
-    const msgs = mainInstance(state.conversationPanes, 'tab1')!.messages
-    // Now 2: the original created divider plus a new "Plan updated" divider.
-    expect(msgs.length).toBe(2)
-    expect(msgs[0].content).toMatch(/^── Plan created at /)
-    const updated = msgs[1]
-    expect(updated.role).toBe('system')
-    expect(updated.content).toMatch(/^── Plan updated at /)
-    expect(updated.content).toContain('my-plan')
-    // The updated divider also carries planFilePath so its slug is clickable.
-    expect(updated.planFilePath).toBe('/tmp/plan.md')
+    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore + 1)
+    const last = mainInstance(state.conversationPanes, 'tab1')!.messages.at(-1)!
+    expect(last.role).toBe('system')
+    expect(last.content).toMatch(/^── Plan created at /)
+    expect(last.content).toContain('my-plan')
+    expect(last.planFilePath).toBe('/tmp/plan.md')
   })
 
-  it('idempotency guard: DOES insert divider when planFilePath differs (new plan)', () => {
-    // A new plan file path is a genuine new plan phase — the divider should land.
+  it('appends a "Plan updated" divider on operation=updated, carrying planFilePath', () => {
+    // operation="updated" → "Plan updated" marker. The engine carries the
+    // discriminator (it observed the file already had content), so the client
+    // trusts it rather than re-deriving from scrollback.
     const { state, slice } = buildHarness()
-    const inst = mainInstance(state.conversationPanes, 'tab1')!
-    inst.messages = [{
-      id: 'prior-divider',
-      role: 'system' as const,
-      content: '── Plan created at 10:00 AM · old-plan ──',
-      timestamp: 1000,
-      planFilePath: '/tmp/plan-1.md',
-    }]
+    const messagesBefore = mainInstance(state.conversationPanes, 'tab1')!.messages.length
 
     slice.handleNormalizedEvent!('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
-      planFilePath: '/tmp/plan-2.md',
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'updated',
+      planFilePath: '/tmp/plan.md',
+      planSlug: 'my-plan',
+    } as any)
+
+    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.length).toBe(messagesBefore + 1)
+    const last = mainInstance(state.conversationPanes, 'tab1')!.messages.at(-1)!
+    expect(last.content).toMatch(/^── Plan updated at /)
+    expect(last.content).toContain('my-plan')
+    expect(last.planFilePath).toBe('/tmp/plan.md')
+  })
+
+  it('defaults to "Plan created" when operation is missing or unknown', () => {
+    const { state, slice } = buildHarness()
+    slice.handleNormalizedEvent!('tab1', {
+      type: 'engine_plan_file_written' as any,
+      planFilePath: '/tmp/plan.md',
+      planSlug: 'my-plan',
+    } as any)
+    const last = mainInstance(state.conversationPanes, 'tab1')!.messages.at(-1)!
+    expect(last.content).toMatch(/^── Plan created at /)
+  })
+
+  it('propagates planFilePath onto the instance when not already set', () => {
+    const { state, slice } = buildHarness()
+    const inst = mainInstance(state.conversationPanes, 'tab1')!
+    inst.planFilePath = undefined as any
+
+    slice.handleNormalizedEvent!('tab1', {
+      type: 'engine_plan_file_written' as any,
+      planWriteOperation: 'created',
+      planFilePath: '/tmp/new-plan.md',
       planSlug: 'new-plan',
     } as any)
 
-    const msgs = mainInstance(state.conversationPanes, 'tab1')!.messages
-    expect(msgs.length).toBe(2)
-    expect(msgs[1].planFilePath).toBe('/tmp/plan-2.md')
-    expect(msgs[1].content).toContain('new-plan')
-  })
-
-  it('idempotency guard: DOES insert divider when planFilePath is absent (cannot dedup)', () => {
-    // No planFilePath → no dedup key → always insert.
-    const { state, slice } = buildHarness()
-
-    slice.handleNormalizedEvent!('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
-      planSlug: 'unnamed-plan',
-      // no planFilePath
-    } as any)
-    slice.handleNormalizedEvent!('tab1', {
-      type: 'engine_plan_mode_changed' as any,
-      planModeEnabled: true,
-      planSlug: 'unnamed-plan',
-    } as any)
-
-    // Both inserts land — no planFilePath means no dedup.
-    const msgs = mainInstance(state.conversationPanes, 'tab1')!.messages
-    expect(msgs.length).toBe(2)
+    expect(mainInstance(state.conversationPanes, 'tab1')?.planFilePath).toBe('/tmp/new-plan.md')
   })
 })
 

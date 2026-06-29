@@ -3,6 +3,7 @@ import { log as _log } from '../../logger'
 import { state, sessionPlane } from '../../state'
 import { processIncomingPrompt } from '../../prompt-pipeline'
 import { handleSetPermissionMode } from './tabs'
+import { planSlugFromPath } from '../../../shared/clear-divider'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string): void {
@@ -135,6 +136,16 @@ export async function handleImplementPlan(
   try {
     const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const clearCtxJs = clearContext ? 'true' : 'false'
+    // Carry the resolved plan path + slug onto the divider so the renderer
+    // (and the snapshot projection that mirrors it to iOS) renders the slug as
+    // a clickable link to the plan preview — same treatment as the desktop
+    // onImplement path and the plan-created / plan-updated dividers. Escape
+    // both values for safe string interpolation into the executeJavaScript.
+    const planSlug = planSlugFromPath(planFilePath)
+    const slugSuffix = planSlug ? ` \\u00b7 ${planSlug.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}` : ''
+    const planPathJs = planFilePath
+      ? `'${planFilePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+      : 'null'
     await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
@@ -149,10 +160,12 @@ export async function handleImplementPlan(
           var inst = pane.instances.find(function(i) { return i.id === pane.activeInstanceId; })
             || pane.instances[0];
           if (!inst) return;
+          var planPath = ${planPathJs};
           var divider = '\\u2500\\u2500 Implementing plan at '
-            + new Date().toLocaleTimeString() + ' \\u2500\\u2500';
+            + new Date().toLocaleTimeString() + '${slugSuffix}' + ' \\u2500\\u2500';
           var newMsg = { id: 'impl-remote-' + Date.now(), role: 'system',
             content: divider, timestamp: Date.now() };
+          if (planPath) newMsg.planFilePath = planPath;
           var updatedInst = Object.assign({}, inst, {
             messages: inst.messages.concat([newMsg]),
             planFilePath: null,

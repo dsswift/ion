@@ -30,6 +30,9 @@ export interface EngineHistoryMessage {
   toolStatus?: string
   timestamp: number
   dedupKey?: string
+  /** Plan path on plan-lifecycle divider system messages, so the slug stays
+   * clickable on iOS after a history reload. Omitted on non-divider messages. */
+  planFilePath?: string
 }
 
 /**
@@ -72,6 +75,11 @@ export async function readEngineHistoryFromStore(
         // protocol change.
         var out = { id: m.id, role: m.role, content: content, toolName: m.toolName, toolId: m.toolId, toolStatus: m.toolStatus, timestamp: m.timestamp };
         if (m.dedupKey) out.dedupKey = m.dedupKey;
+        // Carry planFilePath through so plan-lifecycle divider system messages
+        // (Plan created / Plan updated / Implementing plan) stay clickable on
+        // iOS after a history reload — iOS reads it from the desktop store via
+        // this mapper, the same store the live handlers populate.
+        if (m.planFilePath) out.planFilePath = m.planFilePath;
         return out;
       });
       return { resolvedId: resolvedId, messages: mapped };
