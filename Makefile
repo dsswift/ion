@@ -12,6 +12,7 @@ engine:
 	@cd engine && bash commands/install.command --standalone || { echo "❌ Engine build failed"; exit 1; }
 
 desktop:
+	@$(MAKE) engine
 	@cd desktop && bash commands/install-bg.command
 
 relay:
