@@ -9,7 +9,7 @@
 | Relay | `relay/` | Go |
 | iOS | `ios/IonRemote/` | Swift |
 
-Each component has its own `AGENTS.md` with subsystem-specific rules.
+Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
 
 ## Extension SDK source location
 
@@ -235,7 +235,7 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `conversationInstances` |
 | Tab group pills | Tab group sections | `snapshot.ts` → group fields on `RemoteTabState` |
 | Thinking indicator / interrupt button | Activity indicator / interrupt button | Real-time events (`engineTextDelta`, `tabStatus`) |
-| Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` (plain conversation) and `StatusFields.sessionId` (extension-hosted conversation) |
+| Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` for all conversations. For extension-loaded tabs, per-instance session IDs are available in `conversationInstances[i].conversationIds` (historical) and `StatusFields.sessionId` (live). |
 | Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` allowlist → `desktop_settings_snapshot` event (settings + schema + groups) → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match the desktop's `CATEGORIES` array; renaming a desktop category requires updating `PROJECTABLE_GROUP_LABELS` and the test in `projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` unless the setting is local-machine-only (font, path, secret). |
 | Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
 
@@ -523,6 +523,37 @@ Every solution must solve the problem at its root cause. **Never trade correctne
 
 5. **Never avoid expanding a surface to dodge work.** If a feature requires a new event type on iOS, a new protocol field, a new enum case, or a new handler — add it. Workarounds that relay, proxy, or approximate the proper mechanism to "keep the surface small" are the same anti-pattern as substituting a heuristic for a precise mechanism. API surfaces, event surfaces, and wire protocols are meant to grow as the product grows. A comment like "iOS does not yet act on this" is a gap waiting for its first consumer, not a reason to route around the gap.
 
+6. **When the proper fix is known, ship the proper fix — never a stopgap, stepping stone, or intermittent workaround.** If analysis has identified the correct root-cause solution, implement *that*, not a cheaper interim version of it that will have to be replaced or collapsed later. Stopgaps become legacy: they add code that the next change must first unwind, they create a second mechanism that drifts from the proper one, and they leave the real fix undone while signaling that it's "handled." This holds **regardless of how much larger the proper fix is, how many files it touches, how many commits it takes, or how many PRs it spans.** PR size, commit count, and diff size are never reasons to choose a stepping stone over the known-correct fix. The only acceptable reasons to *stage* work are the same three in rule 2 (published-contract break, architecture physically can't support it yet, domain genuinely doesn't need the precision) — and "the proper fix is bigger" is **not** one of them. If you catch yourself proposing an interim fix because the real one is more work, stop and propose the real one. Do not ask the operator to choose between a stopgap and the proper fix; if the proper fix is known, that is the plan. (This is the forward-looking complement to the "## Aspirational comments → The rule applies to plans" rule: that rule forbids *documenting* a defect instead of fixing it; this rule forbids *half-fixing* it when the full fix is known.)
+
+## Dead code is not load-bearing until proven otherwise — verify the layer, then delete
+
+Leaving a **no-op / pass-through / vestigial layer** in place because removing it *looks* risky — and justifying the keep with an **unverified claim** about what some caller, wire event, or consumer "still needs" — is a recurring defect. "It compiles, the tests pass, and I added a comment explaining why it stays" is **not** verification; it is the exact rationalization the "## Solution quality" rule forbids, wearing a comment as a disguise. The keep is only legitimate after you have located the *actual* load-bearing layer and proven the dead code is not it.
+
+### The failure mode (what this rule prevents)
+
+You encounter a handler that logs and does nothing, a helper that returns its input unchanged, an enum case routed to `break`, a field nothing reads, or a parameter every caller ignores. Removing it would touch several call sites and *feels* unsafe, so you keep it and write a comment — "kept so older clients still decode", "retained for API compat", "the desktop may still send this". Then it turns out the premise in your own comment was **false** (the current in-repo emitter *does* send it, or *no longer* sends it), and you kept the **wrong layer** for a reason that actually applied to a **different layer** — or to no layer at all. The dead code now lies to the next reader about being meaningful, and the comment lies about the wire.
+
+### The discipline (do this every time)
+
+When you find a no-op / vestigial / pass-through construct in the path of your work:
+
+1. **Identify every layer involved.** A "dead" event handler is usually three separable layers: the wire **TypeKey / decoder** (what makes the bytes parse), the **typed case / struct field** (the in-memory representation), and the **handler body** (what acts on it). A "dead" helper is its **signature** vs its **callers** vs its **body**. Name them explicitly; do not treat the cluster as one indivisible thing.
+2. **Find the real load-bearing layer by checking the producer/consumer in source — not from memory.** Grep the actual emitter (`desktop/src/`, the engine, the SDK), the actual callers, the actual decoder's failure mode. *"Does the live, in-repo producer still emit this? Does any caller still invoke it? What happens on the unhandled path — silent drop, or thrown error?"* Answer with a citation, not an assumption. (This is the "## Operator premises" rule applied to your *own* premise.)
+3. **Delete every layer above the one that is genuinely required.** Keep only the minimum the producer/consumer actually forces you to keep, and say *why that exact layer* is required (with the source citation). If the wire decoder must stay because a live event would otherwise throw, keep the decoder and **delete the no-op handler** — do not keep both and call the handler "load-bearing."
+4. **If nothing is load-bearing, delete all of it.** A construct with no producer and no consumer is not "compat surface"; it is dead code. Remove it. The "## Good citizen" rule already puts this in scope when you encounter it.
+5. **Make every surviving comment true.** A comment asserting wire/caller behavior ("desktop no longer sends this", "kept for older clients") is a factual claim subject to "## Aspirational comments" and "## Volatile counts": if you did not grep it, do not write it, and if it is stale, fix it as part of the same change.
+
+### Forbidden justifications (each is the anti-pattern, not a reason)
+
+- "Removing it touches N call sites, so I kept it." — Effort is never a reason to keep dead code (mirrors "## Solution quality" rule 2).
+- "It's safer to leave it and add a comment." — Unverified safety. A no-op that misrepresents itself as meaningful is *less* safe for the next change, not more.
+- "Some older/hypothetical client might still need it." — If you cannot name and cite the live consumer, this is a guess. Verify or delete.
+- "I'll leave the handler as a no-op so the event still decodes." — The handler is not what makes it decode; the TypeKey/decoder is. Keep the right layer.
+
+### When a keep IS legitimate
+
+Keeping a layer is correct only when step 2 produced a **cited** reason the producer or consumer forces it — e.g. the wire decoder for an event a **current in-repo emitter still sends** (removing the TypeKey would throw on a live message), or a parser still reachable by a **real cached-key / migration path**. In that case: keep the **minimum** layer, delete the rest, and write the true reason with its source citation. "Verified the desktop still emits `X` at `path:line`, so the decoder stays; the no-op handler does not" is a resolution. "Kept to be safe" is not.
+
 ## Testing is mandatory — every feature, every fix
 
 **No feature and no bug fix is complete without a test that pins its behavior.** A change that compiles, type-checks, and "looks correct on read" is *not* verified. "I read the code and it's right" is the exact reasoning that lets defects reach production — it is never an acceptable substitute for a test.
@@ -568,7 +599,7 @@ Conversations are persisted as NDJSON file pairs under `~/.ion/conversations/`.
 
 ### ID format
 
-Each conversation ID is `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). Generated in `engine/internal/backend/runloop_setup.go` via `time.Now().UnixMilli()` + `newConvSuffix()` (see `runloop_helpers.go`).
+Each conversation ID is `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). Generated by `NewConversationID()` in `engine/internal/conversation/id.go` (`time.Now().UnixMilli()` + `NewConvSuffix()`).
 
 ### File layout
 
@@ -616,7 +647,7 @@ When given a conversation ID, glob for its files:
 
 | What | Where |
 |------|-------|
-| ID generation | `engine/internal/backend/runloop_helpers.go` (`newConvSuffix`) |
+| ID generation | `engine/internal/conversation/id.go` (`NewConversationID` / `NewConvSuffix`) |
 | Save/load logic | `engine/internal/conversation/persistence.go` (`Save`, `Load`, `saveSplit`) |
 | Data structures | `engine/internal/conversation/conversation.go` (`Conversation`, `SessionEntry`) |
 | LLM message type | `engine/internal/types/llm.go` (`LlmMessage`) |

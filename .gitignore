@@ -5,6 +5,10 @@ out/
 build/
 release/
 *.tsbuildinfo
+# Stray Vite/electron-vite bundles emitted to the desktop root (hashed name).
+# The normal output goes to out/; this guards against an accidental loose
+# bundle being committed again (see the orphaned index-*.js removed in history).
+desktop/index-*.js
 
 # Go binaries
 engine/bin/
