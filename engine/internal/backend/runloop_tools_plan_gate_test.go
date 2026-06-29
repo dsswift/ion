@@ -584,3 +584,182 @@ func TestPlanGate_BashAllowlist_PerPromptAdditionStillDeniesOthers(t *testing.T)
 		t.Errorf("expected blocked-command message, got: %s", results[0].Content)
 	}
 }
+
+// TestPlanGate_StrayPlanFileWriteRedirectedToCanonical pins the core fix: a
+// Write to a DIFFERENT plan-shaped filename (the model invented a new plan
+// name, e.g. on a revision turn) is redirected to the canonical plan file
+// rather than blocked or written as a second stray plan file. Before the fix,
+// this path hard-blocked (IsError, canonical never written, stray never
+// created); after the fix, the write lands on the canonical file and the
+// stray name is never created.
+func TestPlanGate_StrayPlanFileWriteRedirectedToCanonical(t *testing.T) {
+	cwd := t.TempDir()
+	plansDir := filepath.Join(cwd, ".ion", "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(plansDir, "canonical.md")
+	if err := os.WriteFile(canonical, []byte("# original plan"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	invented := filepath.Join(plansDir, "invented.md")
+
+	b, run, _ := planGateHelper(t, true, canonical)
+
+	blocks := []types.LlmContentBlock{{
+		Name:  "Write",
+		ID:    "tc-redirect",
+		Input: map[string]interface{}{"file_path": invented, "content": "# revised plan"},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Not an error — the write was redirected, not blocked.
+	if results[0].IsError {
+		t.Errorf("expected redirected plan write to succeed, got error: %s", results[0].Content)
+	}
+	// The invented (stray) file must NOT exist on disk.
+	if _, statErr := os.Stat(invented); statErr == nil {
+		t.Error("stray plan file should not have been created")
+	}
+	// The canonical file must contain the redirected content.
+	got, readErr := os.ReadFile(canonical)
+	if readErr != nil {
+		t.Fatalf("canonical plan file unreadable: %v", readErr)
+	}
+	if string(got) != "# revised plan" {
+		t.Errorf("canonical plan file should contain redirected content, got: %q", string(got))
+	}
+	// The tool result must carry the redirect notice so the model learns.
+	if !strings.Contains(results[0].Content, "redirected the write to the canonical plan file") {
+		t.Errorf("expected redirect notice in tool result, got: %s", results[0].Content)
+	}
+}
+
+// TestPlanGate_StrayPlanFileEditRedirectedToCanonical mirrors the Write case
+// for Edit: an Edit targeting a stray plan-shaped filename is redirected to
+// the canonical plan file.
+func TestPlanGate_StrayPlanFileEditRedirectedToCanonical(t *testing.T) {
+	cwd := t.TempDir()
+	plansDir := filepath.Join(cwd, ".ion", "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(plansDir, "canonical.md")
+	if err := os.WriteFile(canonical, []byte("old marker here"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	invented := filepath.Join(plansDir, "other-plan.md")
+
+	b, run, _ := planGateHelper(t, true, canonical)
+
+	blocks := []types.LlmContentBlock{{
+		Name: "Edit",
+		ID:   "tc-redirect-edit",
+		Input: map[string]interface{}{
+			"file_path":  invented,
+			"old_string": "old marker here",
+			"new_string": "new marker here",
+		},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].IsError {
+		t.Errorf("expected redirected plan Edit to succeed, got error: %s", results[0].Content)
+	}
+	if _, statErr := os.Stat(invented); statErr == nil {
+		t.Error("stray plan file should not have been created by Edit")
+	}
+	got, readErr := os.ReadFile(canonical)
+	if readErr != nil {
+		t.Fatalf("canonical plan file unreadable: %v", readErr)
+	}
+	if !strings.Contains(string(got), "new marker here") {
+		t.Errorf("canonical plan file should reflect the redirected Edit, got: %q", string(got))
+	}
+}
+
+// TestPlanGate_NonPlanWriteStillBlocked pins that the redirect did NOT loosen
+// the hard block for non-plan paths. A Write to a source file outside any
+// recognized plans directory is still blocked, even in plan mode.
+func TestPlanGate_NonPlanWriteStillBlocked(t *testing.T) {
+	cwd := t.TempDir()
+	plansDir := filepath.Join(cwd, ".ion", "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(plansDir, "canonical.md")
+	srcDir := filepath.Join(cwd, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	nonPlan := filepath.Join(srcDir, "foo.go")
+
+	b, run, emitted := planGateHelper(t, true, canonical)
+
+	blocks := []types.LlmContentBlock{{
+		Name:  "Write",
+		ID:    "tc-nonplan",
+		Input: map[string]interface{}{"file_path": nonPlan, "content": "package main"},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !results[0].IsError {
+		t.Error("expected non-plan Write to remain blocked")
+	}
+	if !strings.Contains(results[0].Content, "Plan mode: cannot write to") {
+		t.Errorf("expected hard-block message, got: %s", results[0].Content)
+	}
+	if _, statErr := os.Stat(nonPlan); statErr == nil {
+		t.Error("blocked non-plan file should not exist on disk")
+	}
+	found := false
+	for _, ev := range *emitted {
+		if tr, ok := ev.Data.(*types.ToolResultEvent); ok && tr.IsError {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected an error ToolResultEvent for the hard-blocked non-plan write")
+	}
+}
+
+// TestPlanGate_EmptyPlanFilePathNoRedirect pins that when the run has no
+// canonical plan file (prompt-level plan mode with planFilePath=""), a
+// plan-shaped write is NOT redirected to "" — it falls through to the hard
+// block. There is no canonical target to redirect to, so the engine must not
+// write to an empty path.
+func TestPlanGate_EmptyPlanFilePathNoRedirect(t *testing.T) {
+	cwd := t.TempDir()
+	plansDir := filepath.Join(cwd, ".ion", "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(plansDir, "some-plan.md")
+
+	// planFilePath empty → no canonical target.
+	b, run, _ := planGateHelper(t, true, "")
+
+	blocks := []types.LlmContentBlock{{
+		Name:  "Write",
+		ID:    "tc-empty",
+		Input: map[string]interface{}{"file_path": target, "content": "# plan"},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With no canonical file, the gate hard-blocks (target != "" canonical).
+	if !results[0].IsError {
+		t.Error("expected plan-shaped write with empty planFilePath to be blocked, not redirected")
+	}
+	// Nothing should have been written under the empty path or the target.
+	if _, statErr := os.Stat(target); statErr == nil {
+		t.Error("no file should have been created when planFilePath is empty")
+	}
+}

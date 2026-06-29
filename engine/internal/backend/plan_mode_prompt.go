@@ -95,7 +95,7 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 
 ## Plan File
 %s
-Build your plan incrementally by writing to this file. This is the ONLY file you are allowed to create or edit. All other actions must be read-only.
+Build your plan incrementally by writing to this file. This is the ONLY file you are allowed to create or edit. Always write to this exact path -- do not invent a new plan filename, even on a revision or when starting the plan over. If you write a plan-shaped file under a different name, the engine redirects the write to this path. All other actions must be read-only.
 %s
 ## Workflow
 
@@ -144,6 +144,7 @@ Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look
 
 ## Restrictions
 - You MUST NOT call Write or Edit on any file except the plan file
+- You MUST NOT invent a new plan filename; always write to the exact plan file path above (the engine redirects stray plan writes to it)
 %s
 - You MUST NOT make commits, change configs, or install packages
 - Sub-agents you spawn are also read-only -- do not instruct them to make edits
@@ -161,7 +162,9 @@ func buildPlanModeSparseReminder(planFilePath string) string {
 
 	return fmt.Sprintf(
 		"Plan mode still active (see full instructions from earlier in conversation). "+
-			"Read-only except plan file (%s).%s "+
+			"Read-only except the plan file (%s) — that exact path is the ONLY file you may write. "+
+			"Do not invent a new plan filename, even on a revision; always reuse that path. "+
+			"If you write to a different plan filename the engine redirects it to the canonical path above.%s "+
 			"End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for plan approval). "+
 			"Never use AskUserQuestion to ask for plan approval -- that is what ExitPlanMode is for. "+
 			"If the plan is written and complete, call ExitPlanMode — do not delay with another question. The user has no visibility into plan content until ExitPlanMode is called. "+

@@ -38,28 +38,86 @@ import (
 // for the post-execution warning that executeTools appends to the
 // Write result after the tool actually runs).
 
-// applyPlanModeWriteGate enforces the plan-mode invariant that only
-// the plan file is writable. When the tool is Write or Edit and the
-// target is not the plan file, it blocks the call and records a
-// permission-style error. When the tool is Write *and* the target IS
-// the plan file, it latches whether the file already has substantial
-// content so executeTools can append an overwrite warning to the
-// successful tool result.
+// applyPlanModeWriteGate enforces the plan-mode invariant that the
+// canonical plan file is the only writable file. The decision is
+// three-way:
+//
+//  1. **Target IS the canonical plan file** → allow. When the tool is
+//     Write, latch whether the file already has substantial content so
+//     executeTools can append an overwrite warning to the successful
+//     tool result.
+//  2. **Target is a plan-shaped path inside a recognized plans
+//     directory but NOT the canonical plan file** → redirect. The model
+//     invented a different plan filename (e.g. on a revision turn). The
+//     engine rewrites the tool input's file_path to the canonical
+//     run.planFilePath in place and lets the call fall through to normal
+//     execution, so at most one plan file per run is ever created — the
+//     assigned one — regardless of what name the model chose. The
+//     returned redirectNotice tells executeTools to append a note to the
+//     successful tool result so the model learns it wrote to the
+//     canonical file. This redirect is a no-op when run.planFilePath is
+//     empty (prompt-level plan mode with no allocated file): there is no
+//     canonical target, so we fall through to the hard block below rather
+//     than rewrite to "".
+//  3. **Target is any other (non-plan) path** → hard block with a
+//     permission-style error. Unchanged behavior.
+//
+// cwd is the run working directory, used to resolve the recognized
+// plans directories for the plan-shaped containment test.
+//
+// The redirect mutates block.Input["file_path"], which is a map
+// (reference type) shared with the executor that dispatches this block
+// (see executeTools: tools.ExecuteTool reads block.Input). The in-place
+// write is therefore visible to the executor and to the post-execution
+// file_changed hook, both of which then see the canonical path.
+//
+// redirectNotice is non-empty only when a redirect happened; executeTools
+// appends it to the successful tool result. It is returned (rather than
+// latched on the run) so it stays scoped to this exact tool block — each
+// block runs in its own goroutine, so run-level state would race across
+// concurrent blocks.
 func applyPlanModeWriteGate(
 	run *activeRun,
 	block types.LlmContentBlock,
 	results []conversation.ToolResultEntry,
 	i int,
+	cwd string,
 	emit func(*activeRun, types.NormalizedEvent),
-) (handled bool, planWriteOverwrite bool) {
+) (handled bool, planWriteOverwrite bool, redirectNotice string) {
 	if !run.planMode || (block.Name != "Write" && block.Name != "Edit") {
-		return false, false
+		return false, false, ""
 	}
 	targetPath, ok := block.Input["file_path"].(string)
 	if !ok {
-		return false, false
+		return false, false, ""
 	}
 	if filepath.Clean(targetPath) != filepath.Clean(run.planFilePath) {
+		// The model targeted something other than the canonical plan
+		// file. If it is still a plan-shaped path (inside a recognized
+		// plans directory) and we HAVE a canonical plan file to redirect
+		// to, rewrite the target to the canonical path instead of
+		// blocking — this is the "model invented a stray plan filename"
+		// case (e.g. on a revision turn). Otherwise fall through to the
+		// hard block.
+		if run.planFilePath != "" && isPlanShapedPath(targetPath, cwd) {
+			utils.Info("PlanMode", fmt.Sprintf("run=%s redirected_plan_write target=%s canonical=%s", run.requestID, targetPath, run.planFilePath))
+			// Rewrite the executor-visible input in place.
+			block.Input["file_path"] = run.planFilePath
+			notice := fmt.Sprintf(
+				"NOTE: %s targeted %s, which is not the plan file for this session. "+
+					"The engine redirected the write to the canonical plan file (%s). "+
+					"Always write the plan to that exact path; do not invent a new plan filename.",
+				block.Name, targetPath, run.planFilePath)
+			// Fall through to normal execution against the rewritten path.
+			// Re-run the overwrite latch against the canonical file so a
+			// redirected Write over an existing plan still warns.
+			if block.Name == "Write" {
+				if info, err := os.Stat(run.planFilePath); err == nil && info.Size() > 50 {
+					return false, true, notice
+				}
+			}
+			return false, false, notice
+		}
 		utils.Info("PlanMode", fmt.Sprintf("run=%s blocked=%s target=%s plan_file=%s", run.requestID, block.Name, targetPath, run.planFilePath))
 		msg := fmt.Sprintf("Plan mode: cannot write to %s. Only the plan file (%s) is writable.", targetPath, run.planFilePath)
 		results[i] = conversation.ToolResultEntry{
@@ -72,15 +130,15 @@ func applyPlanModeWriteGate(
 			Content: msg,
 			IsError: true,
 		}})
-		return true, false
+		return true, false, ""
 	}
 	// Track whether Write is overwriting existing plan content.
 	if block.Name == "Write" {
 		if info, err := os.Stat(run.planFilePath); err == nil && info.Size() > 50 {
-			return false, true
+			return false, true, ""
 		}
 	}
-	return false, false
+	return false, false, ""
 }
 
 // applyPlanModeBashGate enforces the plan-mode Bash allowlist. When

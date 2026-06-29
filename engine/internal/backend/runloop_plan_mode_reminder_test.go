@@ -153,3 +153,39 @@ func TestBuildPlanModeSparseReminder_ContainsForbiddenProseCallout(t *testing.T)
 		}
 	}
 }
+
+// TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause pins
+// the redirect-fix prompt hardening: the sparse reminder must restate the
+// canonical plan file path and explicitly tell the model not to invent a new
+// plan filename (the engine redirects stray plan writes to the canonical
+// path). Fails until the reminder text carries both signals.
+func TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause(t *testing.T) {
+	planPath := "/tmp/canonical-plan.md"
+	result := buildPlanModeSparseReminder(planPath)
+	phrases := []string{
+		planPath,                        // the exact canonical path
+		"Do not invent a new plan",      // forbids inventing a filename
+		"redirects it to the canonical", // explains the redirect behavior
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(result, phrase) {
+			t.Errorf("buildPlanModeSparseReminder output missing expected phrase %q\ngot: %s", phrase, result)
+		}
+	}
+}
+
+// TestBuildPlanModePrompt_ContainsNoInventClause pins that the full plan-mode
+// prompt's Plan File / Restrictions sections forbid inventing a new plan
+// filename and document the redirect, matching the sparse reminder.
+func TestBuildPlanModePrompt_ContainsNoInventClause(t *testing.T) {
+	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
+	phrases := []string{
+		"do not invent a new plan filename",
+		"redirects",
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(result, phrase) {
+			t.Errorf("buildPlanModePrompt output missing expected phrase %q", phrase)
+		}
+	}
+}

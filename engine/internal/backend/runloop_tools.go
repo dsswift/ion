@@ -229,9 +229,10 @@ func (b *ApiBackend) executeTools(
 			// planWriteOverwrite for the post-execution overwrite
 			// warning that the Write tool-result append below depends on.
 			var planWriteOverwrite bool
+			var planWriteRedirectNotice string
 			{
 				var handled bool
-				if handled, planWriteOverwrite = applyPlanModeWriteGate(run, block, results, i, b.emit); handled {
+				if handled, planWriteOverwrite, planWriteRedirectNotice = applyPlanModeWriteGate(run, block, results, i, cwd, b.emit); handled {
 					return nil
 				}
 				if applyPlanModeBashGate(run, block, results, i, b.emit) {
@@ -430,6 +431,14 @@ func (b *ApiBackend) executeTools(
 					"use the Edit tool next time. If you unintentionally removed existing deliverables, " +
 					"re-read the conversation history to recover them."
 				utils.Info("PlanMode", fmt.Sprintf("run=%s plan_file_overwritten plan_file=%s", run.requestID, run.planFilePath))
+			}
+
+			// Append the redirect notice when applyPlanModeWriteGate rewrote
+			// a stray plan-shaped target to the canonical plan file. The
+			// notice is block-scoped (returned from the gate, not run state)
+			// so it cannot leak onto another concurrent tool block's result.
+			if planWriteRedirectNotice != "" && !results[i].IsError {
+				results[i].Content += "\n\n" + planWriteRedirectNotice
 			}
 
 			// Fire file_changed hook for write/edit tools
