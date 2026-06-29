@@ -920,3 +920,54 @@ func TestSanitizeStripsRedactedThinking(t *testing.T) {
 		t.Fatalf("non-thinking text block was incorrectly removed alongside redacted_thinking: %+v", out)
 	}
 }
+
+// TestSanitize_ToolResultImageReordered is the regression test for the
+// Anthropic adjacency bug: a legacy conversation persisted a post-tool_use
+// user message as [tool_result(A), image, tool_result(B)] (image interleaved
+// between two parallel tool_results). Anthropic rejects this because the
+// second tool_result is no longer immediately after the tool_use turn.
+// SanitizeMessages must reorder it to [tool_result(A), tool_result(B), image]
+// on the submission path. Reverting the partition step makes this test red.
+func TestSanitize_ToolResultImageReordered(t *testing.T) {
+	msgs := []types.LlmMessage{
+		{Role: "user", Content: []types.LlmContentBlock{{Type: "text", Text: "look at this"}}},
+		{
+			Role: "assistant",
+			Content: []types.LlmContentBlock{
+				{Type: "tool_use", ID: "tu_read", Name: "Read", Input: map[string]any{"file_path": "/shot.png"}},
+				{Type: "tool_use", ID: "tu_glob", Name: "Glob", Input: map[string]any{"pattern": "*.ts"}},
+			},
+		},
+		{
+			Role: "user",
+			Content: []types.LlmContentBlock{
+				{Type: "tool_result", ToolUseID: "tu_read", Content: "[Image: shot.png]"},
+				{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: "iVBOR..."}},
+				{Type: "tool_result", ToolUseID: "tu_glob", Content: "a.ts\nb.ts"},
+			},
+		},
+	}
+
+	out := SanitizeMessages(msgs)
+	if len(out) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(out))
+	}
+	blocks, ok := out[2].Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatalf("expected block slice for user tool-result message, got %T", out[2].Content)
+	}
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d: %+v", len(blocks), blocks)
+	}
+	// Both tool_results must lead the message, in their original relative order.
+	if blocks[0].Type != "tool_result" || blocks[0].ToolUseID != "tu_read" {
+		t.Errorf("block[0] = %q/%q, want tool_result/tu_read", blocks[0].Type, blocks[0].ToolUseID)
+	}
+	if blocks[1].Type != "tool_result" || blocks[1].ToolUseID != "tu_glob" {
+		t.Errorf("block[1] = %q/%q, want tool_result/tu_glob", blocks[1].Type, blocks[1].ToolUseID)
+	}
+	// The image must follow all tool_results — never interleaved.
+	if blocks[2].Type != "image" {
+		t.Errorf("block[2] type = %q, want image (must follow all tool_results)", blocks[2].Type)
+	}
+}

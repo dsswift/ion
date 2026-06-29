@@ -13,13 +13,16 @@ import (
 //   - Every tool_use in an assistant message must have a tool_result in the next user message
 //   - Every tool_result in a user message must reference a tool_use in the previous assistant message
 //   - Every server_tool_use in an assistant message must have a web_search_tool_result in the same message
+//   - In the post-tool_use user message, all tool_result blocks must lead the
+//     message — no image/text block may be interleaved between tool_results
 //   - No thinking blocks (not valid for re-submission)
 //
 // Strategy: two passes.
 //   - Pass 1: normalize all content to []LlmContentBlock, remove thinking blocks
 //   - Pass 2: for each assistant message, enforce cross-message tool_use ↔ tool_result
 //     pairing and intra-message server_tool_use ↔ web_search_tool_result pairing.
-//     Remove unmatched blocks from both sides.
+//     Remove unmatched blocks from both sides. For each user message, reorder so
+//     every tool_result precedes any non-tool_result block (Anthropic adjacency).
 func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 	if len(messages) == 0 {
 		return messages
@@ -210,6 +213,16 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 				removed++
 				continue
 			}
+			// Reorder so every tool_result block precedes any non-tool_result
+			// block (images, text). The Anthropic API requires that the
+			// tool_result blocks in the post-tool_use user message come
+			// immediately after the tool_use turn; an image block interleaved
+			// between two tool_results (as legacy conversations persisted)
+			// separates a later tool_result from the tool_use turn and the API
+			// rejects it ("tool_use ids were found without tool_result blocks
+			// immediately after"). The partition is stable: tool_result blocks
+			// keep their relative order and non-tool_result blocks keep theirs.
+			filtered = partitionToolResultsFirst(filtered)
 			result = append(result, types.LlmMessage{Role: msg.Role, Content: filtered})
 			continue
 		}
@@ -221,6 +234,42 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 		utils.Log("Conversation", fmt.Sprintf("sanitized: removed %d orphaned blocks/messages", removed))
 	}
 	return result
+}
+
+// partitionToolResultsFirst stably reorders a user message's content blocks so
+// every tool_result block precedes any non-tool_result block. tool_result
+// blocks keep their relative order; non-tool_result blocks (images, text) keep
+// theirs. This enforces the Anthropic adjacency rule: no image block may sit
+// between two tool_result blocks in the post-tool_use user message.
+func partitionToolResultsFirst(blocks []types.LlmContentBlock) []types.LlmContentBlock {
+	hasNonLeadingToolResult := false
+	seenNonToolResult := false
+	for _, b := range blocks {
+		if b.Type == "tool_result" {
+			if seenNonToolResult {
+				hasNonLeadingToolResult = true
+				break
+			}
+		} else {
+			seenNonToolResult = true
+		}
+	}
+	// Already ordered correctly — avoid reallocating.
+	if !hasNonLeadingToolResult {
+		return blocks
+	}
+	reordered := make([]types.LlmContentBlock, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Type == "tool_result" {
+			reordered = append(reordered, b)
+		}
+	}
+	for _, b := range blocks {
+		if b.Type != "tool_result" {
+			reordered = append(reordered, b)
+		}
+	}
+	return reordered
 }
 
 const planFilePlaceholder = "[plan-file]"

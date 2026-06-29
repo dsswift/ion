@@ -327,10 +327,19 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 }
 
 // AddToolResults appends tool results as a user message with tool_result content blocks.
-// When a result includes images, each image is emitted as a separate image block
-// immediately after the tool_result block so the LLM can see the visual content.
+// All tool_result blocks are emitted first (in result order), then all image blocks
+// (in result/image order). This ordering is load-bearing: the Anthropic API requires
+// every tool_result in the post-tool_use user message to come immediately after the
+// tool_use turn, so no image block may be interleaved between two tool_result blocks.
+// With parallel tool calls where a non-final result carries an image, interleaving the
+// image after its owning tool_result would separate a later tool_result from the
+// tool_use turn and the API rejects the request ("tool_use ids were found without
+// tool_result blocks immediately after"). Images still ride in the same user message,
+// and each tool_result's text content (e.g. "[Image: foo.png]") keeps the image
+// identifiable, so model comprehension is preserved.
 func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 	var blocks []types.LlmContentBlock
+	var imageBlocks []types.LlmContentBlock
 	for _, r := range results {
 		isErr := r.IsError
 		blocks = append(blocks, types.LlmContentBlock{
@@ -340,12 +349,13 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 			IsError:   &isErr,
 		})
 		for _, img := range r.Images {
-			blocks = append(blocks, types.LlmContentBlock{
+			imageBlocks = append(imageBlocks, types.LlmContentBlock{
 				Type:   "image",
 				Source: img,
 			})
 		}
 	}
+	blocks = append(blocks, imageBlocks...)
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {

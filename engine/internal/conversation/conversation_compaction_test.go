@@ -616,6 +616,54 @@ func TestAddToolResults_WithImages(t *testing.T) {
 	}
 }
 
+// TestAddToolResults_MultipleResults_ImageNotInterleaved pins the Anthropic
+// adjacency rule for parallel tool calls. When the FIRST of two parallel
+// results carries an image, the image must NOT land between the two
+// tool_result blocks (the bug that produced the "tool_use ids were found
+// without tool_result blocks immediately after" API error). All tool_result
+// blocks must lead the message; images follow.
+func TestAddToolResults_MultipleResults_ImageNotInterleaved(t *testing.T) {
+	conv := CreateConversation("tool-images-parallel", "", "claude-3")
+
+	AddToolResults(conv, []ToolResultEntry{
+		{
+			ToolUseID: "tu_read",
+			Content:   "[Image: shot.png]",
+			Images: []*types.ImageSource{
+				{Type: "base64", MediaType: "image/png", Data: "iVBOR..."},
+			},
+		},
+		{
+			ToolUseID: "tu_glob",
+			Content:   "match-a.ts\nmatch-b.ts",
+		},
+	})
+
+	if len(conv.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(conv.Messages))
+	}
+	blocks, ok := conv.Messages[0].Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatal("expected []LlmContentBlock")
+	}
+	// Expected order: tool_result(tu_read), tool_result(tu_glob), image.
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks (2 tool_result + 1 image), got %d", len(blocks))
+	}
+	if blocks[0].Type != "tool_result" || blocks[0].ToolUseID != "tu_read" {
+		t.Errorf("block[0] = %q/%q, want tool_result/tu_read", blocks[0].Type, blocks[0].ToolUseID)
+	}
+	if blocks[1].Type != "tool_result" || blocks[1].ToolUseID != "tu_glob" {
+		t.Errorf("block[1] = %q/%q, want tool_result/tu_glob", blocks[1].Type, blocks[1].ToolUseID)
+	}
+	if blocks[2].Type != "image" {
+		t.Errorf("block[2] type = %q, want image (image must follow all tool_results)", blocks[2].Type)
+	}
+	if blocks[2].Source == nil || blocks[2].Source.MediaType != "image/png" {
+		t.Error("image block should carry image source data")
+	}
+}
+
 // --- Effective context window + auto-compact limit ---
 
 func TestEffectiveContextWindow(t *testing.T) {
