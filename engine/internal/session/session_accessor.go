@@ -52,6 +52,21 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 	return a.m.SendPrompt(a.key, text, overrides)
 }
 
+// SteerSelfMainLoop steers this session's own main run loop (depth-0 /
+// orchestrator). It delegates to SteerAgent with an empty agent name, which
+// targets the main loop's in-flight run. Returns true when the steer reached
+// a live run (any delivered outcome), false when there is no active main run
+// — the ctx.SteerSelf wiring then falls back to SendPrompt so the message is
+// delivered as a fresh prompt on the idle session.
+func (a *sessionAccessor) SteerSelfMainLoop(message string) bool {
+	outcome := a.m.SteerAgent(a.key, "", message)
+	utils.Info("Session", fmt.Sprintf(
+		"sessionAccessor.SteerSelfMainLoop: key=%s msgLen=%d outcome=%s delivered=%t",
+		a.key, len(message), outcome, outcome.Delivered(),
+	))
+	return outcome.Delivered()
+}
+
 func (a *sessionAccessor) SuppressTool(name string) {
 	a.m.mu.Lock()
 	a.s.suppressedTools = append(a.s.suppressedTools, name)

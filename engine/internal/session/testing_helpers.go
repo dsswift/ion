@@ -3,6 +3,7 @@ package session
 import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -16,6 +17,24 @@ func (m *Manager) TestNewExtContext(key string) *extension.Context {
 		return nil
 	}
 	return m.newExtContext(s, key)
+}
+
+// TestNewExtContextWithOpts builds a depth-aware extension Context for the
+// given session key. The caller controls the dispatch depth, dispatch ID, and
+// registry via ExtContextOpts. This is the integration-test entry point for
+// simulating a dispatched agent's own context (depth > 0) so the agent can
+// dispatch children at depth+1. Exported for integration tests only.
+func (m *Manager) TestNewExtContextWithOpts(key string, opts extcontext.ExtContextOpts) *extension.Context {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	if opts.Registry == nil {
+		opts.Registry = s.dispatchRegistry
+	}
+	return extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key}, opts)
 }
 
 // TestSetExtGroup wires an ExtensionGroup onto an existing session.

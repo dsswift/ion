@@ -54,6 +54,8 @@ func recoverBackgroundDispatchPanic(
 	opts extension.DispatchAgentOpts,
 	key, agentID, agentName string,
 	r interface{},
+	childDepth int,
+	parentDispatchId string,
 ) {
 	// Capture the stack as soon as possible so it reflects the panic
 	// site rather than the recovery site.
@@ -107,6 +109,9 @@ func recoverBackgroundDispatchPanic(
 		Type:             "engine_dispatch_end",
 		DispatchAgent:    opts.Name,
 		DispatchExitCode: 1,
+		DispatchDepth:    childDepth,
+		DispatchParentId: parentDispatchId,
+		DispatchId:       agentID,
 	})
 
 	// 4. Deregister from the dispatch registry so future recall

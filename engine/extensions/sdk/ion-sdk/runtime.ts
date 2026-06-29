@@ -50,6 +50,7 @@ import type {
   SandboxProfile,
   SandboxWrapResult,
   SendPromptOpts,
+  SteerDispatchResult,
   ToolDef,
 } from './types'
 
@@ -309,6 +310,20 @@ function buildContext(ctxData: any): IonContext {
     async recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean> {
       const result = await request('ext/recall_agent', { name, reason: opts?.reason || '' })
       return !!result?.found
+    },
+    async steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult> {
+      const result = await request('ext/steer_dispatch', { dispatchId, message })
+      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+    },
+    async steerSelf(message: string): Promise<SteerDispatchResult> {
+      // Deliver `message` to the run that owns this context. The engine picks
+      // the mechanism: a live owning run is steered (outcome "steered"); an
+      // idle one receives a fresh prompt (outcome "sent"). This is how a
+      // background dispatch's completion reaches its dispatching agent without
+      // the agent polling — a busy parent is steered mid-run instead of the
+      // completion queueing behind the live run until it happens to go idle.
+      const result = await request('ext/steer_self', { message })
+      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
     },
     async discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]> {
       const result = await request('ext/discover_agents', opts || {})

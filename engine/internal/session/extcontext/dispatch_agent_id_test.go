@@ -65,6 +65,7 @@ func (a *idTestAccessor) ConversationID() string                   { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *idTestAccessor) SendAbort()                               {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *idTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -162,7 +163,7 @@ func TestDispatchID_Populated(t *testing.T) {
 	child := &idChildBackend{convID: "conv-id-1"}
 	acc := &idTestAccessor{child: child}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	result, err := dispatchFn(extension.DispatchAgentOpts{
 		Name: "test-agent",
@@ -199,7 +200,7 @@ func TestDispatchID_BackgroundStub(t *testing.T) {
 	child := &blockingChildBackend{convID: "conv-bg-1", gate: gate}
 	acc := &idTestAccessor{child: child}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, NewDispatchRegistry())
+	dispatchFn := BuildDispatchAgentFunc(acc, NewDispatchRegistry(), 0, "")
 
 	result, err := dispatchFn(extension.DispatchAgentOpts{
 		Name:       "bg-agent",
@@ -238,7 +239,7 @@ func TestDispatchID_CollisionSafe(t *testing.T) {
 			defer wg.Done()
 			child := &idChildBackend{convID: "conv-collision-" + itoa(idx)}
 			acc := &idTestAccessor{child: child}
-			dispatchFn := BuildDispatchAgentFunc(acc, nil)
+			dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 			result, err := dispatchFn(extension.DispatchAgentOpts{
 				Name: "same-agent",
 				Task: "task",
@@ -283,7 +284,7 @@ func TestConversationIds_NoDuplicates(t *testing.T) {
 	child := &idChildBackend{convID: convID}
 	acc := &idTestAccessor{child: child}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	result, err := dispatchFn(extension.DispatchAgentOpts{
 		Name: "dedup-agent",
@@ -331,7 +332,7 @@ func TestConversationIds_EarlyCaptureDedups(t *testing.T) {
 	// Pre-seed the accessor's state with a conversationIds entry matching
 	// the child's convID. This simulates a reused agent state entry that
 	// already has the ID from a prior dispatch.
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	result, err := dispatchFn(extension.DispatchAgentOpts{
 		Name: "early-dedup-agent",
@@ -358,7 +359,7 @@ func TestConversationIds_EarlyCaptureDedups(t *testing.T) {
 	acc.child = child2
 	acc.mu.Unlock()
 
-	dispatchFn2 := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn2 := BuildDispatchAgentFunc(acc, nil, 0, "")
 	result2, err := dispatchFn2(extension.DispatchAgentOpts{
 		Name: "early-dedup-agent",
 		Task: "task 2",
@@ -514,7 +515,7 @@ func TestDispatchID_OnErrorCallback(t *testing.T) {
 	done := make(chan struct{})
 
 	registry := NewDispatchRegistry()
-	dispatchFn := BuildDispatchAgentFunc(acc, registry)
+	dispatchFn := BuildDispatchAgentFunc(acc, registry, 0, "")
 
 	stub, err := dispatchFn(extension.DispatchAgentOpts{
 		Name:       "err-agent",
@@ -559,7 +560,7 @@ func TestDispatchID_OnLifecycleCallbacks(t *testing.T) {
 	done := make(chan struct{})
 
 	registry := NewDispatchRegistry()
-	dispatchFn := BuildDispatchAgentFunc(acc, registry)
+	dispatchFn := BuildDispatchAgentFunc(acc, registry, 0, "")
 
 	stub, err := dispatchFn(extension.DispatchAgentOpts{
 		Name:       "lc-agent",

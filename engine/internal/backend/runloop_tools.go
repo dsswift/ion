@@ -48,9 +48,21 @@ func (b *ApiBackend) executeTools(
 	permDenyFn := hooks.OnPermissionDenied
 	permClassifyFn := hooks.OnPermissionClassify
 
-	// Inject session-scoped agent spawner into context for Agent tool
+	// Inject session-scoped agent spawner into context for Agent tool.
+	// A nil spawner means the Agent tool will return "Agent tool not
+	// available" if the LLM invokes it. This should not happen in
+	// production: both the main session path (wireAgentSpawner) and the
+	// dispatch child path (BuildChildAgentSpawner) wire a spawner. Log
+	// loudly so any future nil-spawner regression surfaces as a
+	// diagnosable log line instead of an opaque model narration.
 	if spawnerFn != nil {
 		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
+	} else {
+		utils.Warn("ApiBackend", fmt.Sprintf(
+			"run=%s has nil AgentSpawner: Agent tool will be unavailable. "+
+				"This indicates a wiring gap in the RunConfig assembly path.",
+			run.requestID,
+		))
 	}
 
 	// Inject history searcher scoped to this run's conversation so the

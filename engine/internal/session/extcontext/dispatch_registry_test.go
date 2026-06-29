@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/backend"
 )
 
 // TestDispatchRegistry_RegisterDeregisterLifecycle verifies the basic
@@ -252,8 +254,8 @@ func TestDispatchRegistry_ParallelSameNameKeepsBoth(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var cancelledA, cancelledB atomic.Int32
-	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func() { cancelledA.Add(1) }, nil, "sess-1")
-	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func() { cancelledB.Add(1) }, nil, "sess-1")
+	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func() { cancelledA.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func() { cancelledB.Add(1) }, nil, "sess-1", "", 0)
 
 	if got := r.Count(); got != 2 {
 		t.Fatalf("Count after two same-name registers = %d, want 2", got)
@@ -279,8 +281,8 @@ func TestDispatchRegistry_RecallByID_TargetsSpecificInstance(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var cancelledA, cancelledB atomic.Int32
-	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func() { cancelledA.Add(1) }, nil, "sess-1")
-	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func() { cancelledB.Add(1) }, nil, "sess-1")
+	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func() { cancelledA.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func() { cancelledB.Add(1) }, nil, "sess-1", "", 0)
 
 	// Recall only the first instance by ID.
 	ok := r.RecallByID("dispatch-agent-1-aaa", "test_targeted_recall")
@@ -323,8 +325,8 @@ func TestDispatchRegistry_RecallByName_CancelsOneOfMany(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var cancelled atomic.Int32
-	r.RegisterWithID("id-1", "agent", func() { cancelled.Add(1) }, nil, "sess-1")
-	r.RegisterWithID("id-2", "agent", func() { cancelled.Add(1) }, nil, "sess-1")
+	r.RegisterWithID("id-1", "agent", func() { cancelled.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("id-2", "agent", func() { cancelled.Add(1) }, nil, "sess-1", "", 0)
 
 	ok := r.Recall("agent", "test_name_recall")
 	if !ok {
@@ -344,8 +346,8 @@ func TestDispatchRegistry_RecallByName_CancelsOneOfMany(t *testing.T) {
 func TestDispatchRegistry_DeregisterByID(t *testing.T) {
 	r := NewDispatchRegistry()
 
-	r.RegisterWithID("id-x", "agent", func() {}, nil, "sess-1")
-	r.RegisterWithID("id-y", "agent", func() {}, nil, "sess-1")
+	r.RegisterWithID("id-x", "agent", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("id-y", "agent", func() {}, nil, "sess-1", "", 0)
 
 	r.Deregister("id-x")
 	if got := r.Count(); got != 1 {
@@ -382,5 +384,118 @@ func TestDispatchRegistry_BackwardCompat_RegisterUsesNameAsID(t *testing.T) {
 	}
 	if d.ID != "agent-old" {
 		t.Errorf("ID = %q, want 'agent-old' (backward compat)", d.ID)
+	}
+}
+
+// --- SteerByID tests ---
+
+// mockSteerableBackend is a fake backend that implements Steerable for
+// testing SteerByID. It records the last steer call and returns a
+// configurable SteerResult.
+type mockSteerableBackend struct {
+	backend.RunBackend
+	result      backend.SteerResult
+	lastRunID   string
+	lastMessage string
+	called      bool
+}
+
+func (m *mockSteerableBackend) SteerWithReason(requestID, message string) backend.SteerResult {
+	m.called = true
+	m.lastRunID = requestID
+	m.lastMessage = message
+	return m.result
+}
+
+// TestDispatchRegistry_SteerByID_Delivered verifies that SteerByID
+// returns SteerOutcomeDelivered when the child backend accepts the steer.
+func TestDispatchRegistry_SteerByID_Delivered(t *testing.T) {
+	r := NewDispatchRegistry()
+	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
+
+	r.RegisterWithID("dispatch-abc", "agent", func() {}, child, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-abc", "sess-1-dispatch-abc")
+
+	outcome := r.SteerByID("dispatch-abc", "redirect to tests")
+
+	if outcome != SteerOutcomeDelivered {
+		t.Fatalf("SteerByID outcome = %q, want %q", outcome, SteerOutcomeDelivered)
+	}
+	if !child.called {
+		t.Fatal("child.SteerWithReason was not called")
+	}
+	if child.lastRunID != "sess-1-dispatch-abc" {
+		t.Errorf("child received runID = %q, want %q", child.lastRunID, "sess-1-dispatch-abc")
+	}
+	if child.lastMessage != "redirect to tests" {
+		t.Errorf("child received message = %q, want %q", child.lastMessage, "redirect to tests")
+	}
+}
+
+// TestDispatchRegistry_SteerByID_ChannelFull verifies SteerOutcomeChannelFull.
+func TestDispatchRegistry_SteerByID_ChannelFull(t *testing.T) {
+	r := NewDispatchRegistry()
+	child := &mockSteerableBackend{result: backend.SteerResultChannelFull}
+
+	r.RegisterWithID("dispatch-xyz", "agent", func() {}, child, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-xyz", "run-xyz")
+
+	outcome := r.SteerByID("dispatch-xyz", "overflow")
+
+	if outcome != SteerOutcomeChannelFull {
+		t.Fatalf("SteerByID outcome = %q, want %q", outcome, SteerOutcomeChannelFull)
+	}
+}
+
+// TestDispatchRegistry_SteerByID_NoRun verifies SteerOutcomeNoRun when the
+// child backend has no active run for the ChildRunID.
+func TestDispatchRegistry_SteerByID_NoRun(t *testing.T) {
+	r := NewDispatchRegistry()
+	child := &mockSteerableBackend{result: backend.SteerResultNoRun}
+
+	r.RegisterWithID("dispatch-nnn", "agent", func() {}, child, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-nnn", "run-gone")
+
+	outcome := r.SteerByID("dispatch-nnn", "hello")
+
+	if outcome != SteerOutcomeNoRun {
+		t.Fatalf("SteerByID outcome = %q, want %q", outcome, SteerOutcomeNoRun)
+	}
+}
+
+// TestDispatchRegistry_SteerByID_NotFound verifies SteerOutcomeNotFound
+// when no dispatch with the given ID exists in the registry.
+func TestDispatchRegistry_SteerByID_NotFound(t *testing.T) {
+	r := NewDispatchRegistry()
+
+	outcome := r.SteerByID("no-such-dispatch", "hello")
+
+	if outcome != SteerOutcomeNotFound {
+		t.Fatalf("SteerByID outcome = %q, want %q", outcome, SteerOutcomeNotFound)
+	}
+}
+
+// TestDispatchRegistry_SetChildRunID verifies that SetChildRunID updates the
+// ChildRunID on an existing entry and is a no-op for nonexistent entries.
+func TestDispatchRegistry_SetChildRunID(t *testing.T) {
+	r := NewDispatchRegistry()
+
+	// No-op for nonexistent entry (no panic).
+	r.SetChildRunID("nonexistent", "run-1")
+
+	r.RegisterWithID("dispatch-set", "agent", func() {}, nil, "sess-1", "", 0)
+
+	d, ok := r.Get("dispatch-set")
+	if !ok {
+		t.Fatal("Get returned false after register")
+	}
+	if d.ChildRunID != "" {
+		t.Errorf("ChildRunID before SetChildRunID = %q, want empty", d.ChildRunID)
+	}
+
+	r.SetChildRunID("dispatch-set", "the-run-id")
+	d2, _ := r.Get("dispatch-set")
+	if d2.ChildRunID != "the-run-id" {
+		t.Errorf("ChildRunID after SetChildRunID = %q, want %q", d2.ChildRunID, "the-run-id")
 	}
 }

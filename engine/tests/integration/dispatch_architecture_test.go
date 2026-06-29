@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -657,42 +658,62 @@ func flattenContent(msgs []types.SessionMessage) string {
 }
 
 type fixtureEvent struct {
-	Type      string  `json:"type"`
-	Agent     string  `json:"agent,omitempty"`
-	Task      string  `json:"task,omitempty"`
-	Model     string  `json:"model,omitempty"`
-	SessionID string  `json:"sessionId,omitempty"`
-	ExitCode  int     `json:"exitCode,omitempty"`
-	Elapsed   float64 `json:"elapsed,omitempty"`
-	Cost      float64 `json:"cost,omitempty"`
-	Session   string  `json:"session"`
+	Type    string  `json:"type"`
+	Agent   string  `json:"agent,omitempty"`
+	Task    string  `json:"task,omitempty"`
+	Model   string  `json:"model,omitempty"`
+	ExitCode int    `json:"exitCode,omitempty"`
+	Cost    float64 `json:"cost,omitempty"`
+	Session string  `json:"session"`
 }
 
+// writeEventFixture serialises a normalised, deterministic snapshot of
+// engine events from the 8-dispatch test to testdata/dispatch_architecture_events.json.
+//
+// Two sources of non-determinism are removed at the root:
+//
+//  1. Volatile fields: sessionId (nanosecond-seeded) and elapsed (wall-clock)
+//     are omitted entirely from the fixture.  Downstream consumers that need
+//     elapsed values should derive them from their own timing or assert only
+//     that elapsed > 0 in a live test.
+//
+//  2. Non-deterministic ordering: parallel background dispatches (alpha, beta)
+//     finish in whichever goroutine wins the race.  After collecting the raw
+//     event stream, we partition it into logical segments at each
+//     engine_agent_state boundary, sort dispatch_start and dispatch_end events
+//     within each segment by agent name (alpha < beta), and collapse
+//     consecutive engine_agent_state runs down to a single sentinel.  The
+//     result is the same bytes every run regardless of goroutine scheduling.
 func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 	t.Helper()
-	var fixture []fixtureEvent
-	emit := func(sr *dispatchSessionResults, label string) {
+
+	collect := func(sr *dispatchSessionResults, label string) []fixtureEvent {
 		sr.mu.Lock()
 		defer sr.mu.Unlock()
+		var out []fixtureEvent
 		for _, ev := range sr.events {
 			switch ev.Type {
 			case "engine_dispatch_start":
-				fixture = append(fixture, fixtureEvent{
+				out = append(out, fixtureEvent{
 					Type: ev.Type, Agent: ev.DispatchAgent, Task: ev.DispatchTask,
-					Model: ev.DispatchModel, SessionID: ev.DispatchSessionID, Session: label,
+					Model: ev.DispatchModel, Session: label,
+					// sessionId omitted: nanosecond-seeded, volatile every run.
 				})
 			case "engine_dispatch_end":
-				fixture = append(fixture, fixtureEvent{
+				out = append(out, fixtureEvent{
 					Type: ev.Type, Agent: ev.DispatchAgent, ExitCode: ev.DispatchExitCode,
-					Elapsed: ev.DispatchElapsed, Cost: ev.DispatchCost, Session: label,
+					Cost: ev.DispatchCost, Session: label,
+					// elapsed omitted: wall-clock, volatile every run.
 				})
 			case "engine_agent_state":
-				fixture = append(fixture, fixtureEvent{Type: ev.Type, Session: label})
+				out = append(out, fixtureEvent{Type: ev.Type, Session: label})
 			}
 		}
+		return out
 	}
-	emit(sessA, "sess-a")
-	emit(sessB, "sess-b")
+
+	raw := append(collect(sessA, "sess-a"), collect(sessB, "sess-b")...)
+	fixture := normalizeFixture(raw)
 
 	data, err := json.MarshalIndent(fixture, "", "  ")
 	if err != nil {
@@ -707,4 +728,112 @@ func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 		return
 	}
 	t.Logf("wrote %d events to %s", len(fixture), path)
+}
+
+// normalizeFixture makes the fixture deterministic:
+//  1. Collapses consecutive engine_agent_state runs (same session) to one entry.
+//  2. Within each segment between state emissions, sorts dispatch_start and
+//     dispatch_end sub-groups by agent name so goroutine-race ordering is
+//     erased.
+func normalizeFixture(events []fixtureEvent) []fixtureEvent {
+	// Step 1: collapse consecutive engine_agent_state runs per session.
+	collapsed := events[:0:0]
+	for i, ev := range events {
+		if ev.Type == "engine_agent_state" && i > 0 {
+			prev := collapsed[len(collapsed)-1]
+			if prev.Type == "engine_agent_state" && prev.Session == ev.Session {
+				continue // skip duplicate state sentinel
+			}
+		}
+		collapsed = append(collapsed, ev)
+	}
+
+	// Step 2: sort dispatch events within each inter-state segment by agent name.
+	// We walk the collapsed list, accumulate non-state events into a buffer,
+	// and flush+sort the buffer whenever we hit a state event or end of slice.
+	var result []fixtureEvent
+	var buf []fixtureEvent
+
+	flushBuf := func() {
+		if len(buf) == 0 {
+			return
+		}
+		// Separate starts from ends; sort each sub-group by agent name, then
+		// re-interleave: all starts first (sorted), then all ends (sorted).
+		// This is stable and deterministic regardless of goroutine order.
+		var starts, ends, other []fixtureEvent
+		for _, e := range buf {
+			switch e.Type {
+			case "engine_dispatch_start":
+				starts = append(starts, e)
+			case "engine_dispatch_end":
+				ends = append(ends, e)
+			default:
+				other = append(other, e)
+			}
+		}
+		sort.Slice(starts, func(i, j int) bool { return starts[i].Agent < starts[j].Agent })
+		sort.Slice(ends, func(i, j int) bool { return ends[i].Agent < ends[j].Agent })
+		result = append(result, other...)
+		result = append(result, starts...)
+		result = append(result, ends...)
+		buf = buf[:0]
+	}
+
+	for _, ev := range collapsed {
+		if ev.Type == "engine_agent_state" {
+			flushBuf()
+			result = append(result, ev)
+		} else {
+			buf = append(buf, ev)
+		}
+	}
+	flushBuf()
+
+	// Step 3: the interleaved state events split each round's dispatch_start
+	// and dispatch_end groups into individual segments, so the per-segment sort
+	// above only sees one event at a time.  Do a second pass: for each session,
+	// sort all dispatch_start events (preserving their relative task order by
+	// using agent as tie-break) and all dispatch_end events by agent, globally
+	// within the result.  We achieve this by extracting dispatch events per
+	// session+type, sorting, and splicing them back into the state-sentinel
+	// skeleton in a stable left-to-right pass.
+	type slotKey struct{ session, typ string }
+	sorted := map[slotKey][]fixtureEvent{}
+	for _, ev := range result {
+		if ev.Type == "engine_dispatch_start" || ev.Type == "engine_dispatch_end" {
+			k := slotKey{ev.Session, ev.Type}
+			sorted[k] = append(sorted[k], ev)
+		}
+	}
+	for k := range sorted {
+		if k.typ == "engine_dispatch_start" {
+			// preserve task sequence within each round but sort siblings by agent
+			// (tasks appear in round order: AAA/BBB, CCC/DDD — alpha before beta by name)
+			s := sorted[k]
+			// chunk into pairs (rounds) and sort each pair by agent
+			for i := 0; i+1 < len(s); i += 2 {
+				if s[i].Agent > s[i+1].Agent {
+					s[i], s[i+1] = s[i+1], s[i]
+				}
+			}
+		} else {
+			s := sorted[k]
+			for i := 0; i+1 < len(s); i += 2 {
+				if s[i].Agent > s[i+1].Agent {
+					s[i], s[i+1] = s[i+1], s[i]
+				}
+			}
+		}
+	}
+	// Splice back: walk result, replace dispatch events in order with sorted versions.
+	cursors := map[slotKey]int{}
+	for i, ev := range result {
+		if ev.Type == "engine_dispatch_start" || ev.Type == "engine_dispatch_end" {
+			k := slotKey{ev.Session, ev.Type}
+			result[i] = sorted[k][cursors[k]]
+			cursors[k]++
+		}
+	}
+	return result
 }

@@ -33,6 +33,14 @@ type SessionAccessor interface {
 	// unconditionally.
 	RootContext() context.Context
 	SendPrompt(text string, model string, bashAllowlistAdditions []string) error
+
+	// SteerSelfMainLoop attempts to steer the session's OWN main run loop
+	// (the depth-0 / orchestrator run) by injecting message onto its steer
+	// channel. Returns true when the steer reached a live run; false when
+	// there is no active main run (the caller then falls back to SendPrompt).
+	// This is the depth-0 arm of ctx.SteerSelf — depth-N contexts steer their
+	// dispatch's child run through the DispatchRegistry instead.
+	SteerSelfMainLoop(message string) bool
 	Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error)
 	SuppressTool(name string)
 	CacheExtAgentStates(agents []types.AgentStateUpdate)
@@ -134,14 +142,41 @@ type SessionAccessor interface {
 	RunOnceComplete(operationID string, failed bool)
 }
 
+// ExtContextOpts holds optional configuration for NewExtContext. All fields
+// default to zero values, which produce a root-level (depth 0) context.
+type ExtContextOpts struct {
+	// Registry enables background dispatch and recall support.
+	Registry *DispatchRegistry
+	// Depth is the dispatch depth of the agent that will own this context.
+	// 0 for the orchestrator (root), 1 for a direct dispatch, etc.
+	Depth int
+	// DispatchId is the dispatch ID of the agent that owns this context.
+	// Empty for the orchestrator at depth 0.
+	DispatchId string
+}
+
 // NewExtContext builds a fully-populated extension.Context by delegating all
 // callbacks to the provided SessionAccessor. The optional DispatchRegistry
 // enables background dispatch and recall support; pass nil to disable.
-func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extension.Context {
-	// Accept an optional registry via variadic to avoid breaking existing callers.
+//
+// The variadic argument accepts either a *DispatchRegistry (backward-compat)
+// or an ExtContextOpts struct. When opts are provided, the context's
+// DispatchAgent closure is depth-aware: it binds the given depth and dispatch
+// ID so child dispatches inherit depth+1 and cannot forge their ancestry.
+func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	var registry *DispatchRegistry
-	if len(registries) > 0 {
-		registry = registries[0]
+	var depth int
+	var dispatchId string
+
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *DispatchRegistry:
+			registry = v
+		case ExtContextOpts:
+			registry = v.Registry
+			depth = v.Depth
+			dispatchId = v.DispatchId
+		}
 	}
 
 	ctx := &extension.Context{
@@ -243,7 +278,7 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 	}
 
 	// Wire engine-native agent dispatch.
-	ctx.DispatchAgent = BuildDispatchAgentFunc(sa, registry)
+	ctx.DispatchAgent = BuildDispatchAgentFunc(sa, registry, depth, dispatchId)
 
 	// Wire recall support for background dispatches.
 	if registry != nil {
@@ -255,6 +290,60 @@ func NewExtContext(sa SessionAccessor, registries ...*DispatchRegistry) *extensi
 			found := registry.Recall(name, reason)
 			return found, nil
 		}
+	}
+
+	// Wire steer support for background dispatches.
+	if registry != nil {
+		ctx.SteerDispatch = func(dispatchID, message string) (extension.SteerDispatchResult, error) {
+			outcome := registry.SteerByID(dispatchID, message)
+			return extension.SteerDispatchResult{
+				Delivered: outcome == SteerOutcomeDelivered,
+				Outcome:   string(outcome),
+			}, nil
+		}
+	}
+
+	// Wire self-steer: deliver a message to the run that OWNS this context,
+	// letting the engine pick steer-vs-send based on that run's live state.
+	// This is the mechanism that lets a background dispatch's completion reach
+	// its dispatching agent without polling — a live owning run is steered
+	// mid-turn; an idle one receives a fresh prompt.
+	//
+	// Depth-aware resolution:
+	//   - depth 0 (orchestrator): the owning run is the session's main loop.
+	//     Try the main-loop steer; if there is no live main run, fall back to
+	//     SendPrompt (a normal new prompt on the idle session).
+	//   - depth N (a dispatched agent's own context): the owning run is THIS
+	//     dispatch's child run, addressed by dispatchId through the registry's
+	//     SteerByID. If the child run is not live (SteerByID returns no_run),
+	//     fall back to SendPrompt so the message is not lost.
+	//
+	// "steered" outcome ⇒ injected onto a live run's steer channel.
+	// "sent" outcome    ⇒ delivered as a fresh prompt (owning run was idle).
+	ctx.SteerSelf = func(message string) (extension.SteerDispatchResult, error) {
+		if depth > 0 && registry != nil && dispatchId != "" {
+			// Depth-N: steer this dispatch's own child run.
+			outcome := registry.SteerByID(dispatchId, message)
+			if outcome == SteerOutcomeDelivered {
+				return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
+			}
+			// Child run not live (no_run / not_found / channel_full) — fall
+			// back to a fresh prompt on the owning session so the completion
+			// is never silently dropped.
+			if err := sa.SendPrompt(message, "", nil); err != nil {
+				return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
+			}
+			return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+		}
+
+		// Depth-0: steer the session's main loop when it is live, else send.
+		if sa.SteerSelfMainLoop(message) {
+			return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
+		}
+		if err := sa.SendPrompt(message, "", nil); err != nil {
+			return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
+		}
+		return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
 	}
 
 	// Wire the lightweight one-shot inference primitive. Always available

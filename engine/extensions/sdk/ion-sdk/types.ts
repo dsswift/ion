@@ -133,6 +133,19 @@ export interface RecallAgentOpts {
   reason?: string
 }
 
+/** Result of {@link IonContext.steerDispatch} and {@link IonContext.steerSelf}. */
+export interface SteerDispatchResult {
+  /** True when the message reached a run (steered or sent). */
+  delivered: boolean
+  /**
+   * Delivery verdict. `steerDispatch` returns one of 'delivered',
+   * 'channel_full', 'no_run', 'not_found'. `steerSelf` returns 'steered'
+   * (injected onto a live owning run) or 'sent' (owning run was idle, so the
+   * message was delivered as a fresh prompt).
+   */
+  outcome: 'delivered' | 'channel_full' | 'no_run' | 'not_found' | 'steered' | 'sent'
+}
+
 // --- Dispatch lifecycle callback payloads ---
 
 /** Payload for {@link DispatchAgentOpts.onToolStart}. */
@@ -502,6 +515,36 @@ export interface IonContext {
    * ```
    */
   recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean>
+  /**
+   * Deliver a steering message to a running background dispatch. The message
+   * is injected into the child's conversation as a user message at the next
+   * run-loop checkpoint, reusing the existing steer channel mechanism.
+   *
+   * @param dispatchId - The dispatch ID returned by {@link IonContext.dispatchAgent}.
+   * @param message - The steering message to inject.
+   * @returns A result describing the delivery outcome.
+   */
+  steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult>
+  /**
+   * Deliver a message to the run that OWNS this context, letting the engine
+   * pick the mechanism based on that run's live state:
+   *
+   * - If the owning run is live, the message is steered onto it and surfaces
+   *   at the next run-loop checkpoint (mid-turn). Outcome: `'steered'`.
+   * - If the owning run is idle, the message is sent as a fresh prompt via the
+   *   normal prompt path. Outcome: `'sent'`.
+   *
+   * Use this to bubble a background dispatch's completion back to the
+   * dispatching agent without polling: a busy parent is steered immediately
+   * instead of the completion queueing behind its live run until it goes idle.
+   * Depth-aware — at depth 0 the owning run is the session's main loop; at
+   * depth N it is this dispatch's own child run. The engine resolves the run;
+   * the caller never names it.
+   *
+   * @param message - The message to deliver to the owning run.
+   * @returns A result describing the delivery outcome (`'steered'` or `'sent'`).
+   */
+  steerSelf(message: string): Promise<SteerDispatchResult>
   discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>
   /**
    * Wrap a shell command with platform-appropriate sandbox restrictions.

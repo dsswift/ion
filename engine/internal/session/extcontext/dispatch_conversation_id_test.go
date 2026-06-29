@@ -114,6 +114,7 @@ func (a *convIDRecordingAccessor) WorkingDirectory() string                 { re
 func (a *convIDRecordingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *convIDRecordingAccessor) SendAbort()                               {}
 func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *convIDRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -254,7 +255,7 @@ func TestDispatchCapturesConversationIDFromSessionInit(t *testing.T) {
 	}
 	acc := &convIDRecordingAccessor{child: child}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	// Run the dispatch in the background so the test can inspect mid-run state
 	// while the child backend is parked on its workGate.
@@ -394,7 +395,7 @@ func TestRedispatchSameNameGetDistinctConversationIDs(t *testing.T) {
 
 	acc := &factoryAccessor{factory: factory}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	// First dispatch: foreground, blocks until complete.
 	r1, err := dispatchFn(extension.DispatchAgentOpts{Name: "same-agent", Task: "first task"})
@@ -453,7 +454,7 @@ func TestConcurrentSameMillisDispatchesGetDistinctConversationIDs(t *testing.T) 
 
 	acc := &factoryAccessor{factory: factory}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	// Two foreground dispatches of the same name, back to back with no sleep.
 	// Both very likely land on the same UnixMilli; the test asserts uniqueness

@@ -358,6 +358,11 @@ type EngineEvent struct {
 	//   - DispatchTask:      the task string passed to the agent
 	//   - DispatchModel:     the resolved model for the dispatch
 	//   - DispatchSessionID: the child session's request ID
+	//   - DispatchDepth:     nesting depth of this dispatch (1 = direct child
+	//                        of orchestrator, 2 = grandchild, etc.)
+	//   - DispatchParentId:  dispatch ID of the parent that spawned this
+	//                        dispatch (empty for depth-1 dispatches whose
+	//                        parent is the orchestrator at depth 0)
 	//
 	// engine_dispatch_end fields:
 	//   - DispatchAgent:       the dispatched agent name
@@ -370,6 +375,8 @@ type EngineEvent struct {
 	//   - DispatchThinkingTokens: estimated reasoning tokens (subset of output;
 	//     see ThinkingBlockEndEvent.TotalTokens for the estimate caveat). Lets
 	//     cost/audit consumers separate reasoning spend from user-facing output.
+	//   - DispatchDepth:       same as dispatch_start
+	//   - DispatchParentId:    same as dispatch_start
 	DispatchAgent          string  `json:"dispatchAgent,omitempty"`
 	DispatchTask           string  `json:"dispatchTask,omitempty"`
 	DispatchModel          string  `json:"dispatchModel,omitempty"`
@@ -381,6 +388,13 @@ type EngineEvent struct {
 	DispatchOutputTokens   int     `json:"dispatchOutputTokens,omitempty"`
 	DispatchToolCount      int     `json:"dispatchToolCount,omitempty"`
 	DispatchThinkingTokens int     `json:"dispatchThinkingTokens,omitempty"`
+	DispatchDepth          int     `json:"dispatchDepth,omitempty"`
+	DispatchParentId       string  `json:"dispatchParentId,omitempty"`
+	// DispatchId carries the agentID of this dispatch on dispatch_start and
+	// dispatch_end events. Consumers can use it to correlate dispatch_start
+	// with dispatch_end without relying on positional ordering, and to match
+	// a child's dispatchParentId against its parent's dispatchId.
+	DispatchId string `json:"dispatchId,omitempty"`
 
 	// --- engine_dispatch_activity ---
 	//

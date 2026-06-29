@@ -153,6 +153,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	if h.handleRunOnceRPC(method, id, raw) {
 		return
 	}
+	// Steer RPCs (ext/steer_dispatch, ext/steer_self) live in
+	// host_rpc_steer.go to keep this file under the 800-line cap.
+	if h.handleSteerRPC(ctx, method, id, raw) {
+		return
+	}
 	switch method {
 	case "ext/register_process":
 		var req struct {

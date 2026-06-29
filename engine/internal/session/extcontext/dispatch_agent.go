@@ -2,6 +2,7 @@ package extcontext
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -19,22 +20,61 @@ import (
 // distinguish recall from failure.
 const ExitCodeRecalled = 2
 
-// BuildDispatchAgentFunc returns the DispatchAgent closure that creates a
-// child session within the engine with optional extension loading, system
-// prompt injection, and event streaming.
+// DefaultMaxDispatchDepth is the built-in cap when neither the per-dispatch
+// override (DispatchAgentOpts.MaxDispatchDepth) nor the engine config
+// (EngineRuntimeConfig.MaxDispatchDepth) sets a value. Allows depths
+// 0 (orchestrator), 1, and 2.
+const DefaultMaxDispatchDepth = 3
+
+// ErrDispatchDepthExceeded is returned by DispatchAgent when the requested
+// dispatch would exceed the effective MaxDispatchDepth. The caller sees a
+// typed error so it can distinguish depth rejection from other failures.
+var ErrDispatchDepthExceeded = errors.New("dispatch depth exceeded")
+
+// resolveMaxDispatchDepth returns the effective depth cap for a dispatch,
+// preferring the per-dispatch override, then the engine config, then the
+// built-in default.
+func resolveMaxDispatchDepth(perDispatch int, engineCfg int) int {
+	if perDispatch > 0 {
+		return perDispatch
+	}
+	if engineCfg > 0 {
+		return engineCfg
+	}
+	return DefaultMaxDispatchDepth
+}
+
+// BuildDispatchAgentFunc returns the DispatchAgent closure. currentDepth is
+// the owning agent's depth (0=orchestrator). currentDispatchId is the owning
+// agent's dispatch ID (empty at depth 0). The child inherits depth+1.
 //
-// When opts.Background is true, the dispatch returns a stub result immediately
-// and runs the child session in a goroutine. The terminal outcome is delivered
-// via opts.OnComplete, opts.OnError, or opts.OnRecall callbacks.
-//
-// Phase 2 lifecycle callbacks (OnToolStart, OnToolEnd, OnToolError, OnUsage,
-// OnTextDelta) fire from the existing OnNormalized handler during dispatch,
-// parsing event types once and delivering structured data.
-//
-// Phase 3 telemetry events (engine_dispatch_start, engine_dispatch_end) are
-// emitted on the parent session's event stream when a dispatch begins and ends.
-func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func(extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
+// Background dispatch returns a stub immediately and runs in a goroutine;
+// terminal outcome via OnComplete/OnError/OnRecall callbacks.
+// Phase 2 lifecycle callbacks fire from OnNormalized; Phase 3 telemetry
+// (engine_dispatch_start/end) emit on the parent session's event stream.
+func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, currentDepth int, currentDispatchId string) func(extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
 	return func(opts extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
+		// --- Depth guard ---
+		childDepth := currentDepth + 1
+		var engineMaxDepth int
+		if cfg := sa.EngineConfig(); cfg != nil {
+			engineMaxDepth = cfg.MaxDispatchDepth
+		}
+		effectiveCap := resolveMaxDispatchDepth(opts.MaxDispatchDepth, engineMaxDepth)
+
+		if childDepth >= effectiveCap {
+			utils.Warn("Dispatch", fmt.Sprintf(
+				"depth guard: blocked dispatch agent=%q childDepth=%d cap=%d parentDispatchId=%q session=%s",
+				opts.Name, childDepth, effectiveCap, currentDispatchId, sa.SessionKey(),
+			))
+			return nil, fmt.Errorf("%w: agent=%q would be depth %d (cap %d)", ErrDispatchDepthExceeded, opts.Name, childDepth, effectiveCap)
+		}
+
+		utils.Log("Dispatch", fmt.Sprintf(
+			"depth guard: allowed dispatch agent=%q childDepth=%d cap=%d parentDispatchId=%q session=%s",
+			opts.Name, childDepth, effectiveCap, currentDispatchId, sa.SessionKey(),
+		))
+
 		start := time.Now()
 
 		utils.Log("Dispatch", fmt.Sprintf(
@@ -143,12 +183,16 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		child := sa.NewChildBackend()
 		var childCfg *backend.RunConfig
 
-		childExtHost := loadChildExtension(sa, &opts, model, projectPath)
+		childExtHost := loadChildExtension(sa, registry, &opts, model, projectPath, childDepth, agentID)
 		if childExtHost != nil {
 			childCfg = &backend.RunConfig{
 				Hooks: backend.RunHooks{
 					OnToolCall: func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
-						tcCtx := NewExtContext(sa)
+						tcCtx := NewExtContext(sa, ExtContextOpts{
+							Depth:      childDepth,
+							DispatchId: agentID,
+							Registry:   registry,
+						})
 						result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{
 							ToolName: info.ToolName,
 							ToolID:   info.ToolID,
@@ -163,12 +207,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			}
 		}
 
-		// Thread the engine's DefaultModel into the child run config so the
-		// runloop fallback (runloop.go:57) fires when the child's model
-		// doesn't resolve to a provider. Without this, dispatched children
-		// hard-fail with "no provider found" when the requested model is
-		// an unconfigured tier alias. Mirrors the spawner-side fix in
-		// prompt_agent_spawner.go. See plan §1 "Secondary path note".
+		// Thread DefaultModel so the runloop fallback fires when the child's
+		// model doesn't resolve. Mirrors prompt_agent_spawner.go.
 		var dispatchDefaultModel string
 		if engCfg := sa.EngineConfig(); engCfg != nil {
 			dispatchDefaultModel = engCfg.DefaultModel
@@ -179,6 +219,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			childCfg.DefaultModel = dispatchDefaultModel
 		}
 		utils.Log("Session", fmt.Sprintf("child run config: defaultModelThreaded=%q source=dispatch sessionKey=%s requestedModel=%q", dispatchDefaultModel, sa.SessionKey(), model))
+
+		// Wire AgentSpawner so the child can dispatch grandchildren via the
+		// engine Agent tool (see dispatch_child_spawner.go for rationale).
+		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID)
 
 		// Shared mutable state for the event handler closure.
 		var totalCost float64
@@ -205,6 +249,19 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 		var cumulativeCost float64
 		// Track active tool names by ID for structured callbacks.
 		toolNames := make(map[string]string)
+		// lifecycleMu guards the Phase 2 lifecycle accumulators above
+		// (toolNames, toolCount, accumulatedText, and the cumulative
+		// usage/cost counters). The child's OnNormalized callback is invoked
+		// concurrently: tool results are emitted from inside the parallel tool
+		// errgroup (backend.executeTools runs each tool in its own goroutine,
+		// and each goroutine routes its events through the same callback), so
+		// when a child runs N tools in parallel, N goroutines enter the
+		// callback at once. Without this lock the unsynchronized map writes in
+		// fireLifecycleCallbacks trip Go's "concurrent map writes" fatal, which
+		// bypasses recover() and hard-kills the engine process. Mirrors the
+		// progressMu pattern below, which already guards the live-progress
+		// accumulators in the same callback.
+		var lifecycleMu sync.Mutex
 
 		// Plan mode tracking.
 		var childPlanFilePath string
@@ -240,9 +297,14 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				}
 			}
 
-			// Phase 2: Structured lifecycle callbacks.
+			// Phase 2: Structured lifecycle callbacks. Guarded by lifecycleMu
+			// because this callback runs concurrently across the parallel tool
+			// errgroup (see lifecycleMu declaration); fireLifecycleCallbacks
+			// mutates the shared accumulator map and scalars.
+			lifecycleMu.Lock()
 			fireLifecycleCallbacks(&opts, ev, agentID, toolNames, &toolCount, &accumulatedText,
 				&cumulativeInputTokens, &cumulativeOutputTokens, &cumulativeCost)
+			lifecycleMu.Unlock()
 
 			// Live progress forwarding for the agent panel.
 			switch e := ev.Data.(type) {
@@ -425,6 +487,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 			DispatchTask:      opts.Task,
 			DispatchModel:     model,
 			DispatchSessionID: childReqID,
+			DispatchDepth:     childDepth,
+			DispatchParentId:  currentDispatchId,
+			DispatchId:        agentID,
 		})
 
 		// runChild encapsulates the child backend start + wait + result
@@ -496,6 +561,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				SessionID:                childSessionID,
 				PlanFilePath:             childPlanFilePath,
 				PlanExited:               childPlanExited,
+				Depth:                    childDepth,
+				ParentDispatchId:         currentDispatchId,
 			}
 
 			// Update agent state with terminal status and conversation ID.
@@ -561,6 +628,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				DispatchOutputTokens:   totalOutputTokens,
 				DispatchToolCount:      toolCount,
 				DispatchThinkingTokens: totalThinkingTokens,
+				DispatchDepth:          childDepth,
+				DispatchParentId:       currentDispatchId,
+				DispatchId:             agentID,
+				DispatchConversationID: childSessionID,
 			})
 
 			utils.Log("Dispatch", fmt.Sprintf(
@@ -577,7 +648,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 				registry.RegisterWithID(agentID, opts.Name, func() {
 					recallReason = "recall_agent"
 					cancelFn()
-				}, child, key)
+				}, child, key, currentDispatchId, childDepth)
+				// Store the child run ID so SteerByID can reach the child's
+				// activeRun in the child backend's activeRuns map.
+				registry.SetChildRunID(agentID, childReqID)
 			}
 
 			// Launch the child in a goroutine and return a stub immediately.
@@ -610,6 +684,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 					if r := recover(); r != nil {
 						recoverBackgroundDispatchPanic(
 							sa, registry, opts, key, agentID, agentName, r,
+							childDepth, currentDispatchId,
 						)
 					}
 				}()
@@ -663,69 +738,6 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry) func
 	}
 }
 
-// loadChildExtension loads the child extension if specified in opts. Returns
-// the Host (nil if no extension or load failed). Modifies opts.SystemPrompt
-// in-place if the extension provides additional system prompt content.
-func loadChildExtension(sa SessionAccessor, opts *extension.DispatchAgentOpts, model, projectPath string) *extension.Host {
-	if opts.ExtensionDir == "" {
-		return nil
-	}
-
-	childExtHost := extension.NewHost()
-	if cfg := sa.EngineConfig(); cfg != nil && cfg.Timeouts != nil {
-		childExtHost.SetRPCTimeout(cfg.Timeouts.ExtensionRpc())
-	}
-	extCfg := &extension.ExtensionConfig{
-		ExtensionDir:     opts.ExtensionDir,
-		Model:            model,
-		WorkingDirectory: projectPath,
-	}
-	if err := childExtHost.Load(opts.ExtensionDir, extCfg); err != nil {
-		utils.Log("Session", "child extension load failed: "+err.Error())
-		return nil
-	}
-
-	// Fire session_start on child extension.
-	childCtx := NewExtContext(sa)
-	_ = childExtHost.FireSessionStart(childCtx)
-
-	// Wire before_agent_start for system prompt.
-	basCtx := NewExtContext(sa)
-	extSysPrompt, _, _ := childExtHost.FireBeforeAgentStart(basCtx, extension.AgentInfo{
-		Name: opts.Name,
-		Task: opts.Task,
-	})
-	if extSysPrompt != "" {
-		if opts.SystemPrompt != "" {
-			opts.SystemPrompt = opts.SystemPrompt + "\n\n" + extSysPrompt
-		} else {
-			opts.SystemPrompt = extSysPrompt
-		}
-	}
-
-	return childExtHost
-}
-
-// startChild dispatches the child run on the appropriate backend. This
-// centralizes the type-switch logic for ApiBackend/HybridBackend/generic.
-func startChild(child backend.RunBackend, reqID string, runOpts types.RunOptions, cfg *backend.RunConfig) {
-	switch c := child.(type) {
-	case *backend.ApiBackend:
-		if cfg != nil {
-			c.StartRunWithConfig(reqID, runOpts, cfg)
-		} else {
-			c.StartRun(reqID, runOpts)
-		}
-	case *backend.HybridBackend:
-		if cfg != nil {
-			c.StartRunWithConfig(reqID, runOpts, cfg)
-		} else {
-			c.StartRun(reqID, runOpts)
-		}
-	default:
-		child.StartRun(reqID, runOpts)
-	}
-}
-
-// fireLifecycleCallbacks and truncate live in dispatch_lifecycle_callbacks.go
-// (same package) to keep this file under the 800-line cap.
+// fireLifecycleCallbacks and truncate live in dispatch_lifecycle_callbacks.go,
+// and loadChildExtension and startChild live in dispatch_child_setup.go (all
+// same package) to keep this file under the 800-line cap.

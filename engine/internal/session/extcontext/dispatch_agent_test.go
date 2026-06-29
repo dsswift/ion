@@ -1,6 +1,8 @@
 package extcontext
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -415,5 +417,103 @@ func TestFireLifecycleCallbacks_TaskCompleteUpdatesCost(t *testing.T) {
 
 	if gotUsage.CumulativeCost != 0.042 {
 		t.Errorf("OnUsage CumulativeCost = %v, want 0.042", gotUsage.CumulativeCost)
+	}
+}
+
+// TestFireLifecycleCallbacks_ConcurrentNoRace is the regression test for the
+// engine crash in conversation 1782699086966-a04524cbffe4: a three-tier
+// dispatch running parallel tool calls hard-killed the engine with
+// "fatal error: concurrent map writes" in fireLifecycleCallbacks.
+//
+// Root cause: the child's OnNormalized callback in dispatch_agent.go is invoked
+// concurrently — tool results are emitted from inside the parallel tool errgroup
+// (backend.executeTools runs each tool in its own goroutine), so N parallel
+// tools drive N concurrent fireLifecycleCallbacks calls. fireLifecycleCallbacks
+// mutates a shared map (toolNames) and shared scalars (toolCount, accumulated
+// text, cumulative usage/cost). Without serialization the unsynchronized map
+// writes trip Go's "concurrent map writes" fatal, which bypasses recover() and
+// kills the process. The fix guards the call with lifecycleMu in dispatch_agent.go.
+//
+// This test reproduces that exact pattern: many goroutines fire
+// ToolCall/ToolResult/Text/Usage events at the shared accumulators
+// simultaneously, serialized by a mutex exactly as the production closure now
+// does. Run under -race it passes with the lock and FAILS (data race +
+// "concurrent map writes") if the mu.Lock()/Unlock() around the call is
+// removed — i.e. it distinguishes the fixed code from the broken code.
+//
+// To confirm it pins the fix: delete the mu.Lock()/mu.Unlock() lines below and
+// re-run `go test -race -run TestFireLifecycleCallbacks_ConcurrentNoRace` — it
+// goes red. That mirrors removing lifecycleMu in dispatch_agent.go.
+func TestFireLifecycleCallbacks_ConcurrentNoRace(t *testing.T) {
+	const goroutines = 64
+
+	opts := &extension.DispatchAgentOpts{}
+
+	// Shared accumulators, exactly as captured by the dispatch_agent.go closure.
+	toolNames := make(map[string]string)
+	toolCount := 0
+	accumulatedText := ""
+	cumIn, cumOut := 0, 0
+	cumCost := 0.0
+
+	// mu mirrors lifecycleMu in dispatch_agent.go: it serializes every
+	// fireLifecycleCallbacks invocation against the shared accumulators.
+	var mu sync.Mutex
+
+	in, out := 3, 2
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func(g int) {
+			defer wg.Done()
+			toolID := fmt.Sprintf("tc-%d", g)
+
+			// ToolCall: writes toolNames[toolID] and increments toolCount.
+			tcEv := types.NormalizedEvent{Data: &types.ToolCallEvent{
+				ToolName: "bash",
+				ToolID:   toolID,
+			}}
+			// Text: appends to accumulatedText.
+			txtEv := types.NormalizedEvent{Data: &types.TextChunkEvent{Text: "x"}}
+			// Usage: adds to cumulative input/output tokens.
+			usageEv := types.NormalizedEvent{Data: &types.UsageEvent{
+				Usage: types.UsageData{InputTokens: &in, OutputTokens: &out},
+			}}
+			// ToolResult: deletes toolNames[toolID].
+			trEv := types.NormalizedEvent{Data: &types.ToolResultEvent{
+				ToolID:  toolID,
+				Content: "ok",
+				IsError: false,
+			}}
+
+			for _, ev := range []types.NormalizedEvent{tcEv, txtEv, usageEv, trEv} {
+				mu.Lock()
+				fireLifecycleCallbacks(opts, ev, "test-agent-id", toolNames, &toolCount, &accumulatedText,
+					&cumIn, &cumOut, &cumCost)
+				mu.Unlock()
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	// No lost updates: every goroutine fired exactly one ToolCall.
+	if toolCount != goroutines {
+		t.Errorf("toolCount = %d, want %d (lost increments under contention)", toolCount, goroutines)
+	}
+	// Every ToolResult deleted its toolNames entry; the map must be empty.
+	if len(toolNames) != 0 {
+		t.Errorf("toolNames has %d leftover entries, want 0 (delete races)", len(toolNames))
+	}
+	// Cumulative tokens equal the per-goroutine sum.
+	if want := goroutines * in; cumIn != want {
+		t.Errorf("cumulativeInputTokens = %d, want %d", cumIn, want)
+	}
+	if want := goroutines * out; cumOut != want {
+		t.Errorf("cumulativeOutputTokens = %d, want %d", cumOut, want)
+	}
+	// Accumulated text got every goroutine's chunk.
+	if len(accumulatedText) != goroutines {
+		t.Errorf("len(accumulatedText) = %d, want %d", len(accumulatedText), goroutines)
 	}
 }

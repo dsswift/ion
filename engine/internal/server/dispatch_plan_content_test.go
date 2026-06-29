@@ -289,10 +289,15 @@ func TestGetPlanContent_AbsolutePathOutsidePlanDir(t *testing.T) {
 	srv, conn, _ := planContentTestEnv(t, workDir)
 	_ = srv
 
-	// Try to read an arbitrary absolute path on the host.
-	hostPath := "/etc/hostname"
-	if _, err := os.Stat(hostPath); os.IsNotExist(err) {
-		t.Skip("/etc/hostname not present on this platform")
+	// Create a real file in a separate temp dir that is guaranteed to be
+	// outside the session's plan directory tree. Using an independent
+	// t.TempDir() (rather than a fixed system path like /etc/hostname that
+	// may not exist on all platforms) makes the test cross-platform and
+	// eliminates the platform-conditional t.Skip.
+	outsideDir := t.TempDir()
+	hostPath := filepath.Join(outsideDir, "sensitive.txt")
+	if err := os.WriteFile(hostPath, []byte("sensitive data"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 
 	sendJSON(t, conn, map[string]interface{}{
@@ -310,7 +315,7 @@ func TestGetPlanContent_AbsolutePathOutsidePlanDir(t *testing.T) {
 		t.Fatalf("no result received; lines=%v", lines)
 	}
 	if result.OK {
-		t.Errorf("expected ok=false for /etc/hostname, got ok=true")
+		t.Errorf("expected ok=false for absolute path outside plan dir, got ok=true")
 	}
 }
 

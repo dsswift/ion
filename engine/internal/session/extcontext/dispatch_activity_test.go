@@ -87,6 +87,7 @@ func (a *activityRecordingAccessor) ConversationID() string                   { 
 func (a *activityRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *activityRecordingAccessor) SendAbort()                               {}
 func (a *activityRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *activityRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -199,7 +200,7 @@ func TestDispatchEmitsActivityWhileRunning(t *testing.T) {
 	}
 	acc := &activityRecordingAccessor{child: child}
 
-	dispatchFn := BuildDispatchAgentFunc(acc, nil)
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	done := make(chan struct{})
 	go func() {

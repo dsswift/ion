@@ -135,6 +135,34 @@ type Context struct {
 	// Returns true if a dispatch was found and recalled, false otherwise.
 	RecallAgent func(name string, opts RecallAgentOpts) (bool, error)
 
+	// SteerDispatch delivers a steering message to a running background
+	// dispatch identified by its dispatchId. The message is injected into
+	// the child's conversation as a user message at the next run-loop
+	// checkpoint, reusing the existing steer channel mechanism. Returns a
+	// SteerDispatchResult describing the delivery outcome.
+	SteerDispatch func(dispatchID, message string) (SteerDispatchResult, error)
+
+	// SteerSelf delivers a message to the run that OWNS this context, with the
+	// engine choosing the delivery mechanism based on that run's state:
+	//
+	//   - If the owning run is live, the message is injected onto its steer
+	//     channel and surfaces at the next run-loop checkpoint (mid-turn). The
+	//     SteerDispatchResult.Outcome is "steered".
+	//   - If the owning run is idle (no active run), the message is sent as a
+	//     fresh prompt via the normal SendPrompt path. The Outcome is "sent".
+	//
+	// This is the mechanism a harness uses to bubble a background dispatch's
+	// completion back to the dispatching agent without it polling: the parent
+	// (or any ancestor that owns this context) receives the result whether it
+	// is mid-run or idle, so a busy parent is steered rather than having the
+	// completion queue behind its live run until it happens to go idle.
+	//
+	// Depth-aware: at depth 0 the owning run is the session's main loop; at
+	// depth N (a dispatched agent's own context) the owning run is that
+	// dispatch's child run. The engine resolves the correct run; the caller
+	// never names it. Nil when steer support is not wired (no registry).
+	SteerSelf func(message string) (SteerDispatchResult, error)
+
 	// Elicit raises an elicitation request that fans out to: (a) every
 	// connected client as an engine_elicitation_request event for UI render,
 	// and (b) the elicitation_request extension hook so other extensions can
@@ -312,6 +340,13 @@ type DispatchAgentOpts struct {
 	// touching global engine config.
 	MaxTurns int `json:"maxTurns,omitempty"`
 
+	// MaxDispatchDepth overrides the engine-config MaxDispatchDepth for this
+	// single dispatch tree. When >0, the child (and its descendants) use this
+	// cap instead of the global config value. <=0 means "use the global
+	// config default." Allows an extension to grant a specific dispatch tree
+	// more (or fewer) nesting levels without changing the engine-wide cap.
+	MaxDispatchDepth int `json:"maxDispatchDepth,omitempty"`
+
 	// --- Plan mode ---
 
 	// PlanMode, when true, starts the child session in plan mode. The child
@@ -424,6 +459,18 @@ type DispatchAgentResult struct {
 	// false and PlanFilePath is non-empty, the child was in plan mode but
 	// finished without proposing (e.g. hit max turns or was recalled).
 	PlanExited bool `json:"planExited,omitempty"`
+
+	// Depth is the dispatch depth of this agent in the dispatch tree.
+	// The orchestrator (root) runs at depth 0; its direct dispatches are
+	// depth 1; their dispatches are depth 2; etc. Set by the engine,
+	// not by the caller.
+	Depth int `json:"depth,omitempty"`
+
+	// ParentDispatchId is the DispatchID of the parent dispatch that
+	// spawned this agent. Empty for top-level dispatches (depth 1,
+	// parent is the orchestrator at depth 0). Populated by the engine
+	// so consumers can reconstruct the dispatch tree.
+	ParentDispatchId string `json:"parentDispatchId,omitempty"`
 }
 
 // DispatchError describes a failed background dispatch.
@@ -447,6 +494,15 @@ type RecallInfo struct {
 // RecallAgentOpts configures a recall operation.
 type RecallAgentOpts struct {
 	Reason string `json:"reason,omitempty"`
+}
+
+// SteerDispatchResult is the typed outcome of a SteerDispatch call.
+// Delivered is true when the message was buffered on the child's steer
+// channel. Outcome carries the four-value verdict string so the caller
+// can react precisely (retry on channel_full, redispatch on no_run, etc.).
+type SteerDispatchResult struct {
+	Delivered bool   `json:"delivered"`
+	Outcome   string `json:"outcome"`
 }
 
 // --- Phase 2: Lifecycle event callback payloads ---

@@ -127,6 +127,17 @@ type EngineRuntimeConfig struct {
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
 	LogLevel   string            `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
+
+	// MaxDispatchDepth caps how many nested dispatch levels are allowed.
+	// The orchestrator runs at depth 0; a specialist it dispatches runs at
+	// depth 1; a sub-specialist at depth 2; etc. Dispatches at depth >=
+	// MaxDispatchDepth are rejected with ErrDispatchDepthExceeded.
+	//
+	// Zero or negative means "use the built-in default (3)", which allows
+	// depths 0, 1, and 2. There is no sentinel to disable the cap entirely
+	// (unlike MaxTurns <=0 = unlimited) because unbounded recursion is a
+	// resource hazard with no legitimate use case.
+	MaxDispatchDepth int `json:"maxDispatchDepth,omitempty"`
 }
 
 // GetWorkspace returns the Workspace config block, or nil for a nil receiver
