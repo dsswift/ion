@@ -48,16 +48,20 @@ The engine manages session lifecycle. The daemon broadcasts events from all sess
 
 ## Conversations
 
-A conversation is the unit a client renders: one continuous thread of user prompts and agent responses backed by a session. There is a **single, unified conversation type**. The terms below are the canonical vocabulary; use them in code, comments, and docs.
+A conversation is the unit a client renders: one continuous thread of user prompts and agent responses backed by a session. There is exactly **one conversation type**. Every conversation is created through the same entry point ("New Conversation") and the same internal code path.
 
-- **Conversation** — the unified type. Whether it runs on the `api` or `cli` backend is an **orthogonal axis**, not a separate kind of conversation.
-- **Plain conversation** — a conversation with **no** engine extension hosted inside it (`hasEngineExtension === false`). The control plane drives it directly.
-- **Extension-hosted conversation** — a conversation that **hosts an engine extension** (`hasEngineExtension === true`). The hosted extension adds multi-instance UI, profiles, and sub-conversations. The presence of the extension is the only real differentiator from a plain conversation.
-- **Backend axis** — `api` (the default, used by the vast majority of conversations) versus `cli` (the Claude Code subprocessor backend, `CliBackend` / `HybridBackend`). This axis is independent of whether a conversation is plain or extension-hosted.
-- **Normalized stream** — the control-plane event stream of typed `NormalizedEvent`s. It drives plain conversations.
-- **Raw extension stream** — the raw `engine_*` event stream (delivered via `onEngineEvent`). It drives extension-hosted instances.
+The only variable is the **extension list**. When the user (or an enterprise policy) selects an engine profile, that profile's extensions are loaded into the conversation. When no profile is selected, the conversation runs with no extensions. An empty extension list and a populated one are not different conversation types -- they are the same conversation type with different configuration.
 
-The distinction between the two streams is about **how events arrive and are interpreted**, not about a conversation "type." Both stream into the same unified conversation model.
+There is no stored discriminator like `hasEngineExtension` in runtime state. Whether a conversation has extensions is derived at read time from its `engineProfileId` field: a non-null, non-empty profile ID means extensions are active. All creation flows route through one function (`createConversationTab`) which sets `engineProfileId` from the resolved profile and produces a single main instance for every conversation regardless of extension state.
+
+Key vocabulary:
+
+- **Conversation** -- the single unified type.
+- **Backend axis** -- `api` (the default) versus `cli` (the Claude Code subprocessor backend). This axis is independent of whether a conversation has extensions.
+- **Normalized stream** -- the control-plane event stream of typed `NormalizedEvent`s. Used for conversations without extensions.
+- **Raw extension stream** -- the raw `engine_*` event stream (delivered via `onEngineEvent`). Used when an extension is loaded. Both streams feed the same conversation model.
+
+The distinction between the two streams is about **how events arrive and are interpreted**, not about a conversation "type."
 
 ## Extensions
 

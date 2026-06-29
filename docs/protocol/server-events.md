@@ -466,9 +466,57 @@ Signals the completion of a tool execution.
 | `result`  | string  | Tool output                          |
 | `isError` | boolean | `true` if the tool execution failed  |
 
+#### engine_dispatch_activity
+
+Streams a running dispatched (sub-)agent's intra-turn activity to the parent
+session's event stream: a tool call starting, a tool result returning, or a
+chunk of streamed assistant text. The child agent produces these as it works,
+so a consumer can render or audit the live sub-agent transcript **without
+waiting for the dispatch to complete** — the key difference from the
+`engine_dispatch_start` / `engine_dispatch_end` telemetry pair, which fire only
+at the boundaries.
+
+**Semantics: incremental, append-by-key.** Not a snapshot, not retained, not
+replayed on reconnect (contrast `engine_agent_state`, which *is* a snapshot).
+The file-backed conversation transcript is the authoritative source that heals
+any gap: a consumer that needs the complete or sticky transcript reconciles
+from conversation history (e.g. by loading the child `conversationId`), not from
+retained activity events. This mirrors the fire-once, non-retained contract of
+`engine_model_fallback` and `engine_run_stalled`.
+
+Identity for client-side dedup against a reconcile snapshot: route the delta by
+`dispatchAgentId` (never into the parent conversation's own message stream),
+dedup tool entries by `toolId` (durable and also persisted, so it survives
+reconcile), and key a streaming-text run by `dispatchSeq`.
+
+| Field                    | Type    | Description |
+|--------------------------|---------|-------------|
+| `type`                   | `"engine_dispatch_activity"` | Event type |
+| `dispatchAgentId`        | string  | Parent-side agent id; routes the delta to the right agent/dispatch row. |
+| `dispatchConversationId` | string  | The child conversation id (reconcile key). |
+| `dispatchActivityKind`   | string  | `"tool_start"` \| `"tool_end"` \| `"text"`. |
+| `dispatchSeq`            | number  | Monotonic per-dispatch sequence; orders deltas and keys a text run. |
+| `toolName`               | string  | Tool name (`tool_start`). |
+| `toolId`                 | string  | Tool use id (`tool_start` / `tool_end`). |
+| `dispatchTextDelta`      | string  | Streamed text chunk, possibly coalesced (`text`). |
+| `dispatchToolIsError`    | boolean | `true` when the tool failed (`tool_end`). |
+| `dispatchActivityTs`     | number  | Emit timestamp (unix millis). |
+
 #### engine_dead
 
-Signals that the backend process exited unexpectedly.
+Signals that the backend process terminated **abnormally** — a non-zero exit
+code, or any terminating signal other than the cooperative `cancelled`.
+
+**A clean cancel does NOT fire `engine_dead`.** When a run is interrupted on
+purpose (`exitCode` is `0` or null **and** `signal` is `"cancelled"` — a user
+or auto abort, or a turn/tool hook cancelling the run), the run is a clean,
+recoverable exit: the conversation is intact and the session is immediately
+reusable. That path is surfaced via the idle `engine_status` only; no
+`engine_dead` is emitted. `engine_dead` is reserved for real deaths a consumer
+must surface (`SIGKILL`, `SIGSEGV`, the watchdog's `cancelled-forced` hard
+kill, or any non-zero exit). See
+[ADR-013](../architecture/adr/013-engine-dead-clean-cancel.md) for the semantic
+rationale and migration impact.
 
 | Field        | Type     | Description                         |
 |--------------|----------|-------------------------------------|
@@ -489,6 +537,31 @@ A permission request from the engine (engine-level, separate from the LLM provid
 | `permToolDescription` | string          | Tool description                   |
 | `permToolInput`       | object          | Tool input parameters              |
 | `permOptions`         | PermissionOpt[] | Available response options         |
+
+#### engine_elicitation_request
+
+Emitted when an extension calls `ctx.elicit()` (TypeScript SDK) or `ctx.Elicit()` (Go SDK). The engine blocks the extension's call and waits for a matching `elicitation_response` client command. Clients present the schema-driven prompt to the user and reply via `elicitation_response`. The engine forwards the reply to the waiting extension so its `ctx.elicit()` Promise resolves.
+
+The engine never cancels a pending elicitation on its own. If the client disconnects without replying, the waiting extension call eventually times out per the session's configured elicitation timeout. See [`ctx.elicit()`](../extensions/sdk-typescript.md) for the extension-side API.
+
+| Field        | Type   | Description |
+|--------------|--------|-------------|
+| `type`       | `"engine_elicitation_request"` | Event type |
+| `requestId`  | string | Opaque correlator. Echo this in the matching `elicitation_response` command so the engine can pair the reply. |
+| `schema`     | object | JSON Schema describing the response shape the extension expects. |
+| `url`        | string | Optional URL the client may open to present a richer elicitation UI. |
+| `elicitMode` | string | Rendering hint from the extension (e.g. `"input"`, `"confirm"`). |
+
+#### engine_elicitation_response
+
+Emitted by the engine after it receives and processes an `elicitation_response` client command. Lets other connected clients (e.g. a desktop observer alongside iOS) see that the elicitation was resolved.
+
+| Field        | Type   | Description |
+|--------------|--------|-------------|
+| `type`       | `"engine_elicitation_response"` | Event type |
+| `requestId`  | string | Correlator matching the original `engine_elicitation_request`. |
+| `response`   | object | The user's response payload, conforming to the `schema` from the request. Absent when cancelled. |
+| `cancelled`  | boolean | `true` when the user dismissed the prompt without submitting a response. |
 
 #### engine_plan_mode_changed
 
@@ -814,3 +887,31 @@ Fire-and-forget signal emitted when an extension calls `ctx.Intercept()`. The en
 | `interceptMessage` | string | Body content |
 | `interceptSource` | string | Extension name (set by engine, not caller) |
 | `interceptMetadata` | object | Opaque map forwarded to clients unchanged |
+
+---
+
+## Slash-Command Provenance on Message Events
+
+When a user turn originates from a slash-command invocation, the engine persists the **raw** invocation (the `/name args` the user typed) as the displayed turn, while the model sees the expanded template body. Three provenance fields travel with that message wherever it appears on the wire.
+
+### `load_session_history` — SessionMessage
+
+The `load_session_history` response includes these fields on user-role `SessionMessage` objects:
+
+| Field          | Type   | Description |
+|----------------|--------|-------------|
+| `slashCommand` | string | The full command as the user typed it, including the leading slash (e.g. `/spec`). Present only on turns that originated from a slash invocation. |
+| `slashArgs`    | string | The argument text that followed the command name. May be empty. |
+| `slashSource`  | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
+
+### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
+
+The same three fields appear on `RemoteMessage` objects sent to paired iOS clients via `desktop_message_added` and `desktop_conversation_history` remote events. When `slashCommand` is non-empty, the iOS client renders a pill showing the command name; `slashArgs` and `slashSource` supply the pill's detail text and badge.
+
+| Field          | Type   | Description |
+|----------------|--------|-------------|
+| `slashCommand` | string | Full slash invocation (e.g. `/spec`). |
+| `slashArgs`    | string | Arguments following the command name. |
+| `slashSource`  | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
+
+The engine sets these fields via the session layer's slash-stash mechanism (see `pendingSlashInvocation` in `engine/internal/session/types.go`). For extension-dispatched prompts, the stash is written by `dispatchCommand` and consumed by `SendPrompt`; for direct `send_prompt` invocations the engine resolves the command inline when `resolveSlash` is `true` on the command.

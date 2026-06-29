@@ -431,7 +431,7 @@ Tune every internal timeout and retry limit. All duration fields are in millisec
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `toolDefaultMs` | int64 | `300000` (5 min) | Per-tool execution timeout. Applies to built-in tools unless a tool-specific timeout overrides it. |
+| `toolDefaultMs` | int64 | `3600000` (60 min) | Per-tool execution timeout — a finite ceiling on a tool call (machine work), bounding a runaway tool that ignores cancellation. Applies to built-in, extension, and MCP tools unless a tool-specific timeout overrides it. While a tool is blocked on an elicitation (`ctx.elicit()`), this deadline is automatically suspended so the indefinite human-wait is not capped; it resumes for the remaining machine work. (Interactive permission prompts do not flow through this suspender — they are bounded by their own request context, not by `toolDefaultMs`.) |
 | `toolStallMs` | int64 | `30000` (30 s) | Stall detection threshold. If a tool produces no output for this long, the engine logs a warning. |
 | `bashDefaultMs` | int64 | `120000` (2 min) | Default timeout for `Bash` tool commands. Overridable per-call via the tool's `timeout` parameter. |
 | `mcpCallMs` | int64 | `60000` (60 s) | MCP tool call timeout. How long the engine waits for an MCP server to return a tool result. |
@@ -442,7 +442,8 @@ Tune every internal timeout and retry limit. All duration fields are in millisec
 | `sshDefaultMs` | int64 | `120000` (2 min) | Default timeout for SSH operations. |
 | `extensionRpcMs` | int64 | `30000` (30 s) | How long the engine waits for an extension to respond to an RPC call (init, hook, tool, command). |
 | `hookDefaultMs` | int64 | `30000` (30 s) | Default timeout for external hook execution. |
-| `elicitationMs` | int64 | `300000` (5 min) | How long the engine waits for user input during an elicitation dialog. |
+| `elicitationMs` | int64 | `0` (wait indefinitely) | Human-wait timeout. Governs **both** elicitation requests and permission dialogs — any point where the engine is blocked waiting for a person to answer. `0` or unset means **wait indefinitely** (the shipped default): a human who steps away must never have their elicitation silently cancelled or their permission silently denied by a wall-clock deadline. The wait is still released by session abort / teardown. Set a positive value for headless / no-human deployments that need a finite wait (e.g. `300000` to auto-resolve after 5 minutes). |
+| `permissionTimeoutDecision` | string | `"deny"` | Fail-action applied to a **permission dialog** when a *finite* `elicitationMs` expires before the user answers. `"deny"` (default, fail closed) or `"allow"`. Only consulted when `elicitationMs` is positive; with the default indefinite wait the dialog never times out and this is never read. Elicitation requests have no allow/deny axis, so this does not affect them — an expired elicitation always returns cancelled. |
 | `relayWriteMs` | int64 | `10000` (10 s) | Write timeout when forwarding messages to the relay server. |
 | `broadcastWriteMs` | int64 | `5000` (5 s) | Write timeout for broadcasting events to connected socket clients. |
 | `truncationRetries` | int | `3` | Maximum consecutive retries when the LLM response is truncated (hits `max_tokens`). |

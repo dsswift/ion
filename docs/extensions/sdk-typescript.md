@@ -438,6 +438,16 @@ ion.hook('compact_summary_request', async (info, ctx) => {
 
 Useful for: replacing the engine's regex fact extractor with an LLM-based summariser, branching summary strategy on the compaction trigger, and integrating with external summarisation services. The engine never blocks on the handler — wrap any LLM call in a bounded timeout and return an empty string on failure rather than throwing or blocking.
 
+**`context_injection` content block** -- the companion block type to `compact_boundary`. A `context_injection` block is inserted into the conversation when the engine performs read-triggered nested context loading (progressive `AGENTS.md`/`ION.md` descent). The block carries a `contextPaths` field -- an array of absolute instruction-file paths -- which is the structural dedup key the nested-context seeder uses to recover which files are already injected. The seeder reads `contextPaths` off typed blocks directly; it never substring-matches the rendered prose of arbitrary message text, so a user message that happens to contain an instruction-file header cannot interfere with the seed. Provider serializers translate the block to a plain text block on the wire (mirroring `compact_boundary`), so the model still sees the rendered context and external wire consumers never observe `contextPaths`.
+
+**LlmContentBlock fields for `context_injection`:**
+
+| Field          | Type       | Description                                                                                           |
+|----------------|------------|-------------------------------------------------------------------------------------------------------|
+| `type`         | `"context_injection"` | Block discriminator                                                                   |
+| `text`         | string     | The rendered context text the model sees (filled by provider serializers from this block)             |
+| `contextPaths` | string[]   | Absolute paths of the instruction files injected by this block. Structural dedup key -- not prose.    |
+
 **`elicit(opts)`** -- ask the user a structured question via the connected client. Resolves with the user's response (or a cancellation signal). The engine blocks the calling extension's hook until the user replies or the client times out.
 
 ```typescript

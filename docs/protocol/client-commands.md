@@ -73,6 +73,7 @@ Send a user message to an active session.
 | `compactEnabled`            | boolean  | no       | Gate for proactive compaction on this prompt. `false` disables proactive compaction; reactive compaction still fires on provider errors. |
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
+| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots (extension registry, `.ion/commands`, `.claude/commands`, skills, project), substitutes `$ARGUMENTS`, feeds the **expanded** body to the model, and persists the **raw** invocation as the displayed user turn. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
 
 ```json
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
@@ -232,6 +233,7 @@ Toggle plan mode for a session. In plan mode, the agent plans without executing 
 | `enabled`                      | boolean            | yes      | Enable or disable plan mode          |
 | `allowedTools`                 | string[]           | no       | Tools allowed during plan mode       |
 | `planModeAllowedBashCommands`  | string[]           | no       | Bash command prefixes allowed in plan mode. Tri-valued — see semantics below. |
+| `planFilePath`                 | string             | no       | Existing plan file path to **restore** when enabling plan mode. When `enabled` is true, the session currently has no plan file path, and this path exists on disk, the engine re-adopts it instead of allocating a fresh slug on the next prompt — preserving plan-file continuity after a session is replaced (e.g. rebound from the binding store). Ignored when the session already has a path, when the file is not on disk, or when `enabled` is false. Omit it when the client does not track a plan path (preserves prior behavior). |
 | `requestId`                    | string             | no       | Correlates with ServerResult         |
 
 ```json
@@ -365,6 +367,83 @@ Respond to a permission request from the engine. Fire-and-forget.
 
 ```json
 {"cmd":"permission_response","key":"abc-123","questionId":"q1","optionId":"allow_once"}
+```
+
+---
+
+### elicitation_response
+
+Reply to an `engine_elicitation_request` event. Fire-and-forget; no result is sent. The engine pairs the reply to the waiting `ctx.elicit()` call using `elicitRequestId` and resolves the extension's Promise with either the response payload or the cancelled flag.
+
+| Field             | Type    | Required | Description                                                                 |
+|-------------------|---------|----------|-----------------------------------------------------------------------------|
+| `cmd`             | `"elicitation_response"` | yes | Command discriminator                                          |
+| `key`             | string  | yes      | Session key                                                                 |
+| `elicitRequestId` | string  | yes      | Correlator echoed from the `engine_elicitation_request` `requestId` field   |
+| `elicitResponse`  | object  | no       | The user's response payload, conforming to the `schema` from the request. Omit when cancelling. |
+| `elicitCancelled` | boolean | no       | Set `true` when the user dismissed the prompt without submitting a response. |
+
+```json
+{"cmd":"elicitation_response","key":"abc-123","elicitRequestId":"elicit-001","elicitResponse":{"confirm":true}}
+```
+
+```json
+{"cmd":"elicitation_response","key":"abc-123","elicitRequestId":"elicit-001","elicitCancelled":true}
+```
+
+---
+
+### discover_slash_commands
+
+Discover filesystem slash-command templates and skills available across the conventional roots for a working directory. Stateless -- no session key is required.
+
+| Field       | Type                          | Required | Description                                                                                                                       |
+|-------------|-------------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `cmd`       | `"discover_slash_commands"`   | yes      | Command discriminator                                                                                                             |
+| `path`      | string                        | no       | Working directory. User-level roots are always included; this field adds project-level roots scoped to the given directory.        |
+| `config`    | object                        | no       | Optional config object. When `claudeCompat` is `false` or absent, the engine skips `.claude` / `~/.claude` roots, matching the slash-resolution and skill-loading gates. |
+| `requestId` | string                        | no       | Correlates with ServerResult                                                                                                      |
+
+```json
+{"cmd":"discover_slash_commands","path":"/home/user/project","config":{"claudeCompat":false},"requestId":"r40"}
+```
+
+**Response:** `ServerResult` with `data` containing an array of `SlashCommandListing` objects.
+
+**SlashCommandListing fields:**
+
+| Field           | Type   | Description                                                                          |
+|-----------------|--------|--------------------------------------------------------------------------------------|
+| `name`          | string | Command name (without the leading slash)                                             |
+| `description`   | string | One-line description from the template frontmatter, if present                       |
+| `argumentHint`  | string | Argument hint string, if present                                                     |
+| `source`        | string | Where the template lives: `"ion"`, `"claude"`, or `"skill"`                         |
+
+Higher-precedence roots shadow same-name entries in lower-precedence roots (project-level beats user-level). The engine owns the discovery walk so every consumer's autocomplete menu is fed by one owner with no per-consumer filesystem walk.
+
+---
+
+### get_enterprise_policy
+
+Read the enterprise `NewConversationDefaults` policy so clients can decide whether the new-conversation flow is locked. Stateless -- no session key is required.
+
+| Field       | Type                       | Required | Description                  |
+|-------------|----------------------------|----------|------------------------------|
+| `cmd`       | `"get_enterprise_policy"`  | yes      | Command discriminator        |
+| `requestId` | string                     | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"get_enterprise_policy","requestId":"r41"}
+```
+
+**Response:** `ServerResult` with `data`:
+
+| Field                     | Type         | Description                                                                                                   |
+|---------------------------|--------------|---------------------------------------------------------------------------------------------------------------|
+| `newConversationDefaults` | object\|null | The enterprise `NewConversationDefaults` policy object, or `null` when no enterprise config is loaded or no `NewConversationDefaults` section is present. |
+
+```json
+{"cmd":"result","requestId":"r41","ok":true,"data":{"newConversationDefaults":null}}
 ```
 
 ---

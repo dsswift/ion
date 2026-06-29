@@ -48,6 +48,7 @@ These fields, when set at the enterprise level, replace any value from lower lay
 | `network` | Enterprise network config (proxy, CA certs, TLS) replaces all lower-layer network settings. |
 | `telemetry` | Enterprise telemetry config replaces lower layers. If `enabled: true`, it cannot be disabled. |
 | `requiredHooks` | These hooks must be active. Extensions cannot deregister them. |
+| `newConversationDefaults` | When non-null, replaces the base value. A null overlay preserves the base value. When `locked: true`, clients skip the profile and directory pickers for new conversations and use the mandated values. |
 
 ### Filtering fields (post-merge filter)
 

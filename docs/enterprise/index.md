@@ -23,6 +23,7 @@ Enterprise config is designed for IT admins who need to enforce organizational p
 | Sandbox | Require sandbox, prevent disable | [Sealed config](sealed-config.md) |
 | Network | Proxy settings, custom CA certificates, TLS config | [Network](network.md) |
 | Telemetry | Enforce telemetry collection and export destinations | [Telemetry](telemetry.md) |
+| New-conversation defaults | Mandate working directory and engine profile for new conversations; optionally lock to prevent user override | [New-conversation policy](new-conversation-policy.md) |
 
 ## Enterprise config structure
 
@@ -58,6 +59,11 @@ Enterprise config is designed for IT admins who need to enforce organizational p
     "sandbox": {
       "required": true,
       "allowDisable": false
+    },
+    "newConversationDefaults": {
+      "baseDirectory": "/corp/projects",
+      "engineProfileId": "corp-security-profile",
+      "locked": true
     },
     "customFields": {}
   }
@@ -95,3 +101,4 @@ See [Sealed config](sealed-config.md) for the full sealing semantics.
 - [Network](network.md) -- proxy, CA certificates, and TLS
 - [Telemetry](telemetry.md) -- telemetry targets, OTEL, and privacy
 - [Compliance](compliance.md) -- model, provider, tool, and MCP controls
+- [New-conversation policy](new-conversation-policy.md) -- mandate working directory and engine profile for new conversations
