@@ -570,6 +570,14 @@ func (StreamResetEvent) eventType() string { return EventStreamReset }
 // Consumers can use this to surface activity state ("Compacting...").
 // When Active is false the optional fields carry a summary of what was compacted
 // so clients can render an inline compaction marker in the conversation.
+//
+// MicroOnly is true when the completion represents a micro-compaction that
+// cleared blocks (tool_result / long assistant text) without dropping any
+// messages — i.e. MessagesBefore == MessagesAfter and the hard-truncate step
+// was skipped. It is an explicit signal so consumers do not have to infer the
+// micro-only case from MessagesBefore == MessagesAfter (a fragile heuristic).
+// A client rendering a marker should not show an "N → N messages" figure when
+// MicroOnly is true; nothing was dropped.
 type CompactingEvent struct {
 	Active         bool   `json:"active"`
 	Summary        string `json:"summary,omitempty"`
@@ -577,6 +585,7 @@ type CompactingEvent struct {
 	MessagesAfter  int    `json:"messagesAfter,omitempty"`
 	ClearedBlocks  int    `json:"clearedBlocks,omitempty"`
 	Strategy       string `json:"strategy,omitempty"`
+	MicroOnly      bool   `json:"microOnly,omitempty"`
 }
 
 func (CompactingEvent) eventType() string { return EventCompacting }

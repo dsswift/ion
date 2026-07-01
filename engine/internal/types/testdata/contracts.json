@@ -8,6 +8,7 @@
       "clearedBlocks",
       "messagesAfter",
       "messagesBefore",
+      "microOnly",
       "strategy",
       "summary"
     ],
@@ -266,6 +267,7 @@
     "messagesBefore",
     "metadata",
     "method",
+    "microOnly",
     "notifyBody",
     "notifyKind",
     "notifyResourceId",

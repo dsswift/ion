@@ -186,6 +186,7 @@ type EngineEvent struct {
 	CompactingMessagesAfter  int    `json:"messagesAfter,omitempty"`
 	CompactingClearedBlocks  int    `json:"clearedBlocks,omitempty"`
 	CompactingStrategy       string `json:"strategy,omitempty"`
+	CompactingMicroOnly      bool   `json:"microOnly,omitempty"`
 
 	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent
 	ExtensionName string `json:"extensionName,omitempty"`

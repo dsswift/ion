@@ -319,6 +319,28 @@ const DefaultTargetPercent = 50.0
 // tool_result blocks are protected from micro-compaction clearing.
 const DefaultMicroCompactKeep = 3
 
+// MicroCompactToolResultMinChars is the minimum tool_result content length
+// (pass 1) above which the block is replaced with ClearedToolResultSentinel.
+// Shorter results are left intact — the token savings would be negligible.
+const MicroCompactToolResultMinChars = 100
+
+// MicroCompactAssistantTextMaxChars is the maximum assistant text-block length
+// (pass 2) above which the block is truncated to this many characters plus a
+// truncation marker. Pass 2 only runs when pass 1 cleared nothing.
+const MicroCompactAssistantTextMaxChars = 200
+
+// ClearedToolResultSentinel is the placeholder substituted for a cleared
+// tool_result block during pass-1 micro-compaction. It is the single canonical
+// definition of the marker so the token estimator and any future restore path
+// key on one literal rather than a scattered string.
+const ClearedToolResultSentinel = "[cleared]"
+
+// truncatedTextSuffix is appended to an assistant text block truncated during
+// pass-2 micro-compaction. It doubles as the idempotency marker: a block that
+// already ends with this suffix has been truncated and is skipped on a repeat
+// pass so text is never double-truncated.
+const truncatedTextSuffix = "... [truncated]"
+
 // DefaultMinKeepTurns is the safety floor — compaction never drops below
 // this many user turns, even if they exceed the token budget.
 const DefaultMinKeepTurns = 2
@@ -434,8 +456,8 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 			if blocks[j].Type == "image" {
 				continue // never clear vision data
 			}
-			if blocks[j].Type == "tool_result" && len(blocks[j].Content) > 100 {
-				blocks[j].Content = "[cleared]"
+			if blocks[j].Type == "tool_result" && len(blocks[j].Content) > MicroCompactToolResultMinChars {
+				blocks[j].Content = ClearedToolResultSentinel
 				cleared++
 			}
 		}
@@ -457,8 +479,15 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 			continue
 		}
 		for j := range blocks {
-			if blocks[j].Type == "text" && len(blocks[j].Text) > 200 {
-				blocks[j].Text = blocks[j].Text[:200] + "... [truncated]"
+			if blocks[j].Type == "text" && len(blocks[j].Text) > MicroCompactAssistantTextMaxChars {
+				// Idempotency guard: a block already truncated on a prior
+				// micro-compaction pass ends with truncatedTextSuffix. Skip it
+				// so a repeat pass never slices the already-truncated string
+				// again (which would mangle it and duplicate the suffix).
+				if strings.HasSuffix(blocks[j].Text, truncatedTextSuffix) {
+					continue
+				}
+				blocks[j].Text = blocks[j].Text[:MicroCompactAssistantTextMaxChars] + truncatedTextSuffix
 				cleared++
 			}
 		}

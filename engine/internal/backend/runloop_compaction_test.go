@@ -150,6 +150,122 @@ func TestCompactIfNeeded_DisabledByConfig(t *testing.T) {
 	}
 }
 
+// lastCompactingDone returns the final CompactingEvent with Active==false from
+// a captured event slice, or nil if none was emitted.
+func lastCompactingDone(events []types.NormalizedEvent) *types.CompactingEvent {
+	var found *types.CompactingEvent
+	for i := range events {
+		if ce, ok := events[i].Data.(*types.CompactingEvent); ok && !ce.Active {
+			found = ce
+		}
+	}
+	return found
+}
+
+// TestPerformCompact_MicroOnlySignal verifies the MicroOnly flag on the
+// completion event. When step 1 (micro-compact) brings usage below the limit,
+// step 2 (hard truncate) is skipped: no messages are dropped and MicroOnly is
+// true. This is the explicit signal clients use to avoid rendering a
+// misleading "N → N messages" marker. Reverting the `MicroOnly: !shouldHardTruncate`
+// set in performCompact makes this test fail.
+func TestPerformCompact_MicroOnlySignal(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "micro-only")
+
+	conv := conversation.CreateConversation("micro-only", "", "test-model")
+	// Recent turns carry large tool_result blocks that micro-compact clears.
+	// After clearing, the estimated token count drops far below the limit, so
+	// the hard-truncate step is skipped and the pass is micro-only.
+	big := make([]byte, 400)
+	for i := range big {
+		big[i] = 'x'
+	}
+	for i := 0; i < 6; i++ {
+		conv.Messages = append(conv.Messages,
+			types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{
+				{Type: "tool_result", Content: string(big)},
+			}},
+			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{
+				{Type: "text", Text: "ok"},
+			}},
+		)
+	}
+
+	run := &activeRun{requestID: "micro-only", conv: conv}
+	cp := testCompactParams()
+	cp.summaryEnabled = false // hermetic: no live provider call
+
+	// A high tokenLimit relative to post-micro usage guarantees step 2 is
+	// skipped. contextWindow is large; the trigger check is the caller's
+	// responsibility (performCompact always compacts), so we invoke it directly.
+	b.performCompact(performCompactParams{
+		ctx:           context.Background(),
+		run:           run,
+		conv:          conv,
+		hooks:         RunHooks{},
+		contextWindow: 200_000,
+		tokenLimit:    100_000,
+		cp:            cp,
+		trigger:       "auto",
+	})
+
+	done := lastCompactingDone(*events)
+	if done == nil {
+		t.Fatal("expected a CompactingEvent with Active=false")
+	}
+	if !done.MicroOnly {
+		t.Errorf("expected MicroOnly=true on a micro-only pass, got false (msgsBefore=%d msgsAfter=%d)",
+			done.MessagesBefore, done.MessagesAfter)
+	}
+	if done.MessagesBefore != done.MessagesAfter {
+		t.Errorf("micro-only pass must not drop messages: before=%d after=%d",
+			done.MessagesBefore, done.MessagesAfter)
+	}
+}
+
+// TestPerformCompact_HardTruncateNotMicroOnly verifies the inverse: when the
+// hard-truncate step runs and drops messages, MicroOnly is false.
+func TestPerformCompact_HardTruncateNotMicroOnly(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "hard-trunc")
+
+	conv := conversation.CreateConversation("hard-trunc", "", "test-model")
+	// Many short turns with no clearable tool_result blocks: micro-compact
+	// clears nothing, usage stays above the (low) limit, step 2 truncates.
+	for i := 0; i < 30; i++ {
+		conv.Messages = append(conv.Messages,
+			types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{{Type: "text", Text: "question here"}}},
+			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{{Type: "text", Text: "answer here"}}},
+		)
+	}
+	// Force the post-micro usage above the limit so step 2 runs.
+	conv.LastInputTokens = 180_000
+	conv.LastInputTokensMsgCount = len(conv.Messages)
+
+	run := &activeRun{requestID: "hard-trunc", conv: conv}
+	cp := testCompactParams()
+	cp.summaryEnabled = false
+
+	b.performCompact(performCompactParams{
+		ctx:           context.Background(),
+		run:           run,
+		conv:          conv,
+		hooks:         RunHooks{},
+		contextWindow: 200_000,
+		tokenLimit:    100_000,
+		cp:            cp,
+		trigger:       "auto",
+	})
+
+	done := lastCompactingDone(*events)
+	if done == nil {
+		t.Fatal("expected a CompactingEvent with Active=false")
+	}
+	if done.MicroOnly {
+		t.Errorf("expected MicroOnly=false on a hard-truncate pass, got true")
+	}
+}
+
 // TestCompactReactive_HookReceivesFacts pins the contract added for issue #129:
 // after reactive compaction runs, the OnSessionCompact hook must receive the
 // facts the engine extracted from the pre-compaction message set, as a typed

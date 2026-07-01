@@ -77,11 +77,21 @@ type MessageData struct {
 	DisplayOnly bool `json:"displayOnly,omitempty"`
 }
 
-// CompactionData holds metadata about a compaction event.
+// CompactionData holds metadata about a compaction event. The enriched fields
+// (MessagesBefore/After, ClearedBlocks, Strategy, MicroOnly) mirror the live
+// CompactingEvent so the persisted compaction entry carries the same structured
+// payload the live marker had. flattenEntries replays them as a system-role
+// SessionMessage on historical reload. All enriched fields are additive
+// (omitempty): legacy entries that lack them reload with zero values.
 type CompactionData struct {
 	Summary          string `json:"summary"`
 	FirstKeptEntryID string `json:"firstKeptEntryId"`
 	TokensBefore     int    `json:"tokensBefore"`
+	MessagesBefore   int    `json:"messagesBefore,omitempty"`
+	MessagesAfter    int    `json:"messagesAfter,omitempty"`
+	ClearedBlocks    int    `json:"clearedBlocks,omitempty"`
+	Strategy         string `json:"strategy,omitempty"`
+	MicroOnly        bool   `json:"microOnly,omitempty"`
 }
 
 // LabelData holds a label annotation on an entry.

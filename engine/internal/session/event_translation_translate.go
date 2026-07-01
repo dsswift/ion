@@ -195,6 +195,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			CompactingMessagesAfter:  e.MessagesAfter,
 			CompactingClearedBlocks:  e.ClearedBlocks,
 			CompactingStrategy:       e.Strategy,
+			CompactingMicroOnly:      e.MicroOnly,
 		}
 
 	case *types.ToolStalledEvent:

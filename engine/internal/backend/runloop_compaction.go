@@ -330,6 +330,10 @@ func (b *ApiBackend) performCompact(p performCompactParams) {
 		MessagesAfter:  msgAfter,
 		ClearedBlocks:  cleared,
 		Strategy:       p.trigger,
+		// MicroOnly is true when step 2 (hard truncate) was skipped: blocks
+		// were cleared in place but no messages were dropped. Consumers use
+		// this to avoid rendering a misleading "N → N messages" marker.
+		MicroOnly: !shouldHardTruncate,
 	}})
 
 	// Record compaction in the conversation tree (if entries are tracked).
@@ -338,6 +342,11 @@ func (b *ApiBackend) performCompact(p performCompactParams) {
 			Summary:          summary,
 			FirstKeptEntryID: firstEntryID(p.conv),
 			TokensBefore:     tokensBefore,
+			MessagesBefore:   msgBefore,
+			MessagesAfter:    msgAfter,
+			ClearedBlocks:    cleared,
+			Strategy:         p.trigger,
+			MicroOnly:        !shouldHardTruncate,
 		})
 		utils.Debug("ApiBackend", fmt.Sprintf("%s compact: appended compaction entry to conversation tree", p.trigger))
 	} else {
@@ -570,6 +579,10 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 		MessagesAfter:  msgAfter,
 		ClearedBlocks:  cleared,
 		Strategy:       "reactive",
+		// Reactive compaction always runs the hard-truncate step (step 3),
+		// so it is never micro-only. Set explicitly to document the invariant
+		// rather than relying on the zero value.
+		MicroOnly: false,
 	}})
 
 	// Record compaction in the conversation tree (if entries are tracked).
@@ -578,6 +591,11 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 			Summary:          summary,
 			FirstKeptEntryID: firstEntryID(conv),
 			TokensBefore:     tokensBefore,
+			MessagesBefore:   msgBefore,
+			MessagesAfter:    msgAfter,
+			ClearedBlocks:    cleared,
+			Strategy:         "reactive",
+			MicroOnly:        false,
 		})
 		utils.Debug("ApiBackend", "compactReactive: appended compaction entry to conversation tree")
 	} else {

@@ -215,3 +215,97 @@ func TestMicroCompact_AggressiveKeep(t *testing.T) {
 		}
 	}
 }
+
+// TestMicroCompact_Pass2Idempotent verifies that repeated micro-compaction
+// passes never double-truncate an assistant text block. Without the
+// HasSuffix guard, the second pass would slice the already-truncated string
+// and append a second "... [truncated]" marker, mangling the text.
+func TestMicroCompact_Pass2Idempotent(t *testing.T) {
+	conv := &Conversation{}
+
+	// Build enough turns that the oldest ones fall outside keepTurns and are
+	// eligible for pass 2. Use tool_result blocks SHORT enough that pass 1
+	// clears nothing (so pass 2 runs), and long assistant text blocks.
+	longText := strings.Repeat("word ", 100) // 500 chars, well over the 200 cap
+	for i := 0; i < 10; i++ {
+		conv.Messages = append(conv.Messages,
+			types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{
+				{Type: "tool_result", Content: "short"}, // < 100 chars: pass 1 skips
+			}},
+			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{
+				{Type: "text", Text: longText},
+			}},
+		)
+	}
+
+	// First pass: pass 1 clears nothing (short tool_results), so pass 2 runs
+	// and truncates the long assistant text blocks.
+	firstCleared := MicroCompact(conv, 3)
+	if firstCleared == 0 {
+		t.Fatal("expected pass 2 to truncate at least one assistant text block")
+	}
+
+	// Capture the truncated text of the oldest assistant message (index 1).
+	firstBlocks := conv.Messages[1].Content.([]types.LlmContentBlock)
+	afterFirst := firstBlocks[0].Text
+	if !strings.HasSuffix(afterFirst, "... [truncated]") {
+		t.Fatalf("expected truncation marker after first pass, got %q", afterFirst)
+	}
+
+	// Second pass: the already-truncated blocks must be skipped. The text must
+	// be byte-identical to after the first pass — no double truncation. And the
+	// pass must report ZERO cleared blocks, because every eligible block was
+	// already truncated. Without the HasSuffix guard, pass 2 re-processes each
+	// already-truncated block and inflates the cleared count (wasted work and a
+	// misleading ClearedBlocks figure on the emitted event).
+	secondCleared := MicroCompact(conv, 3)
+	if secondCleared != 0 {
+		t.Errorf("second pass re-truncated already-truncated blocks: cleared=%d, want 0", secondCleared)
+	}
+	secondBlocks := conv.Messages[1].Content.([]types.LlmContentBlock)
+	afterSecond := secondBlocks[0].Text
+	if afterSecond != afterFirst {
+		t.Errorf("second pass mutated already-truncated text:\n first=%q\nsecond=%q", afterFirst, afterSecond)
+	}
+	if strings.Count(afterSecond, "... [truncated]") != 1 {
+		t.Errorf("expected exactly one truncation marker, got %d in %q",
+			strings.Count(afterSecond, "... [truncated]"), afterSecond)
+	}
+}
+
+// TestMicroCompact_ThresholdConsts pins the tool_result pass-1 boundary to the
+// MicroCompactToolResultMinChars const: a block just over the threshold is
+// cleared, one at or under it is left intact.
+func TestMicroCompact_ThresholdConsts(t *testing.T) {
+	conv := &Conversation{}
+
+	// Oldest turn (outside keepTurns) with two tool_results: one just over the
+	// min-chars threshold, one exactly at it.
+	over := strings.Repeat("x", MicroCompactToolResultMinChars+1)
+	atLimit := strings.Repeat("y", MicroCompactToolResultMinChars)
+	conv.Messages = append(conv.Messages,
+		types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{
+			{Type: "tool_result", Content: over},
+			{Type: "tool_result", Content: atLimit},
+		}},
+	)
+	// Pad with recent turns so the first turn is outside keepTurns.
+	for i := 0; i < 5; i++ {
+		conv.Messages = append(conv.Messages,
+			types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{{Type: "text", Text: "q"}}},
+			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{{Type: "text", Text: "a"}}},
+		)
+	}
+
+	MicroCompact(conv, 3)
+
+	blocks := conv.Messages[0].Content.([]types.LlmContentBlock)
+	if blocks[0].Content != ClearedToolResultSentinel {
+		t.Errorf("block over threshold (%d chars) should be cleared, got %q",
+			MicroCompactToolResultMinChars+1, blocks[0].Content)
+	}
+	if blocks[1].Content != atLimit {
+		t.Errorf("block at threshold (%d chars) should NOT be cleared, got %q",
+			MicroCompactToolResultMinChars, blocks[1].Content)
+	}
+}

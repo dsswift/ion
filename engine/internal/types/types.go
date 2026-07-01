@@ -366,6 +366,29 @@ type SessionMessage struct {
 	SlashCommand string `json:"slashCommand,omitempty"`
 	SlashArgs    string `json:"slashArgs,omitempty"`
 	SlashSource  string `json:"slashSource,omitempty"`
+
+	// Marker payload fields (additive, omitempty). Set only when Role=="system"
+	// and this row represents a persisted marker entry (compaction, plan, steer)
+	// replayed by flattenEntries on historical reload. Clients format from these
+	// structured fields using their existing formatters — the engine emits data,
+	// not display strings. MarkerKind discriminates the three marker families.
+	MarkerKind string `json:"markerKind,omitempty"` // "compaction" | "plan" | "steer"
+
+	// Compaction marker fields (MarkerKind=="compaction"): mirror CompactionData.
+	MarkerMessagesBefore int    `json:"markerMessagesBefore,omitempty"`
+	MarkerMessagesAfter  int    `json:"markerMessagesAfter,omitempty"`
+	MarkerClearedBlocks  int    `json:"markerClearedBlocks,omitempty"`
+	MarkerStrategy       string `json:"markerStrategy,omitempty"`
+	MarkerMicroOnly      bool   `json:"markerMicroOnly,omitempty"`
+	MarkerSummary        string `json:"markerSummary,omitempty"`
+
+	// Plan marker fields (MarkerKind=="plan"): mirror PlanMarkerData.
+	MarkerPlanOperation string `json:"markerPlanOperation,omitempty"` // "created" | "updated"
+	MarkerPlanFilePath  string `json:"markerPlanFilePath,omitempty"`
+	MarkerPlanSlug      string `json:"markerPlanSlug,omitempty"`
+
+	// Steer marker fields (MarkerKind=="steer"): mirror SteerMarkerData.
+	MarkerMessageLength int `json:"markerMessageLength,omitempty"`
 }
 
 // PermissionDenialEntry is the wire format for permission denials in ResultEvent.
