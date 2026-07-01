@@ -90,7 +90,7 @@ struct NotificationsView: View {
         guard !unread.isEmpty else { return }
         resourceStore.markAllRead(unread.map(\.id))
         for item in unread {
-            viewModel.send(.markResourceRead(kind: item.kind, resourceId: item.id))
+            viewModel.send(.markResourceRead(kind: item.kind, resourceId: item.id), intent: .userInitiated)
         }
     }
 
@@ -153,7 +153,7 @@ private struct ResourceRow: View {
         Button {
             if !isRead {
                 resourceStore.markRead(item.id)
-                viewModel.send(.markResourceRead(kind: item.kind, resourceId: item.id))
+                viewModel.send(.markResourceRead(kind: item.kind, resourceId: item.id), intent: .userInitiated)
             }
             onSelect(item)
         } label: {
@@ -182,7 +182,7 @@ private struct ResourceRow: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 resourceStore.deleteItem(kind: item.kind, resourceId: item.id)
-                viewModel.send(.deleteResource(kind: item.kind, resourceId: item.id))
+                viewModel.send(.deleteResource(kind: item.kind, resourceId: item.id), intent: .userInitiated)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -230,7 +230,7 @@ struct ResourceDetailView: View {
                             Button("Retry") {
                                 contentFailed = false
                                 loadingContent = true
-                                viewModel.send(.requestResourceContent(kind: item.kind, resourceId: item.id))
+                                viewModel.send(.requestResourceContent(kind: item.kind, resourceId: item.id), intent: .userInitiated)
                             }
                             .font(.caption)
                             .tint(theme.accent)
@@ -266,7 +266,7 @@ struct ResourceDetailView: View {
             .onAppear {
                 if liveItem.content.isEmpty && !loadingContent && !contentFailed {
                     loadingContent = true
-                    viewModel.send(.requestResourceContent(kind: item.kind, resourceId: item.id))
+                    viewModel.send(.requestResourceContent(kind: item.kind, resourceId: item.id), intent: .automaticEssential)
                 }
             }
             .onChange(of: resourceStore.contentResponseIds) {

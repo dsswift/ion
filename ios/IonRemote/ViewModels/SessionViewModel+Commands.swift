@@ -7,12 +7,12 @@ private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engi
 
 extension SessionViewModel {
 
-    func sync() {
-        send(.sync)
+    func sync(intent: SendIntent = .automaticEssential) {
+        send(.sync, intent: intent)
     }
 
     func sendSync() {
-        send(.sync)
+        send(.sync, intent: .automaticEssential)
     }
 
     // Unified prompt submit (`submit` / `sendPrompt`), the `instanceId` data
@@ -24,15 +24,15 @@ extension SessionViewModel {
     // exceeds the cap".
 
     func cancel(tabId: String) {
-        send(.cancel(tabId: tabId))
+        send(.cancel(tabId: tabId), intent: .userInitiated)
     }
 
     func rewindConversation(tabId: String, messageId: String) {
-        send(.rewind(tabId: tabId, messageId: messageId))
+        send(.rewind(tabId: tabId, messageId: messageId), intent: .userInitiated)
     }
 
     func forkFromMessage(tabId: String, messageId: String) {
-        send(.forkFromMessage(tabId: tabId, messageId: messageId))
+        send(.forkFromMessage(tabId: tabId, messageId: messageId), intent: .userInitiated)
     }
 
     /// Rewind an engine-tab instance's conversation to the given message.
@@ -64,11 +64,11 @@ extension SessionViewModel {
             }
         }
         DiagnosticLog.log("CMD: engineRewindInstance tabId=\(tabId.prefix(8)) instanceId=\(instanceId.prefix(8)) messageId=\(messageId.prefix(16)) userTurnIndex=\(userTurnIndex.map(String.init) ?? "nil")")
-        send(.engineRewind(tabId: tabId, instanceId: instanceId, messageId: messageId, userTurnIndex: userTurnIndex))
+        send(.engineRewind(tabId: tabId, instanceId: instanceId, messageId: messageId, userTurnIndex: userTurnIndex), intent: .userInitiated)
     }
 
     func respondPermission(tabId: String, questionId: String, optionId: String) {
-        send(.respondPermission(tabId: tabId, questionId: questionId, optionId: optionId))
+        send(.respondPermission(tabId: tabId, questionId: questionId, optionId: optionId), intent: .userInitiated)
     }
 
     /// Answer an extension elicitation (ctx.elicit). `approved` true sends an
@@ -81,7 +81,7 @@ extension SessionViewModel {
             requestId: requestId,
             response: approved ? [:] : nil,
             cancelled: !approved
-        ))
+        ), intent: .userInitiated)
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].elicitationQueue?.removeAll { $0.requestId == requestId }
         }
@@ -124,7 +124,7 @@ extension SessionViewModel {
         conversationCursor.removeValue(forKey: tabId)
         conversationLoadFailed.remove(tabId)
         loadingConversation.insert(tabId)
-        send(.loadConversation(tabId: tabId, before: nil))
+        send(.loadConversation(tabId: tabId, before: nil), intent: .automaticEssential)
         startLoadTimer(tabId: tabId)
     }
 
@@ -144,7 +144,7 @@ extension SessionViewModel {
               conversationHasMore[tabId] == true,
               let cursor = conversationCursor[tabId] else { return }
         loadingConversation.insert(tabId)
-        send(.loadConversation(tabId: tabId, before: cursor))
+        send(.loadConversation(tabId: tabId, before: cursor), intent: .automaticEssential)
         startLoadTimer(tabId: tabId)
     }
 
@@ -159,7 +159,7 @@ extension SessionViewModel {
                 // First timeout -- retry once
                 self.conversationLoadRetryCount[tabId] = retries + 1
                 let cursor = self.conversationCursor[tabId]
-                self.send(.loadConversation(tabId: tabId, before: cursor))
+                self.send(.loadConversation(tabId: tabId, before: cursor), intent: .automaticEssential)
                 self.startLoadTimer(tabId: tabId)
             } else {
                 // Second timeout -- give up
@@ -191,12 +191,12 @@ extension SessionViewModel {
         // that profile; nil creates a plain conversation tab. This is the
         // unified post-#256 wire path — both plain and engine tabs go through
         // the same `desktop_create_tab` command shape.
-        send(.createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId))
+        send(.createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId), intent: .userInitiated)
     }
 
     func closeTab(_ tabId: String) {
         pendingCloseTabIds.insert(tabId)
-        send(.closeTab(tabId: tabId))
+        send(.closeTab(tabId: tabId), intent: .userInitiated)
         tabs.removeAll { $0.id == tabId }
         conversationInstances.removeValue(forKey: tabId)
         activeEngineInstance.removeValue(forKey: tabId)
@@ -211,7 +211,7 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].permissionMode = mode
         }
-        send(.setPermissionMode(tabId: tabId, mode: mode))
+        send(.setPermissionMode(tabId: tabId, mode: mode), intent: .userInitiated)
     }
 
     /// Whether the desktop's global "Enable extended thinking" setting is on.
@@ -235,7 +235,7 @@ extension SessionViewModel {
         mutateEngineInstance(tabId: tabId, instanceId: nil) { inst in
             inst.thinkingEffort = effort == "off" ? nil : effort
         }
-        send(.setThinkingEffort(tabId: tabId, effort: effort))
+        send(.setThinkingEffort(tabId: tabId, effort: effort), intent: .userInitiated)
     }
 
     // The plan→implement flow (`implementPlan`) lives in
@@ -252,7 +252,7 @@ extension SessionViewModel {
     func createTerminalTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
         awaitingLocalTabCreation = true
-        send(.createTerminalTab(workingDirectory: dir))
+        send(.createTerminalTab(workingDirectory: dir), intent: .userInitiated)
     }
 
     // Engine Commands live in SessionViewModel+EngineCommands.swift to keep
@@ -269,56 +269,56 @@ extension SessionViewModel {
     // loadConversation handles every tab via loadConversationHistory().
 
     func sendTerminalInput(tabId: String, instanceId: String, data: String) {
-        send(.terminalInput(tabId: tabId, instanceId: instanceId, data: data))
+        send(.terminalInput(tabId: tabId, instanceId: instanceId, data: data), intent: .userInitiated)
     }
 
     func sendTerminalResize(tabId: String, instanceId: String, cols: Int, rows: Int) {
-        send(.terminalResize(tabId: tabId, instanceId: instanceId, cols: cols, rows: rows))
+        send(.terminalResize(tabId: tabId, instanceId: instanceId, cols: cols, rows: rows), intent: .userInitiated)
     }
 
     func addTerminalInstance(tabId: String) {
-        send(.terminalAddInstance(tabId: tabId))
+        send(.terminalAddInstance(tabId: tabId), intent: .userInitiated)
     }
 
     func removeTerminalInstance(tabId: String, instanceId: String) {
-        send(.terminalRemoveInstance(tabId: tabId, instanceId: instanceId))
+        send(.terminalRemoveInstance(tabId: tabId, instanceId: instanceId), intent: .userInitiated)
     }
 
     func selectTerminalInstance(tabId: String, instanceId: String) {
         activeTerminalInstance[tabId] = instanceId
-        send(.terminalSelectInstance(tabId: tabId, instanceId: instanceId))
+        send(.terminalSelectInstance(tabId: tabId, instanceId: instanceId), intent: .userInitiated)
     }
 
     func requestTerminalSnapshot(tabId: String) {
-        send(.requestTerminalSnapshot(tabId: tabId))
+        send(.requestTerminalSnapshot(tabId: tabId), intent: .automaticEssential)
     }
 
     func renameTab(tabId: String, customTitle: String?) {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].customTitle = customTitle
         }
-        send(.renameTab(tabId: tabId, customTitle: customTitle))
+        send(.renameTab(tabId: tabId, customTitle: customTitle), intent: .userInitiated)
     }
 
     func setPillColor(tabId: String, color: String?) {
-        // Optimistic local update — the snapshot will confirm on the next sync.
+        // Optimistic local update -- the snapshot will confirm on the next sync.
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].pillColor = color
         }
-        send(.setPillColor(tabId: tabId, pillColor: color))
+        send(.setPillColor(tabId: tabId, pillColor: color), intent: .userInitiated)
     }
 
     func setPillIcon(tabId: String, icon: String?) {
-        // Optimistic local update — the snapshot will confirm on the next sync.
+        // Optimistic local update -- the snapshot will confirm on the next sync.
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].pillIcon = icon
         }
-        send(.setPillIcon(tabId: tabId, pillIcon: icon))
+        send(.setPillIcon(tabId: tabId, pillIcon: icon), intent: .userInitiated)
     }
 
     func renameTerminalInstance(tabId: String, instanceId: String, label: String) {
         terminalInstanceLabels["\(tabId):\(instanceId)"] = label
-        send(.renameTerminalInstance(tabId: tabId, instanceId: instanceId, label: label))
+        send(.renameTerminalInstance(tabId: tabId, instanceId: instanceId, label: label), intent: .userInitiated)
     }
 
     func terminalInstanceLabel(tabId: String, instanceId: String, fallback: String) -> String {
@@ -328,7 +328,7 @@ extension SessionViewModel {
     // MARK: - Git Commands
 
     func requestGitChanges(directory: String) {
-        send(.gitChanges(directory: directory))
+        send(.gitChanges(directory: directory), intent: .automaticEssential)
     }
 
     /// Request git changes for every unique tab working directory that doesn't
@@ -355,69 +355,69 @@ extension SessionViewModel {
     }
 
     func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {
-        send(.gitGraph(directory: directory, skip: skip, limit: limit))
+        send(.gitGraph(directory: directory, skip: skip, limit: limit), intent: .userInitiated)
     }
 
     func requestGitDiff(directory: String, path: String, staged: Bool) {
         gitDiffLoading = true
-        send(.gitDiff(directory: directory, path: path, staged: staged))
+        send(.gitDiff(directory: directory, path: path, staged: staged), intent: .userInitiated)
     }
 
     func gitStage(directory: String, paths: [String]) {
-        send(.gitStage(directory: directory, paths: paths))
+        send(.gitStage(directory: directory, paths: paths), intent: .userInitiated)
     }
 
     func gitUnstage(directory: String, paths: [String]) {
-        send(.gitUnstage(directory: directory, paths: paths))
+        send(.gitUnstage(directory: directory, paths: paths), intent: .userInitiated)
     }
 
     func gitCommit(directory: String, message: String) {
-        send(.gitCommit(directory: directory, message: message))
+        send(.gitCommit(directory: directory, message: message), intent: .userInitiated)
     }
 
     func gitDiscard(directory: String, paths: [String]) {
-        send(.gitDiscard(directory: directory, paths: paths))
+        send(.gitDiscard(directory: directory, paths: paths), intent: .userInitiated)
     }
 
     func gitFetch(directory: String) {
-        send(.gitFetch(directory: directory))
+        send(.gitFetch(directory: directory), intent: .userInitiated)
     }
 
     func gitPull(directory: String) {
-        send(.gitPull(directory: directory))
+        send(.gitPull(directory: directory), intent: .userInitiated)
     }
 
     func gitPush(directory: String) {
-        send(.gitPush(directory: directory))
+        send(.gitPush(directory: directory), intent: .userInitiated)
     }
 
     func requestGitCommitFiles(directory: String, hash: String) {
-        send(.gitCommitFiles(directory: directory, hash: hash))
+        send(.gitCommitFiles(directory: directory, hash: hash), intent: .userInitiated)
     }
 
     func requestGitCommitFileDiff(directory: String, hash: String, path: String) {
-        send(.gitCommitFileDiff(directory: directory, hash: hash, path: path))
+        send(.gitCommitFileDiff(directory: directory, hash: hash, path: path), intent: .userInitiated)
     }
 
     // MARK: - File Explorer Commands
 
     /// Upload an image from the iOS device to the desktop as a temp file.
     func uploadAttachment(dataUrl: String, name: String, correlationId: String) {
-        send(.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId))
+        send(.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId), intent: .userInitiated)
     }
 
     func requestFsListDir(directory: String, includeHidden: Bool = false) {
         fileListingLoading.insert(directory)
-        send(.fsListDir(directory: directory, includeHidden: includeHidden))
+        send(.fsListDir(directory: directory, includeHidden: includeHidden), intent: .userInitiated)
     }
 
     func requestFsReadFile(filePath: String) {
         fileContentLoading.insert(filePath)
-        send(.fsReadFile(filePath: filePath))
+        send(.fsReadFile(filePath: filePath), intent: .userInitiated)
     }
 
     func requestFsWriteFile(filePath: String, content: String) {
-        send(.fsWriteFile(filePath: filePath, content: content))
+        send(.fsWriteFile(filePath: filePath, content: content), intent: .userInitiated)
     }
 
     /// Rename a file or directory on the paired desktop. Fire-and-forget;
@@ -425,27 +425,28 @@ extension SessionViewModel {
     /// turns into a refreshed `fsListDir` on the parent directory of
     /// `newPath` (and surfaces errors via `fileRenameResult`).
     func requestFsRename(oldPath: String, newPath: String) {
-        send(.fsRename(oldPath: oldPath, newPath: newPath))
+        send(.fsRename(oldPath: oldPath, newPath: newPath), intent: .userInitiated)
     }
 
     func requestLoadAttachments(tabId: String) {
         let oldCount = tabAttachmentCache[tabId]?.count ?? -1
         DiagnosticLog.log("ATTACH: requestLoadAttachments tabId=\(tabId.prefix(8)) oldCacheCount=\(oldCount) clearing")
         tabAttachmentCache.removeValue(forKey: tabId)
-        send(.loadAttachments(tabId: tabId))
+        send(.loadAttachments(tabId: tabId), intent: .automaticEssential)
     }
 
     // MARK: - Command Discovery
 
     func discoverCommands(directory: String) {
         guard !directory.isEmpty else { return }
-        send(.discoverCommands(directory: directory))
+        send(.discoverCommands(directory: directory), intent: .automaticEssential)
     }
 
     // MARK: - Voice Config
 
     /// Send the current voice configuration to the desktop.
     /// Called on initial connection (snapshot) and when voice settings change.
+    /// Fire-and-forget: rides the next snapshot if not connected at call time.
     @MainActor
     func sendVoiceConfig() {
         let prompt = voiceService.voiceMode == .desktopAssisted ? voiceService.voiceSystemPrompt : nil
@@ -453,7 +454,7 @@ extension SessionViewModel {
             enabled: voiceService.isEnabled,
             mode: voiceService.voiceMode.rawValue,
             systemPrompt: prompt
-        ))
+        ), intent: .automaticFireAndForget) // rides next snapshot if disconnected
     }
 
     /// Write a single projectable desktop setting on the currently-paired
@@ -471,7 +472,7 @@ extension SessionViewModel {
     /// on the next state read.
     @MainActor
     func setDesktopSetting(key: String, value: AnyCodable) {
-        send(.setDesktopSetting(key: key, value: value))
+        send(.setDesktopSetting(key: key, value: value), intent: .userInitiated)
     }
 
     /// Send the current focus state to the desktop for intercept routing.
@@ -489,27 +490,81 @@ extension SessionViewModel {
         Task { @MainActor [weak self] in
             self?.focusedTabId = tabId
         }
-        send(.reportFocus(tabId: tabId, interceptEnabled: interceptEnabled))
+        send(.reportFocus(tabId: tabId, interceptEnabled: interceptEnabled), intent: .automaticEssential)
     }
 
     // MARK: - Send
 
-    func send(_ command: RemoteCommand) {        DiagnosticLog.logCommand(command)
-        guard let transport else {
-            DiagnosticLog.log("CMD: dropped (no transport)")
-            Task { @MainActor [weak self] in
-                self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
-            }
-            return
-        }
-        Task { [weak self] in
-            do {
-                try await transport.send(command)
-            } catch {
-                let detail = error.localizedDescription
-                await MainActor.run {
-                    self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+    /// Send a command with an explicit intent classification.
+    ///
+    /// Intent drives queueing and error visibility:
+    ///
+    ///   `.userInitiated`         User tapped or typed. Transport absent -> "Not
+    ///                            connected" toast; send error -> "Send failed" toast.
+    ///
+    ///   `.automaticEssential`    Background send the screen requires. Not connected
+    ///                            -> enqueue deduped by command-identity key
+    ///                            (last-write-wins); drains once on first snapshot.
+    ///                            Connected but throws -> log only, no toast.
+    ///
+    ///   `.automaticFireAndForget` Background send that self-heals. Not connected
+    ///                            -> drop silently (log only). Connected but throws
+    ///                            -> log only, no toast.
+    ///
+    /// Safe default: `.automaticEssential`. Pass `.userInitiated` at every
+    /// call site the user directly initiated. Pass `.automaticFireAndForget`
+    /// only with a one-line reason comment at the call site.
+    func send(_ command: RemoteCommand, intent: SendIntent = .automaticEssential) {
+        DiagnosticLog.logCommand(command)
+
+        switch intent {
+        case .userInitiated:
+            guard let transport else {
+                DiagnosticLog.log("CMD: dropped (no transport) intent=userInitiated")
+                Task { @MainActor [weak self] in
+                    self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
                 }
+                return
+            }
+            Task { [weak self] in
+                do {
+                    try await transport.send(command)
+                } catch {
+                    let detail = error.localizedDescription
+                    await MainActor.run {
+                        self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                    }
+                }
+            }
+
+        case .automaticEssential:
+            guard connectionState == .connected, let transport else {
+                let key = command.essentialKey ?? "unknown:\(command)"
+                DiagnosticLog.log("CMD: essential not connected, deferring key=\(key) state=\(connectionState.rawValue)")
+                enqueueEssential(key: key, command: command)
+                return
+            }
+            Task { [weak self] in
+                do {
+                    try await transport.send(command)
+                } catch {
+                    DiagnosticLog.log("CMD: essential send error (no toast): \(error.localizedDescription)")
+                }
+                _ = self
+            }
+
+        case .automaticFireAndForget:
+            guard connectionState == .connected, let transport else {
+                DiagnosticLog.log("CMD: fire-and-forget dropped (not connected) state=\(connectionState.rawValue)")
+                return
+            }
+            Task { [weak self] in
+                do {
+                    try await transport.send(command)
+                } catch {
+                    DiagnosticLog.log("CMD: fire-and-forget send error (no toast): \(error.localizedDescription)")
+                }
+                _ = self
             }
         }
     }

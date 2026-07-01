@@ -277,7 +277,7 @@ extension SessionViewModel {
         guard !agentConversationLoading.contains(agent.name) else { return }
         DiagnosticLog.log("ENGINE: loading agent conversation agent=\(agent.name) convIds=\(agent.conversationIds)")
         agentConversationLoading.insert(agent.name)
-        send(.loadAgentConversation(conversationIds: agent.conversationIds))
+        send(.loadAgentConversation(conversationIds: agent.conversationIds), intent: .automaticEssential)
     }
 
     /// Load a single dispatch's conversation by conversationId.
@@ -313,7 +313,7 @@ extension SessionViewModel {
         }
         DiagnosticLog.log("ENGINE: loading dispatch conversation agent=\(agent.name) convId=\(conversationId)")
         agentConversationLoading.insert(conversationId)
-        send(.loadAgentConversation(conversationIds: [conversationId]))
+        send(.loadAgentConversation(conversationIds: [conversationId]), intent: .automaticEssential)
     }
 
     /// Preload remaining dispatch conversations in the background after
@@ -343,7 +343,7 @@ extension SessionViewModel {
         guard !agentConversationLoading.contains(conversationId) else { return }
         DiagnosticLog.log("ENGINE: refresh dispatch conversation agent=\(agent.name) convId=\(conversationId)")
         agentConversationLoading.insert(conversationId)
-        send(.loadAgentConversation(conversationIds: [conversationId]))
+        send(.loadAgentConversation(conversationIds: [conversationId]), intent: .automaticEssential)
     }
 
     /// Invalidates and re-fetches all conversation data for an agent.
@@ -354,7 +354,7 @@ extension SessionViewModel {
         DiagnosticLog.log("ENGINE: refresh agent conversation agent=\(agent.name) convIds=\(agent.conversationIds)")
         agentConversationMessages.removeValue(forKey: agent.name)
         agentConversationLoading.insert(agent.name)
-        send(.loadAgentConversation(conversationIds: agent.conversationIds))
+        send(.loadAgentConversation(conversationIds: agent.conversationIds), intent: .automaticEssential)
     }
 
     // MARK: - Diagnostic log request
@@ -364,7 +364,7 @@ extension SessionViewModel {
         let logs = DiagnosticLog.exportAllSessions()
         let deviceId = activeDeviceId ?? "unknown"
         let deviceName = UIDevice.current.name
-        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName))
+        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName), intent: .automaticEssential)
     }
 
     // MARK: - Dispatch terminal cleanup

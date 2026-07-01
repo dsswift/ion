@@ -277,6 +277,25 @@ final class SessionViewModel {
     /// `IonRemoteApp.swift`'s `.active` handler for the call sites.
     var pendingOnConnected: [() -> Void] = []
 
+    /// Keyed deferred queue for `.automaticEssential` sends that arrive
+    /// while the transport is not yet `.connected`.
+    ///
+    /// Keys are stable command-identity strings (e.g. `"loadConversation:<tabId>"`,
+    /// `"requestTerminalSnapshot:<tabId>"`, `"sync"`, `"gitChanges:<dir>"`).
+    /// Last-write-wins: enqueueing the same key again supersedes the prior
+    /// entry so a stale load intent from a tab the user navigated away from
+    /// does not replay against the next transport.
+    ///
+    /// Drained once per `.connected` transition by `drainPendingEssential()`
+    /// (called from `handleSnapshot`, next to `drainPendingOnConnected()`).
+    /// Cleared by `clearPendingEssential()` on hard disconnect so stale
+    /// intent from one desktop does not fire against a different pairing.
+    ///
+    /// Separate from `pendingOnConnected` (the closure-run-all queue) so
+    /// the dedup semantics are explicit and the two queues can evolve
+    /// independently. See `SessionViewModel+OnConnected.swift`.
+    var pendingEssentialQueue: [(key: String, command: RemoteCommand)] = []
+
     /// Which desktop is currently selected (persisted in UserDefaults).
     var activeDeviceId: String? {
         get { UserDefaults.standard.string(forKey: "activeDeviceId") }

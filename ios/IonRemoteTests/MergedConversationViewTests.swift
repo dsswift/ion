@@ -73,8 +73,14 @@ final class MergedConversationViewTests: XCTestCase {
         // show them.
         XCTAssertFalse(src.contains("tabHasExtensions && !visibleAgents.isEmpty"),
             "The agent panel must NOT be gated on tabHasExtensions — that was the illegitimate tab-type fork removed in the #256 follow-up")
-        XCTAssertTrue(src.contains("if !visibleAgents.isEmpty {"),
-            "The agent panel must be gated purely on the data: !visibleAgents.isEmpty")
+        // The agents parameter uses a ternary to pass nil when the list is empty,
+        // not an `if` branch. Both forms are data-driven; what matters is that the
+        // value is derived solely from visibleAgents (no tab-type gate).
+        XCTAssertTrue(src.contains("agents: visibleAgents.isEmpty ? nil : visibleAgents"),
+            "The agent panel must be driven purely by the data: visibleAgents.isEmpty ternary with no tab-type gate")
+        // A reintroduced tab-type guard would combine tabHasExtensions with the agents ternary.
+        XCTAssertFalse(src.contains("tabHasExtensions && visibleAgents.isEmpty"),
+            "No tab-type guard may be combined with the visibleAgents.isEmpty ternary")
 
         // WI-004 / #259: history load routing is no longer a legitimate use of
         // tabHasExtensions. loadConversationHistory now calls loadConversation

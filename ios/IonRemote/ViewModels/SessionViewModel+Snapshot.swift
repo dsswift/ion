@@ -34,6 +34,7 @@ extension SessionViewModel {
             // calls `runWhenConnected` again) sees `.connected` and
             // runs inline rather than re-queueing.
             drainPendingOnConnected()
+            drainPendingEssential()
         }
         connectionQuality.transportState = transport?.state ?? .disconnected
         if !recentDirs.isEmpty {
@@ -287,7 +288,7 @@ extension SessionViewModel {
         }
         // Re-send in-flight conversation loads that may have been dropped.
         for tabId in loadingConversation {
-            send(.loadConversation(tabId: tabId, before: conversationCursor[tabId]))
+            send(.loadConversation(tabId: tabId, before: conversationCursor[tabId]), intent: .automaticEssential)
         }
 
         // Cache layout for the active device so reconnects restore it.

@@ -261,7 +261,7 @@ struct TabListView: View {
                 }
                 .refreshable {
                     Haptic.light()
-                    viewModel.sync()
+                    viewModel.sync(intent: .userInitiated)
                 }
                 .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
                     if let tabId {
@@ -333,7 +333,7 @@ struct TabListView: View {
             .scrollContentBackground(.hidden)
             .refreshable {
                 Haptic.light()
-                viewModel.sync()
+                viewModel.sync(intent: .userInitiated)
             }
             .overlay {
                 emptyStateOverlay

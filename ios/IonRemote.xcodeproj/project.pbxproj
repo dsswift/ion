@@ -131,6 +131,9 @@
 		A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000901AA /* AppDelegate.swift */; };
 		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
 		A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */; };
+		SENDINT00000000000000001 /* SendIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDINT00000000000000002 /* SendIntent.swift */; };
+		ESSNKY00000000000000001 /* RemoteCommand+EssentialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */; };
+		SNDITT00000000000000001 /* SendIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SNDITT00000000000000002 /* SendIntentTests.swift */; };
 		A1B2C3D4E5F60001000980AA /* SessionViewModel+SessionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */; };
 		A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */; };
 		A1B2C3D4E5F60001000A00AA /* SessionStatusSynthesisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */; };
@@ -533,6 +536,9 @@
 		A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitterTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
+		SENDINT00000000000000002 /* SendIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntent.swift; sourceTree = "<group>"; };
+		ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+EssentialKey.swift"; sourceTree = "<group>"; };
+		SNDITT00000000000000002 /* SendIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntentTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationHelpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+EngineDecoder.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFallbackSnapshotTests.swift; sourceTree = "<group>"; };
@@ -637,6 +643,7 @@
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
 				A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */,
+				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
@@ -801,6 +808,7 @@
 				DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */,
 				A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */,
 				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
+				SENDINT00000000000000002 /* SendIntent.swift */,
 				A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */,
 				A1B2C3D4E5F600010010B2AA /* PlanContentStore.swift */,
 			);
@@ -830,6 +838,7 @@
 				DRAFTU00000000000000008 /* UnifiedDraftStoreTests.swift */,
 				WIREMERGE000000000000008 /* RemoteCommandWireMergeTests.swift */,
 				LOADST00000000000000008 /* ConversationLoadStateTests.swift */,
+				SNDITT00000000000000002 /* SendIntentTests.swift */,
 				TRESEND00000000000000008 /* TransportResendTests.swift */,
 				CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */,
 				MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */,
@@ -1143,6 +1152,8 @@
 				DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */,
 				A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */,
 				A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */,
+				SENDINT00000000000000001 /* SendIntent.swift in Sources */,
+				ESSNKY00000000000000001 /* RemoteCommand+EssentialKey.swift in Sources */,
 				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
 				A1B2C3D4E5F60001000224AA /* PayloadCompression.swift in Sources */,
@@ -1282,6 +1293,7 @@
 				DRAFTU00000000000000007 /* UnifiedDraftStoreTests.swift in Sources */,
 				WIREMERGE000000000000007 /* RemoteCommandWireMergeTests.swift in Sources */,
 				LOADST00000000000000007 /* ConversationLoadStateTests.swift in Sources */,
+				SNDITT00000000000000001 /* SendIntentTests.swift in Sources */,
 				TRESEND00000000000000007 /* TransportResendTests.swift in Sources */,
 				CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */,
 				MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */,

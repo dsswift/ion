@@ -35,7 +35,7 @@ final class RemoteImageFetcher {
             return
         }
         pending[path] = [completion]
-        viewModel.send(.fsReadImage(filePath: path))
+        viewModel.send(.fsReadImage(filePath: path), intent: .automaticFireAndForget) // re-fires on next render if disconnected
     }
 
     /// Called by the event handler when `fs_image_content` arrives.

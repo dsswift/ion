@@ -153,7 +153,7 @@ extension SessionViewModel {
         // selects the desktop pipeline; nil is dropped on encode. clientMsgId
         // carries the optimistic insert's id so the desktop echoes the user
         // message back under the same id and iOS reconciles by id (no duplicate).
-        send(.prompt(tabId: tabId, text: text, clientMsgId: clientMsgId, attachments: attachments, instanceId: instanceId))
+        send(.prompt(tabId: tabId, text: text, clientMsgId: clientMsgId, attachments: attachments, instanceId: instanceId), intent: .userInitiated)
     }
 
     /// Resolve the `instanceId` to carry on a `.prompt` for the given tab.
@@ -202,7 +202,7 @@ extension SessionViewModel {
             tabs[idx].modelOverride = model
         }
         // Single unified wire command for every tab type.
-        send(.setTabModel(tabId: tabId, model: model))
+        send(.setTabModel(tabId: tabId, model: model), intent: .userInitiated)
     }
 
     @MainActor

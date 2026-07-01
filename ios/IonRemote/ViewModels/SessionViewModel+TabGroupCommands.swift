@@ -14,7 +14,7 @@ extension SessionViewModel {
 
     /// Request the desktop to change the tab group mode.
     func setTabGroupMode(_ mode: String) {
-        send(.setTabGroupMode(mode: mode))
+        send(.setTabGroupMode(mode: mode), intent: .userInitiated)
     }
 
     /// Move a tab to a different manual group on the desktop.
@@ -23,7 +23,7 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].groupId = groupId
         }
-        send(.moveTabToGroup(tabId: tabId, groupId: groupId))
+        send(.moveTabToGroup(tabId: tabId, groupId: groupId), intent: .userInitiated)
     }
 
     /// Combined "move to group AND pin" — used by the "Move to Group and Pin"
@@ -83,7 +83,7 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].groupPinned = !(tabs[idx].groupPinned ?? false)
         }
-        send(.toggleTabGroupPin(tabId: tabId))
+        send(.toggleTabGroupPin(tabId: tabId), intent: .userInitiated)
     }
 
     /// Reorder tab groups. Sends the new ordering to the desktop.
@@ -94,6 +94,6 @@ extension SessionViewModel {
         for i in tabGroups.indices {
             tabGroups[i].order = i
         }
-        send(.reorderTabGroups(orderedIds: orderedIds))
+        send(.reorderTabGroups(orderedIds: orderedIds), intent: .userInitiated)
     }
 }

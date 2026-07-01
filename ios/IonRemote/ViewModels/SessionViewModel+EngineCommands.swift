@@ -23,22 +23,22 @@ extension SessionViewModel {
 
     func setPreferredModelDefault(_ model: String) {
         preferredModel = model
-        send(.setPreferredModel(model: model))
+        send(.setPreferredModel(model: model), intent: .userInitiated)
     }
 
     func setEngineDefaultModelDefault(_ model: String) {
         engineDefaultModel = model
-        send(.setEngineDefaultModel(model: model))
+        send(.setEngineDefaultModel(model: model), intent: .userInitiated)
     }
 
     func abortEngine(tabId: String) {
         let instanceId = activeEngineInstance[tabId]
-        send(.engineAbort(tabId: tabId, instanceId: instanceId))
+        send(.engineAbort(tabId: tabId, instanceId: instanceId), intent: .userInitiated)
     }
 
     func respondEngineDialog(tabId: String, dialogId: String, value: String) {
         engineDialogs[tabId] = nil
         let instanceId = activeEngineInstance[tabId]
-        send(.engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value, instanceId: instanceId))
+        send(.engineDialogResponse(tabId: tabId, dialogId: dialogId, value: value, instanceId: instanceId), intent: .userInitiated)
     }
 }

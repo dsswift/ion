@@ -76,8 +76,13 @@ final class DataDrivenConversationTests: XCTestCase {
         let src = try viewSource("ConversationView.swift")
         XCTAssertFalse(src.contains("tabHasExtensions && !visibleAgents.isEmpty"),
             "Agent panel must not be gated on tabHasExtensions — it is data-driven (#256 follow-up)")
-        XCTAssertTrue(src.contains("if !visibleAgents.isEmpty {"),
-            "Agent panel must be gated purely on the data: !visibleAgents.isEmpty")
+        // The render site passes agents via a ternary on visibleAgents.isEmpty, not an `if` branch.
+        // Pinning this exact form ensures no one silently reverts to a tab-type fork.
+        XCTAssertTrue(src.contains("agents: visibleAgents.isEmpty ? nil : visibleAgents"),
+            "Agent panel render site must pass agents via the data-driven ternary: visibleAgents.isEmpty ? nil : visibleAgents")
+        // If someone reintroduced a tab-type fork they would combine tabHasExtensions with visibleAgents.
+        XCTAssertFalse(src.contains("tabHasExtensions && visibleAgents.isEmpty"),
+            "No tab-type guard may gate the visibleAgents.isEmpty ternary")
     }
 
     // MARK: - 2. Snapshot populates conversationInstances for a PLAIN tab

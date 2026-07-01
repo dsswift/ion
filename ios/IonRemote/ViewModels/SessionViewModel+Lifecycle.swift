@@ -90,7 +90,7 @@ extension SessionViewModel {
                 DiagnosticLog.log("LAN-CONNECT: auth OK \(device.name)")
                 await MainActor.run {
                     self.connectionState = .connected
-                    self.send(.sync)
+                    self.send(.sync, intent: .automaticEssential)
                 }
             } else {
                 ionLog.error("connectLAN: auth FAILED for \(device.name)")
@@ -227,6 +227,7 @@ extension SessionViewModel {
         // commands waiting for the previous transport must not fire
         // against the next one.
         clearPendingOnConnected()
+        clearPendingEssential()
         tearDownTransport()
         wipeTransientState()
     }
