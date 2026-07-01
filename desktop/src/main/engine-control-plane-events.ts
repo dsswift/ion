@@ -376,8 +376,23 @@ export function handleEngineEvent(
       break
 
     case 'engine_compacting':
-      log(`compacting: tabId=${tabId} active=${event.active}`)
-      ctx.emit('event', tabId, { type: 'compacting', active: event.active } as NormalizedEvent)
+      log(`compacting: tabId=${tabId} active=${event.active} microOnly=${event.microOnly ?? false} msgsBefore=${event.messagesBefore ?? 0} msgsAfter=${event.messagesAfter ?? 0}`)
+      // Forward the full detail field set, not just `active`. The renderer
+      // marker (event-slice.ts) and the iOS-bound marker (event-wiring-remote.ts)
+      // both read messagesBefore/messagesAfter/clearedBlocks/summary/strategy/
+      // microOnly to build the "[Compaction]" checkpoint line. Dropping them
+      // here (the prior behavior) left both markers as dead code — the fields
+      // never arrived, so the marker was never inserted.
+      ctx.emit('event', tabId, {
+        type: 'compacting',
+        active: event.active,
+        summary: event.summary,
+        messagesBefore: event.messagesBefore,
+        messagesAfter: event.messagesAfter,
+        clearedBlocks: event.clearedBlocks,
+        strategy: event.strategy,
+        microOnly: event.microOnly,
+      } as NormalizedEvent)
       break
 
     case 'engine_tool_stalled':

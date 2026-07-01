@@ -4,6 +4,7 @@ import { log as _log } from './logger'
 import { state, sessionPlane, activeAssistantMessages, lastMessagePreview } from './state'
 import { normalizedToRemote } from './remote/protocol'
 import { formatClearDivider } from '../shared/clear-divider'
+import { buildCompactionMarkerContent } from '../shared/compaction-marker'
 
 function log(msg: string): void {
   _log('main', msg)
@@ -192,26 +193,24 @@ export function wireRemoteSessionPlaneForwarding(): void {
       }
       case 'compacting': {
         // When compaction finishes, send a system message to iOS so it renders
-        // the compaction marker in the conversation (mirrors desktop event-slice).
-        if (!event.active && (event.messagesBefore || event.summary)) {
-          const parts = ['[Compaction]']
-          if (event.strategy) parts.push(event.strategy)
-          if (event.messagesBefore && event.messagesAfter != null) {
-            parts.push(`${event.messagesBefore} → ${event.messagesAfter} messages`)
+        // the compaction marker in the conversation. Uses the shared builder so
+        // the iOS-bound string is byte-identical to the desktop renderer's
+        // (event-slice.ts) — including omitting "N → N" on a micro-only pass
+        // and suppressing the marker entirely on a pure no-op.
+        if (!event.active) {
+          const content = buildCompactionMarkerContent(event)
+          if (content !== null) {
+            state.remoteTransport.send({
+              type: 'desktop_message_added',
+              tabId,
+              message: {
+                id: `compaction-${Date.now()}-${tabId}`,
+                role: 'system',
+                content,
+                timestamp: Date.now(),
+              },
+            })
           }
-          if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
-          let content = parts.join(' · ')
-          if (event.summary) content += '\n\n' + event.summary
-          state.remoteTransport.send({
-            type: 'desktop_message_added',
-            tabId,
-            message: {
-              id: `compaction-${Date.now()}-${tabId}`,
-              role: 'system',
-              content,
-              timestamp: Date.now(),
-            },
-          })
         }
         break
       }

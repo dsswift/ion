@@ -92,7 +92,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     'stopReason',
   ],
   stream_reset: [],
-  compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'strategy', 'summary'],
+  compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'microOnly', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
   steer_injected: ['messageLength'],
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],

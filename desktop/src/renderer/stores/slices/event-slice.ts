@@ -3,6 +3,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
+import { buildCompactionMarkerContent } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
@@ -172,19 +173,15 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               } else {
                 updated.currentActivity = 'Thinking...'
                 updated.isCompacting = false
-                // Insert a compaction marker message so the user can see when compaction happened.
-                if (event.messagesBefore || event.summary) {
-                  const parts = ['[Compaction]']
-                  if (event.strategy) parts.push(event.strategy)
-                  if (event.messagesBefore && event.messagesAfter != null) {
-                    parts.push(`${event.messagesBefore} → ${event.messagesAfter} messages`)
-                  }
-                  if (event.clearedBlocks) parts.push(`${event.clearedBlocks} blocks cleared`)
-                  let content = parts.join(' · ')
-                  if (event.summary) content += '\n\n' + event.summary
+                // Insert a compaction marker message so the user can see when
+                // compaction happened. The shared builder returns null for a
+                // pure no-op and omits the misleading "N → N messages" segment
+                // on a micro-only pass.
+                const markerContent = buildCompactionMarkerContent(event)
+                if (markerContent !== null) {
                   messages = [
                     ...messages,
-                    { id: nextMsgId(), role: 'system' as const, content, timestamp: Date.now() },
+                    { id: nextMsgId(), role: 'system' as const, content: markerContent, timestamp: Date.now() },
                   ]
                 }
               }

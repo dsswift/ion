@@ -85,7 +85,7 @@ export type EngineEvent =
   // ("Plan surfaced automatically — review carefully").
   | { type: 'engine_plan_mode_auto_exit'; stopReason: string; planFilePath?: string; planSlug?: string; reason?: string; sessionId?: string; runId?: string }
   | { type: 'engine_stream_reset' }
-  | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string }
+  | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
   | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }
   // Mid-turn steer-drain confirmation. Engine emits this after the
   // runloop drainSteer helper captures a steer message (queued via the
