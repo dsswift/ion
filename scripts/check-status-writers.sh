@@ -17,6 +17,11 @@
 #      transitions for engine tabs)
 #   - desktop/src/renderer/stores/slices/event-slice.ts
 #     (handles task_complete / tab_status / engine_dead for CLI tabs)
+#   - desktop/src/renderer/stores/slices/event-slice-extension-surface.ts
+#     (extension-surface arms extracted from event-slice.ts to keep it under
+#      the 600-line cap; uses instPatch staging, not direct statusFields
+#      mutation — the commit happens in the parent event-slice.ts at line
+#      `next.statusFields = instPatch.statusFields!`, which IS whitelisted)
 #   - desktop/src/main/engine-control-plane.ts
 #     (CLI-tab control plane; _setStatus is the chokepoint)
 #   - desktop/src/main/engine-control-plane-events.ts
@@ -55,6 +60,7 @@ read -r -d '' WHITELIST <<'EOF' || true
 desktop/src/renderer/stores/slices/engine-event-status.ts
 desktop/src/renderer/stores/slices/engine-event-slice.ts
 desktop/src/renderer/stores/slices/event-slice.ts
+desktop/src/renderer/stores/slices/event-slice-extension-surface.ts
 desktop/src/renderer/stores/slices/engine-slice.ts
 desktop/src/renderer/stores/slices/engine-slice-submit.ts
 desktop/src/renderer/stores/slices/permissions-slice.ts
