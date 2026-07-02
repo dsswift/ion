@@ -35,12 +35,19 @@ describe('TURN_GROUPING_GUIDANCE', () => {
     expect(TURN_GROUPING_GUIDANCE.length).toBeGreaterThan(0)
   })
 
-  it('mentions the core point: colons + inline rendering', () => {
+  it('mentions the core point: colons + rendered-below placement', () => {
     // The two load-bearing substrings the guidance must keep. A
     // refactor that drops either has lost the meaning of the
     // addendum and the test catches that before it ships.
+    //
+    // "colons" — the habit the guidance explicitly warns against.
+    // "rendered below" — the placement truth the guidance states
+    //   (tool calls appear after/below the assistant text, not
+    //   interleaved or above it). The prior pin used "inline" but
+    //   the guidance was reworded to the more precise "rendered below
+    //   your response text, not above it"; update the pin to match.
     expect(TURN_GROUPING_GUIDANCE.toLowerCase()).toContain('colons')
-    expect(TURN_GROUPING_GUIDANCE.toLowerCase()).toContain('inline')
+    expect(TURN_GROUPING_GUIDANCE.toLowerCase()).toContain('rendered below')
   })
 
   it('ends with normal terminal punctuation (period), not a colon', () => {
