@@ -291,6 +291,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			streamOpts.Thinking = opts.Thinking
 		}
 
+		// Build and emit the per-category context breakdown once per run, on
+		// the first turn that has assembled stream options. See
+		// runloop_context_breakdown.go for the build/emit + reconcile helpers.
+		b.maybeEmitContextBreakdown(ctx, run, model, provider, &streamOpts)
+
 		// Call provider with retry (with telemetry span)
 		runIDCopy, turnCopy := run.requestID, turn
 		retryConfig := &providers.RetryConfig{
@@ -483,6 +488,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					CacheCreationInputTokens: &cacheCreate,
 				},
 			}})
+
+			// Reconcile the context breakdown with the provider-reported input
+			// total on the FIRST usage event only. See
+			// runloop_context_breakdown.go.
+			b.maybeReconcileContextBreakdown(run, totalIn)
 
 			// Accumulate output tokens for the early-stop continuation
 			// decision. Done unconditionally — the feature gates itself on

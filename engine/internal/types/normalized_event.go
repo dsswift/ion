@@ -100,6 +100,12 @@ const (
 	// EventEventsDropped signals that the event delivery buffer overflowed
 	// and some events were discarded. State may be stale.
 	EventEventsDropped = "events_dropped"
+
+	// EventContextBreakdown carries a per-category token breakdown for the
+	// active run. Emitted once after prompt assembly and again after the
+	// first UsageEvent reconciliation (with APIReportedTotal and Unaccounted
+	// populated). See ContextBreakdownEvent.
+	EventContextBreakdown = "context_breakdown"
 )
 
 // NormalizedEventData is the interface satisfied by all canonical event variants.
@@ -219,6 +225,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ExtensionDeadPermanentEvent{}
 	case EventEventsDropped:
 		target = &EventsDroppedEvent{}
+	case EventContextBreakdown:
+		target = &ContextBreakdownEvent{}
 	default:
 		return fmt.Errorf("unknown normalized event type: %q", peek.Type)
 	}
@@ -778,3 +786,4 @@ type ThinkingBlockEndEvent struct {
 func (ThinkingBlockEndEvent) eventType() string { return EventThinkingBlockEnd }
 
 // Extension-surface NormalizedEvent types are in normalized_event_extensions.go.
+// ContextBreakdownEvent and its row type are in context_breakdown_event.go.

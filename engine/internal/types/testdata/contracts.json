@@ -12,6 +12,14 @@
       "strategy",
       "summary"
     ],
+    "context_breakdown": [
+      "apiReportedTotal",
+      "categories",
+      "contextWindow",
+      "model",
+      "totalTokens",
+      "unaccounted"
+    ],
     "dialog": [
       "defaultValue",
       "dialogId",
@@ -199,6 +207,7 @@
     "commandError",
     "commands",
     "content",
+    "contextBreakdown",
     "defaultValue",
     "dialogId",
     "dispatchActivityKind",
@@ -334,6 +343,21 @@
       "name",
       "status"
     ],
+    "ContextBreakdownCategory": [
+      "kind",
+      "name",
+      "path",
+      "tier",
+      "tokens"
+    ],
+    "ContextBreakdownPayload": [
+      "apiReportedTotal",
+      "categories",
+      "contextWindow",
+      "model",
+      "totalTokens",
+      "unaccounted"
+    ],
     "EngineCommandListing": [
       "description",
       "name"
@@ -395,7 +419,8 @@
       "supportsImages",
       "supportsThinking",
       "thinkingEfforts",
-      "thinkingMode"
+      "thinkingMode",
+      "tokenizer"
     ],
     "PermissionOpt": [
       "id",

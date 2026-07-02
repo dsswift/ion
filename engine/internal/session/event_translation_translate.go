@@ -263,6 +263,19 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			ThinkingRedacted:       e.Redacted,
 		}
 
+	case *types.ContextBreakdownEvent:
+		return types.EngineEvent{
+			Type: "engine_context_breakdown",
+			ContextBreakdown: &types.ContextBreakdownPayload{
+				Categories:       e.Categories,
+				ContextWindow:    e.ContextWindow,
+				TotalTokens:      e.TotalTokens,
+				APIReportedTotal: e.APIReportedTotal,
+				Unaccounted:      e.Unaccounted,
+				Model:            e.Model,
+			},
+		}
+
 	default:
 		return types.EngineEvent{}
 	}

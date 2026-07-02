@@ -9,7 +9,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "adaptive",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "o200k_base"
   },
   {
     "id": "claude-opus-4-7",
@@ -21,7 +26,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "adaptive",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "o200k_base"
   },
   {
     "id": "claude-sonnet-4-6",
@@ -33,7 +43,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "adaptive",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "o200k_base"
   },
   {
     "id": "claude-haiku-4-5-20251001",
@@ -45,7 +60,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "budget",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "o200k_base"
   },
   {
     "id": "gpt-4.1",
@@ -53,7 +73,8 @@
     "contextWindow": 1047576,
     "costPer1kInput": 0.002,
     "costPer1kOutput": 0.008,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "gpt-4.1-mini",
@@ -61,7 +82,8 @@
     "contextWindow": 1047576,
     "costPer1kInput": 0.0004,
     "costPer1kOutput": 0.0016,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "o4-mini",
@@ -72,7 +94,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "o200k_base"
   },
   {
     "id": "o3",
@@ -83,7 +110,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "o200k_base"
   },
   {
     "id": "gemini-2.5-pro",
@@ -94,7 +126,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "gemini",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "gemini-2.5-flash",
@@ -105,7 +142,12 @@
     "supportsThinking": true,
     "supportsImages": true,
     "thinkingMode": "gemini",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "grok-3",
@@ -113,7 +155,8 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.003,
     "costPer1kOutput": 0.015,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "grok-3-fast",
@@ -121,7 +164,8 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.005,
     "costPer1kOutput": 0.025,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "grok-3-mini",
@@ -131,7 +175,11 @@
     "costPer1kOutput": 0.0005,
     "supportsThinking": true,
     "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": ["low", "high"]
+    "thinkingEfforts": [
+      "low",
+      "high"
+    ],
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "grok-3-mini-fast",
@@ -141,7 +189,11 @@
     "costPer1kOutput": 0.004,
     "supportsThinking": true,
     "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": ["low", "high"]
+    "thinkingEfforts": [
+      "low",
+      "high"
+    ],
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "grok-2",
@@ -149,14 +201,16 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.002,
     "costPer1kOutput": 0.01,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "deepseek-chat",
     "providerId": "deepseek",
     "contextWindow": 65536,
     "costPer1kInput": 0.00014,
-    "costPer1kOutput": 0.00028
+    "costPer1kOutput": 0.00028,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "deepseek-reasoner",
@@ -166,21 +220,28 @@
     "costPer1kOutput": 0.0022,
     "supportsThinking": true,
     "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": ["low", "medium", "high"]
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "llama-3.3-70b-versatile",
     "providerId": "groq",
     "contextWindow": 131072,
     "costPer1kInput": 0.00059,
-    "costPer1kOutput": 0.00079
+    "costPer1kOutput": 0.00079,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "llama-3.1-8b-instant",
     "providerId": "groq",
     "contextWindow": 131072,
-    "costPer1kInput": 0.00005,
-    "costPer1kOutput": 0.00008
+    "costPer1kInput": 5e-05,
+    "costPer1kOutput": 8e-05,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "mistral-large-latest",
@@ -188,7 +249,8 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.002,
     "costPer1kOutput": 0.006,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "mistral-small-latest",
@@ -196,20 +258,23 @@
     "contextWindow": 131072,
     "costPer1kInput": 0.0001,
     "costPer1kOutput": 0.0003,
-    "supportsImages": true
+    "supportsImages": true,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "llama-3.3-70b",
     "providerId": "cerebras",
     "contextWindow": 131072,
     "costPer1kInput": 0.00085,
-    "costPer1kOutput": 0.0012
+    "costPer1kOutput": 0.0012,
+    "tokenizer": "cl100k_base"
   },
   {
     "id": "llama-3.1-8b",
     "providerId": "cerebras",
     "contextWindow": 131072,
     "costPer1kInput": 0.0001,
-    "costPer1kOutput": 0.0001
+    "costPer1kOutput": 0.0001,
+    "tokenizer": "cl100k_base"
   }
 ]

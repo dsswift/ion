@@ -63,6 +63,10 @@ type wedgeProvider struct {
 
 func (w *wedgeProvider) ID() string { return w.id }
 
+func (w *wedgeProvider) CountTokens(_ context.Context, _ providers.CountTokensRequest) (int, error) {
+	return 0, providers.ErrCountUnsupported
+}
+
 func (w *wedgeProvider) Stream(ctx context.Context, _ types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
 	w.streamCalls.Add(1)
 	events := make(chan types.LlmStreamEvent)
@@ -364,6 +368,10 @@ func newProgressDripProvider(id string) *progressDripProvider {
 }
 
 func (p *progressDripProvider) ID() string { return p.id }
+
+func (p *progressDripProvider) CountTokens(_ context.Context, _ providers.CountTokensRequest) (int, error) {
+	return 0, providers.ErrCountUnsupported
+}
 
 func (p *progressDripProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
 	p.mu.Lock()

@@ -526,4 +526,28 @@ type EngineEvent struct {
 	ThinkingTotalTokens    int     `json:"thinkingTotalTokens,omitempty"`
 	ThinkingElapsedSeconds float64 `json:"thinkingElapsedSeconds,omitempty"`
 	ThinkingRedacted       bool    `json:"thinkingRedacted,omitempty"`
+
+	// --- engine_context_breakdown ---
+	//
+	// Per-category token breakdown for the active run, powering the Status
+	// Drawer / exact context-usage readout. Emitted once after prompt
+	// assembly and again after the first usage event reconciliation (with
+	// APIReportedTotal and Unaccounted populated on the payload). Advisory
+	// telemetry — consumers render it however they like; the engine attaches
+	// no UI semantics. See ContextBreakdownPayload for the per-field contract.
+	ContextBreakdown *ContextBreakdownPayload `json:"contextBreakdown,omitempty"`
+}
+
+// ContextBreakdownPayload is the payload for engine_context_breakdown events.
+// Mirrors the internal ContextBreakdownEvent shape. All token counts are
+// itemized per category; Tier records how each count was obtained ("exact"
+// from a provider count-tokens endpoint, "local" from the tiktoken BPE
+// encoder, or "approximate" from the char/4 heuristic).
+type ContextBreakdownPayload struct {
+	Categories       []ContextBreakdownCategory `json:"categories"`
+	ContextWindow    int                        `json:"contextWindow"`
+	TotalTokens      int                        `json:"totalTokens"`
+	APIReportedTotal int                        `json:"apiReportedTotal,omitempty"`
+	Unaccounted      int                        `json:"unaccounted,omitempty"`
+	Model            string                     `json:"model"`
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -15,6 +16,15 @@ type MockProvider struct {
 	callCount int
 	mu        sync.Mutex
 	calls     []types.LlmStreamOptions // recorded calls
+	// countTokensResult / countTokensErr script the CountTokens method.
+	// When countTokensSet is false, CountTokens returns ErrCountUnsupported
+	// (matching the OpenAI-family default) so callers exercise the local-BPE
+	// fallback. When set, CountTokens returns the scripted result/err and
+	// increments countTokensCalls so a test can assert cache behavior.
+	countTokensResult int
+	countTokensErr    error
+	countTokensSet    bool
+	countTokensCalls  int
 	// blockUntilCancel, when true, makes Stream emit any scripted events
 	// for the call and then block until ctx is cancelled, at which point it
 	// surfaces ctx.Err() on the error channel. This lets a test exercise
@@ -68,6 +78,36 @@ func (m *MockProvider) CallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.callCount
+}
+
+// SetCountTokens scripts the CountTokens method to return (result, nil).
+// After calling this, CountTokens no longer returns ErrCountUnsupported.
+func (m *MockProvider) SetCountTokens(result int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.countTokensResult = result
+	m.countTokensErr = nil
+	m.countTokensSet = true
+}
+
+// CountTokensCallCount returns how many times CountTokens was invoked. Used to
+// assert content-hash caching (a cache hit must not re-invoke the provider).
+func (m *MockProvider) CountTokensCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.countTokensCalls
+}
+
+// CountTokens implements providers.LlmProvider. Returns ErrCountUnsupported
+// unless SetCountTokens configured a scripted result.
+func (m *MockProvider) CountTokens(_ context.Context, _ providers.CountTokensRequest) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.countTokensCalls++
+	if !m.countTokensSet {
+		return 0, providers.ErrCountUnsupported
+	}
+	return m.countTokensResult, m.countTokensErr
 }
 
 // Calls returns the recorded stream options from each call.

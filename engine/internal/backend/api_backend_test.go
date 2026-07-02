@@ -27,6 +27,10 @@ type mockLlmProvider struct {
 
 func (m *mockLlmProvider) ID() string { return m.id }
 
+func (m *mockLlmProvider) CountTokens(_ context.Context, _ providers.CountTokensRequest) (int, error) {
+	return 0, providers.ErrCountUnsupported
+}
+
 func (m *mockLlmProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
 	events := make(chan types.LlmStreamEvent, 32)
 	errc := make(chan error, 1)
@@ -204,6 +208,10 @@ type errorMockProvider struct {
 
 func (e *errorMockProvider) ID() string { return e.id }
 
+func (e *errorMockProvider) CountTokens(_ context.Context, _ providers.CountTokensRequest) (int, error) {
+	return 0, providers.ErrCountUnsupported
+}
+
 func (e *errorMockProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
 	events := make(chan types.LlmStreamEvent, 1)
 	errc := make(chan error, 1)
@@ -224,6 +232,10 @@ type slowMockProvider struct {
 }
 
 func (s *slowMockProvider) ID() string { return s.id }
+
+func (s *slowMockProvider) CountTokens(_ context.Context, _ providers.CountTokensRequest) (int, error) {
+	return 0, providers.ErrCountUnsupported
+}
 
 func (s *slowMockProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
 	events := make(chan types.LlmStreamEvent, 32)
@@ -280,6 +292,24 @@ func setupTestProvider(responses [][]types.LlmStreamEvent) *mockLlmProvider {
 		ProviderID:     testProviderID,
 		ContextWindow:  200000,
 		CostPer1kInput: 0.003,
+		CostPer1kOutput: 0.015,
+	})
+	return mock
+}
+
+// setupTestProviderModel registers the mock provider and a model with the given
+// id (rather than the fixed testModel), so a test can exercise a model that has
+// a known tiktoken encoder (e.g. "gpt-4o") for the context-breakdown path.
+func setupTestProviderModel(modelID string, responses [][]types.LlmStreamEvent) *mockLlmProvider {
+	mock := &mockLlmProvider{
+		id:        testProviderID,
+		responses: responses,
+	}
+	providers.RegisterProvider(mock)
+	providers.RegisterModel(modelID, types.ModelInfo{
+		ProviderID:      testProviderID,
+		ContextWindow:   200000,
+		CostPer1kInput:  0.003,
 		CostPer1kOutput: 0.015,
 	})
 	return mock

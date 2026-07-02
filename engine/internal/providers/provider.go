@@ -15,6 +15,18 @@ import (
 type LlmProvider interface {
 	ID() string
 	Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error)
+	// CountTokens returns the exact token count for a prompt via the provider's
+	// native count-tokens endpoint. Returns ErrCountUnsupported when the provider
+	// has no such endpoint; callers fall back to local BPE or char/4.
+	CountTokens(ctx context.Context, req CountTokensRequest) (int, error)
+}
+
+// CountTokensRequest carries the content to be counted.
+type CountTokensRequest struct {
+	Model    string
+	System   string
+	Messages []types.LlmMessage
+	Tools    []types.LlmToolDef
 }
 
 var (
@@ -166,6 +178,7 @@ func ListModels() []types.ModelEntry {
 			SupportsImages:   info.SupportsImages,
 			ThinkingMode:     info.ThinkingMode,
 			ThinkingEfforts:  info.ThinkingEfforts,
+			Tokenizer:        info.Tokenizer,
 			IsCustom:         info.IsCustom,
 		}
 		if info.IsCustom {
@@ -219,6 +232,9 @@ func ListModels() []types.ModelEntry {
 					dm.SupportsImages = catalog.SupportsImages
 					dm.ThinkingMode = catalog.ThinkingMode
 					dm.ThinkingEfforts = catalog.ThinkingEfforts
+					if dm.Tokenizer == "" {
+						dm.Tokenizer = catalog.Tokenizer
+					}
 				}
 				entries = append(entries, dm)
 				seen[dm.ID] = true

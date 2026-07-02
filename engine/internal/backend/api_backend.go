@@ -100,6 +100,15 @@ type activeRun struct {
 	cumulativeOutputTokens int
 	lastContinuationDelta  int
 
+	// contextBreakdown holds the per-category token breakdown built once at
+	// the first turn's prompt assembly. Reconciled (and re-emitted) after the
+	// first UsageEvent so consumers see the provider-reported total and the
+	// unaccounted delta. Nil until the first turn builds it; breakdownReconciled
+	// guards the one-shot reconcile so later turns don't append duplicate
+	// "unaccounted" rows.
+	contextBreakdown    *providers.ContextBreakdown
+	breakdownReconciled bool
+
 	// Cumulative token counters across all turns. Populated on the same
 	// path that accumulates run.totalCost (turnUsage in the runloop).
 	// Surfaced on every TaskCompleteEvent.Usage so dispatch consumers

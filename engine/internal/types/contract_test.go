@@ -85,6 +85,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventExtensionRespawned:     &ExtensionRespawnedEvent{},
 		EventExtensionDeadPermanent: &ExtensionDeadPermanentEvent{},
 		EventEventsDropped:          &EventsDroppedEvent{},
+		EventContextBreakdown:       &ContextBreakdownEvent{},
 	}
 }
 
@@ -123,6 +124,11 @@ func buildManifest() contractManifest {
 		// new block variants land (most recently the "compact_boundary"
 		// variant — see internal/conversation/compact_boundary.go).
 		"LlmContentBlock": reflect.TypeOf(LlmContentBlock{}),
+		// ContextBreakdownPayload is the wire payload for
+		// engine_context_breakdown; ContextBreakdownCategory is a nested row.
+		// Tracked so cross-language mirrors render the status-drawer readout.
+		"ContextBreakdownPayload":  reflect.TypeOf(ContextBreakdownPayload{}),
+		"ContextBreakdownCategory": reflect.TypeOf(ContextBreakdownCategory{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

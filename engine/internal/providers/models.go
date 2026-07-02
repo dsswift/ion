@@ -21,6 +21,7 @@ type catalogEntry struct {
 	SupportsImages   bool     `json:"supportsImages,omitempty"`
 	ThinkingMode     string   `json:"thinkingMode,omitempty"`
 	ThinkingEfforts  []string `json:"thinkingEfforts,omitempty"`
+	Tokenizer        string   `json:"tokenizer,omitempty"`
 }
 
 // MergeModelInfo overlays user-config fields onto a catalog (base) entry.
@@ -61,6 +62,10 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	if len(user.ThinkingEfforts) > 0 {
 		merged.ThinkingEfforts = user.ThinkingEfforts
 	}
+	// Tokenizer: non-empty user value wins (additive, matches the rule above).
+	if user.Tokenizer != "" {
+		merged.Tokenizer = user.Tokenizer
+	}
 	return merged
 }
 
@@ -82,6 +87,7 @@ func loadModelsFromJSON(data []byte) error {
 			SupportsImages:   e.SupportsImages,
 			ThinkingMode:     e.ThinkingMode,
 			ThinkingEfforts:  e.ThinkingEfforts,
+			Tokenizer:        e.Tokenizer,
 		})
 	}
 	utils.Log("Registry", fmt.Sprintf("loaded %d models from catalog", len(entries)))

@@ -23,6 +23,10 @@ type mockProvider struct {
 
 func (m *mockProvider) ID() string { return m.id }
 
+func (m *mockProvider) CountTokens(_ context.Context, _ CountTokensRequest) (int, error) {
+	return 0, ErrCountUnsupported
+}
+
 func (m *mockProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
 	events := make(chan types.LlmStreamEvent, 16)
 	errc := make(chan error, 1)

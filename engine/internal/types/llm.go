@@ -223,7 +223,12 @@ type ModelInfo struct {
 	// ["low","medium","high"]. Clients use it to show/gray the per-conversation
 	// thinking control honestly. Empty ⇒ thinking control hidden for this model.
 	ThinkingEfforts []string `json:"thinkingEfforts,omitempty"`
-	IsCustom        bool     `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
+	// Tokenizer is the tiktoken encoding name for this model's local BPE encoder.
+	// One of "o200k_base" (GPT-4o/o-series/Claude), "cl100k_base" (legacy GPT-4/3.5
+	// and approximate fallback for other families), or "" (no local encoder).
+	// Additive field — omitempty, never breaks existing consumers.
+	Tokenizer string `json:"tokenizer,omitempty"`
+	IsCustom  bool   `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
 }
 
 // ModelEntry is the wire-format model information returned by list_models.
@@ -239,7 +244,10 @@ type ModelEntry struct {
 	SupportsImages   bool     `json:"supportsImages,omitempty"`
 	ThinkingMode     string   `json:"thinkingMode,omitempty"`
 	ThinkingEfforts  []string `json:"thinkingEfforts,omitempty"`
-	IsCustom         bool     `json:"isCustom,omitempty"`
+	// Tokenizer is the tiktoken encoding name for this model's local BPE encoder.
+	// See ModelInfo.Tokenizer for the value contract. Additive, omitempty.
+	Tokenizer string `json:"tokenizer,omitempty"`
+	IsCustom  bool   `json:"isCustom,omitempty"`
 }
 
 // ProviderEntry is the wire-format provider information returned by list_models.
