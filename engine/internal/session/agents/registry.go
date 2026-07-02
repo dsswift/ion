@@ -329,7 +329,7 @@ func (r *Registry) ClearRunningStatesExceptIDsOrNames(keepIDs, keepNames map[str
 // engine-managed states. When both contain an entry with the same name,
 // the engine-managed entry wins (it carries richer metadata: task,
 // conversationId, progress). This prevents duplicate rows in the agent
-// panel when the extension's roster and the engine's dispatch state
+// consumer view when the extension's roster and the engine's dispatch state
 // both track the same specialist.
 //
 // An engine entry also supersedes an extension entry when its name is a
@@ -377,16 +377,16 @@ func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
 	// AgentStateUpdate per agent name for the emitted snapshot. The internal
 	// r.states store stays ID-keyed (untouched) so UpdateStateByID /
 	// AppendOrUpdateByID still target individual dispatches. This projection
-	// prevents the desktop AgentPanel from rendering duplicate rows when the
+	// prevents a consumer from receiving duplicate same-name rows when the
 	// orchestrator dispatches the same agent name multiple times.
 	grouped := groupByName(r.states)
 	merged = append(merged, grouped...)
 
 	// Observability: the merge is the single point where an extension roster
-	// row and an engine dispatch row collapse into the one row the desktop
-	// AgentPanel renders. When a dispatch's dispatches[] array fails to reach
-	// the merged row (e.g. a roster row shadowing a dispatch row, or a
-	// representative chosen with no dispatches[]), the pop-up renders empty.
+	// row and an engine dispatch row collapse into the one row consumers read.
+	// consumers read metadata.dispatches[]. When that array fails to reach a
+	// representative row (representative chosen with empty dispatches[]),
+	// consumers receive a row with no per-dispatch detail.
 	// Log the merge shape so that failure is a one-line log read, not a trace.
 	utils.Debug("AgentRegistry", fmt.Sprintf(
 		"MergedSnapshot: extStates=%d engineStates=%d superseded=%d keptExt=%d grouped=%d merged=%d",
@@ -476,13 +476,13 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 			// left intact; this only fills the identity fields.
 			ensureDispatchIdentitiesInMeta(single.Metadata)
 			// A single entry that carries dispatch metadata (a task) but no
-			// dispatches[] array is the exact pathological shape that renders
-			// an empty pop-up: the desktop's getDispatches reads metadata
-			// .dispatches and shows nothing when it is absent. Surface it so
+			// dispatches[] array is the pathological shape a consumer cannot
+			// expand: a representative row whose metadata.dispatches[] is empty.
+			// Surface it so
 			// the symptom has a greppable signature.
 			if isDispatchBearing(single.Metadata) && dispatchesLen(single.Metadata) == 0 {
 				utils.Debug("AgentRegistry", fmt.Sprintf(
-					"groupByName: name=%q status=%q single entry has dispatch task but empty dispatches[] (pop-up would render empty)",
+					"groupByName: name=%q status=%q single entry has dispatch task but empty dispatches[] (consumers cannot expand per-dispatch detail)",
 					name, single.Status,
 				))
 			}
@@ -552,10 +552,10 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		// representative is where dispatch rows can be lost. Log the chosen
 		// representative's status and the merged dispatches[] length; flag the
 		// case where a dispatch-bearing group still projects to an empty
-		// dispatches[] (the empty-pop-up symptom).
+		// dispatches[] (the empty-detail symptom).
 		if isDispatchBearing(representative.Metadata) && len(mergedDispatches) == 0 {
 			utils.Debug("AgentRegistry", fmt.Sprintf(
-				"groupByName: name=%q entries=%d repStatus=%q merged dispatches[] is EMPTY despite dispatch task (pop-up would render empty)",
+				"groupByName: name=%q entries=%d repStatus=%q merged dispatches[] is EMPTY despite dispatch task (consumers cannot expand per-dispatch detail)",
 				name, len(indices), representative.Status,
 			))
 		} else {

@@ -56,7 +56,7 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
 			// provenance to the persisted user turn. This is consumed (cleared)
 			// on the next SendPrompt call. Without this, extension-command-
 			// resolved slashes persist the expanded body as plain content with
-			// no slash metadata, and the iOS/desktop pill never renders after
+			// no slash metadata, and consumers have no dispatch label to surface after
 			// a history reload. Written under the manager lock because
 			// SendPrompt reads it under the same lock from a different goroutine
 			// (the ext/send_prompt RPC handler goroutine).

@@ -11,7 +11,7 @@ package session
 //
 // Design: recompute-on-demand. Called from ComputeAndEmitContextBreakdown on
 // every get_context_breakdown request. No accumulator to reconcile; freshest
-// available on every drawer-open. A mid-turn child may undercount by its
+// available on every on-demand query. A mid-turn child may undercount by its
 // unflushed turn — bounded and self-healing on next flush/open.
 
 import (

@@ -126,7 +126,7 @@ func buildManifest() contractManifest {
 		"LlmContentBlock": reflect.TypeOf(LlmContentBlock{}),
 		// ContextBreakdownPayload is the wire payload for
 		// engine_context_breakdown; ContextBreakdownCategory is a nested row.
-		// Tracked so cross-language mirrors render the status-drawer readout.
+		// Tracked so cross-language mirrors carry the per-category context readout.
 		"ContextBreakdownPayload":  reflect.TypeOf(ContextBreakdownPayload{}),
 		"ContextBreakdownCategory": reflect.TypeOf(ContextBreakdownCategory{}),
 	}
