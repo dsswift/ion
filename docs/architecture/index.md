@@ -76,3 +76,5 @@ The engine is also UI-agnostic. It emits typed data events over the socket. It h
 | [ADR-012](adr/012-enterprise-new-tab-defaults.md) | Accepted | A sealed EnterpriseConfig.newConversationDefaults policy delivered via get_enterprise_policy RPC and projected to clients via desktop_settings_snapshot. |
 | [ADR-013](adr/013-engine-dead-clean-cancel.md) | Accepted | A cooperative cancel is a clean, recoverable exit. engine_dead fires only on abnormal termination. |
 | [ADR-014](adr/014-dispatch-conversation-identity.md) | Accepted | Every dispatch mints a fresh conversation by default; continuation is an explicit, dispatch-id-targeted act; the engine is opinionless about conversation relationships. |
+| [ADR-015](adr/015-hierarchical-dispatch.md) | Accepted | Orchestrator dispatches department leads; leads dispatch their own specialists. Each tier distills context and surfaces only genuinely unanswerable questions upward. |
+| [ADR-016](adr/016-agent-state-grouped-snapshot.md) | Accepted | Same-name engine dispatches group into one representative AgentStateUpdate row; per-dispatch identity is preserved in metadata.dispatches[]. |
