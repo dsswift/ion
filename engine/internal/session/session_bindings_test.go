@@ -243,12 +243,16 @@ func TestStartSession_ExplicitSessionIDResumesWhenFilePresent(t *testing.T) {
 	}
 }
 
-// TestStartSession_ExplicitPhantomSessionIDFallsThrough pins that an explicit
-// SessionID naming a fileless phantom is NOT resumed verbatim. This is the
-// exact morning failure: the desktop passed a phantom sessionId (a prior
-// pre-mint) and the engine ran an empty session under it. The engine must
-// ignore the phantom and mint fresh instead.
-func TestStartSession_ExplicitPhantomSessionIDFallsThrough(t *testing.T) {
+// TestStartSession_ExplicitSessionIDHonoredWithoutFile pins that an explicit
+// SessionID is honored unconditionally, even when no conversation file exists
+// yet. The caller is the authoritative source of truth for its own ID — it may
+// be starting a brand-new session and the file will be created on the first
+// run. The phantom guard (require backing file before honoring) applies only to
+// stored bindings (implicit resume), not caller-supplied IDs. This is the
+// contract TestStartSessionWithSessionID (integration) asserts; both tests must
+// agree. The prior behavior (fall through to a fresh mint when no file) was a
+// regression introduced in #256 that broke external consumers.
+func TestStartSession_ExplicitSessionIDHonoredWithoutFile(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	bindPath := filepath.Join(t.TempDir(), "session-bindings.json")
 	t.Setenv("ION_SESSION_BINDINGS_PATH", bindPath)
@@ -256,20 +260,17 @@ func TestStartSession_ExplicitPhantomSessionIDFallsThrough(t *testing.T) {
 	m := NewManager(newMockBackend())
 	defer m.Shutdown()
 
-	const phantomID = "1700000000000-phantom00001" // NO file seeded.
+	const explicitID = "1700000000000-phantom00001" // NO file seeded — new session.
 	cfg := types.EngineConfig{
 		WorkingDirectory: t.TempDir(),
-		SessionID:        phantomID,
+		SessionID:        explicitID,
 	}
-	result, err := m.StartSession("tab-phantom-explicit", cfg)
+	result, err := m.StartSession("tab-explicit-no-file", cfg)
 	if err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
-	if result.ConversationID == phantomID {
-		t.Fatalf("engine resumed a fileless explicit phantom sessionId: got %q (should mint fresh)", phantomID)
-	}
-	if result.ConversationID == "" {
-		t.Fatal("expected a freshly minted non-empty conversationId")
+	if result.ConversationID != explicitID {
+		t.Fatalf("explicit SessionID must be honored even without a backing file: got %q want %q", result.ConversationID, explicitID)
 	}
 }
 

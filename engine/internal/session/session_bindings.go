@@ -165,13 +165,12 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 // `path`. The decision tree (first match wins):
 //
 //  1. Explicit config.SessionID — the caller named a conversation; use it
-//     verbatim IF a backing file exists. Highest precedence. If the named id
-//     has no file on disk (a "phantom" — pre-minted by a prior restart and
-//     never saved), do NOT silently start an empty session bound to it: fall
-//     through to the binding store / fresh mint. This is the engine half of
-//     the phantom-resume fix — a fileless id resumed verbatim would feed the
-//     LLM an empty context while the client still displays the real tree,
-//     diverging display from context. (#230/#231)
+//     unconditionally. Highest precedence; bypasses all other checks. An
+//     external consumer that supplies a SessionID is asserting the exact id —
+//     the session may be brand-new (no backing file yet) or a genuine resume.
+//     The phantom guard (require backing file) applies ONLY to stored bindings
+//     (implicit resume, branch 3), not explicit caller assertions, because the
+//     caller is the authoritative source of truth for its own ID.
 //  2. config.ForceNewConversation — the caller wants a brand-new conversation
 //     on this key even if a binding exists (e.g. the user clicked "new
 //     conversation" on an existing tab). Mint a fresh id; the post-creation
@@ -191,14 +190,17 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 // a debugger.
 func resolveConversationID(path, key string, config types.EngineConfig) string {
 	if config.SessionID != "" {
-		if conversation.Exists(config.SessionID, "") {
-			utils.Log("Session", fmt.Sprintf("StartSession: key=%s using explicit conversationID=%s (file present)", key, config.SessionID))
-			return config.SessionID
-		}
-		// Phantom: the client named an id with no backing file. Do not resume
-		// it (that would start an empty session and orphan the real one). Fall
-		// through to the binding store / fresh-mint branches below.
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s explicit conversationID=%s has NO backing file — ignoring phantom, falling through to binding/mint", key, config.SessionID))
+		// Caller-supplied SessionID is always honored unconditionally.
+		// The "phantom guard" (require backing file) applies only to stored
+		// bindings (implicit resume), not explicit caller assertions. An external
+		// consumer that supplies a SessionID expects it threaded through to
+		// RunOptions regardless of whether a conversation file exists yet —
+		// the session may be brand-new and the file will be created on first run.
+		// Requiring conversation.Exists here broke TestStartSessionWithSessionID
+		// (regression from #256) by falling through to a fresh mint whenever
+		// the named ID had no backing file. (#256 fix)
+		utils.Log("Session", fmt.Sprintf("StartSession: key=%s using explicit conversationID=%s (caller-supplied, unconditional)", key, config.SessionID))
+		return config.SessionID
 	}
 	if config.ForceNewConversation {
 		old := lookupBinding(path, key)
