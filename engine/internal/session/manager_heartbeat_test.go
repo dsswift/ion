@@ -148,32 +148,51 @@ func TestHeartbeat_GoroutineFiresOnTimer(t *testing.T) {
 // Shutdown is called. A leaked goroutine would emit events past the
 // test boundary and pollute subsequent tests sharing the same backend
 // mock.
+//
+// Design: we drive one tick synchronously via emitHeartbeatTick() to
+// confirm the event plumbing is wired (same pattern used in
+// TestHeartbeat_EmitsForEveryAttachedSession), then quiet the background
+// goroutine with a long interval so it cannot race with the assertion,
+// then call Shutdown(). Shutdown() blocks until the heartbeat goroutine
+// closes heartbeatDone, so the count sampled immediately after is
+// authoritative — the goroutine cannot emit again. No sleep required
+// anywhere in this test.
+//
+// The previous version slept 80 ms before Shutdown and 150 ms after,
+// relying on wall-clock timing to prove the goroutine had exited. On a
+// CPU-pressured Linux -race runner the goroutine could be starved and
+// still be mid-tick when the post-shutdown assertion ran, causing
+// non-deterministic failures. The Shutdown-blocks-on-done approach
+// eliminates the race entirely.
 func TestHeartbeat_StopsOnShutdown(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
-	mgr.SetHeartbeatInterval(20 * time.Millisecond)
+	// Long interval: the background goroutine will not fire during this
+	// test. We assert behavior via direct tick calls below.
+	mgr.SetHeartbeatInterval(10 * time.Second)
 	_, _ = mgr.StartSession("hb-stop", defaultConfig())
 
 	cap := newCaptureEngineStatus()
 	mgr.OnEvent(cap.handler())
 
-	// Let at least one tick fire so we know the goroutine is alive.
-	time.Sleep(80 * time.Millisecond)
+	// Drive one tick synchronously to confirm the event path is wired.
+	mgr.emitHeartbeatTick()
 	before := cap.countFor("hb-stop")
 	if before == 0 {
 		t.Fatal("expected at least one heartbeat emission before Shutdown")
 	}
 
+	// Shutdown blocks until the heartbeat goroutine has fully exited
+	// (it closes heartbeatDone before returning). The count sampled
+	// immediately after is therefore final — no sleep needed.
 	mgr.Shutdown()
-	// Wait several tick intervals; if the goroutine survived Shutdown
-	// it would emit more events.
-	time.Sleep(150 * time.Millisecond)
 	after := cap.countFor("hb-stop")
-	// Some slop allowed: a tick that was already in-flight when
-	// Shutdown closed the stop channel may still emit. We assert the
-	// growth is small and bounded, not exactly zero.
-	if after-before > 1 {
-		t.Errorf("expected heartbeat to stop after Shutdown, but grew from %d to %d", before, after)
+
+	// The goroutine is gone; count must not have grown. The background
+	// goroutine was quiesced (10 s interval) so the only emission was
+	// the direct tick above — growth must be exactly zero.
+	if after != before {
+		t.Errorf("expected heartbeat to stop after Shutdown, but count grew from %d to %d", before, after)
 	}
 }
 

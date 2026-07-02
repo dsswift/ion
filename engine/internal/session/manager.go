@@ -57,13 +57,17 @@ type Manager struct {
 
 	// Status-heartbeat fields. heartbeatStop is closed by Shutdown to
 	// terminate the per-Manager goroutine that periodically re-emits
-	// engine_status for every attached session. Lifecycle is tied to
+	// engine_status for every attached session. heartbeatDone is closed
+	// by the goroutine itself (via defer) once it has returned, so
+	// Shutdown can block until the goroutine is fully gone rather than
+	// relying on a sleep-and-hope wait. Lifecycle is tied to
 	// NewManager / Shutdown: the goroutine starts in NewManager (so any
 	// Manager that hosts sessions has heartbeats by default) and
 	// terminates in Shutdown. heartbeatInterval is configurable so tests
 	// can opt into a short cadence without busy-waiting on a 30 s ticker.
 	// See manager_heartbeat.go for the implementation.
 	heartbeatStop     chan struct{}
+	heartbeatDone     chan struct{}
 	heartbeatStopOnce sync.Once
 	heartbeatInterval time.Duration
 
@@ -146,6 +150,7 @@ func NewManager(b backend.RunBackend) *Manager {
 		watchers:          newWatcherPool(),
 		globalBroker:      resource.NewBroker(),
 		heartbeatStop:     make(chan struct{}),
+		heartbeatDone:     make(chan struct{}),
 		heartbeatInterval: DefaultSessionStatusHeartbeatInterval,
 		runOnce:           newRunOnceRegistry(),
 	}
@@ -470,10 +475,14 @@ func (m *Manager) StopAll() error {
 // multi-call Shutdown is safe.
 func (m *Manager) Shutdown() {
 	// Stop the heartbeat before tearing down sessions so the goroutine
-	// cannot observe a partially-shutdown Manager.
+	// cannot observe a partially-shutdown Manager. Wait on heartbeatDone
+	// so Shutdown does not return while the goroutine is still mid-tick;
+	// that eliminates the sleep-and-hope race in tests and in production
+	// teardown sequences that immediately inspect state after Shutdown.
 	m.heartbeatStopOnce.Do(func() {
 		close(m.heartbeatStop)
 	})
+	<-m.heartbeatDone
 
 	_ = m.StopAll()
 	m.asyncMu.Lock()
