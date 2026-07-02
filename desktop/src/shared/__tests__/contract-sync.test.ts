@@ -336,3 +336,40 @@ describe('Contract sync: SharedTypes', () => {
     ).toEqual([])
   })
 })
+
+// ─── EngineEvent dispatch fields ───
+// The EngineEvent union (engine/internal/types/engine_event.go) carries all
+// dispatch telemetry fields. This suite pins the fields consumed by
+// dispatch_start / dispatch_end normalized events so drift between Go and
+// TS/Swift is caught at PR time.
+
+describe('Contract sync: EngineEvent dispatch fields', () => {
+  // Fields that the engine emits on dispatch_start / dispatch_end events and
+  // that the desktop (and iOS) decode. Any field absent from the Go manifest
+  // means the engine stopped emitting it (breaking change); any field present
+  // in the manifest but not in this set is a new Go field the desktop hasn't
+  // yet adopted (tracked as a gap comment).
+  const DISPATCH_FIELDS_CONSUMED: string[] = [
+    'dispatchAgent',
+    'dispatchConversationId',
+    'dispatchCost',
+    'dispatchDepth',
+    'dispatchElapsed',
+    'dispatchExitCode',
+    'dispatchId',
+    'dispatchModel',
+    'dispatchParentId',
+    'dispatchSessionId',
+    'dispatchTask',
+  ]
+
+  it('all consumed dispatch fields are present in the Go EngineEvent manifest', () => {
+    const goFields = new Set(manifest.engineEvent)
+    const missing = DISPATCH_FIELDS_CONSUMED.filter((f) => !goFields.has(f))
+    expect(
+      missing,
+      `Go EngineEvent is missing dispatch fields consumed by desktop/iOS: ${missing.join(', ')}`,
+    ).toEqual([])
+  })
+})
+
