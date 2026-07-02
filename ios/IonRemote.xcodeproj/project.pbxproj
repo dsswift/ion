@@ -74,6 +74,8 @@
 		THINK00000000000000000005 /* ThinkingRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000006 /* ThinkingRowView.swift */; };
 		THINK00000000000000000007 /* ThinkingAccumulatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */; };
 		THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */; };
+		TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */; };
+		AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */; };
 		DIVGUARD000000000000007 /* UnifiedConversationDivergenceGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIVGUARD000000000000008 /* UnifiedConversationDivergenceGuardTests.swift */; };
 		MERGEDV0000000000000007 /* MergedConversationViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MERGEDV0000000000000008 /* MergedConversationViewTests.swift */; };
 		SUBMITU0000000000000007 /* UnifiedSubmitPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SUBMITU0000000000000008 /* UnifiedSubmitPathTests.swift */; };
@@ -359,6 +361,8 @@
 		THINK00000000000000000006 /* ThinkingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingRowView.swift; sourceTree = "<group>"; };
 		THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingAccumulatorTests.swift; sourceTree = "<group>"; };
 		THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortStorageForkTests.swift; sourceTree = "<group>"; };
+		TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupingHoistTests.swift; sourceTree = "<group>"; };
+		AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTurnRenderOrderTests.swift; sourceTree = "<group>"; };
 		DIVGUARD000000000000008 /* UnifiedConversationDivergenceGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedConversationDivergenceGuardTests.swift; sourceTree = "<group>"; };
 		MERGEDV0000000000000008 /* MergedConversationViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergedConversationViewTests.swift; sourceTree = "<group>"; };
 		SUBMITU0000000000000008 /* UnifiedSubmitPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedSubmitPathTests.swift; sourceTree = "<group>"; };
@@ -829,6 +833,8 @@
 				A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */,
 				A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */,
 				A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */,
+				TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */,
+				AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */,
 				THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */,
 				THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */,
 				DIVGUARD000000000000008 /* UnifiedConversationDivergenceGuardTests.swift */,
@@ -1284,6 +1290,8 @@
 				A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */,
 				A1B2C3D4E5F60003000203AA /* SnapshotStaleDenialStripTests.swift in Sources */,
 				A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */,
+				TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */,
+				AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */,
 				THINK00000000000000000007 /* ThinkingAccumulatorTests.swift in Sources */,
 				THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */,
 				DIVGUARD000000000000007 /* UnifiedConversationDivergenceGuardTests.swift in Sources */,

@@ -81,8 +81,8 @@ struct Transcript: View {
                 return .toolGroup(tools)
             case .compaction(let m):
                 return .compaction(m)
-            case .agentTurn(let tools, let assistants, let isActive):
-                return .agentTurn(tools: tools, assistantMessages: assistants, isActive: isActive)
+            case .agentTurn(let tools, let assistants, let isActive, let thinking):
+                return .agentTurn(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
             }
         }
     }
@@ -141,8 +141,8 @@ struct Transcript: View {
                             CompactionRowView(message: msg)
                         case .thinking(let msg):
                             ThinkingRowView(message: msg)
-                        case .agentTurn(let tools, let assistants, let isActive):
-                            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive)
+                        case .agentTurn(let tools, let assistants, let isActive, let thinking):
+                            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
                         }
                     }
                 }

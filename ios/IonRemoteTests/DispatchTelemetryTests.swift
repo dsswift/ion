@@ -279,7 +279,7 @@ final class DispatchTelemetryTests: XCTestCase {
             XCTFail("Expected .user at index 0, got \(items[0])")
         }
 
-        if case .agentTurn(let tools, let assistants, _) = items[1] {
+        if case .agentTurn(let tools, let assistants, _, _) = items[1] {
             XCTAssertEqual(tools.count, 2, "Should have 2 tools")
             XCTAssertEqual(assistants.count, 1, "Should have 1 assistant")
         } else {

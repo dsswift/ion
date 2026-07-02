@@ -2,20 +2,36 @@ import SwiftUI
 
 // MARK: - AgentTurnRow
 
-/// Renders an agent turn: a collapsible activity panel (tools) with assistant
-/// text below (always visible). Used by ConversationView
-/// when the unified turn view setting is active.
+/// Renders an agent turn: an optional thinking block above assistant text,
+/// followed by a collapsible activity panel (tools) at the bottom. Used by
+/// Transcript when the unified turn view setting is active.
+///
+/// Layout: thinking (top) → assistant messages (middle) → tool panel (bottom).
 struct AgentTurnRow: View {
     let tools: [Message]
     let assistantMessages: [Message]
     let isActive: Bool
+    let thinking: Message?
 
     @State private var isExpanded = false
     @Environment(\.appTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Activity panel — DisclosureGroup, collapsed by default
+            // Thinking block — rendered above assistant text when present.
+            if let thinking {
+                ThinkingRowView(message: thinking)
+            }
+
+            // Assistant text — always visible, not collapsible
+            ForEach(assistantMessages) { msg in
+                if !msg.content.isEmpty {
+                    EngineMessageRow(message: msg)
+                }
+            }
+
+            // Activity panel — DisclosureGroup, collapsed by default,
+            // rendered below assistant text.
             if !tools.isEmpty {
                 DisclosureGroup(isExpanded: $isExpanded) {
                     VStack(spacing: 2) {
@@ -46,7 +62,9 @@ struct AgentTurnRow: View {
                                 .font(.caption2)
                                 .foregroundStyle(compositeColor)
                         }
-                        Text("Activity (\(tools.count) tool call\(tools.count == 1 ? "" : "s"))")
+                        Text(isActive
+                            ? "Running tools\u{2026}"
+                            : "Used \(tools.count) tool\(tools.count == 1 ? "" : "s")")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.textSecondary)
                     }
@@ -56,13 +74,6 @@ struct AgentTurnRow: View {
                 .padding(.vertical, 6)
                 .background(theme.surfaceElevated.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-
-            // Assistant text — always visible, not collapsible
-            ForEach(assistantMessages) { msg in
-                if !msg.content.isEmpty {
-                    EngineMessageRow(message: msg)
-                }
             }
         }
     }

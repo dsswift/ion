@@ -300,8 +300,8 @@ struct AgentExpandedContent: View {
         case .compaction(let msg):
             CompactionRowView(message: msg)
                 .padding(.horizontal, 10)
-        case .agentTurn(let tools, let assistants, let isActive):
-            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive)
+        case .agentTurn(let tools, let assistants, let isActive, let thinking):
+            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
                 .padding(.horizontal, 10)
         case .system(let msg):
             if msg.content.hasPrefix("──") {
