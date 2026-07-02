@@ -256,9 +256,9 @@ Title: <title>
   - Internal URLs: ✅ none found
 ```
 
-Then ask: **"Ready to create this issue on dsswift/ion? Say `yes` to create, or describe what to change."**
+Then call `AskUserQuestion` with the question "Ready to create this issue on dsswift/ion?" and options: `Create it`, `Make changes`.
 
-Do **not** create the issue until the user explicitly confirms. If the user requests changes, apply them, re-run the confidentiality scrub (Step 5), and present the updated draft.
+Do **not** create the issue until the user selects `Create it`. If the user selects `Make changes` or describes edits, apply them, re-run the confidentiality scrub (Step 5), and present the updated draft with another `AskUserQuestion`.
 
 ## Step 7: Create the issue
 

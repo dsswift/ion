@@ -63,11 +63,9 @@ The gate runs in Docker. Check the daemon is reachable:
 docker info
 ```
 
-If `docker` is not installed **or** `docker info` fails (daemon not running), **stop and tell the user naturally** — this is a pause, not a hard failure. For example:
+If `docker` is not installed **or** `docker info` fails (daemon not running), call `AskUserQuestion` with: "Docker isn't running, so I can't run the Linux parity check locally before pushing. How would you like to proceed?" and options: `Start Docker and continue`, `Proceed without Docker`. The PR's own CI gates (`engine-test`, `desktop-test`) are the authoritative merge guard and will still block a bad merge. Do not treat "Docker down" as a reason to abort the whole command.
 
-> Docker isn't running, so I can't run the Linux parity check locally before pushing. Start Docker and tell me to continue, or tell me to proceed without it — the PR's own CI gates still protect the merge either way.
-
-Then wait. The user may start Docker and say "go" (re-run from 3c), or say "proceed anyway" (skip to Step 4). **It is the user's call.** Skipping the local check never sacrifices safety: the PR-validation gates (`engine-test`, `desktop-test`) are the authoritative merge guard and will still block a bad merge. Do not treat "Docker down" as a reason to abort the whole command.
+When the user selects `Start Docker and continue`, wait for them to confirm Docker is running, then re-run from step 3c. When they select `Proceed without Docker`, skip to Step 4 and note the Linux gate was skipped in the final report.
 
 ### 3c. Run the gate for touched components
 

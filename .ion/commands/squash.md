@@ -4,6 +4,10 @@ description: Squash the current branch into clean conventional commits. Creates 
 
 You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per logical feature — using an interactive rebase. You create a backup branch first, generate a squash plan for review, and execute it.
 
+**Interaction rule.**
+
+Any point where the protocol needs a human decision MUST be a single `AskUserQuestion` tool call. Never end a turn on a decision-shaped question written as prose: a prose question followed by `end_turn` leaves the session idle with nothing to wait on, and the run stalls. This applies to scripted gates (Step 6's proceed/adjust/abort confirmation) AND to any unscripted fork discovered mid-execution (e.g. an execution-method choice surfaced during conflict analysis in Step 7).
+
 **Hard rules.**
 
 - Never run on `main`. Abort immediately if the current branch is `main`.
@@ -193,17 +197,15 @@ Logical group 2: {description}
 
 Backup branch `backup--{branch_name}` is pointing to current HEAD.
 The full unsquashed history is preserved there.
-
-Proceed with squash? (yes / adjust / abort)
 ```
 
-Wait for the user to confirm before executing.
+After presenting the plan, call `AskUserQuestion` with the question "Proceed with the squash as planned?" and options: `Proceed`, `Adjust`, `Abort`. Do not execute the rebase until the user selects `Proceed`.
 
 ---
 
 ## Step 7: Execute the squash
 
-When the user confirms (or after making any requested adjustments to the plan):
+When the user selects `Proceed` (or after making any requested adjustments to the plan):
 
 Use `git rebase -i main` to execute the squash. In the interactive rebase:
 - The first commit in each logical group gets `pick`
@@ -213,6 +215,8 @@ Use `git rebase -i main` to execute the squash. In the interactive rebase:
 After the rebase, amend each resulting commit to use the clean conventional message from the squash plan.
 
 If the rebase produces conflicts, resolve them using the source commits as ground truth. Do not invent code — resolve conflicts by understanding what each commit was trying to do.
+
+**Unscripted method forks during execution.** If conflict analysis or an unexpected situation surfaces a genuine choice (for example: the actual hunk attribution is ambiguous between two attributions, or a conflict cannot be resolved without a strategy decision), do not proceed on a default and say "I'll do X unless you object." Stop and call `AskUserQuestion` with the specific choice and options. The interaction rule applies here exactly as it does at scripted gates.
 
 ### Splitting multi-scope code commits
 
