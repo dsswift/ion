@@ -12,10 +12,13 @@ import (
 )
 
 // DiscoverContextFiles walks parent directories looking for context files.
-// Deprecated: use walkContextFiles from the context package instead.
+// Deprecated: use WalkContextFiles from the context package instead, which
+// applies the ClaudeCompat gate (Ion-native files always; Claude files only
+// when enabled). This helper takes an explicit name list and does NOT gate;
+// the zero-arg default is Ion-first to match the engine's default behavior.
 func DiscoverContextFiles(cwd string, names []string) []ContextFile {
 	if len(names) == 0 {
-		names = []string{"CLAUDE.md", "ION.md", ".claude/CLAUDE.md", ".ion/ION.md"}
+		names = []string{"AGENTS.md", "ION.md", ".ion/ION.md", ".ion/AGENTS.md"}
 	}
 
 	var results []ContextFile

@@ -102,6 +102,10 @@ func executeEdit(ctx context.Context, input map[string]any, cwd string) (*types.
 
 	filePath = resolvePath(cwd, filePath)
 
+	// Record the touched path for read-triggered nested context loading
+	// (no-op without an installed sink).
+	types.RecordTouchedPath(ctx, filePath)
+
 	// Serialize concurrent Edit/Write calls targeting the same file path.
 	// Without this lock, parallel errgroup goroutines race on read-modify-write
 	// and silently overwrite each other's results.

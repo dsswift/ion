@@ -39,6 +39,12 @@ func executeRead(ctx context.Context, input map[string]any, cwd string) (*types.
 
 	filePath = resolvePath(cwd, filePath)
 
+	// Record the touched path for read-triggered nested context loading.
+	// No-op when no sink is installed (direct callers / tests). Recorded
+	// post-resolution so the absolute path the tool actually used is what
+	// drives the nested AGENTS.md/ION.md descent.
+	types.RecordTouchedPath(ctx, filePath)
+
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: Read cancelled.", IsError: true}, nil
 	}

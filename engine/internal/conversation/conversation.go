@@ -286,6 +286,29 @@ func AddTransientUserMessage(conv *Conversation, content string) {
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 }
 
+// AddContextInjectionMessage appends a read-triggered nested-context injection
+// as a typed context_injection block (see BuildContextInjectionMessage). The
+// block carries the rendered "# Context from <path>" body the model sees plus
+// the structured ContextPaths the dedup seeder reads back.
+//
+// transient controls persistence, mirroring the AddUserMessage /
+// AddTransientUserMessage split: when true (SuppressSystemMessages), the block
+// is appended to conv.Messages only, so the model sees it this turn but it does
+// not survive reload; when false, it is also written to the entry tree so the
+// injection (and its ContextPaths) round-trips through persistence and the
+// seeder recovers it on the next session.
+func AddContextInjectionMessage(conv *Conversation, paths []string, renderedText string, transient bool) {
+	msg := BuildContextInjectionMessage(paths, renderedText)
+	conv.Messages = append(conv.Messages, msg)
+	if transient {
+		return
+	}
+	blocks, _ := msg.Content.([]types.LlmContentBlock)
+	if conv.Entries != nil {
+		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+	}
+}
+
 // AddAssistantMessage appends an assistant message with usage tracking.
 func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage) {
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})

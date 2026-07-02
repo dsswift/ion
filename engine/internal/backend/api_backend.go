@@ -143,6 +143,23 @@ type activeRun struct {
 	progressWatchdogStop chan struct{}
 	stopWatchdogOnce     sync.Once
 
+	// touchedSink accumulates filesystem paths that tools touched during the
+	// run, driving read-triggered nested context loading (progressive
+	// AGENTS.md/ION.md descent). Tools record into it via the ctx-threaded
+	// TouchedPathSink (installed in executeTools); the run loop drains it
+	// between turns in drainNestedContext. The sink has its own mutex, so the
+	// write path (concurrent errgroup tool goroutines) does not take run.mu.
+	// Created once at run start.
+	touchedSink *types.TouchedPathSink
+
+	// injectedNestedPaths is the conversation-lifetime set of context-file
+	// paths already injected into this conversation (eager root/home walk +
+	// any nested injections, this session or a prior one). Guarded by run.mu.
+	// Seeded at run start from the loaded conversation (system prompt + message
+	// history) via seedInjectedNestedPaths so a reload never re-injects a file
+	// that is already present. drainNestedContext consults and extends it.
+	injectedNestedPaths map[string]bool
+
 	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
 }
 

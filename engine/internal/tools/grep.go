@@ -40,6 +40,15 @@ func executeGrep(ctx context.Context, input map[string]any, cwd string) (*types.
 	glob := stringFromInput(input, "glob", "")
 	outputMode := stringFromInput(input, "output_mode", "content")
 
+	// Record the touched search target for read-triggered nested context
+	// loading (no-op without an installed sink). An empty path means "search
+	// cwd"; recording the resolved cwd yields no nested dirs (nothing is below
+	// the root), which is the correct behavior. A relative path resolves
+	// against cwd to the directory/file actually searched.
+	if searchPath != "" {
+		types.RecordTouchedPath(ctx, resolvePath(cwd, searchPath))
+	}
+
 	// Bound the search by wall clock so a pathological pattern can't wedge.
 	// The user-cancel context still cancels before the deadline.
 	cmdCtx, cancel := context.WithTimeout(ctx, globTimeout)

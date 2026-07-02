@@ -101,6 +101,10 @@ func executeLsp(ctx context.Context, input map[string]any, cwd string) (*types.T
 		filePath = resolvePath(cwd, filePath)
 	}
 
+	// Record the touched path for read-triggered nested context loading
+	// (no-op without an installed sink, and no-op when filePath is empty).
+	types.RecordTouchedPath(ctx, filePath)
+
 	switch operation {
 	case "definition":
 		if filePath == "" || !hasKey(input, "line") || !hasKey(input, "character") {

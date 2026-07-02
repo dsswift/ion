@@ -52,6 +52,11 @@ func executeGlob(ctx context.Context, input map[string]any, cwd string) (*types.
 
 	searchDir := resolveSearchDir(input, cwd)
 
+	// Record the touched directory for read-triggered nested context loading
+	// (no-op without an installed sink). searchDir is the resolved directory
+	// the glob walks; the nested walker treats a directory target as itself.
+	types.RecordTouchedPath(ctx, searchDir)
+
 	// If pattern is absolute, split into static base + relative pattern so the
 	// walk is anchored as tightly as possible. (Mirrors Claude Code's
 	// extractGlobBaseDirectory.)

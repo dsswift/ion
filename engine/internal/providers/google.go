@@ -360,6 +360,24 @@ func formatGeminiMessages(messages []types.LlmMessage) []map[string]any {
 						},
 					})
 				}
+			case "compact_boundary":
+				// Engine-internal compaction marker; Gemini must never see
+				// the raw block type. Flatten to text so the model still sees
+				// the rendered summary. See anthropic.go for rationale.
+				text := b.Summary
+				if text == "" {
+					text = "[Previous conversation compacted]"
+				}
+				parts = append(parts, map[string]any{"text": text})
+			case "context_injection":
+				// Engine-internal nested-context marker; flatten to text so
+				// the model still sees the descended instruction files. See
+				// anthropic.go for rationale.
+				text := b.Text
+				if text == "" {
+					text = "[Nested context loaded]"
+				}
+				parts = append(parts, map[string]any{"text": text})
 			}
 		}
 		if len(parts) > 0 {

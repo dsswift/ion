@@ -67,6 +67,11 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 	opts := types.RunOptions{
 		Prompt:      text,
 		ProjectPath: s.config.WorkingDirectory,
+		// ClaudeCompat mirrors the session's Claude-compatibility setting onto
+		// the run so the backend's nested context loader gates Claude files
+		// (CLAUDE.md) the same way the eager walk does. Ion-native files load
+		// regardless of this flag.
+		ClaudeCompat: s.config.ClaudeCompat,
 		// SessionID is Ion's conversation-file identity. The API backend
 		// uses it to load/create ~/.ion/conversations/<id>.* and to resume.
 		SessionID: s.conversationID,
@@ -261,14 +266,28 @@ func resolveModelTier(opts *types.RunOptions) {
 	}
 }
 
-// injectContextFiles discovers CLAUDE.md/ION.md files and appends them to the system prompt.
+// injectContextFiles discovers Ion-native instruction files (AGENTS.md,
+// ION.md, .ion/*) plus the user's ~/.ion root, and—when the session's
+// ClaudeCompat flag is set—Claude-compat files (CLAUDE.md, .claude/*) and the
+// ~/.claude root, then appends them to the system prompt. The gate mirrors the
+// slash-command / skill subsystem: Ion roots are unconditional, Claude roots
+// are honored only when the consumer enabled ClaudeCompat.
 func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 	if s.config.WorkingDirectory == "" {
+		utils.Log("Session", "injectContextFiles: skipped (empty WorkingDirectory)")
 		return
 	}
-	ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, ioncontext.IonPreset())
+	cfg := ioncontext.IonPreset()
+	cfg.ClaudeCompat = s.config.ClaudeCompat
+	ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, cfg)
+	if s.config.ClaudeCompat {
+		utils.Log("Session", fmt.Sprintf("injectContextFiles: claudeCompat=true, discovered %d context file(s) (Ion-native + Claude-compat)", len(ctxFiles)))
+	} else {
+		utils.Log("Session", fmt.Sprintf("injectContextFiles: claudeCompat=false, discovered %d context file(s) (Ion-native only)", len(ctxFiles)))
+	}
 	var ctxContent strings.Builder
 	for _, cf := range ctxFiles {
+		utils.Debug("Session", fmt.Sprintf("injectContextFiles: including %s (source=%s)", cf.Path, cf.Source))
 		ctxContent.WriteString("\n# Context from " + cf.Path + "\n")
 		ctxContent.WriteString(cf.Content)
 		ctxContent.WriteString("\n")
@@ -285,10 +304,13 @@ func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *typ
 	}
 	var discoveredPaths []string
 	if s.config.WorkingDirectory != "" {
-		ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, ioncontext.IonPreset())
+		cfg := ioncontext.IonPreset()
+		cfg.ClaudeCompat = s.config.ClaudeCompat
+		ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, cfg)
 		for _, cf := range ctxFiles {
 			discoveredPaths = append(discoveredPaths, cf.Path)
 		}
+		utils.Debug("Session", fmt.Sprintf("injectExtensionContext: claudeCompat=%v, %d discovered path(s) for context_inject", s.config.ClaudeCompat, len(discoveredPaths)))
 	}
 
 	ctx := m.newExtContext(s, key)

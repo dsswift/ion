@@ -58,12 +58,12 @@ func TestEncodeImageNotFound(t *testing.T) {
 
 func TestDiscoverContextFiles_FindsInCwd(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# test context"), 0o644)
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# test context"), 0o644)
 
 	results := DiscoverContextFiles(dir, nil)
 	found := false
 	for _, r := range results {
-		if r.Path == filepath.Join(dir, "CLAUDE.md") {
+		if r.Path == filepath.Join(dir, "AGENTS.md") {
 			found = true
 			if r.Content != "# test context" {
 				t.Errorf("unexpected content: %q", r.Content)
@@ -71,7 +71,7 @@ func TestDiscoverContextFiles_FindsInCwd(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("expected to find CLAUDE.md in cwd")
+		t.Fatal("expected to find AGENTS.md in cwd")
 	}
 }
 

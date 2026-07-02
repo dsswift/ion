@@ -136,6 +136,10 @@ func executeNotebook(ctx context.Context, input map[string]any, cwd string) (*ty
 
 	filePath := resolvePath(cwd, path)
 
+	// Record the touched path for read-triggered nested context loading
+	// (no-op without an installed sink).
+	types.RecordTouchedPath(ctx, filePath)
+
 	// Serialize concurrent notebook operations targeting the same file path.
 	// Mutating actions (edit, add, delete) do read-modify-write; without this
 	// lock they race the same way Edit and Write do.

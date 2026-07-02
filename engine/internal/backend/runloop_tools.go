@@ -340,6 +340,15 @@ func (b *ApiBackend) executeTools(
 				toolCtx = types.WithShellConfig(toolCtx, run.cfg.Shell)
 			}
 
+			// Install the per-run touched-path sink so path-bearing tools can
+			// record the paths they resolve (drives read-triggered nested
+			// context loading). The sink is nil-safe and self-locking; tools
+			// call types.RecordTouchedPath(ctx, resolvedPath). Drained between
+			// turns by drainNestedContext.
+			if run.touchedSink != nil {
+				toolCtx = types.WithTouchedPathSink(toolCtx, run.touchedSink)
+			}
+
 			var toolResult *types.ToolResult
 			var err error
 

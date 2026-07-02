@@ -65,6 +65,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}
 	run.conv = conv
 
+	// Initialize the read-triggered nested context sink. The dedup set is
+	// seeded later, after the system prompt is built (so conv.System carries
+	// the eager context blocks we must not re-inject).
+	run.touchedSink = types.NewTouchedPathSink()
+
 	// Resolve the conversations directory for post-compact .tree.jsonl path
 	// injection. Best-effort: an error just leaves the path empty.
 	convDir := ""
@@ -88,6 +93,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID, run)
+
+	// Seed the nested-context dedup set now that conv.System carries the eager
+	// root/home context blocks. Scanning conv.System + conv.Messages recovers
+	// every "# Context from <path>" already present (eager walk this turn, plus
+	// any nested injections from prior sessions in history) so the nested
+	// loader never re-injects a file that is already in the conversation.
+	seeded := seedInjectedNestedPaths(conv, opts)
+	run.mu.Lock()
+	run.injectedNestedPaths = seeded
+	run.mu.Unlock()
+	utils.Debug("ApiBackend", fmt.Sprintf("nestedContext: run=%s seeded %d already-present context path(s)", run.requestID, len(seeded)))
 
 	// Append the inbound user turn. See appendInboundUserMessage for the
 	// attachment / slash-command-split handling (extracted to keep this file
@@ -140,6 +156,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		run.turnCount.Store(int64(turn))
 		// Belt-and-suspenders progress bump (see bumpProgressAtTurnBoundary).
 		run.bumpProgressAtTurnBoundary()
+
+		// Read-triggered nested context loading: drain the paths tools touched
+		// last turn and inject any not-yet-seen AGENTS.md/ION.md (and, when
+		// gated on, CLAUDE.md) from directories below cwd on the path to each
+		// touched file. Runs before streamOpts is built so new subtree context
+		// reaches the model on this turn's provider call.
+		b.drainNestedContext(run, conv, hooks, opts, opts.ProjectPath, turn, maxTurns)
 
 		// Wind-down: warn the LLM 2 turns before max so it can wrap up
 		if maxTurns > 4 && turn == maxTurns-2 {
@@ -732,62 +755,4 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}})
 	utils.Warn("ApiBackend", fmt.Sprintf("max turns exceeded: runID=%s turns=%d/%d cost=$%.4f", run.requestID, turn, maxTurns, run.totalCost))
 	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
-}
-
-// injectSystemMessage handles all engine-injected steering messages.
-// It checks disable flags, fires the system_inject hook, and either
-// adds a transient message (suppress mode) or persists it normally.
-func (b *ApiBackend) injectSystemMessage(
-	run *activeRun,
-	conv *conversation.Conversation,
-	hooks RunHooks,
-	opts types.RunOptions,
-	kind, defaultText string,
-	turn, maxTurns int,
-) {
-	// Check per-injection disable flag
-	switch kind {
-	case "plan_mode_reminder":
-		if opts.DisablePlanModeReminder {
-			return
-		}
-	case "turn_limit_warning":
-		if opts.DisableTurnLimitWarning {
-			return
-		}
-	case "max_token_continue":
-		if opts.DisableMaxTokenContinue {
-			return
-		}
-	case earlyStopContinueKind:
-		if opts.DisableEarlyStopContinue {
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"earlyStop: injection suppressed by DisableEarlyStopContinue: runID=%s turn=%d",
-				run.requestID, turn,
-			))
-			return
-		}
-	}
-
-	// Fire hook if registered
-	text := defaultText
-	if hooks.OnSystemInject != nil {
-		hookText, suppress := hooks.OnSystemInject(kind, defaultText, turn, maxTurns)
-		if suppress {
-			return
-		}
-		if hookText != "" {
-			text = hookText
-		}
-	}
-
-	// Add message: transient (in-memory only) or persistent
-	if opts.SuppressSystemMessages {
-		conversation.AddTransientUserMessage(conv, text)
-	} else {
-		conversation.AddUserMessage(conv, text)
-		if err := conversation.Save(conv, ""); err != nil {
-			utils.Log("ApiBackend", "failed to save conversation after system inject: "+err.Error())
-		}
-	}
 }

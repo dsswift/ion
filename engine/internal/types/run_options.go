@@ -161,6 +161,19 @@ type RunOptions struct {
 	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
 	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`
 	DisableMaxTokenContinue bool         `json:"disableMaxTokenContinue,omitempty"`
+	// ClaudeCompat mirrors EngineConfig.ClaudeCompat onto the run so the
+	// backend's read-triggered nested context loader applies the same Ion-vs-
+	// Claude gate as the eager context walk: Ion-native instruction files
+	// (AGENTS.md, ION.md) load regardless; Claude-compat files (CLAUDE.md)
+	// load only when this is true. Set from s.config.ClaudeCompat in
+	// buildRunOptions. Zero value (false) preserves today's behavior.
+	ClaudeCompat bool `json:"claudeCompat,omitempty"`
+	// DisableNestedContext turns off read-triggered nested context loading
+	// (progressive AGENTS.md/ION.md descent) for this run. Zero value (false)
+	// means the feature is ON by default; set true to suppress nested
+	// injections (the per-run analogue of SuppressSystemMessages but scoped to
+	// the nested-context mechanism specifically).
+	DisableNestedContext    bool         `json:"disableNestedContext,omitempty"`
 	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
 	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
 	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config

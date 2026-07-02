@@ -102,6 +102,22 @@ type LlmContentBlock struct {
 	// consumers (and the model) can re-attach them without re-parsing
 	// the Summary prose.
 	RecentFiles []string `json:"recentFiles,omitempty"`
+
+	// --- context_injection field ---
+	// Only meaningful when Type == "context_injection".
+
+	// ContextPaths is the set of absolute instruction-file paths carried by
+	// a context_injection block (read-triggered nested AGENTS.md/ION.md
+	// descent). It is the STRUCTURAL dedup key: the nested-context seeder
+	// recovers "which files are already injected" by reading this field off
+	// the typed block, never by substring-matching the rendered "# Context
+	// from <path>" prose in arbitrary message text. Storing the paths as
+	// structured data is what makes the dedup precise — a user message that
+	// merely contains the marker prose carries no ContextPaths and therefore
+	// cannot poison the seed. Provider serialisers translate the block to a
+	// plain text block on the wire (mirroring compact_boundary), so the model
+	// still sees the rendered context and providers never see this field.
+	ContextPaths []string `json:"contextPaths,omitempty"`
 }
 
 // ImageSource carries base64-encoded image data for vision.

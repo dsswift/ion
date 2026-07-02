@@ -415,6 +415,21 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 			text = "[Previous conversation compacted]"
 		}
 		return map[string]any{"type": "text", "text": text}
+	case "context_injection":
+		// context_injection is an engine-internal structural marker for
+		// read-triggered nested context loading. Like compact_boundary, it
+		// must never reach a provider as its own block type. Flatten to a
+		// text block carrying the rendered "# Context from <path>" body so
+		// the model still sees the descended instruction files. The
+		// structured ContextPaths field is engine-internal (the dedup key)
+		// and is not forwarded.
+		text := b.Text
+		if text == "" {
+			// Defensive: an injection with no rendered body still needs a
+			// non-empty text block so Anthropic accepts the message.
+			text = "[Nested context loaded]"
+		}
+		return map[string]any{"type": "text", "text": text}
 	default:
 		// Pass through unknown block types as-is
 		m := map[string]any{"type": b.Type}

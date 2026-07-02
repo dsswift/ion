@@ -294,6 +294,7 @@
     "LlmContentBlock": [
       "clearedBlocks",
       "content",
+      "contextPaths",
       "factCount",
       "id",
       "input",
