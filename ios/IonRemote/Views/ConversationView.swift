@@ -9,7 +9,7 @@ struct ConversationView: View {
     @FocusState var isInputFocused: Bool
     @State var agentsPanelExpanded: Bool? = nil
     @State var agentPanelFullscreen = false
-    @State var selectedAgentName: String?
+    @State var selectedDispatchId: String?
     /// Set to the plan file path when the user taps a plan-lifecycle divider's
     /// slug link; drives the plan-preview full-screen cover (PlanContentView).
     @State var selectedPlanPath: IdentifiablePath?
@@ -68,6 +68,9 @@ struct ConversationView: View {
     /// Whether the agent panel is expanded. `nil` means the user hasn't
     /// toggled it manually this session — fall back to the desktop setting
     /// `agentPanelDefaultOpen` (default `true` when setting is absent).
+    ///
+    /// Resolution order: explicit override (agentsPanelExpanded) >
+    /// agentPanelDefaultOpen setting > true.
     var isAgentsPanelExpanded: Bool {
         if let explicit = agentsPanelExpanded { return explicit }
         if let settings = viewModel.desktopSettings,
@@ -78,9 +81,20 @@ struct ConversationView: View {
         return true
     }
 
+    /// Two-way binding for the agent panel expanded state. Reads through the
+    /// settings-fallback `isAgentsPanelExpanded` computed var so the settings
+    /// default is preserved; writes directly to `agentsPanelExpanded` so the
+    /// explicit override takes effect. Passed into Transcript -> TranscriptAgentSection.
+    var agentsPanelExpandedBinding: Binding<Bool> {
+        Binding(
+            get: { isAgentsPanelExpanded },
+            set: { agentsPanelExpanded = $0 }
+        )
+    }
+
     var visibleAgents: [AgentStateUpdate] {
         (viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.agentStates ?? [])
-            .filter(\.isVisible)
+            .filter { $0.isVisible && $0.isRootLevel }
             .sorted { a, b in
                 let statusOrder: [String: Int] = ["running": 0, "done": 1, "error": 1, "cancelled": 1, "idle": 2]
                 let visOrder: [String: Int] = ["always": 0, "sticky": 1, "ephemeral": 2]
@@ -275,22 +289,6 @@ struct ConversationView: View {
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            if let prompt = viewModel.enginePinnedPrompt[compoundKey], !prompt.isEmpty {
-                HStack {
-                    Text("> ")
-                        .foregroundStyle(theme.accent)
-                        .fontWeight(.semibold)
-                    Text(prompt)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .font(IonTheme.codeFont(size: 12))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemFill).opacity(0.7))
-            }
         }
     }
 
@@ -370,10 +368,34 @@ struct ConversationView: View {
     private var mainContent: some View {
         VStack(spacing: 0) {
             headerSection
+            let transcriptView = Transcript(
+                messages: engineMsgs,
+                unifiedTurnView: unifiedTurnView,
+                pinnedPrompt: viewModel.enginePinnedPrompt[compoundKey],
+                isRunning: isRunning,
+                onRewind: { messageId in
+                    viewModel.engineRewindInstance(
+                        tabId: tabId,
+                        instanceId: activeInstanceId,
+                        messageId: messageId
+                    )
+                },
+                agents: visibleAgents.isEmpty ? nil : visibleAgents,
+                onOpenDispatch: { dispatch, agent in
+                    selectedDispatchId = dispatch.id
+                },
+                isNearBottom: $isNearBottom,
+                forceScrollCounter: forceScrollCounter,
+                onTapPlan: { path in
+                    selectedPlanPath = IdentifiablePath(path: path)
+                },
+                agentPanelExpanded: agentsPanelExpandedBinding,
+                agentPanelFullscreen: $agentPanelFullscreen
+            )
             if !agentPanelFullscreen {
-                conversationScroll
+                transcriptView
             } else {
-                conversationScroll
+                transcriptView
                     .frame(height: 100)
             }
 
@@ -397,18 +419,6 @@ struct ConversationView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-            // #256 follow-up: the agent panel renders on DATA presence, not
-            // tab type. A plain conversation that dispatches background
-            // sub-agents populates `visibleAgents` (via the snapshot's
-            // `conversationInstances[*].agentStates`), and must show them.
-            // The former `tabHasExtensions && …` gate was a tab-type code
-            // fork — the only legitimate difference between a plain and an
-            // extension-backed conversation is the underlying data (empty
-            // agents list ⇒ nothing renders), never a branch on tab type.
-            if !visibleAgents.isEmpty {
-                agentSection
             }
 
             footerSection

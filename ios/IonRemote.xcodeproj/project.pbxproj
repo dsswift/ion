@@ -48,7 +48,12 @@
 		A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */; };
 		A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */; };
 		DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBSTATE00000000000000A2 /* DispatchBodyState.swift */; };
+		TRNSCRPT000000000000A1 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCRPT000000000000A2 /* Transcript.swift */; };
+		DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */; };
+		DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */; };
+		BCRUMBT0000000000001 /* BreadcrumbDispatchLoadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */; };
 		DBSTATE00000000000000B1 /* DispatchBodyStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBSTATE00000000000000B2 /* DispatchBodyStateTests.swift */; };
+		DTELTEST0000000000A1 /* DispatchTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELTEST0000000000A2 /* DispatchTelemetryTests.swift */; };
 		A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */; };
 		A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */; };
 		A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */; };
@@ -85,6 +90,7 @@
 		DSPCOV00000000000000007 /* DispatchTurnCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPCOV00000000000000008 /* DispatchTurnCoverageTests.swift */; };
 		DSPARCH0000000000000001 /* DispatchArchitectureE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPARCH0000000000000002 /* DispatchArchitectureE2ETests.swift */; };
 		DSPRVF0000000000000007 /* DispatchPreviewFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPRVF0000000000000008 /* DispatchPreviewFilterTests.swift */; };
+		DSPMKR0000000000000007 /* DispatchPreviewMarkerRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPMKR0000000000000008 /* DispatchPreviewMarkerRowTests.swift */; };
 		CSBVIS00000000000000007 /* ConversationStatusBarVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CSBVIS00000000000000008 /* ConversationStatusBarVisibilityTests.swift */; };
 		CSBWAIT0000000000000007 /* ConversationStatusBarWaitingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CSBWAIT0000000000000008 /* ConversationStatusBarWaitingTests.swift */; };
 		UCSTORE0000000000000007 /* UnifiedConversationStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UCSTORE0000000000000008 /* UnifiedConversationStoreTests.swift */; };
@@ -99,6 +105,7 @@
 		A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */; };
 		A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */; };
 		PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */; };
+		IMPL0UNPIN00000001 /* ImplementAndUnpinOrderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IMPL0UNPIN00000002 /* ImplementAndUnpinOrderingTests.swift */; };
 		A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */; };
 		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
 		A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */; };
@@ -139,6 +146,7 @@
 		NEWCONVRT000000000000003 /* NewConversationRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */; };
 		HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */; };
 		PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */; };
+		PLANCARD0000000000000003 /* PlanApprovalCardGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARD0000000000000004 /* PlanApprovalCardGateTests.swift */; };
 		HRNSBDG0000000000000005 /* EngineInstanceCollapseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNSBDG0000000000000006 /* EngineInstanceCollapseTests.swift */; };
 		EDTDLTORD000000000000001 /* EngineTextDeltaOrderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDTDLTORD000000000000002 /* EngineTextDeltaOrderingTests.swift */; };
 		HRNSBDG0000000000000007 /* EngineSessionKeyCollapseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNSBDG0000000000000008 /* EngineSessionKeyCollapseTests.swift */; };
@@ -258,6 +266,9 @@
 		AGDUR0000000000000001 /* AgentDuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDUR0000000000000002 /* AgentDuration.swift */; };
 		AGDUR0000000000000003 /* AgentDurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDUR0000000000000004 /* AgentDurationTests.swift */; };
 		AGPNK0000000000000001 /* AgentPanelNameKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */; };
+		AGDAT00000000000000001 /* AgentDispatchAttributionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */; };
+		AGPCST000000000000001 /* AgentPanelCollapseStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGPCST000000000000002 /* AgentPanelCollapseStateTests.swift */; };
+		DSPPOPUP000000000001 /* DispatchPopupInitialLoadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */; };
 		EMRTOOLS00000000000001 /* EngineMessageRow+ToolBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = EMRTOOLS00000000000002 /* EngineMessageRow+ToolBubble.swift */; };
 		EMRSUPP000000000000001 /* EngineMessageRow+Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */; };
 		SSVMDT000000000000001 /* SessionViewModel+DispatchTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */; };
@@ -319,7 +330,12 @@
 		A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarRow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentExpandedContent.swift; sourceTree = "<group>"; };
 		DBSTATE00000000000000A2 /* DispatchBodyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchBodyState.swift; sourceTree = "<group>"; };
+		TRNSCRPT000000000000A2 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
+		DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTelemetryAccessors.swift"; sourceTree = "<group>"; };
+		DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTelemetryEntry.swift; sourceTree = "<group>"; };
+		BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbDispatchLoadTests.swift; sourceTree = "<group>"; };
 		DBSTATE00000000000000B2 /* DispatchBodyStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchBodyStateTests.swift; sourceTree = "<group>"; };
+		DTELTEST0000000000A2 /* DispatchTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTelemetryTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailFullScreenView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProfile.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUtilityBar.swift; sourceTree = "<group>"; };
@@ -356,6 +372,7 @@
 		DSPCOV00000000000000008 /* DispatchTurnCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTurnCoverageTests.swift; sourceTree = "<group>"; };
 		DSPARCH0000000000000002 /* DispatchArchitectureE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchArchitectureE2ETests.swift; sourceTree = "<group>"; };
 		DSPRVF0000000000000008 /* DispatchPreviewFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchPreviewFilterTests.swift; sourceTree = "<group>"; };
+		DSPMKR0000000000000008 /* DispatchPreviewMarkerRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchPreviewMarkerRowTests.swift; sourceTree = "<group>"; };
 		CSBVIS00000000000000008 /* ConversationStatusBarVisibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBarVisibilityTests.swift; sourceTree = "<group>"; };
 		CSBWAIT0000000000000008 /* ConversationStatusBarWaitingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBarWaitingTests.swift; sourceTree = "<group>"; };
 		UCSTORE0000000000000008 /* UnifiedConversationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedConversationStoreTests.swift; sourceTree = "<group>"; };
@@ -370,6 +387,7 @@
 		A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventStreamTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventPermissionTests.swift; sourceTree = "<group>"; };
 		PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanImplementWireTests.swift; sourceTree = "<group>"; };
+		IMPL0UNPIN00000002 /* ImplementAndUnpinOrderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImplementAndUnpinOrderingTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventLifecycleTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncTests.swift; sourceTree = "<group>"; };
@@ -410,6 +428,7 @@
 		NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConversationRoutingTests.swift; sourceTree = "<group>"; };
 		HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHarnessBadgeTests.swift; sourceTree = "<group>"; };
 		PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanApprovalCardContentTests.swift; sourceTree = "<group>"; };
+		PLANCARD0000000000000004 /* PlanApprovalCardGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanApprovalCardGateTests.swift; sourceTree = "<group>"; };
 		HRNSBDG0000000000000006 /* EngineInstanceCollapseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineInstanceCollapseTests.swift; sourceTree = "<group>"; };
 		EDTDLTORD000000000000002 /* EngineTextDeltaOrderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTextDeltaOrderingTests.swift; sourceTree = "<group>"; };
 		HRNSBDG0000000000000008 /* EngineSessionKeyCollapseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSessionKeyCollapseTests.swift; sourceTree = "<group>"; };
@@ -528,6 +547,9 @@
 		AGDUR0000000000000002 /* AgentDuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDuration.swift; sourceTree = "<group>"; };
 		AGDUR0000000000000004 /* AgentDurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDurationTests.swift; sourceTree = "<group>"; };
 		AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelNameKeyTests.swift; sourceTree = "<group>"; };
+		AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDispatchAttributionTests.swift; sourceTree = "<group>"; };
+		AGPCST000000000000002 /* AgentPanelCollapseStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelCollapseStateTests.swift; sourceTree = "<group>"; };
+		DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchPopupInitialLoadTests.swift; sourceTree = "<group>"; };
 		EMRTOOLS00000000000002 /* EngineMessageRow+ToolBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+ToolBubble.swift"; sourceTree = "<group>"; };
 		EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+Support.swift"; sourceTree = "<group>"; };
 		SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTranscript.swift"; sourceTree = "<group>"; };
@@ -626,6 +648,7 @@
 				A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */,
 				A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */,
 				A1B2C3D4E5F60001001101AA /* RemoteModelEntry.swift */,
+				DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -702,6 +725,7 @@
 				A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */,
 				A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */,
 				DBSTATE00000000000000A2 /* DispatchBodyState.swift */,
+				TRNSCRPT000000000000A2 /* Transcript.swift */,
 				A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */,
 				A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */,
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
@@ -774,6 +798,7 @@
 				A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */,
 				A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */,
 				DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */,
+				DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */,
 				A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */,
 				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
 				A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */,
@@ -788,6 +813,7 @@
 				A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */,
 				A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */,
 				PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */,
+				IMPL0UNPIN00000002 /* ImplementAndUnpinOrderingTests.swift */,
 				A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */,
 				A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */,
 				A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */,
@@ -812,6 +838,7 @@
 				DSPCOV00000000000000008 /* DispatchTurnCoverageTests.swift */,
 				DSPARCH0000000000000002 /* DispatchArchitectureE2ETests.swift */,
 				DSPRVF0000000000000008 /* DispatchPreviewFilterTests.swift */,
+				DSPMKR0000000000000008 /* DispatchPreviewMarkerRowTests.swift */,
 				CSBVIS00000000000000008 /* ConversationStatusBarVisibilityTests.swift */,
 				CSBWAIT0000000000000008 /* ConversationStatusBarWaitingTests.swift */,
 				UCSTORE0000000000000008 /* UnifiedConversationStoreTests.swift */,
@@ -842,13 +869,19 @@
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
+				PLANCARD0000000000000004 /* PlanApprovalCardGateTests.swift */,
 				HRNSBDG0000000000000006 /* EngineInstanceCollapseTests.swift */,
 				EDTDLTORD000000000000002 /* EngineTextDeltaOrderingTests.swift */,
 				HRNSBDG0000000000000008 /* EngineSessionKeyCollapseTests.swift */,
 				NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */,
 				AGDUR0000000000000004 /* AgentDurationTests.swift */,
 				DBSTATE00000000000000B2 /* DispatchBodyStateTests.swift */,
+				BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */,
+				DTELTEST0000000000A2 /* DispatchTelemetryTests.swift */,
 				AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */,
+				AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */,
+				AGPCST000000000000002 /* AgentPanelCollapseStateTests.swift */,
+				DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */,
 			);
 			path = IonRemoteTests;
 			sourceTree = "<group>";
@@ -1157,6 +1190,9 @@
 				A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */,
 				A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */,
 				DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */,
+				TRNSCRPT000000000000A1 /* Transcript.swift in Sources */,
+				DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */,
+				DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */,
 				A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */,
 				A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */,
 				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
@@ -1231,6 +1267,7 @@
 				A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */,
 				A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */,
 				PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */,
+				IMPL0UNPIN00000001 /* ImplementAndUnpinOrderingTests.swift in Sources */,
 				A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */,
 				A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */,
 				A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */,
@@ -1253,6 +1290,7 @@
 				DSPCOV00000000000000007 /* DispatchTurnCoverageTests.swift in Sources */,
 				DSPARCH0000000000000001 /* DispatchArchitectureE2ETests.swift in Sources */,
 				DSPRVF0000000000000007 /* DispatchPreviewFilterTests.swift in Sources */,
+				DSPMKR0000000000000007 /* DispatchPreviewMarkerRowTests.swift in Sources */,
 				CSBVIS00000000000000007 /* ConversationStatusBarVisibilityTests.swift in Sources */,
 				CSBWAIT0000000000000007 /* ConversationStatusBarWaitingTests.swift in Sources */,
 				UCSTORE0000000000000007 /* UnifiedConversationStoreTests.swift in Sources */,
@@ -1285,13 +1323,19 @@
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,
+				PLANCARD0000000000000003 /* PlanApprovalCardGateTests.swift in Sources */,
 				HRNSBDG0000000000000005 /* EngineInstanceCollapseTests.swift in Sources */,
 				EDTDLTORD000000000000001 /* EngineTextDeltaOrderingTests.swift in Sources */,
 				HRNSBDG0000000000000007 /* EngineSessionKeyCollapseTests.swift in Sources */,
 				NEWCONVRT000000000000003 /* NewConversationRoutingTests.swift in Sources */,
 				AGDUR0000000000000003 /* AgentDurationTests.swift in Sources */,
 				DBSTATE00000000000000B1 /* DispatchBodyStateTests.swift in Sources */,
+				BCRUMBT0000000000001 /* BreadcrumbDispatchLoadTests.swift in Sources */,
+				DTELTEST0000000000A1 /* DispatchTelemetryTests.swift in Sources */,
 				AGPNK0000000000000001 /* AgentPanelNameKeyTests.swift in Sources */,
+				AGDAT00000000000000001 /* AgentDispatchAttributionTests.swift in Sources */,
+				AGPCST000000000000001 /* AgentPanelCollapseStateTests.swift in Sources */,
+				DSPPOPUP000000000001 /* DispatchPopupInitialLoadTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

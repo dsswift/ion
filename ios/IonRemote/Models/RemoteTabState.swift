@@ -181,10 +181,18 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// or nil/absent when off. Mirrors the desktop snapshot's per-instance
     /// thinkingEffort so iOS shows the right level for the active sub-tab.
     var thinkingEffort: String? = nil
+    /// Per-instance dispatch telemetry, projected from the desktop snapshot.
+    /// Also populated by live engine events (dispatch_start/end) and
+    /// reconciled from the snapshot on reconnect.
+    var dispatchTelemetry: [DispatchTelemetryEntry]? = nil
 
     // Non-Codable conversation state — populated by live events /
     // loadEngineConversation, not decoded from the snapshot JSON.
     var messages: [Message] = []
+    // agentStates IS persisted (see CodingKeys) so the agents panel and the
+    // dispatch popup/breadcrumb — which key state on dispatch id — render on
+    // reload before the engine re-emits live agent-state events. Defaults to []
+    // so pre-fix snapshots without the field decode cleanly.
     var agentStates: [AgentStateUpdate] = []
     var statusFields: StatusFields? = nil
     var modelOverride: String? = nil
@@ -210,8 +218,10 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// old top-level `engineWorkingMessages[compoundKey]` dict (post-#256).
     var workingMessage: String = ""
 
-    // Explicit CodingKeys so the four fields above are excluded from
-    // JSON encoding/decoding and don't break snapshot deserialization.
+    // Explicit CodingKeys so the live-only fields above (messages, statusFields,
+    // modelOverride, liveText, thinkingMessageId, workingMessage) are excluded
+    // from JSON encoding/decoding and don't break snapshot deserialization.
+    // `agentStates` IS persisted (see the custom Codable in the extension below).
     enum CodingKeys: String, CodingKey {
         case id
         case label
@@ -221,6 +231,53 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
         case modelFallback
         case conversationIds
         case thinkingEffort
+        case dispatchTelemetry
+        case agentStates
+    }
+}
+
+// Custom Codable defined in an extension (not the main declaration) so the
+// synthesized memberwise initializer is preserved for the many call sites that
+// build ConversationInstanceInfo directly (tests, snapshot projection).
+extension ConversationInstanceInfo {
+    // Custom decode so a missing `agentStates` key falls back to the default
+    // (empty) rather than throwing keyNotFound. Swift's synthesized decoder does
+    // NOT apply a stored-property default for a non-optional value type when the
+    // key is absent — only optionals get the decodeIfPresent → nil treatment —
+    // so pre-fix snapshots (no agentStates field) would fail to decode without
+    // this.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            label: try container.decode(String.self, forKey: .label)
+        )
+        waitingState = try container.decodeIfPresent(String.self, forKey: .waitingState)
+        isRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning)
+        runningAgentCount = try container.decodeIfPresent(Int.self, forKey: .runningAgentCount)
+        modelFallback = try container.decodeIfPresent(EngineInstanceModelFallback.self, forKey: .modelFallback)
+        conversationIds = try container.decodeIfPresent([String].self, forKey: .conversationIds)
+        thinkingEffort = try container.decodeIfPresent(String.self, forKey: .thinkingEffort)
+        dispatchTelemetry = try container.decodeIfPresent([DispatchTelemetryEntry].self, forKey: .dispatchTelemetry)
+        agentStates = try container.decodeIfPresent([AgentStateUpdate].self, forKey: .agentStates) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(label, forKey: .label)
+        try container.encodeIfPresent(waitingState, forKey: .waitingState)
+        try container.encodeIfPresent(isRunning, forKey: .isRunning)
+        try container.encodeIfPresent(runningAgentCount, forKey: .runningAgentCount)
+        try container.encodeIfPresent(modelFallback, forKey: .modelFallback)
+        try container.encodeIfPresent(conversationIds, forKey: .conversationIds)
+        try container.encodeIfPresent(thinkingEffort, forKey: .thinkingEffort)
+        try container.encodeIfPresent(dispatchTelemetry, forKey: .dispatchTelemetry)
+        // Only emit agentStates when non-empty to keep snapshots compact and to
+        // avoid churn against fixtures that predate the field.
+        if !agentStates.isEmpty {
+            try container.encode(agentStates, forKey: .agentStates)
+        }
     }
 }
 

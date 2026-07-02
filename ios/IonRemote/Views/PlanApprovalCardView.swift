@@ -91,7 +91,17 @@ struct PlanApprovalCardView: View {
     }
 
     private var showClearContextOption: Bool {
-        guard let settings = viewModel.desktopSettings,
+        Self.resolveShowClearContext(settings: viewModel.desktopSettings)
+    }
+
+    /// Pure resolver for the "Implement, clear context" button gate, extracted
+    /// so the desktop-setting → button-visibility mapping is unit-testable
+    /// without instantiating the SwiftUI view (which needs an @Environment
+    /// SessionViewModel). Mirrors the desktop gate: the button is revealed only
+    /// when the `showImplementClearContext` desktop setting is `true`. Returns
+    /// `false` when settings are absent or the key is missing/non-boolean.
+    static func resolveShowClearContext(settings: DesktopSettingsState?) -> Bool {
+        guard let settings,
               let val = settings.currentValue(for: "showImplementClearContext"),
               let on = val.value as? Bool else {
             return false
@@ -172,42 +182,39 @@ struct PlanApprovalCardView: View {
 
                 // Action buttons — split row when pinned, single button otherwise
                 if showUnpinOption {
-                    GeometryReader { geo in
-                        let spacing: CGFloat = 8
-                        let availableWidth = geo.size.width - 32
-                        let smallWidth = (availableWidth - spacing) * 0.38
-                        let largeWidth = availableWidth - spacing - smallWidth
-                        HStack(spacing: spacing) {
-                            Button {
-                                Haptic.medium()
-                                implementAndUnpin()
-                            } label: {
-                                Label("Implement and Unpin", systemImage: "pin.slash")
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                    .frame(width: largeWidth, height: 44)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-
-                            Button {
-                                Haptic.medium()
-                                implement()
-                            } label: {
-                                Text("Implement")
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                    .frame(width: smallWidth, height: 44)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Color(.systemGray3))
+                    // Native HStack (no GeometryReader): both buttons share the row
+                    // 50/50 via .frame(maxWidth: .infinity), so the row reports its
+                    // true height to the enclosing VStack and the clear-context
+                    // button below flows beneath it instead of overlapping. The
+                    // prior GeometryReader (38/62 pixel split) did not report a
+                    // stable intrinsic height, which caused the overlap.
+                    HStack(spacing: 8) {
+                        Button {
+                            Haptic.medium()
+                            implementAndUnpin()
+                        } label: {
+                            Label("Implement and Unpin", systemImage: "pin.slash")
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .frame(width: availableWidth)
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+
+                        Button {
+                            Haptic.medium()
+                            implement()
+                        } label: {
+                            Text("Implement")
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color(.systemGray3))
                     }
-                    .frame(height: 44)
                 } else {
                     Button {
                         Haptic.medium()
@@ -267,8 +274,8 @@ struct PlanApprovalCardView: View {
     }
 
     private func implementAndUnpin(clearContext: Bool = false) {
-        viewModel.toggleTabGroupPin(tabId: tabId)
-        implement(clearContext: clearContext)
+        viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
+        viewModel.sendUnpinThenImplementPlanIntent(tabId: tabId, questionId: request.questionId, clearContext: clearContext)
     }
 
     /// Initiate the paged fetch of the full plan body if not already fetched.

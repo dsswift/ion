@@ -19,7 +19,7 @@ import Foundation
 
 /// Structured dispatch info for a single agent dispatch.
 /// Decoded from the `dispatches` array inside agent metadata.
-struct DispatchInfo: Identifiable, Sendable {
+struct DispatchInfo: Codable, Identifiable, Sendable {
     let id: String
     let task: String
     let model: String
@@ -40,6 +40,47 @@ struct DispatchInfo: Identifiable, Sendable {
         if let st = dict["startTime"] as? Double { startTime = st }
         else if let st = dict["startTime"] as? Int { startTime = Double(st) }
         else { startTime = nil }
+    }
+
+    // Memberwise init used when reconstructing DispatchInfo values in Swift
+    // (e.g. tests, snapshot round-trips) without going through the engine dict.
+    init(
+        id: String,
+        task: String,
+        model: String,
+        conversationId: String,
+        elapsed: Double?,
+        status: String,
+        startTime: Double?
+    ) {
+        self.id = id
+        self.task = task
+        self.model = model
+        self.conversationId = conversationId
+        self.elapsed = elapsed
+        self.status = status
+        self.startTime = startTime
+    }
+
+    // Explicit Decoder/Encoder conformance so DispatchInfo survives snapshot
+    // persistence. AgentStateUpdate.encode(to:) writes dispatches back into the
+    // metadata map so per-dispatch identity (id/conversationId) is restored on
+    // reload — the UI keys popup/breadcrumb state on dispatch id, which would be
+    // lost if dispatches decoded empty from a persisted snapshot. The custom
+    // `init(from dict:)` above (different label) coexists with this initializer.
+    private enum CodingKeys: String, CodingKey {
+        case id, task, model, conversationId, elapsed, status, startTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        task = try container.decodeIfPresent(String.self, forKey: .task) ?? ""
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
+        conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        elapsed = try container.decodeIfPresent(Double.self, forKey: .elapsed)
+        startTime = try container.decodeIfPresent(Double.self, forKey: .startTime)
     }
 }
 
@@ -65,6 +106,14 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
     let color: String?
     let model: String?
     let startTime: Double?   // Unix timestamp in seconds
+    /// Dispatch nesting attribution, stamped by the engine at dispatch time
+    /// (dispatch_agent.go). `dispatchDepth` is this agent's depth (1=direct
+    /// child of the orchestrator, 2=grandchild, ...); `dispatchParentId` is the
+    /// parent dispatch's id (empty when the orchestrator dispatched directly).
+    /// Default 0 / "" for agents with no attribution (extension-roster rows,
+    /// pre-fix persisted state) — treated as root-level by `isRootLevel`.
+    let dispatchDepth: Int
+    let dispatchParentId: String
     /// Derived from `dispatches[]` — single source of truth for conversation IDs.
     /// Deduplicated: when multiple dispatches share a session, the ID appears once.
     var conversationIds: [String] {
@@ -85,6 +134,17 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         case "ephemeral": return status == "running"
         default: return true
         }
+    }
+
+    /// Whether this agent is a root-level dispatch (a direct child of the
+    /// orchestrator) versus a nested dispatch (a specialist dispatched by
+    /// another dispatched agent). The main conversation panel shows only
+    /// root-level agents so a lead's specialists appear inside the lead's
+    /// dispatch preview, not the main conversation row. Mirrors the desktop
+    /// isRootLevelAgent helper. Back-compat: agents with no attribution
+    /// (depth 0, empty parent) are treated as root-level.
+    var isRootLevel: Bool {
+        dispatchDepth <= 1 || dispatchParentId.isEmpty
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -146,11 +206,20 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         } else {
             cost = nil
         }
+        if let d = meta["dispatchDepth"]?.value as? Int {
+            dispatchDepth = d
+        } else if let d = meta["dispatchDepth"]?.value as? Double {
+            dispatchDepth = Int(d)
+        } else {
+            dispatchDepth = 0
+        }
+        dispatchParentId = (meta["dispatchParentId"]?.value as? String) ?? ""
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(agentId, forKey: .agentId)
         try container.encode(status, forKey: .status)
         var meta: [String: AnyCodable] = [
             "displayName": AnyCodable(displayName),
@@ -166,7 +235,32 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
         if let color { meta["color"] = AnyCodable(color) }
         if let model { meta["model"] = AnyCodable(model) }
         if let startTime { meta["startTime"] = AnyCodable(startTime) }
-        // dispatches are read-only from the engine; no need to encode back
+        if dispatchDepth != 0 { meta["dispatchDepth"] = AnyCodable(dispatchDepth) }
+        if !dispatchParentId.isEmpty { meta["dispatchParentId"] = AnyCodable(dispatchParentId) }
+        // Encode dispatches back into the metadata map so per-dispatch identity
+        // (id/conversationId) survives snapshot persistence. AgentStateUpdate is
+        // persisted in the tab snapshot (ConversationInstanceInfo.agentStates);
+        // the UI keys popup/breadcrumb state on dispatch id, so dropping
+        // dispatches here would collapse same-name dispatches on reload. The
+        // shape mirrors what init(from:) reads: meta["dispatches"] is an array
+        // of [String: AnyCodable] dicts. AnyCodable can only wrap scalar,
+        // [String: AnyCodable], and [AnyCodable] values, so each dispatch is
+        // built as a scalar dict rather than by encoding DispatchInfo directly.
+        if !dispatches.isEmpty {
+            let encoded: [AnyCodable] = dispatches.map { d in
+                var fields: [String: AnyCodable] = [
+                    "id": AnyCodable(d.id),
+                    "task": AnyCodable(d.task),
+                    "model": AnyCodable(d.model),
+                    "conversationId": AnyCodable(d.conversationId),
+                    "status": AnyCodable(d.status),
+                ]
+                if let elapsed = d.elapsed { fields["elapsed"] = AnyCodable(elapsed) }
+                if let startTime = d.startTime { fields["startTime"] = AnyCodable(startTime) }
+                return AnyCodable(fields)
+            }
+            meta["dispatches"] = AnyCodable(encoded)
+        }
         try container.encode(meta, forKey: .metadata)
     }
 }

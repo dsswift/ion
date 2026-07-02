@@ -102,7 +102,7 @@ extension ConversationView {
                                     if let lastConvId = agent.dispatches.last?.conversationId, !lastConvId.isEmpty {
                                         viewModel.preloadAgentDispatches(agent: agent, excluding: lastConvId)
                                     }
-                                    selectedAgentName = agent.name
+                                    selectedDispatchId = agent.dispatches.last?.id ?? agent.name
                                 } : nil
                             )
                         }

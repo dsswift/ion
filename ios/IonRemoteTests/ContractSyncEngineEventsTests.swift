@@ -838,12 +838,16 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineDispatchStartDecode() throws {
         let json = """
-        {"type":"desktop_dispatch_start","tabId":"t1","instanceId":"i1","dispatchDepth":2,"dispatchParentId":"parent-123","dispatchId":"id-abc"}
+        {"type":"desktop_dispatch_start","tabId":"t1","instanceId":"i1","dispatchAgent":"agent-a","dispatchSessionId":"sess-1","dispatchModel":"opus","dispatchTask":"do stuff","dispatchDepth":2,"dispatchParentId":"parent-123","dispatchId":"id-abc"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineDispatchStart(let tabId, let instanceId, let depth, let parentId, let dispatchId) = event {
+        if case .engineDispatchStart(let tabId, let instanceId, let agent, let sessionId, let model, let task, let depth, let parentId, let dispatchId) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(agent, "agent-a")
+            XCTAssertEqual(sessionId, "sess-1")
+            XCTAssertEqual(model, "opus")
+            XCTAssertEqual(task, "do stuff")
             XCTAssertEqual(depth, 2)
             XCTAssertEqual(parentId, "parent-123")
             XCTAssertEqual(dispatchId, "id-abc")

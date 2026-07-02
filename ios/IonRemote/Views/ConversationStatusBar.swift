@@ -29,9 +29,9 @@ struct ConversationStatusBar: View {
     // Engine-specific optional parameters
     var hasEngineExtension: Bool = false
     var extensionName: String? = nil
-    /// Number of dispatched background agents currently running. When
+    /// Number of dispatched agents currently running. When
     /// `isRunning` is false and this is > 0 the bar renders the yellow
-    /// "waiting for N background agent(s)" pulse + label (see
+    /// "waiting for N agent(s)" pulse + label (see
     /// `resolveRunActivity`). Mirrors the desktop's `agentRunningCount`.
     /// Defaults to 0 for older snapshots that don't carry the field.
     var runningAgentCount: Int = 0
@@ -82,11 +82,10 @@ struct ConversationStatusBar: View {
     /// Derived from the two signals that are reliably present in the iOS view
     /// layer — `isRunning` (orchestrator run-state, which `ConversationView`
     /// derives from `tab.status`) and `runningAgentCount` (the live count of
-    /// dispatched background agents in the `running` status). It does NOT read
+    /// dispatched agents in the `running` status). It does NOT read
     /// `StatusFields.state`: that field is non-Codable and snapshot-excluded on
-    /// iOS, so gating the dot on it hid the yellow "waiting for N background
-    /// agent(s)" label whenever the orchestrator went idle with a child still
-    /// running.
+    /// iOS, so gating the dot on it hid the yellow "waiting for N agent(s)"
+    /// label whenever the orchestrator went idle with a child still running.
     ///
     /// Priority cascade (matches the desktop `getTabStatusColor` /
     /// `TabRowView.statusInfo`): foreground orange "running" beats background
@@ -109,7 +108,7 @@ struct ConversationStatusBar: View {
             return RunActivity(
                 show: true,
                 isRunning: false,
-                label: "waiting for \(runningAgentCount) background agent\(suffix)",
+                label: "waiting for \(runningAgentCount) agent\(suffix)",
             )
         }
         return RunActivity(show: false, isRunning: false, label: "")
@@ -199,7 +198,7 @@ struct ConversationStatusBar: View {
             //     tab.status) → orange `theme.statusRunning` dot + "running"
             //   - NOT running AND runningAgentCount > 0 → yellow
             //     `theme.statusWaitingChildren` dot + "waiting for N
-            //     background agent(s)"
+            //     agent(s)"
             //   - otherwise → no dot/label (run-activity indicator only)
             //
             // Reads `isRunning` + `runningAgentCount` — the signals reliably

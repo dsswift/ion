@@ -92,10 +92,14 @@ extension RemoteEvent {
         case .engineDispatchStart:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let agent = try container.decodeIfPresent(String.self, forKey: .dispatchAgent) ?? ""
+            let sessionId = try container.decodeIfPresent(String.self, forKey: .dispatchSessionId) ?? ""
+            let model = try container.decodeIfPresent(String.self, forKey: .dispatchModel) ?? ""
+            let task = try container.decodeIfPresent(String.self, forKey: .dispatchTask) ?? ""
             let depth = try container.decodeIfPresent(Int.self, forKey: .dispatchDepth) ?? 0
             let parentId = try container.decodeIfPresent(String.self, forKey: .dispatchParentId) ?? ""
             let dispatchId = try container.decodeIfPresent(String.self, forKey: .dispatchId) ?? ""
-            return .engineDispatchStart(tabId: tabId, instanceId: instanceId, dispatchDepth: depth, dispatchParentId: parentId, dispatchId: dispatchId)
+            return .engineDispatchStart(tabId: tabId, instanceId: instanceId, dispatchAgent: agent, dispatchSessionId: sessionId, dispatchModel: model, dispatchTask: task, dispatchDepth: depth, dispatchParentId: parentId, dispatchId: dispatchId)
 
         case .engineDispatchEnd:
             let tabId = try container.decode(String.self, forKey: .tabId)

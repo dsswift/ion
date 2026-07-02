@@ -7,8 +7,8 @@ import XCTest
 /// Regression: the bar previously rendered the dot/label only inside
 /// `if let state = statusState`, where `statusState` came from
 /// `StatusFields.state` — a non-Codable, snapshot-excluded field on iOS. When
-/// the orchestrator went idle with a dispatched background agent still running,
-/// `statusState` was nil and the yellow "waiting for N background agent(s)"
+/// the orchestrator went idle with a dispatched agent still running,
+/// `statusState` was nil and the yellow "waiting for N agent(s)"
 /// label never appeared. The fix derives the dot/label from `isRunning`
 /// (orchestrator run-state, from `tab.status`) and the live `runningAgentCount`.
 ///
@@ -25,8 +25,8 @@ final class ConversationStatusBarWaitingTests: XCTestCase {
     }
 
     func testRunningOrchestratorWinsOverBackgroundAgents() {
-        // Foreground orange beats background yellow — when the orchestrator is
-        // running, the label is "running" regardless of running children.
+        // Foreground orange beats child-waiting yellow — when the orchestrator
+        // is running, the label is "running" regardless of running children.
         let a = ConversationStatusBar.resolveRunActivity(isRunning: true, runningAgentCount: 3)
         XCTAssertTrue(a.show)
         XCTAssertTrue(a.isRunning)
@@ -38,14 +38,14 @@ final class ConversationStatusBarWaitingTests: XCTestCase {
         let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 1)
         XCTAssertTrue(a.show)
         XCTAssertFalse(a.isRunning)
-        XCTAssertEqual(a.label, "waiting for 1 background agent")
+        XCTAssertEqual(a.label, "waiting for 1 agent")
     }
 
     func testIdleWithMultipleRunningAgentsPluralizes() {
         let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 2)
         XCTAssertTrue(a.show)
         XCTAssertFalse(a.isRunning)
-        XCTAssertEqual(a.label, "waiting for 2 background agents")
+        XCTAssertEqual(a.label, "waiting for 2 agents")
     }
 
     func testIdleWithNoRunningAgentsShowsNothing() {

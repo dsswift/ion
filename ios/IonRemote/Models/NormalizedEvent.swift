@@ -92,7 +92,7 @@ enum RemoteEvent: Sendable {
     case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int)
     case engineScheduleFired(tabId: String, instanceId: String?)
     case engineLlmCall(tabId: String, instanceId: String?)
-    case engineDispatchStart(tabId: String, instanceId: String?, dispatchDepth: Int, dispatchParentId: String, dispatchId: String)
+    case engineDispatchStart(tabId: String, instanceId: String?, dispatchAgent: String, dispatchSessionId: String, dispatchModel: String, dispatchTask: String, dispatchDepth: Int, dispatchParentId: String, dispatchId: String)
     /// engine_dispatch_end -- emitted when an extension-initiated dispatch completes.
     /// Carries telemetry (exit code, elapsed, cost) and nesting identity
     /// (dispatchDepth, dispatchParentId) for tree rendering.
@@ -644,6 +644,7 @@ enum RemoteEvent: Sendable {
         case dispatchAgent, dispatchDepth, dispatchParentId
         case dispatchExitCode, dispatchElapsed
         case dispatchId
+        case dispatchModel, dispatchSessionId, dispatchTask
         // --- desktop_request_resend / desktop_resend_unavailable payload ---
         // desktop_resend_unavailable payload — the start seq of the evicted range.
         case fromSeq

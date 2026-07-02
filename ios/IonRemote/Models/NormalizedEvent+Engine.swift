@@ -102,10 +102,14 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             return true
-        case .engineDispatchStart(let tabId, let instanceId, let depth, let parentId, let dispatchId):
+        case .engineDispatchStart(let tabId, let instanceId, let agent, let sessionId, let model, let task, let depth, let parentId, let dispatchId):
             try container.encode(TypeKey.engineDispatchStart, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(agent, forKey: .dispatchAgent)
+            try container.encode(sessionId, forKey: .dispatchSessionId)
+            try container.encode(model, forKey: .dispatchModel)
+            try container.encode(task, forKey: .dispatchTask)
             try container.encode(depth, forKey: .dispatchDepth)
             try container.encode(parentId, forKey: .dispatchParentId)
             try container.encode(dispatchId, forKey: .dispatchId)

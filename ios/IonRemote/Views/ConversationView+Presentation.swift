@@ -41,12 +41,14 @@ extension ConversationView {
                     .environment(viewModel)
             }
             .fullScreenCover(isPresented: Binding(
-                get: { selectedAgentName != nil },
-                set: { if !$0 { selectedAgentName = nil } }
+                get: { selectedDispatchId != nil },
+                set: { if !$0 { selectedDispatchId = nil } }
             )) {
-                if let agentName = selectedAgentName {
+                if let dispatchId = selectedDispatchId,
+                   let agent = visibleAgents.first(where: { $0.dispatches.contains(where: { $0.id == dispatchId }) }) {
                     AgentDetailFullScreenView(
-                        agentName: agentName,
+                        dispatchId: dispatchId,
+                        agentName: agent.name,
                         compoundKey: compoundKey
                     )
                     .environment(viewModel)

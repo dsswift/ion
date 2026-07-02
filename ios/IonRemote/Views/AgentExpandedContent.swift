@@ -21,11 +21,22 @@ struct AgentExpandedContent: View {
     /// ScrollView so the header stays pinned. Set only by
     /// AgentDetailFullScreenView. AgentBarRow leaves this false.
     var pinHeader: Bool = false
+    /// Child agents dispatched by THIS agent (telemetry-derived), shown in the
+    /// embedded agent panel of the dispatch preview. Only the pinned (popup)
+    /// layout renders them; AgentBarRow leaves this nil. When pinHeader is true
+    /// the embedded panel is always shown (even with zero children) so the
+    /// preview always carries the panel — see Transcript.alwaysShowAgentPanel.
+    var childAgents: [AgentStateUpdate]?
+    /// Drill-down handler: opening a child agent row pushes onto the preview's
+    /// breadcrumb navigation. nil in the inline AgentBarRow layout.
+    var onOpenChildDispatch: ((DispatchInfo, AgentStateUpdate) -> Void)?
     @Environment(\.appTheme) private var theme
     @State private var selectedDispatchIndex: Int?
     /// Live clock for the duration ticker — only ticks when pinHeader is true
     /// and the agent is running, to avoid a needless timer in every inline row.
     @State private var now = Date()
+    @State private var transcriptNearBottom = true
+    @State private var transcriptForceScroll = 0
 
     // MARK: - Computed
 
@@ -69,12 +80,24 @@ struct AgentExpandedContent: View {
 
     var body: some View {
         if pinHeader {
-            // Pinned layout: header outside the ScrollView, transcript inside.
+            // Pinned layout: header outside the Transcript, transcript inside.
             VStack(alignment: .leading, spacing: 0) {
                 headerView
-                ScrollView {
-                    bodyView
-                }
+                let msgs = activeMessages ?? []
+                let filtered = conversationMessages(msgs)
+                let prompt = filtered.first(where: { $0.role == .user })?.content
+                Transcript(
+                    messages: filtered,
+                    unifiedTurnView: true,
+                    pinnedPrompt: prompt,
+                    isRunning: dispatchIsRunning,
+                    onRewind: nil,
+                    agents: childAgents ?? [],
+                    onOpenDispatch: onOpenChildDispatch,
+                    isNearBottom: $transcriptNearBottom,
+                    forceScrollCounter: transcriptForceScroll,
+                    alwaysShowAgentPanel: true
+                )
             }
             .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { t in
                 if agent.status == "running" { now = t }
@@ -157,8 +180,9 @@ struct AgentExpandedContent: View {
             switch branch {
             case .messages:
                 let filtered = conversationMessages(msgs ?? [])
-                ForEach(groupDispatchItems(filtered)) { item in
-                    dispatchItemRow(item)
+                let items = groupConversationItems(filtered, unifiedTurnView: true)
+                ForEach(Array(items.enumerated()), id: \.element.id) { _, item in
+                    dispatchRow(for: item)
                 }
             case .loading:
                 HStack(spacing: 6) {
@@ -210,6 +234,98 @@ struct AgentExpandedContent: View {
         .onChange(of: selectedDispatchIndex) { _ in
             if !pinHeader { return }
             logDispatchState(event: "selectionChange")
+        }
+    }
+
+    // MARK: - Dispatch row rendering
+
+    /// Marker classification for a dispatch transcript row. Extracted as a pure
+    /// enum + classifier so the marker-handling parity with Transcript.swift is
+    /// unit-testable without rendering SwiftUI. A `.system` divider message
+    /// (`──` prefix) is NOT a plain system row — it must render through the
+    /// divider-flanked `PlanDividerLabel` treatment (steer applied, plan
+    /// created/updated, implementing) exactly like the main transcript does.
+    enum DispatchRowKind: Equatable {
+        case toolGroup
+        case thinking
+        case compaction
+        case agentTurn
+        /// A lifecycle divider (`──` prefix): steer applied, plan created,
+        /// plan updated, implementing plan. Rendered via PlanDividerLabel.
+        case divider
+        /// An ordinary message row (user / assistant / non-divider system).
+        case message
+    }
+
+    /// Classifies a grouped conversation item into the row kind the dispatch
+    /// preview renders. Mirrors Transcript.swift's switch: divider system
+    /// messages route to PlanDividerLabel, compaction to CompactionRowView.
+    ///
+    /// Test seam: `AgentExpandedContent.classifyRow(_:)` lets a unit test assert
+    /// that steer / plan-created / plan-updated / plan-implemented / compaction
+    /// items each produce their dedicated marker row instead of collapsing into
+    /// a plain message row.
+    static func classifyRow(_ item: ConversationItem) -> DispatchRowKind {
+        switch item {
+        case .toolGroup:
+            return .toolGroup
+        case .thinking:
+            return .thinking
+        case .compaction:
+            return .compaction
+        case .agentTurn:
+            return .agentTurn
+        case .system(let msg):
+            // Lifecycle dividers (steer / plan created / plan updated /
+            // implementing) carry the `──` sentinel prefix — same detection
+            // EngineMessageRow.engineSystemBubble uses.
+            return msg.content.hasPrefix("──") ? .divider : .message
+        case .user, .assistant:
+            return .message
+        }
+    }
+
+    /// Renders a single grouped conversation item, mirroring the row switch in
+    /// Transcript.swift so the dispatch preview shows steer / plan / compaction
+    /// markers with the same components as the main transcript.
+    @ViewBuilder
+    private func dispatchRow(for item: ConversationItem) -> some View {
+        switch item {
+        case .toolGroup(let tools):
+            EngineToolGroupRow(tools: tools)
+                .padding(.horizontal, 10)
+        case .thinking(let msg):
+            ThinkingRowView(message: msg)
+                .padding(.horizontal, 12)
+        case .compaction(let msg):
+            CompactionRowView(message: msg)
+                .padding(.horizontal, 10)
+        case .agentTurn(let tools, let assistants, let isActive):
+            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive)
+                .padding(.horizontal, 10)
+        case .system(let msg):
+            if msg.content.hasPrefix("──") {
+                // Lifecycle divider (steer applied, plan created/updated,
+                // implementing) — render with the same divider-flanked
+                // PlanDividerLabel treatment the main transcript uses so the
+                // marker is visible in the dispatch preview instead of a plain
+                // centered line. onTapPlan is intentionally nil here: the
+                // dispatch preview has no plan-preview navigation, so the slug
+                // degrades to plain text (PlanDividerLabel handles that).
+                HStack(spacing: 8) {
+                    VStack { Divider() }
+                    PlanDividerLabel(message: msg)
+                    VStack { Divider() }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 6)
+            } else {
+                EngineMessageRow(message: msg)
+                    .padding(.horizontal, 12)
+            }
+        case .user(let msg), .assistant(let msg):
+            EngineMessageRow(message: msg)
+                .padding(.horizontal, 12)
         }
     }
 
@@ -281,90 +397,6 @@ struct AgentExpandedContent: View {
                 return false
             }
             return true
-        }
-    }
-
-    // MARK: - Grouping for dispatch view
-
-    /// A lightweight grouped item for the dispatch preview list.
-    enum DispatchItem: Identifiable {
-        case single(Message)
-        case toolGroup([Message])
-        var id: String {
-            switch self {
-            case .single(let m): return m.id
-            case .toolGroup(let ms): return "tg-\(ms.first?.id ?? "")"
-            }
-        }
-    }
-
-    /// Groups consecutive .tool messages into DispatchItem.toolGroup so they
-    /// render as a single collapsed EngineToolGroupRow pill. All other roles
-    /// produce individual .single items. Preserves timestamp order.
-    private func groupDispatchItems(_ msgs: [Message]) -> [DispatchItem] {
-        var result: [DispatchItem] = []
-        var toolBuf: [Message] = []
-        for msg in msgs {
-            if msg.role == .tool {
-                toolBuf.append(msg)
-            } else {
-                if !toolBuf.isEmpty {
-                    result.append(.toolGroup(toolBuf))
-                    toolBuf = []
-                }
-                result.append(.single(msg))
-            }
-        }
-        if !toolBuf.isEmpty {
-            result.append(.toolGroup(toolBuf))
-        }
-        return result
-    }
-
-    @ViewBuilder
-    private func dispatchItemRow(_ item: DispatchItem) -> some View {
-        switch item {
-        case .toolGroup(let tools):
-            // Reuse the existing collapsible pill — same component as the main
-            // conversation view. Matches desktop ToolGroup behavior.
-            EngineToolGroupRow(tools: tools)
-                .padding(.horizontal, 10)
-        case .single(let msg):
-            // Thinking rows delegate to ThinkingRowView via EngineMessageRow.
-            // User and assistant rows use conversationBubble.
-            if msg.role == .thinking {
-                EngineMessageRow(message: msg)
-                    .padding(.horizontal, 12)
-            } else {
-                conversationBubble(msg)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func conversationBubble(_ msg: Message) -> some View {
-        if msg.role == .user {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "person.fill")
-                    .font(.caption2)
-                    .foregroundStyle(theme.textSecondary)
-                    .padding(.top, 2)
-                Text(msg.content)
-                    .font(.caption2)
-                    .foregroundStyle(theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(theme.surfaceElevated.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 10)
-        } else {
-            MarkdownContentView(
-                blocks: MarkdownBlockCache.shared.blocks(for: msg.content)
-            )
-            .textSelection(.enabled)
-            .padding(.horizontal, 12)
         }
     }
 

@@ -266,12 +266,36 @@ extension SessionViewModel {
         case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall:
             break
 
-        // Dispatch telemetry: iOS projects depth/parentId fields for parity
-        // but does not render nested dispatch UI itself (desktop owns that).
-        case .engineDispatchStart(_, _, let depth, let parentId, let dispatchId):
-            DiagnosticLog.log("ENGINE: dispatch_start depth=\(depth) parentId=\(parentId.prefix(16)) id=\(dispatchId.prefix(16))")
-        case .engineDispatchEnd(_, _, let agent, let depth, let parentId, let exitCode, let elapsed, let dispatchId, _):
+        // Dispatch telemetry: accumulate start/end into the per-instance
+        // dispatchTelemetry array, mirroring desktop buildDispatchStartEntry /
+        // applyDispatchEnd in engine-event-slice-helpers.ts.
+        case .engineDispatchStart(let tabId, let instanceId, let agent, let sessionId, let model, let task, let depth, let parentId, let dispatchId):
+            DiagnosticLog.log("ENGINE: dispatch_start agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) id=\(dispatchId.prefix(16))")
+            let entry = DispatchTelemetryEntry(
+                dispatchAgent: agent,
+                dispatchSessionId: sessionId,
+                dispatchModel: model,
+                dispatchTask: task,
+                dispatchDepth: depth,
+                dispatchParentId: parentId,
+                dispatchId: dispatchId
+            )
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
+                var existing = $0.dispatchTelemetry ?? []
+                existing.append(entry)
+                $0.dispatchTelemetry = existing
+            }
+        case .engineDispatchEnd(let tabId, let instanceId, let agent, let depth, let parentId, let exitCode, let elapsed, let dispatchId, let conversationId):
             DiagnosticLog.log("ENGINE: dispatch_end agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) exit=\(exitCode) elapsed=\(String(format: "%.2f", elapsed))s id=\(dispatchId.prefix(16))")
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
+                guard var telemetry = $0.dispatchTelemetry else { return }
+                if let idx = telemetry.firstIndex(where: { $0.dispatchId == dispatchId }) {
+                    telemetry[idx].exitCode = exitCode
+                    telemetry[idx].elapsed = elapsed
+                    telemetry[idx].conversationId = conversationId
+                    $0.dispatchTelemetry = telemetry
+                }
+            }
 
         case .engineDispatchActivity(_, _, let agentId, let conversationId, let kind, let seq, let toolName, let toolId, let textDelta, let isError, let ts):
             handleDispatchActivity(dispatchAgentId: agentId, conversationId: conversationId, kind: kind, seq: seq, ts: ts, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError)
