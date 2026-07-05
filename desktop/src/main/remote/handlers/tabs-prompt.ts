@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'fs'
 import { log as _log } from '../../logger'
 import { state, sessionPlane, engineBridge } from '../../state'
 import { processIncomingPrompt } from '../../prompt-pipeline'
-import { encodeImageAttachments } from '../attachment-encoder'
+import { encodeAttachments } from '../attachment-encoder'
+import { IS_REMOTE } from '../../engine-bridge'
 import { getVoiceSystemPrompt } from './engine'
 import { performUnifiedInterrupt } from '../../engine-control-plane-interrupt'
 import type { RemoteCommand } from '../protocol'
@@ -122,7 +123,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       const ctx = attachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
       fullText = `${ctx}\n\n${fullText}`
     }
-    const { encoded, rewrittenText } = encodeImageAttachments(fullText, attachments)
+    const { encoded, rewrittenText } = encodeAttachments(fullText, attachments, { isRemote: IS_REMOTE })
     const voicePrompt = getVoiceSystemPrompt(deviceId)
     // Reuse the iOS-supplied clientMsgId as the engine request id so the
     // user-message echo (below) carries this exact id back to iOS. iOS reconciles

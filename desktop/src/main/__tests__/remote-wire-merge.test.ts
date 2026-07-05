@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   processIncomingPromptMock: vi.fn().mockResolvedValue(undefined),
   readSettingsMock: vi.fn().mockReturnValue({ defaultBaseDirectory: '/home/test' }),
   getRemoteTabStatesMock: vi.fn().mockResolvedValue({ tabs: [] }),
-  encodeImageAttachmentsMock: vi.fn().mockReturnValue({ encoded: [], rewrittenText: '' }),
+  encodeAttachmentsMock: vi.fn().mockReturnValue({ encoded: [], rewrittenText: '' }),
   getVoiceSystemPromptMock: vi.fn().mockReturnValue(undefined),
 }))
 
@@ -95,7 +95,7 @@ vi.mock('../ipc-validation', () => ({
 }))
 
 vi.mock('../remote/attachment-encoder', () => ({
-  encodeImageAttachments: (...args: any[]) => mocks.encodeImageAttachmentsMock(...args),
+  encodeAttachments: (...args: any[]) => mocks.encodeAttachmentsMock(...args),
 }))
 
 // Mock engine.ts so tabs.ts can import getVoiceSystemPrompt without
@@ -263,7 +263,7 @@ describe('handlePrompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.executeJsMock.mockResolvedValue(null)
-    mocks.encodeImageAttachmentsMock.mockReturnValue({ encoded: [], rewrittenText: 'hello engine' })
+    mocks.encodeAttachmentsMock.mockReturnValue({ encoded: [], rewrittenText: 'hello engine' })
     mocks.processIncomingPromptMock.mockResolvedValue(undefined)
   })
 
@@ -380,16 +380,16 @@ describe('handlePrompt', () => {
     expect(args.instanceId).toBe('new-inst')
   })
 
-  it('calls encodeImageAttachments on engine path', async () => {
+  it('calls encodeAttachments on engine path', async () => {
     mocks.executeJsMock.mockResolvedValue('inst-enc')
-    mocks.encodeImageAttachmentsMock.mockReturnValue({ encoded: [], rewrittenText: 'rewritten' })
+    mocks.encodeAttachmentsMock.mockReturnValue({ encoded: [], rewrittenText: 'rewritten' })
 
     await handlePrompt(
       { type: 'desktop_prompt', tabId: 'tab-7', text: 'hi', instanceId: 'inst-enc', attachments: [{ type: 'file', name: 'foo.txt', path: '/tmp/foo.txt' }] },
       DEVICE_ID,
     )
 
-    expect(mocks.encodeImageAttachmentsMock).toHaveBeenCalledOnce()
+    expect(mocks.encodeAttachmentsMock).toHaveBeenCalledOnce()
     const args = mocks.processIncomingPromptMock.mock.calls[0][0]
     expect(args.text).toBe('rewritten')
   })

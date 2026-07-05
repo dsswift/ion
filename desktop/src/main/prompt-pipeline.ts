@@ -97,7 +97,8 @@ import { state, sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { parseSlash, type ParsedSlash } from './slash-parse'
 import { handleSlash as handleSlashBranch } from './prompt-pipeline-slash'
-import { encodeImageAttachments } from './remote/attachment-encoder'
+import { encodeAttachments } from './remote/attachment-encoder'
+import { IS_REMOTE } from './engine-bridge'
 import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 import { emitRemoteMessageAdded, insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
@@ -345,7 +346,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       const ctx = attachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
       fullPrompt = `${ctx}\n\n${fullPrompt}`
     }
-    const { encoded, rewrittenText } = encodeImageAttachments(fullPrompt, attachments)
+    const { encoded, rewrittenText } = encodeAttachments(fullPrompt, attachments, { isRemote: IS_REMOTE })
     log(`pipeline: submit prompt via REMOTE_USER_MESSAGE tab=${p.tabId} textLen=${rewrittenText.length} encodedImages=${encoded.length}`)
     broadcast(IPC.REMOTE_USER_MESSAGE, {
       tabId: p.tabId,

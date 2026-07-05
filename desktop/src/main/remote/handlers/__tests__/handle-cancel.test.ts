@@ -54,7 +54,7 @@ vi.mock('../../../state', () => ({
 
 vi.mock('../../../logger', () => ({ log: vi.fn() }))
 vi.mock('../../../prompt-pipeline', () => ({ processIncomingPrompt: vi.fn() }))
-vi.mock('../attachment-encoder', () => ({ encodeImageAttachments: vi.fn() }))
+vi.mock('../attachment-encoder', () => ({ encodeAttachments: vi.fn() }))
 vi.mock('./engine', () => ({ getVoiceSystemPrompt: vi.fn() }))
 
 import { handleCancel } from '../tabs-prompt'

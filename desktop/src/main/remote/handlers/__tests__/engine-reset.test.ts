@@ -59,7 +59,7 @@ vi.mock('../../../logger', () => ({
 }))
 
 vi.mock('../../attachment-encoder', () => ({
-  encodeImageAttachments: (text: string) => ({ encoded: [], rewrittenText: text }),
+  encodeAttachments: (text: string) => ({ encoded: [], rewrittenText: text }),
 }))
 
 vi.mock('../../../prompt-pipeline', () => ({

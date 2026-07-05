@@ -131,7 +131,7 @@ vi.mock('../settings-store', () => ({
 }))
 
 vi.mock('../remote/attachment-encoder', () => ({
-  encodeImageAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
+  encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
 }))
 
 // Pull in the SUT AFTER mocks are set up.

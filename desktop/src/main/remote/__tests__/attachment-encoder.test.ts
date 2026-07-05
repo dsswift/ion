@@ -22,7 +22,7 @@ vi.mock('electron', () => {
   }
 })
 
-import { encodeImageAttachments, type RawAttachment } from '../attachment-encoder'
+import { encodeAttachments, type RawAttachment } from '../attachment-encoder'
 
 let workDir: string
 
@@ -46,28 +46,49 @@ const att = (path: string, type = 'image', name?: string): RawAttachment => ({
   name: name ?? path.split('/').pop() ?? path,
 })
 
-describe('encodeImageAttachments', () => {
+const local = { isRemote: false }
+const remote = { isRemote: true }
+
+/** Write a sparse file whose stat size is `mb` megabytes. */
+const writeSparse = (name: string, mb: number): string => {
+  const p = join(workDir, name)
+  const fd = require('fs').openSync(p, 'w')
+  require('fs').writeSync(fd, Buffer.from([0]), 0, 1, mb * 1024 * 1024)
+  require('fs').closeSync(fd)
+  return p
+}
+
+describe('encodeAttachments — images', () => {
   it('returns empty result when no attachments are supplied', () => {
-    const r = encodeImageAttachments('hi', undefined)
+    const r = encodeAttachments('hi', undefined, local)
     expect(r.encoded).toEqual([])
     expect(r.rewrittenText).toBe('hi')
   })
 
-  it('encodes a real jpeg and leaves the prompt text untouched', () => {
+  it('encodes a real jpeg and rewrites its marker to the content-attached form', () => {
     const path = writeBytes('photo.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0]))
     const text = `[Attached image: ${path}]\n\nwhat is this`
-    const { encoded, rewrittenText } = encodeImageAttachments(text, [att(path)])
-    expect(rewrittenText).toBe(text)
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(path)], local)
+    expect(rewrittenText).toBe('[Attachment: photo.jpg (content attached)]\n\nwhat is this')
     expect(encoded).toHaveLength(1)
     expect(encoded[0].mediaType).toBe('image/jpeg')
     expect(encoded[0].data).toBe(Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64'))
     expect(encoded[0].path).toBe(path)
   })
 
+  it('the rewritten marker matches neither harness MARKER_RE nor engine attachmentMarkerRe', () => {
+    const path = writeBytes('photo.jpg', Buffer.from([0xff, 0xd8]))
+    const { rewrittenText } = encodeAttachments(`[Attached image: ${path}]`, [att(path)], remote)
+    // Same grammar as harness-ts attachmentResolver MARKER_RE and the engine's
+    // attachmentMarkerRe: a rewritten marker must never re-match either.
+    const markerRe = /\[Attached (file|image|plan): ([^\]]+)\]/g
+    expect(rewrittenText.match(markerRe)).toBeNull()
+  })
+
   it('rewrites the marker for a missing file and omits it from encoded', () => {
     const path = join(workDir, 'gone.png')
     const text = `[Attached image: ${path}]\n\nplease describe`
-    const { encoded, rewrittenText } = encodeImageAttachments(text, [att(path)])
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(path)], local)
     expect(encoded).toEqual([])
     expect(rewrittenText).toBe('[image unavailable: gone.png]\n\nplease describe')
   })
@@ -75,66 +96,24 @@ describe('encodeImageAttachments', () => {
   it('rewrites the marker for an unsupported extension', () => {
     const path = writeBytes('thing.bmp', Buffer.from([1, 2, 3]))
     const text = `[Attached image: ${path}]`
-    const { encoded, rewrittenText } = encodeImageAttachments(text, [att(path)])
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(path)], local)
     expect(encoded).toEqual([])
     expect(rewrittenText).toBe('[image unavailable: thing.bmp]')
   })
 
-  it('preserves non-image attachments untouched in text and out of encoded', () => {
-    const filePath = join(workDir, 'notes.txt')
-    writeFileSync(filePath, 'hello')
-    const text = `[Attached file: ${filePath}]\n\ncan you read this`
-    const { encoded, rewrittenText } = encodeImageAttachments(text, [att(filePath, 'file')])
-    expect(encoded).toEqual([])
-    expect(rewrittenText).toBe(text)
-  })
-
-  it('handles a mix: one good image + one missing image + one file', () => {
-    const good = writeBytes('good.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]))
-    const missing = join(workDir, 'missing.jpg')
-    const file = writeBytes('readme.txt', Buffer.from('x'))
-    const text = [
-      `[Attached image: ${good}]`,
-      `[Attached image: ${missing}]`,
-      `[Attached file: ${file}]`,
-      '',
-      'please describe',
-    ].join('\n')
-    const { encoded, rewrittenText } = encodeImageAttachments(text, [
-      att(good),
-      att(missing),
-      att(file, 'file'),
-    ])
-    expect(encoded).toHaveLength(1)
-    expect(encoded[0].path).toBe(good)
-    expect(encoded[0].mediaType).toBe('image/png')
-    expect(rewrittenText).toContain(`[Attached image: ${good}]`)
-    expect(rewrittenText).toContain('[image unavailable: missing.jpg]')
-    expect(rewrittenText).toContain(`[Attached file: ${file}]`)
-    expect(rewrittenText).not.toContain(missing)
-  })
-
   it('rejects images larger than the raw cap by rewriting the marker', () => {
-    const big = join(workDir, 'huge.jpg')
-    // Create a sparse-ish 26 MB file by writing one byte at offset 26*1024*1024,
-    // which exceeds the 25 MB raw cap before any decode is attempted.
-    const fd = require('fs').openSync(big, 'w')
-    require('fs').writeSync(fd, Buffer.from([0]), 0, 1, 26 * 1024 * 1024)
-    require('fs').closeSync(fd)
+    const big = writeSparse('huge.jpg', 26)
     const text = `[Attached image: ${big}]`
-    const { encoded, rewrittenText } = encodeImageAttachments(text, [att(big)])
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(big)], local)
     expect(encoded).toEqual([])
     expect(rewrittenText).toBe('[image unavailable: huge.jpg]')
   })
 
   it('passes png through unchanged when small, sends webp recompressed as jpeg', () => {
-    // PNG passthrough preserves transparency when bytes <= TARGET_BYTES.
     const png = writeBytes('a.png', Buffer.from([1, 2]))
-    // WEBP gets recompressed via the JPEG path (the encoder normalizes to
-    // a format Anthropic always accepts).
     const webp = writeBytes('b.webp', Buffer.from([3, 4]))
     const text = `[Attached image: ${png}]\n[Attached image: ${webp}]`
-    const { encoded } = encodeImageAttachments(text, [att(png), att(webp)])
+    const { encoded } = encodeAttachments(text, [att(png), att(webp)], local)
     expect(encoded).toHaveLength(2)
     expect(encoded[0].mediaType).toBe('image/png')
     expect(encoded[1].mediaType).toBe('image/jpeg')
@@ -142,8 +121,75 @@ describe('encodeImageAttachments', () => {
 
   it('does not pollute the directory when given empty input', () => {
     mkdirSync(join(workDir, 'subdir'))
-    const r = encodeImageAttachments('', [])
+    const r = encodeAttachments('', [], local)
     expect(r.encoded).toEqual([])
     expect(r.rewrittenText).toBe('')
+  })
+})
+
+describe('encodeAttachments — PDFs', () => {
+  it('encodes a pdf verbatim (no recompression) and rewrites its marker', () => {
+    const bytes = Buffer.from('%PDF-1.4 test content')
+    const path = writeBytes('report.pdf', bytes)
+    const text = `[Attached file: ${path}]\n\nsummarize`
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(path, 'file')], remote)
+    expect(encoded).toHaveLength(1)
+    expect(encoded[0].mediaType).toBe('application/pdf')
+    expect(encoded[0].data).toBe(bytes.toString('base64'))
+    expect(encoded[0].path).toBe(path)
+    expect(rewrittenText).toBe('[Attachment: report.pdf (content attached)]\n\nsummarize')
+  })
+
+  it('over-cap pdf: keeps the original marker locally (Read/disk fallback)', () => {
+    const big = writeSparse('big.pdf', 25)
+    const text = `[Attached file: ${big}]`
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(big, 'file')], local)
+    expect(encoded).toEqual([])
+    expect(rewrittenText).toBe(text)
+  })
+
+  it('over-cap pdf: rewrites to an honest note remotely', () => {
+    const big = writeSparse('big.pdf', 25)
+    const text = `[Attached file: ${big}]`
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(big, 'file')], remote)
+    expect(encoded).toEqual([])
+    expect(rewrittenText).toContain('[file unavailable: big.pdf -- too large to send (25MB)]')
+  })
+
+  it('enforces the cumulative prompt budget across multiple pdfs', () => {
+    const a = writeSparse('a.pdf', 20)
+    const b = writeSparse('b.pdf', 20)
+    const text = `[Attached file: ${a}]\n[Attached file: ${b}]`
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(a, 'file'), att(b, 'file')], remote)
+    expect(encoded).toHaveLength(1)
+    expect(encoded[0].path).toBe(a)
+    expect(rewrittenText).toContain('[Attachment: a.pdf (content attached)]')
+    expect(rewrittenText).toContain('[file unavailable: b.pdf -- attachment budget for this message exceeded]')
+  })
+
+  it('missing pdf: keeps marker locally, rewrites remotely', () => {
+    const gone = join(workDir, 'gone.pdf')
+    const text = `[Attached file: ${gone}]`
+    expect(encodeAttachments(text, [att(gone, 'file')], local).rewrittenText).toBe(text)
+    expect(encodeAttachments(text, [att(gone, 'file')], remote).rewrittenText).toBe('[file unavailable: gone.pdf]')
+  })
+
+  it('leaves non-pdf file attachments and plan markers untouched', () => {
+    const txt = writeBytes('notes.txt', Buffer.from('hello'))
+    const text = `[Attached file: ${txt}]\n[Attached plan: /tmp/plan.md]\ngo`
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(txt, 'file')], remote)
+    expect(encoded).toEqual([])
+    expect(rewrittenText).toBe(text)
+  })
+
+  it('handles pdf + image together', () => {
+    const pdf = writeBytes('doc.pdf', Buffer.from('%PDF-1.4 x'))
+    const img = writeBytes('pic.jpg', Buffer.from([0xff, 0xd8]))
+    const text = `[Attached file: ${pdf}]\n[Attached image: ${img}]\ncompare`
+    const { encoded, rewrittenText } = encodeAttachments(text, [att(pdf, 'file'), att(img)], remote)
+    expect(encoded).toHaveLength(2)
+    expect(encoded.map((e) => e.mediaType)).toEqual(['application/pdf', 'image/jpeg'])
+    expect(rewrittenText).toContain('[Attachment: doc.pdf (content attached)]')
+    expect(rewrittenText).toContain('[Attachment: pic.jpg (content attached)]')
   })
 })
