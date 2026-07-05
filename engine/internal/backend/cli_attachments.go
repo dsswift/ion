@@ -29,9 +29,10 @@ var attachmentMarkerRe = regexp.MustCompile(`\[Attached (file|image|plan): ([^\]
 // PDFs referenced by `[Attached file: <abs>]` markers are read from disk and
 // inlined as native `document` blocks so the model ingests them directly,
 // instead of the Read tool expanding each page into a separate image block and
-// stalling the request for minutes (#789). Images supplied via opts.Attachments
-// (already base64) become `image` blocks, mirroring ApiBackend's
-// buildUserContentBlocks.
+// stalling the request for minutes (#789). opts.Attachments (already base64)
+// becomes `image` blocks for image/* media types and `document` blocks for
+// application/pdf -- the latter is how remote clients deliver documents whose
+// paths only exist on the client machine (#853).
 //
 // Anything we cannot or should not inline (non-PDF files, `plan` markers,
 // oversized or unreadable files) keeps its marker untouched so the existing
@@ -72,26 +73,55 @@ func buildCliUserContent(prompt string, attachments []types.ImageAttachment) []m
 		text = strings.ReplaceAll(text, full, "") // consumed -> strip marker
 	}
 
-	// Image blocks: opts.Attachments carries pre-encoded base64 images. The
-	// desktop adds a redundant `[Attached image: ...]` marker 1:1 alongside each
-	// one, so when we emit image blocks we strip those markers to avoid the
-	// model also trying to Read the path.
+	// Wire-attachment blocks: opts.Attachments carries pre-encoded base64
+	// content from the client. Images become `image` blocks. PDFs become
+	// `document` blocks -- this is the remote-desktop path (#853): the
+	// client's filesystem is not reachable from the engine host, so the
+	// bytes ride the wire instead of a path marker. Unknown media types are
+	// skipped (their marker, if any, stays for the Read fallback).
+	consumedPaths := make(map[string]bool)
 	for _, a := range attachments {
 		if a.Data == "" || a.MediaType == "" {
 			continue
 		}
-		media = append(media, map[string]interface{}{
-			"type": "image",
-			"source": map[string]interface{}{
-				"type":       "base64",
-				"media_type": a.MediaType,
-				"data":       a.Data,
-			},
-		})
+		switch {
+		case a.MediaType == "application/pdf":
+			media = append(media, map[string]interface{}{
+				"type": "document",
+				"source": map[string]interface{}{
+					"type":       "base64",
+					"media_type": "application/pdf",
+					"data":       a.Data,
+				},
+			})
+		case strings.HasPrefix(a.MediaType, "image/"):
+			media = append(media, map[string]interface{}{
+				"type": "image",
+				"source": map[string]interface{}{
+					"type":       "base64",
+					"media_type": a.MediaType,
+					"data":       a.Data,
+				},
+			})
+		default:
+			continue
+		}
+		if a.Path != "" {
+			consumedPaths[a.Path] = true
+		}
 	}
 	if len(attachments) > 0 {
+		// Strip markers the wire attachments made redundant: every `image`
+		// marker (the desktop adds one 1:1 alongside each encoded image) and
+		// any `file` marker whose path matches a consumed wire attachment --
+		// otherwise the model would try to Read a path that may not exist on
+		// this host.
 		text = attachmentMarkerRe.ReplaceAllStringFunc(text, func(s string) string {
-			if sub := attachmentMarkerRe.FindStringSubmatch(s); sub != nil && sub[1] == "image" {
+			sub := attachmentMarkerRe.FindStringSubmatch(s)
+			if sub == nil {
+				return s
+			}
+			if sub[1] == "image" || (sub[1] == "file" && consumedPaths[sub[2]]) {
 				return ""
 			}
 			return s

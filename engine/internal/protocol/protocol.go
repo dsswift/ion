@@ -69,11 +69,11 @@ type ClientCommand struct {
 	Path       string `json:"path,omitempty"`
 	ShowHidden bool   `json:"showHidden,omitempty"`
 
-	// send_prompt: pre-encoded image attachments to attach to the user
-	// message as native image content blocks. The engine has no opinion on
-	// any client-side marker syntax inside Text — clients pass image bytes
-	// here and the backend forwards them to the provider via its multimodal
-	// content format.
+	// send_prompt: pre-encoded attachments (images, PDF documents) to
+	// attach to the user message as native image/document content blocks.
+	// The engine has no opinion on any client-side marker syntax inside
+	// Text — clients pass attachment bytes here and the backend forwards
+	// them to the provider via its multimodal content format.
 	Attachments []types.ImageAttachment `json:"attachments,omitempty"`
 
 	// send_prompt: when true, the engine maps this onto

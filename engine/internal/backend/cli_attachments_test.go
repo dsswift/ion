@@ -123,3 +123,61 @@ func TestBuildCliUserContent_DuplicatePDFMarkerInlinedOnce(t *testing.T) {
 		t.Fatalf("both duplicate markers should be stripped: %q", txt)
 	}
 }
+
+// Wire-delivered PDF (remote client): a document block is built straight from
+// Data with zero disk access, and a matching `file` marker is stripped so the
+// model cannot try to Read a client-local path (#853).
+func TestBuildCliUserContent_WirePDFDocumentBlock(t *testing.T) {
+	pdfB64 := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 fake"))
+	clientPath := "/Users/someone-else/Downloads/report.pdf" // does not exist here
+	prompt := "[Attached file: " + clientPath + "]\nsummarize this"
+	blocks := buildCliUserContent(prompt, []types.ImageAttachment{
+		{MediaType: "application/pdf", Data: pdfB64, Path: clientPath},
+	})
+	if len(blocks) != 2 {
+		t.Fatalf("want text+document, got %d blocks: %#v", len(blocks), blocks)
+	}
+	if blockType(blocks[1]) != "document" {
+		t.Fatalf("want document block, got %q", blockType(blocks[1]))
+	}
+	src := blocks[1]["source"].(map[string]interface{})
+	if src["media_type"] != "application/pdf" || src["data"] != pdfB64 {
+		t.Fatalf("document source mismatch: %#v", src)
+	}
+	text := blocks[0]["text"].(string)
+	if strings.Contains(text, clientPath) || strings.Contains(text, "[Attached file:") {
+		t.Fatalf("file marker not stripped: %q", text)
+	}
+}
+
+// Mixed wire attachments keep their relative order and unknown media types are
+// dropped without breaking the rest.
+func TestBuildCliUserContent_WireMixedAndUnknown(t *testing.T) {
+	blocks := buildCliUserContent("look", []types.ImageAttachment{
+		{MediaType: "image/png", Data: "aW1n"},
+		{MediaType: "application/zip", Data: "emlw"}, // dropped
+		{MediaType: "application/pdf", Data: "cGRm"},
+	})
+	if len(blocks) != 3 {
+		t.Fatalf("want text+image+document, got %d: %#v", len(blocks), blocks)
+	}
+	if blockType(blocks[1]) != "image" || blockType(blocks[2]) != "document" {
+		t.Fatalf("unexpected order: %q, %q", blockType(blocks[1]), blockType(blocks[2]))
+	}
+}
+
+// A `file` marker whose path matches no wire attachment stays untouched (the
+// local-disk #789 path or Read fallback still owns it).
+func TestBuildCliUserContent_UnmatchedFileMarkerKept(t *testing.T) {
+	prompt := "[Attached file: /nonexistent/other.pdf] and [Attached image: /tmp/x.png]"
+	blocks := buildCliUserContent(prompt, []types.ImageAttachment{
+		{MediaType: "application/pdf", Data: "cGRm", Path: "/somewhere/else.pdf"},
+	})
+	text := blocks[0]["text"].(string)
+	if !strings.Contains(text, "[Attached file: /nonexistent/other.pdf]") {
+		t.Fatalf("unmatched file marker should survive: %q", text)
+	}
+	if strings.Contains(text, "[Attached image:") {
+		t.Fatalf("image marker should be stripped when wire attachments exist: %q", text)
+	}
+}

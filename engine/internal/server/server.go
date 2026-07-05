@@ -292,13 +292,14 @@ func (s *Server) handleClient(conn net.Conn) {
 	}()
 
 	scanner := bufio.NewScanner(conn)
-	// 8 MB per NDJSON line. Generous enough for an image-bearing prompt
-	// (Anthropic caps inputs at ~5 MB raw per image; base64 inflates by
-	// 4/3, so ~7 MB worst case + envelope) without inviting clients to
-	// spray multi-megabyte payloads. Old cap of 1 MB caused mid-stream
-	// EPIPE on the client write whenever an image attachment landed on
-	// the wire.
-	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+	// 64 MB per NDJSON line. Sized for inline document attachments: a
+	// 24 MB PDF (maxInlineAttachmentBytes) base64-inflates to ~32 MB, and
+	// a prompt may carry more than one. bufio.Scanner grows its buffer
+	// lazily, so the higher cap costs nothing until a large line arrives.
+	// Old cap of 1 MB caused mid-stream EPIPE on the client write whenever
+	// an image attachment landed on the wire; 8 MB dropped the connection
+	// for wire-inlined PDFs.
+	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

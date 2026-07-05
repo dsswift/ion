@@ -127,11 +127,13 @@ type ImageSource struct {
 	Data      string `json:"data"`
 }
 
-// ImageAttachment carries pre-encoded image bytes supplied alongside a user
-// prompt. The engine does not parse any client-side marker syntax; clients
-// that want the LLM to see images send them through this structured field.
-// Path is optional and used only for logging / correlation; the engine never
-// reads from disk based on it.
+// ImageAttachment carries pre-encoded attachment bytes (images or PDF
+// documents, keyed by MediaType) supplied alongside a user prompt. The engine
+// does not parse any client-side marker syntax; clients that want the LLM to
+// see attachment content send the bytes through this structured field --
+// essential for remote clients whose filesystem the engine cannot reach.
+// Path is optional and used for logging / correlation and redundant-marker
+// stripping; the engine never reads from disk based on it.
 type ImageAttachment struct {
 	MediaType string `json:"media_type"`
 	Data      string `json:"data"`
