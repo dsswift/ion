@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.58.0](https://github.com/dsswift/ion/compare/desktop-v1.57.0...desktop-v1.58.0) (2026-07-05)
+
+### Features
+
+* **desktop:** inline PDFs on the wire + rewrite consumed markers ([0d57948](https://github.com/dsswift/ion/commit/0d57948954752ec3e028e8a6e13b5f20ef5e20e7))
+
+### Bug Fixes
+
+* **desktop:** encode composer attachments on the desktop prompt path ([5fcabeb](https://github.com/dsswift/ion/commit/5fcabeb64f3ab07dd7977cbb82b654a8b81dd699))
+* **desktop:** split prompt-pipeline attachment tests under cap ([0598a70](https://github.com/dsswift/ion/commit/0598a70d05b07a1fa25b9dc41207ab6f79c1831b))
+
 ## [1.57.0](https://github.com/dsswift/ion/compare/desktop-v1.56.0...desktop-v1.57.0) (2026-07-03)
 
 ### Features

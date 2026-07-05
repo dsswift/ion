@@ -13,6 +13,13 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.44.0](https://github.com/dsswift/ion/compare/engine-v1.43.0...engine-v1.44.0) (2026-07-05)
+
+### Features
+
+* **cli-backend:** inline PDF/image attachments as content blocks ([9b387e2](https://github.com/dsswift/ion/commit/9b387e2040ed32f09da56bc8117e0ebf2bd6a249))
+* **engine:** document blocks from wire attachments + 64MB line cap ([0b26dfb](https://github.com/dsswift/ion/commit/0b26dfb21446a12f6473392b679fa92a88c70261))
+
 ## [1.43.0](https://github.com/dsswift/ion/compare/engine-v1.42.0...engine-v1.43.0) (2026-07-03)
 
 ### Features
