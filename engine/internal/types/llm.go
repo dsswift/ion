@@ -134,6 +134,19 @@ type ImageSource struct {
 // essential for remote clients whose filesystem the engine cannot reach.
 // Path is optional and used for logging / correlation and redundant-marker
 // stripping; the engine never reads from disk based on it.
+//
+// Supported MediaType values:
+//   - "image/*"         — any image/* MIME type (e.g. "image/jpeg", "image/png",
+//                         "image/gif", "image/webp"). The engine emits a native
+//                         image block for the provider.
+//   - "application/pdf" — the engine emits a native document block (the provider's
+//                         first-class PDF support). This is the standard path for
+//                         remote clients that cannot expose a filesystem path to
+//                         the engine host (#853).
+//
+// Any other MediaType value is silently skipped by the backend; the
+// corresponding marker (if any) remains in the prompt for the Read-tool
+// fallback to handle.
 type ImageAttachment struct {
 	MediaType string `json:"media_type"`
 	Data      string `json:"data"`
