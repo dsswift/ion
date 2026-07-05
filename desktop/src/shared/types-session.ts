@@ -416,6 +416,13 @@ export interface RunOptions {
    */
   imageAttachments?: ImageAttachmentPayload[]
   /**
+   * Raw (not yet encoded) file/image attachments from the desktop composer.
+   * The renderer cannot encode (fs + nativeImage live in main), so it passes
+   * the paths through; the prompt pipeline's desktop branch runs
+   * encodeAttachments on them -- same treatment the remote branches get.
+   */
+  rawAttachments?: Array<{ type: 'image' | 'file'; name: string; path: string }>
+  /**
    * Persisted plan file path from tab state. When set, the engine uses this
    * path instead of allocating a fresh slug — restoring continuity after
    * desktop restart. The engine validates that the file exists on disk; if

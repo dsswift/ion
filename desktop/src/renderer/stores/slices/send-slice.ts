@@ -347,6 +347,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         extensions,
         implementationPhase,
         imageAttachments,
+        // Raw paths for main-process encoding (PDFs/images -> wire bytes).
+        // Only user-typed submits carry these; remote bounces arrive with
+        // imageAttachments already encoded and an empty tab.attachments.
+        rawAttachments: (() => {
+          // Plan attachments are marker-only by design -- never encoded.
+          const encodable = msgAttachments.filter(
+            (a): a is typeof a & { type: 'image' | 'file' } => a.type === 'image' || a.type === 'file',
+          )
+          return encodable.length > 0
+            ? encodable.map((a) => ({ type: a.type, name: a.name, path: a.path }))
+            : undefined
+        })(),
         thinkingEffort,
         planFilePath: sendInst?.planFilePath || undefined,
         // Forward remote-source marker so the IPC.PROMPT handler skips the

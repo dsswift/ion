@@ -374,6 +374,20 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     log(`pipeline: WARNING desktop-source prompt missing runOptions — cannot submit tab=${p.tabId}`)
     return
   }
+  // Desktop composer attachments: the renderer prepended [Attached ...]
+  // markers into runOptions.prompt and passed the raw paths through
+  // (rawAttachments -> p.attachments). Encode them here -- identical
+  // treatment to the remote branch above -- so PDFs/images reach the
+  // engine as wire bytes instead of client-local path markers.
+  const desktopAttachments = p.attachments || []
+  if (desktopAttachments.length > 0) {
+    const { encoded, rewrittenText } = encodeAttachments(p.runOptions.prompt, desktopAttachments, { isRemote: IS_REMOTE })
+    p.runOptions.prompt = rewrittenText
+    if (encoded.length > 0) {
+      p.runOptions.imageAttachments = [...(p.runOptions.imageAttachments || []), ...encoded]
+    }
+    log(`pipeline: desktop attachments encoded tab=${p.tabId} raw=${desktopAttachments.length} encoded=${encoded.length}`)
+  }
   if (!p.runOptions.enterPlanModeDescription) {
     p.runOptions.enterPlanModeDescription = ENTER_PLAN_MODE_DESCRIPTION
   }

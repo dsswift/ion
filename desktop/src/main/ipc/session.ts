@@ -161,6 +161,10 @@ export function registerSessionIpc(): void {
         text: options.prompt,
         reqId: requestId,
         source: 'desktop',
+        // Raw composer attachments -- encoded by the pipeline's desktop
+        // branch (fs/nativeImage are main-process-only, so the renderer
+        // could not encode them).
+        attachments: options.rawAttachments,
         // DATA-derived: an extension-backed conversation carries its resolved
         // extension list in RunOptions (the unified renderer `submit` populates
         // it from the tab's profile); a plain CLI tab does not. There is no

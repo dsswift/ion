@@ -131,7 +131,12 @@ vi.mock('../settings-store', () => ({
 }))
 
 vi.mock('../remote/attachment-encoder', () => ({
-  encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
+  encodeAttachments: (text: string, atts: any[]) => ({
+    encoded: atts
+      .filter((a: any) => a.path.endsWith('.pdf') || a.type === 'image')
+      .map((a: any) => ({ mediaType: a.path.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg', data: 'QkFTRTY0', path: a.path })),
+    rewrittenText: text.replace(/\[Attached (?:file|image): ([^\]]+)\]/g, '[Attachment: rewritten]'),
+  }),
 }))
 
 // Pull in the SUT AFTER mocks are set up.
@@ -185,6 +190,39 @@ describe('processIncomingPrompt — non-slash text', () => {
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
     expect(mocks.submitPromptMock).toHaveBeenCalledWith('tab-1', 'req-1', opts)
     expect(mocks.sendCommandMock).not.toHaveBeenCalled()
+  })
+
+  it('desktop prompt with rawAttachments encodes them into runOptions before submit', async () => {
+    const opts = {
+      prompt: '[Attached file: /Users/someone/report.pdf]\n\nsummarize',
+      projectPath: '/proj',
+    } as any
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: opts.prompt,
+      reqId: 'req-1',
+      source: 'desktop',
+      hasExtensions: true,
+      projectPath: '/proj',
+      runOptions: opts,
+      attachments: [{ type: 'file', name: 'report.pdf', path: '/Users/someone/report.pdf' }],
+    })
+    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    const submitted = mocks.submitPromptMock.mock.calls[0][2]
+    // Marker rewritten so no downstream component reads a client-local path.
+    expect(submitted.prompt).not.toContain('[Attached file:')
+    // Bytes merged onto the wire field the bridge forwards to the engine.
+    expect(submitted.imageAttachments).toHaveLength(1)
+    expect(submitted.imageAttachments[0].mediaType).toBe('application/pdf')
+  })
+
+  it('desktop prompt without attachments leaves runOptions untouched', async () => {
+    const opts = { prompt: 'plain', projectPath: '/proj' } as any
+    await processIncomingPrompt({
+      tabId: 'tab-1', text: 'plain', reqId: 'req-1', source: 'desktop',
+      hasExtensions: false, projectPath: '/proj', runOptions: opts,
+    })
+    expect(mocks.submitPromptMock.mock.calls[0][2].imageAttachments).toBeUndefined()
   })
 
   it('remote CLI broadcasts REMOTE_USER_MESSAGE instead of calling sessionPlane', async () => {
