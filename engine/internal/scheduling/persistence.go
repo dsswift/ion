@@ -59,7 +59,10 @@ func (s *Scheduler) readMarker(name string, job extension.ScheduleJob) (lastRunM
 
 // recordLastRun writes the marker for a successful fire. No-op if
 // persistDir is empty (tests, or persistence disabled by config).
-// Interval jobs do not write markers — they don't catch up.
+// All job kinds except once write markers — interval jobs need them
+// so they can resume their cadence and catch up across engine restarts
+// (see computeBootstrapNextRun). Once jobs auto-deregister after
+// firing and never need catch-up.
 func (s *Scheduler) recordLastRun(h *extension.Host, job extension.ScheduleJob, firedAt time.Time) {
 	s.recordLastRunByName(hostName(h), job, firedAt)
 }
@@ -72,7 +75,7 @@ func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, 
 	if s.persistDir == "" {
 		return
 	}
-	if job.Kind == extension.ScheduleInterval || job.Kind == extension.ScheduleOnce {
+	if job.Kind == extension.ScheduleOnce {
 		return
 	}
 	path := s.markerPathByName(name, job)
