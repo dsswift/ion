@@ -97,21 +97,30 @@ func TestPersistence_WriteAndRead(t *testing.T) {
 	}
 }
 
-// TestPersistence_IntervalSkipsWrite verifies the documented behavior
-// that interval jobs do NOT write last-run markers — only daily and
-// weekly do. Interval catch-up is meaningless (next-run = now +
-// intervalMs), so writing a marker every tick is pure waste.
-func TestPersistence_IntervalSkipsWrite(t *testing.T) {
+// TestPersistence_IntervalWritesMarker verifies interval jobs persist a
+// last-run marker (like daily/weekly). The marker lets an interval job
+// resume its cadence and catch up across engine restarts instead of
+// resetting to now+interval on every start. See computeBootstrapNextRun.
+func TestPersistence_IntervalWritesMarker(t *testing.T) {
 	dir := t.TempDir()
 	s := New(Config{PersistDir: dir})
 
 	job := stubIntervalJob("int-1", 30_000)
+	want := time.Now().UTC().Truncate(time.Second)
 
-	s.recordLastRunByName("ext-a", job, time.Now().UTC())
+	s.recordLastRunByName("ext-a", job, want)
+
+	got, ok := s.readLastRunByName("ext-a", job)
+	if !ok {
+		t.Fatal("interval job did not write a readable last-run marker")
+	}
+	if !got.Equal(want) {
+		t.Fatalf("interval marker = %v, want %v", got, want)
+	}
 
 	files, _ := os.ReadDir(dir)
-	if len(files) != 0 {
-		t.Fatalf("interval job wrote %d marker files; want 0: %v", len(files), files)
+	if len(files) != 1 {
+		t.Fatalf("interval job wrote %d marker files; want 1: %v", len(files), files)
 	}
 }
 

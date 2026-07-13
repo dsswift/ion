@@ -187,19 +187,44 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location) time.Time {
 	next := nextRunFor(job, now, loc)
 
-	// Catch-up only applies to daily/weekly (interval jobs catch up
-	// implicitly by firing at now+interval). Disabled when persistence
-	// is off or CatchUpEnabled is explicitly false.
-	if job.Kind != extension.ScheduleInterval && s.shouldCatchUp() {
-		if lastRun, ok := s.readLastRunByName(name, job); ok {
-			// What was the most recent scheduled slot BEFORE now?
-			lastSlot := lastScheduledSlotBefore(job, now, loc)
-			// If lastSlot is after lastRun, the slot was missed.
-			if lastSlot.After(lastRun) {
-				// Schedule the catch-up fire ~now + stagger.
-				next = now.Add(CatchUpStagger)
-				utils.Log("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q catch-up scheduled (missed slot %s)", name, job.JobID, lastSlot))
-			}
+	// Catch-up is disabled when persistence is off or CatchUpEnabled is
+	// explicitly false. In that case every kind uses the naive next-run.
+	if !s.shouldCatchUp() {
+		return next
+	}
+
+	// Interval catch-up: resume the persisted cadence across restarts.
+	// Without a marker the in-memory next-run reset to now+interval on
+	// every start, so a job whose interval exceeds mean uptime never
+	// fired. With a marker we compute the next fire from the last run;
+	// if that moment already passed (job missed one or more intervals
+	// across the restart) fire ~now, staggered. No marker (first run
+	// ever) keeps the original now+interval semantics — no thundering
+	// herd on a fresh install.
+	if job.Kind == extension.ScheduleInterval {
+		lastRun, ok := s.readLastRunByName(name, job)
+		if !ok || job.IntervalMs <= 0 {
+			return next
+		}
+		nextFromLast := lastRun.Add(time.Duration(job.IntervalMs) * time.Millisecond)
+		if nextFromLast.After(now) {
+			// Not yet due — resume the original cadence.
+			return nextFromLast
+		}
+		// Overdue across the restart — catch up soon.
+		utils.Log("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q interval catch-up scheduled (lastRun %s)", name, job.JobID, lastRun.Format(time.RFC3339)))
+		return now.Add(CatchUpStagger)
+	}
+
+	// Daily/weekly catch-up: fire the most recent missed slot ~now.
+	if lastRun, ok := s.readLastRunByName(name, job); ok {
+		// What was the most recent scheduled slot BEFORE now?
+		lastSlot := lastScheduledSlotBefore(job, now, loc)
+		// If lastSlot is after lastRun, the slot was missed.
+		if lastSlot.After(lastRun) {
+			// Schedule the catch-up fire ~now + stagger.
+			next = now.Add(CatchUpStagger)
+			utils.Log("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q catch-up scheduled (missed slot %s)", name, job.JobID, lastSlot))
 		}
 	}
 	return next

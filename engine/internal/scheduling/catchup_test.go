@@ -95,10 +95,11 @@ func TestCatchUp_CatchUpDisabledByConfig(t *testing.T) {
 	}
 }
 
-// TestCatchUp_IntervalDoesNotRunCatchUp — interval jobs never
-// catch up; the bootstrap path skips persistence/catch-up for them
-// regardless of any marker on disk.
-func TestCatchUp_IntervalDoesNotRunCatchUp(t *testing.T) {
+// TestCatchUp_IntervalNoMarkerSchedulesNextRun — an interval job with no
+// last-run marker (first run ever) schedules the normal now+interval
+// next-run. Catch-up needs a marker to compare against, so a fresh job
+// waits its first full interval — no thundering herd on a fresh install.
+func TestCatchUp_IntervalNoMarkerSchedulesNextRun(t *testing.T) {
 	dir := t.TempDir()
 	s := New(Config{PersistDir: dir})
 
@@ -109,10 +110,59 @@ func TestCatchUp_IntervalDoesNotRunCatchUp(t *testing.T) {
 	loc := s.loadTz(jobTz(job))
 	next := s.computeBootstrapNextRun("ext-a", job, now, loc)
 
-	// Should be exactly now + intervalMs.
+	// No marker → exactly now + intervalMs.
 	want := now.Add(60 * time.Second)
 	if !next.Equal(want) {
-		t.Errorf("interval next-run = %v, want %v", next, want)
+		t.Errorf("interval next-run with no marker = %v, want %v", next, want)
+	}
+}
+
+// TestCatchUp_IntervalCatchesUpWhenOverdue — after a restart, an interval
+// job whose last run is more than one interval ago is overdue and must be
+// scheduled to fire ~now (staggered), not a full interval out. This is the
+// fix for interval jobs starving on frequently-restarting engines: without
+// it, every restart reset next-run to now+interval so a job whose interval
+// exceeds mean uptime never fired.
+func TestCatchUp_IntervalCatchesUpWhenOverdue(t *testing.T) {
+	dir := t.TempDir()
+	s := New(Config{PersistDir: dir})
+
+	now := time.Date(2026, 5, 25, 11, 0, 0, 0, time.UTC)
+	job := stubIntervalJob("int", (2 * time.Hour).Milliseconds()) // 2h
+
+	// Last run 5h ago — more than one interval → overdue.
+	s.recordLastRunByName("ext-a", job, now.Add(-5*time.Hour))
+
+	loc := s.loadTz(jobTz(job))
+	next := s.computeBootstrapNextRun("ext-a", job, now, loc)
+
+	want := now.Add(CatchUpStagger)
+	if !next.Equal(want) {
+		t.Errorf("overdue interval next-run = %v, want %v (now+stagger)", next, want)
+	}
+}
+
+// TestCatchUp_IntervalResumesCadenceWhenNotOverdue — an interval job whose
+// last run is less than one interval ago resumes its original cadence
+// (lastRun+interval) across the restart, rather than resetting to
+// now+interval (which would drift the schedule later on every restart).
+func TestCatchUp_IntervalResumesCadenceWhenNotOverdue(t *testing.T) {
+	dir := t.TempDir()
+	s := New(Config{PersistDir: dir})
+
+	now := time.Date(2026, 5, 25, 11, 0, 0, 0, time.UTC)
+	job := stubIntervalJob("int", (2 * time.Hour).Milliseconds()) // 2h
+
+	// Last run 30m ago — not yet due; next slot is lastRun+2h.
+	lastRun := now.Add(-30 * time.Minute)
+	s.recordLastRunByName("ext-a", job, lastRun)
+
+	loc := s.loadTz(jobTz(job))
+	next := s.computeBootstrapNextRun("ext-a", job, now, loc)
+
+	want := lastRun.Add(2 * time.Hour)
+	if !next.Equal(want) {
+		t.Errorf("not-yet-due interval next-run = %v, want %v (lastRun+interval)", next, want)
 	}
 }
 

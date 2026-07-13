@@ -35,7 +35,9 @@ type lastRunMarker struct {
 
 // recordLastRun writes the marker for a successful fire. No-op if
 // persistDir is empty (tests, or persistence disabled by config).
-// Interval jobs do not write markers — they don't catch up.
+// All job kinds write markers — interval jobs need them so they can
+// resume their cadence and catch up across engine restarts (see
+// computeBootstrapNextRun).
 func (s *Scheduler) recordLastRun(h *extension.Host, job extension.ScheduleJob, firedAt time.Time) {
 	s.recordLastRunByName(hostName(h), job, firedAt)
 }
@@ -45,9 +47,6 @@ func (s *Scheduler) recordLastRun(h *extension.Host, job extension.ScheduleJob, 
 // without spinning up a real subprocess.
 func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, firedAt time.Time) {
 	if s.persistDir == "" {
-		return
-	}
-	if job.Kind == extension.ScheduleInterval {
 		return
 	}
 	path := s.markerPathByName(name, job)
