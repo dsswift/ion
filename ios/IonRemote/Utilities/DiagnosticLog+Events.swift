@@ -194,7 +194,7 @@ extension DiagnosticLog {
         case .engineInstanceMoved(let srcTabId, let instId, let tgtTabId):
             log("EVENT: engineInstanceMoved src=\(srcTabId.prefix(8)) inst=\(instId.prefix(8)) tgt=\(tgtTabId.prefix(8))", tag: "session", level: .info)
 
-        case .engineHarnessMessage(let tabId, let instId, let msg, _, _):
+        case .engineHarnessMessage(let tabId, let instId, let msg, _, _, _, _):
             log("EVENT: engineHarnessMessage tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(msg.count)", tag: "session", level: .info)
 
         // engineConversationHistory log arm removed (WI-004 / #259).

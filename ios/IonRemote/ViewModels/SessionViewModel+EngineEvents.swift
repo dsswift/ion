@@ -35,14 +35,39 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String) {
-        // Divider messages (session-start, implement, etc.) may be relayed
-        // from the desktop as engine_harness_message. Detect the `──` sentinel
-        // prefix and create a system-role message so they render with the
-        // proper divider visual treatment instead of the harness gear icon.
+    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String, dedupKey: String?, dedupMode: String?) {
+        // Divider messages (session-start, implement, etc.) use the `──` sentinel
+        // prefix and render as system-role messages for the divider visual treatment.
         let role: MessageRole = message.hasPrefix("──") ? .system : .harness
-        let msg = Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        var msg = Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000)
+        msg.dedupKey = dedupKey
+        msg.dedupMode = dedupMode
+
+        DiagnosticLog.log("engine harness message", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "dedup_key": dedupKey ?? "(none)",
+            "dedup_mode": dedupMode ?? "(none)"
+        ])
+
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if dedupMode == "relocate", let dk = dedupKey, !dk.isEmpty {
+                // Relocate: remove any existing message with this key, append the
+                // new one at the end. The marker always stays current — never
+                // trails behind new conversation turns.
+                inst.messages = inst.messages.filter { $0.dedupKey != dk }
+                inst.messages.append(msg)
+            } else if let dk = dedupKey, !dk.isEmpty {
+                // Suppress-later: if a message with the same dedupKey already
+                // exists, drop this one. Default dedup behavior.
+                let alreadyPresent = inst.messages.contains { $0.dedupKey == dk }
+                if !alreadyPresent {
+                    inst.messages.append(msg)
+                }
+            } else {
+                // No dedupKey: append unconditionally.
+                inst.messages.append(msg)
+            }
+        }
     }
 
     @MainActor

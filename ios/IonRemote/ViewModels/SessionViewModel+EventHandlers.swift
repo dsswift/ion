@@ -311,8 +311,8 @@ extension SessionViewModel {
         case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _, let entryId, let userEntryId):
             handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent, entryId: entryId, userEntryId: userEntryId)
 
-        case .engineHarnessMessage(let tabId, let instanceId, let message, _, _):
-            handleEngineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message)
+        case .engineHarnessMessage(let tabId, let instanceId, let message, _, _, let dedupKey, let dedupMode):
+            handleEngineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, dedupKey: dedupKey, dedupMode: dedupMode)
 
         // engineConversationHistory event removed (WI-004 / #259).
         // The unified desktop_conversation_history response maps to

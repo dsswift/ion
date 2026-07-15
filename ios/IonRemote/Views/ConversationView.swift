@@ -123,8 +123,6 @@ struct ConversationView: View {
         viewModel.tabAttachmentCache[tabId]?.count ?? 0
     }
 
-    static let bootstrapPrefix = "Session bootstrapped"
-
     var unifiedTurnView: Bool {
         if let settings = viewModel.desktopSettings,
            let val = settings.currentValue(for: "unifiedTurnView"),

@@ -517,15 +517,6 @@ struct EngineMessageRow: View {
 
     private var defaultHarnessMessage: some View {
         HStack(spacing: 6) {
-            if let collapsed = message.bootstrapCollapsedCount, collapsed > 0 {
-                Text("×\(collapsed + 1)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color(.tertiarySystemFill))
-                    .clipShape(Capsule())
-            }
             Image(systemName: "gearshape.fill")
                 .font(.caption2)
                 .foregroundStyle(.orange.opacity(0.7))

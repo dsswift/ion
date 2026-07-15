@@ -163,11 +163,14 @@ enum RemoteEvent: Sendable {
     case engineInstanceRemoved(tabId: String, instanceId: String)
     case engineInstanceMoved(sourceTabId: String, instanceId: String, targetTabId: String)
     /// `metadata` is an opaque harness-defined hints map the engine forwards
-    /// verbatim. iOS does not yet act on the field, but decoding it cleanly
-    /// here means future iOS handlers (e.g. dedupKey-based rendering) can
-    /// adopt the convention without a wire-protocol change. `AnyCodable`
-    /// is the same pass-through JSON helper used by `desktopSettingsSnapshot`.
-    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?, metadata: [String: AnyCodable]?)
+    /// verbatim. iOS decodes it cleanly so future handlers can adopt
+    /// hint-map conventions without a wire change. `dedupKey` and `dedupMode`
+    /// are the relocation-dedup fields promoted to top-level for direct access
+    /// (mirrors Go's `HarnessMessageEvent` json tags and the desktop relay
+    /// spread). `dedupMode` values: "relocate" (move-forward) | absent
+    /// (suppress-later). Both are forwarded as top-level wire fields by the
+    /// desktop relay (engine_harness_message spread) and on history-replay.
+    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?, metadata: [String: AnyCodable]?, dedupKey: String?, dedupMode: String?)
     // engineConversationHistory removed (WI-004 / #259). iOS now handles
     // conversationHistory for every tab — the unified desktop_conversation_history
     // response maps to conversationHistory which carries hasMore and cursor.
@@ -706,9 +709,16 @@ enum RemoteEvent: Sendable {
         // user-visible engine events (status, working_message, notify,
         // harness_message). iOS does not act on the field yet but
         // decodes it cleanly so future handlers can adopt conventions
-        // like `metadata.dedupKey` without a wire change. See
-        // docs/protocol/server-events.md for well-known keys.
+        // without a wire change. See docs/protocol/server-events.md for
+        // well-known keys.
         case metadata
+        // harness_message dedup fields. `dedupKey` is the idempotency token;
+        // `dedupMode` is the retention hint ("relocate" = move-forward,
+        // absent = suppress-later). Both are forwarded as top-level wire
+        // fields by the desktop relay (engine_harness_message spread) and
+        // on history-replay messages. Mirror Go's `HarnessMessageEvent`
+        // json tags exactly.
+        case dedupKey, dedupMode
         case agentName
         case conversationId
         // resource_content — lazy-loaded full body for a single resource item.

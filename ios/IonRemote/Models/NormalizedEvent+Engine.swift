@@ -231,13 +231,15 @@ extension RemoteEvent {
             try container.encode(targetTabId, forKey: .targetTabId)
             return true
 
-        case .engineHarnessMessage(let tabId, let instanceId, let message, let source, let metadata):
+        case .engineHarnessMessage(let tabId, let instanceId, let message, let source, let metadata, let dedupKey, let dedupMode):
             try container.encode(TypeKey.engineHarnessMessage, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(message, forKey: .message)
             try container.encodeIfPresent(source, forKey: .source)
             try container.encodeIfPresent(metadata, forKey: .metadata)
+            try container.encodeIfPresent(dedupKey, forKey: .dedupKey)
+            try container.encodeIfPresent(dedupMode, forKey: .dedupMode)
             return true
 
         // engineConversationHistory encode arm removed (WI-004 / #259).

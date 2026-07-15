@@ -29,9 +29,17 @@ struct Message: Codable, Identifiable, Sendable {
     var slashCommand: String?
     var slashArgs: String?
     var slashSource: String?
-    /// View-only hint: number of consecutive bootstrap messages collapsed into
-    /// this one. NOT encoded/decoded (excluded from CodingKeys).
-    var bootstrapCollapsedCount: Int?
+    /// Dedup key carried on harness messages with relocate semantics. When
+    /// present, a second harness message with the same key relocates (removes
+    /// the old entry and appends the new one at the end). Decoded from the
+    /// desktop history-replay wire so dedup state survives reconnect.
+    /// NOT persisted beyond the in-memory message store.
+    var dedupKey: String? = nil
+    /// Dedup mode paired with `dedupKey`. "relocate" means move-forward;
+    /// absent/empty means suppress-later (default). Decoded from the desktop
+    /// history-replay wire alongside `dedupKey`. NOT persisted beyond the
+    /// in-memory message store.
+    var dedupMode: String? = nil
     /// Local UI state only -- NOT a wire protocol field, NOT persisted.
     /// Set to true by engine_message_end so the next engine_text_delta
     /// opens a fresh assistant message instead of appending to this one.
@@ -103,8 +111,13 @@ struct Message: Codable, Identifiable, Sendable {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath, markerKind
-        // bootstrapCollapsedCount, interceptLevel, and the thinking* summary
-        // fields are deliberately excluded — all are client-only render hints.
+        // dedupKey / dedupMode: decoded from the desktop history-replay wire
+        // (desktop_conversation_history) so relocate semantics survive reconnect.
+        // Client-only render state — NOT persisted beyond the in-memory store.
+        case dedupKey, dedupMode
+        // interceptLevel and the thinking* summary fields are deliberately
+        // excluded — they are transient client-only render hints that are
+        // never serialized to or from the wire.
     }
 }
 
@@ -197,7 +210,6 @@ extension Message {
         // Engine messages don't carry these fields
         toolInput = nil
         source = nil
-        bootstrapCollapsedCount = nil
     }
 
     private enum EngineCodingKeys: String, CodingKey {

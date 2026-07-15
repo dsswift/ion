@@ -217,13 +217,16 @@ extension RemoteEvent {
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             let source = try container.decodeIfPresent(String.self, forKey: .source)
-            // `metadata` is an opaque hint map (e.g. dedupKey) the harness
-            // sets via ctx.emit and the engine forwards verbatim. Decoded
-            // as [String: AnyCodable] so future iOS-side handlers can read
-            // typed values without a contract change. iOS does not yet
-            // honor any specific key — desktop is the only consumer today.
+            // `metadata` is an opaque hint map the harness sets via ctx.emit and
+            // the engine forwards verbatim. Decoded as [String: AnyCodable] for
+            // completeness so future iOS-side handlers can read typed values.
             let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
-            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source, metadata: metadata)
+            // `dedupKey` / `dedupMode` are promoted to top-level wire fields by the
+            // desktop relay (engine_harness_message event spread) and on history
+            // replay. Mirrors Go's HarnessMessageEvent json tags.
+            let dedupKey = try container.decodeIfPresent(String.self, forKey: .dedupKey)
+            let dedupMode = try container.decodeIfPresent(String.self, forKey: .dedupMode)
+            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source, metadata: metadata, dedupKey: dedupKey, dedupMode: dedupMode)
 
         // engineConversationHistory decode arm removed (WI-004 / #259).
         // History for every tab arrives via desktop_conversation_history
