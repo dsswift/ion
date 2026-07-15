@@ -12,6 +12,78 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# ── Preflight ──
+#
+# Checks and auto-remediates build dependencies before attempting xcodebuild.
+# Catches the most common first-run and post-Xcode-update failure modes so
+# the error message is actionable rather than a raw xcodebuild dump.
+preflight_check() {
+  local fail=0
+
+  echo "==> Checking build dependencies..."
+
+  # Full Xcode.app — xcodebuild (and the Metal toolchain download path) require
+  # the full IDE, not just the command-line tools package.
+  local xcode_path
+  xcode_path=$(xcode-select -p 2>/dev/null || true)
+  if echo "$xcode_path" | grep -q "Xcode.app"; then
+    echo "  ✓ Xcode at $xcode_path"
+  elif [[ -n "$xcode_path" ]]; then
+    echo "  ✗ xcode-select points to $xcode_path, not Xcode.app."
+    echo "    iOS builds require the full Xcode IDE (App Store or developer.apple.com)."
+    echo "    After installing: sudo xcode-select -s /Applications/Xcode.app"
+    fail=1
+  else
+    echo "  ✗ Xcode not found. Install from the App Store or developer.apple.com."
+    fail=1
+  fi
+
+  # iOS SDK
+  if xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
+    echo "  ✓ iOS SDK at $(xcrun --sdk iphoneos --show-sdk-path)"
+  else
+    echo "  ✗ iOS SDK not found."
+    echo "    Open Xcode > Settings > Platforms and install iOS."
+    fail=1
+  fi
+
+  # Metal toolchain — required to compile SwiftTerm's GPU renderer.
+  # Xcode ships the Metal compiler as a downloadable component since Xcode 15;
+  # a fresh Xcode install or Xcode update will be missing it until downloaded.
+  if xcrun --find metal >/dev/null 2>&1; then
+    echo "  ✓ Metal toolchain found"
+  else
+    echo "  ⚠ Metal toolchain not installed. Downloading now..."
+    echo "    (this is a one-time ~700 MB download)"
+    if xcodebuild -downloadComponent MetalToolchain; then
+      echo "  ✓ Metal toolchain installed"
+    else
+      echo "  ✗ Metal toolchain download failed."
+      echo "    Retry manually: xcodebuild -downloadComponent MetalToolchain"
+      fail=1
+    fi
+  fi
+
+  # ios-deploy — optional, but required for the tunnel-unavailable install path.
+  if command -v ios-deploy >/dev/null 2>&1; then
+    echo "  ✓ ios-deploy $(ios-deploy --version 2>/dev/null || echo 'found')"
+  else
+    echo "  ⚠ ios-deploy not installed."
+    echo "    The primary install path (CoreDevice tunnel) still works without it."
+    echo "    Install for USB fallback: brew install ios-deploy"
+  fi
+
+  if [[ $fail -ne 0 ]]; then
+    echo
+    echo "✗ Preflight failed. Fix the issues above and retry."
+    exit 1
+  fi
+
+  echo
+}
+
+preflight_check
+
 TEAM_ID="P6UU9VHF7D"
 SCHEME="IonRemote"
 PROJECT="IonRemote.xcodeproj"
