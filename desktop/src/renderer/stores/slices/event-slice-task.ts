@@ -160,9 +160,30 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         ctx.instTouched = true
         rDebug('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: event.permissionDenials.map((t: any) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
       } else {
-        rDebug('event.task', 'no denials', { tab_id: tabId.slice(0, 8) })
-        ctx.instPatch.permissionDenied = null
-        ctx.instTouched = true
+        // task_complete carries no denials. Normally that means "clear the
+        // approval card." But a pending ExitPlanMode plan proposal is a
+        // workflow signal task_complete does NOT own: some backends (codex,
+        // grok's ACP) capture the plan via a native plan item and emit
+        // engine_plan_proposal, which the plan-mode reducer already
+        // synthesized into permissionDenied — WITHOUT ever putting an
+        // ExitPlanMode denial on task_complete (only claude-code does that).
+        // Nulling here would wipe the just-synthesized card, so the user gets
+        // a clickable plan marker but no approve/implement card. Preserve a
+        // permissionDenied whose sole entry is a pending ExitPlanMode proposal;
+        // it is cleared instead on the next prompt (send-slice) or on approval.
+        const existingDenied =
+          'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
+        const isPendingPlanProposal =
+          !!existingDenied &&
+          existingDenied.tools?.length === 1 &&
+          existingDenied.tools[0]?.toolName === 'ExitPlanMode'
+        if (isPendingPlanProposal) {
+          rDebug('event.task', 'no denials but preserving pending ExitPlanMode plan proposal', { tab_id: tabId.slice(0, 8) })
+        } else {
+          rDebug('event.task', 'no denials', { tab_id: tabId.slice(0, 8) })
+          ctx.instPatch.permissionDenied = null
+          ctx.instTouched = true
+        }
       }
       playNotificationIfHidden()
       // WI-001: clear any model-fallback indicator for the active instance on run exit.
@@ -184,7 +205,15 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       // lives in maybeScheduleDoneMove so the SAME logic fires from the
       // handleStatusChange path too (engine_dead clean-exit / reconnect
       // idle never emit task_complete — see event-slice-done-move.ts).
-      maybeScheduleDoneMove(tabId, ctx.tab.status, 'completed', ctx.updated, s.conversationPanes, ctx.get, 'task_complete', ctx.instPatch.permissionDenied != null)
+      // deniedOverride must reflect the RESOLVED permissionDenied: when the
+      // else-branch above preserved a pending plan proposal via inst0 (without
+      // writing instPatch), reading only instPatch would report "not denied"
+      // and could schedule a done-move out from under the pending card. Fall
+      // back to inst0 so the flag is accurate. (The plan-mode guard also blocks
+      // the move, but the flag must not lie.)
+      const resolvedDenied =
+        'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
+      maybeScheduleDoneMove(tabId, ctx.tab.status, 'completed', ctx.updated, s.conversationPanes, ctx.get, 'task_complete', resolvedDenied != null)
       // Title resolution (slash short-circuit vs. LLM generation)
       // lives in event-slice-titling.ts to keep this file under the
       // file-size cap. The helper owns the full decision: it no-ops

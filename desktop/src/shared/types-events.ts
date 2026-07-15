@@ -190,6 +190,11 @@ export type NormalizedEvent =
   | { type: 'task_suspend'; awaitingDispatchIds?: string[] }
   | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
+  // capability_unsupported — a requested feature (e.g. plan mode) is not
+  // supported by the backend that would serve the run; the engine declined
+  // the prompt cleanly (no run started, session stays idle). Mirrors
+  // CapabilityUnsupportedEvent (engine/internal/types/normalized_event_capability.go).
+  | { type: 'capability_unsupported'; capability: string; backend: string; reason: string }
   | { type: 'run_stalled'; stalledDuration: number; lastActivity?: string }
   // Extended-thinking events (issue #158), normalized-stream layer. These are
   // the bare-name desktop-internal events the renderer consumes for PLAIN

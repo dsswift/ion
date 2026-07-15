@@ -99,6 +99,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   steer_injected: ['messageLength'],
   prompt_injected: ['kind', 'origin', 'prompt'],
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],
+  capability_unsupported: ['backend', 'capability', 'reason'],
   run_stalled: ['lastActivity', 'stalledDuration'],
   task_suspend: ['awaitingDispatchIds'],
   engine_plan_content: ['content', 'hasMore', 'offset', 'planFilePath', 'totalBytes'],

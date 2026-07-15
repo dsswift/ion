@@ -266,6 +266,7 @@ export function handleEngineEvent(
     case 'engine_extension_dead_permanent':
     case 'engine_events_dropped':
     case 'engine_model_fallback':
+    case 'engine_capability_unsupported':
       handleExtensionEvent(ctx, tabId, tab, event)
       break
 

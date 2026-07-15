@@ -447,6 +447,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'plan_mode_auto_exit':
             case 'model_fallback':
+            case 'capability_unsupported':
             case 'agent_state':
             case 'status':
             case 'harness_message':

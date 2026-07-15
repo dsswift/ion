@@ -158,6 +158,14 @@ export type EngineEvent =
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
   | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
+  // engine_capability_unsupported — workflow signal emitted when a requested
+  // feature (e.g. plan mode) is not supported by the backend that would serve
+  // the run; the engine declined the prompt cleanly instead of dispatching a
+  // run that would fail. No run starts and the session stays idle, so clients
+  // render a recoverable message (not a dead engine). Mirrors the underlying
+  // CapabilityUnsupportedEvent NormalizedEvent variant. See CLAUDE.md §
+  // "The typed-event corollary".
+  | { type: 'engine_capability_unsupported'; capability: string; capabilityBackend: string; capabilityReason: string }
   // Extended-thinking events (issue #158). Surface the model's reasoning
   // activity so consumers can distinguish active reasoning from a stall and
   // render a "thinking" view. Emitted only when the provider streams reasoning

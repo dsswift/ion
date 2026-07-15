@@ -3,6 +3,7 @@
 // under the 600-line cap). These are the `engine_extension_died`,
 // `engine_extension_respawned`, `engine_extension_dead_permanent`,
 // `engine_harness_message`, `engine_events_dropped`, `engine_model_fallback`,
+// `engine_capability_unsupported`,
 // and `engine_intercept` arms of the EngineEvent→NormalizedEvent translation
 // switch, lifted out verbatim. No logic change. The main file delegates to
 // handleExtensionEvent from its switch.
@@ -76,6 +77,24 @@ export function handleExtensionEvent(
         requestedModel: event.fallbackRequestedModel || '',
         fallbackModel: event.fallbackModel || '',
         reason: event.fallbackReason || '',
+      } as NormalizedEvent)
+      return true
+
+    case 'engine_capability_unsupported':
+      // Declined feature request (e.g. plan mode on a backend without one).
+      // The engine never started a run and the session stays idle; emit as
+      // normalized capability_unsupported so event-slice can render the
+      // recoverable message and settle the tab back to idle.
+      log('capability_unsupported', {
+        tab_id: tabId,
+        capability: event.capability,
+        backend: event.capabilityBackend,
+      })
+      ctx.emit('event', tabId, {
+        type: 'capability_unsupported',
+        capability: event.capability || '',
+        backend: event.capabilityBackend || '',
+        reason: event.capabilityReason || '',
       } as NormalizedEvent)
       return true
 

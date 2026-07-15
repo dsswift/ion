@@ -102,6 +102,31 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       }
       return true
 
+    case 'capability_unsupported':
+      // The engine declined the prompt cleanly: the requested feature (e.g.
+      // plan mode) is unsupported by the backend that would serve the run.
+      // No run ever started engine-side, so settle the tab back to idle
+      // (the send path set it running optimistically) and surface the
+      // reason as a recoverable system message — not a failed/dead state.
+      rWarn('event.capability', 'capability unsupported', {
+        tab_id: tabId,
+        capability: event.capability,
+        backend: event.backend,
+      })
+      ctx.updated.status = 'idle'
+      ctx.updated.activeRequestId = null
+      ctx.updated.currentActivity = ''
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system',
+          content: event.reason || `${event.capability} is not supported on the ${event.backend} backend`,
+          timestamp: Date.now(),
+        },
+      ]
+      return true
+
     case 'harness_message': {
       // Extension harness display message. Three dedup paths:
       //
