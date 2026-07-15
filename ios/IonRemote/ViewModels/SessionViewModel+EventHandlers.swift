@@ -221,7 +221,11 @@ extension SessionViewModel {
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
-        case .enginePromptInjected(let tabId, let instanceId, let prompt, _):
+        case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind):
+            // kind="agent_completion" means this is a machine-to-machine dispatch
+            // callback (a child agent's result routed to its parent). iOS must NOT
+            // inject these as user messages — they are internal signals, not user turns.
+            guard kind != "agent_completion" else { break }
             handleEnginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt)
 
         // Extended-thinking events (issue #158). A thinking block is OPTIONAL

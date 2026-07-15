@@ -82,12 +82,13 @@ extension RemoteEvent {
             try container.encode(messageLength, forKey: .steerMessageLength)
             return true
 
-        case .enginePromptInjected(let tabId, let instanceId, let prompt, let origin):
+        case .enginePromptInjected(let tabId, let instanceId, let prompt, let origin, let kind):
             try container.encode(TypeKey.enginePromptInjected, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(prompt, forKey: .injectedPrompt)
             try container.encodeIfPresent(origin, forKey: .injectedPromptOrigin)
+            try container.encodeIfPresent(kind, forKey: .injectedPromptKind)
             return true
 
         case .engineToolUpdate(let tabId, let instanceId):

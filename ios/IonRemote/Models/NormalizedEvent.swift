@@ -116,7 +116,9 @@ enum RemoteEvent: Sendable {
     /// append the prompt as a user message; the same content persists in the
     /// conversation file, so a history reload shows the identical transcript.
     /// Mirrors the Go PromptInjectedEvent / TS engine_prompt_injected.
-    case enginePromptInjected(tabId: String, instanceId: String?, prompt: String, origin: String?)
+    /// kind="agent_completion" means this is a machine-to-machine dispatch
+    /// callback — iOS must NOT inject it as a user message.
+    case enginePromptInjected(tabId: String, instanceId: String?, prompt: String, origin: String?, kind: String?)
     case engineScheduleFired(tabId: String, instanceId: String?)
     case engineLlmCall(tabId: String, instanceId: String?)
     /// A single image produced during a run, forwarded from the engine's
@@ -630,6 +632,7 @@ enum RemoteEvent: Sendable {
         // InjectedPromptOrigin JSON tags.
         case injectedPrompt
         case injectedPromptOrigin
+        case injectedPromptKind
         // Extended-thinking events (issue #158). The desktop projects the
         // engine's bare thinking field names (text / totalTokens /
         // elapsedSeconds / redacted) onto these prefixed wire keys when it

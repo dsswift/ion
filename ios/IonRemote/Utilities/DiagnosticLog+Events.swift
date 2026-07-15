@@ -130,8 +130,8 @@ extension DiagnosticLog {
         case .engineSteerInjected(let tabId, let instId, let messageLength):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)", tag: "session", level: .info)
 
-        case .enginePromptInjected(let tabId, let instId, let prompt, let origin):
-            log("EVENT: enginePromptInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(prompt.count) origin=\(origin ?? "")", tag: "session", level: .info)
+        case .enginePromptInjected(let tabId, let instId, let prompt, let origin, let kind):
+            log("EVENT: enginePromptInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(prompt.count) origin=\(origin ?? "") kind=\(kind ?? "")", tag: "session", level: .info)
 
         // Extended-thinking events (issue #158). A thinking block is OPTIONAL
         // per turn; the delta may be suppressed by the desktop's low-bandwidth
