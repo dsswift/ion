@@ -18,6 +18,7 @@ import { mark, Activity } from '../watchdog'
 import { startLanAuth, handleLanAuthResponse, type LanAuthCtx } from './transport-lan-auth'
 import { log as _log } from '../logger'
 import { RetransmitBuffer, replayRange } from './retransmit-buffer'
+import { InboundDedup } from './transport-dedup'
 import { buildDeviceFrame } from './transport-frame'
 import { enqueueSend, drainSendQueue, MAX_PLAINTEXT_BYTES, type SendCtx, type SendQueueItem } from './transport-send'
 import type {
@@ -55,7 +56,10 @@ export interface RemoteTransportConfig {
 export class RemoteTransport extends EventEmitter {
   private relays: Map<string, RelayClient> = new Map()    // deviceId -> relay
   private deviceSecrets: Map<string, Buffer> = new Map()   // deviceId -> shared secret
-  private lastReceivedSeq: Map<string, number> = new Map() // deviceId -> last seq
+  // Windowed inbound dedup (per device). Replaced the strict "drop anything
+  // <= last seq" high-water mark, which silently ate real out-of-order
+  // commands from iOS's concurrent senders. See transport-dedup.ts.
+  private dedup = new InboundDedup()
   // Per-device retransmit buffer: keeps recently-sent encrypted frames so a
   // forward-seq-gap from iOS (a frame lost during a transport switch) can be
   // recovered by replaying the originals instead of waiting for the snapshot
@@ -64,7 +68,13 @@ export class RemoteTransport extends EventEmitter {
   private lan: LANServer | null = null
   private _state: TransportState = 'disconnected'
   private config: RemoteTransportConfig
-  private seq = 0
+  // Per-device outbound seq counters. Each paired device gets its own
+  // contiguous 1,2,3,... stream; a single shared counter made every device see
+  // a strided subsequence (stride ≈ paired-device count), so iOS gap detection
+  // fired on nearly every frame and the resulting desktop_request_resend could
+  // never be satisfied (the retransmit buffer is per-device and never held the
+  // other devices' seqs) — a permanent resend/resend_unavailable storm.
+  private seqs = new Map<string, number>()
   private static readonly HEARTBEAT_INTERVAL_MS = 15_000
   // Backpressure cap, critical-type set, and the send-queue path itself live in
   // transport-send.ts (extracted for the file-size cap and to make the drain
@@ -80,13 +90,20 @@ export class RemoteTransport extends EventEmitter {
   // Stable context handed to the extracted send-queue helpers. Built once: the
   // Maps and buffer are stable references and sendQueue is mutated in place, so
   // the helpers see live state through it. nextSeq / deliverFrame close over
-  // `this` so the seq counter and per-device delivery stay on the instance.
+  // `this` so the seq counters and per-device delivery stay on the instance.
   private readonly _sendCtx: SendCtx = {
     sendQueue: this.sendQueue,
     deviceSecrets: this.deviceSecrets,
     retransmit: this.retransmit,
-    nextSeq: () => ++this.seq,
+    nextSeq: (deviceId) => this._nextSeqFor(deviceId),
     deliverFrame: (deviceId, frame) => this._deliverFrame(deviceId, frame),
+  }
+
+  /** Allocate the next outbound seq for one device (per-device counters). */
+  private _nextSeqFor(deviceId: string): number {
+    const next = (this.seqs.get(deviceId) ?? 0) + 1
+    this.seqs.set(deviceId, next)
+    return next
   }
 
   constructor(config: RemoteTransportConfig) {
@@ -218,17 +235,21 @@ export class RemoteTransport extends EventEmitter {
     })
 
     relay.on('message', (msg: WireMessage) => {
-      // In lan_preferred mode with this device connected via LAN, ignore relay data.
-      const lanConnectionId = this._getLanConnectionForDevice(device.id)
-      if (lanConnectionId && this.lan?.hasClient(lanConnectionId)) return
+      // Route inbound relay data straight to _handleIncoming, even when a LAN
+      // entry exists for this device. lanDeviceMap is only cleaned on
+      // 'client-disconnected', so gating on it let a half-open (zombie) LAN
+      // socket blackhole every inbound relay command. iOS never sends the same
+      // frame over both transports in normal operation, and the windowed dedup
+      // in _handleIncoming drops any genuine duplicate.
       this._handleIncoming(msg, device.id)
     })
 
     relay.on('control', (ctrl) => {
       if (ctrl.type === 'relay:peer-reconnected') {
-        // Reset dedup counter so the reconnected peer's seq=1 isn't
-        // dropped against the previous session's high-water mark.
-        this.lastReceivedSeq.set(device.id, 0)
+        // New inbound-seq epoch: reset the high-water mark AND the seen-set so
+        // the reconnected peer's seq=1 isn't dropped against the previous
+        // session's state.
+        this.dedup.reset(device.id)
         this.emit('peer-connected')
       } else if (ctrl.type === 'relay:peer-disconnected') {
         // Only emit if this device has no LAN connection either.
@@ -264,7 +285,8 @@ export class RemoteTransport extends EventEmitter {
     }
     this.relays.clear()
     this.deviceSecrets.clear()
-    this.lastReceivedSeq.clear()
+    this.dedup.clear()
+    this.seqs.clear()
 
     if (this.lan) {
       await this.lan.stop()
@@ -328,7 +350,8 @@ export class RemoteTransport extends EventEmitter {
       this.relays.delete(deviceId)
     }
     this.deviceSecrets.delete(deviceId)
-    this.lastReceivedSeq.delete(deviceId)
+    this.dedup.remove(deviceId)
+    this.seqs.delete(deviceId)
 
     // Disconnect any LAN client for this device.
     const lanConnectionId = this._getLanConnectionForDevice(deviceId)
@@ -370,7 +393,7 @@ export class RemoteTransport extends EventEmitter {
     }
     mark(Activity.RelayCompress)
     const wire = compressPayload(plaintext)
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, () => ++this.seq, push, undefined, undefined, Date.now())
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, (d) => this._nextSeqFor(d), push, undefined, undefined, Date.now())
     if (!msg) return
     this.retransmit.record(deviceId, msg)
     this._deliverFrame(deviceId, msg)
@@ -410,20 +433,10 @@ export class RemoteTransport extends EventEmitter {
   }
 
   private _handleIncoming(msg: WireMessage, deviceId: string): void {
-    const lastSeq = this.lastReceivedSeq.get(deviceId) || 0
-
-    // Dedup: drop if seq <= lastReceivedSeq
-    if (msg.seq <= lastSeq) {
-      log('transport: dedup dropping msg', { seq: msg.seq, device_id: deviceId, last_seq: lastSeq })
-      return
-    }
-
-    // Gap detection
-    if (msg.seq > lastSeq + 1) {
-      log('transport: seq gap', { device_id: deviceId, expected: lastSeq + 1, got: msg.seq })
-    }
-
-    this.lastReceivedSeq.set(deviceId, msg.seq)
+    // Windowed reorder-tolerant dedup (per device): drops genuine duplicates
+    // and window-expired stale frames, accepts distinct out-of-order seqs.
+    // Gap detection and drop logging live in transport-dedup.ts.
+    if (!this.dedup.shouldAccept(deviceId, msg.seq)) return
 
     // Centralized decryption using per-device secret.
     const secret = this.deviceSecrets.get(deviceId)
@@ -467,7 +480,15 @@ export class RemoteTransport extends EventEmitter {
   private _startHeartbeat(): void {
     this._stopHeartbeat()
     this.heartbeatTimer = setInterval(() => {
-      this.send({ type: 'desktop_heartbeat', seq: this.seq, ts: Date.now(), buffered: this.sendQueue.length })
+      // Heartbeats go per device so the payload `seq` is that device's own
+      // outbound counter (a single broadcast payload carried one global seq,
+      // which was meaningless under per-device counters). iOS currently reads
+      // only ts/buffered from heartbeats, but the seq must still be truthful.
+      const ts = Date.now()
+      const buffered = this.sendQueue.length
+      for (const deviceId of this.deviceSecrets.keys()) {
+        this.sendToDevice(deviceId, { type: 'desktop_heartbeat', seq: this.seqs.get(deviceId) ?? 0, ts, buffered })
+      }
     }, RemoteTransport.HEARTBEAT_INTERVAL_MS)
   }
 
@@ -538,7 +559,7 @@ export class RemoteTransport extends EventEmitter {
       lanAuthPending: this.lanAuthPending,
       lanDeviceMap: this.lanDeviceMap,
       deviceSecrets: this.deviceSecrets,
-      lastReceivedSeq: this.lastReceivedSeq,
+      resetInboundSeq: (deviceId) => this.dedup.reset(deviceId),
       getPairedDevice: (id) => this.config.getPairedDevice?.(id) || null,
       recomputeState: () => this._recomputeState(),
       emit: (event, ...args) => { this.emit(event, ...args) },

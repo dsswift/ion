@@ -11,8 +11,8 @@
  * carry the `engine_` prefix — the two namespaces are disjoint.
  */
 
-import type { NormalizedEvent, TabStatus, PermissionRequest, ElicitationRequest, AgentStateUpdate, StatusFields } from '../../shared/types'
-import type { DispatchTelemetryEntry } from '../../shared/types-engine'
+import type { NormalizedEvent, TabStatus, AgentStateUpdate, StatusFields } from '../../shared/types'
+import type { RemoteTabState, RemoteMessage, TerminalInstanceInfo } from './protocol-remote-tab'
 
 /**
  * Wire shape for one entry in `desktop_settings_snapshot.schema`.
@@ -41,152 +41,9 @@ export interface DesktopSettingsSchemaEntry {
   itemSchema?: DesktopSettingsSchemaEntry[]
 }
 
-// ─── Remote Tab State (lightweight projection for mobile clients) ───
-
-export interface RemoteTabState {
-  id: string
-  title: string
-  customTitle: string | null
-  status: TabStatus
-  workingDirectory: string
-  permissionMode: 'auto' | 'plan'
-  /**
-   * Per-conversation extended-thinking effort (bare conversation / active
-   * instance). 'low' | 'medium' | 'high' when set; omitted when off. iOS
-   * renders the per-conversation thinking control from this. Mirrors
-   * TabState.thinkingEffort / ConversationInstance.thinkingEffort.
-   */
-  thinkingEffort?: 'low' | 'medium' | 'high'
-  permissionQueue: PermissionRequest[]
-  /**
-   * Live extension elicitations (ctx.elicit) awaiting a user decision on the
-   * active instance. Mirrors ConversationInstance.elicitationQueue. iOS renders
-   * an approval card from the head entry and answers via
-   * `desktop_respond_elicitation`. Optional/additive — older snapshots omit it.
-   */
-  elicitationQueue?: ElicitationRequest[]
-  lastMessage: string | null
-  contextTokens: number | null
-  /**
-   * Engine-reported context window size (tokens) of the model the engine
-   * actually used on the most recent turn. Mirrors TabState.contextWindow.
-   * iOS reads this as the denominator when recomputing context percent
-   * locally so the indicator stays accurate even when the picker-selected
-   * model disagrees with the engine. Falls back to the picker model's
-   * nominal window when null (cold-start tabs).
-   */
-  contextWindow: number | null
-  /**
-   * Cumulative cost in USD for this tab across all turns. Projected from
-   * StatusFields.totalCostUsd via the snapshot so iOS has the correct value
-   * on cold open without waiting for a live engine_status event. Optional so
-   * tabs that have never had a run omit it rather than emitting 0 (misleading).
-   */
-  totalCostUsd?: number
-  /**
-   * Cumulative provider-reported input tokens for this tab. Projected from
-   * the engine's usage tracking so iOS can populate the context-breakdown
-   * section on cold open. Optional — absent on tabs that have never run.
-   */
-  inputTokens?: number
-  /** Cumulative output tokens. Optional — absent on never-run tabs. */
-  outputTokens?: number
-  /**
-   * Cumulative cache-read tokens (Anthropic prompt caching). Optional —
-   * absent on tabs that have never run or whose provider does not report it.
-   */
-  cacheReadTokens?: number
-  /**
-   * Cumulative cache-creation tokens (Anthropic prompt caching). Optional —
-   * absent on tabs that have never run or whose provider does not report it.
-   */
-  cacheCreationTokens?: number
-  modelOverride?: string | null
-  messageCount: number
-  /**
-   * Conversation tail fingerprint — the staleness signal for the iOS
-   * main-conversation heal. Computed over the active instance's last N messages
-   * (id + utf8 content length for non-tool rows; tool status for tool rows) +
-   * total message count. iOS computes the SAME fingerprint over its local tail
-   * and re-fetches history when they diverge (dropped live deltas, e.g. a
-   * LAN↔relay transport switch). Algorithm pinned in
-   * ../../shared/conversation-fingerprint.ts (and mirrored byte-identically in
-   * the snapshot.ts inline JS and the Swift conversationTailFingerprint).
-   * Empty string for cold-start tabs (no live messages to compare).
-   */
-  convFingerprint?: string
-  queuedPrompts: string[]
-  isTerminalOnly?: boolean
-  /** True when the conversation hosts an engine extension. Wire field consumed
-   *  by iOS (RemoteTabState.swift). Not a backend flag. */
-  hasEngineExtension?: boolean
-  engineProfileId?: string | null
-  conversationInstances?: Array<{ id: string; label: string; waitingState?: 'plan-ready' | 'question' | null; isRunning?: boolean; runningAgentCount?: number; modelFallback?: { requestedModel: string; fallbackModel: string }; conversationIds?: string[]; thinkingEffort?: 'low' | 'medium' | 'high'; dispatchTelemetry?: DispatchTelemetryEntry[] }>
-  activeConversationInstanceId?: string | null
-  terminalInstances?: TerminalInstanceInfo[]
-  activeTerminalInstanceId?: string | null
-  groupId?: string | null
-  /** When true, auto-group movement is suppressed for this tab. */
-  groupPinned?: boolean
-  /**
-   * Aggregated "any sub-instance has running background children" flag,
-   * folded across `conversationInstances[*].runningAgentCount`. Optional so
-   * older iOS builds that don't decode the field continue to work; iOS
-   * uses this to drive the parent tab pill's yellow "awaiting children"
-   * dot. See CLAUDE.md § "Common parity surfaces" for the desktop/iOS
-   * parity rule.
-   */
-  hasRunningChildren?: boolean
-  /** The current conversation/session ID for this tab. Engine tabs use StatusFields.sessionId instead. */
-  conversationId?: string | null
-  /** Unix ms timestamp of the last status-changing activity (message, status change). */
-  lastActivityAt?: number
-  /** Custom pill background color hex string (e.g. "#f08c4a"). Null means use theme default. */
-  pillColor?: string | null
-  /** Custom pill icon key (e.g. "diamond", "star"). Null means use the default status dot. */
-  pillIcon?: string | null
-}
-
-// ─── Terminal instance metadata ───
-
-export interface TerminalInstanceInfo {
-  id: string
-  label: string
-  kind: string    // 'user' | 'commit' | 'cli' | 'tool:*'
-  readOnly: boolean
-  cwd: string
-}
-
-// ─── Wire-friendly message types for conversation sync ───
-
-export interface RemoteMessage {
-  id: string
-  role: 'user' | 'assistant' | 'tool' | 'system'
-  content: string
-  toolName?: string
-  toolInput?: string
-  toolId?: string
-  toolStatus?: 'running' | 'completed' | 'error'
-  attachments?: RemoteAttachment[]
-  timestamp: number
-  source?: 'desktop' | 'remote'
-  /** Slash-command provenance: when the turn came from a slash command, the echo carries command/args so iOS renders a pill immediately. */
-  slashCommand?: string
-  slashArgs?: string
-  slashSource?: string
-  /** Plan path on plan-lifecycle divider system messages (Plan created / Plan
-   * updated / Implementing plan). Lets iOS render the divider's slug as a
-   * clickable link to the plan preview after a history reload. Omitted on
-   * non-divider messages. */
-  planFilePath?: string
-}
-
-export interface RemoteAttachment {
-  id: string
-  type: 'image' | 'file' | 'plan'
-  name: string
-  path: string
-}
+// ─── Remote Tab State + message types — extracted for line-cap ───
+// All types re-exported so existing import paths remain valid.
+export type { RemoteTabState, TerminalInstanceInfo, RemoteMessage, RemoteAttachment } from './protocol-remote-tab'
 
 // ─── iOS → Ion commands ───
 
@@ -349,6 +206,21 @@ export type RemoteEvent =
   | { type: 'desktop_tab_created'; tab: RemoteTabState }
   | { type: 'desktop_tab_closed'; tabId: string }
   | { type: 'desktop_tab_status'; tabId: string; status: TabStatus }
+  /**
+   * Lightweight tab-row metadata delta. Emitted event-driven (on title, cost,
+   * instances, or group change) so iOS tab-row data updates without waiting for
+   * the 5 s snapshot poll. All fields are optional — the sender includes only
+   * the field(s) that changed. Additive: old iOS builds ignore it gracefully.
+   * Fields mirror the corresponding RemoteTabState fields.
+   */
+  | {
+      type: 'desktop_tab_meta'
+      tabId: string
+      title?: string
+      totalCostUsd?: number
+      conversationInstances?: RemoteTabState['conversationInstances']
+      groupId?: string | null
+    }
   | { type: 'desktop_text_chunk'; tabId: string; text: string }
   | { type: 'desktop_tool_call'; tabId: string; toolName: string; toolId: string }
   | { type: 'desktop_tool_result'; tabId: string; toolId: string; content: string; isError: boolean }
@@ -410,7 +282,7 @@ export type RemoteEvent =
   // prefill targets a specific engine instance's draft (desktop_engine_rewind);
   // absent/null for CLI-tab rewinds, where the tab has a single input.
   | { type: 'desktop_input_prefill'; tabId: string; text: string; switchTo?: boolean; instanceId?: string | null }
-  | { type: 'desktop_engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[] }> }
+  | { type: 'desktop_engine_profiles'; profiles: Array<{ id: string; name: string; extensions: string[]; defaultMode?: 'auto' | 'plan' }> }
   // desktop_context_breakdown: forwarded from engine_context_breakdown. Carries
   // the per-category token breakdown built during prompt assembly (and reconciled
   // after the first usage event). iOS renders this in the Status Drawer's
@@ -497,7 +369,14 @@ export type RemoteEvent =
   | { type: 'desktop_upload_attachment_result'; id: string; name: string; path: string; correlationId?: string; error?: string }
   | { type: 'desktop_discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
   | { type: 'desktop_tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }
-  | { type: 'desktop_request_diagnostic_logs' }
+  /**
+   * Request iOS diagnostic logs since `lineOffset`. lineOffset=0 requests
+   * the full history; higher values request only new lines since the last
+   * pull (incremental). iOS uses `DiagnosticLog.exportIncrementalSince`.
+   * Additive field — older iOS builds that don't decode `lineOffset` treat
+   * every request as a full export (graceful fallback).
+   */
+  | { type: 'desktop_request_diagnostic_logs'; lineOffset?: number }
   // ─── desktop_intercept (forwarded from engine to iOS) ────────────────
   // The desktop forwards this to iOS devices that have the target session's
   // tab focused and have interceptEnabled. Carries the full intercept payload
@@ -513,7 +392,11 @@ export type RemoteEvent =
 // ─── Relay control frames (injected by relay, not by Ion) ───
 
 export interface RelayControlMessage {
-  type: 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong'
+  type: 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
+  /** Failure reason (queue_full | invalid_token | transient | token | marshal | request | transport). Present when type === 'relay:push-failed'. */
+  reason?: string
+  /** Resource ID from the originating push message. Present when type === 'relay:push-failed'. */
+  resourceId?: string
 }
 
 // ─── Wire envelope (wraps RemoteEvent for relay transport) ───

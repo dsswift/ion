@@ -14,6 +14,7 @@ import { FileEditorTabBar } from './FileEditorTabBar'
 import { FileEditorPreview } from './FileEditorPreview'
 import { FileEditorCodeMirror, CursorPosition } from './FileEditorCodeMirror'
 import { FileEditorStatusBar } from './FileEditorStatusBar'
+import { rTrace } from '../rendererLogger'
 
 interface FileEditorProps {
   dir: string
@@ -21,7 +22,7 @@ interface FileEditorProps {
 }
 
 export function FileEditor({ dir, tabId }: FileEditorProps) {
-  console.log('[FileEditor] render', { dir, tabId })
+  rTrace('file-editor', 'render', { dir, tab_id: tabId })
   const colors = useColors()
 
   // Panel position and size — managed via refs + direct DOM mutation during

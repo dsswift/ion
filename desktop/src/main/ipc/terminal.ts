@@ -3,13 +3,13 @@ import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import { terminalManager } from '../terminal-manager-instance'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function registerTerminalIpc(): void {
   ipcMain.handle(IPC.TERMINAL_CREATE, (_event, { key, cwd }: { key: string; cwd: string }) => {
-    log(`IPC TERMINAL_CREATE: key=${key} cwd=${cwd}`)
+    log('terminal_create', { key, cwd })
     terminalManager.create(key, cwd)
   })
 
@@ -22,7 +22,7 @@ export function registerTerminalIpc(): void {
   })
 
   ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { key }: { key: string }) => {
-    log(`IPC TERMINAL_DESTROY: key=${key}`)
+    log('terminal_destroy', { key })
     terminalManager.destroy(key)
   })
 }
