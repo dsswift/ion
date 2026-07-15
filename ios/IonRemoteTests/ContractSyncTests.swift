@@ -38,6 +38,14 @@ import XCTest
 ///     variant for this signal. If a future iOS feature needs the live
 ///     event (e.g. per-instance toast notifications), add the Swift
 ///     case at that point. See the grand-surfing-moth plan, §4.
+///   - `CapabilityUnsupportedEvent` is intentionally not decoded as a live
+///     RemoteEvent on iOS. The engine emits `capability_unsupported` when a
+///     requested feature (e.g. plan mode) is unsupported by the serving
+///     backend and the prompt was declined cleanly; the desktop renders the
+///     recoverable message and iOS converges through the snapshot path
+///     (tab status stays idle — no run ever starts). Same precedent as
+///     ModelFallbackEvent above; the field-set test in
+///     ContractSyncEngineEventsTests tracks the Go variant for drift.
 final class ContractSyncTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
