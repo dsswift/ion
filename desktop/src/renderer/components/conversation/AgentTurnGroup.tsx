@@ -4,6 +4,7 @@ import { CaretRight, CaretDown, SpinnerGap, CheckCircle, Warning, XCircle } from
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { ToolGroup } from './ToolGroup'
+import { ToolImagesStrip } from './ToolImagesStrip'
 import { AssistantMessage } from './AssistantMessage'
 import { ThinkingBlock } from './ThinkingBlock'
 import { CopyButton } from './CopyButton'
@@ -122,6 +123,14 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
 
       {/* Collapsible activity panel — rendered below assistant text */}
       {activityHeader}
+
+      {/* Tool images: always visible, hoisted OUT of the collapsible tool
+          panel below. A tool-generated image (icon, logo, screenshot, diagram)
+          is a visual deliverable, not collapsible tool text, so it must paint
+          whether or not the user expands "Used N tools". Without this the
+          #224 conversation's 20 images stayed buried behind the collapsed
+          panel and never rendered. See ToolImagesStrip. */}
+      <ToolImagesStrip tools={tools} />
 
       <AnimatePresence initial={false}>
         {expanded && (

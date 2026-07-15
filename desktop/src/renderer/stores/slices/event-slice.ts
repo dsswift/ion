@@ -9,6 +9,7 @@ import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '.
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
+import { attachImageToMessages } from './event-slice-images'
 import { handleCrossNormalizedEvent } from './engine-event-slice-messages'
 import { maybeScheduleDoneMove } from './event-slice-done-move'
 import { maybeScheduleRunningMove } from './event-slice-running-move'
@@ -291,6 +292,15 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 }
               }
               messages = msgs3
+              break
+            }
+
+            case 'image_content': {
+              // Engine-generated image (tool-returned or provider-generated).
+              // The engine saved the bytes to disk and gave us a file path;
+              // attach it to the right message so it renders inline and appears
+              // in the attachments panel. Dedup is handled inside the helper.
+              messages = attachImageToMessages(messages, event)
               break
             }
 

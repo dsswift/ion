@@ -22,7 +22,8 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const { onOpenFile, onOpenUrl } = useNavigableText()
 
   const displayContent = (message.content || '')
-    .replace(/^\[Attached (?:image|file): .+\]\n*/gm, '')
+    .replace(/^\[Attached (?:image|file): [^\]]+\]\n*/gm, '')
+    .replace(/^\[Attachment: [^\]]+ \(content attached\)\]\n*/gm, '')
     .trim()
 
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)

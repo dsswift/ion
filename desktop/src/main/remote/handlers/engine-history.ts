@@ -15,8 +15,8 @@
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Wire shape of one message in an engine_conversation_history payload.
@@ -33,6 +33,11 @@ export interface EngineHistoryMessage {
   /** Plan path on plan-lifecycle divider system messages, so the slug stays
    * clickable on iOS after a history reload. Omitted on non-divider messages. */
   planFilePath?: string
+  /** Image/file references carried through to iOS on rewind history replay.
+   * Matches the RemoteAttachment wire shape (id/type/name/path) — the same
+   * fields tabs.ts projects on the non-rewind load path. Omitted when the
+   * message has no attachments. */
+  attachments?: Array<{ id: string; type: string; name: string; path: string }>
 }
 
 /**
@@ -80,6 +85,16 @@ export async function readEngineHistoryFromStore(
         // iOS after a history reload — iOS reads it from the desktop store via
         // this mapper, the same store the live handlers populate.
         if (m.planFilePath) out.planFilePath = m.planFilePath;
+        // Carry image/file attachments through so engine-conversation images
+        // survive a rewind history replay on iOS. Matches the RemoteAttachment
+        // wire shape (id/type/name/path) that tabs.ts projects on the non-rewind
+        // load path; iOS decodes both paths via the same Message.attachments
+        // Codable field. Without this, images are dropped after rewind.
+        if (m.attachments && m.attachments.length > 0) {
+          out.attachments = m.attachments.map(function(a) {
+            return { id: a.id, type: a.type, name: a.name, path: a.path };
+          });
+        }
         return out;
       });
       return { resolvedId: resolvedId, messages: mapped };
@@ -101,16 +116,16 @@ export async function readEngineHistoryFromStore(
  */
 export async function broadcastEngineHistory(tabId: string, instanceId: string | null): Promise<void> {
   if (!state.remoteTransport) {
-    log(`broadcastEngineHistory: no remote transport; skipping tabId=${tabId} instanceId=${instanceId || 'null'}`)
+    log('broadcast_engine_history: no remote transport, skipping', { tab_id: tabId, instance_id: instanceId || '' })
     return
   }
   if (!state.mainWindow) {
-    log(`broadcastEngineHistory: no main window; skipping tabId=${tabId} instanceId=${instanceId || 'null'}`)
+    log('broadcast_engine_history: no main window, skipping', { tab_id: tabId, instance_id: instanceId || '' })
     return
   }
   try {
     const { messages } = await readEngineHistoryFromStore(tabId, instanceId)
-    log(`broadcastEngineHistory: tabId=${tabId} broadcasting ${messages.length} messages to all devices`)
+    log('broadcast_engine_history', { tab_id: tabId, count: messages.length })
     // Use the unified desktop_conversation_history response type. The hasMore
     // flag is false because a post-rewind broadcast sends all messages; the
     // client replaces its message list wholesale on history receipt.
@@ -119,6 +134,6 @@ export async function broadcastEngineHistory(tabId: string, instanceId: string |
     // union — the engine always sends valid role values).
     state.remoteTransport.send({ type: 'desktop_conversation_history', tabId, messages: messages as any, hasMore: false })
   } catch (err) {
-    log(`broadcastEngineHistory error: ${(err as Error).message}`)
+    log('broadcast_engine_history error', { error: (err as Error).message })
   }
 }

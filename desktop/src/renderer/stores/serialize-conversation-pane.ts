@@ -2,6 +2,7 @@ import type { ConversationPane } from '../../shared/types-engine'
 import type { PersistedConversationPane, PersistedConversationInstance } from '../../shared/types-persistence'
 import { deriveLedger, resolveCurrentSessionId } from '../../shared/session-ledger'
 import { instanceMessageCount } from './conversation-instance'
+import { rDebug } from '../rendererLogger'
 
 /**
  * serialize-conversation-pane — convert an in-memory `ConversationPane` into the
@@ -184,6 +185,16 @@ export function serializeConversationPane(
           ...(m.dedupKey ? { dedupKey: m.dedupKey } : {}),
           ...(m.planFilePath ? { planFilePath: m.planFilePath } : {}),
           ...(m.slashCommand ? { slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource } : {}),
+          // Persist engine-produced image attachments (tool-result / provider
+          // images the engine replays on historical reload via flattenEntries).
+          // Without this, an instance forced to content-persistence by a
+          // renderer-only row (harness/system) round-trips its scrollback with
+          // the images stripped: the restored instance is non-empty, so the
+          // skeleton lazy-load that would re-fetch attachments from the engine
+          // never fires, and the inline images silently vanish after restart.
+          // Attachment paths are on-disk references (never base64), so this is
+          // a few bytes per image, not the image payload.
+          ...(m.attachments && m.attachments.length > 0 ? { attachments: m.attachments } : {}),
         }))
       }
     }
@@ -238,7 +249,7 @@ export function serializeConversationPane(
   // conversation cannot be continued from disk).
   const contentInstances = instances.filter((i) => (i.messages?.length ?? 0) > 0)
   if (contentInstances.length > 0 && !contentInstances.some((i) => (i.conversationIds?.length ?? 0) > 0)) {
-    console.log(`[persist] conversationPane content instance(s) have no conversationIds for tab=${opts.tabIdForLog.slice(0, 8)} — rows will survive restart but session cannot resume`)
+    rDebug('persist', 'content instances have no conversationIds, session cannot resume', { tab_id: opts.tabIdForLog.slice(0, 8) })
   }
 
   return {

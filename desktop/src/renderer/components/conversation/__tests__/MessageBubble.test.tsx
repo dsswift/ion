@@ -26,7 +26,7 @@
  * right seam — it is exactly what the fix changes.
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll } from 'vitest'
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MessageBubble } from '../MessageBubble'
@@ -36,6 +36,17 @@ import type { Message } from '../../../../shared/types'
 // environment is an act-aware one. Without it React logs a warning on every
 // render even though the render itself succeeds.
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+// Stub window.ion so useImageDataUrl (InlineMessageImages) doesn't crash when
+// content contains [Attached image: ...] markers — those trigger a readImageDataUrl
+// IPC call that doesn't exist in the test environment.
+beforeAll(() => {
+  ;(globalThis as any).window = globalThis
+  ;(globalThis as any).window.ion = {
+    readImageDataUrl: () => Promise.resolve({ dataUrl: null }),
+    openExternal: () => {},
+  }
+})
 
 const LONG_UNBREAKABLE =
   'https://example.com/' + 'a'.repeat(400) + '/path/that/never/wraps?q=' + 'z'.repeat(200)
@@ -65,6 +76,54 @@ afterEach(() => {
   container?.remove()
   container = null
 })
+
+// ─── Attachment marker stripping ───
+
+describe('MessageBubble — attachment marker stripping', () => {
+  it('strips [Attached image: path] markers from display content', () => {
+    const el = renderBubble(userMessage('[Attached image: /some/path/photo.png]\n\nhello world'))
+    // The marker must not appear in any text node; only the user text should be visible.
+    expect(el.textContent).not.toContain('[Attached image:')
+    expect(el.textContent).toContain('hello world')
+  })
+
+  it('strips [Attached file: path] markers from display content', () => {
+    const el = renderBubble(userMessage('[Attached file: /some/path/doc.pdf]\n\nhello world'))
+    expect(el.textContent).not.toContain('[Attached file:')
+    expect(el.textContent).toContain('hello world')
+  })
+
+  it('strips [Attachment: name (content attached)] markers from display content (post-encode form)', () => {
+    // This is the form encodeAttachments writes into the engine-persisted prompt.
+    // On reload the stored content contains this marker; it must not appear in the bubble.
+    const el = renderBubble(userMessage('[Attachment: ion-paste-123456.png (content attached)]\n\nhello world'))
+    expect(el.textContent).not.toContain('[Attachment:')
+    expect(el.textContent).not.toContain('content attached')
+    expect(el.textContent).toContain('hello world')
+  })
+
+  it('strips multiple attachment markers (one of each kind)', () => {
+    const content = [
+      '[Attached image: /path/a.png]',
+      '[Attachment: b.jpeg (content attached)]',
+      '',
+      'the actual message',
+    ].join('\n')
+    const el = renderBubble(userMessage(content))
+    expect(el.textContent).not.toContain('[Attached image:')
+    expect(el.textContent).not.toContain('[Attachment:')
+    expect(el.textContent).toContain('the actual message')
+  })
+
+  it('renders nothing when content is only an attachment marker', () => {
+    const el = renderBubble(userMessage('[Attachment: photo.png (content attached)]'))
+    // displayContent trims to empty string → bubble does not render the text div.
+    const prose = el.querySelector('.prose-cloud')
+    expect(prose).toBeNull()
+  })
+})
+
+// ─── Layout containment ───
 
 describe('MessageBubble — left-edge overflow containment', () => {
   it('caps the bubble column with max-w-[85%] AND min-w-0 so it cannot grow past the cap', () => {

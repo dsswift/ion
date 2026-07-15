@@ -360,6 +360,52 @@ describe('serializeConversationPane + buildPopulatedInstance round-trip', () => 
     expect(restored.messages).toHaveLength(3)
     expect(restored.messages.find((m) => m.role === 'harness')).toBeDefined()
   })
+
+  it('engine-generated image attachments survive the persist → restore round-trip (#224)', () => {
+    // Regression: a conversation with a renderer-only row (harness/system) is
+    // forced onto the content-persistence arm. Before the fix, the serializer's
+    // per-message projection omitted `attachments`, so tool-result images the
+    // engine replayed via flattenEntries were stripped on save. On restart the
+    // restored instance is non-empty (so the skeleton lazy-load that re-fetches
+    // from the engine never fires) and the persisted, image-less copy is
+    // authoritative — the inline thumbnails silently vanish.
+    //
+    // Revert-check: remove the `attachments` spread in serialize-conversation-pane.ts
+    // OR the `attachments: m.attachments` line in useTabRestoration-engine.ts and
+    // the final assertion goes red (restored tool row has no attachments).
+    const toolMsg = makeMsg('tool', '[Image: screenshot]')
+    toolMsg.toolName = 'Screenshot'
+    toolMsg.toolId = 'toolu_shot'
+    toolMsg.attachments = [
+      { id: 'img:/conv/images/abc.png', type: 'image', name: 'abc.png', path: '/conv/images/abc.png', mimeType: 'image/png' },
+    ]
+    const msgs = [
+      makeMsg('user', 'take a screenshot'),
+      makeMsg('harness', '── Session started ──'), // forces content-persistence arm
+      makeMsg('assistant', 'Taking a screenshot.'),
+      toolMsg,
+    ]
+    const inst = makeInstance({ messages: msgs, messageCount: msgs.length, conversationIds: ['conv-img'] })
+
+    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-img' })
+    const persisted = serialized!.instances[0]
+
+    // Seam 1 (serializer): the persisted tool row carries its attachments.
+    const persistedTool = persisted.messages?.find((m) => m.role === 'tool')
+    expect(persistedTool).toBeDefined()
+    expect(persistedTool!.attachments).toHaveLength(1)
+    expect(persistedTool!.attachments![0]).toMatchObject({ type: 'image', path: '/conv/images/abc.png' })
+
+    // Seam 2 (rehydration): buildPopulatedInstance restores them onto the message.
+    const restored = buildPopulatedInstance(persisted, 'tab-img', {
+      workingDirectory: '/tmp',
+      engineProfileId: 'cos',
+    } as any)
+    const restoredTool = restored.messages.find((m) => m.role === 'tool')
+    expect(restoredTool).toBeDefined()
+    expect(restoredTool!.attachments).toHaveLength(1)
+    expect(restoredTool!.attachments![0]).toMatchObject({ type: 'image', name: 'abc.png', path: '/conv/images/abc.png' })
+  })
 })
 
 // ─── 7. Migration regression: pre-Phase-4 hasEngineExtension ─────────────────

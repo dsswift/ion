@@ -69,6 +69,10 @@ export const ToolRow = React.memo(function ToolRow({ tool, desc, isRunning }: { 
           {tool.content}
         </pre>
       )}
+      {/* Tool-row images are NOT rendered here. They are hoisted to the group
+          container (ToolImagesStrip in ToolGroup / AgentTurnGroup) so they stay
+          visible regardless of this row's collapse state — an image is a visual
+          deliverable, not collapsible tool text. See ToolImagesStrip (#224). */}
     </>
   )
 })

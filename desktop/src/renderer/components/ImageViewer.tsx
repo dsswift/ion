@@ -7,7 +7,24 @@ import { useSessionStore } from '../stores/sessionStore'
 /** Module-level cache so the same image isn't re-read from disk per render. */
 const dataUrlCache = new Map<string, string>()
 
-function useImageDataUrl(path: string): string | null {
+/**
+ * Resolve a data URL for the image at `path`.
+ *
+ * `initialDataUrl` is an optional pre-seeded data URL (e.g. from a persisted
+ * `FileAttachment.dataUrl`). When provided it is written into the cache
+ * immediately so the image renders without waiting for the IPC round-trip.
+ * The IPC call still fires; if the file exists on disk the result overwrites
+ * the cache entry (idempotent). If the file is gone (e.g. a pre-fix tmpdir
+ * paste from a prior session), the seeded value persists and the image renders
+ * from the stored base64.
+ */
+function useImageDataUrl(path: string, initialDataUrl?: string): string | null {
+  // Seed the module-level cache eagerly from initialDataUrl so sibling
+  // components referencing the same path share it without an IPC round-trip.
+  if (initialDataUrl && !dataUrlCache.has(path)) {
+    dataUrlCache.set(path, initialDataUrl)
+  }
+
   const [dataUrl, setDataUrl] = useState<string | null>(() => dataUrlCache.get(path) ?? null)
 
   useEffect(() => {

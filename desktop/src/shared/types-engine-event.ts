@@ -43,6 +43,15 @@ export type EngineEvent =
   | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
+  // engine_image_content — a single image produced during a run, either
+  // tool-returned (imageSource 'tool', imageToolId set to the producing tool
+  // call) or provider-generated (imageSource 'provider', imageToolId empty).
+  // imagePath is the on-disk FILE PATH under the conversation's images/
+  // directory; the engine never puts base64 on the wire. The main-process
+  // control plane translates this to the `image_content` NormalizedEvent the
+  // renderer's event-slice-images materializer consumes. Mirror of the Go
+  // EngineEvent Image* fields (engine/internal/types/engine_event.go).
+  | { type: 'engine_image_content'; imagePath: string; imageMediaType: string; imageSource: string; imageToolId?: string }
   | { type: 'engine_tool_update'; toolId: string; partialInput: string }
   | { type: 'engine_tool_complete'; index?: number }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }

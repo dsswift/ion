@@ -50,7 +50,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   tool_call: ['index', 'toolId', 'toolName'],
   tool_call_update: ['partialInput', 'toolId'],
   tool_call_complete: ['index'],
-  tool_result: ['content', 'isError', 'toolId'],
+  tool_result: ['content', 'images', 'isError', 'toolId'],
   task_update: ['message'],
   task_complete: [
     'conversationTurns',
@@ -114,6 +114,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   extension_respawned: ['attemptNumber', 'extensionName'],
   extension_dead_permanent: ['attemptNumber', 'extensionName'],
   events_dropped: ['count'],
+  image_content: ['mediaType', 'path', 'source', 'toolId'],
   // Per-category token breakdown. Emitted after prompt assembly and again
   // after first usage-event reconciliation. Tier encodes the resolution path.
   context_breakdown: [

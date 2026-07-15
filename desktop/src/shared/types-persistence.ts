@@ -1,4 +1,4 @@
-import type { TerminalInstance, WorktreeInfo } from './types-session'
+import type { TerminalInstance, WorktreeInfo, Attachment } from './types-session'
 import type { ConversationRef } from './types-engine'
 
 // ─── Persisted Tab State ───
@@ -59,7 +59,7 @@ export interface PersistedConversationInstance {
   /** Scrollback. Plain tabs persist message content here too (the old shape
    *  persisted only a count for plain tabs and full messages for engine tabs;
    *  the unified shape persists messages uniformly, gated by size as before). */
-  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string; slashCommand?: string; slashArgs?: string; slashSource?: string }>
+  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string; slashCommand?: string; slashArgs?: string; slashSource?: string; attachments?: Attachment[] }>
   /** Blank-tab / lazy-load proxy when messages are omitted. */
   messageCount?: number
   modelOverride?: string | null

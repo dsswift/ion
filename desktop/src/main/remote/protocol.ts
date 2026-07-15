@@ -258,6 +258,15 @@ export type RemoteEvent =
   | { type: 'desktop_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'desktop_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'desktop_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
+  // desktop_image_content: forwarded verbatim from engine_image_content by the
+  // generic engine-event forwarder in event-wiring.ts (engineToWireType strips
+  // the engine_ prefix). Carries the desktop-local FILE PATH (never base64 —
+  // the engine's never-base64-on-the-wire contract). iOS decodes this and
+  // fetches the bytes lazily via desktop_fs_read_image → desktop_fs_image_content
+  // when the path misses its local cache. source is 'tool' (with toolId) or
+  // 'provider' (no toolId). No dedicated send site: the generic forwarder owns
+  // the send; this union member exists for type-completeness and lockstep parity.
+  | { type: 'desktop_image_content'; tabId: string; instanceId?: string | null; path: string; mediaType: string; source: string; toolId?: string }
   | { type: 'desktop_model_override'; tabId: string; instanceId?: string | null; model: string }
   | { type: 'desktop_dead'; tabId: string; instanceId?: string | null; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'desktop_engine_error'; tabId: string; instanceId?: string | null; message: string }

@@ -2,6 +2,7 @@ export { groupMessages, getToolDescription, toolSummary, toolFailureSummary, typ
 export { ToolIcon } from './ToolIcon'
 export { ToolRow } from './ToolRow'
 export { ToolGroup } from './ToolGroup'
+export { ToolImagesStrip } from './ToolImagesStrip'
 export { AgentTurnGroup } from './AgentTurnGroup'
 export { ThinkingBlock } from './ThinkingBlock'
 export { CompactionRow } from './CompactionRow'

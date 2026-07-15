@@ -143,3 +143,82 @@ describe('readEngineHistoryFromStore — bare-key (post-#256)', () => {
     expect(result.messages).toEqual([])
   })
 })
+
+describe('readEngineHistoryFromStore — attachment projection (#224)', () => {
+  // The attachment carry-through lives inside the executeJavaScript body
+  // string, which the mocked webContents never runs. Pin the real projection
+  // by evaluating the generated body against a fake renderer store: an image
+  // attachment on a message must survive to the wire, mapped to the
+  // RemoteAttachment shape (id/type/name/path) iOS decodes.
+  function runMapperBody(jsBody: string, store: unknown): { resolvedId: string | null; messages: any[] } {
+    const g = globalThis as any
+    const prevWindow = g.window
+    g.window = { __Ion_SESSION_STORE__: store }
+    try {
+      // The body is a self-invoking IIFE that returns { resolvedId, messages }.
+      // eslint-disable-next-line no-eval
+      return eval(jsBody)
+    } finally {
+      g.window = prevWindow
+    }
+  }
+
+  it('carries image attachments through to the wire in RemoteAttachment shape', async () => {
+    // executeJavaScript is mocked; capture the body it was called with, then
+    // run that exact body against a fake store so the real mapper executes.
+    mocks.executeJsMock.mockResolvedValueOnce(null)
+    await readEngineHistoryFromStore('tab-att', null)
+    const jsBody = mocks.executeJsMock.mock.calls[0][0] as string
+
+    const store = {
+      getState: () => ({
+        conversationPanes: new Map([
+          ['tab-att', {
+            activeInstanceId: 'main',
+            instances: [{
+              id: 'main',
+              messages: [{
+                id: 'a-1', role: 'assistant', content: 'see image', timestamp: 5,
+                attachments: [
+                  // Extra renderer-only fields (mimeType/dataUrl) must be
+                  // dropped; only id/type/name/path reach the wire.
+                  { id: 'img-1', type: 'image', name: 'shot.png', path: '/tmp/shot.png', mimeType: 'image/png', dataUrl: 'data:...' },
+                ],
+              }],
+            }],
+          }],
+        ]),
+      }),
+    }
+
+    const out = runMapperBody(jsBody, store)
+    expect(out.resolvedId).toBe('main')
+    expect(out.messages).toHaveLength(1)
+    expect(out.messages[0].attachments).toEqual([
+      { id: 'img-1', type: 'image', name: 'shot.png', path: '/tmp/shot.png' },
+    ])
+  })
+
+  it('omits attachments when the message has none', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce(null)
+    await readEngineHistoryFromStore('tab-noatt', null)
+    const jsBody = mocks.executeJsMock.mock.calls[0][0] as string
+
+    const store = {
+      getState: () => ({
+        conversationPanes: new Map([
+          ['tab-noatt', {
+            activeInstanceId: 'main',
+            instances: [{
+              id: 'main',
+              messages: [{ id: 'u-1', role: 'user', content: 'hi', timestamp: 1 }],
+            }],
+          }],
+        ]),
+      }),
+    }
+
+    const out = runMapperBody(jsBody, store)
+    expect(out.messages[0]).not.toHaveProperty('attachments')
+  })
+})

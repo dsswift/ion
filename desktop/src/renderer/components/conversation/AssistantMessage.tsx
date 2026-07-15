@@ -6,6 +6,7 @@ import { Globe, Image as ImageIcon } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { CopyButton } from './CopyButton'
+import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
@@ -151,20 +152,32 @@ export const AssistantMessage = React.memo(function AssistantMessage({
 
   const displayContent = useMemo(() => (message.content || '').replace(TASK_NOTIFICATION_RE, '').trim(), [message.content])
 
-  if (!displayContent) return null
+  const inlineImages = deriveMessageImages(message.content || '', message.attachments)
+  const hasInlineImages = inlineImages.length > 0
+
+  // Render nothing only when there is neither text nor an image to show. A
+  // provider-generated image can arrive on an otherwise-empty assistant turn.
+  if (!displayContent && !hasInlineImages) return null
 
   const defaultActions = <CopyButton text={displayContent} />
 
   const inner = (
     <div className="group/msg relative">
-      <div
-        className="leading-[1.6] prose-cloud min-w-0 max-w-[92%] overflow-hidden"
-        style={{ fontSize: 'var(--ion-conv-font-size, 13px)' }}
-      >
-        <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
-          {displayContent}
-        </Markdown>
-      </div>
+      {hasInlineImages && (
+        <div className="mb-1 flex flex-col items-start">
+          <InlineMessageImages content={message.content || ''} attachments={message.attachments} align="start" />
+        </div>
+      )}
+      {displayContent && (
+        <div
+          className="leading-[1.6] prose-cloud min-w-0 max-w-[92%] overflow-hidden"
+          style={{ fontSize: 'var(--ion-conv-font-size, 13px)' }}
+        >
+          <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
+            {displayContent}
+          </Markdown>
+        </div>
+      )}
       {displayContent && (
         <div className="absolute bottom-0 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
           {actions || defaultActions}
@@ -187,4 +200,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
       {inner}
     </motion.div>
   )
-}, (prev, next) => prev.message.content === next.message.content && prev.skipMotion === next.skipMotion)
+}, (prev, next) =>
+  prev.message.content === next.message.content &&
+  prev.skipMotion === next.skipMotion &&
+  prev.message.attachments === next.message.attachments)

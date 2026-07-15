@@ -18,6 +18,7 @@ import { handleThinkingEvent } from './engine-control-plane-thinking'
 import { handlePlanEvent } from './engine-control-plane-plan'
 import { handleDispatchEvent } from './engine-control-plane-dispatch'
 import { handleExtensionEvent } from './engine-control-plane-extension'
+import { handleStreamSignalEvent } from './engine-control-plane-stream'
 import { conversationExists } from './session-meta'
 import { mark, Activity } from './watchdog'
 
@@ -86,6 +87,26 @@ export function handleEngineEvent(
         toolId: event.toolId,
         content: event.result || '',
         isError: event.isError || false,
+      } as NormalizedEvent)
+      break
+
+    case 'engine_image_content':
+      // A single run-produced image (tool-returned or provider-generated). The
+      // engine saved the bytes to disk and emitted the FILE PATH (never base64).
+      // Translate to the `image_content` NormalizedEvent the renderer's
+      // event-slice-images materializer consumes so it attaches to the right
+      // message (tool image → producing tool row by toolId; provider image →
+      // latest assistant row). Without this arm the event was dropped before
+      // ever reaching the renderer, so desktop-side inline images never
+      // rendered live and never persisted — the root cause of the #224 gap on
+      // the desktop (iOS received it via the generic wire forwarder).
+      debug('image_content', { tab_id: tabId, source: event.imageSource, tool_id: event.imageToolId ?? '', path: event.imagePath })
+      ctx.emit('event', tabId, {
+        type: 'image_content',
+        path: event.imagePath,
+        mediaType: event.imageMediaType,
+        source: event.imageSource,
+        ...(event.imageToolId ? { toolId: event.imageToolId } : {}),
       } as NormalizedEvent)
       break
 
@@ -219,61 +240,11 @@ export function handleEngineEvent(
       break
 
     case 'engine_stream_reset':
-      log('stream_reset: retry in progress', { tab_id: tabId })
-      ctx.emit('event', tabId, { type: 'stream_reset' } as NormalizedEvent)
-      break
-
     case 'engine_compacting':
-      log('compacting', { tab_id: tabId, active: event.active, micro_only: event.microOnly ?? false, msgs_before: event.messagesBefore ?? 0, msgs_after: event.messagesAfter ?? 0 })
-      // Forward the full detail field set, not just `active`. The renderer
-      // marker (event-slice.ts) and the iOS-bound marker (event-wiring-remote.ts)
-      // both read messagesBefore/messagesAfter/clearedBlocks/summary/strategy/
-      // microOnly to build the "[Compaction]" checkpoint line. Dropping them
-      // here (the prior behavior) left both markers as dead code — the fields
-      // never arrived, so the marker was never inserted.
-      ctx.emit('event', tabId, {
-        type: 'compacting',
-        active: event.active,
-        summary: event.summary,
-        messagesBefore: event.messagesBefore,
-        messagesAfter: event.messagesAfter,
-        clearedBlocks: event.clearedBlocks,
-        strategy: event.strategy,
-        microOnly: event.microOnly,
-      } as NormalizedEvent)
-      break
-
     case 'engine_tool_stalled':
-      debug('tool_stalled', { tab_id: tabId, tool: event.toolName, elapsed_s: event.toolElapsed })
-      ctx.emit('event', tabId, {
-        type: 'tool_stalled',
-        toolId: event.toolId,
-        toolName: event.toolName,
-        elapsed: event.toolElapsed,
-      } as NormalizedEvent)
-      break
-
     case 'engine_run_stalled':
-      // Advisory watchdog signal. The legacy path only logged this; emit as
-      // normalized run_stalled so the renderer can surface a distinct indicator.
-      debug('run_stalled', { tab_id: tabId, duration: event.runStalledDuration, last_activity: event.runStalledLastActivity ?? 'unknown' })
-      ctx.emit('event', tabId, {
-        type: 'run_stalled',
-        stalledDuration: event.runStalledDuration,
-        lastActivity: event.runStalledLastActivity,
-      } as NormalizedEvent)
-      break
-
     case 'engine_steer_injected':
-      // Mid-turn steer-drain confirmation. The runloop captures a steer
-      // message between turns, inside the end_turn checkpoint, or after
-      // tool execution; this event tells consumers the steer landed in
-      // the conversation as a user turn before the next LLM call.
-      log('steer_injected', { tab_id: tabId, message_length: event.steerMessageLength })
-      ctx.emit('event', tabId, {
-        type: 'steer_injected',
-        messageLength: event.steerMessageLength,
-      } as NormalizedEvent)
+      handleStreamSignalEvent(ctx, tabId, tab, event)
       break
 
     case 'engine_thinking_block_start':

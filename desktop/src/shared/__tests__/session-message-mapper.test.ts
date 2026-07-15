@@ -156,6 +156,35 @@ describe('mapSessionMessage — ordinary rows', () => {
     expect(msg.slashCommand).toBe('read')
     expect(msg.slashSource).toBe('ion')
   })
+
+  it('carries engine-replayed image attachments on a reloaded tool row', () => {
+    // The engine's flattenEntries replays a persisted tool-result image as a
+    // SessionMessage.Attachments entry on the owning tool row (image support,
+    // historical reload path). The mapper must forward attachments verbatim so
+    // ToolRow/deriveMessageImages renders the image inline after reload, exactly
+    // as the live image_content event path does. Without the forward, reloaded
+    // engine-generated tool images are lost.
+    const row: SessionLoadMessage = {
+      role: 'tool',
+      content: '[Image: screenshot]',
+      timestamp: 7000,
+      toolName: 'Screenshot',
+      toolId: 'tool-shot',
+      attachments: [
+        {
+          id: 'img:/home/u/.ion/conversations/c/images/abc.png',
+          type: 'image',
+          name: 'abc.png',
+          path: '/home/u/.ion/conversations/c/images/abc.png',
+          mimeType: 'image/png',
+        },
+      ],
+    }
+    const msg = mapSessionMessage(row, makeId)!
+    expect(msg.attachments).toHaveLength(1)
+    expect(msg.attachments![0].type).toBe('image')
+    expect(msg.attachments![0].path).toBe('/home/u/.ion/conversations/c/images/abc.png')
+  })
 })
 
 describe('mapSessionHistory', () => {
