@@ -317,10 +317,13 @@ describe('AgentExpandedView no-transcript dispatch', () => {
     }
   }
 
-  it('selected orphan dispatch (empty convId + status, agent running): shows no-transcript, not Working…', () => {
+  it('selected orphan dispatch (empty convId + status, agent running): shows no-transcript, not the running label', () => {
     const html = renderSelected(0) // index 0 = orphan dispatch
     expect(html).toContain('No transcript recorded for this dispatch')
-    expect(html).not.toContain('Working...')
+    // The running-body label was renamed 'Working...' → 'running'. The orphan
+    // renders the no-transcript copy, so neither the old nor the new label
+    // appears. DispatchPager emits no raw 'running' string, so this is exact.
+    expect(html).not.toContain('running')
   })
 
   it('selected orphan dispatch: no running duration ticker rendered', () => {
@@ -334,9 +337,11 @@ describe('AgentExpandedView no-transcript dispatch', () => {
     expect(html).toContain('No transcript recorded for this dispatch')
   })
 
-  it('selected live sibling dispatch (status running): still shows Working…', () => {
+  it('selected live sibling dispatch (status running): shows the running label', () => {
     const html = renderSelected(1) // index 1 = running sibling
-    expect(html).toContain('Working...')
+    expect(html).toContain('running')
     expect(html).not.toContain('No transcript recorded for this dispatch')
+    // The pre-rename word must be gone.
+    expect(html).not.toContain('Working...')
   })
 })

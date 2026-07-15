@@ -1,20 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { appendFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs'
 
-// We'll test the persistLogs behavior by mocking fs and verifying
-// the written content is the raw JSONL bytes without a header.
+// Tests persistLogChunk's behavior via handleDiagnosticLogsResponse: it parses
+// each incoming iOS line, injects desktop-side identity (device_id/device_name/
+// desktop_host) into fields, dedups on seq, and writes valid JSONL.
 
 vi.mock('fs', () => ({
   writeFileSync: vi.fn(),
   appendFileSync: vi.fn(),
   mkdirSync: vi.fn(),
-  // Default: file does not exist — so writeFileSync is called, not appendFileSync.
-  // Individual tests may override this to simulate an existing file.
+  // Default: LOG_FILE and SEQ_MARK_FILE do not exist. writeFileSync is called
+  // (not appendFileSync); getSeqMark reads 0 (no persisted cursor).
   existsSync: vi.fn(() => false),
-  // Default: file is small — no rotation triggered.
+  readFileSync: vi.fn(() => '{}'),
   statSync: vi.fn(() => ({ size: 0 })),
   renameSync: vi.fn(),
   unlinkSync: vi.fn(),
+}))
+
+// atomicWrite is a real disk write; stub it so seq-mark persistence is a no-op.
+vi.mock('../../../utils/atomicWrite', () => ({
+  atomicWriteFileSync: vi.fn(),
 }))
 
 vi.mock('../../../logger', () => ({
@@ -25,101 +31,95 @@ vi.mock('../../../state', () => ({
   state: { remoteTransport: null },
 }))
 
-describe('diagnostics persistLogs', () => {
+// Build an iOS log line with a seq (what real lines now carry).
+function iosLine(seq: number, msg = 'x', extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    ts: '2024-11-15T22:04:05.123456789Z',
+    level: 'INFO',
+    component: 'ios',
+    tag: 'session',
+    msg,
+    fields: { device_model: 'iPhone15,3', app_version: '1.2.0', seq: String(seq), ...extra },
+  })
+}
+
+describe('diagnostics persistLogChunk — identity injection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Reset existsSync to default (file does not exist) before each test.
     ;(existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false)
   })
 
-  it('writes raw JSONL bytes without a header', async () => {
-    // Import after mocks are set up
+  it('injects device_id / device_name / desktop_host into every persisted line', async () => {
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
+    const rawLogs = `${iosLine(1, 'session started')}\n${iosLine(2, 'CMD: sync')}\n`
 
-    const line1 = JSON.stringify({
-      ts: '2024-11-15T22:04:05.123456789Z',
-      level: 'INFO',
-      component: 'ios',
-      tag: 'session',
-      msg: 'session started',
-      fields: {},
-    })
-    const line2 = JSON.stringify({
-      ts: '2024-11-15T22:04:06.000000000Z',
-      level: 'DEBUG',
-      component: 'ios',
-      tag: 'ipc',
-      msg: 'CMD: sync',
-      fields: {},
-    })
-    const rawLogs = `${line1}\n${line2}\n`
-
-    // Trigger handleDiagnosticLogsResponse with a fake command
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: rawLogs, deviceId: 'device-001', deviceName: 'Test iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: rawLogs, deviceId: 'device-001', deviceName: 'Josh iPhone', nextSeq: 3 },
       'device-001',
     )
 
-    // writeFileSync should have been called once (file didn't exist)
     expect(writeFileSync).toHaveBeenCalledOnce()
     const [filePath, content, encoding] = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
-
-    // File path must end with .jsonl
     expect(filePath).toMatch(/ios-diagnostic-logs\.jsonl$/)
-
-    // Content must be exactly the raw logs — no header, no modification
-    expect(content).toBe(rawLogs)
     expect(encoding).toBe('utf-8')
 
-    // Verify JSONL line integrity: each line parses as JSON
     const lines = (content as string).split('\n').filter(Boolean)
     expect(lines).toHaveLength(2)
     for (const line of lines) {
-      expect(() => JSON.parse(line)).not.toThrow()
       const obj = JSON.parse(line) as Record<string, unknown>
       expect(obj.component).toBe('ios')
-      expect(obj.level).toBeTruthy()
-      expect(obj.ts).toBeTruthy()
+      const fields = obj.fields as Record<string, unknown>
+      // Desktop-injected identity present on every line.
+      expect(fields.device_id).toBe('device-001')
+      expect(fields.device_name).toBe('Josh iPhone')
+      expect(typeof fields.desktop_host).toBe('string')
+      expect((fields.desktop_host as string).length).toBeGreaterThan(0)
+      // iOS-stamped identity preserved.
+      expect(fields.device_model).toBe('iPhone15,3')
+      expect(fields.app_version).toBe('1.2.0')
     }
   })
 
-  it('does not prepend a txt header', async () => {
+  it('writes valid JSONL with no header prefix', async () => {
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
-
-    const singleLine = JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', msg: 'hi', fields: {} })
-
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: singleLine + '\n', deviceId: 'device-002', deviceName: 'iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1) + '\n', deviceId: 'device-002', deviceName: 'iPhone', nextSeq: 2 },
       'device-002',
     )
-
     const [, content] = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
-    // Must NOT start with a '#' comment header
     expect((content as string).startsWith('#')).toBe(false)
-    // Must start with a JSON object
     expect((content as string).trimStart().startsWith('{')).toBe(true)
   })
 
   it('appends to existing file on subsequent pulls', async () => {
-    // Simulate file already existing so appendFileSync is called instead.
     ;(existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
-
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
-
-    const singleLine = JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', msg: 'append test', fields: {} })
-
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: singleLine + '\n', deviceId: 'device-003', deviceName: 'iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'append test') + '\n', deviceId: 'device-003', deviceName: 'iPhone', nextSeq: 2 },
       'device-003',
     )
-
-    // appendFileSync must be called when the file exists; writeFileSync must not.
     expect(appendFileSync).toHaveBeenCalledOnce()
     expect(writeFileSync).not.toHaveBeenCalled()
-    const [filePath, content, encoding] = (appendFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [filePath, , encoding] = (appendFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(filePath).toMatch(/ios-diagnostic-logs\.jsonl$/)
-    expect(content).toBe(singleLine + '\n')
     expect(encoding).toBe('utf-8')
+  })
+
+  it('passes a malformed line through unchanged (no silent drop)', async () => {
+    const { handleDiagnosticLogsResponse } = await import('../diagnostics')
+    const malformed = 'this is not json'
+    const good = iosLine(1)
+    handleDiagnosticLogsResponse(
+      { type: 'desktop_diagnostic_logs_response', logs: `${malformed}\n${good}\n`, deviceId: 'device-004', deviceName: 'iPhone', nextSeq: 2 },
+      'device-004',
+    )
+    const [, content] = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
+    const lines = (content as string).split('\n').filter(Boolean)
+    // Both lines survive: the malformed one verbatim, the good one identity-stamped.
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toBe(malformed)
+    const goodObj = JSON.parse(lines[1]) as Record<string, unknown>
+    expect((goodObj.fields as Record<string, unknown>).device_id).toBe('device-004')
   })
 })
 
@@ -129,16 +129,14 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
-    // Default: file is under the cap — no rotation.
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: 0 })
   })
 
   it('does not rotate when file is under the cap', async () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES - 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
-    const singleLine = JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', msg: 'small', fields: {} })
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: singleLine + '\n', deviceId: 'dev-small', deviceName: 'iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'small') + '\n', deviceId: 'dev-small', deviceName: 'iPhone', nextSeq: 2 },
       'dev-small',
     )
     expect(vi.mocked(renameSync)).not.toHaveBeenCalled()
@@ -147,33 +145,26 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
   it('renames live file to .1 when file exceeds the cap', async () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES + 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
-    const singleLine = JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', msg: 'big', fields: {} })
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: singleLine + '\n', deviceId: 'dev-big', deviceName: 'iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'big') + '\n', deviceId: 'dev-big', deviceName: 'iPhone', nextSeq: 2 },
       'dev-big',
     )
     const renameCalls = vi.mocked(renameSync).mock.calls.map(([src, dst]) => [String(src), String(dst)])
     const promoted = renameCalls.find(([, dst]) => dst.endsWith('ios-diagnostic-logs.jsonl.1'))
     expect(promoted).toBeDefined()
-    // Source must be the live file (no suffix).
     expect(promoted![0]).toMatch(/ios-diagnostic-logs\.jsonl$/)
   })
 
   it('shifts .1→.2 before renaming live to .1', async () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES + 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
-    const singleLine = JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', msg: 'shift', fields: {} })
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: singleLine + '\n', deviceId: 'dev-shift', deviceName: 'iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'shift') + '\n', deviceId: 'dev-shift', deviceName: 'iPhone', nextSeq: 2 },
       'dev-shift',
     )
     const renameCalls = vi.mocked(renameSync).mock.calls.map(([src, dst]) => [String(src), String(dst)])
-    const shiftIdx = renameCalls.findIndex(([src, dst]) =>
-      src.endsWith('.1') && dst.endsWith('.2'),
-    )
-    const promoteIdx = renameCalls.findIndex(([src, dst]) =>
-      src.match(/ios-diagnostic-logs\.jsonl$/) && dst.endsWith('.1'),
-    )
+    const shiftIdx = renameCalls.findIndex(([src, dst]) => src.endsWith('.1') && dst.endsWith('.2'))
+    const promoteIdx = renameCalls.findIndex(([src, dst]) => src.match(/ios-diagnostic-logs\.jsonl$/) && dst.endsWith('.1'))
     expect(shiftIdx).toBeGreaterThanOrEqual(0)
     expect(promoteIdx).toBeGreaterThan(shiftIdx)
   })
@@ -181,9 +172,8 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
   it('unlinks the oldest generation (.2) before shifting', async () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES + 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
-    const singleLine = JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', msg: 'prune', fields: {} })
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: singleLine + '\n', deviceId: 'dev-prune', deviceName: 'iPhone' },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'prune') + '\n', deviceId: 'dev-prune', deviceName: 'iPhone', nextSeq: 2 },
       'dev-prune',
     )
     const unlinkPaths = vi.mocked(unlinkSync).mock.calls.map(([p]) => String(p))

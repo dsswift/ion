@@ -121,20 +121,61 @@ export function sortAgents(agents: AgentStateUpdate[]): AgentStateUpdate[] {
   })
 }
 
-export function getLabelBg(agent: AgentStateUpdate): string {
-  const base = getAgentColor(agent)
-  if (agent.status === 'done') return '#143e1e'
-  if (agent.status === 'error') return '#781414'
-  return base
+/**
+ * The subset of theme tokens `getStatusDot` reads. Declared structurally so this
+ * pure helper stays free of any theme-store import; `AgentPanel` passes the live
+ * `useColors()` object, which satisfies this shape.
+ */
+export interface StatusDotColors {
+  statusRunning: string
+  statusWaitingChildren: string
+  statusWaitingChildrenGlow: string
+  statusComplete: string
+  statusError: string
+  statusIdle: string
 }
 
-export function getStatusSuffix(agent: AgentStateUpdate): string {
-  if (agent.status === 'running') return 'responding...'
-  const elapsed = agent.metadata?.elapsed as number | undefined
-  if (agent.status === 'done' && elapsed != null) return `done ${elapsed}s`
-  if (agent.status === 'done') return 'done'
-  if (agent.status === 'error') return 'error'
-  return ''
+/** The resolved dot attributes for one agent row. `glowColor` is empty when the
+ *  dot carries no glow (only the yellow "waiting on children" state glows,
+ *  mirroring the platform's tab/status-bar dots). */
+export interface StatusDot {
+  bg: string
+  pulse: boolean
+  glowColor: string
+}
+
+/**
+ * Map an agent's status to the platform's standardized status-dot vocabulary,
+ * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use:
+ *
+ *   error            → solid statusError
+ *   running + running child(ren) → pulsing yellow statusWaitingChildren + glow
+ *   running          → pulsing orange statusRunning
+ *   done             → solid green statusComplete
+ *   else (idle/…)    → solid statusIdle
+ *
+ * `hasRunningChildren` is only consulted in the running branch (an idle agent is
+ * never "waiting on children" in this surface). Kept pure — the caller resolves
+ * `colors` from `useColors()` and the child-running flag from `childAgentsOf`.
+ */
+export function getStatusDot(
+  agent: AgentStateUpdate,
+  colors: StatusDotColors,
+  hasRunningChildren: boolean,
+): StatusDot {
+  if (agent.status === 'error') {
+    return { bg: colors.statusError, pulse: false, glowColor: '' }
+  }
+  if (agent.status === 'running') {
+    if (hasRunningChildren) {
+      return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow }
+    }
+    return { bg: colors.statusRunning, pulse: true, glowColor: '' }
+  }
+  if (agent.status === 'done') {
+    return { bg: colors.statusComplete, pulse: false, glowColor: '' }
+  }
+  return { bg: colors.statusIdle, pulse: false, glowColor: '' }
 }
 
 export function formatDuration(secs: number): string {

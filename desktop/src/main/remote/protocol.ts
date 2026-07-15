@@ -157,7 +157,7 @@ export type RemoteCommand =
   | { type: 'desktop_discover_commands'; directory: string }
   | { type: 'desktop_upload_attachment'; dataUrl: string; name: string; correlationId?: string }
   | { type: 'desktop_voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
-  | { type: 'desktop_diagnostic_logs_response'; logs: string; deviceId: string; deviceName: string }
+  | { type: 'desktop_diagnostic_logs_response'; logs: string; deviceId: string; deviceName: string; nextSeq: number }
   | { type: 'desktop_set_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
   // Write-back path for the per-desktop settings the iOS Settings tab
@@ -409,13 +409,16 @@ export type RemoteEvent =
   | { type: 'desktop_discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
   | { type: 'desktop_tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }
   /**
-   * Request iOS diagnostic logs since `lineOffset`. lineOffset=0 requests
-   * the full history; higher values request only new lines since the last
-   * pull (incremental). iOS uses `DiagnosticLog.exportIncrementalSince`.
-   * Additive field — older iOS builds that don't decode `lineOffset` treat
-   * every request as a full export (graceful fallback).
+   * Request iOS diagnostic logs newer than `sinceSeq`. sinceSeq=0 requests
+   * the full history; higher values request only lines whose `fields.seq`
+   * exceeds the desktop's persisted per-device cursor (incremental,
+   * exactly-once). iOS uses `DiagnosticLog.exportIncrementalSince`. seq is a
+   * monotonic per-line identity that survives on-device session rotation,
+   * unlike the former line-count `lineOffset`. Additive field — older iOS
+   * builds that don't decode `sinceSeq` treat every request as a full export
+   * (graceful fallback).
    */
-  | { type: 'desktop_request_diagnostic_logs'; lineOffset?: number }
+  | { type: 'desktop_request_diagnostic_logs'; sinceSeq?: number }
   // ─── desktop_intercept (forwarded from engine to iOS) ────────────────
   // The desktop forwards this to iOS devices that have the target session's
   // tab focused and have interceptEnabled. Carries the full intercept payload

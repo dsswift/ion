@@ -161,10 +161,8 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
       {renderedHeader}
       <div style={{ padding: `8px 12px 8px ${leftPad}px`, fontSize: 11, color: colors.textTertiary }}>
         {dispatchIsRunning
-          ? 'Working...'
-          : activeDispatch
-            ? 'No transcript recorded for this dispatch'
-            : 'No conversation data available'}
+          ? 'running'
+          : 'No transcript recorded for this dispatch'}
       </div>
     </div>
   )

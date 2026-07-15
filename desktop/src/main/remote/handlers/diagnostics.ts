@@ -1,7 +1,8 @@
-import { appendFileSync, writeFileSync, existsSync, mkdirSync, statSync, renameSync, unlinkSync } from 'fs'
+import { appendFileSync, writeFileSync, existsSync, mkdirSync, statSync, renameSync, unlinkSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
+import { homedir, hostname } from 'os'
 import { log as _log } from '../../logger'
+import { atomicWriteFileSync } from '../../utils/atomicWrite'
 import { state } from '../../state'
 import type { RemoteCommand } from '../protocol'
 
@@ -11,6 +12,22 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 /** Persisted log file path — readable by the engine's Read tool. */
 const LOG_FILE = join(homedir(), '.ion', 'ios-diagnostic-logs.jsonl')
+
+/**
+ * Persisted per-device seq cursor. Maps deviceId → the highest `nextSeq` the
+ * device has reported. Survives desktop restart so a relaunch resumes the
+ * incremental pull instead of re-requesting (and re-appending) the device's
+ * whole retained history. Written via atomicWriteFileSync (non-secret → 0o644).
+ */
+const SEQ_MARK_FILE = join(homedir(), '.ion', 'ios-log-seq.json')
+
+/**
+ * This desktop's hostname, cached once. Injected onto every persisted iOS log
+ * line as `fields.desktop_host` so the central sink can attribute an iOS
+ * device to the desktop that collected it. Matches the telemetry `host` value
+ * for the same machine, enabling manual correlation to the Ion Fleet board.
+ */
+const DESKTOP_HOST = hostname().replace(/\.local$/, '')
 
 /**
  * Size cap for the desktop-side iOS log file. When the file exceeds this limit
@@ -54,16 +71,60 @@ function rotateIosLogIfNeeded(): void {
 /** How often to pull logs while a device is connected (ms). Configurable for tests. */
 export const PERIODIC_LOG_PULL_INTERVAL_MS = 5_000
 
-// ─── Per-device high-water mark (cumulative line count already persisted) ────
+// ─── Per-device seq cursor (persisted, exactly-once resume) ──────────────────
 
 /**
- * Tracks how many log lines we have already persisted for each device.
- * On each pull we send this count as `lineOffset` so iOS only returns
- * new lines. After persisting the response we advance the mark.
+ * In-memory cache of the persisted per-device seq marks, loaded lazily from
+ * SEQ_MARK_FILE on first access. Maps deviceId → highest `nextSeq` reported.
+ * On each pull we send this value as `sinceSeq` so iOS returns only lines whose
+ * `fields.seq` exceeds it. After persisting a response we advance and persist
+ * the mark. Because it is disk-backed, a desktop restart resumes rather than
+ * re-pulling from 0.
  *
  * Exported for test access.
  */
-export const deviceLogLineOffset = new Map<string, number>()
+export const deviceSeqMark = new Map<string, number>()
+
+let seqMarksLoaded = false
+
+/** Load persisted seq marks into the in-memory cache once. */
+function loadSeqMarks(): void {
+  if (seqMarksLoaded) return
+  seqMarksLoaded = true
+  try {
+    if (existsSync(SEQ_MARK_FILE)) {
+      const parsed = JSON.parse(readFileSync(SEQ_MARK_FILE, 'utf-8')) as Record<string, number>
+      for (const [deviceId, seq] of Object.entries(parsed)) {
+        if (typeof seq === 'number' && Number.isFinite(seq)) deviceSeqMark.set(deviceId, seq)
+      }
+      log('log_pull: loaded seq marks', { count: deviceSeqMark.size, path: SEQ_MARK_FILE })
+    } else {
+      log('log_pull: no persisted seq marks', { path: SEQ_MARK_FILE })
+    }
+  } catch (err) {
+    // Corrupt mark file: start fresh rather than crash. A full re-pull is the
+    // safe fallback (dedup on seq below still prevents duplicate appends).
+    log('log_pull: seq mark load failed, starting fresh', { error: (err as Error).message })
+  }
+}
+
+/** Read the persisted seq mark for a device (0 when unseen). */
+function getSeqMark(deviceId: string): number {
+  loadSeqMarks()
+  return deviceSeqMark.get(deviceId) ?? 0
+}
+
+/** Advance and persist a device's seq mark. */
+function setSeqMark(deviceId: string, nextSeq: number): void {
+  loadSeqMarks()
+  deviceSeqMark.set(deviceId, nextSeq)
+  try {
+    const obj = Object.fromEntries(deviceSeqMark)
+    atomicWriteFileSync(SEQ_MARK_FILE, JSON.stringify(obj), 0o644)
+  } catch (err) {
+    log('log_pull: seq mark persist failed', { device_id: deviceId, error: (err as Error).message })
+  }
+}
 
 // ─── Periodic pull interval ───────────────────────────────────────────────────
 
@@ -85,9 +146,9 @@ export function startPeriodicLogPull(): void {
       return
     }
     for (const deviceId of deviceIds) {
-      const lineOffset = deviceLogLineOffset.get(deviceId) ?? 0
-      log('log_pull: periodic pull', { device_id: deviceId, line_offset: lineOffset })
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_request_diagnostic_logs', lineOffset })
+      const sinceSeq = getSeqMark(deviceId)
+      log('log_pull: periodic pull', { device_id: deviceId, since_seq: sinceSeq })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_request_diagnostic_logs', sinceSeq })
     }
   }, PERIODIC_LOG_PULL_INTERVAL_MS)
 }
@@ -115,31 +176,102 @@ interface PendingLogRequest {
 const pendingRequests = new Map<string, PendingLogRequest>()
 
 /**
+ * Inject desktop-side identity into one parsed iOS log line and dedup on seq.
+ *
+ * The desktop stamps what only IT knows — the paired device's id/name (from the
+ * response command) and this desktop's hostname — into the line's `fields`. iOS
+ * already stamped what only it knows (device_model, app_version, os_version,
+ * seq). Together they make every iOS line individually attributable downstream:
+ * which device, which app build, paired to which desktop.
+ *
+ * Returns the re-serialized line, or null when the line is a duplicate (its
+ * `seq` is at or below `sinceSeq` — a reconnect/overlap re-send) and must be
+ * skipped. Malformed lines (unparseable JSON, or no numeric seq) are passed
+ * through UNCHANGED with `passthrough=true` so a bad payload never silently
+ * drops a log entry (desktop logging rule: no silent drop).
+ */
+function injectIdentity(
+  line: string,
+  deviceId: string,
+  deviceName: string,
+  sinceSeq: number,
+): { out: string | null; passthrough: boolean; seq: number | null } {
+  let obj: Record<string, unknown>
+  try {
+    obj = JSON.parse(line) as Record<string, unknown>
+  } catch {
+    return { out: line, passthrough: true, seq: null }
+  }
+  const fields = (obj.fields ?? {}) as Record<string, unknown>
+  const rawSeq = fields.seq
+  const seq = typeof rawSeq === 'number' ? rawSeq : typeof rawSeq === 'string' ? Number(rawSeq) : NaN
+  if (!Number.isFinite(seq)) {
+    // Parseable JSON but no usable seq — inject identity but cannot dedup.
+    fields.device_id = deviceId
+    fields.device_name = deviceName
+    fields.desktop_host = DESKTOP_HOST
+    obj.fields = fields
+    return { out: JSON.stringify(obj), passthrough: false, seq: null }
+  }
+  if (seq <= sinceSeq) {
+    // Already persisted on a prior pull — drop the duplicate.
+    return { out: null, passthrough: false, seq }
+  }
+  fields.device_id = deviceId
+  fields.device_name = deviceName
+  fields.desktop_host = DESKTOP_HOST
+  obj.fields = fields
+  return { out: JSON.stringify(obj), passthrough: false, seq }
+}
+
+/**
  * Persist a log chunk from iOS to ~/.ion/ios-diagnostic-logs.jsonl.
  *
- * Append-correct: if `logs` is non-empty and the file already exists, we
- * append rather than overwrite. This preserves history from earlier pulls.
- * Each call represents `newLineCount` new lines (computed from the response)
- * so the caller can advance the device's high-water mark after persisting.
+ * Each incoming line is parsed, stamped with desktop-side identity
+ * (device_id / device_name / desktop_host) inside its `fields`, and appended.
+ * Lines whose `seq` is at or below the persisted cursor are dropped as
+ * duplicates (exactly-once against reconnect/restart overlap). Malformed lines
+ * pass through unchanged and bump a debug-logged tolerance counter — never a
+ * silent drop. Returns nothing; the caller advances the seq mark from the
+ * response's `nextSeq`.
  *
  * Every line must remain a valid JSON object so Alloy/LogQL parsers can
  * consume the JSONL file.
  */
-function persistLogChunk(logs: string, deviceId: string): void {
+function persistLogChunk(logs: string, deviceId: string, deviceName: string, sinceSeq: number): void {
   if (!logs.trim()) {
     log('log_pull: no new lines', { device_id: deviceId })
     return
   }
+  const incoming = logs.split('\n').filter((l) => l.trim())
+  const kept: string[] = []
+  let duplicates = 0
+  let malformed = 0
+  for (const line of incoming) {
+    const { out, passthrough } = injectIdentity(line, deviceId, deviceName, sinceSeq)
+    if (passthrough) malformed++
+    if (out === null) {
+      duplicates++
+      continue
+    }
+    kept.push(out)
+  }
+  if (malformed > 0) {
+    log('log_pull: malformed lines passed through', { device_id: deviceId, count: malformed })
+  }
+  if (kept.length === 0) {
+    log('log_pull: all lines were duplicates', { device_id: deviceId, duplicates })
+    return
+  }
+  const payload = kept.join('\n') + '\n'
   try {
     mkdirSync(join(homedir(), '.ion'), { recursive: true })
     if (existsSync(LOG_FILE)) {
-      appendFileSync(LOG_FILE, logs, 'utf-8')
+      appendFileSync(LOG_FILE, payload, 'utf-8')
     } else {
-      writeFileSync(LOG_FILE, logs, 'utf-8')
+      writeFileSync(LOG_FILE, payload, 'utf-8')
     }
-    // Count lines appended for the log summary (blank-line-safe).
-    const lineCount = logs.split('\n').filter((l) => l.trim()).length
-    log('log_pull: appended lines', { count: lineCount, device_id: deviceId, path: LOG_FILE })
+    log('log_pull: appended lines', { count: kept.length, duplicates, malformed, device_id: deviceId, path: LOG_FILE })
     // Rotate the iOS log file if it has grown past the size cap.
     rotateIosLogIfNeeded()
   } catch (err) {
@@ -169,31 +301,34 @@ export function requestDiagnosticLogs(deviceId: string): Promise<string> {
 
     pendingRequests.set(deviceId, { resolve, reject, timer })
 
-    const lineOffset = deviceLogLineOffset.get(deviceId) ?? 0
-    log('log_pull: requesting', { device_id: deviceId, line_offset: lineOffset })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_request_diagnostic_logs', lineOffset })
+    const sinceSeq = getSeqMark(deviceId)
+    log('log_pull: requesting', { device_id: deviceId, since_seq: sinceSeq })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_request_diagnostic_logs', sinceSeq })
   })
 }
 
 /**
  * Handle the `diagnostic_logs_response` command from an iOS device.
- * Resolves any pending promise AND appends new lines to the log file.
- * Advances the per-device high-water mark by the line count received.
+ * Resolves any pending promise AND appends new, identity-stamped lines to the
+ * log file (dropping any whose seq is at or below the persisted cursor).
+ * Advances and persists the per-device seq mark to the response's `nextSeq`.
  */
 export function handleDiagnosticLogsResponse(
   cmd: Extract<RemoteCommand, { type: 'desktop_diagnostic_logs_response' }>,
   deviceId: string,
 ): void {
-  const newLineCount = cmd.logs ? cmd.logs.split('\n').filter((l) => l.trim()).length : 0
-  log('log_pull: received', { device_id: deviceId, bytes: cmd.logs?.length ?? 0, lines: newLineCount })
+  const lineCount = cmd.logs ? cmd.logs.split('\n').filter((l) => l.trim()).length : 0
+  log('log_pull: received', { device_id: deviceId, bytes: cmd.logs?.length ?? 0, lines: lineCount, next_seq: cmd.nextSeq })
 
-  persistLogChunk(cmd.logs ?? '', deviceId)
+  const sinceSeq = getSeqMark(deviceId)
+  persistLogChunk(cmd.logs ?? '', deviceId, cmd.deviceName ?? 'unknown', sinceSeq)
 
-  // Advance the high-water mark so the next pull requests only newer lines.
-  if (newLineCount > 0) {
-    const prev = deviceLogLineOffset.get(deviceId) ?? 0
-    deviceLogLineOffset.set(deviceId, prev + newLineCount)
-    log('log_pull: line offset updated', { device_id: deviceId, from: prev, to: prev + newLineCount })
+  // Advance the persisted seq mark so the next pull (and any post-restart pull)
+  // requests only lines newer than what we have. Guard against a stale/absent
+  // nextSeq: never move the cursor backward.
+  if (typeof cmd.nextSeq === 'number' && cmd.nextSeq > sinceSeq) {
+    setSeqMark(deviceId, cmd.nextSeq)
+    log('log_pull: seq mark updated', { device_id: deviceId, from: sinceSeq, to: cmd.nextSeq })
   }
 
   const pending = pendingRequests.get(deviceId)
@@ -218,14 +353,15 @@ export async function requestLogsFromFirstDevice(): Promise<string> {
 
 /**
  * Auto-pull diagnostic logs from a device. Called on sync (device connect/reconnect).
- * Resets the high-water mark to 0 on reconnect so we get the full history from
- * fresh. Fire-and-forget — errors are logged but do not propagate.
- * Also starts the periodic pull interval if not already running.
+ * Resumes from the PERSISTED seq mark — a reconnect (or a desktop restart) pulls
+ * only lines newer than what is already on disk, so history is never re-appended.
+ * Fire-and-forget — errors are logged but do not propagate. Also starts the
+ * periodic pull interval if not already running.
  */
 export function autoPullDiagnosticLogs(deviceId: string): void {
-  // Reset high-water mark on reconnect — full history pull.
-  deviceLogLineOffset.set(deviceId, 0)
-  log('log_pull: auto-pulling on connect', { device_id: deviceId })
+  // Resume from the persisted cursor — do NOT reset to 0 (that re-ships history).
+  loadSeqMarks()
+  log('log_pull: auto-pulling on connect', { device_id: deviceId, since_seq: getSeqMark(deviceId) })
   requestDiagnosticLogs(deviceId).catch((err) => {
     log('log_pull: auto-pull failed', { error: (err as Error).message })
   })

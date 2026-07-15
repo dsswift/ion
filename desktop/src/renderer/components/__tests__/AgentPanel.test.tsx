@@ -101,7 +101,7 @@ async function mount(container: HTMLDivElement, root: ReturnType<typeof createRo
   // Expand the panel if it rendered collapsed.
   if (!container.textContent?.includes('Dev Lead') && !container.textContent?.includes('engine-dev')) {
     const header = Array.from(container.querySelectorAll('div')).find((el) =>
-      el.textContent?.includes('Agents ('),
+      el.textContent?.includes('Agents ·'),
     ) as HTMLElement | undefined
     if (header) await act(async () => { header.click() })
   }
@@ -194,7 +194,7 @@ describe('AgentPanel scoping and drill-down', () => {
     const { container, root } = render(<div />)
     await act(async () => { root.render(<AgentPanel agents={[]} subDispatch alwaysRender />) })
     await act(async () => { await Promise.resolve() })
-    expect(container.textContent).toContain('Agents (0)')
+    expect(container.textContent).toContain('Agents · 0')
     await act(async () => { root.unmount() })
     container.remove()
   })
@@ -203,7 +203,7 @@ describe('AgentPanel scoping and drill-down', () => {
     const { container, root } = render(<div />)
     await act(async () => { root.render(<AgentPanel agents={[]} />) })
     await act(async () => { await Promise.resolve() })
-    expect(container.textContent ?? '').not.toContain('Agents (')
+    expect(container.textContent ?? '').not.toContain('Agents ·')
     await act(async () => { root.unmount() })
     container.remove()
   })
@@ -286,7 +286,7 @@ describe('AgentPanel scoping and drill-down', () => {
     // Expand the panel (rendered collapsed by default).
     if (!container.textContent?.includes('Worker')) {
       const header = Array.from(container.querySelectorAll('div')).find((el) =>
-        el.textContent?.includes('Agents ('),
+        el.textContent?.includes('Agents ·'),
       ) as HTMLElement | undefined
       if (header) await act(async () => { header.click() })
     }

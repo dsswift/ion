@@ -15,11 +15,10 @@ const RUNTIME_EXPORTS = [
   'dispatchKey',
   'AGENT_COLORS',
   'getAgentColor',
+  'getStatusDot',
   'isRootLevelAgent',
   'isAgentVisible',
   'sortAgents',
-  'getLabelBg',
-  'getStatusSuffix',
   'formatDuration',
   'selectAgentDepths',
   'childrenOfDispatch',
@@ -44,5 +43,55 @@ describe('agent-helpers relocation', () => {
   it('AGENT_COLORS is exported and carries the department accent map', () => {
     expect(lib.AGENT_COLORS['dev-lead']).toBe('#8c5ac8')
     expect(Object.keys(lib.AGENT_COLORS).length).toBeGreaterThan(0)
+  })
+})
+
+// ─── getStatusDot: standardized three-state dot vocabulary ─────────────────
+//
+// Pins the cascade to the platform tokens (orange running / yellow
+// waiting-children / green done). Reverting any branch to a different token
+// turns the matching case red.
+
+const DOT_COLORS = {
+  statusRunning: '#d97757',
+  statusWaitingChildren: '#f59e0b',
+  statusWaitingChildrenGlow: 'rgba(245, 158, 11, 0.4)',
+  statusComplete: '#7aac8c',
+  statusError: '#c47060',
+  statusIdle: '#8a8a80',
+}
+
+function agentWith(status: string): import('../../../shared/types').AgentStateUpdate {
+  return { name: 'a', status, metadata: {} } as import('../../../shared/types').AgentStateUpdate
+}
+
+describe('getStatusDot', () => {
+  it('running with no running children → pulsing orange, no glow', () => {
+    const dot = lib.getStatusDot(agentWith('running'), DOT_COLORS, false)
+    expect(dot).toEqual({ bg: DOT_COLORS.statusRunning, pulse: true, glowColor: '' })
+  })
+
+  it('running with a running child → pulsing yellow + glow (waiting on children)', () => {
+    const dot = lib.getStatusDot(agentWith('running'), DOT_COLORS, true)
+    expect(dot).toEqual({
+      bg: DOT_COLORS.statusWaitingChildren,
+      pulse: true,
+      glowColor: DOT_COLORS.statusWaitingChildrenGlow,
+    })
+  })
+
+  it('done → solid green, no pulse', () => {
+    const dot = lib.getStatusDot(agentWith('done'), DOT_COLORS, false)
+    expect(dot).toEqual({ bg: DOT_COLORS.statusComplete, pulse: false, glowColor: '' })
+  })
+
+  it('error → solid statusError, no pulse (children flag ignored)', () => {
+    const dot = lib.getStatusDot(agentWith('error'), DOT_COLORS, true)
+    expect(dot).toEqual({ bg: DOT_COLORS.statusError, pulse: false, glowColor: '' })
+  })
+
+  it('unknown/idle status → solid statusIdle', () => {
+    const dot = lib.getStatusDot(agentWith('idle'), DOT_COLORS, false)
+    expect(dot).toEqual({ bg: DOT_COLORS.statusIdle, pulse: false, glowColor: '' })
   })
 })

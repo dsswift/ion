@@ -1,19 +1,18 @@
 /**
  * diagnostics-periodic-pull.test.ts
  *
- * Pinning test for feat(desktop): periodic iOS diagnostic-log pull while connected.
+ * Pinning test for the iOS diagnostic-log pull: seq-based, exactly-once.
  *
  * Verifies:
- * 1. deviceLogLineOffset is exported and tracks per-device high-water mark
+ * 1. deviceSeqMark is exported and tracks the per-device seq cursor
  * 2. startPeriodicLogPull / stopPeriodicLogPull control the interval
- * 3. handleDiagnosticLogsResponse advances the high-water mark
- * 4. autoPullDiagnosticLogs resets offset to 0 (full pull on connect)
- * 5. persistLogs uses append (not overwrite) — confirmed by the append-correct path
+ * 3. handleDiagnosticLogsResponse advances the cursor to the response's nextSeq
+ * 4. autoPullDiagnosticLogs resumes from the persisted cursor (never resets to 0)
+ * 5. a reconnect at the same cursor appends ZERO duplicate lines (dedup on seq)
  *
- * Failure mode without the fix:
- * - deviceLogLineOffset would not exist (no per-device tracking)
- * - startPeriodicLogPull would not exist (no periodic pulls)
- * - handleDiagnosticLogsResponse would call writeFileSync (overwrite) not appendFileSync
+ * Failure mode before the fix:
+ * - the cursor was a line COUNT reset to 0 on every reconnect, so each reconnect
+ *   re-appended the device's whole retained history (double-count).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -38,11 +37,22 @@ vi.mock('../../../state', () => ({
   },
 }))
 
+// existsSync=false so getSeqMark starts each run from an empty persisted store;
+// appendFileSync captures written payloads for the dedup assertion.
 vi.mock('fs', () => ({
-  existsSync: vi.fn(() => true),
+  existsSync: vi.fn(() => false),
+  readFileSync: vi.fn(() => '{}'),
   appendFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   mkdirSync: vi.fn(),
+  statSync: vi.fn(() => ({ size: 0 })),
+  renameSync: vi.fn(),
+  unlinkSync: vi.fn(),
+}))
+
+// Seq-mark persistence is a no-op in tests (the in-memory Map is the source of truth).
+vi.mock('../../../utils/atomicWrite', () => ({
+  atomicWriteFileSync: vi.fn(),
 }))
 
 vi.mock('../../../logger', () => ({
@@ -52,14 +62,19 @@ vi.mock('../../../logger', () => ({
   warn: vi.fn(),
 }))
 
+import { appendFileSync, writeFileSync } from 'fs'
 import {
-  deviceLogLineOffset,
+  deviceSeqMark,
   startPeriodicLogPull,
   stopPeriodicLogPull,
   handleDiagnosticLogsResponse,
   autoPullDiagnosticLogs,
   PERIODIC_LOG_PULL_INTERVAL_MS,
 } from '../diagnostics'
+
+function iosLine(seq: number, msg = 'x'): string {
+  return JSON.stringify({ ts: '2024-11-15T22:04:05Z', level: 'INFO', component: 'ios', tag: 't', msg, fields: { seq: String(seq) } })
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -70,9 +85,9 @@ describe('PERIODIC_LOG_PULL_INTERVAL_MS', () => {
   })
 })
 
-describe('deviceLogLineOffset — per-device high-water mark', () => {
+describe('deviceSeqMark — per-device seq cursor', () => {
   beforeEach(() => {
-    deviceLogLineOffset.clear()
+    deviceSeqMark.clear()
     vi.clearAllMocks()
     stopPeriodicLogPull()
   })
@@ -82,38 +97,52 @@ describe('deviceLogLineOffset — per-device high-water mark', () => {
   })
 
   it('is exported as a Map', () => {
-    expect(deviceLogLineOffset).toBeInstanceOf(Map)
+    expect(deviceSeqMark).toBeInstanceOf(Map)
   })
 
-  it('starts at 0 for a new device', () => {
-    expect(deviceLogLineOffset.get('new-device')).toBeUndefined()
+  it('handleDiagnosticLogsResponse advances the cursor to nextSeq', () => {
+    deviceSeqMark.set('dev-2', 100)
+    const logs = `${iosLine(101)}\n${iosLine(102)}\n${iosLine(103)}\n`
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs, deviceId: 'dev-2', deviceName: 'iPad', nextSeq: 104 } as any, 'dev-2')
+    expect(deviceSeqMark.get('dev-2')).toBe(104)
   })
 
-  it('autoPullDiagnosticLogs resets offset to 0', () => {
-    deviceLogLineOffset.set('dev-1', 500)
+  it('does not move the cursor backward on a stale nextSeq', () => {
+    deviceSeqMark.set('dev-3', 200)
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: '', deviceId: 'dev-3', deviceName: 'iPhone', nextSeq: 5 } as any, 'dev-3')
+    expect(deviceSeqMark.get('dev-3')).toBe(200)
+  })
+
+  it('autoPullDiagnosticLogs resumes from the persisted cursor (does NOT reset to 0)', () => {
+    deviceSeqMark.set('dev-1', 500)
     autoPullDiagnosticLogs('dev-1')
-    expect(deviceLogLineOffset.get('dev-1')).toBe(0)
+    // Cursor is untouched, and the outgoing request carries sinceSeq=500.
+    expect(deviceSeqMark.get('dev-1')).toBe(500)
+    expect(mockSendToDevice).toHaveBeenCalledWith(
+      'dev-1',
+      expect.objectContaining({ type: 'desktop_request_diagnostic_logs', sinceSeq: 500 }),
+    )
   })
 
-  it('handleDiagnosticLogsResponse advances the high-water mark', () => {
-    deviceLogLineOffset.set('dev-2', 100)
-    const logs = '{"msg":"line1"}\n{"msg":"line2"}\n{"msg":"line3"}\n'
-    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs, deviceId: 'dev-2', deviceName: 'iPad' } as any, 'dev-2')
-    const offset = deviceLogLineOffset.get('dev-2') ?? 0
-    // 3 new lines → offset advances from 100 to 103.
-    expect(offset).toBe(103)
-  })
+  it('a reconnect at the same cursor appends ZERO duplicate lines (exactly-once)', () => {
+    // First pull: seqs 1..3, cursor advances to 4.
+    const first = `${iosLine(1)}\n${iosLine(2)}\n${iosLine(3)}\n`
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: first, deviceId: 'dev-x', deviceName: 'iPhone', nextSeq: 4 } as any, 'dev-x')
+    expect(deviceSeqMark.get('dev-x')).toBe(4)
+    ;(appendFileSync as ReturnType<typeof vi.fn>).mockClear()
+    ;(writeFileSync as ReturnType<typeof vi.fn>).mockClear()
 
-  it('handleDiagnosticLogsResponse does not advance offset for empty response', () => {
-    deviceLogLineOffset.set('dev-3', 200)
-    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: '', deviceId: 'dev-3', deviceName: 'iPhone' } as any, 'dev-3')
-    expect(deviceLogLineOffset.get('dev-3')).toBe(200)
+    // Reconnect edge case: the device re-sends seqs 1..3 (already persisted). The
+    // desktop must drop all three as duplicates and write nothing.
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: first, deviceId: 'dev-x', deviceName: 'iPhone', nextSeq: 4 } as any, 'dev-x')
+    expect(appendFileSync).not.toHaveBeenCalled()
+    expect(writeFileSync).not.toHaveBeenCalled()
   })
 })
 
 describe('startPeriodicLogPull / stopPeriodicLogPull', () => {
   beforeEach(() => {
-    deviceLogLineOffset.clear()
+    deviceSeqMark.clear()
     vi.clearAllMocks()
     stopPeriodicLogPull()
     vi.useFakeTimers()
@@ -124,13 +153,13 @@ describe('startPeriodicLogPull / stopPeriodicLogPull', () => {
     vi.useRealTimers()
   })
 
-  it('sendToDevice is called with lineOffset after the interval fires', () => {
-    deviceLogLineOffset.set('device-001', 42)
+  it('sendToDevice is called with sinceSeq after the interval fires', () => {
+    deviceSeqMark.set('device-001', 42)
     startPeriodicLogPull()
     vi.advanceTimersByTime(PERIODIC_LOG_PULL_INTERVAL_MS + 100)
     expect(mockSendToDevice).toHaveBeenCalledWith(
       'device-001',
-      expect.objectContaining({ type: 'desktop_request_diagnostic_logs', lineOffset: 42 }),
+      expect.objectContaining({ type: 'desktop_request_diagnostic_logs', sinceSeq: 42 }),
     )
   })
 
