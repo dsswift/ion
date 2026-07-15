@@ -129,6 +129,10 @@ func buildManifest() contractManifest {
 		// Tracked so cross-language mirrors carry the per-category context readout.
 		"ContextBreakdownPayload":  reflect.TypeOf(ContextBreakdownPayload{}),
 		"ContextBreakdownCategory": reflect.TypeOf(ContextBreakdownCategory{}),
+		// ModelBreakdown is a per-model cost-breakdown row carried inside
+		// ContextBreakdownPayload.ModelBreakdown. Tracked so cross-language
+		// mirrors stay in sync.
+		"ModelBreakdown": reflect.TypeOf(ModelBreakdown{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

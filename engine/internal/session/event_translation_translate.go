@@ -49,10 +49,12 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			Fields: &types.StatusFields{
 				State:             "idle",
 				SessionID:         e.SessionID,
-				TotalCostUsd:      e.CostUsd,
+				RunCostUsd:        e.CostUsd,
 				ContextWindow:     contextWindow,
 				ContextPercent:    pct,
 				PermissionDenials: e.PermissionDenials,
+				NumTurns:          e.NumTurns,
+				ConversationTurns: e.ConversationTurns,
 			},
 		}
 
@@ -276,6 +278,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				CacheCreationTokens: e.CacheCreationTokens,
 				Model:               e.Model,
 				AggregateCostUsd:    e.AggregateCostUsd,
+				ModelBreakdown:      e.ModelBreakdown,
 			},
 		}
 

@@ -31,6 +31,12 @@ type LlmStreamOptions struct {
 type LlmMessage struct {
 	Role    string `json:"role"`
 	Content any    `json:"content"` // string or []LlmContentBlock
+	// Usage carries the API-reported token counts from the response that produced
+	// this message. Set only on assistant messages; nil on all other roles.
+	// Tagged json:"-" so it is excluded from JSON serialization (providers, disk,
+	// wire) — it is an in-memory annotation only, populated by AddAssistantMessage
+	// and rehydrated from conv.Entries at load time.
+	Usage *LlmUsage `json:"-"`
 }
 
 // LlmContentBlock is a union type for message content blocks.
@@ -223,9 +229,28 @@ type ModelInfo struct {
 	ContextWindow    int     `json:"contextWindow"`
 	CostPer1kInput   float64 `json:"costPer1kInput"`
 	CostPer1kOutput  float64 `json:"costPer1kOutput"`
+	// CostPer1kCacheCreation is the per-1k-token cost for prompt-cache creation
+	// (writing new tokens into the cache). When zero the cost.TurnCost function
+	// falls back to 1.25× CostPer1kInput, which matches Anthropic's published
+	// cache-write multiplier for models that do not yet carry explicit pricing.
+	CostPer1kCacheCreation float64 `json:"costPer1kCacheCreation,omitempty"`
+	// CostPer1kCacheRead is the per-1k-token cost for reading from the prompt
+	// cache. When zero the cost.TurnCost function falls back to 0.1× CostPer1kInput,
+	// which matches Anthropic's published cache-read discount for models that
+	// do not yet carry explicit pricing.
+	CostPer1kCacheRead float64 `json:"costPer1kCacheRead,omitempty"`
 	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
 	SupportsThinking bool    `json:"supportsThinking,omitempty"`
 	SupportsImages   bool    `json:"supportsImages,omitempty"`
+	// MaxOutputTokens is the model's maximum output-token capacity per response.
+	// It is the per-model source of truth the provider body-builders use to size
+	// the outbound max_tokens directive when the caller sets no explicit override.
+	// Zero means "not declared for this model": OpenAI/Google omit the field
+	// entirely (the provider applies the model's own maximum), while
+	// Anthropic/Bedrock — whose APIs require the field — fall back to a
+	// conservative provider constant. Additive field — omitempty, never breaks
+	// existing consumers.
+	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
 	// ThinkingMode is the reasoning mechanism this model uses on the wire:
 	//   "adaptive"         — Anthropic adaptive thinking + effort (current models)
 	//   "budget"           — Anthropic legacy type:"enabled" + budget_tokens (older)
@@ -257,8 +282,11 @@ type ModelEntry struct {
 	SupportsCaching  bool     `json:"supportsCaching,omitempty"`
 	SupportsThinking bool     `json:"supportsThinking,omitempty"`
 	SupportsImages   bool     `json:"supportsImages,omitempty"`
-	ThinkingMode     string   `json:"thinkingMode,omitempty"`
-	ThinkingEfforts  []string `json:"thinkingEfforts,omitempty"`
+	// MaxOutputTokens is the model's maximum output-token capacity per response.
+	// See ModelInfo.MaxOutputTokens for the value contract. Additive, omitempty.
+	MaxOutputTokens int      `json:"maxOutputTokens,omitempty"`
+	ThinkingMode    string   `json:"thinkingMode,omitempty"`
+	ThinkingEfforts []string `json:"thinkingEfforts,omitempty"`
 	// Tokenizer is the tiktoken encoding name for this model's local BPE encoder.
 	// See ModelInfo.Tokenizer for the value contract. Additive, omitempty.
 	Tokenizer string `json:"tokenizer,omitempty"`

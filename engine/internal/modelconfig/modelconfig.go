@@ -192,6 +192,15 @@ func UserModels(config map[string]interface{}) map[string]types.ModelInfo {
 				if v, ok := m["costPer1kOutput"].(float64); ok {
 					info.CostPer1kOutput = v
 				}
+				if v, ok := m["costPer1kCacheCreation"].(float64); ok {
+					info.CostPer1kCacheCreation = v
+				}
+				if v, ok := m["costPer1kCacheRead"].(float64); ok {
+					info.CostPer1kCacheRead = v
+				}
+				if v, ok := m["maxOutputTokens"].(float64); ok {
+					info.MaxOutputTokens = int(v)
+				}
 				if v, ok := m["supportsCaching"].(bool); ok {
 					info.SupportsCaching = v
 				}
