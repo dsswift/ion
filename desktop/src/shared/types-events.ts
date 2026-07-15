@@ -183,6 +183,11 @@ export type NormalizedEvent =
   | { type: 'compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }
   | { type: 'steer_injected'; messageLength: number }
+  // Extension-injected prompt (engine ctx.sendPrompt): no client submitted
+  // this turn, so no client did an optimistic insert — the renderer appends
+  // it as a user message. The text is also persisted as the run's user turn,
+  // so a conversation reload shows the same content.
+  | { type: 'prompt_injected'; prompt: string; origin?: string }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
   | { type: 'run_stalled'; stalledDuration: number; lastActivity?: string }
   // Extended-thinking events (issue #158), normalized-stream layer. These are

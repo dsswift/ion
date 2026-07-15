@@ -218,6 +218,20 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               ]
               break
 
+            case 'prompt_injected':
+              // Extension-injected prompt (engine ctx.sendPrompt — dispatch
+              // completion delivery, check-ins, revives): no client submitted
+              // this turn, so no optimistic insert happened anywhere. Append
+              // it as the user turn it is — the same content is persisted in
+              // the conversation file, so a rehydrate shows the identical
+              // transcript (this closes the "ATV shows [Agent X completed]
+              // turns the overlay never displayed" divergence).
+              messages = [
+                ...messages,
+                { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
+              ]
+              break
+
             case 'text_chunk': {
               rTrace('event.stream', 'text_chunk', { tab_id: tabId, len: (event as any).text?.length })
               updated.currentActivity = 'Writing...'

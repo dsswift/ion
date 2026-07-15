@@ -82,6 +82,19 @@ export function handleStreamSignalEvent(
         messageLength: event.steerMessageLength,
       } as NormalizedEvent)
       return true
+
+    case 'engine_prompt_injected':
+      // Extension-injected prompt (ctx.sendPrompt): the engine started a run
+      // on a user turn no client submitted. Forward the full text so live
+      // transcripts can render the turn — without this, clients watch the
+      // model respond to a message that exists only in the conversation file.
+      log('prompt_injected', { tab_id: tabId, prompt_len: event.injectedPrompt?.length ?? 0, origin: event.injectedPromptOrigin ?? '' })
+      ctx.emit('event', tabId, {
+        type: 'prompt_injected',
+        prompt: event.injectedPrompt,
+        origin: event.injectedPromptOrigin,
+      } as NormalizedEvent)
+      return true
   }
   return false
 }

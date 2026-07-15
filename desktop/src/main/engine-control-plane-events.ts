@@ -244,6 +244,7 @@ export function handleEngineEvent(
     case 'engine_tool_stalled':
     case 'engine_run_stalled':
     case 'engine_steer_injected':
+    case 'engine_prompt_injected':
       handleStreamSignalEvent(ctx, tabId, tab, event)
       break
 

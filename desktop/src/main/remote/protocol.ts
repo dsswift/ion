@@ -258,6 +258,13 @@ export type RemoteEvent =
   | { type: 'desktop_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'desktop_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'desktop_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
+  // desktop_prompt_injected: forwarded verbatim from engine_prompt_injected
+  // by the generic engine-event forwarder in event-wiring.ts (engineToWireType
+  // strips the engine_ prefix). An extension injected a prompt via
+  // ctx.sendPrompt — no client submitted this user turn, so no client did an
+  // optimistic insert; clients append it to the transcript from this event.
+  // Field names carried verbatim from the engine ({...event} spread).
+  | { type: 'desktop_prompt_injected'; tabId: string; instanceId?: string | null; injectedPrompt: string; injectedPromptOrigin?: string }
   // desktop_image_content: forwarded verbatim from engine_image_content by the
   // generic engine-event forwarder in event-wiring.ts (engineToWireType strips
   // the engine_ prefix). Carries the desktop-local FILE PATH (never base64 —
