@@ -18,7 +18,7 @@ final class NewConversationRoutingTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeProfile(id: String, name: String = "Profile") -> EngineProfile {
-        EngineProfile(id: id, name: name, extensions: [])
+        EngineProfile(id: id, name: name, extensions: [], defaultMode: nil)
     }
 
     private func makePolicy(
