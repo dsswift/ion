@@ -11,6 +11,12 @@ export interface ModelEntry {
   supportsThinking?: boolean
   supportsImages?: boolean
   /**
+   * Maximum output-token capacity per response for this model (mirrors Go
+   * ModelEntry.MaxOutputTokens). The engine uses it to size the outbound
+   * max_tokens directive; absent for models with no declared cap.
+   */
+  maxOutputTokens?: number
+  /**
    * Reasoning mechanism this model uses on the wire (mirrors Go ModelEntry):
    * "adaptive" | "budget" | "reasoning_effort" | "gemini" | "none" | "".
    * Clients use it together with thinkingEfforts to show/gray the
