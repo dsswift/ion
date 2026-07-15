@@ -32,7 +32,6 @@ function makeInst(overrides: Partial<PersistedConversationInstance> = {}): Persi
     draftInput: '',
     agentStates: [],
     planFilePath: null,
-    forkedFromConversationIds: null,
     ...overrides,
   }
 }

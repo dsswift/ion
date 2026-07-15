@@ -82,7 +82,6 @@ function buildInputInstanceMap(state: PersistedTabState): Map<string, InstanceRe
  *        - draftInput
  *        - permissionMode
  *        - permissionDenied
- *        - forkedFromConversationIds
  *        - agentStates
  *   5. Parent metadata preserved on each output tab: workingDirectory,
  *      engineProfileId, hasEngineExtension.
@@ -166,9 +165,6 @@ export function verifySplitMigration(
       }
       if (JSON.stringify(a.permissionDenied ?? null) !== JSON.stringify(b.permissionDenied ?? null)) {
         return `instance ${key}: permissionDenied differs`
-      }
-      if (JSON.stringify(a.forkedFromConversationIds ?? null) !== JSON.stringify(b.forkedFromConversationIds ?? null)) {
-        return `instance ${key}: forkedFromConversationIds differs`
       }
       if (JSON.stringify(a.agentStates ?? []) !== JSON.stringify(b.agentStates ?? [])) {
         return `instance ${key}: agentStates differ`

@@ -42,7 +42,7 @@ function makeInstance(id: string, conversationIds: string[] = []) {
     permissionMode: 'auto', permissionDenied: null, permissionQueue: [], elicitationQueue: [],
     conversationIds, draftInput: '', agentStates: [],
     statusFields: null, planFilePath: null, thinkingEffort: 'off', sealed: false,
-    dispatchTelemetry: [], forkedFromConversationIds: null, contextBreakdown: null,
+    dispatchTelemetry: [], contextBreakdown: null,
   }
 }
 

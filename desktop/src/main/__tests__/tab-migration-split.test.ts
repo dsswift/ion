@@ -41,7 +41,6 @@ function makeInstance(
     conversationIds: [`conv-${id}`],
     draftInput: '',
     agentStates: [],
-    forkedFromConversationIds: null,
     ...overrides,
   }
 }
@@ -89,7 +88,6 @@ describe('migrateTabStateToSplit - pure transform', () => {
     })
     const inst3 = makeInstance('c', 'Engine C', {
       conversationIds: ['conv-c-1', 'conv-c-2'],
-      forkedFromConversationIds: ['conv-c-0'],
     })
 
     const tab = makeTab({
@@ -127,7 +125,6 @@ describe('migrateTabStateToSplit - pure transform', () => {
     const t2 = result.tabs[2]
     expect(t2.conversationPane?.instances[0].id).toBe('c')
     expect(t2.conversationId).toBe('conv-c-2') // last in chain
-    expect(t2.conversationPane?.instances[0].forkedFromConversationIds).toEqual(['conv-c-0'])
 
     // All tabs inherit parent metadata
     for (const t of result.tabs) {
@@ -408,21 +405,6 @@ describe('verifySplitMigration', () => {
     output.tabs[0].conversationPane!.instances[0].permissionDenied = null
     const problem = verifySplitMigration(input, output)
     expect(problem).toContain('permissionDenied differs')
-  })
-
-  it('catches forkedFromConversationIds differ', () => {
-    const inst = makeInstance('a', 'A', { forkedFromConversationIds: ['fork-1'] })
-    const multi = makeTab({
-      conversationPane: {
-        instances: [inst, makeInstance('b', 'B')],
-        activeInstanceId: 'a',
-      },
-    })
-    const input = makeState([multi])
-    const output = migrateTabStateToSplit(input)
-    output.tabs[0].conversationPane!.instances[0].forkedFromConversationIds = ['fork-2']
-    const problem = verifySplitMigration(input, output)
-    expect(problem).toContain('forkedFromConversationIds differs')
   })
 
   it('catches agentStates differ', () => {

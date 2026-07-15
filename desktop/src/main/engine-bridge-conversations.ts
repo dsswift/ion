@@ -106,6 +106,29 @@ export async function loadChainHistory(bridge: EngineBridge, sessionIds: string[
   return result.data || []
 }
 
+export async function branchSessionBefore(bridge: EngineBridge, key: string, entryId: string): Promise<void> {
+  // Tree-native rewind: the engine moves the conversation leaf to the PARENT of
+  // the given entry, so the next prompt replaces that entry on the active path
+  // instead of chaining after the old leaf (which duplicated the turn when a
+  // rewound-and-rebound session re-submitted). Entry-id addressed — for
+  // consumers that hold canonical engine entry ids (tree navigator, external).
+  await bridge.connect()
+  log('branch_before', { key, entry_id: entryId })
+  await bridge._sendWithData({ cmd: 'branch_before', key, entryId })
+}
+
+export async function rewindSession(bridge: EngineBridge, key: string, userTurnIndex: number): Promise<{ ok: boolean; error?: string }> {
+  // Ordinal-addressed tree-native rewind — the client-facing counterpart to
+  // branchSessionBefore. Clients hold no engine entry ids (fresh turns carry
+  // optimistic renderer ids), only their own user-turn ordinal, so the engine
+  // resolves that ordinal against its own tree, moves the leaf to before the
+  // target turn, and restores plan-file continuity for the branch point. The
+  // next prompt replaces the turn on a fresh sibling branch — no duplicate.
+  await bridge.connect()
+  log('rewind_session', { key, user_turn_index: userTurnIndex })
+  return bridge._sendWithResult({ cmd: 'rewind_session', key, userTurnIndex })
+}
+
 export async function getConversation(bridge: EngineBridge, conversationId: string, offset = 0, limit = 50): Promise<any> {
   await bridge.connect()
   log('get_conversation', { conversation_id: conversationId, offset, limit })

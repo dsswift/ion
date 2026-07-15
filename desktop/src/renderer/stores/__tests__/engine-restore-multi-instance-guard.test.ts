@@ -59,7 +59,6 @@ function inst(id: string, label: string): PersistedConversationInstance {
     draftInput: '',
     agentStates: [],
     planFilePath: null,
-    forkedFromConversationIds: null,
   }
 }
 

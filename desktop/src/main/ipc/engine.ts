@@ -91,6 +91,16 @@ export function registerEngineIpc(): void {
     await engineBridge.branchSessionBefore(key, entryId)
   })
 
+  ipcMain.handle(IPC.ENGINE_REWIND, async (_event, { key, userTurnIndex }: { key: string; userTurnIndex: number }) => {
+    // Ordinal-addressed tree-native rewind. The engine resolves the user-turn
+    // ordinal against its own tree, moves the leaf to before that turn, and
+    // restores plan-file continuity — so the next prompt replaces the turn on a
+    // fresh branch with no duplicate. Errors surface to the renderer via the
+    // returned result so a failed rewind is logged, not silent.
+    log('engine_rewind', { key, user_turn_index: userTurnIndex })
+    return engineBridge.rewindSession(key, userTurnIndex)
+  })
+
   ipcMain.handle(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, (_event, { key }: { key: string }) => {
     log('engine_get_context_breakdown', { key })
     // Fire-and-forget. The engine emits engine_context_breakdown on its event

@@ -86,7 +86,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           agentStates: [],
           statusFields: null,
           planFilePath: null,
-          forkedFromConversationIds: null, dispatchTelemetry: [],
+          dispatchTelemetry: [],
           contextBreakdown: null,
         }],
         activeInstanceId: id,
@@ -199,7 +199,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
             agentStates: [],
             statusFields: null,
             planFilePath: null,
-            forkedFromConversationIds: null, dispatchTelemetry: [],
+            dispatchTelemetry: [],
             contextBreakdown: null,
           }
         }),

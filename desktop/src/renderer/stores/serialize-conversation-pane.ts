@@ -238,9 +238,6 @@ export function serializeConversationPane(
       out.dispatchTelemetry = inst.dispatchTelemetry
     }
     if (inst.planFilePath) out.planFilePath = inst.planFilePath
-    if (inst.forkedFromConversationIds && inst.forkedFromConversationIds.length > 0) {
-      out.forkedFromConversationIds = inst.forkedFromConversationIds
-    }
     return out
   })
 

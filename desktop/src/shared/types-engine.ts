@@ -228,9 +228,6 @@ export interface ConversationInstance {
    * via selectors (selectDispatchTree) from this flat data.
    */
   dispatchTelemetry: DispatchTelemetryEntry[]
-  /** Set after rewind — the conversation ID chain before rewind. Used to inject
-   *  prior-conversation context on the next prompt. Cleared after first send. */
-  forkedFromConversationIds: string[] | null
   /**
    * Most recent context breakdown from the engine_context_breakdown event.
    * Replaced wholesale on each emission (snapshot semantics — the engine

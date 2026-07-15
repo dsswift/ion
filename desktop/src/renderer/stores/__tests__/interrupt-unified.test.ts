@@ -49,7 +49,6 @@ function makePane(tabId: string, agentStates: Array<{ status: string }>) {
         modelOverride: null, sessionModel: null, permissionMode: 'auto',
         permissionDenied: null, permissionQueue: [], elicitationQueue: [], conversationIds: [],
         draftInput: '', agentStates, statusFields: null, planFilePath: null,
-        forkedFromConversationIds: null,
     contextBreakdown: null,
       }],
     }],

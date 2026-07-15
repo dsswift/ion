@@ -90,7 +90,6 @@ export interface PersistedConversationInstance {
   agentStates?: Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>
   dispatchTelemetry?: Array<{ dispatchId: string; dispatchAgent: string; dispatchSessionId: string; dispatchModel: string; dispatchTask: string; dispatchDepth: number; dispatchParentId: string }>
   planFilePath?: string | null
-  forkedFromConversationIds?: string[] | null
 }
 
 /** Unified persisted pane: the instances for a tab + which is active. */

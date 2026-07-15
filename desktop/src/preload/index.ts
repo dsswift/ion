@@ -201,6 +201,7 @@ const api: IonAPI = {
   engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
   engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),
   engineBranchBefore: (key, entryId) => ipcRenderer.invoke(IPC.ENGINE_BRANCH_BEFORE, { key, entryId }),
+  engineRewind: (key, userTurnIndex) => ipcRenderer.invoke(IPC.ENGINE_REWIND, { key, userTurnIndex }),
   engineGetContextBreakdown: (key) => ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
   engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
   engineBroadcastHistory: (tabId, instanceId) => ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId }),

@@ -47,7 +47,7 @@ function makeInstance(id: string) {
     permissionMode: 'auto', permissionDenied: null, permissionQueue: [], elicitationQueue: [],
     conversationIds: [], draftInput: '', agentStates: [] as AgentStateUpdate[],
     statusFields: null as StatusFields | null, planFilePath: null, thinkingEffort: 'off', sealed: false,
-    dispatchTelemetry: [], forkedFromConversationIds: null, contextBreakdown: null,
+    dispatchTelemetry: [], contextBreakdown: null,
   }
 }
 

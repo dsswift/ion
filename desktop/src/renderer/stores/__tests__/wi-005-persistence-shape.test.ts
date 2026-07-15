@@ -78,7 +78,6 @@ function makeInstance(overrides: Partial<ConversationInstance & ConversationRef>
     agentStates: [],
     statusFields: null,
     planFilePath: null,
-    forkedFromConversationIds: null,
     contextBreakdown: null,
     ...overrides,
   } as any

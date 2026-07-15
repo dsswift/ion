@@ -60,7 +60,6 @@ export function emptyConversationInstance(
     planFilePath: null,
     dispatchTelemetry: [],
     contextBreakdown: null,
-    forkedFromConversationIds: null,
     ...overrides,
   }
 }

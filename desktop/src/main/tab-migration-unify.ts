@@ -107,8 +107,6 @@ function extensionInstances(tab: PersistedTab): PersistedConversationInstance[] 
     if (draft) inst.draftInput = draft
     const sessionId = tab.engineSessionIds?.[id]
     if (sessionId) inst.conversationIds = [sessionId]
-    const forked = tab.engineForkedFromConversationIds?.[id]
-    if (forked && forked.length > 0) inst.forkedFromConversationIds = forked
     return inst
   })
 }

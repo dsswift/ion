@@ -77,7 +77,6 @@ function makeInstance(id: string, overrides: Record<string, unknown> = {}) {
     thinkingEffort: 'off',
     sealed: false,
     dispatchTelemetry: [],
-    forkedFromConversationIds: null,
     contextBreakdown: null,
     ...overrides,
   }

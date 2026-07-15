@@ -171,6 +171,12 @@ export interface IonAPI extends AtvApi {
    *  sibling branch) instead of appending a duplicate after the old leaf.
    *  Rejects when the session/entry is unknown. */
   engineBranchBefore(key: string, entryId: string): Promise<void>
+  /** Ordinal-addressed tree-native rewind: the engine resolves the 0-based
+   *  user-turn ordinal against its own tree, moves the leaf to before that turn,
+   *  and restores plan-file continuity, so the next prompt replaces the turn on
+   *  a fresh branch with no duplicate. Resolves with {ok,error?}; ok=false when
+   *  the ordinal is out of range or the session is unknown. */
+  engineRewind(key: string, userTurnIndex: number): Promise<{ ok: boolean; error?: string }>
   /** Fire get_context_breakdown for the given engine key. Fire-and-forget:
    *  the engine emits engine_context_breakdown on its event bus; the renderer
    *  observes the result via the existing context_breakdown normalized event. */

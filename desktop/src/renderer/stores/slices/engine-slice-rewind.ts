@@ -26,7 +26,6 @@
  * against interleaved tool/assistant rows to lock this.
  */
 
-import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { lastPendingCardTool } from '../../../shared/pending-card'
 import { rDebug, rInfo, rWarn, rError } from '../../rendererLogger'
@@ -84,64 +83,51 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
 
       const targetMessage = inst.messages[idx]
       const key = tabId
-      const priorConvIds = inst.conversationIds.length > 0 ? [...inst.conversationIds] : null
-      rInfo('engine.rewind', 'rewind: executing', { tab_id: key, msg_idx: idx, total_msgs: inst.messages.length, keep_msgs: idx, prior_conv_ids: priorConvIds?.length ?? 0, target_msg_len: targetMessage.content.length })
 
-      // Canonical entry ids are bare 8-hex tree-entry ids (history rows and
-      // message_end-re-keyed live rows carry them). A local id (msg-N /
-      // UUID / toolId) cannot address the engine tree.
-      const targetEntryId = /^[0-9a-f]{8}$/.test(targetMessage.id) ? targetMessage.id : null
+      // The engine rewind is addressed by user-turn ordinal (0-based). The
+      // engine resolves it against its own tree, so it holds no dependency on
+      // the renderer's message ids — a freshly-sent (optimistic-id) turn rewinds
+      // as reliably as a history-loaded one. Count the user rows before the
+      // target: this is the same Nth-user-turn the engine's flattenEntries
+      // produces from the same entries, so both sides agree (the invariant the
+      // store test pins against interleaved tool/assistant rows).
+      let userTurnOrdinal = 0
+      for (let i = 0; i < idx; i++) {
+        if (inst.messages[i].role === 'user') userTurnOrdinal++
+      }
+      rInfo('engine.rewind', 'rewind: executing', { tab_id: key, msg_idx: idx, user_turn_ordinal: userTurnOrdinal, total_msgs: inst.messages.length, keep_msgs: idx, target_msg_len: targetMessage.content.length })
 
-      // Stop the engine session completely (not just abort the current run).
-      // A rewind must not leave the old run appending — and the restart is
-      // what re-resolves extension bindings. NOTE the restart does NOT
-      // guarantee a fresh conversation file: a bound tab's session restore
-      // rebinds the SAME conversation ("resuming bound from binding store"),
-      // and a resubmit would then append a duplicate of the rewound turn
-      // after the old leaf. That is exactly what branch_before below fixes:
-      // it moves the engine tree's leaf to the parent of the rewind target,
-      // so the resubmit becomes the target's sibling — replacing it on the
-      // active path.
-      window.ion.engineStop(key).then(() => {
-        rInfo('engine.rewind', 'rewind: session stopped, starting fresh session', { tab_id: key })
-        const { engineProfiles } = usePreferencesStore.getState()
-        const profile = tab.engineProfileId ? engineProfiles.find((p) => p.id === tab.engineProfileId) : null
-        window.ion.engineStart(key, {
-          profileId: profile?.id || '',
-          extensions: profile?.extensions || [],
-          workingDirectory: tab.workingDirectory,
-        }).then(() => {
-          rInfo('engine.rewind', 'rewind: fresh session started', { tab_id: key, profile: profile?.id || 'none' })
-          // Move the rebound conversation's leaf to before the rewind target.
-          // A rejection is expected and harmless when the restart produced a
-          // genuinely new conversation (nothing rebound → entry not found) —
-          // the fresh file has nothing to branch.
-          const branched = targetEntryId
-            ? window.ion.engineBranchBefore(key, targetEntryId).then(() => {
-                rInfo('engine.rewind', 'rewind: branched before target entry', { tab_id: key, entry_id: targetEntryId })
-              }).catch((err: any) => {
-                rDebug('engine.rewind', 'rewind: branch_before not applicable', { tab_id: key, entry_id: targetEntryId, error: err.message })
-              })
-            : Promise.resolve(
-                rDebug('engine.rewind', 'rewind: target id not canonical, skipping branch', { tab_id: key, message_id: targetMessage.id }),
-              )
-          void branched.then(() => {
-            // Broadcast the truncated history to all connected remote devices so
-            // iOS replaces its now-stale message list immediately, instead of
-            // waiting for a sub-tab switch to re-issue load_engine_conversation.
-            // The renderer store already holds the truncated inst.messages at
-            // this point (the set() below runs synchronously before this resolves).
-            window.ion.engineBroadcastHistory(tabId, instanceId).then(() => {
-              rDebug('engine.rewind', 'rewind: broadcast truncated history', { tab_id: key })
-            }).catch((err: any) => {
-              rError('engine.rewind', 'rewind: broadcast failed', { tab_id: key, error: err.message })
-            })
-          })
+      // Move the engine's conversation leaf to before the target turn — a
+      // tree-native branch on the SAME conversation. BuildContextPath rebuilds
+      // the LLM context to drop the rewound-past turns, and the engine restores
+      // plan-file continuity for the branch point. The next prompt appends as a
+      // fresh sibling of the old turn, so it is never duplicated.
+      //
+      // No session stop/start: the previous client-side stop/start was defeated
+      // by the engine binding store — engineStart rebound to the SAME
+      // conversation ("resuming bound from binding store"), leaving pre-rewind
+      // history intact so the resend appended a duplicate. The entry-id
+      // branch_before that was bolted on top only fired for canonical 8-hex row
+      // ids, so a freshly-sent turn (optimistic id) still duplicated. Ordinal
+      // addressing removes that gap. Rewind is offered only when idle, so no
+      // in-flight run races the branch.
+      window.ion.engineRewind(key, userTurnOrdinal).then((res) => {
+        if (!res.ok) {
+          rError('engine.rewind', 'rewind: engine rewind failed', { tab_id: key, user_turn_ordinal: userTurnOrdinal, error: res.error ?? 'unknown' })
+          return
+        }
+        rInfo('engine.rewind', 'rewind: engine branched to before turn', { tab_id: key, user_turn_ordinal: userTurnOrdinal })
+        // Broadcast the truncated history so iOS replaces its now-stale message
+        // list immediately, instead of waiting for a sub-tab switch to re-issue
+        // load_engine_conversation. The renderer store already holds the
+        // truncated inst.messages (the set() below runs synchronously first).
+        window.ion.engineBroadcastHistory(tabId, instanceId).then(() => {
+          rDebug('engine.rewind', 'rewind: broadcast truncated history', { tab_id: key })
         }).catch((err: any) => {
-          rError('engine.rewind', 'rewind: restart failed', { tab_id: key, error: err.message })
+          rError('engine.rewind', 'rewind: broadcast failed', { tab_id: key, error: err.message })
         })
       }).catch((err: any) => {
-        rError('engine.rewind', 'rewind: stop failed', { tab_id: key, error: (err as Error).message })
+        rError('engine.rewind', 'rewind: engine rewind invoke failed', { tab_id: key, error: (err as Error).message })
       })
 
       const rewoundMessages = inst.messages.slice(0, idx)
@@ -179,17 +165,16 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
             messages: rewoundMessages,
             messageCount: rewoundMessages.length,  // keep count in lockstep with truncated history
             modelOverride: i.modelOverride,  // preserve model selection across rewind
-            sessionModel: null,  // fresh session reports its model on the next status event
+            sessionModel: i.sessionModel,  // same session — model is unchanged by the branch
             permissionMode: i.permissionMode, // preserve permission mode across rewind
             permissionDenied: restoredDenied,
             permissionQueue: [],
             elicitationQueue: [],
-            conversationIds: [],
+            conversationIds: i.conversationIds,  // branch stays on the SAME conversation — do not clear
             draftInput: targetMessage.content,
             agentStates: [],
             statusFields: null,
             planFilePath: restoredPlanFilePath,
-            forkedFromConversationIds: i.conversationIds.length > 0 ? [...i.conversationIds] : null,
           }
         }),
       })
