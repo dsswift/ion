@@ -99,7 +99,6 @@ describe('status snapshot — populates inst.statusFields (root-cause fix)', () 
       fields: fields({
         state: 'running',
         model: 'claude-opus-4-7',
-        backend: 'cli',
         runCostUsd: 1.23,
         extensionName: 'Chief of Staff',
         team: 'Platform',
@@ -110,7 +109,6 @@ describe('status snapshot — populates inst.statusFields (root-cause fix)', () 
     expect(stored).toBeDefined()
     expect(stored).not.toBeNull()
     expect(stored!.model).toBe('claude-opus-4-7')
-    expect(stored!.backend).toBe('cli')
     expect(stored!.runCostUsd).toBe(1.23)
     expect(stored!.extensionName).toBe('Chief of Staff')
     expect(stored!.team).toBe('Platform')

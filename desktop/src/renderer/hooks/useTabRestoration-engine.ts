@@ -6,11 +6,11 @@ import type { Message, AgentStateUpdate, ConversationInstance, ConversationRef }
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
-import { isExtensionErrorMessage } from '../stores/session-store-persistence'
 import { pendingCardOutcome } from '../../shared/pending-card'
 import { MAIN_INSTANCE_ID } from '../../shared/session-key'
 import { deriveLedger, ledgerIds } from '../../shared/session-ledger'
 import { resolveResumeSessionId } from './useTabRestoration-resume'
+import { mapPersistedMessages, filterRestorablePersistedMessages } from '../stores/persisted-message-map'
 import { restoredConversationStatus } from './useTabRestoration-status'
 import { reconcileRestoredImages } from './useTabRestoration-images'
 import { rDebug, rWarn, rError } from '../rendererLogger'
@@ -457,54 +457,12 @@ export function buildPopulatedInstance(
   tabId: string,
   _st: PersistedTab,
 ): ConversationRef & ConversationInstance {
-  // Filter extension error messages from persisted scrollback.
-  // Also drop legacy bootstrap markers (role:'harness', content starts with
-  // 'Session bootstrapped:', no dedupKey). These accumulated before the
-  // relocate dedup mode was introduced; they have no dedupKey so the
-  // suppress-later path never collapsed them. Dropping them on restore
-  // prevents the 5,712-object accumulation from surviving the next
-  // serialize cycle. Keyed harness messages (dedupKey present) are kept.
-  const LEGACY_BOOTSTRAP_PREFIX = 'Session bootstrapped:'
-  const isLegacyBootstrapMarker = (m: { role?: string; content?: string; dedupKey?: string }) =>
-    m.role === 'harness' &&
-    (m.content || '').startsWith(LEGACY_BOOTSTRAP_PREFIX) &&
-    !m.dedupKey
-  const saved = (inst.messages ?? []).filter(
-    (m) => !isExtensionErrorMessage({ role: m.role || '', content: m.content || '' }) && !isLegacyBootstrapMarker(m),
-  )
-  const restoredMessages: Message[] = saved.map((m) => ({
-    id: crypto.randomUUID(),
-    role: m.role as Message['role'],
-    content: m.content || '',
-    toolName: m.toolName,
-    toolId: m.toolId,
-    toolInput: m.toolInput,
-    toolStatus: m.toolStatus as Message['toolStatus'],
-    timestamp: m.timestamp,
-    dedupKey: m.dedupKey,
-    // Restore planFilePath on plan-lifecycle divider rows (Plan created /
-    // Plan updated / Implementing plan) so the slug stays clickable after a
-    // restart. The serializer persists it (serialize-conversation-pane.ts);
-    // dropping it here would leave the divider text intact but break the link.
-    planFilePath: m.planFilePath,
-    slashCommand: m.slashCommand,
-    slashArgs: m.slashArgs,
-    slashSource: m.slashSource,
-    // Restore engine-produced image attachments (tool-result / provider
-    // images) so inline thumbnails survive a restart. The serializer persists
-    // them (serialize-conversation-pane.ts); dropping them here would leave the
-    // tool/assistant row intact but strip its images, because the restored
-    // instance is non-empty and the skeleton lazy-load that re-fetches from the
-    // engine never fires.
-    attachments: m.attachments,
-    // Seal all restored assistant messages so incoming engine_text_delta
-    // events do not append to historical content (Defect 3). Historical
-    // messages are definitionally complete; the engine writes to a new
-    // message bubble for the next turn. Without sealed=true the last
-    // assistant message absorbs the next turn's text, doubling both
-    // the historical content and the new response in the same bubble.
-    ...(m.role === 'assistant' ? { sealed: true } : {}),
-  }))
+  // Shared restore filter + mapper (also used by the lazy external-content
+  // load in loadSkeletonMessages): drops extension-error notices and legacy
+  // un-keyed bootstrap markers, seals assistant rows, preserves planFilePath /
+  // attachments / slash metadata. See persisted-message-map.ts.
+  const saved = filterRestorablePersistedMessages(inst.messages ?? [])
+  const restoredMessages: Message[] = mapPersistedMessages(saved)
 
   const agents = inst.agentStates
   const restoredAgents: AgentStateUpdate[] = (agents && agents.length > 0)
@@ -607,5 +565,29 @@ export function buildPopulatedInstance(
     // Context breakdown is runtime-only: not persisted, populated from the first
     // engine_context_breakdown event after session resume. Initialize to null.
     contextBreakdown: null,
+    // Schema v4: an instance whose scrollback was externalized restores thin
+    // (messages absent) unless the main process eager-merged it (active tab).
+    // Mark it pending so loadSkeletonMessages pulls the content file AND the
+    // engine chain on first activation, merging both sources.
+    //
+    // The marker is set whenever hasExternalContent is true — INCLUDING when the
+    // main process eager-merged the content file into inst.messages (the
+    // boot-active tab). The eager merge only carries the content FILE's rows; a
+    // stale content file (written after a session recycle cleared the pane)
+    // misses the real conversation rows that only the engine chain has. The
+    // eager-merged rows still render instantly (view readiness); hydration then
+    // replaces them with the content+chain merge.
+    //
+    // historyHydrated MUST be set to false alongside externalContentStatus:'pending'.
+    // Without it, the legacy heuristic in needsHistoryHydration fires instead
+    // (historyHydrated===undefined → messages.length===0 && messageCount>0). A live
+    // bootstrap harness message arriving before the user opens the tab makes
+    // messages.length===1, so the legacy heuristic returns false and loadSkeletonMessages
+    // is never called — the real conversation rows are never loaded. The explicit
+    // false marker bypasses the heuristic: needsHistoryHydration(false) →
+    // instanceMessageCount(inst) > 0, which stays true regardless of live messages.
+    ...(inst.hasExternalContent
+      ? { externalContentStatus: 'pending' as const, historyHydrated: false as const }
+      : {}),
   }
 }

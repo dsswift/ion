@@ -6,13 +6,20 @@ import { state, engineBridge } from '../state'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { runTabUnifyMigration } from '../tab-migration-unify-runner'
 import { runTabSplitMigration } from '../tab-migration-split-runner'
+import { runTabBackendMerge } from '../tab-backend-merge'
+import { runTabExternalizeMigration } from '../tab-migration-externalize-runner'
+import {
+  loadInstanceContent,
+  saveInstanceContent,
+  deleteInstanceContent,
+  mergeExternalContent,
+} from '../tab-content-store'
 import {
   SETTINGS_DEFAULTS,
   SETTINGS_DIR,
   SETTINGS_FILE,
   SESSION_CHAINS_FILE,
   TABS_FILE,
-  currentBackend,
   loadSessionChains,
   loadSessionLabels,
   readSettings,
@@ -21,7 +28,6 @@ import {
 } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
 import { persistAndBroadcastSettings } from '../settings-broadcast'
-import { writeConfigAndRelaunch } from '../engine-restart'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -132,19 +138,23 @@ export function registerSettingsIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.GET_BACKEND, () => currentBackend)
-
-  ipcMain.handle(IPC.SWITCH_BACKEND, async (_event, newBackend: 'api' | 'cli') => {
-    if (newBackend === currentBackend) return { ok: true }
-    // Write the canonical engine value: "claude-code" (formerly "cli").
-    const canonical = newBackend === 'api' ? 'api' : 'claude-code'
-    await writeConfigAndRelaunch((cfg) => {
-      cfg.backend = canonical
-    })
-  })
-
   ipcMain.handle(IPC.LOAD_TABS, () => {
     const PREV_FILE = TABS_FILE + '.prev'
+    // One-time backend merge: union the legacy per-backend tab files
+    // (tabs-{api,cli}.json + labels/chains twins) into the unified files.
+    // Runs FIRST so the unify/split migrations below (and every read after
+    // them) operate on the merged tabs.json. Idempotent — a unified file on
+    // disk short-circuits. Legacy sources are retained, never deleted.
+    try {
+      const mergeOutcome = runTabBackendMerge()
+      if (mergeOutcome.reason === 'success') {
+        log('tabs: backend merge applied', { ...mergeOutcome.tabCounts, path: TABS_FILE })
+      } else if (mergeOutcome.reason === 'error') {
+        log('tabs: backend merge not applied', { reason: mergeOutcome.reason, error: mergeOutcome.errorMessage })
+      }
+    } catch (err) {
+      log('tabs: backend merge error', { error: (err as Error).message })
+    }
     // One-time unify migration (backup → migrate → verify → restore-on-failure).
     // Idempotent: skips files already at the unified schemaVersion. Runs here —
     // the single load chokepoint — so migration always precedes the first read,
@@ -177,6 +187,22 @@ export function registerSettingsIpc(): void {
     } catch (err) {
       log('tabs: split migration error', { error: (err as Error).message })
     }
+    // Externalize migration (v3→v4): strip inline instance messages into
+    // per-tab content files + drop reloadable editor buffers. PRIMARY FILE
+    // ONLY — running it on .prev would write content files keyed by the same
+    // tab ids and overwrite the primary's newer content. A .prev recovered
+    // below simply loads as v3 (inline messages, handled by every reader);
+    // the next save writes it back as v4.
+    try {
+      const extOutcome = runTabExternalizeMigration(TABS_FILE)
+      if (extOutcome.reason === 'success') {
+        log('tabs: externalize migration applied', { path: TABS_FILE, content_files: extOutcome.contentFiles, backup: extOutcome.backupPath })
+      } else if (extOutcome.reason === 'verify-failed' || extOutcome.reason === 'error') {
+        log('tabs: externalize migration not applied', { path: TABS_FILE, reason: extOutcome.reason, error: extOutcome.errorMessage })
+      }
+    } catch (err) {
+      log('tabs: externalize migration error', { error: (err as Error).message })
+    }
     try {
       let primary: any = null
       let primaryCount = 0
@@ -203,6 +229,20 @@ export function registerSettingsIpc(): void {
       }
 
       if (primary) {
+        // Eager-merge the ACTIVE tab's externalized content so the tab the
+        // user sees renders complete the moment the window paints (view
+        // readiness). All other tabs stay thin; loadSkeletonMessages pulls
+        // their content on first activation via LOAD_TAB_CONTENT.
+        try {
+          const tabs = Array.isArray(primary.tabs) ? primary.tabs : []
+          const activeIdx = typeof primary.activeTabIndex === 'number' ? primary.activeTabIndex : -1
+          const activeTabId: string | undefined = tabs[activeIdx]?.id
+          if (activeTabId) {
+            primary = mergeExternalContent(primary, loadInstanceContent, (id) => id === activeTabId)
+          }
+        } catch (err) {
+          log('tabs: active-tab content merge failed', { error: (err as Error).message })
+        }
         log('tabs: loaded', { count: primaryCount, path: TABS_FILE })
         return primary
       }
@@ -249,6 +289,31 @@ export function registerSettingsIpc(): void {
     } catch (err) {
       log('tabs: save failed', { error: String(err) })
     }
+  })
+
+  // ─── Externalized tab content (schema v4) ───
+  // One content file per tab under ~/.ion/tab-content/. The thin manifest
+  // carries only messageCount + the hasExternalContent marker; these channels
+  // move the message payload lazily (load on first activation) and on the
+  // same debounced tick as SAVE_TABS (save), keyed by the durable tab id.
+
+  ipcMain.handle(IPC.LOAD_TAB_CONTENT, (_event, tabId: string) => {
+    if (typeof tabId !== 'string' || !tabId) return null
+    return loadInstanceContent(tabId)
+  })
+
+  ipcMain.handle(IPC.SAVE_TAB_CONTENT, (_event, { tabId, instanceId, messages }: { tabId: string; instanceId: string; messages: unknown[] }) => {
+    if (typeof tabId !== 'string' || !tabId || !Array.isArray(messages)) return
+    try {
+      saveInstanceContent(tabId, typeof instanceId === 'string' ? instanceId : 'main', messages as never)
+    } catch (err) {
+      log('tab content: save failed', { tab_id: tabId, error: String(err) })
+    }
+  })
+
+  ipcMain.handle(IPC.DELETE_TAB_CONTENT, (_event, tabId: string) => {
+    if (typeof tabId !== 'string' || !tabId) return
+    deleteInstanceContent(tabId)
   })
 
   ipcMain.handle(IPC.SAVE_SESSION_LABEL, (_event, { sessionId, customTitle }: { sessionId: string; customTitle: string | null }) => {

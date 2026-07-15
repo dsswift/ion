@@ -43,7 +43,7 @@ vi.mock('../state', () => ({
 }))
 
 vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
-vi.mock('../settings-store', () => ({ currentBackend: 'test', shouldStreamThinkingToRemote: vi.fn(() => false) }))
+vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => false) }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../event-wiring-resources', () => ({

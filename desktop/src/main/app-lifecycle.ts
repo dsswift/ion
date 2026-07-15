@@ -13,8 +13,18 @@ import { requestPermissions } from './permissions-preflight'
 import { cleanOrphanedWorktrees } from './git-runner'
 import { focusState } from './git/focus-state'
 import { startConversationCleanup } from './conversation-cleanup'
-import { tabsFileForBackend, sessionChainsFileForBackend, sessionLabelsFileForBackend, ENGINE_CONFIG_FILE, readSettings } from './settings-store'
-import { ensureEngineDaemon } from './engine-bootstrap'
+import {
+  TABS_FILE,
+  SESSION_CHAINS_FILE,
+  SESSION_LABELS_FILE,
+  legacyTabsFileForBackend,
+  legacySessionChainsFileForBackend,
+  legacySessionLabelsFileForBackend,
+  ENGINE_CONFIG_FILE,
+  ensureHybridBackendConfig,
+  readSettings,
+} from './settings-store'
+import { ensureEngineDaemon, restartEngineDaemon } from './engine-bootstrap'
 import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { configureEgress, closeEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
 import { startEgressTailers, stopEgressTailers } from './log-egress-tailer'
@@ -214,11 +224,22 @@ export function setupAppLifecycle(): void {
     // never overwrites an operator/enterprise identity choice.
     ensureEntraAuthConfig()
 
+    // Opt into credential-based per-provider routing: the desktop writes
+    // backend:"hybrid" into engine.json (the engine default stays api for
+    // headless consumers). Stamped pre-daemon like the claims above so a
+    // fresh daemon start honors it; if the daemon was already running with
+    // the old value, recycle it below so routing flips without a full
+    // app relaunch. One-time transition per machine.
+    const backendConfigChanged = ensureHybridBackendConfig()
+
     // Ensure the engine daemon is installed, current, and running before
     // creating the window. The bootstrap is idempotent: writes/refreshes the
     // LaunchAgent plist, copies the binary if version-mismatched, runs
     // install-assets, and kickstarts the daemon. On non-macOS this is a no-op.
     await ensureEngineDaemon()
+    if (backendConfigChanged) {
+      restartEngineDaemon()
+    }
 
     // Configure egress forwarder from engine.json before connecting — that
     // way the first engine events are captured even if egress is configured.
@@ -374,13 +395,14 @@ export function setupAppLifecycle(): void {
     // would have deleted ~51 tab-referenced conversations. See
     // docs/plans/grassy-chirping-crest.md Layer 2 for the full analysis.
     //
-    // Both backends are passed in regardless of which is currently active —
-    // an inactive backend's tabs are still valid resumable conversations
-    // and must not be deleted just because the user toggled the backend.
+    // The unified files are the live sources; the legacy per-backend files
+    // are still read during the merge-migration window — a conversation
+    // referenced only by a not-yet-merged legacy file is still a valid
+    // resumable conversation and must not be deleted.
     startConversationCleanup({
-      tabsFiles: [tabsFileForBackend('api'), tabsFileForBackend('cli')],
-      chainsFiles: [sessionChainsFileForBackend('api'), sessionChainsFileForBackend('cli')],
-      labelsFiles: [sessionLabelsFileForBackend('api'), sessionLabelsFileForBackend('cli')],
+      tabsFiles: [TABS_FILE, legacyTabsFileForBackend('api'), legacyTabsFileForBackend('cli')],
+      chainsFiles: [SESSION_CHAINS_FILE, legacySessionChainsFileForBackend('api'), legacySessionChainsFileForBackend('cli')],
+      labelsFiles: [SESSION_LABELS_FILE, legacySessionLabelsFileForBackend('api'), legacySessionLabelsFileForBackend('cli')],
     })
 
     // Dock click / Cmd-Tab. The Dock icon only exists while the ATV window is

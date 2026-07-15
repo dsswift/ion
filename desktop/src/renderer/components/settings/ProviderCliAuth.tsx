@@ -6,20 +6,23 @@ import { Spinner, linkBtn } from './provider-styles'
 import { CLI_INSTALL_GUIDANCE, providerCliBackend } from './provider-auth-labels'
 
 /**
- * Auth surface for a provider running on a delegated CLI backend
+ * Auth surface for a provider with a delegated CLI backend option
  * (codex/grok/cursor, or claude-code). Renders one of:
  *  - install guidance when the CLI binary is missing;
  *  - a Sign in button (+ live login state) when installed but not authed;
  *  - the signed-in account + Sign out when authed.
  *
- * Only rendered when the provider's selected backend is a delegated CLI.
+ * Rendered for every provider with a CLI CAPABILITY, regardless of the
+ * currently effective backend: signing in is how the user enables the CLI
+ * routing path (credential-derived — no key + authed CLI → CLI backend), and
+ * sign-out must stay reachable even while an API key is winning routing.
  */
 export function ProviderCliAuth({ provider, colors }: { provider: ProviderEntry; colors: Colors }) {
   const loginState = useModelStore((s) => s.loginStates[provider.id])
   const [copied, setCopied] = useState(false)
 
-  const kind = provider.backend || providerCliBackend(provider.id)
-  if (!kind || kind === 'api') return null
+  const kind = providerCliBackend(provider.id)
+  if (!kind) return null
   const cli = provider.cli
   const guidance = CLI_INSTALL_GUIDANCE[kind]
 

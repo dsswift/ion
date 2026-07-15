@@ -83,6 +83,10 @@ const api: IonAPI = {
   saveSettings: (data) => ipcRenderer.invoke(IPC.SAVE_SETTINGS, data),
   loadTabs: () => ipcRenderer.invoke(IPC.LOAD_TABS),
   saveTabs: (data) => ipcRenderer.invoke(IPC.SAVE_TABS, data),
+  loadTabContent: (tabId: string) => ipcRenderer.invoke(IPC.LOAD_TAB_CONTENT, tabId),
+  saveTabContent: (tabId: string, instanceId: string, messages: unknown[]) =>
+    ipcRenderer.invoke(IPC.SAVE_TAB_CONTENT, { tabId, instanceId, messages }),
+  deleteTabContent: (tabId: string) => ipcRenderer.invoke(IPC.DELETE_TAB_CONTENT, tabId),
   saveSessionLabel: (sessionId, customTitle) => ipcRenderer.invoke(IPC.SAVE_SESSION_LABEL, { sessionId, customTitle }),
   loadSessionLabels: () => ipcRenderer.invoke(IPC.LOAD_SESSION_LABELS),
   generateTitle: (text) => ipcRenderer.invoke(IPC.GENERATE_TITLE, text),
@@ -92,10 +96,6 @@ const api: IonAPI = {
     ipcRenderer.invoke(IPC.GET_CONVERSATION, { conversationId, offset, limit }),
   loadChainHistory: (sessionIds: string[]) =>
     ipcRenderer.invoke(IPC.LOAD_CHAIN_HISTORY, sessionIds),
-  getBackend: () => ipcRenderer.invoke(IPC.GET_BACKEND),
-  switchBackend: (backend) => ipcRenderer.invoke(IPC.SWITCH_BACKEND, backend),
-  loadOtherBackendTabs: () => ipcRenderer.invoke(IPC.LOAD_OTHER_BACKEND_TABS),
-  migrateTabs: (conversationIds, targetBackend) => ipcRenderer.invoke(IPC.MIGRATE_TABS, { conversationIds, targetBackend }),
 
   // ─── Conversation backup ───
   conversationExportPreview: (scope) => ipcRenderer.invoke(IPC.CONVERSATION_EXPORT_PREVIEW, { scope }),
@@ -231,7 +231,6 @@ const api: IonAPI = {
   providerLogin: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN, { provider }),
   providerLoginCancel: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN_CANCEL, { provider }),
   providerLogout: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGOUT, { provider }),
-  setProviderBackend: (provider, backend) => ipcRenderer.invoke(IPC.PROVIDER_SET_BACKEND, { provider, backend }),
   onProviderLoginEvent: (handler) => {
     const listener = (_e: unknown, update: import('../shared/types-engine-event').ProviderLoginUpdate) => handler(update)
     ipcRenderer.on(IPC.PROVIDER_LOGIN_EVENT, listener)

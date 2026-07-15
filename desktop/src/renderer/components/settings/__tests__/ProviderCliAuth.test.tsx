@@ -83,8 +83,16 @@ describe('ProviderCliAuth', () => {
     expect(ion.providerLogout).toHaveBeenCalledWith('openai')
   })
 
-  it('renders nothing when the selected backend is api', () => {
+  it('still renders CLI sign-in when the effective backend is api (capability-gated, not backend-gated)', () => {
+    // Under credential-derived routing an API key wins the backend, but the
+    // CLI sign-in must stay reachable — signing in is how the user enables
+    // the CLI fallback path, and sign-out must remain available too.
     render({ id: 'openai', hasAuth: true, backend: 'api' })
+    expect(container.textContent).toContain('Sign in')
+  })
+
+  it('renders nothing for a provider with no CLI capability', () => {
+    render({ id: 'google', hasAuth: true })
     expect(container.textContent).toBe('')
   })
 })

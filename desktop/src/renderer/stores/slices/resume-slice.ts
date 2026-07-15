@@ -5,6 +5,7 @@ import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode, needsHistoryHydration } from '../conversation-instance'
 import { lastPendingCardTool, type PendingCardMessage } from '../../../shared/pending-card'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
+import { mapPersistedMessages, filterRestorablePersistedMessages } from '../persisted-message-map'
 import { rInfo, rWarn } from '../../rendererLogger'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
@@ -287,6 +288,93 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
     },
 
     loadSkeletonMessages: async (tabId) => {
+      // Externalized scrollback (schema v4): the instance's history lives in
+      // a per-tab content file, not the engine store (renderer-only harness/
+      // system rows never reach the engine). Load it once on first
+      // activation; the engine-chain path below stays for count-only
+      // instances whose rows ARE engine-reloadable.
+      const pendingInst = activeInstance(get().conversationPanes, tabId)
+      if (pendingInst?.externalContentStatus === 'pending') {
+        const baseline = pendingInst.messages.length
+        try {
+          // Load the content file and the engine chain in parallel. The content
+          // file holds renderer-only rows (harness/system) that are not in the
+          // engine store. The engine chain is the authoritative source for
+          // user/assistant/tool rows. Both are needed: a stale content file
+          // (written after a session recycle that cleared the pane) misses the
+          // real conversation rows, which the engine still has on disk.
+          const tab = get().tabs.find((t) => t.id === tabId)
+          const [content, chainHistory] = await Promise.all([
+            window.ion.loadTabContent(tabId),
+            tab?.conversationId
+              ? window.ion.loadChainHistory([...(tab.historicalSessionIds ?? []), tab.conversationId])
+                  .catch((err: unknown) => {
+                    rWarn('session.restore', 'external content: engine chain load failed, using content file only', { tab_id: tabId.slice(0, 8), error: String(err) })
+                    return [] as unknown[]
+                  })
+              : Promise.resolve([] as unknown[]),
+          ])
+
+          const restoredFromFile = content
+            ? mapPersistedMessages(filterRestorablePersistedMessages(content.messages))
+            : []
+
+          // Engine chain is authoritative for user/assistant/tool rows.
+          const engineRows = mapSessionHistory(chainHistory as Parameters<typeof mapSessionHistory>[0], nextMsgId)
+
+          // Renderer-only rows (harness/system) exist only in the content file
+          // and cannot be reloaded from the engine store. Supplement the engine
+          // rows with these rather than using the full content file, so a stale
+          // content file (missing real conversation rows) does not hide history.
+          const rendererOnlyRows = restoredFromFile.filter(
+            (m) => m.role === 'harness' || m.role === 'system',
+          )
+
+          // Merge and sort by timestamp so harness banners slot in
+          // chronologically alongside the real conversation rows.
+          const allRows = engineRows.length > 0
+            ? [...engineRows, ...rendererOnlyRows].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+            : restoredFromFile
+
+          rInfo('session.restore', 'external content hydrated', {
+            tab_id: tabId.slice(0, 8),
+            content_rows: restoredFromFile.length,
+            engine_rows: engineRows.length,
+            renderer_only_rows: rendererOnlyRows.length,
+            merged_rows: allRows.length,
+            baseline,
+            missing: !content,
+          })
+
+          set((s) => ({
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => {
+              // Keep live rows that streamed in during the async load (past
+              // the baseline); everything before it is covered by the merged set.
+              const liveTail = i.messages.slice(baseline)
+              return {
+                ...i,
+                messages: [...allRows, ...liveTail],
+                messageCount: allRows.length + liveTail.length,
+                historyHydrated: true,
+                externalContentStatus: content ? ('loaded' as const) : ('error' as const),
+              }
+            }),
+          }))
+        } catch (err) {
+          rWarn('session.restore', 'external content load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
+          // Mark errored-but-hydrated so the tab is usable (count-only
+          // rendering) and selectTab doesn't retry on every switch.
+          set((s) => ({
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
+              ...i,
+              historyHydrated: true,
+              externalContentStatus: 'error' as const,
+            })),
+          }))
+        }
+        return
+      }
+
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab || !tab.conversationId) return
       // Precise hydration gate (needsHistoryHydration): the historyHydrated

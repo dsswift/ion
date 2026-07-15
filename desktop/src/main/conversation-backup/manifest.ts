@@ -17,14 +17,17 @@ export interface BackupManifest {
   ionVersion: string
   scope: ExportScope
   conversationCount: number
-  backendSnapshot: 'api' | 'cli'
+  /** Legacy field from the global-backend-mode era. Archives exported by
+   *  current builds omit it (there is no mode — routing is credential-derived
+   *  per provider); archives from older builds carry 'api' | 'cli' and it is
+   *  preserved for display. */
+  backendSnapshot?: 'api' | 'cli'
   hostname: string
 }
 
 export function buildManifest(args: {
   scope: ExportScope
   conversationCount: number
-  backendSnapshot: 'api' | 'cli'
   ionVersion: string
   hostname: string
 }): BackupManifest {
@@ -35,7 +38,6 @@ export function buildManifest(args: {
     ionVersion: args.ionVersion,
     scope: args.scope,
     conversationCount: args.conversationCount,
-    backendSnapshot: args.backendSnapshot,
     hostname: args.hostname,
   }
 }
@@ -65,7 +67,9 @@ export function validateManifest(raw: unknown): BackupManifest | string {
   if (typeof m.ionVersion !== 'string') return 'manifest.ionVersion missing or wrong type'
   if (m.scope !== 'currently-open' && m.scope !== 'all') return `unexpected manifest.scope=${String(m.scope)}`
   if (typeof m.conversationCount !== 'number') return 'manifest.conversationCount missing or wrong type'
-  if (m.backendSnapshot !== 'api' && m.backendSnapshot !== 'cli') {
+  // backendSnapshot: optional legacy field. Absent in current archives;
+  // 'api' | 'cli' in older ones. Any other present value is malformed.
+  if (m.backendSnapshot !== undefined && m.backendSnapshot !== 'api' && m.backendSnapshot !== 'cli') {
     return `unexpected manifest.backendSnapshot=${String(m.backendSnapshot)}`
   }
   if (typeof m.hostname !== 'string') return 'manifest.hostname missing or wrong type'
@@ -77,7 +81,7 @@ export function validateManifest(raw: unknown): BackupManifest | string {
     ionVersion: m.ionVersion,
     scope: m.scope,
     conversationCount: m.conversationCount,
-    backendSnapshot: m.backendSnapshot,
+    ...(m.backendSnapshot !== undefined ? { backendSnapshot: m.backendSnapshot } : {}),
     hostname: m.hostname,
   }
 }

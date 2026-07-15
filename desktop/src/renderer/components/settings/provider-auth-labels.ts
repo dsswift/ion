@@ -65,17 +65,6 @@ export const OAUTH_BUTTON_LABELS: Record<string, string> = {
   'github-copilot': 'Sign in with GitHub',
 }
 
-/**
- * The run backends each provider can select. Mirrors the engine's allowed
- * per-provider backends. A single-entry list means no choice to offer.
- */
-export const PROVIDER_BACKENDS: Record<string, string[]> = {
-  anthropic: ['api', 'claude-code'],
-  openai: ['api', 'codex'],
-  xai: ['api', 'grok'],
-  cursor: ['cursor'],
-}
-
 /** The delegated-CLI backend kind a provider can use, if any. */
 export function providerCliBackend(providerId: string): string | undefined {
   switch (providerId) {
@@ -84,18 +73,6 @@ export function providerCliBackend(providerId: string): string | undefined {
     case 'xai': return 'grok'
     case 'cursor': return 'cursor'
     default: return undefined
-  }
-}
-
-/** Display label for a backend kind in the segmented selector. */
-export function backendLabel(kind: string): string {
-  switch (kind) {
-    case 'api': return 'API'
-    case 'claude-code': return 'Claude Code'
-    case 'codex': return 'ChatGPT'
-    case 'grok': return 'Grok'
-    case 'cursor': return 'Cursor'
-    default: return kind
   }
 }
 

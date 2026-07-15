@@ -15,7 +15,6 @@ import { registerGitExtrasIpc } from './git-extras'
 import { registerWorktreeIpc } from './worktree'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
-import { registerMigrationIpc } from './migration'
 import { registerModelsIpc } from './models'
 import { registerOAuthIpc } from './oauth'
 import { registerProvidersIpc } from './providers'
@@ -41,7 +40,6 @@ export function registerAllIpc(): void {
   registerWorktreeIpc()
   registerSettingsIpc()
   registerRemoteControlIpc()
-  registerMigrationIpc()
   registerModelsIpc()
   registerOAuthIpc()
   registerProvidersIpc()

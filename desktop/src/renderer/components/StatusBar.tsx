@@ -4,7 +4,6 @@ import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useGitRepo } from '../hooks/useGitRepo'
-import { BackendIndicator } from './StatusBarBackendIndicator'
 import { ModelPicker } from './StatusBarModelPicker'
 import { ContextIndicator } from './StatusBarContextIndicator'
 import { PermissionModePicker } from './StatusBarPermissionModePicker'
@@ -17,7 +16,6 @@ import { StatusBarEngineIdentity } from './StatusBarEngineIdentity'
 import { StatusBarEngineState } from './StatusBarEngineState'
 
 // Re-export sibling components for any consumer importing from StatusBar.tsx
-export { BackendIndicator } from './StatusBarBackendIndicator'
 export { ModelPicker } from './StatusBarModelPicker'
 export { ContextIndicator } from './StatusBarContextIndicator'
 export { PermissionModePicker } from './StatusBarPermissionModePicker'
@@ -125,7 +123,6 @@ export function StatusBar() {
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
 
-        <BackendIndicator />
         {/* Engine identity (extension name + team) — engine-only;
             self-gates internally to render null on conversation tabs. */}
         <StatusBarEngineIdentity />

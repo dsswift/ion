@@ -1,7 +1,8 @@
 import type { PersistedTabState } from '../../shared/types'
 import { usePreferencesStore } from '../preferences'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
-import { serializeConversationPane, isExtensionErrorMessage, resolvePersistedLastKnownSessionId } from './serialize-conversation-pane'
+import { serializeConversationPane, collectExternalInstanceMessages, isExtensionErrorMessage, resolvePersistedLastKnownSessionId } from './serialize-conversation-pane'
+import { tabContentDirty, markTabContentWritten } from './tab-content-tracking'
 import { activeInstance } from './conversation-instance'
 import { SPLIT_SCHEMA_VERSION } from '../../main/tab-migration-split'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
@@ -12,6 +13,29 @@ type Store = typeof UseSessionStoreType
 // re-exported here for backward compatibility with call sites that import it
 // from session-store-persistence.
 export { isExtensionErrorMessage, resolvePersistedLastKnownSessionId }
+
+/**
+ * Write the external content file for every tab whose externalizable
+ * scrollback changed since the last write, on the SAME tick as the thin-file
+ * save (change-tracked per tab — see tab-content-tracking.ts). A tab whose
+ * content collector returns null but that previously wrote content keeps its
+ * file — deletion happens only on tab close (closeTab → deleteTabContent)
+ * plus the main-process orphan sweep, never on a transient empty
+ * serialization.
+ */
+function persistExternalContent(useSessionStore: Store): void {
+  const { tabs, conversationPanes } = useSessionStore.getState()
+  for (const t of tabs) {
+    const pane = conversationPanes.get(t.id)
+    const inst = pane?.instances[0]
+    if (!inst) continue
+    if (!tabContentDirty(t.id, inst.messages)) continue
+    const content = collectExternalInstanceMessages(pane)
+    if (!content) continue
+    markTabContentWritten(t.id, inst.messages)
+    void window.ion.saveTabContent(t.id, content.instanceId, content.messages)
+  }
+}
 
 function persistTabs(useSessionStore: Store): void {
   const { tabs, activeTabId } = useSessionStore.getState()
@@ -104,15 +128,23 @@ function persistTabs(useSessionStore: Store): void {
         : -1
       editorStates[dir] = {
         activeFileIndex: activeIdx >= 0 ? activeIdx : 0,
-        files: dirState.files.map((f) => ({
-          filePath: f.filePath,
-          fileName: f.fileName,
-          content: f.content,
-          savedContent: f.savedContent,
-          isDirty: f.isDirty,
-          isReadOnly: f.isReadOnly,
-          isPreview: f.isPreview,
-        })),
+        // Content locality (schema v4): a non-dirty file with a real path
+        // reloads byte-identically from disk on restore (useFileEditorContent
+        // already re-reads), so its buffers are not duplicated into the tab
+        // file. Dirty edits and scratch buffers (no path) are the only copy
+        // and persist inline.
+        files: dirState.files.map((f) => {
+          const reloadable = !f.isDirty && !!f.filePath
+          return {
+            filePath: f.filePath,
+            fileName: f.fileName,
+            content: reloadable ? '' : f.content,
+            savedContent: reloadable ? '' : f.savedContent,
+            isDirty: f.isDirty,
+            isReadOnly: f.isReadOnly,
+            isPreview: f.isPreview,
+          }
+        }),
       }
     }
   }
@@ -137,6 +169,11 @@ function persistTabs(useSessionStore: Store): void {
     agentDetailGeometry,
   }
   window.ion.saveTabs(data)
+
+  // External content files ride the same tick (change-tracked per tab), so
+  // the thin manifest's hasExternalContent markers and the content files can
+  // never drift by more than one debounce window.
+  persistExternalContent(useSessionStore)
 
   // Owner sync push (mirror-store architecture): tab metadata does not ride
   // normalized events, so the owner publishes the same persisted snapshot to

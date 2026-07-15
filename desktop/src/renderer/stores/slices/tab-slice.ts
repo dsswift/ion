@@ -9,6 +9,7 @@ import { applySetThinkingEffort } from './tab-slice-thinking'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 import { createConversationTabAction } from './engine-slice-create'
 import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
+import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { getEffectiveTabGroups } from '../../preferences'
 import { rDebug, rWarn } from '../../rendererLogger'
@@ -28,7 +29,6 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     initStaticInfo: async () => {
       try {
         const result = await window.ion.start()
-        const backend = await window.ion.getBackend()
         set({
           staticInfo: {
             version: result.version || 'unknown',
@@ -37,7 +37,6 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
             projectPath: result.projectPath || '~',
             homePath: result.homePath || '~',
           },
-          backend,
         })
       } catch {}
     },
@@ -263,6 +262,11 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         ).catch(() => {})
       }
       window.ion.closeTab(tabId).catch(() => {})
+      // Delete the tab's externalized content file (schema v4) and drop its
+      // change-tracking entry. The main-process orphan sweep is the backstop
+      // for paths that never reach here (crash mid-close).
+      window.ion.deleteTabContent?.(tabId)?.catch?.(() => {})
+      forgetTabContentTracking(tabId)
       const pane = get().terminalPanes.get(tabId)
       if (pane) {
         for (const inst of pane.instances) {

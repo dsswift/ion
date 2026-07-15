@@ -45,7 +45,6 @@ vi.mock('../settings-store', () => ({
   SETTINGS_FILE: '/tmp/ion-test-settings/settings.json',
   SESSION_CHAINS_FILE: '/tmp/ion-test-settings/chains.json',
   TABS_FILE: '/tmp/ion-test-settings/tabs.json',
-  currentBackend: 'api',
   loadSessionChains: vi.fn(),
   loadSessionLabels: vi.fn().mockReturnValue({}),
   readEngineConfig: vi.fn().mockReturnValue({}),

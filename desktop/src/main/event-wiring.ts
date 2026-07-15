@@ -3,7 +3,7 @@ import { log as _log, trace as _trace } from './logger'
 import { handleProviderLoginEvent } from './event-wiring-provider-login'
 import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabStatus, lastForwardedTabMeta } from './state'
 import { broadcast } from './broadcast'
-import { currentBackend, shouldStreamThinkingToRemote } from './settings-store'
+import { shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
 import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
@@ -152,10 +152,6 @@ export function wireEngineBridgeEvents(): void {
       initialSubscribeDone = true
       subscribeGlobalResources()
     }
-    if (event.type === 'engine_status' && event.fields) {
-      event = { ...event, fields: { ...event.fields, backend: currentBackend } }
-    }
-
     // engine_provider_login: forward each stage to the renderer and refresh the
     // model cache on completion (see event-wiring-provider-login.ts).
     if (handleProviderLoginEvent(event)) return

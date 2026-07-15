@@ -8,7 +8,7 @@ import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance } from '../stores/conversation-instance'
 import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
-import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially } from './useTabRestoration-helpers'
+import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
 import { persistedTabHasExtensions } from '../../shared/tab-predicates'
 import { rDebug, rInfo, rWarn } from '../rendererLogger'
 
@@ -436,18 +436,14 @@ export function useTabRestoration() {
           }
         }
 
-        // Set active tab by index (handles both session and sessionless tabs)
-        if (typeof saved.activeTabIndex === 'number') {
-          const activeEntry = restoredTabIds.find((r) => r.index === saved.activeTabIndex)
-          if (activeEntry) {
-            useSessionStore.setState({ activeTabId: activeEntry.tabId })
-          }
-        } else if (saved.activeSessionId) {
-          // Backwards compat: fall back to session ID matching
-          const activeEntry = restoredTabIds.find((r) => r.sessionId === saved.activeSessionId)
-          if (activeEntry) {
-            useSessionStore.setState({ activeTabId: activeEntry.tabId })
-          }
+        // Set active tab by index (handles both session and sessionless tabs),
+        // then hydrate it. The boot-active tab is set via raw setState —
+        // selectTab never runs for it, so selectTab's lazy-hydration trigger
+        // never fires; hydrateBootActiveTab applies the same gate explicitly.
+        const bootActiveTabId = resolveBootActiveTabId(saved, restoredTabIds)
+        if (bootActiveTabId) {
+          useSessionStore.setState({ activeTabId: bootActiveTabId })
+          hydrateBootActiveTab(useSessionStore.getState(), bootActiveTabId)
         }
 
         // Remove the initial blank tab created by store constructor

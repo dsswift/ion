@@ -209,35 +209,47 @@ export function writeEngineConfig(config: Record<string, any>): void {
 }
 
 /**
- * The desktop-local backend union stays 'api' | 'cli' — it keys the on-disk tab
- * file names (tabs-api.json / tabs-cli.json) and renaming it would force a
- * user-data migration for no benefit. It maps the engine's on-disk backend
- * value ('api' | 'cli' (legacy alias) | 'claude-code' | 'hybrid') onto that
- * union: only 'api' is 'api'; every other value (subscription or hybrid
- * routing) is 'cli'.
+ * Ensure engine.json selects the hybrid backend. The desktop's opinion is
+ * credential-based per-provider routing (api-key-wins → authed CLI → api),
+ * which the engine only applies under `backend: "hybrid"` — the engine's own
+ * default stays `api` for external/headless consumers, so the desktop opts in
+ * explicitly here (settings live with their owner, engine-grounding §6).
+ * Returns true when the value changed (caller restarts the daemon so the
+ * running engine re-reads the config).
  */
-export function getCurrentBackend(): 'api' | 'cli' {
+export function ensureHybridBackendConfig(): boolean {
   const cfg = readEngineConfig()
-  return cfg.backend === 'api' ? 'api' : 'cli'
+  if (cfg.backend === 'hybrid') return false
+  const previous = cfg.backend ?? '(unset)'
+  cfg.backend = 'hybrid'
+  writeEngineConfig(cfg)
+  log('settings_store: engine backend set to hybrid', { previous })
+  return true
 }
 
-export const currentBackend = getCurrentBackend()
+/**
+ * Unified tab/label/chain storage. One file each, independent of which
+ * backend serves any given conversation — a credential or routing change can
+ * never make tabs "disappear" by pointing the loader at a different file.
+ * The legacy per-backend files below are read-only inputs to the one-time
+ * merge migration (tab-backend-merge.ts) and to the cleanup guards during
+ * the migration window; nothing writes them anymore.
+ */
+export const TABS_FILE = join(SETTINGS_DIR, 'tabs.json')
+export const SESSION_LABELS_FILE = join(SETTINGS_DIR, 'session-labels.json')
+export const SESSION_CHAINS_FILE = join(SETTINGS_DIR, 'session-chains.json')
 
-export function tabsFileForBackend(backend: 'api' | 'cli'): string {
+export function legacyTabsFileForBackend(backend: 'api' | 'cli'): string {
   return join(SETTINGS_DIR, `tabs-${backend}.json`)
 }
 
-export function sessionLabelsFileForBackend(backend: 'api' | 'cli'): string {
+export function legacySessionLabelsFileForBackend(backend: 'api' | 'cli'): string {
   return join(SETTINGS_DIR, `session-labels-${backend}.json`)
 }
 
-export function sessionChainsFileForBackend(backend: 'api' | 'cli'): string {
+export function legacySessionChainsFileForBackend(backend: 'api' | 'cli'): string {
   return join(SETTINGS_DIR, `session-chains-${backend}.json`)
 }
-
-export const TABS_FILE = tabsFileForBackend(currentBackend)
-export const SESSION_LABELS_FILE = sessionLabelsFileForBackend(currentBackend)
-export const SESSION_CHAINS_FILE = sessionChainsFileForBackend(currentBackend)
 
 export function loadSessionLabels(): Record<string, string> {
   try {

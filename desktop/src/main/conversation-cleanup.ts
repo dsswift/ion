@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'fs'
 import { engineBridge } from './state'
 import { log as _log } from './logger'
+import { TABS_FILE } from './settings-store'
+import { listContentTabIds, deleteInstanceContent } from './tab-content-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('cleanup', msg, fields) }
 
@@ -171,8 +173,47 @@ function _formatBreakdown(b: ReturnType<typeof collectProtectedIds>['breakdown']
   return `filesPresent=${b.filesPresent} tabs=[${tabsStr}] chains=[${chainsStr}] labels=[${labelsStr}]`
 }
 
+/**
+ * Delete externalized tab-content files (schema v4) whose tab id no longer
+ * appears in the thin manifest. Safety net behind the delete-on-close path
+ * (renderer closeTab → DELETE_TAB_CONTENT) for closes that crashed mid-way.
+ * Fail-safe: an unreadable manifest aborts the sweep — deleting content on a
+ * guess is exactly the class of loss this file exists to prevent.
+ */
+export function sweepOrphanedTabContent(tabsFile: string = TABS_FILE): number {
+  let liveIds: Set<string>
+  try {
+    if (!existsSync(tabsFile)) return 0
+    const raw = JSON.parse(readFileSync(tabsFile, 'utf-8'))
+    const tabs: unknown[] = Array.isArray(raw?.tabs) ? raw.tabs : []
+    liveIds = new Set(
+      tabs
+        .map((t) => (t as { id?: string })?.id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    )
+  } catch (err: any) {
+    log('cleanup: tab-content sweep aborted, manifest unreadable', { file: tabsFile, error: err.message })
+    return 0
+  }
+
+  let deleted = 0
+  for (const tabId of listContentTabIds()) {
+    if (liveIds.has(tabId)) continue
+    deleteInstanceContent(tabId)
+    deleted++
+  }
+  if (deleted > 0) {
+    log('cleanup: orphaned tab-content files deleted', { count: deleted, live_tabs: liveIds.size })
+  }
+  return deleted
+}
+
 async function runCleanup(sources: CleanupSources): Promise<void> {
   try {
+    // Local, cheap, and independent of the engine: sweep orphaned content
+    // files on the same cadence as the conversation cleanup.
+    sweepOrphanedTabContent()
+
     const { ids: excludeIds, breakdown } = collectProtectedIds(sources)
 
     // Defense-in-depth safety check (see Layer 2 in the plan):

@@ -19,7 +19,6 @@ import {
   parseSessionMeta,
 } from '../session-meta'
 import {
-  currentBackend,
   loadSessionLabels,
   readClaudeCompat,
 } from '../settings-store'
@@ -256,16 +255,25 @@ export function registerSessionsListIpc(): void {
         return []
       }
 
-      if (currentBackend === 'cli') {
-        const msgs = loadClaudeSessionMessages(sessionId, projectPath, encodedDir)
-        if (msgs.length > 0) return msgs
+      // Per-conversation store selection — no global backend mode. An Ion
+      // conversation file exists iff the API backend served the conversation
+      // (delegated-CLI runs persist only to the CLI's own store, and the
+      // engine stamps `backend` on the Ion header). Ion-file-first; fall back
+      // to the Claude CLI store only when no Ion file exists.
+      if (conversationExists(sessionId)) {
+        const msgs = await sessionPlane.loadSessionHistory(sessionId)
+        if (msgs && msgs.length > 0) return msgs
+        return loadEngineConversationMessages(sessionId)
       }
 
+      const cliMsgs = loadClaudeSessionMessages(sessionId, projectPath, encodedDir)
+      if (cliMsgs.length > 0) return cliMsgs
+
+      // Neither store has a file (e.g. a live session before its first save):
+      // ask the engine anyway, then the direct file reader as a last resort.
       const msgs = await sessionPlane.loadSessionHistory(sessionId)
       if (msgs && msgs.length > 0) return msgs
-
-      const directMsgs = loadEngineConversationMessages(sessionId)
-      return directMsgs
+      return loadEngineConversationMessages(sessionId)
     } catch (err) {
       log('load_session: error', { error: String(err) })
       try {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rWarn } from '../rendererLogger'
 
 interface UseFileEditorContentParams {
   dir: string
@@ -42,7 +42,28 @@ export function useFileEditorContent({
               ...current,
               files: current.files.map((f) =>
                 f.id === activeFile.id
-                  ? { ...f, content: result.content!, savedContent: result.content!, isDirty: false }
+                  ? { ...f, content: result.content!, savedContent: result.content!, isDirty: false, readError: undefined }
+                  : f
+              ),
+            })
+            return { fileEditorStates: states }
+          })
+        } else {
+          // The file no longer exists or is unreadable. Surface an explicit
+          // error state instead of a silent blank buffer — restored non-dirty
+          // files reload through this path (their content is not persisted),
+          // so a blank here would look like an empty file the user might save
+          // over the real one. Read-only blocks that.
+          rWarn('file-editor', 'initial load failed, marking read error', { path: activeFile.filePath })
+          useSessionStore.setState((s) => {
+            const states = new Map(s.fileEditorStates)
+            const current = states.get(dir)
+            if (!current) return {}
+            states.set(dir, {
+              ...current,
+              files: current.files.map((f) =>
+                f.id === activeFile.id
+                  ? { ...f, isReadOnly: true, readError: `Could not read ${activeFile.filePath}` }
                   : f
               ),
             })

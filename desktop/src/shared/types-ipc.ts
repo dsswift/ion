@@ -81,6 +81,9 @@ export const IPC = {
   // Tab persistence
   LOAD_TABS: 'ion:load-tabs',
   SAVE_TABS: 'ion:save-tabs',
+  LOAD_TAB_CONTENT: 'ion:load-tab-content',
+  SAVE_TAB_CONTENT: 'ion:save-tab-content',
+  DELETE_TAB_CONTENT: 'ion:delete-tab-content',
 
   // Conversation backup (user-driven export/restore zip archives)
   CONVERSATION_EXPORT_PREVIEW: 'ion:conversation-export-preview',
@@ -106,14 +109,6 @@ export const IPC = {
 
   // Enterprise policy
   GET_ENTERPRISE_POLICY: 'ion:get-enterprise-policy',
-
-  // Backend mode
-  GET_BACKEND: 'ion:get-backend',
-  SWITCH_BACKEND: 'ion:switch-backend',
-
-  // Tab migration between backends
-  LOAD_OTHER_BACKEND_TABS: 'ion:load-other-backend-tabs',
-  MIGRATE_TABS: 'ion:migrate-tabs',
 
   // Git operations
   GIT_GRAPH: 'ion:git-graph',
@@ -265,7 +260,6 @@ export const IPC = {
   PROVIDER_LOGIN: 'ion:provider-login',
   PROVIDER_LOGIN_CANCEL: 'ion:provider-login-cancel',
   PROVIDER_LOGOUT: 'ion:provider-logout',
-  PROVIDER_SET_BACKEND: 'ion:provider-set-backend',
   PROVIDER_LOGIN_EVENT: 'ion:provider-login-event',
 
   // OAuth

@@ -155,12 +155,11 @@ export function SettingsPopover() {
     setOpen(false)
   }
 
-  const handleCopyDebugInfo = () => {
+  const handleCopyDebugInfo = async () => {
     const {
       activeTabId,
       tabs,
       staticInfo,
-      backend,
       conversationPanes,
     } = useSessionStore.getState()
     const tab = tabs.find((t) => t.id === activeTabId)
@@ -184,7 +183,11 @@ export function SettingsPopover() {
     } else {
       const sessionId = tab.conversationId || tab.lastKnownSessionId
       if (!sessionId) return
-      if (backend === 'api') {
+      // Per-conversation store selection (no global mode): an Ion
+      // conversation file exists iff the API backend served it; otherwise
+      // the history lives in the Claude CLI's own store.
+      const inIonStore = await window.ion.conversationExists(sessionId)
+      if (inIonStore) {
         payload = `${homeDir}/.ion/conversations/${sessionId}.jsonl`
       } else {
         const encodedPath = tab.workingDirectory.replace(/[/.]/g, '-')

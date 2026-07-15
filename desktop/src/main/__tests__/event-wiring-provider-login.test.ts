@@ -34,7 +34,7 @@ vi.mock('../state', () => ({
   lastForwardedTabStatus: new Map<string, string>(),
 }))
 vi.mock('../broadcast', () => ({ broadcast: mockBroadcast }))
-vi.mock('../settings-store', () => ({ currentBackend: 'test', shouldStreamThinkingToRemote: vi.fn(() => true) }))
+vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => true) }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../ipc/models', () => ({ refreshModelCache: refreshMock }))

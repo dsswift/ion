@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  humanAuthSource, providerAuthBadge, backendLabel, PROVIDER_BACKENDS, providerCliBackend,
+  humanAuthSource, providerAuthBadge, providerCliBackend,
 } from '../provider-auth-labels'
 import type { ProviderEntry } from '../../../../shared/types-models'
 
@@ -44,22 +44,9 @@ describe('providerAuthBadge', () => {
 })
 
 describe('backend metadata', () => {
-  it('offers two backends for anthropic/openai/xai and one for cursor', () => {
-    expect(PROVIDER_BACKENDS.anthropic).toEqual(['api', 'claude-code'])
-    expect(PROVIDER_BACKENDS.openai).toEqual(['api', 'codex'])
-    expect(PROVIDER_BACKENDS.xai).toEqual(['api', 'grok'])
-    expect(PROVIDER_BACKENDS.cursor).toEqual(['cursor'])
-  })
-
   it('maps providers to their CLI backend kind', () => {
     expect(providerCliBackend('openai')).toBe('codex')
     expect(providerCliBackend('anthropic')).toBe('claude-code')
     expect(providerCliBackend('google')).toBeUndefined()
-  })
-
-  it('labels backend kinds for the segmented control', () => {
-    expect(backendLabel('claude-code')).toBe('Claude Code')
-    expect(backendLabel('codex')).toBe('ChatGPT')
-    expect(backendLabel('api')).toBe('API')
   })
 })

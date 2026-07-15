@@ -41,11 +41,12 @@ function liveMsg(id: string, content: string): Message {
 }
 
 /** Minimal store harness: real slice, fake set/get over a mutable state. */
-function makeHarness(paneOverrides: Record<string, unknown>) {
+function makeHarness(paneOverrides: Record<string, unknown>, tabOverrides: Record<string, unknown> = {}) {
   const tab = {
     id: 'tab-1',
     conversationId: 'conv-1',
     historicalSessionIds: ['conv-old'],
+    ...tabOverrides,
   }
   let state = {
     tabs: [tab],
@@ -170,5 +171,160 @@ describe('needsHistoryHydration', () => {
     // Legacy (undefined marker): original heuristic.
     expect(needsHistoryHydration({ ...base, messages: [], messageCount: 3 })).toBe(true)
     expect(needsHistoryHydration({ ...base, messages: [liveMsg('a', 'x')], messageCount: 1 })).toBe(false)
+  })
+})
+
+// ─── Schema v4: externalized content lazy-load ────────────────────────────────
+
+describe('loadSkeletonMessages — externalized content (schema v4)', () => {
+  const mockLoadTabContent = vi.fn()
+
+  beforeEach(() => {
+    mockLoadTabContent.mockReset()
+    mockLoadChainHistory.mockReset()
+    ;(globalThis as { window?: { ion?: object } }).window!.ion = {
+      loadChainHistory: mockLoadChainHistory,
+      loadTabContent: mockLoadTabContent,
+    } as never
+  })
+
+  it('merges engine chain rows with renderer-only rows from content file', async () => {
+    // The core regression fix: a stale content file has only a harness row;
+    // the engine chain has the real conversation. Both must appear in the pane.
+    const h = makeHarness({ messages: [], messageCount: 2, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1',
+      instanceId: 'main',
+      schemaVersion: 4,
+      messages: [{ role: 'harness', content: 'banner', timestamp: 1 }],
+    })
+    mockLoadChainHistory.mockResolvedValue([
+      { role: 'user', content: 'hello', timestamp: 2 },
+      { role: 'assistant', content: 'hi', timestamp: 3 },
+    ])
+
+    await h.load()
+
+    expect(mockLoadTabContent).toHaveBeenCalledWith('tab-1')
+    expect(mockLoadChainHistory).toHaveBeenCalledWith(['conv-old', 'conv-1'])
+    const inst = h.inst()
+    // Sorted by timestamp: harness(1), user(2), assistant(3)
+    expect(inst.messages).toHaveLength(3)
+    expect(inst.messages[0].role).toBe('harness')
+    expect(inst.messages[0].content).toBe('banner')
+    expect(inst.messages[1].role).toBe('user')
+    expect(inst.messages[1].content).toBe('hello')
+    expect(inst.messages[2].role).toBe('assistant')
+    expect(inst.messages[2].content).toBe('hi')
+    expect(inst.externalContentStatus).toBe('loaded')
+    expect(inst.historyHydrated).toBe(true)
+    expect(inst.messageCount).toBe(3)
+  })
+
+  it('uses only renderer-only rows from content file when engine chain is empty', async () => {
+    // Engine has nothing (new session not yet saved), content file has harness rows.
+    const h = makeHarness({ messages: [], messageCount: 1, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1',
+      instanceId: 'main',
+      schemaVersion: 4,
+      messages: [{ role: 'harness', content: 'banner', timestamp: 1 }],
+    })
+    mockLoadChainHistory.mockResolvedValue([])
+
+    await h.load()
+
+    const inst = h.inst()
+    expect(inst.messages).toHaveLength(1)
+    expect(inst.messages[0].role).toBe('harness')
+    expect(inst.historyHydrated).toBe(true)
+  })
+
+  it('skips engine chain when tab has no conversationId', async () => {
+    // Tab without a conversationId: only content file rows, no chain load.
+    const h = makeHarness(
+      { messages: [], messageCount: 1, externalContentStatus: 'pending' },
+      { conversationId: null, historicalSessionIds: [] },
+    )
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1', instanceId: 'main', schemaVersion: 4,
+      messages: [{ role: 'harness', content: 'banner', timestamp: 1 }],
+    })
+
+    await h.load()
+
+    expect(mockLoadChainHistory).not.toHaveBeenCalled()
+    expect(mockLoadTabContent).toHaveBeenCalledWith('tab-1')
+    expect(h.inst().messages[0].content).toBe('banner')
+  })
+
+  it('falls back to content-only when engine chain fails', async () => {
+    const h = makeHarness({ messages: [], messageCount: 1, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1',
+      instanceId: 'main',
+      schemaVersion: 4,
+      messages: [{ role: 'harness', content: 'banner', timestamp: 1 }],
+    })
+    mockLoadChainHistory.mockRejectedValue(new Error('engine down'))
+
+    await h.load()
+
+    // No thrown error — graceful degradation to content-only
+    const inst = h.inst()
+    expect(inst.historyHydrated).toBe(true)
+    expect(inst.externalContentStatus).toBe('loaded')
+    // Content file harness row survives
+    expect(inst.messages.some((m) => m.content === 'banner')).toBe(true)
+  })
+
+  it('keeps live rows that streamed in during the async load', async () => {
+    const h = makeHarness({ messages: [], messageCount: 1, externalContentStatus: 'pending' })
+    mockLoadChainHistory.mockResolvedValue([])
+    mockLoadTabContent.mockImplementation(async () => {
+      h.appendLive(liveMsg('live-1', 'streamed during load'))
+      return { tabId: 'tab-1', instanceId: 'main', schemaVersion: 4, messages: [{ role: 'harness', content: 'banner', timestamp: 1 }] }
+    })
+
+    await h.load()
+
+    const inst = h.inst()
+    // harness row from content file + live tail
+    expect(inst.messages).toHaveLength(2)
+    expect(inst.messages[0].role).toBe('harness')
+    expect(inst.messages[1].id).toBe('live-1')
+  })
+
+  it('marks error (still usable) when content file is missing and chain is empty', async () => {
+    const h = makeHarness({ messages: [], messageCount: 5, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockResolvedValue(null)
+    mockLoadChainHistory.mockResolvedValue([])
+
+    await h.load()
+
+    const inst = h.inst()
+    // content null → externalContentStatus error, but tab is usable
+    expect(inst.externalContentStatus).toBe('error')
+    expect(inst.historyHydrated).toBe(true)
+  })
+
+  it('marks error when the IPC throws', async () => {
+    const h = makeHarness({ messages: [], messageCount: 5, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockRejectedValue(new Error('disk on fire'))
+
+    await h.load()
+
+    expect(h.inst().externalContentStatus).toBe('error')
+    expect(h.inst().historyHydrated).toBe(true)
+  })
+
+  it('does not intercept non-pending instances (engine chain path unchanged)', async () => {
+    const h = makeHarness({ messages: [], messageCount: 2, historyHydrated: false })
+    mockLoadChainHistory.mockResolvedValue([])
+
+    await h.load()
+
+    expect(mockLoadTabContent).not.toHaveBeenCalled()
+    expect(mockLoadChainHistory).toHaveBeenCalled()
   })
 })

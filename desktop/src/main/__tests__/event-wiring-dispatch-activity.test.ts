@@ -59,7 +59,6 @@ vi.mock('../state', () => ({
 
 vi.mock('../broadcast', () => ({ broadcast: mockBroadcast }))
 vi.mock('../settings-store', () => ({
-  currentBackend: 'test',
   shouldStreamThinkingToRemote: mockShouldStream,
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))

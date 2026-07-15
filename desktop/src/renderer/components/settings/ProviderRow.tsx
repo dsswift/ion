@@ -4,7 +4,6 @@ import type { ProviderEntry } from '../../../shared/types-models'
 import { useModelStore } from '../../stores/model-store'
 import type { Colors, DeviceCodeState } from './provider-styles'
 import { linkBtn, oauthBtn, inputSt, saveBtn, Spinner, DeviceCodeDisplay } from './provider-styles'
-import { ProviderBackendSelector } from './ProviderBackendSelector'
 import { ProviderCliAuth } from './ProviderCliAuth'
 import {
   authSourceTooltip, providerAuthBadge,
@@ -90,8 +89,9 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   const badgeBg = provider.hasAuth ? 'rgba(34,197,94,0.1)' : `${colors.textTertiary}15`
   const showApiKeyInput = isApiKeyProvider && (!provider.hasAuth || editing)
   // A stored OpenAI key that returns no models is the poisoned-credential case
-  // (a ChatGPT token stored as an API key). Nudge the user to remove it or
-  // switch to the codex backend.
+  // (a ChatGPT token stored as an API key). Under credential-derived routing
+  // the bad key also captures routing (api-key-wins), so the fix is to remove
+  // it and sign in with ChatGPT instead.
   const showPoisonedHint = provider.id === 'openai' && provider.hasAuth
     && provider.authSource === 'filestore' && provider.backend !== 'codex' && providerModelCount === 0
 
@@ -122,15 +122,15 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
 
       <ConfigDetails provider={provider} colors={colors} hasCustomGateway={hasCustomGateway} />
 
-      {/* Backend selector for providers that can run on more than one backend. */}
-      <ProviderBackendSelector provider={provider} colors={colors} />
-
-      {/* Delegated-CLI auth (install / sign in / sign out) when a CLI backend is selected. */}
+      {/* Delegated-CLI auth (install / sign in / sign out) for providers with
+          a CLI option. There is no backend selector: routing is
+          credential-derived by the engine (an API key wins; else an
+          authenticated CLI; else api), so the row only manages credentials. */}
       <ProviderCliAuth provider={provider} colors={colors} />
 
       {showPoisonedHint && (
         <div style={{ marginTop: 4, fontSize: 11, color: '#f59e0b' }}>
-          This stored OpenAI credential isn’t returning models. Remove it, or switch the backend to ChatGPT.
+          This stored OpenAI credential isn’t returning models. Remove it and sign in with ChatGPT below instead.
         </div>
       )}
 

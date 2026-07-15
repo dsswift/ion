@@ -70,6 +70,9 @@ export interface IonAPI extends AtvApi {
   saveSettings(data: Record<string, any>): Promise<void>
   loadTabs(): Promise<PersistedTabState | null>
   saveTabs(data: PersistedTabState): Promise<void>
+  loadTabContent(tabId: string): Promise<import('../shared/types-persistence').ExternalInstanceContent | null>
+  saveTabContent(tabId: string, instanceId: string, messages: unknown[]): Promise<void>
+  deleteTabContent(tabId: string): Promise<void>
   saveSessionLabel(sessionId: string, customTitle: string | null): Promise<void>
   loadSessionLabels(): Promise<Record<string, string>>
   generateTitle(text: string): Promise<string>
@@ -77,15 +80,11 @@ export interface IonAPI extends AtvApi {
   saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): Promise<void>
   getConversation(conversationId: string, offset?: number, limit?: number): Promise<{ messages: any[]; total: number; hasMore: boolean }>
   loadChainHistory(sessionIds: string[]): Promise<SessionLoadMessage[]>
-  getBackend(): Promise<'api' | 'cli'>
-  switchBackend(backend: 'api' | 'cli'): Promise<void>
-  loadOtherBackendTabs(): Promise<Array<{ conversationId: string; title: string; customTitle: string | null; workingDirectory: string; permissionMode: string }>>
-  migrateTabs(conversationIds: string[], targetBackend: 'api' | 'cli'): Promise<{ backupPaths: string[]; migrated: Array<{ conversationId: string; newConversationId: string; title: string }>; failed: Array<{ conversationId: string; title: string; error: string }> }>
 
   // ─── Conversation backup (export/restore zip archives) ───
   conversationExportPreview(scope: 'currently-open' | 'all'): Promise<{ ok: boolean; error?: string; conversationCount?: number; totalUncompressedBytes?: number; estimatedCompressedBytes?: number; tabCount?: number }>
   conversationExport(args: { scope: 'currently-open' | 'all'; destinationPath?: string }): Promise<{ ok: boolean; error?: string; destinationPath?: string; conversationCount?: number; bytesWritten?: number }>
-  conversationRestorePreview(args?: { sourcePath?: string }): Promise<{ ok: boolean; error?: string; sourcePath?: string; manifest?: { version: number; createdAt: string; createdBy: string; ionVersion: string; scope: 'currently-open' | 'all'; conversationCount: number; backendSnapshot: 'api' | 'cli'; hostname: string } }>
+  conversationRestorePreview(args?: { sourcePath?: string }): Promise<{ ok: boolean; error?: string; sourcePath?: string; manifest?: { version: number; createdAt: string; createdBy: string; ionVersion: string; scope: 'currently-open' | 'all'; conversationCount: number; backendSnapshot?: 'api' | 'cli'; hostname: string } }>
   conversationRestore(args: { sourcePath: string; conflictPolicy?: 'skip' | 'overwrite' | 'rename'; restoreTabs?: boolean }): Promise<{ ok: boolean; error?: string; restored: number; skipped: number; overwritten: number; renamed: number; errors: string[] }>
   onConversationBackupProgress(callback: (data: { current: number; total: number; label: string }) => void): () => void
   // ─── Git operations ───
@@ -219,7 +218,6 @@ export interface IonAPI extends AtvApi {
   providerLogin(provider: string): Promise<{ ok: boolean; error?: string }>
   providerLoginCancel(provider: string): Promise<{ ok: boolean; error?: string }>
   providerLogout(provider: string): Promise<{ ok: boolean; error?: string }>
-  setProviderBackend(provider: string, backend: string): Promise<{ ok: boolean; error?: string }>
   onProviderLoginEvent(handler: (update: import('../shared/types-engine-event').ProviderLoginUpdate) => void): () => void
 
   // ─── OAuth ───

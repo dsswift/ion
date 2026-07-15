@@ -40,7 +40,7 @@ export interface RestoreManifest {
   ionVersion: string
   scope: ExportScope
   conversationCount: number
-  backendSnapshot: 'api' | 'cli'
+  backendSnapshot?: 'api' | 'cli'
   hostname: string
 }
 

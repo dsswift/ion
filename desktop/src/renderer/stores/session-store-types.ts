@@ -18,6 +18,14 @@ export interface FileEditorTab {
   isDirty: boolean
   isReadOnly: boolean
   isPreview: boolean
+  /**
+   * Set when the file's on-disk content could not be read (deleted or
+   * unreadable path). Restored non-dirty files reload from disk (schema v4
+   * drops their buffers from the tab file); a failed reload must surface as
+   * an explicit error, never a silent blank buffer the user might save over
+   * the real file. Runtime-only — never persisted.
+   */
+  readError?: string
 }
 
 export interface FileEditorDirState {
@@ -66,7 +74,6 @@ export interface State {
    * Cleared after tabsReady=true. */
   rehydrating: boolean
   initProgress: string | null
-  backend: 'api' | 'cli'
   worktreeUncommittedMap: Map<string, boolean>
 
   engineWorkingMessages: Map<string, string>

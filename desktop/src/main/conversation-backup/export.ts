@@ -18,9 +18,9 @@ function log(msg: string, fields?: Record<string, unknown>): void { _log('backup
 
 export interface ExportSources {
   conversationsDir: string
-  tabsFiles: string[]      // [tabs-api.json, tabs-cli.json]
-  chainsFiles: string[]    // [session-chains-api.json, session-chains-cli.json]
-  labelsFiles: string[]    // [session-labels-api.json, session-labels-cli.json]
+  tabsFiles: string[]      // [tabs.json, plus legacy tabs-{api,cli}.json while present]
+  chainsFiles: string[]    // [session-chains.json, plus legacy per-backend twins while present]
+  labelsFiles: string[]    // [session-labels.json, plus legacy per-backend twins while present]
 }
 
 export interface ExportPreview {
@@ -95,7 +95,6 @@ export async function runExport(args: {
   destinationPath: string
   sources: ExportSources
   ionVersion: string
-  backendSnapshot: 'api' | 'cli'
   onProgress?: ProgressCallback
 }): Promise<ExportResult> {
   const { files: conversationFiles } = collectExportConversations({
@@ -114,7 +113,6 @@ export async function runExport(args: {
   const manifest = buildManifest({
     scope: args.scope,
     conversationCount: conversationFiles.length,
-    backendSnapshot: args.backendSnapshot,
     ionVersion: args.ionVersion,
     hostname: hostname(),
   })

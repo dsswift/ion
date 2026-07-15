@@ -143,6 +143,15 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
 
       {/* Editor / Preview area */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {activeFile?.readError && (
+          /* Explicit read-failure state: the file's on-disk content could not
+             be loaded (deleted/unreadable path). Restored non-dirty files
+             reload from disk, so this banner is what distinguishes "file is
+             gone" from "file is empty" — the buffer is read-only underneath. */
+          <div style={{ padding: '4px 10px', fontSize: 11, color: '#ef4444', background: 'rgba(239,68,68,0.08)', borderBottom: `1px solid ${colors.containerBorder}` }}>
+            {activeFile.readError} — the file may have been moved or deleted. Buffer is read-only.
+          </div>
+        )}
         {activeFile ? (
           isPreview ? (
             <FileEditorPreview dir={dir} tabId={tabId} activeFile={activeFile} />

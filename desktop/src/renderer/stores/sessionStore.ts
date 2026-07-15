@@ -63,7 +63,6 @@ const initialState = {
   tabsReady: false,
   rehydrating: false,
   initProgress: null,
-  backend: 'api' as const,
   worktreeUncommittedMap: new Map(),
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),

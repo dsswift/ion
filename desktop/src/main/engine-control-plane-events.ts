@@ -318,7 +318,7 @@ function handleStatusEvent(
   // model/backend/cost/extensionName on running, idle, and cost-only heartbeat
   // ticks alike, not just on idle (the binding/task_complete path below drops
   // those fields). The emit is additive; the existing binding logic is unchanged.
-  debug('engine_status: forwarding to renderer', { tab_id: tabId, state: event.fields.state, model: event.fields.model ?? 'none', backend: event.fields.backend ?? 'api' })
+  debug('engine_status: forwarding to renderer', { tab_id: tabId, state: event.fields.state, model: event.fields.model ?? 'none' })
   ctx.emit('event', tabId, { type: 'status', fields: event.fields } as NormalizedEvent)
   if (event.fields.state === 'idle') {
     if (event.fields.sessionId) {

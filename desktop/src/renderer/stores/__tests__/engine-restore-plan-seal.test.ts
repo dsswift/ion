@@ -198,3 +198,43 @@ describe('hasPlanBeenImplemented', () => {
     expect(populated.permissionMode).toBe('plan')
   })
 })
+
+// ─── Schema v4 externalized content: historyHydrated gate ───────────────────
+
+describe('buildPopulatedInstance — externalContentStatus pending sets historyHydrated: false', () => {
+  it('sets both externalContentStatus: pending AND historyHydrated: false when hasExternalContent is true and no messages restored', () => {
+    // Regression pin: without historyHydrated:false, the legacy heuristic in
+    // needsHistoryHydration fires (historyHydrated===undefined → messages.length===0 && count>0).
+    // A live bootstrap harness message landing before the user opens the tab makes
+    // messages.length===1 → needsHistoryHydration returns false → loadSkeletonMessages is
+    // never called → the real conversation from the engine chain is never loaded.
+    const inst = makePersistedInstance([], { hasExternalContent: true, messageCount: 5 })
+    const populated = buildPopulatedInstance(inst as any, 'tab1', NOOP_TAB as any)
+    expect(populated.externalContentStatus).toBe('pending')
+    expect(populated.historyHydrated).toBe(false)
+  })
+
+  it('does NOT set externalContentStatus or historyHydrated when hasExternalContent is false', () => {
+    const inst = makePersistedInstance([{ role: 'user', content: 'hi', timestamp: 1 }])
+    const populated = buildPopulatedInstance(inst as any, 'tab1', NOOP_TAB as any)
+    expect(populated.externalContentStatus).toBeUndefined()
+    expect(populated.historyHydrated).toBeUndefined()
+  })
+
+  it('sets pending even when messages were eager-merged (stale-content-file guard)', () => {
+    // The main process eager-merges the boot-active tab's content file into
+    // inst.messages. Those rows render instantly (view readiness) — but the
+    // content file may be STALE (written after a session recycle cleared the
+    // pane), missing the real conversation rows that only the engine chain
+    // has. The pending marker stays so hydration re-merges content + chain.
+    const inst = makePersistedInstance(
+      [{ role: 'harness', content: 'banner', timestamp: 1 }],
+      { hasExternalContent: true },
+    )
+    const populated = buildPopulatedInstance(inst as any, 'tab1', NOOP_TAB as any)
+    expect(populated.externalContentStatus).toBe('pending')
+    expect(populated.historyHydrated).toBe(false)
+    // Eager-merged rows still present for instant render.
+    expect(populated.messages).toHaveLength(1)
+  })
+})

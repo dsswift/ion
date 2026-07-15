@@ -18,10 +18,12 @@ import { log as _log } from '../logger'
 import { state } from '../state'
 import { showWindow } from '../window-manager'
 import {
-  tabsFileForBackend,
-  sessionChainsFileForBackend,
-  sessionLabelsFileForBackend,
-  getCurrentBackend,
+  TABS_FILE,
+  SESSION_CHAINS_FILE,
+  SESSION_LABELS_FILE,
+  legacyTabsFileForBackend,
+  legacySessionChainsFileForBackend,
+  legacySessionLabelsFileForBackend,
 } from '../settings-store'
 import { previewExport, runExport, type ExportSources } from '../conversation-backup/export'
 import { previewRestore, runRestore, type ConflictPolicy } from '../conversation-backup/restore'
@@ -33,9 +35,11 @@ function buildExportSources(): ExportSources {
   const home = join(homedir(), '.ion')
   return {
     conversationsDir: join(home, 'conversations'),
-    tabsFiles: [tabsFileForBackend('api'), tabsFileForBackend('cli')],
-    chainsFiles: [sessionChainsFileForBackend('api'), sessionChainsFileForBackend('cli')],
-    labelsFiles: [sessionLabelsFileForBackend('api'), sessionLabelsFileForBackend('cli')],
+    // Unified files first (live sources); legacy per-backend files stay in
+    // the export set through the merge-migration window.
+    tabsFiles: [TABS_FILE, legacyTabsFileForBackend('api'), legacyTabsFileForBackend('cli')],
+    chainsFiles: [SESSION_CHAINS_FILE, legacySessionChainsFileForBackend('api'), legacySessionChainsFileForBackend('cli')],
+    labelsFiles: [SESSION_LABELS_FILE, legacySessionLabelsFileForBackend('api'), legacySessionLabelsFileForBackend('cli')],
   }
 }
 
@@ -94,7 +98,6 @@ export function registerConversationBackupIpc(): void {
       }
 
       const sources = buildExportSources()
-      const backendSnapshot = getCurrentBackend()
       const ionVersion = app.getVersion()
 
       const result = await runExport({
@@ -102,7 +105,6 @@ export function registerConversationBackupIpc(): void {
         destinationPath,
         sources,
         ionVersion,
-        backendSnapshot,
         onProgress: emitProgress,
       })
       return result

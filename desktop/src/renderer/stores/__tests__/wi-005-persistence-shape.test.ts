@@ -49,6 +49,7 @@ vi.mock('../../stores/session-store-persistence', () => ({
 
 import {
   serializeConversationPane,
+  collectExternalInstanceMessages,
   instanceHasRendererOnlyRows,
 } from '../../stores/serialize-conversation-pane'
 import { persistedTabHasExtensions } from '../../../shared/tab-predicates'
@@ -156,47 +157,53 @@ describe('serializeConversationPane — no tab-type branch', () => {
 // ─── 5. Content arm fires when harness row present ────────────────────────────
 
 describe('serializeConversationPane — content arm on data fact', () => {
-  it('persists message content when instance has a harness row', () => {
+  it('externalizes message content when instance has a harness row (schema v4)', () => {
     const msgs = [
       makeMsg('user', 'hi'),
       makeMsg('harness', '── Session started ──'),
       makeMsg('assistant', 'hello'),
     ]
     const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
-    const result = serializeConversationPane(makePane(inst), { tabIdForLog: 'tab-harness' })
+    const pane = makePane(inst)
+    const result = serializeConversationPane(pane, { tabIdForLog: 'tab-harness' })
 
-    expect(result?.instances[0].messages).toBeDefined()
-    expect(result?.instances[0].messages?.length).toBeGreaterThan(0)
-    // harness row is preserved
-    expect(result?.instances[0].messages?.some((m) => m.role === 'harness')).toBe(true)
+    // v4: the thin manifest never carries inline messages — the instance is
+    // marked and the content goes to the per-tab content file.
+    expect(result?.instances[0].messages).toBeUndefined()
+    expect(result?.instances[0].hasExternalContent).toBe(true)
+    const content = collectExternalInstanceMessages(pane)
+    expect(content).not.toBeNull()
+    expect(content!.messages.length).toBeGreaterThan(0)
+    expect(content!.messages.some((m) => m.role === 'harness')).toBe(true)
   })
 
-  it('persists message content when instance has a system row', () => {
+  it('handles a system row that is an extension error (filtered out, no content)', () => {
     const msgs = [
       makeMsg('user', 'test'),
       makeMsg('system', 'Error: extension subprocess died'),
     ]
     const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
-    const result = serializeConversationPane(makePane(inst), { tabIdForLog: 'tab-system' })
+    const pane = makePane(inst)
+    const result = serializeConversationPane(pane, { tabIdForLog: 'tab-system' })
 
-    // system extension-error messages ARE stripped by isExtensionErrorMessage,
-    // but the content arm itself fires — check that the filter ran, not that
-    // all rows survived.
     expect(result).toBeDefined()
-    // The trigger message is an extension error, so it's filtered out.
-    // Messages may be empty or absent after filtering extension errors.
-    // The key assertion: the code took the content arm (no exception thrown).
+    // The trigger message is an extension error: after filtering, only
+    // engine-reloadable rows remain, so nothing externalizes.
+    const content = collectExternalInstanceMessages(pane)
+    expect(content === null || content.messages.every((m) => m.role !== 'system')).toBe(true)
   })
 
-  it('persists content for a plain tab (engineProfileId=null) if it has harness rows', () => {
+  it('externalizes content for a plain tab (engineProfileId=null) if it has harness rows', () => {
     // This is the "any tab" parity test: a plain conversation that received
-    // a harness_message should also persist content.
+    // a harness_message should also externalize content.
     const msgs = [makeMsg('user'), makeMsg('harness', '── Clear ──'), makeMsg('assistant')]
     const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
-    const result = serializeConversationPane(makePane(inst), { tabIdForLog: 'tab-plain' })
+    const pane = makePane(inst)
+    const result = serializeConversationPane(pane, { tabIdForLog: 'tab-plain' })
 
-    expect(result?.instances[0].messages).toBeDefined()
-    expect(result?.instances[0].messages?.some((m) => m.role === 'harness')).toBe(true)
+    expect(result?.instances[0].hasExternalContent).toBe(true)
+    const content = collectExternalInstanceMessages(pane)
+    expect(content!.messages.some((m) => m.role === 'harness')).toBe(true)
   })
 
   it('persists planFilePath on a plan-lifecycle divider row (link survives restart)', () => {
@@ -208,9 +215,11 @@ describe('serializeConversationPane — content arm on data fact', () => {
     divider.planFilePath = '/tmp/happy-rabbit.md'
     const msgs = [makeMsg('user'), divider, makeMsg('assistant')]
     const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
-    const result = serializeConversationPane(makePane(inst), { tabIdForLog: 'tab-divider' })
+    const pane = makePane(inst)
+    serializeConversationPane(pane, { tabIdForLog: 'tab-divider' })
 
-    const persistedDivider = result?.instances[0].messages?.find((m) => m.role === 'system')
+    const content = collectExternalInstanceMessages(pane)
+    const persistedDivider = content?.messages.find((m) => m.role === 'system')
     expect(persistedDivider).toBeDefined()
     expect((persistedDivider as any).planFilePath).toBe('/tmp/happy-rabbit.md')
   })
@@ -253,156 +262,6 @@ describe('serializeConversationPane — count-only arm on data fact', () => {
 
     expect(result?.instances[0].messages).toBeUndefined()
     expect(result?.instances[0].messageCount).toBe(msgs.length)
-  })
-})
-
-// ─── 3 & 4. Round-trip: persist → restore ────────────────────────────────────
-
-describe('serializeConversationPane + buildPopulatedInstance round-trip', () => {
-  it('plain tab: count-only persist → buildPopulatedInstance → skeleton (empty messages, positive count)', () => {
-    const msgs = [makeMsg('user', 'q1'), makeMsg('assistant', 'a1')]
-    const inst = makeInstance({ messages: msgs, messageCount: msgs.length, conversationIds: ['conv-plain'] })
-    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-plain' })
-
-    expect(serialized).toBeDefined()
-    const persisted = serialized!.instances[0]
-
-    // Count-only: no messages
-    expect(persisted.messages).toBeUndefined()
-    expect(persisted.messageCount).toBe(2)
-
-    // Restore via buildPopulatedInstance
-    const restored = buildPopulatedInstance(persisted, 'tab-plain', {
-      workingDirectory: '/tmp',
-      engineProfileId: null,
-    } as any)
-
-    // Skeleton: empty messages but positive messageCount
-    expect(restored.messages).toHaveLength(0)
-    expect(restored.messageCount).toBe(2)
-    expect(restored.conversationIds).toEqual(['conv-plain'])
-  })
-
-  it('extension-hosted tab with harness rows: content persist → buildPopulatedInstance → full messages', () => {
-    const msgs = [
-      makeMsg('user', 'start'),
-      makeMsg('harness', '── Session started ──'),
-      makeMsg('assistant', 'ready'),
-    ]
-    const inst = makeInstance({
-      messages: msgs,
-      messageCount: msgs.length,
-      conversationIds: ['conv-ext'],
-      permissionMode: 'auto',
-    })
-    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-ext' })
-
-    expect(serialized).toBeDefined()
-    const persisted = serialized!.instances[0]
-
-    // Content arm: messages present
-    expect(persisted.messages).toBeDefined()
-    expect(persisted.messages?.length).toBe(3) // user + harness + assistant
-
-    // Restore via buildPopulatedInstance
-    const restored = buildPopulatedInstance(persisted, 'tab-ext', {
-      workingDirectory: '/tmp',
-      engineProfileId: 'cos',
-    } as any)
-
-    // Full messages restored (3 rows)
-    expect(restored.messages).toHaveLength(3)
-    // messageCount mirrors the restored length
-    expect(restored.messageCount).toBe(3)
-    expect(restored.conversationIds).toEqual(['conv-ext'])
-  })
-
-  it('extension-hosted tab WITHOUT harness rows: count-only persist → skeleton', () => {
-    // Extension tab where the harness never injected display rows.
-    const msgs = [makeMsg('user'), makeMsg('assistant'), makeMsg('tool')]
-    const inst = makeInstance({
-      messages: msgs,
-      messageCount: msgs.length,
-      conversationIds: ['conv-ext-clean'],
-    })
-    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-ext-clean' })
-
-    expect(serialized).toBeDefined()
-    const persisted = serialized!.instances[0]
-
-    // Count-only
-    expect(persisted.messages).toBeUndefined()
-    expect(persisted.messageCount).toBe(3)
-
-    // Restore
-    const restored = buildPopulatedInstance(persisted, 'tab-ext-clean', {
-      workingDirectory: '/tmp',
-      engineProfileId: 'cos',
-    } as any)
-
-    // Skeleton: empty messages, positive messageCount (lazy-load will refill from engine file)
-    expect(restored.messages).toHaveLength(0)
-    expect(restored.messageCount).toBe(3)
-  })
-
-  it('plain tab with harness row: content arm fires and content survives round-trip', () => {
-    const msgs = [makeMsg('user'), makeMsg('harness', '── /clear ──'), makeMsg('assistant')]
-    const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
-    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-plain-harness' })
-
-    const persisted = serialized!.instances[0]
-    expect(persisted.messages).toBeDefined()
-
-    const restored = buildPopulatedInstance(persisted, 'tab-ph', {} as any)
-    // 3 rows survive (user + harness + assistant); assistant gets sealed
-    expect(restored.messages).toHaveLength(3)
-    expect(restored.messages.find((m) => m.role === 'harness')).toBeDefined()
-  })
-
-  it('engine-generated image attachments survive the persist → restore round-trip (#224)', () => {
-    // Regression: a conversation with a renderer-only row (harness/system) is
-    // forced onto the content-persistence arm. Before the fix, the serializer's
-    // per-message projection omitted `attachments`, so tool-result images the
-    // engine replayed via flattenEntries were stripped on save. On restart the
-    // restored instance is non-empty (so the skeleton lazy-load that re-fetches
-    // from the engine never fires) and the persisted, image-less copy is
-    // authoritative — the inline thumbnails silently vanish.
-    //
-    // Revert-check: remove the `attachments` spread in serialize-conversation-pane.ts
-    // OR the `attachments: m.attachments` line in useTabRestoration-engine.ts and
-    // the final assertion goes red (restored tool row has no attachments).
-    const toolMsg = makeMsg('tool', '[Image: screenshot]')
-    toolMsg.toolName = 'Screenshot'
-    toolMsg.toolId = 'toolu_shot'
-    toolMsg.attachments = [
-      { id: 'img:/conv/images/abc.png', type: 'image', name: 'abc.png', path: '/conv/images/abc.png', mimeType: 'image/png' },
-    ]
-    const msgs = [
-      makeMsg('user', 'take a screenshot'),
-      makeMsg('harness', '── Session started ──'), // forces content-persistence arm
-      makeMsg('assistant', 'Taking a screenshot.'),
-      toolMsg,
-    ]
-    const inst = makeInstance({ messages: msgs, messageCount: msgs.length, conversationIds: ['conv-img'] })
-
-    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-img' })
-    const persisted = serialized!.instances[0]
-
-    // Seam 1 (serializer): the persisted tool row carries its attachments.
-    const persistedTool = persisted.messages?.find((m) => m.role === 'tool')
-    expect(persistedTool).toBeDefined()
-    expect(persistedTool!.attachments).toHaveLength(1)
-    expect(persistedTool!.attachments![0]).toMatchObject({ type: 'image', path: '/conv/images/abc.png' })
-
-    // Seam 2 (rehydration): buildPopulatedInstance restores them onto the message.
-    const restored = buildPopulatedInstance(persisted, 'tab-img', {
-      workingDirectory: '/tmp',
-      engineProfileId: 'cos',
-    } as any)
-    const restoredTool = restored.messages.find((m) => m.role === 'tool')
-    expect(restoredTool).toBeDefined()
-    expect(restoredTool!.attachments).toHaveLength(1)
-    expect(restoredTool!.attachments![0]).toMatchObject({ type: 'image', name: 'abc.png', path: '/conv/images/abc.png' })
   })
 })
 
@@ -515,12 +374,14 @@ describe('serializeConversationPane — edge cases', () => {
       makeMsg('assistant'),
     ]
     const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
-    const result = serializeConversationPane(makePane(inst), { tabIdForLog: 'think-strip' })
+    const thinkPane = makePane(inst)
+    const result = serializeConversationPane(thinkPane, { tabIdForLog: 'think-strip' })
 
     // Content arm fires (harness present), but thinking row is stripped
-    expect(result?.instances[0].messages).toBeDefined()
-    expect(result?.instances[0].messages?.some((m: any) => m.role === 'thinking')).toBe(false)
-    expect(result?.instances[0].messages?.some((m: any) => m.role === 'harness')).toBe(true)
+    expect(result?.instances[0].hasExternalContent).toBe(true)
+    const content = collectExternalInstanceMessages(thinkPane)!
+    expect(content.messages.some((m: any) => m.role === 'thinking')).toBe(false)
+    expect(content.messages.some((m: any) => m.role === 'harness')).toBe(true)
   })
 })
 

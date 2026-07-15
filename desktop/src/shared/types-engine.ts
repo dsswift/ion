@@ -248,6 +248,16 @@ export interface ConversationInstance {
    * Client-only and transient: never persisted, not part of the Go contract.
    */
   historyHydrated?: boolean
+  /**
+   * Lazy-load state for externalized scrollback (schema v4). 'pending' is set
+   * on restore when the persisted instance carries `hasExternalContent` and
+   * its content file was not eager-merged (only the active tab merges at
+   * startup); `loadSkeletonMessages` resolves it to 'loaded' (content file
+   * read) or 'error' (unreadable — the pane renders count-only, still
+   * usable). Undefined means the instance never had external content.
+   * Client-only and transient: never persisted, not part of the Go contract.
+   */
+  externalContentStatus?: 'pending' | 'loaded' | 'error'
 }
 
 export interface ConversationPane {
@@ -285,8 +295,6 @@ export interface StatusFields {
    *  dispatches) in USD. Computed via the cost.ConversationCost dispatch-tree
    *  walk on every TaskComplete. */
   conversationCostUsd?: number
-  /** Backend mode: 'api' (direct) or 'cli' (CC CLI proxy) */
-  backend?: 'api' | 'cli'
   permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
   /** Friendly display name broadcast by the extension (e.g. "Chief of Staff"). */
   extensionName?: string

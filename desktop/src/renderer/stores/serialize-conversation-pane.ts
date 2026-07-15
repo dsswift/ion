@@ -137,6 +137,77 @@ export function resolvePersistedLastKnownSessionId(args: {
   return undefined
 }
 
+/**
+ * Map runtime messages to the persisted message shape. Shared by the
+ * external-content collector below; kept as ONE function so the persisted
+ * shape cannot drift between call sites. Strips extension-error system
+ * messages (operational noise) and `role: 'thinking'` rows (streamed
+ * reasoning text — large, high-frequency, and intentionally absent from a
+ * rehydrated conversation).
+ */
+export function serializePersistedMessages(
+  msgs: Array<{
+    role: string
+    content: string
+    toolName?: string
+    toolId?: string
+    toolInput?: string
+    toolStatus?: string
+    timestamp: number
+    dedupKey?: string
+    planFilePath?: string
+    slashCommand?: string
+    slashArgs?: string
+    slashSource?: string
+    attachments?: import('../../shared/types-session').Attachment[]
+  }>,
+): NonNullable<PersistedConversationInstance['messages']> {
+  const filtered = msgs.filter(
+    (m) => !isExtensionErrorMessage(m) && m.role !== 'thinking',
+  )
+  return filtered.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.toolName ? { toolName: m.toolName } : {}),
+    ...(m.toolId ? { toolId: m.toolId } : {}),
+    ...(m.toolInput ? { toolInput: m.toolInput } : {}),
+    ...(m.toolStatus ? { toolStatus: m.toolStatus } : {}),
+    timestamp: m.timestamp,
+    ...(m.dedupKey ? { dedupKey: m.dedupKey } : {}),
+    ...(m.planFilePath ? { planFilePath: m.planFilePath } : {}),
+    ...(m.slashCommand ? { slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource } : {}),
+    // Persist engine-produced image attachments (tool-result / provider
+    // images the engine replays on historical reload via flattenEntries).
+    // Attachment paths are on-disk references (never base64), so this is
+    // a few bytes per image, not the image payload.
+    ...(m.attachments && m.attachments.length > 0 ? { attachments: m.attachments } : {}),
+  }))
+}
+
+/**
+ * Collect the messages to write to a tab's EXTERNAL content file (schema v4),
+ * or null when the tab needs no content file.
+ *
+ * The criterion is unchanged from the pre-v4 inline persistence: content is
+ * persisted only when the instance contains renderer-only rows (harness /
+ * system) that cannot be reloaded from the engine conversation store. What
+ * changed is WHERE it goes — a per-tab content file instead of the thin
+ * manifest. Engine-reloadable scrollback is never duplicated (the guiding
+ * rule: store the pointer, not the payload, unless the payload is the only
+ * copy).
+ */
+export function collectExternalInstanceMessages(
+  pane: ConversationPane | undefined,
+): { instanceId: string; messages: NonNullable<PersistedConversationInstance['messages']> } | null {
+  const inst = pane?.instances[0]
+  if (!inst) return null
+  const msgs = inst.messages ?? []
+  if (!instanceHasRendererOnlyRows(msgs)) return null
+  const serialized = serializePersistedMessages(msgs)
+  if (serialized.length === 0) return null
+  return { instanceId: inst.id, messages: serialized }
+}
+
 export function serializeConversationPane(
   pane: ConversationPane | undefined,
   opts: { tabIdForLog: string },
@@ -150,53 +221,20 @@ export function serializeConversationPane(
       messageCount: instanceMessageCount(inst),
     }
 
-    // Persist message CONTENT when the instance contains renderer-only rows
-    // that cannot be reloaded from the engine conversation file.
-    //
-    // Renderer-only rows are 'harness' (extension harness banners, /clear
-    // dividers) and 'system' (extension error messages, engine-start failures,
-    // connection notices). When present, persisting the full list is the only
-    // way to preserve them across restarts. When absent, every visible row
-    // exists in the conversation file and will be reloaded via conversationIds.
-    //
-    // This is a DATA check, not a tab-type check. Any instance — plain or
-    // extension-hosted — that accumulates renderer-only rows will be persisted
-    // with content; any instance without them will be count-only.
+    // Schema v4: the thin manifest NEVER carries inline messages. Instances
+    // with renderer-only rows (harness/system — not reloadable from the
+    // engine store) externalize their scrollback to a per-tab content file
+    // (written by session-store-persistence on the same debounced tick);
+    // here they get only the explicit marker the restore path keys off.
+    // Count-only instances (every row engine-reloadable) stay unmarked.
     const msgs = (inst.messages ?? [])
-    if (instanceHasRendererOnlyRows(msgs)) {
-      // Strip extension-error system messages (operational noise) AND
-      // `role: 'thinking'` messages. Thinking rows carry streamed
-      // reasoning text that can be large and high-frequency; persisting
-      // it would balloon the tabs file on every flush. A rehydrated
-      // conversation simply has no thinking rows — the ThinkingBlock's
-      // summary-absent default — which is the intended behavior.
-      const filtered = msgs.filter(
-        (m) => !isExtensionErrorMessage(m) && m.role !== 'thinking',
-      )
-      if (filtered.length > 0) {
-        out.messages = filtered.map((m) => ({
-          role: m.role,
-          content: m.content,
-          ...(m.toolName ? { toolName: m.toolName } : {}),
-          ...(m.toolId ? { toolId: m.toolId } : {}),
-          ...(m.toolInput ? { toolInput: m.toolInput } : {}),
-          ...(m.toolStatus ? { toolStatus: m.toolStatus } : {}),
-          timestamp: m.timestamp,
-          ...(m.dedupKey ? { dedupKey: m.dedupKey } : {}),
-          ...(m.planFilePath ? { planFilePath: m.planFilePath } : {}),
-          ...(m.slashCommand ? { slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource } : {}),
-          // Persist engine-produced image attachments (tool-result / provider
-          // images the engine replays on historical reload via flattenEntries).
-          // Without this, an instance forced to content-persistence by a
-          // renderer-only row (harness/system) round-trips its scrollback with
-          // the images stripped: the restored instance is non-empty, so the
-          // skeleton lazy-load that would re-fetch attachments from the engine
-          // never fires, and the inline images silently vanish after restart.
-          // Attachment paths are on-disk references (never base64), so this is
-          // a few bytes per image, not the image payload.
-          ...(m.attachments && m.attachments.length > 0 ? { attachments: m.attachments } : {}),
-        }))
-      }
+    if (instanceHasRendererOnlyRows(msgs) && serializePersistedMessages(msgs).length > 0) {
+      out.hasExternalContent = true
+    } else if (inst.externalContentStatus === 'pending') {
+      // Not-yet-loaded externalized content: the runtime messages are empty
+      // but the content file still holds the scrollback. Keep the marker so
+      // a persist cycle before first activation doesn't orphan the file.
+      out.hasExternalContent = true
     }
 
     if (inst.modelOverride) out.modelOverride = inst.modelOverride

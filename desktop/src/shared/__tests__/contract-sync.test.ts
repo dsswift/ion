@@ -137,8 +137,6 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
 
 const TS_SHARED_TYPES: Record<string, string[]> = {
   StatusFields: [
-    // Note: TS also has `backend` which is a desktop-only concept not in Go.
-    // It is intentionally excluded from the contract.
     'backgroundAgents',
     'contextPercent',
     'contextWindow',

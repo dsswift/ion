@@ -1,7 +1,8 @@
 import type { ConversationPane } from '../../shared/types-engine'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { migrateTabToUnified } from '../../main/tab-migration-unify'
-import { activeInstance } from '../stores/conversation-instance'
+import { activeInstance, needsHistoryHydration } from '../stores/conversation-instance'
+import { rInfo } from '../rendererLogger'
 
 /**
  * Pure helpers extracted from useTabRestoration.ts to keep that hook under the
@@ -164,6 +165,50 @@ export async function startSessionsSequentially<T>(
       // Individual-start failures are handled inside `start`; never abort the
       // remaining serialized starts.
     }
+  }
+}
+
+/**
+ * Resolve which restored tab should be active at boot: activeTabIndex first,
+ * activeSessionId as the backwards-compat fallback. Pure — returns the tabId
+ * or null when no persisted active tab matches a restored one.
+ */
+export function resolveBootActiveTabId(
+  saved: { activeTabIndex?: number | null; activeSessionId?: string | null },
+  restoredTabIds: Array<{ tabId: string; sessionId: string | null; index: number }>,
+): string | null {
+  if (typeof saved.activeTabIndex === 'number') {
+    const entry = restoredTabIds.find((r) => r.index === saved.activeTabIndex)
+    if (entry) return entry.tabId
+  }
+  if (saved.activeSessionId) {
+    const entry = restoredTabIds.find((r) => r.sessionId === saved.activeSessionId)
+    if (entry) return entry.tabId
+  }
+  return null
+}
+
+/**
+ * Hydrate the boot-active tab's history. The boot-active tab is activated via
+ * a raw `setState({ activeTabId })` — selectTab never runs for it, so
+ * selectTab's lazy-hydration trigger never fires. Without this explicit call, a
+ * boot-active tab whose instance is pending/skeleton renders only its live tail
+ * (e.g. one bootstrap harness row) and its real history is never loaded.
+ * Applies the same gate selectTab uses (conversationId + needsHistoryHydration).
+ */
+export function hydrateBootActiveTab(
+  s: {
+    tabs: Array<{ id: string; conversationId: string | null }>
+    conversationPanes: Map<string, ConversationPane>
+    loadSkeletonMessages: (tabId: string) => Promise<void>
+  },
+  tabId: string,
+): void {
+  const tab = s.tabs.find((t) => t.id === tabId)
+  const inst = activeInstance(s.conversationPanes, tabId)
+  if (tab?.conversationId && needsHistoryHydration(inst)) {
+    rInfo('restore', 'hydrating boot-active tab', { tab_id: tabId.slice(0, 8) })
+    void s.loadSkeletonMessages(tabId)
   }
 }
 
