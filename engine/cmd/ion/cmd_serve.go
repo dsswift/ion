@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -20,9 +21,11 @@ import (
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/network"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/server"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/titling"
 	"github.com/dsswift/ion/engine/internal/transport"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -32,7 +35,7 @@ func cmdServe() {
 	home, _ := os.UserHomeDir()
 	ionDir := filepath.Join(home, ".ion")
 	_ = os.MkdirAll(ionDir, 0o700)
-	utils.Log("main", fmt.Sprintf("=== engine process start pid=%d version=%s ===", os.Getpid(), version))
+	utils.LogWithFields(utils.LevelInfo, "main", "=== engine process start ===", map[string]any{"run_id": os.Getpid(), "version": version})
 
 	// Read back any pre-existing exit breadcrumb so the prior exit is
 	// observable in the log immediately after startup. Then write our own
@@ -41,8 +44,34 @@ func cmdServe() {
 	writeRunning(exitPath())
 
 	cfg := config.LoadConfig("")
-	utils.Log("main", fmt.Sprintf("config loaded: backend=%s model=%s providers=%d mcp=%d",
-		cfg.Backend, cfg.DefaultModel, len(cfg.Providers), len(cfg.McpServers)))
+	utils.LogWithFields(utils.LevelInfo, "main", "config loaded", map[string]any{"backend": cfg.Backend, "model": cfg.DefaultModel, "count": len(cfg.Providers), "max": len(cfg.McpServers)})
+
+	// Reconcile plugins: install any force-installed sources, enforce enterprise
+	// allowlist/denylist against the registry. Runs synchronously so that all
+	// sessions started after boot operate against the authoritative plugin set.
+	// Install is idempotent — already-cached SHAs skip the network round-trip.
+	plugins.ReconcilePlugins(cfg, func(msg string) {
+		utils.Log("plugins", msg)
+	})
+
+	// Wire engine.jsonl rotation from the loaded config so the log file rotates
+	// at the configured size limit (default 50 MB in the logger) rather than
+	// growing unbounded. Without this call, ConfigureLogging is never invoked
+	// with the engine.json Logging section and its compiled defaults stand
+	// regardless of what engine.json specifies. ConfigureLogging is nil-safe.
+	if cfg.Logging != nil {
+		utils.ConfigureLogging(cfg.Logging)
+		utils.LogWithFields(utils.LevelInfo, "main", "logging configured", map[string]any{"max_size_m_b": cfg.Logging.MaxSizeMB, "disable_rotation": cfg.Logging.DisableRotation, "output_mode": cfg.Logging.OutputMode, "log_dir": cfg.Logging.LogDir})
+	}
+
+	// Hydrate the engine process PATH from the user's login shell so that every
+	// subprocess the engine spawns (extension node hosts, esbuild, npm, and
+	// extension child_process calls like `ion prompt`) inherits the full PATH.
+	// The engine runs as a launchd agent whose PATH is stripped to
+	// /usr/bin:/bin:/usr/sbin:/sbin; without this step, tools installed in
+	// /opt/homebrew/bin and similar locations are not found. HydrateProcessPath
+	// is nil-safe and a no-op when useLoginShell is false.
+	cfg.Shell.HydrateProcessPath()
 
 	// Apply a soft heap ceiling (GOMEMLIMIT) so the GC holds resident memory below
 	// the level where the OS memory-pressure killer (macOS jetsam / Linux OOM) would
@@ -54,6 +83,14 @@ func cmdServe() {
 
 	network.InitNetwork(cfg.Network)
 
+	// Materialize the macOS Local Network privacy verdict for this process so
+	// LAN connections work for the engine and every subprocess it spawns.
+	// Without this, a launchd-hosted engine (and its bash tool children:
+	// kubectl, ssh, curl) gets silent EHOSTUNREACH on all LAN targets. Async —
+	// never blocks daemon startup. No-op off darwin. See
+	// internal/network/lanwarmup.go for the full mechanics.
+	go network.WarmLocalNetwork(cfg.Network)
+
 	// Load models config (tiers, provider auto-detect) and register
 	// user-defined model names so they resolve to the correct provider.
 	// When a user model overlaps with a catalog model, merge: catalog
@@ -63,7 +100,7 @@ func cmdServe() {
 	for model, info := range modelconfig.UserModels(modelsConfig) {
 		if existing := providers.GetModelInfo(model); existing != nil {
 			info = providers.MergeModelInfo(*existing, info)
-			utils.Debug("Config", fmt.Sprintf("user model %s merged with catalog (contextWindow=%d)", model, info.ContextWindow))
+			utils.LogWithFields(utils.LevelDebug, "config", "user model merged with catalog ()", map[string]any{"model": model, "context_window": info.ContextWindow})
 		}
 		info.IsCustom = true
 		providers.RegisterModel(model, info)
@@ -78,7 +115,7 @@ func cmdServe() {
 			if v := os.Getenv(pcfg.APIKey); v != "" {
 				pcfg.APIKey = v
 			} else {
-				utils.Log("config", fmt.Sprintf("provider %s: env var %s not set, skipping", name, pcfg.APIKey))
+				utils.LogWithFields(utils.LevelInfo, "config", "provider : env var not set, skipping", map[string]any{"model": name, "a_p_i_key": pcfg.APIKey})
 				pcfg.APIKey = ""
 			}
 			cfg.Providers[name] = pcfg
@@ -100,7 +137,7 @@ func cmdServe() {
 			ffCfg.Interval = time.Duration(cfg.FeatureFlags.Interval) * time.Millisecond
 		}
 		_ = featureflags.New(ffCfg)
-		utils.Log("main", "feature flags initialized: source="+cfg.FeatureFlags.Source)
+		utils.LogWithFields(utils.LevelInfo, "main", "feature flags initialized: source=", map[string]any{"source": cfg.FeatureFlags.Source})
 	}
 
 	resolver := auth.NewResolver(cfg.Auth)
@@ -165,6 +202,84 @@ func cmdServe() {
 	srv.SetVersion(version)
 	srv.SetAuthResolver(resolver)
 
+	// Engine-owned operator OIDC identity: when auth.identityProvider names
+	// an oauth entry, the engine owns the login flow, grant persistence,
+	// silent refresh, and per-scope token minting. Consumers (SDK HTTP, MCP
+	// token forwarding, authenticated egress, desktop/iOS login UI) resolve
+	// through this manager -- never through a client-held token.
+	if cfg.Auth != nil && cfg.Auth.IdentityProvider != "" {
+		if oauthCfg, ok := cfg.Auth.OAuth[cfg.Auth.IdentityProvider]; ok {
+			im := auth.NewIdentityManager(cfg.Auth.IdentityProvider, oauthCfg, cfg.Auth.RefreshThresholdMs)
+			srv.SetIdentityManager(im)
+			// Package-level registry: the seam the extension SDK's
+			// pre-authenticated HTTP, MCP token forwarding, and
+			// authenticated egress resolve tokens through.
+			auth.SetOperator(im)
+			utils.LogWithFields(utils.LevelInfo, "main", "operator identity manager configured", map[string]any{
+				"provider":  cfg.Auth.IdentityProvider,
+				"signed_in": im.SignedIn(),
+			})
+			// Stamp attribution for a grant that survived restart. Live
+			// transitions (login/logout) restamp via the identity broadcast
+			// path in internal/server/dispatch_oidc.go.
+			if id := im.Identity(); id != nil {
+				utils.SetEgressUser(id.AttributionValue())
+				telemetry.SetUserIdentity(id.AttributionValue())
+			}
+		} else {
+			utils.LogWithFields(utils.LevelError, "main", "auth.identityProvider names a missing auth.oauth entry", map[string]any{
+				"provider": cfg.Auth.IdentityProvider,
+			})
+		}
+	}
+
+	// Authenticated log egress: when egressTokenScope is configured, every
+	// flush mints a fresh operator token for that scope. Installed after the
+	// identity manager so the closure resolves through the live registry.
+	if cfg.Logging != nil && cfg.Logging.EgressTokenScope != "" {
+		scope := cfg.Logging.EgressTokenScope
+		audience := cfg.Logging.EgressTokenAudience
+		utils.SetEgressAuthHeaderProvider(func() map[string]string {
+			op := auth.Operator()
+			if op == nil {
+				return nil
+			}
+			token, err := op.GetTokenWithAudience(context.Background(), scope, audience)
+			if err != nil {
+				utils.LogWithFields(utils.LevelError, "main", "egress token mint failed; flush proceeds with static headers", map[string]any{"error": err.Error()})
+				return nil
+			}
+			return map[string]string{"Authorization": "Bearer " + token}
+		})
+		utils.LogWithFields(utils.LevelInfo, "main", "egress auth header provider installed", map[string]any{"tag": scope})
+	}
+
+	// Shipping-responsibility matrix: when the matrix assigns the engine
+	// non-engine sources (desktop / ios / telemetry files), start the file
+	// tailer that feeds them through the authenticated forwarder.
+	if cfg.Logging != nil {
+		sources := utils.EngineShipSources(*cfg.Logging)
+		var tailed []string
+		for _, s := range sources {
+			if s != "engine" {
+				tailed = append(tailed, s)
+			}
+		}
+		if len(tailed) > 0 {
+			if tailer := utils.StartEgressTailer(tailed, utils.ActiveEgressForwarder()); tailer != nil {
+				defer tailer.Stop()
+			}
+		}
+	}
+
+	// Stamp the engine version into the telemetry package so every emitted
+	// event carries the correct version string (R21). Must be called after the
+	// version var is set (cmd/ion/main.go) and before any NewCollector call
+	// (SetConfig above may trigger NewCollector via server.SetTelemetry, so
+	// this is belt-and-suspenders — the version var is set at link time and
+	// is already correct before cmdServe runs).
+	telemetry.SetEngineVersion(version)
+
 	// Start async model discovery (fetches /v1/models from each provider).
 	// Results cached and used by list_models; falls back to hardcoded catalog.
 	providers.StartModelDiscovery(resolver.ResolveKey, cfg.Providers)
@@ -180,7 +295,7 @@ func cmdServe() {
 		os.Exit(1)
 	}
 
-	utils.Log("main", "binding socket at "+sock)
+	utils.LogWithFields(utils.LevelInfo, "main", "binding socket at", map[string]any{"sock": sock})
 	if err := srv.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start: %s\n", err)
 		os.Exit(1)
@@ -228,10 +343,10 @@ func cmdServe() {
 			}
 			cmd := protocol.ParseClientCommand(line)
 			if cmd == nil {
-				utils.Log("Relay", "invalid command from mobile: "+line[:min(len(line), 200)])
+				utils.LogWithFields(utils.LevelInfo, "relay", "invalid command from mobile", map[string]any{"line[:min]": line[:min(len(line), 200)]})
 				return
 			}
-			utils.Log("Relay", fmt.Sprintf("dispatch: cmd=%s key=%s", cmd.Cmd, cmd.Key))
+			utils.LogWithFields(utils.LevelInfo, "relay", "dispatch", map[string]any{"cmd": cmd.Cmd, "key": cmd.Key})
 			srv.DispatchCommand(cmd)
 		}
 
@@ -240,7 +355,7 @@ func cmdServe() {
 		})
 
 		if err := relay.Listen(nil); err != nil {
-			utils.Log("Relay", fmt.Sprintf("failed to start: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "relay", "failed to start", map[string]any{"error": err})
 		} else {
 			fmt.Printf("Relay: %s (channel %s)\n", cfg.Relay.URL, cfg.Relay.ChannelID)
 		}
@@ -255,7 +370,7 @@ func cmdServe() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	select {
 	case sig := <-sigCh:
-		utils.Log("main", fmt.Sprintf("received signal: %s, shutting down", sig))
+		utils.LogWithFields(utils.LevelInfo, "main", "received signal: , shutting down", map[string]any{"sig": sig})
 		writeClean(exitPath(), sig.String())
 		// Best-effort durability: persist any in-flight conversation before
 		// the run goroutines are cancelled by srv.Stop(). This guarantees the

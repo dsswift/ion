@@ -93,14 +93,25 @@ chmod +x "$BIN_DIR/ion"
 # which changes on every build — macOS Local Network privacy keys its grant to
 # that identity, so each ad-hoc rebuild silently resets the grant and the
 # headless LaunchAgent gets EHOSTUNREACH ("no route to host") on LAN targets
-# with no prompt. A certificate-backed signature keeps identifier "ion" and a
-# stable designated requirement, so the grant survives rebuilds. Identity
-# precedence mirrors desktop/scripts/afterPack.js: APPLE_SIGNING_IDENTITY env,
-# then the "Ion Local Dev" self-signed cert, then ad-hoc as a last resort.
+# with no prompt. A certificate-backed signature with an explicit identifier
+# keeps a stable designated requirement, so the grant survives rebuilds.
+#
+# The identifier is deliberately namespaced ("house.sprague.ion.engine", not
+# "ion"): Local Network grant creation is silently suppressed for an identity
+# that already has records in the (SIP-locked, uneditable) NetworkExtension
+# policy store, and the bare "ion" identifier accumulated dozens of stale
+# ad-hoc records before this script signed stably. A namespaced identifier
+# with no prior records gets a real grant from the engine's startup warmup
+# probe (internal/network/lanwarmup_darwin.go). Keep it in sync with
+# desktop/scripts/afterPack.js and the release workflow.
+#
+# Identity precedence mirrors desktop/scripts/afterPack.js:
+# APPLE_SIGNING_IDENTITY env, then the "Ion Local Dev" self-signed cert, then
+# ad-hoc as a last resort.
 SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:-Ion Local Dev}"
 if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
     echo "==> Signing engine binary (identity: $SIGN_IDENTITY)..."
-    codesign --force --sign "$SIGN_IDENTITY" --identifier ion --options runtime "$BIN_DIR/ion" \
+    codesign --force --sign "$SIGN_IDENTITY" --identifier house.sprague.ion.engine --options runtime "$BIN_DIR/ion" \
         || codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
 else
     echo "==> Signing engine binary (ad-hoc — identity \"$SIGN_IDENTITY\" not in keychain)..."
