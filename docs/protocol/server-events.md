@@ -926,6 +926,30 @@ Complete operator identity snapshot. **Snapshot-replace semantics:** consumers r
 | `oidcUsername` | string | Username / preferred-username claim (present when signed in) |
 | `oidcDisplayName` | string | Display name claim (present when signed in) |
 
+#### engine_provider_login
+
+Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI). **Incremental:** each emission is one stage transition. Delivered to the requesting client during an interactive `provider_login`, and broadcast on completion so every client refreshes. Not a snapshot — consumers track the stage sequence, not a replaced state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_provider_login"` | Event type |
+| `providerLogin.provider` | string | Provider whose CLI is authenticating (e.g. `openai`) |
+| `providerLogin.backend` | string | CLI backend kind driving the login (e.g. `codex`) |
+| `providerLogin.stage` | string | `started` \| `await_browser` \| `await_device_code` \| `completed` \| `failed` \| `cancelled` |
+| `providerLogin.authUrl` | string | Browser URL to open (`await_browser`, optional) |
+| `providerLogin.userCode` | string | Device code the user enters (`await_device_code`, optional) |
+| `providerLogin.verificationUrl` | string | Where the user enters the device code (`await_device_code`, optional) |
+| `providerLogin.loginError` | string | Failure reason (`failed`, optional) |
+| `providerLogin.loginId` | string | CLI login handle, usable to cancel the flow (optional) |
+
+#### engine_providers_updated
+
+Advisory nudge that provider auth state or the available-model listing may have changed. Fires whenever the delegated-CLI probes are refreshed: after a login or logout completes, on `refresh_models`, and at startup once the initial probe lands. Broadcast to all clients. **Payload-less and idempotent** — the engine holds the authoritative state; consumers that render provider/model state re-query `list_models` to pull it. Unlike `engine_provider_login` (bound to one interactive flow), this event is trigger- and consumer-agnostic, and is the *only* refresh signal a completed logout emits.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_providers_updated"` | Event type |
+
 ---
 
 ## Slash-Command Provenance on Message Events
