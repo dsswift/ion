@@ -263,7 +263,7 @@ and treat unknown kinds as forward-compatible no-ops.
 
 ### stream_reset
 
-Signals that a retry is about to occur. Clients should discard any partial assistant text from the previous attempt.
+Signals that a retry is about to occur. Clients should discard all partial output from the previous attempt — streamed assistant text, in-flight tool-call rows, and any active thinking block. Emitted both when the provider retry wrapper re-streams after a mid-stream failure and when the run loop retries a turn after reactive compaction.
 
 | Field  | Type             | Description |
 |--------|------------------|-------------|

@@ -113,7 +113,7 @@ All provider calls can be wrapped with `WithRetry`, which provides:
 - **Rate limit awareness** -- respects `Retry-After` and `x-ratelimit-reset` headers
 - **Model fallback** -- after N consecutive overloaded errors, falls back to a configured alternative model
 - **Persistent mode** -- for CI/headless use, retries up to 6 hours with a 5-minute max delay
-- **Buffer-and-flush** -- partial results from failed attempts are discarded, not forwarded to the caller
+- **Live forwarding with reset markers** -- events are forwarded to the caller as the provider emits them (no per-attempt buffering). When a retryable failure interrupts a stream after events already went out, `WithRetry` injects an in-band `stream_reset` marker before the next attempt's events; the backend translates it into the `stream_reset` normalized event so consumers discard the partial output from the failed attempt
 
 ```json
 {
