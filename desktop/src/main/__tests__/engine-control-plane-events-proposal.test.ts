@@ -61,7 +61,7 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
 function makeIdleEvent(sessionId: string): EngineEvent {
   return {
     type: 'engine_status',
-    fields: { state: 'idle', sessionId, label: 'tab-001', totalCostUsd: 0 },
+    fields: { state: 'idle', sessionId, label: 'tab-001', runCostUsd: 0 },
   } as EngineEvent
 }
 
@@ -79,7 +79,7 @@ function makeProposalIdleEvent(
       model: 'claude-opus-4-8',
       contextPercent: 0,
       contextWindow: 0,
-      totalCostUsd: 0.18,
+      runCostUsd: 0.18,
       permissionDenials: [
         { toolName, toolUseId: 'toolu_exit_1', toolInput: { planFilePath } },
       ],

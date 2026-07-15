@@ -58,6 +58,21 @@ interface MutableState {
   cachedFonts: string[] | null
   terminalOutputFlushTimer: ReturnType<typeof setInterval> | null
   tabSnapshotInterval: ReturnType<typeof setInterval> | null
+  /** The Agent Team Visualizer window (single instance; null when closed). */
+  atvWindow: BrowserWindow | null
+  /**
+   * Last active tab reported by the main renderer's active-tab notifier.
+   * Seeds the ATV window's target tab on open, before any live tab switch.
+   */
+  atvActiveTabId: string | null
+  /** The active tab's engineProfileId (extension scope for the ATV seed). */
+  atvActiveProfileId: string | null
+  /**
+   * True when the unpinned ATV window was hidden in sympathy with the main
+   * overlay (Alt+Space). Only then does showWindow re-show it, so a window
+   * the user closed or never opened doesn't appear unbidden.
+   */
+  atvHiddenBySympathy: boolean
 }
 
 export const state: MutableState = {
@@ -71,6 +86,10 @@ export const state: MutableState = {
   cachedFonts: null,
   terminalOutputFlushTimer: null,
   tabSnapshotInterval: null,
+  atvWindow: null,
+  atvActiveTabId: null,
+  atvActiveProfileId: null,
+  atvHiddenBySympathy: false,
 }
 
 /** Cached model list from engine, populated by LIST_MODELS IPC and included in remote snapshots. */
@@ -162,4 +181,12 @@ export const forwardedEnginePermissionDenials = new Set<string>()
  * concept on iOS.
  */
 export const lastForwardedTabStatus = new Map<string, string>()
+
+/**
+ * Dedup guard for desktop_tab_meta cost deltas emitted by event-wiring.ts on
+ * each engine_status tick. Keyed by bare tabId → last forwarded runCostUsd.
+ * Prevents flooding iOS with repeated cost pushes when engine_status fires
+ * repeatedly at the same cost during idle polling.
+ */
+export const lastForwardedTabMeta = new Map<string, number>()
 

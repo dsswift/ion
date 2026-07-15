@@ -500,7 +500,7 @@ describe('EngineControlPlane', () => {
       expect(capturedEventHandler).toBeTruthy()
       capturedEventHandler!(tabId, {
         type: 'engine_status',
-        fields: { state: 'idle', sessionId: 'premint-empty-id', label: tabId, totalCostUsd: 0 },
+        fields: { state: 'idle', sessionId: 'premint-empty-id', label: tabId, runCostUsd: 0 },
       })
 
       // Tracked id is preserved, not clobbered by the pre-mint.

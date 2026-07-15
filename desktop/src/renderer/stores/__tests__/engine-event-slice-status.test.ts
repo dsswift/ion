@@ -100,7 +100,7 @@ describe('status snapshot — populates inst.statusFields (root-cause fix)', () 
         state: 'running',
         model: 'claude-opus-4-7',
         backend: 'cli',
-        totalCostUsd: 1.23,
+        runCostUsd: 1.23,
         extensionName: 'Chief of Staff',
         team: 'Platform',
       }),
@@ -111,7 +111,7 @@ describe('status snapshot — populates inst.statusFields (root-cause fix)', () 
     expect(stored).not.toBeNull()
     expect(stored!.model).toBe('claude-opus-4-7')
     expect(stored!.backend).toBe('cli')
-    expect(stored!.totalCostUsd).toBe(1.23)
+    expect(stored!.runCostUsd).toBe(1.23)
     expect(stored!.extensionName).toBe('Chief of Staff')
     expect(stored!.team).toBe('Platform')
   })
@@ -121,18 +121,18 @@ describe('status snapshot — populates inst.statusFields (root-cause fix)', () 
 
     slice.handleNormalizedEvent('tab1', {
       type: 'status',
-      fields: fields({ state: 'running', totalCostUsd: 0.5, extensionName: 'First' }),
+      fields: fields({ state: 'running', runCostUsd: 0.5, extensionName: 'First' }),
     } as any)
 
     // Second snapshot omits extensionName and bumps cost — must replace, not merge.
     slice.handleNormalizedEvent('tab1', {
       type: 'status',
-      fields: fields({ state: 'idle', totalCostUsd: 0.9 }),
+      fields: fields({ state: 'idle', runCostUsd: 0.9 }),
     } as any)
 
     const stored = getStatusFields(state)
     expect(stored!.state).toBe('idle')
-    expect(stored!.totalCostUsd).toBe(0.9)
+    expect(stored!.runCostUsd).toBe(0.9)
     // extensionName from the first snapshot must NOT survive (wholesale replace).
     expect(stored!.extensionName).toBeUndefined()
   })

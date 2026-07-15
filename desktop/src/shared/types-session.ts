@@ -326,9 +326,16 @@ export interface Message {
 }
 
 export interface RunResult {
+  /** Cost of this run in USD. Populated from TaskCompleteEvent.costUsd which
+   *  the engine sets to a per-run value (cache-aware, CliBackend delta-normalized). */
   totalCostUsd: number
   durationMs: number
   numTurns: number
+  /** Conversation-lifetime prompt count (real user prompts across the whole
+   *  conversation), from TaskCompleteEvent.conversationTurns. Distinct from
+   *  numTurns (per-run round-trips). The StatusDrawer "Turns" row renders this
+   *  lifetime value. Absent on paths that do not report it (e.g. CLI backend). */
+  conversationTurns?: number
   usage: UsageData
   sessionId: string
 }

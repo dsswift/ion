@@ -171,7 +171,7 @@ export type NormalizedEvent =
   | { type: 'tool_call_complete'; index: number }
   | { type: 'tool_result'; toolId: string; content: string; isError: boolean }
   | { type: 'task_update'; message: AssistantMessagePayload }
-  | { type: 'task_complete'; result: string; costUsd: number; durationMs: number; numTurns: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
+  | { type: 'task_complete'; result: string; lastText?: string; costUsd: number; durationMs: number; numTurns: number; conversationTurns?: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
   | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'session_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }
@@ -255,4 +255,4 @@ export type NormalizedEvent =
   // the first usage event. Desktop-internal: translated from the engine wire in
   // event-wiring.ts and stored on the active instance (event-slice.ts case
   // 'context_breakdown') so the Status Drawer can render it synchronously.
-  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; aggregateCostUsd?: number }
+  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; aggregateCostUsd?: number; modelBreakdown?: import('./types-engine').ModelBreakdown[] }

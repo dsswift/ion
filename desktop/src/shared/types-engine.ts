@@ -81,6 +81,7 @@ export interface EngineProfile {
   id: string
   name: string
   extensions: string[]
+  defaultMode?: 'auto' | 'plan'
 }
 
 export interface EngineConfig {
@@ -266,7 +267,14 @@ export interface StatusFields {
   model: string
   contextPercent: number
   contextWindow: number
-  totalCostUsd?: number
+  /** Cost of the most recent run in USD (cache-aware, descendants included).
+   *  Replaces the former totalCostUsd field; the rename makes the scope
+   *  unambiguous — "run" not "conversation". */
+  runCostUsd?: number
+  /** Cumulative cost of the entire conversation (this session + all descendant
+   *  dispatches) in USD. Computed via the cost.ConversationCost dispatch-tree
+   *  walk on every TaskComplete. */
+  conversationCostUsd?: number
   /** Backend mode: 'api' (direct) or 'cli' (CC CLI proxy) */
   backend?: 'api' | 'cli'
   permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
@@ -277,6 +285,15 @@ export interface StatusFields {
    *  progress. Clients use this to keep the tab status active and the
    *  interrupt button visible. */
   backgroundAgents?: number
+  /** Number of LLM turns completed in the most recent run. Stamped from
+   *  TaskCompleteEvent.NumTurns; absent on idle and heartbeat status events. */
+  numTurns?: number
+  /** Conversation-lifetime prompt count: the number of real user prompts
+   *  across the whole conversation, not just the most recent run. Stamped from
+   *  TaskCompleteEvent.ConversationTurns; absent on idle and heartbeat status
+   *  events. The drawer "Turns" row renders this (lifetime), whereas numTurns
+   *  is the per-run round-trip count. */
+  conversationTurns?: number
 }
 
 /**
@@ -316,7 +333,10 @@ export interface SessionStatus {
   model?: string
   contextPercent?: number
   contextWindow?: number
-  totalCostUsd?: number
+  /** Cost of the most recent run in USD. Matches StatusFields.runCostUsd semantics. */
+  runCostUsd?: number
+  /** Cumulative cost of the entire conversation (this session + all descendant dispatches) in USD. */
+  conversationCostUsd?: number
   sessionId?: string
   extensionName?: string
 }
@@ -439,4 +459,27 @@ export interface ContextBreakdownPayload {
    * sessions with no dispatches or no cost yet.
    */
   aggregateCostUsd?: number
+  /**
+   * Per-model cost breakdown for the conversation dispatch tree. Populated by
+   * the on-demand breakdown (ComputeAndEmitContextBreakdown). Empty for
+   * runloop-emitted breakdowns. Sorted by costUsd descending.
+   */
+  modelBreakdown?: ModelBreakdown[]
+}
+
+/** One row in the per-model cost breakdown. Mirrors Go's ModelBreakdown in types/model_breakdown.go. */
+export interface ModelBreakdown {
+  model: string
+  conversations: number
+  inputTokens: number
+  outputTokens: number
+  costUsd: number
+  /**
+   * True when this row is the root/viewing conversation's OWN spend rather than
+   * a dispatch. A model used by both the root and its dispatches yields two rows
+   * (one isSelf=true count 1, one isSelf=false count n). Absent (omitted on the
+   * wire) for dispatch rows. Lets consumers separate "this conversation cost $X"
+   * from "the dispatches cost $Y".
+   */
+  isSelf?: boolean
 }

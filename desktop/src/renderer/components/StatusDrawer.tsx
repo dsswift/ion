@@ -3,7 +3,7 @@
  *
  * Anchored left:100% of the content column (same GitPanel pattern in App.tsx).
  * Sections:
- *   1. Session info  — copyable ID, numTurns, duration, sessionVersion.
+ *   1. Session info  — copyable ID, conversation-lifetime turns, duration, sessionVersion.
  *   2. Context       — usage bar + cost + state from engineUsage / statusFields.
  *   3. Running Dispatches — flat, live, running-only list across all tiers.
  *   4. Context Breakdown — proportion graph + grouped/sorted rows + cache annotation.
@@ -14,7 +14,7 @@
  *   - Rows grouped by Kind in fixed order, sorted desc within bucket (C3).
  *   - Proportion graph above list: one horizontal bar segmented by bucket (C4).
  *   - Cache annotation as non-additive "of which, cached" line (C5).
- *   - Session ID (copyable), numTurns, durationMs, sessionVersion (C6).
+ *   - Session ID (copyable), conversation-lifetime turns, durationMs, sessionVersion (C6).
  */
 
 import React, { useMemo, useCallback, useState } from 'react'
@@ -25,7 +25,7 @@ import { useColors } from '../theme'
 import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers'
 import { AgentDetailPanel } from './AgentDetailPanel'
 import type { AgentStateUpdate } from '../../shared/types'
-import type { ContextBreakdownCategory, DispatchInfo } from '../../shared/types-engine'
+import type { ContextBreakdownCategory, DispatchInfo, ModelBreakdown } from '../../shared/types-engine'
 
 // ─── Tier badge ──────────────────────────────────────────────────────────────
 
@@ -225,6 +225,51 @@ function CopyButton({ value, label, colors }: { value: string; label: string; co
   )
 }
 
+// ─── Per-model cost breakdown rows ────────────────────────────────────────────
+
+// Renders the per-model cost rows under the aggregate cost, split into two
+// groups: the viewing conversation's OWN spend (isSelf rows) under a
+// "This conversation" sub-label, and the dispatch spend (non-self rows) under
+// a "Dispatches" sub-label. When there are no dispatch rows, only the self group
+// renders (no "Dispatches" header). This makes explicit that e.g. an opus row
+// marked $397 is the viewing conversation's lifetime cost, not one dispatch.
+function ModelBreakdownRows({ rows, colors }: { rows: ModelBreakdown[]; colors: ReturnType<typeof useColors> }) {
+  const selfRows = rows.filter((r) => r.isSelf)
+  const dispatchRows = rows.filter((r) => !r.isSelf)
+
+  const groupLabel = (label: string) => (
+    <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: colors.textMuted, paddingLeft: 10, marginTop: 2 }}>
+      {label}
+    </div>
+  )
+
+  const row = (mb: ModelBreakdown) => (
+    <div key={`${mb.model}-${mb.isSelf ? 'self' : 'dispatch'}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: 18 }}>
+      <span style={{ fontSize: 9, color: colors.textMuted, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${mb.model} — ${mb.conversations} conv`}>
+        {mb.model} ({mb.conversations})
+      </span>
+      <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>${mb.costUsd.toFixed(4)}</span>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {selfRows.length > 0 && (
+        <>
+          {groupLabel('This conversation')}
+          {selfRows.map(row)}
+        </>
+      )}
+      {dispatchRows.length > 0 && (
+        <>
+          {groupLabel('Dispatches')}
+          {dispatchRows.map(row)}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function StatusDrawer() {
@@ -285,8 +330,11 @@ export function StatusDrawer() {
   const contextTokens = contextPercent && statusFields?.contextWindow
     ? Math.round((contextPercent / 100) * statusFields.contextWindow)
     : null
-  const totalCostUsd = usage?.cost ?? statusFields?.totalCostUsd ?? null
-  const aggregateCostUsd = contextBreakdown?.aggregateCostUsd ?? null
+  const runCostUsd = statusFields?.runCostUsd ?? null
+  const conversationCostUsd = statusFields?.conversationCostUsd ?? null
+  // totalCostUsd falls back to legacy usage.cost for the message-end path
+  const totalCostUsd = usage?.cost ?? runCostUsd ?? null
+  const aggregateCostUsd = contextBreakdown?.aggregateCostUsd ?? conversationCostUsd ?? null
   const contextWindow = contextBreakdown?.contextWindow || statusFields?.contextWindow || null
   const state = statusFields?.state ?? null
 
@@ -343,10 +391,10 @@ export function StatusDrawer() {
                   </div>
                 </div>
               )}
-              {tab?.lastResult?.numTurns != null && (
+              {(tab?.lastResult?.conversationTurns ?? tab?.lastResult?.numTurns) != null && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 10, color: colors.textTertiary }}>Turns</span>
-                  <span style={{ fontSize: 10, color: colors.textSecondary }}>{tab.lastResult.numTurns}</span>
+                  <span style={{ fontSize: 10, color: colors.textSecondary }}>{tab.lastResult?.conversationTurns ?? tab.lastResult?.numTurns}</span>
                 </div>
               )}
               {tab?.lastResult?.durationMs != null && (
@@ -357,9 +405,12 @@ export function StatusDrawer() {
               )}
               {typeof aggregateCostUsd === 'number' && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, color: colors.textTertiary }}>Total cost</span>
+                  <span style={{ fontSize: 10, color: colors.textTertiary }}>Total cost (incl. dispatches)</span>
                   <span style={{ fontSize: 10, color: colors.textSecondary }}>${aggregateCostUsd.toFixed(4)}</span>
                 </div>
+              )}
+              {contextBreakdown?.modelBreakdown && contextBreakdown.modelBreakdown.length > 0 && (
+                <ModelBreakdownRows rows={contextBreakdown.modelBreakdown} colors={colors} />
               )}
               {tab?.sessionVersion && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
