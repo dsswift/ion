@@ -10,7 +10,6 @@ import { ContextIndicator } from './StatusBarContextIndicator'
 import { PermissionModePicker } from './StatusBarPermissionModePicker'
 import { ThinkingPicker } from './StatusBarThinkingPicker'
 import { AttachmentsButton } from './StatusBarAttachmentsButton'
-import { OpenWithPicker } from './StatusBarOpenWithPicker'
 import { TallViewToggle } from './StatusBarTallViewToggle'
 import { DirectoryPicker } from './StatusBarDirectoryPicker'
 import { GitButton } from './StatusBarGitButton'
@@ -23,7 +22,6 @@ export { ModelPicker } from './StatusBarModelPicker'
 export { ContextIndicator } from './StatusBarContextIndicator'
 export { PermissionModePicker } from './StatusBarPermissionModePicker'
 export { AttachmentsButton } from './StatusBarAttachmentsButton'
-export { OpenWithPicker } from './StatusBarOpenWithPicker'
 export { TallViewToggle } from './StatusBarTallViewToggle'
 export { DirectoryPicker } from './StatusBarDirectoryPicker'
 export { GitButton } from './StatusBarGitButton'
@@ -154,11 +152,9 @@ export function StatusBar() {
         <AttachmentsButton />
       </div>
 
-      {/* Right cluster — tall view + open in CLI + git */}
+      {/* Right cluster — tall view + git */}
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <TallViewToggle />
-        <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>
-        <OpenWithPicker />
         {isGitRepo && (
           <>
             <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>

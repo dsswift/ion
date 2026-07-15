@@ -229,13 +229,13 @@ describe('projectableSchema / projectableGroups', () => {
   })
 
   it('static enum entries carry their declared choices verbatim', () => {
-    // Pick a non-dynamic enum (preferredOpenWith has cli/vscode) and
-    // verify its choices ride through to the wire schema unchanged.
+    // defaultPermissionMode is a static enum with two values; verify its
+    // choices ride through to the wire schema unchanged.
     const schema = projectableSchema()
-    const entry = schema.find((e) => e.key === 'preferredOpenWith')
+    const entry = schema.find((e) => e.key === 'defaultPermissionMode')
     expect(entry?.choices).toEqual([
-      { value: 'cli', label: 'Terminal (CLI)' },
-      { value: 'vscode', label: 'VS Code' },
+      { value: 'plan', label: 'Plan' },
+      { value: 'auto', label: 'Auto' },
     ])
   })
 

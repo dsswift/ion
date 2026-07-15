@@ -76,16 +76,16 @@ export interface State {
   engineUsage: Map<string, { percent: number; tokens: number; cost: number }>
   conversationPanes: Map<string, ConversationPane>
   /**
-   * Pending model-fallback notice per engine instance, keyed by the
-   * compound `${tabId}:${instanceId}` key. Populated when the engine
-   * emits a `model_fallback` NormalizedEvent — typically because a
-   * dispatched agent requested an unconfigured tier alias and the
-   * runloop swapped to the engine's configured `defaultModel`.
+   * Pending model-fallback notice per engine tab, keyed by the bare tabId
+   * (after session-key unification, #256 — one fallback slot per tab).
+   * Populated when the engine emits a `model_fallback` NormalizedEvent —
+   * typically because a dispatched agent requested an unconfigured tier alias
+   * and the runloop swapped to the engine's configured `defaultModel`.
    *
    * This client's policy: display a small ⚠ glyph on the affected
    * tab pill (TabStripTabPill) with a tooltip naming the requested and
    * fallback models. Clear on the next `task_complete` for that
-   * instance (no wall-clock timer — clients don't invent retention
+   * tab (no wall-clock timer — clients don't invent retention
    * rules per `docs/architecture/agent-state.md`).
    *
    * The engine event is workflow, not state — it fires once at the
@@ -120,6 +120,13 @@ export interface State {
   dispatchActivity: Record<string, import('../../shared/types').Message[]>
 
   tallViewTabId: string | null
+  /**
+   * When the terminal opens on a tab that was in conversation-tall mode, we
+   * auto-suspend tall so the terminal panel mounts. This marker records which
+   * tab triggered the suspend so we can restore tall when the terminal closes.
+   * Cleared on manual toggleTallView, toggleTerminalTall, or tab close.
+   */
+  suspendedTallTabId: string | null
   scrollToBottomCounter: number
   settingsOpen: boolean
   settingsInitialTab: string | null

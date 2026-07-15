@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShieldWarning, ShieldCheck, Terminal, ListChecks, Eye, PushPinSlash } from '@phosphor-icons/react'
 import { useColors } from '../theme'
@@ -44,6 +44,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
   // preferences-types.ts for the field comment.
   const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
+  const closePlan = useCallback(() => setPlanData(null), [])
 
   // Extract planFilePath: tab state (from engine event), denial toolInput, messages
   const planFilePath = useMemo(() => {
@@ -245,7 +246,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
             <PlanViewer
               content={planData.content}
               fileName={planData.fileName}
-              onClose={() => setPlanData(null)}
+              onClose={closePlan}
             />
           )}
         </AnimatePresence>

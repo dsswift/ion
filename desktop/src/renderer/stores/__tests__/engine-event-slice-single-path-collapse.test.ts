@@ -256,7 +256,11 @@ describe('WI-001 parity: plain tab and extension-hosted tab produce identical st
     const extInst = activeInstance(extension.state.conversationPanes, 'tab1')
 
     expect(plainInst?.permissionMode).toBe(extInst?.permissionMode)
-    expect(plainInst?.permissionMode).toBe('auto')
+    // After entering plan mode and an auto-exit proposal, the instance stays
+    // 'plan' until the user approves (ADR-003). plan_mode_auto_exit is a
+    // proposal, not a state flip — event-slice-extension-surface.ts deliberately
+    // does NOT reset permissionMode, enforced by engine-event-slice-plan-auto-exit.test.ts.
+    expect(plainInst?.permissionMode).toBe('plan')
     expect(plainInst?.planFilePath).toBe(extInst?.planFilePath)
 
     // Neither parent tab.permissionMode should be written (sticky-parent invariant).

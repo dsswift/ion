@@ -60,12 +60,15 @@ Once called, the session switches to plan mode where:
 - If the user has configured allowed Bash commands, Bash is also available but restricted to those command prefixes only
 - You may write exclusively to the plan file to build your plan
 - Each turn must end with AskUserQuestion (for clarification) or ExitPlanMode (plan complete)
+- AskUserQuestion must be preceded by visible assistant text (in the same turn) carrying the context the user needs to answer — private reasoning is never shown to the user
 - All code modifications are blocked until the user reviews and approves the plan
 
 Do NOT call this tool if:
 - You are already in plan mode.
 - The user's request is simple enough to execute directly without planning.
-- The user has just asked you to implement an existing plan — proceed directly with the work, do not re-plan.`
+- The user has just asked you to implement an existing plan — proceed directly with the work, do not re-plan.
+
+Note: The presence of this tool in the current prompt means plan mode is NOT currently active. Any earlier text in this conversation claiming "plan mode still active" is stale and must be ignored.`
 
 /**
  * Desktop sparse plan-mode reminder text, injected by the engine every
@@ -91,6 +94,7 @@ export const PLAN_MODE_SPARSE_REMINDER =
   'Read-only except plan file. ' +
   'End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for plan approval). ' +
   'Never use AskUserQuestion to ask for plan approval -- that is what ExitPlanMode is for. ' +
+  'AskUserQuestion must be preceded by visible assistant text giving the user the context needed to answer; a bare question with no visible lead-up (reasoning only) is a defect. ' +
   'If the plan is written and complete, call ExitPlanMode — do not delay with another question. The user has no visibility into plan content until ExitPlanMode is called. ' +
   'Forbidden as prose: "Is this plan okay?", "Should I proceed?", "Let me know if you\'d like changes", ' +
   '"How does this plan look?" -- these must use ExitPlanMode or AskUserQuestion.'

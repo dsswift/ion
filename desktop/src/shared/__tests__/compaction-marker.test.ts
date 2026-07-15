@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { buildCompactionMarkerContent, COMPACTION_MARKER_PREFIX } from '../compaction-marker'
+import {
+  buildCompactionMarkerContent,
+  buildManualCompactionNoOpNotice,
+  COMPACTION_MARKER_PREFIX,
+} from '../compaction-marker'
 
 describe('buildCompactionMarkerContent', () => {
   it('omits "N → N messages" and shows blocks cleared on a micro-only pass', () => {
@@ -67,5 +71,64 @@ describe('buildCompactionMarkerContent', () => {
     expect(content).toContain('## Files')
     // Still micro-only: no "N → N" segment.
     expect(content).not.toContain('8 → 8')
+  })
+})
+
+describe('buildManualCompactionNoOpNotice', () => {
+  it('returns a notice for a manual (user) no-op', () => {
+    const notice = buildManualCompactionNoOpNotice({
+      strategy: 'user',
+      messagesBefore: 5,
+      messagesAfter: 5,
+      clearedBlocks: 0,
+    })
+    expect(notice).not.toBeNull()
+    expect(notice).toContain(COMPACTION_MARKER_PREFIX)
+    expect(notice).toContain('nothing to compact')
+  })
+
+  it('returns null for an auto no-op (only manual /compact earns the notice)', () => {
+    expect(
+      buildManualCompactionNoOpNotice({
+        strategy: 'auto',
+        messagesBefore: 5,
+        messagesAfter: 5,
+        clearedBlocks: 0,
+      }),
+    ).toBeNull()
+  })
+
+  it('returns null for a user compaction that produced a summary', () => {
+    expect(
+      buildManualCompactionNoOpNotice({
+        strategy: 'user',
+        messagesBefore: 5,
+        messagesAfter: 5,
+        clearedBlocks: 0,
+        summary: '## Decisions\nUse Go.',
+      }),
+    ).toBeNull()
+  })
+
+  it('returns null for a user compaction that dropped messages', () => {
+    expect(
+      buildManualCompactionNoOpNotice({
+        strategy: 'user',
+        messagesBefore: 40,
+        messagesAfter: 10,
+        clearedBlocks: 0,
+      }),
+    ).toBeNull()
+  })
+
+  it('returns null for a user compaction that cleared blocks', () => {
+    expect(
+      buildManualCompactionNoOpNotice({
+        strategy: 'user',
+        messagesBefore: 12,
+        messagesAfter: 12,
+        clearedBlocks: 3,
+      }),
+    ).toBeNull()
   })
 })

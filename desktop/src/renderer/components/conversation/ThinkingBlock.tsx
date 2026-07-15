@@ -5,7 +5,8 @@ import { useColors } from '../../theme'
 import type { Message } from '../../../shared/types'
 import {
   PREVIEW_LINES,
-  tailLines,
+  PREVIEW_CHAR_BUDGET,
+  tailForPreview,
   buildSummary,
   isExpandable as computeExpandable,
 } from './thinking-block-helpers'
@@ -68,7 +69,7 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
   const expandable = computeExpandable(message)
 
   const preview = useMemo(
-    () => (hasText ? tailLines(fullText, PREVIEW_LINES) : ''),
+    () => (hasText ? tailForPreview(fullText, PREVIEW_CHAR_BUDGET) : ''),
     [fullText, hasText],
   )
 
@@ -116,21 +117,36 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
 
   // The collapsed/streaming preview tail — shown when there is text and the
   // block is not expanded. While active this updates live as deltas arrive.
+  //
+  // Outer container: clamps to exactly PREVIEW_LINES visual rows via
+  // maxHeight calc, bottom-anchors content (justifyContent: 'flex-end') so
+  // new streamed text pushes older text up into the clipped overflow, and
+  // carries the top-fade mask.
+  // Inner text div: full whitespace-pre-wrap content at content font size.
   const previewBlock =
     !expanded && hasText ? (
       <div
-        className="ml-1 pl-3 text-[11px] leading-[1.45] whitespace-pre-wrap break-words"
         style={{
-          color: colors.textMuted,
-          borderLeft: `1px solid ${colors.timelineLine}`,
-          opacity: isActive ? 0.85 : 0.7,
-          // Fade the preview at the top so it reads as a tail of a longer
-          // block, not a complete thought.
+          maxHeight: `calc((var(--ion-conv-font-size, 13px) - 2px) * 1.45 * ${PREVIEW_LINES})`,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-end',
           maskImage: 'linear-gradient(to bottom, transparent, black 28%)',
           WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 28%)',
         }}
       >
-        {preview}
+        <div
+          className="ml-1 pl-3 leading-[1.45] whitespace-pre-wrap break-words"
+          style={{
+            fontSize: 'calc(var(--ion-conv-font-size, 13px) - 2px)',
+            color: colors.textTertiary,
+            borderLeft: `1px solid ${colors.timelineLine}`,
+            opacity: isActive ? 1 : 0.9,
+          }}
+        >
+          {preview}
+        </div>
       </div>
     ) : null
 
@@ -149,8 +165,9 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
             style={{ overflow: 'hidden' }}
           >
             <div
-              className="ml-1 pl-3 mb-1 text-[11px] leading-[1.5] whitespace-pre-wrap break-words"
+              className="ml-1 pl-3 mb-1 leading-[1.5] whitespace-pre-wrap break-words"
               style={{
+                fontSize: 'calc(var(--ion-conv-font-size, 13px) - 2px)',
                 color: colors.textTertiary,
                 borderLeft: `1px solid ${colors.timelineLine}`,
               }}

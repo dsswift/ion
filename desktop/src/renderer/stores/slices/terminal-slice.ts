@@ -4,6 +4,34 @@ import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankTerminalTab } from '../session-store-helpers'
 
+// ─── Tall-suspend helpers ─────────────────────────────────────────────────────
+
+/**
+ * Returns the tall-suspend patch to merge when a terminal opens on `tabId`.
+ * If conversation-tall is currently ON for that tab, clear it and record the
+ * marker. Otherwise returns nothing.
+ */
+function tallSuspendOnOpen(s: { tallViewTabId: string | null }, tabId: string) {
+  if (s.tallViewTabId === tabId) {
+    return { tallViewTabId: null as string | null, suspendedTallTabId: tabId }
+  }
+  return {}
+}
+
+/**
+ * Returns the tall-restore patch to merge when a terminal closes for `tabId`.
+ * Restores tall only if the marker still points at this tab; clears the marker
+ * either way so we don't fight a future manual toggle.
+ */
+function tallRestoreOnClose(s: { suspendedTallTabId: string | null }, tabId: string) {
+  if (s.suspendedTallTabId === tabId) {
+    return { tallViewTabId: tabId, suspendedTallTabId: null as string | null }
+  }
+  return {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     toggleTerminal: (tabId) => {
@@ -17,6 +45,7 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
         }
         return {
           terminalOpenTabIds: next,
+          ...(closing ? tallRestoreOnClose(s, tabId) : tallSuspendOnOpen(s, tabId)),
           ...(closing && s.terminalTallTabId === tabId ? { terminalTallTabId: null } : {}),
           ...(closing && s.terminalBigScreenTabId === tabId ? { terminalBigScreenTabId: null } : {}),
         }
@@ -72,6 +101,11 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
         const s = get()
         const tab = s.tabs.find((t) => t.id === tabId)
         if (tab?.isTerminalOnly) {
+          // isTerminalOnly tabs are closed entirely; clear any suspend marker so
+          // the dead tab is never restored to tall by tab-slice's closeTab path.
+          if (s.suspendedTallTabId === tabId) {
+            set({ suspendedTallTabId: null })
+          }
           get().closeTab(tabId)
           set({ terminalPanes: panes })
         } else {
@@ -82,6 +116,7 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
             terminalOpenTabIds: nextOpen,
             ...(s.terminalTallTabId === tabId ? { terminalTallTabId: null } : {}),
             ...(s.terminalBigScreenTabId === tabId ? { terminalBigScreenTabId: null } : {}),
+            ...tallRestoreOnClose(s, tabId),
           })
         }
       } else {
@@ -116,7 +151,13 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
         if (s.terminalTallTabId === tabId) {
           return { terminalTallTabId: null }
         }
-        return { terminalTallTabId: tabId, tallViewTabId: null }
+        // Entering terminal-tall: clear both conversation-tall and the suspend
+        // marker so we never fight a later manual state change.
+        return {
+          terminalTallTabId: tabId,
+          tallViewTabId: null,
+          suspendedTallTabId: null,
+        }
       })
     },
 
@@ -199,13 +240,18 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
         const nextOpen = new Set(s.terminalOpenTabIds)
         const nextPending = new Map(s.terminalPendingCommands)
         nextPending.set(key, cmd)
-        if (nextOpen.has(tabId)) {
+        const wasOpen = nextOpen.has(tabId)
+        if (wasOpen) {
           window.ion.terminalWrite(key, cmd + '\n')
           nextPending.delete(key)
         } else {
           nextOpen.add(tabId)
         }
-        return { terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending }
+        return {
+          terminalOpenTabIds: nextOpen,
+          terminalPendingCommands: nextPending,
+          ...(!wasOpen ? tallSuspendOnOpen(s, tabId) : {}),
+        }
       })
     },
 
@@ -225,17 +271,23 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
         } catch { /* fall back to 'main' */ }
         const cmd = tool.command.replace(/\{cwd\}/g, cwd).replace(/\{branch\}/g, branch)
         const key = `${tabId}:${instanceId}`
-        const s = get()
-        const nextOpen = new Set(s.terminalOpenTabIds)
-        const nextPending = new Map(s.terminalPendingCommands)
-        nextPending.set(key, cmd)
-        if (nextOpen.has(tabId)) {
-          window.ion.terminalWrite(key, cmd + '\n')
-          nextPending.delete(key)
-        } else {
-          nextOpen.add(tabId)
-        }
-        set({ terminalOpenTabIds: nextOpen, terminalPendingCommands: nextPending })
+        set((s) => {
+          const nextOpen = new Set(s.terminalOpenTabIds)
+          const nextPending = new Map(s.terminalPendingCommands)
+          nextPending.set(key, cmd)
+          const wasOpen = nextOpen.has(tabId)
+          if (wasOpen) {
+            window.ion.terminalWrite(key, cmd + '\n')
+            nextPending.delete(key)
+          } else {
+            nextOpen.add(tabId)
+          }
+          return {
+            terminalOpenTabIds: nextOpen,
+            terminalPendingCommands: nextPending,
+            ...(!wasOpen ? tallSuspendOnOpen(s, tabId) : {}),
+          }
+        })
       }
       resolveAndRun()
     },

@@ -1,4 +1,5 @@
 import type { Message } from '../../../shared/types'
+import { mergeThinkingMessages } from './thinking-block-helpers'
 
 // ─── Types ───
 
@@ -122,13 +123,13 @@ function groupMessagesUnified(
   const result: GroupedItem[] = []
   let turnTools: Message[] = []
   let turnAssistant: Message[] = []
-  // The thinking row for the current turn, if the model reasoned this turn.
-  // Hoisted to the top of the turn (above the tool row) by attaching it to
-  // the emitted agent-turn item. A turn carries at most one thinking row in
-  // practice; if a second arrives we keep the latest (the prior is flushed
-  // standalone defensively, see below) so the active/streaming block always
-  // wins the turn header.
-  let turnThinking: Message | null = null
+  // All thinking rows for the current turn, in stream order. A single run
+  // makes many API rounds and each opens its own thinking block, so a turn
+  // routinely accumulates many `role: 'thinking'` rows. They are merged into
+  // ONE display row per turn at flush time (mergeThinkingMessages) — one
+  // continuous thought stream pinned at the top of the turn, mirroring how
+  // the unified view merges the rest of the turn.
+  let turnThinking: Message[] = []
   let bootstrapBuf: Message[] = []
   let totalRunsFlushed = 0
   let totalSuppressed = 0
@@ -148,6 +149,9 @@ function groupMessagesUnified(
   }
 
   const flushTurn = () => {
+    // Merge the turn's thinking rows (if any) into one display message —
+    // exactly one thought bubble per turn.
+    const merged = turnThinking.length > 0 ? mergeThinkingMessages(turnThinking) : null
     if (turnTools.length > 0) {
       const isActive = turnTools.some((t) => t.toolStatus === 'running')
       result.push({
@@ -155,18 +159,18 @@ function groupMessagesUnified(
         tools: [...turnTools],
         assistantMessages: [...turnAssistant],
         isActive,
-        // Hoist the turn's thinking row into the turn header (rendered
+        // Hoist the merged thinking row into the turn header (rendered
         // above the tool row by AgentTurnGroup). undefined when the model
         // did not reason this turn.
-        ...(turnThinking ? { thinking: turnThinking } : {}),
+        ...(merged ? { thinking: merged } : {}),
       })
     } else {
-      // No tools — there is no turn container, so emit the thinking row
-      // (if any) as a standalone collapsed block first, then each assistant
-      // message. Thinking precedes assistant output, matching the engine's
-      // block_start → text ordering within a turn.
-      if (turnThinking) {
-        result.push({ kind: 'thinking', message: turnThinking })
+      // No tools — there is no turn container, so emit the merged thinking
+      // row (if any) as a standalone collapsed block first, then each
+      // assistant message. Thinking precedes assistant output, matching the
+      // engine's block_start → text ordering within a turn.
+      if (merged) {
+        result.push({ kind: 'thinking', message: merged })
       }
       for (const m of turnAssistant) {
         result.push({ kind: 'assistant', message: m })
@@ -174,7 +178,7 @@ function groupMessagesUnified(
     }
     turnTools = []
     turnAssistant = []
-    turnThinking = null
+    turnThinking = []
   }
 
   for (const msg of messages) {
@@ -185,15 +189,12 @@ function groupMessagesUnified(
       flushBootstrap()
       if (includeUser) result.push({ kind: 'user', message: msg })
     } else if (msg.role === 'thinking') {
-      // Capture the turn's thinking row to hoist into the turn header.
-      // If a turn somehow produced a second thinking row before flushing,
-      // flush the prior one standalone so neither is lost, then keep the
-      // newest as the turn's header block.
+      // Accumulate the turn's thinking rows; they merge into one display
+      // row per turn at flush time (see flushTurn). Never emitted standalone
+      // mid-turn — that is what fragmented a turn into dozens of independent
+      // "Thought" rows.
       flushBootstrap()
-      if (turnThinking) {
-        result.push({ kind: 'thinking', message: turnThinking })
-      }
-      turnThinking = msg
+      turnThinking.push(msg)
     } else if (msg.role === 'tool') {
       flushBootstrap()
       turnTools.push(msg)

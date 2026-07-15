@@ -77,6 +77,7 @@ const initialState = {
   readResourceIds: new Set<string>(),
   dispatchActivity: {} as Record<string, import('../../shared/types').Message[]>,
   tallViewTabId: null,
+  suspendedTallTabId: null,
   scrollToBottomCounter: 0,
   settingsOpen: false,
   settingsInitialTab: null,

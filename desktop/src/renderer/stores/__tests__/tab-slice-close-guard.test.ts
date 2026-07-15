@@ -27,6 +27,14 @@ vi.mock('../../components/TerminalPanel', () => ({
   destroyTerminalInstance: vi.fn(),
 }))
 
+vi.mock('../../rendererLogger', () => ({
+  rTrace: vi.fn(),
+  rDebug: vi.fn(),
+  rInfo: vi.fn(),
+  rWarn: vi.fn(),
+  rError: vi.fn(),
+}))
+
 vi.mock('../session-store-helpers', () => ({
   makeLocalTab: vi.fn(),
   nextMsgId: vi.fn(() => 'msg-x'),
@@ -53,6 +61,7 @@ vi.mock('../../preferences', () => ({
 }))
 
 import { createTabSlice } from '../slices/tab-slice'
+import { rWarn } from '../../rendererLogger'
 import { usePreferencesStore } from '../../preferences'
 import type { State } from '../session-store-types'
 
@@ -127,7 +136,7 @@ function makeCliTab(id: string) {
 interface Harness {
   state: any
   slice: Partial<State>
-  warnSpy: ReturnType<typeof vi.spyOn>
+  warnSpy: ReturnType<typeof vi.fn>
 }
 
 function buildHarness(tabs: any[], opts?: { activeTabId?: string }): Harness {
@@ -159,14 +168,15 @@ function buildHarness(tabs: any[], opts?: { activeTabId?: string }): Harness {
   // Expose the slice's own selectTab on the state so closeTab's
   // get().selectTab(...) resolves to the real activation path under test.
   state.selectTab = slice.selectTab
-  // The action-layer guard emits via console.warn — capture so tests
-  // can assert the refusal was logged.
-  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  return { state, slice, warnSpy }
+  // The action-layer guard logs its refusal via rWarn (ADR-019 structured
+  // logging) — the mocked logger captures it so tests can assert the refusal
+  // reason.
+  return { state, slice, warnSpy: vi.mocked(rWarn) }
 }
 
 beforeEach(() => {
   closeTabRpc.mockClear()
+  vi.mocked(rWarn).mockClear()
 })
 
 describe('closeTab action-layer guard', () => {
@@ -179,7 +189,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).toHaveBeenCalledWith('tab1')
     expect(h.warnSpy).not.toHaveBeenCalled()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 
   it('refuses close when the orchestrator is running', () => {
@@ -190,9 +200,9 @@ describe('closeTab action-layer guard', () => {
     h.slice.closeTab!('tab1')
 
     expect(closeTabRpc).not.toHaveBeenCalled()
-    expect(h.warnSpy).toHaveBeenCalledWith(expect.stringContaining('refused tab close'))
-    expect(h.warnSpy).toHaveBeenCalledWith(expect.stringContaining('orchestratorRunning=true'))
-    h.warnSpy.mockRestore()
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('refused tab close') }))
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('orchestratorRunning=true') }))
+    h.warnSpy.mockClear()
   })
 
   it('refuses close when the orchestrator is connecting', () => {
@@ -204,7 +214,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).not.toHaveBeenCalled()
     expect(h.warnSpy).toHaveBeenCalled()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 
   it('refuses close when the orchestrator is idle but background children are running', () => {
@@ -222,9 +232,9 @@ describe('closeTab action-layer guard', () => {
     h.slice.closeTab!('tab1')
 
     expect(closeTabRpc).not.toHaveBeenCalled()
-    expect(h.warnSpy).toHaveBeenCalledWith(expect.stringContaining('refused tab close'))
-    expect(h.warnSpy).toHaveBeenCalledWith(expect.stringContaining('inst1:1'))
-    h.warnSpy.mockRestore()
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('refused tab close') }))
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('inst1:1') }))
+    h.warnSpy.mockClear()
   })
 
   it('refuses close when a sibling instance has running children', () => {
@@ -242,7 +252,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).not.toHaveBeenCalled()
     expect(h.warnSpy).toHaveBeenCalled()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 
   // ─── Tab-type parity (DB-1): the guard is TAB-TYPE-AGNOSTIC ───────────────
@@ -260,8 +270,8 @@ describe('closeTab action-layer guard', () => {
     h.slice.closeTab!('tab1')
 
     expect(closeTabRpc).not.toHaveBeenCalled()
-    expect(h.warnSpy).toHaveBeenCalledWith(expect.stringContaining('orchestratorRunning=true'))
-    h.warnSpy.mockRestore()
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('orchestratorRunning=true') }))
+    h.warnSpy.mockClear()
   })
 
   it('refuses close on a PLAIN tab when background children are running (DB-1)', () => {
@@ -279,8 +289,8 @@ describe('closeTab action-layer guard', () => {
     h.slice.closeTab!('tab1')
 
     expect(closeTabRpc).not.toHaveBeenCalled()
-    expect(h.warnSpy).toHaveBeenCalledWith(expect.stringContaining('main:1'))
-    h.warnSpy.mockRestore()
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('main:1') }))
+    h.warnSpy.mockClear()
   })
 
   it('allows close on a PLAIN tab that is quiescent (no running orchestrator/children)', () => {
@@ -292,7 +302,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).toHaveBeenCalledWith('tab1')
     expect(h.warnSpy).not.toHaveBeenCalled()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 
   // ─── conversationPane cleanup (DB-2): pane deleted on close for ALL tabs ───
@@ -308,7 +318,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).toHaveBeenCalledWith('tab1')
     expect(h.state.conversationPanes.get('tab1')).toBeUndefined()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 
   it('deletes the conversationPane on close for an extension tab (DB-2 parity)', () => {
@@ -320,7 +330,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).toHaveBeenCalledWith('tab1')
     expect(h.state.conversationPanes.get('tab1')).toBeUndefined()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 
   it('allows close once all children flip to terminal status', () => {
@@ -343,7 +353,7 @@ describe('closeTab action-layer guard', () => {
 
     expect(closeTabRpc).toHaveBeenCalledWith('tab1')
     expect(h.warnSpy).not.toHaveBeenCalled()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 })
 
@@ -391,6 +401,6 @@ describe('closeTab next-active activation', () => {
     expect(h.state.loadSkeletonMessages).toHaveBeenCalledWith('tab2')
 
     selectSpy.mockRestore()
-    h.warnSpy.mockRestore()
+    h.warnSpy.mockClear()
   })
 })

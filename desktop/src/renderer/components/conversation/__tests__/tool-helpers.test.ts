@@ -326,6 +326,88 @@ describe('groupMessages — thinking row hoisting (unified turn view)', () => {
     // Thinking precedes the tool group that follows it in stream order.
     expect(thinkingIdx).toBeLessThan(toolGroupIdx)
   })
+
+  // ── one merged thought row per turn ──
+  //
+  // A single run makes many API rounds; each opens its own thinking block,
+  // so a turn accumulates many `role: 'thinking'` rows. The unified view
+  // must merge them into ONE thought row per turn — never scatter them as
+  // standalone items through the transcript (the pre-fix behavior kept only
+  // the newest on the turn and flushed the rest standalone).
+
+  it('merges multiple thinking rows in one turn into a single turn.thinking', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('thinking', 'first thought', { id: 'th-1', thinkingActive: false, thinkingElapsedSeconds: 2, thinkingTotalTokens: 100 }),
+      tmsg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+      tmsg('thinking', 'second thought', { id: 'th-2', thinkingActive: false, thinkingElapsedSeconds: 3, thinkingTotalTokens: 200 }),
+      tmsg('tool', '', { toolName: 'Grep', toolStatus: 'completed' }),
+      tmsg('thinking', 'third thought', { id: 'th-3', thinkingActive: false, thinkingElapsedSeconds: 5 }),
+      tmsg('assistant', 'done'),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+
+    // Exactly one turn item and NO standalone thinking items anywhere.
+    const kinds = result.map((r) => r.kind)
+    expect(kinds.filter((k) => k === 'thinking')).toHaveLength(0)
+    expect(kinds.filter((k) => k === 'agent-turn')).toHaveLength(1)
+
+    const turn = result.find((r) => r.kind === 'agent-turn') as Extract<GroupedItem, { kind: 'agent-turn' }>
+    // One merged row: stable first-row id, joined content, summed fields.
+    expect(turn.thinking?.id).toBe('th-1')
+    expect(turn.thinking?.content).toBe('first thought\n\nsecond thought\n\nthird thought')
+    expect(turn.thinking?.thinkingElapsedSeconds).toBe(10)
+    expect(turn.thinking?.thinkingTotalTokens).toBe(300)
+  })
+
+  it('keeps the merged row live while any block in the turn is still active', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('thinking', 'sealed', { id: 'th-1', thinkingActive: false }),
+      tmsg('tool', '', { toolName: 'Read', toolStatus: 'running' }),
+      tmsg('thinking', 'streaming…', { id: 'th-2', thinkingActive: true }),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+    const turn = result.find((r) => r.kind === 'agent-turn') as Extract<GroupedItem, { kind: 'agent-turn' }>
+    expect(turn.thinking?.thinkingActive).toBe(true)
+  })
+
+  it('emits one merged standalone thinking row in the no-tools path', () => {
+    const messages = [
+      tmsg('user', 'go'),
+      tmsg('thinking', 'part one', { id: 'th-1', thinkingActive: false }),
+      tmsg('thinking', 'part two', { id: 'th-2', thinkingActive: false }),
+      tmsg('assistant', 'answer'),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+
+    // [user, thinking (merged), assistant] — exactly one thinking item.
+    const kinds = result.map((r) => r.kind)
+    expect(kinds.filter((k) => k === 'thinking')).toHaveLength(1)
+    const row = result.find((r) => r.kind === 'thinking') as Extract<GroupedItem, { kind: 'thinking' }>
+    expect(row.message.id).toBe('th-1')
+    expect(row.message.content).toBe('part one\n\npart two')
+  })
+
+  it('does not merge thinking rows across user-turn boundaries', () => {
+    const messages = [
+      tmsg('user', 'first'),
+      tmsg('thinking', 'turn one thought', { id: 'th-1', thinkingActive: false }),
+      tmsg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+      tmsg('user', 'second'),
+      tmsg('thinking', 'turn two thought', { id: 'th-2', thinkingActive: false }),
+      tmsg('tool', '', { toolName: 'Grep', toolStatus: 'completed' }),
+    ]
+
+    const result = groupMessages(messages, { unifiedTurnView: true })
+    const turns = result.filter((r) => r.kind === 'agent-turn') as Extract<GroupedItem, { kind: 'agent-turn' }>[]
+    expect(turns).toHaveLength(2)
+    expect(turns[0].thinking?.content).toBe('turn one thought')
+    expect(turns[1].thinking?.content).toBe('turn two thought')
+  })
 })
 
 // ─── toolFailureSummary ───

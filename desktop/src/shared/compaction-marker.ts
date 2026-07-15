@@ -68,3 +68,41 @@ export function buildCompactionMarkerContent(event: CompactionMarkerEvent): stri
   if (summary) content += '\n\n' + summary
   return content
 }
+
+/**
+ * Builds a short "nothing to compact" notice for a MANUAL (`strategy === 'user'`)
+ * no-op compaction, or `null` when a notice should not be shown.
+ *
+ * Why this is separate from `buildCompactionMarkerContent`:
+ *  - `buildCompactionMarkerContent` returns `null` for any no-op (nothing
+ *    cleared, dropped, or summarized), which is correct for the persisted
+ *    conversation marker: an auto-compaction that did nothing, and history
+ *    reloads, must stay silent.
+ *  - But when the USER explicitly runs `/compact` and it turns out there is
+ *    nothing to do, silence is indistinguishable from a crash. This helper
+ *    produces a live, display-only system line so the user gets explicit
+ *    feedback. It is intentionally NOT part of `buildCompactionMarkerContent`,
+ *    so it never lands in the persisted marker or fires for auto-compaction.
+ *
+ * A no-op is: no summary, no cleared blocks, and no dropped messages
+ * (`messagesBefore === messagesAfter`). The `strategy === 'user'` gate is what
+ * distinguishes an explicit user request (worth a notice) from a proactive
+ * auto pass (stay silent).
+ */
+export function buildManualCompactionNoOpNotice(
+  event: CompactionMarkerEvent & { strategy?: string },
+): string | null {
+  if (event.strategy !== 'user') return null
+
+  const before = event.messagesBefore ?? 0
+  const after = event.messagesAfter ?? 0
+  const cleared = event.clearedBlocks ?? 0
+  const droppedMessages = before > 0 && after < before
+  const summary = event.summary?.trim() ? event.summary : ''
+
+  // Only a true no-op earns the notice. If anything actually happened, the
+  // real marker (buildCompactionMarkerContent) covers it and this returns null.
+  if (droppedMessages || cleared !== 0 || summary) return null
+
+  return `${COMPACTION_MARKER_PREFIX} · nothing to compact`
+}

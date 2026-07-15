@@ -230,7 +230,7 @@ export type NormalizedEvent =
   // from engine_dispatch_start/end so the renderer can record dispatch depth
   // and parent linkage for tree rendering in the AgentPanel.
   | { type: 'dispatch_start'; dispatchAgent: string; dispatchTask: string; dispatchModel: string; dispatchSessionId: string; dispatchDepth: number; dispatchParentId: string; dispatchId: string }
-  | { type: 'dispatch_end'; dispatchAgent: string; dispatchExitCode: number; dispatchElapsed: number; dispatchCost: number; dispatchDepth: number; dispatchParentId: string; dispatchId: string; dispatchConversationId?: string }
+  | { type: 'dispatch_end'; dispatchAgent: string; dispatchExitCode: number; dispatchElapsed: number; dispatchCost: number; dispatchInputTokens?: number; dispatchOutputTokens?: number; dispatchToolCount?: number; dispatchDepth: number; dispatchParentId: string; dispatchId: string; dispatchConversationId?: string }
   // Cross-cutting events (WI-001): previously handled via raw IPC.ENGINE_EVENT,
   // now routed through the normalized stream so the renderer has a single
   // subscription. These are desktop-internal variants with no Go struct backing;

@@ -16,10 +16,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   PREVIEW_LINES,
-  tailLines,
+  PREVIEW_CHAR_BUDGET,
+  tailForPreview,
   buildSummary,
   resolveRenderState,
   isExpandable,
+  mergeThinkingMessages,
 } from '../thinking-block-helpers'
 import type { Message } from '../../../../shared/types'
 
@@ -33,31 +35,52 @@ function thinking(partial: Partial<Message>): Message {
   } as Message
 }
 
-describe('tailLines — collapsed/streaming preview', () => {
-  it('returns all lines when fewer than n', () => {
-    expect(tailLines('a\nb', 3)).toBe('a\nb')
+describe('tailForPreview — collapsed/streaming preview character budget', () => {
+  it('returns short input unchanged (≤ maxChars)', () => {
+    expect(tailForPreview('hello world', 600)).toBe('hello world')
+    expect(tailForPreview('', 600)).toBe('')
   })
 
-  it('returns exactly n when more than n exist (the LAST n)', () => {
-    const text = 'one\ntwo\nthree\nfour\nfive'
-    expect(tailLines(text, 3)).toBe('three\nfour\nfive')
+  it('returns the trailing slice when input exceeds maxChars', () => {
+    const long = 'x'.repeat(700)
+    const result = tailForPreview(long, 600)
+    expect(result.length).toBeLessThanOrEqual(600)
+    expect(long.endsWith(result)).toBe(true)
   })
 
-  it('uses the configured PREVIEW_LINES count (2-3 line preview)', () => {
-    const lines = Array.from({ length: 10 }, (_, i) => `line${i}`).join('\n')
-    const out = tailLines(lines, PREVIEW_LINES)
-    expect(out.split('\n')).toHaveLength(PREVIEW_LINES)
-    // It is the TAIL, so the last line is preserved.
-    expect(out.endsWith('line9')).toBe(true)
+  it('cuts at a clean line boundary (drops partial leading line)', () => {
+    // Build a string where the 600-char budget cuts mid-line.
+    // "prefix\nclean line that ends at budget edge"
+    const prefix = 'partial leading line content'
+    const filler = 'a'.repeat(600 - prefix.length - 1) // just under the newline
+    const text = prefix + '\n' + filler
+    // text.length = 600, so tailForPreview returns it unchanged
+    // Make it longer so the cut actually triggers:
+    const long = 'extra' + text
+    const result = tailForPreview(long, 600)
+    // The result must not start with the partial content that precedes the first \n
+    expect(result.startsWith('\n')).toBe(false)
+    // It must be a clean start (no partial line before the first newline in the slice)
+    // i.e. the slice that was taken ends with `filler`, starting after a newline
+    expect(result).toBe(filler)
   })
 
-  it('skips blank lines so the preview is dense', () => {
-    const text = 'a\n\n\nb\n\nc'
-    expect(tailLines(text, 3)).toBe('a\nb\nc')
+  it('returns the whole slice when no newline exists in the budget window', () => {
+    // One long paragraph with no newlines — the whole 600-char tail is returned.
+    const long = 'z'.repeat(1000)
+    const result = tailForPreview(long, 600)
+    expect(result).toBe('z'.repeat(600))
   })
 
-  it('returns empty string for empty input', () => {
-    expect(tailLines('', 3)).toBe('')
+  it('uses PREVIEW_CHAR_BUDGET as the default budget (exported constant is 600)', () => {
+    expect(PREVIEW_CHAR_BUDGET).toBe(600)
+    // Short text passes through unchanged at the default budget.
+    const short = 'some reasoning text'
+    expect(tailForPreview(short, PREVIEW_CHAR_BUDGET)).toBe(short)
+  })
+
+  it('PREVIEW_LINES constant is still 3 (CSS clamp multiplier)', () => {
+    expect(PREVIEW_LINES).toBe(3)
   })
 })
 
@@ -125,5 +148,87 @@ describe('isExpandable — expand affordance gating', () => {
 
   it('NOT expandable when redacted', () => {
     expect(isExpandable(thinking({ thinkingActive: false, thinkingRedacted: true, content: '' }))).toBe(false)
+  })
+})
+
+describe('mergeThinkingMessages — one thought row per turn (unified view)', () => {
+  it('returns a single row unchanged (no synthesis)', () => {
+    const m = thinking({ id: 'only', content: 'solo', thinkingElapsedSeconds: 4 })
+    expect(mergeThinkingMessages([m])).toBe(m)
+  })
+
+  it('uses the FIRST row id for stable identity (no remount as blocks arrive)', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', content: 'one' }),
+      thinking({ id: 'b', content: 'two' }),
+    ])
+    expect(merged.id).toBe('a')
+  })
+
+  it('joins non-empty contents with a blank line, preserving order', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', content: 'one' }),
+      thinking({ id: 'b', content: '' }),
+      thinking({ id: 'c', content: 'three' }),
+    ])
+    expect(merged.content).toBe('one\n\nthree')
+  })
+
+  it('stays live while ANY row is active', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', content: 'sealed', thinkingActive: false }),
+      thinking({ id: 'b', content: 'streaming', thinkingActive: true }),
+    ])
+    expect(merged.thinkingActive).toBe(true)
+  })
+
+  it('is sealed when every row is sealed', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', thinkingActive: false }),
+      thinking({ id: 'b', thinkingActive: false }),
+    ])
+    expect(merged.thinkingActive).toBe(false)
+  })
+
+  it('sums elapsed seconds and token estimates across rows', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', thinkingElapsedSeconds: 2.5, thinkingTotalTokens: 100 }),
+      thinking({ id: 'b', thinkingElapsedSeconds: 3.5, thinkingTotalTokens: 250 }),
+    ])
+    expect(merged.thinkingElapsedSeconds).toBe(6)
+    expect(merged.thinkingTotalTokens).toBe(350)
+  })
+
+  it('leaves summary fields undefined when no row carried them', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', content: 'one' }),
+      thinking({ id: 'b', content: 'two' }),
+    ])
+    expect(merged.thinkingElapsedSeconds).toBeUndefined()
+    expect(merged.thinkingTotalTokens).toBeUndefined()
+  })
+
+  it('sums partial summary coverage (one row with data, one without)', () => {
+    const merged = mergeThinkingMessages([
+      thinking({ id: 'a', thinkingElapsedSeconds: 7 }),
+      thinking({ id: 'b' }),
+    ])
+    expect(merged.thinkingElapsedSeconds).toBe(7)
+    expect(merged.thinkingTotalTokens).toBeUndefined()
+  })
+
+  it('is redacted only when EVERY row is redacted', () => {
+    const allRedacted = mergeThinkingMessages([
+      thinking({ id: 'a', thinkingRedacted: true }),
+      thinking({ id: 'b', thinkingRedacted: true }),
+    ])
+    expect(allRedacted.thinkingRedacted).toBe(true)
+
+    const mixed = mergeThinkingMessages([
+      thinking({ id: 'a', thinkingRedacted: true }),
+      thinking({ id: 'b', content: 'readable', thinkingRedacted: false }),
+    ])
+    expect(mixed.thinkingRedacted).toBe(false)
+    expect(mixed.content).toBe('readable')
   })
 })

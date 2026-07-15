@@ -221,3 +221,57 @@ describe('rewindEngineInstance — pending-card restoration after rewind', () =>
     expect(inst.permissionDenied).toBeNull()
   })
 })
+
+describe('rewindEngineInstance — planFilePath restoration after rewind', () => {
+  // History whose kept slice ends with a pending ExitPlanMode card whose
+  // toolInput carries a planFilePath. After rewind the instance must have
+  // planFilePath restored to that value so re-entering plan mode reuses the
+  // same file instead of allocating a fresh slug.
+  const EXIT_PLAN_PATH = '/home/user/.ion/plans/fancy-wishing-cookie.md'
+  const EXIT_PLAN_THEN_TARGET = [
+    { id: 'u-0', role: 'user', content: 'write a plan', timestamp: 1 },
+    { id: 'a-1', role: 'assistant', content: 'planning...', timestamp: 2 },
+    { id: 'e-1', role: 'assistant', content: '', timestamp: 3, toolName: 'ExitPlanMode', toolId: 'tu-e', toolInput: `{"planFilePath":"${EXIT_PLAN_PATH}"}` } as any,
+    { id: 'u-1', role: 'user', content: 'implement it', timestamp: 4 },
+  ]
+
+  it('restores planFilePath from ExitPlanMode toolInput when the kept history ends with it', () => {
+    const { state, slice } = buildHarness(EXIT_PLAN_THEN_TARGET)
+    // Rewind to u-1 → keep [u-0, a-1, e-1]; the kept slice ends with ExitPlanMode.
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.planFilePath).toBe(EXIT_PLAN_PATH)
+    // The ExitPlanMode card must also be restored.
+    expect(inst.permissionDenied).not.toBeNull()
+    expect(inst.permissionDenied!.tools[0].toolName).toBe('ExitPlanMode')
+  })
+
+  // When the pending card is NOT ExitPlanMode (e.g. AskUserQuestion),
+  // planFilePath must remain null — the old behavior is preserved.
+  const ASK_THEN_TARGET_FOR_PLAN = [
+    { id: 'u-0', role: 'user', content: 'do a thing', timestamp: 1 },
+    { id: 'q-1', role: 'assistant', content: '', timestamp: 2, toolName: 'AskUserQuestion', toolId: 'tu-q', toolInput: '{"question":"which approach?"}' } as any,
+    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 3 },
+  ]
+
+  it('leaves planFilePath null when the pending card is AskUserQuestion (non-plan-mode rewind)', () => {
+    const { state, slice } = buildHarness(ASK_THEN_TARGET_FOR_PLAN)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.planFilePath).toBeNull()
+  })
+
+  // When there is no pending card at all, planFilePath must also be null.
+  const NO_CARD_THEN_TARGET = [
+    { id: 'u-0', role: 'user', content: 'first turn', timestamp: 1 },
+    { id: 'a-1', role: 'assistant', content: 'done', timestamp: 2 },
+    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 3 },
+  ]
+
+  it('leaves planFilePath null when there is no pending card in the kept history', () => {
+    const { state, slice } = buildHarness(NO_CARD_THEN_TARGET)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.planFilePath).toBeNull()
+  })
+})

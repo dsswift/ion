@@ -121,18 +121,6 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     defaultValue: false,
   },
   {
-    key: 'preferredOpenWith',
-    type: 'enum',
-    group: 'general',
-    label: 'Preferred external editor',
-    description: 'Default application when opening files externally.',
-    defaultValue: 'cli',
-    choices: [
-      { value: 'cli', label: 'Terminal (CLI)' },
-      { value: 'vscode', label: 'VS Code' },
-    ],
-  },
-  {
     // Low-bandwidth mode, facet 1 (issue #158): stream the model's
     // extended-thinking deltas to paired iOS devices. Default ON. When
     // OFF, the desktop DROPS `engine_thinking_delta` events before

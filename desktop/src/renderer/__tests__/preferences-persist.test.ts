@@ -161,13 +161,11 @@ function sentinelFor(key: string, defaultValue: unknown): unknown {
   }
   if (typeof defaultValue === 'string') {
     // themeMode must be one of 'light', 'dark', or it falls back to 'dark'.
-    // preferredOpenWith must be 'cli' or 'vscode'.
     // gitOpsMode must be 'manual' or 'worktree'.
     // worktreeCompletionStrategy must be 'merge-ff' | 'merge' | 'pr'.
     // defaultPermissionMode must be 'auto' or 'plan'.
     // tabGroupMode must be 'off' | 'auto' | 'manual'.
     if (key === 'themeMode') return 'light'
-    if (key === 'preferredOpenWith') return 'vscode'
     if (key === 'gitOpsMode') return 'worktree'
     if (key === 'worktreeCompletionStrategy') return 'merge'
     if (key === 'defaultPermissionMode') return 'auto'

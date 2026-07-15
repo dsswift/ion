@@ -15,7 +15,12 @@ interface PlanViewerProps {
   onClose: () => void
 }
 
-export function PlanViewer({ content, fileName, filePath, onClose }: PlanViewerProps) {
+// Memoized: react-markdown re-parses `content` on every render, and the
+// navigable-link segmentation walks every text node. Wrapping in React.memo
+// means an ancestor re-render (e.g. a status-bar update) no longer forces a
+// full markdown re-parse while the plan window is open. Effective only if the
+// call site passes a referentially stable `onClose` (all call sites do).
+export const PlanViewer = React.memo(function PlanViewer({ content, fileName, filePath, onClose }: PlanViewerProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
   const planGeometry = useSessionStore((s) => s.planGeometry)
@@ -71,4 +76,4 @@ export function PlanViewer({ content, fileName, filePath, onClose }: PlanViewerP
       </div>
     </FloatingPanel>
   )
-}
+})
