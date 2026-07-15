@@ -1,4 +1,4 @@
-.PHONY: default desktop engine relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers claude-symlinks hooks
+.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-logging check-dashboards claude-symlinks hooks
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -8,8 +8,30 @@ export PATH := /opt/homebrew/bin:$(PATH)
 
 default: engine
 
-engine:
+engine: generate-dashboards
 	@cd engine && bash commands/install.command --standalone || { echo "❌ Engine build failed"; exit 1; }
+
+# Regenerate the provisioned Grafana dashboard JSON (+ queries.md) into the
+# working tree from the canonical dashboards-as-code source. Runs on every
+# `make engine` (and therefore every `make desktop`, which calls make engine).
+#
+# Why regenerate on build: the local docker-compose Grafana bind-mounts
+# ./grafana/provisioning directly and its dashboards provider reloads every
+# 30s (updateIntervalSeconds: 30 in dashboards.yaml). Emitting the JSON into
+# the tree on build means a local `docker compose up -d` Grafana auto-picks-up
+# dashboard changes with no manual `npm run generate` step, and any resulting
+# drift is immediately visible/committable in `git status`.
+#
+# SOFT STEP — never blocks the engine build. If Node is missing or generation
+# errors, we print a skip notice and continue. `make check-dashboards` remains
+# the HARD drift gate (CI + pre-push): this target only writes, it does not
+# verify. The `|| true` cannot mask a real drift regression because the gate,
+# not this step, is what fails the build on drift.
+generate-dashboards:
+	@command -v node >/dev/null 2>&1 || { echo "⚠️  dashboards: node not found — skipping dashboard generation (make check-dashboards still gates drift in CI)"; exit 0; }
+	@node docs/observability/dashboards/src/generate.ts >/dev/null 2>&1 \
+		&& echo "✅ dashboards: regenerated provisioned JSON into docs/observability/grafana/provisioning/dashboards/" \
+		|| echo "⚠️  dashboards: generation failed — continuing engine build (make check-dashboards still gates drift in CI)"
 
 desktop:
 	@$(MAKE) engine
@@ -50,7 +72,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers engine-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers check-logging check-dashboards engine-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
@@ -103,6 +125,15 @@ clean:
 check-file-sizes:
 	@bash scripts/check-file-sizes.sh
 
+# Dashboards-as-code drift + structural-overcount gate. Regenerates every
+# provisioned Grafana dashboard JSON and queries.md from the canonical query
+# module and byte-diffs against the committed files; also re-runs the
+# range-accumulation-fixed-window audit on emitted JSON. See
+# docs/observability/dashboards and ADR-020. Zero runtime deps (Node native
+# TypeScript type-stripping) — no npm install needed.
+check-dashboards:
+	@node docs/observability/dashboards/src/check.ts
+
 # Phase 4 of the state-management overhaul. Prohibits new direct writes
 # to tab.status / inst.statusFields outside the dispatcher chokepoints
 # whitelisted in scripts/check-status-writers.sh.
@@ -114,6 +145,13 @@ check-status-writers:
 # validate against it via their own test suites (npm test / xcodebuild test).
 check-contracts:
 	@cd engine && go test ./internal/types/ -run TestContractManifest
+
+# ADR-019 logging-standards enforcement gate.
+# Scans emitter call sites for interpolated messages, console.* in the renderer,
+# relay slog package-level calls that bypass relayHandler, and non-canonical
+# field keys. See scripts/check-logging.sh for the full check catalog.
+check-logging:
+	@bash scripts/check-logging.sh
 
 # Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
 # CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.
