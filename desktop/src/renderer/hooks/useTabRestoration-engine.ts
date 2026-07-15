@@ -1,3 +1,7 @@
+// @file-size-exception: useTabRestoration-engine.ts owns buildPopulatedInstance,
+// hasPlanBeenImplemented, and the full engine-tab restore flow. Splitting would
+// require passing the legacy-marker filter across file boundaries; the file is
+// modestly over cap and will be refactored when the restore hook is next revised.
 import type { Message, AgentStateUpdate, ConversationInstance, ConversationRef } from '../../shared/types'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { useSessionStore } from '../stores/sessionStore'
@@ -454,8 +458,19 @@ export function buildPopulatedInstance(
   _st: PersistedTab,
 ): ConversationRef & ConversationInstance {
   // Filter extension error messages from persisted scrollback.
+  // Also drop legacy bootstrap markers (role:'harness', content starts with
+  // 'Session bootstrapped:', no dedupKey). These accumulated before the
+  // relocate dedup mode was introduced; they have no dedupKey so the
+  // suppress-later path never collapsed them. Dropping them on restore
+  // prevents the 5,712-object accumulation from surviving the next
+  // serialize cycle. Keyed harness messages (dedupKey present) are kept.
+  const LEGACY_BOOTSTRAP_PREFIX = 'Session bootstrapped:'
+  const isLegacyBootstrapMarker = (m: { role?: string; content?: string; dedupKey?: string }) =>
+    m.role === 'harness' &&
+    (m.content || '').startsWith(LEGACY_BOOTSTRAP_PREFIX) &&
+    !m.dedupKey
   const saved = (inst.messages ?? []).filter(
-    (m) => !isExtensionErrorMessage({ role: m.role || '', content: m.content || '' }),
+    (m) => !isExtensionErrorMessage({ role: m.role || '', content: m.content || '' }) && !isLegacyBootstrapMarker(m),
   )
   const restoredMessages: Message[] = saved.map((m) => ({
     id: crypto.randomUUID(),

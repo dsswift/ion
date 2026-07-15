@@ -103,24 +103,37 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       return true
 
     case 'harness_message': {
-      // Extension harness display message. Apply dedup: if a message with
-      // the same dedupKey already exists in scrollback, suppress this push.
+      // Extension harness display message. Three dedup paths:
+      //
+      // 1. dedupMode === 'relocate' + dedupKey present: remove any existing
+      //    message with that dedupKey from scrollback, then append the new
+      //    marker at the end. The marker always stays current — never trails
+      //    behind new conversation turns.
+      // 2. dedupKey present (no dedupMode / dedupMode absent): suppress-later
+      //    — if a message with the same key already exists, drop this one.
+      // 3. No dedupKey: append unconditionally.
       const dk = event.dedupKey
-      const alreadyPresent = dk
-        ? ctx.messages.some((m) => (m as any).dedupKey === dk)
-        : false
-      if (!alreadyPresent) {
+      const newMsg = {
+        id: nextMsgId(),
+        role: 'harness' as any,
+        content: event.message,
+        timestamp: Date.now(),
+        ...(dk ? { dedupKey: dk } : {}),
+        ...(event.source ? { harnessSource: event.source } : {}),
+      }
+      if (event.dedupMode === 'relocate' && dk) {
+        // Remove the existing keyed marker (if any), then append the fresh one.
         ctx.messages = [
-          ...ctx.messages,
-          {
-            id: nextMsgId(),
-            role: 'harness' as any,
-            content: event.message,
-            timestamp: Date.now(),
-            ...(dk ? { dedupKey: dk } : {}),
-            ...(event.source ? { harnessSource: event.source } : {}),
-          },
+          ...ctx.messages.filter((m) => (m as any).dedupKey !== dk),
+          newMsg,
         ]
+      } else {
+        const alreadyPresent = dk
+          ? ctx.messages.some((m) => (m as any).dedupKey === dk)
+          : false
+        if (!alreadyPresent) {
+          ctx.messages = [...ctx.messages, newMsg]
+        }
       }
       return true
     }

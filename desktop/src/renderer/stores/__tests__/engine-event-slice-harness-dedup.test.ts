@@ -151,3 +151,94 @@ describe('harness_message dedupKey convention (WI-001 normalized path)', () => {
     expect((msgs[0] as any).dedupKey).toBe('ion-meta:welcome')
   })
 })
+
+describe('harness_message relocate dedup mode', () => {
+  it('two relocate-keyed events → exactly one marker at the end', () => {
+    const { state, slice } = buildHarness()
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'harness_message',
+      message: 'Session bootstrapped: ion-meta v1',
+      dedupKey: 'ion-meta:bootstrap',
+      dedupMode: 'relocate',
+      source: 'ion-meta',
+    } as any)
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'harness_message',
+      message: 'Session bootstrapped: ion-meta v1',
+      dedupKey: 'ion-meta:bootstrap',
+      dedupMode: 'relocate',
+      source: 'ion-meta',
+    } as any)
+
+    const msgs = getMessages(state)
+    expect(msgs).toHaveLength(1)
+    expect((msgs[0] as any).dedupKey).toBe('ion-meta:bootstrap')
+  })
+
+  it('marker relocates past intervening non-bootstrap messages on third emission', () => {
+    const { state, slice } = buildHarness()
+
+    // First bootstrap marker
+    slice.handleNormalizedEvent('tab1', {
+      type: 'harness_message',
+      message: 'Session bootstrapped: ion-meta v1',
+      dedupKey: 'ion-meta:bootstrap',
+      dedupMode: 'relocate',
+      source: 'ion-meta',
+    } as any)
+
+    // Intervening assistant message
+    slice.handleNormalizedEvent('tab1', {
+      type: 'message_start',
+    } as any)
+
+    // Inject a non-harness message directly into scrollback to simulate conversation
+    const pane = state.conversationPanes.get('tab1')
+    pane.instances[0].messages.push({
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'Hello from assistant',
+      timestamp: Date.now(),
+    } as any)
+
+    // Second bootstrap emission (engine restart)
+    slice.handleNormalizedEvent('tab1', {
+      type: 'harness_message',
+      message: 'Session bootstrapped: ion-meta v1',
+      dedupKey: 'ion-meta:bootstrap',
+      dedupMode: 'relocate',
+      source: 'ion-meta',
+    } as any)
+
+    const msgs = getMessages(state)
+    // Still exactly one bootstrap marker — relocated to end, past assistant msg
+    const bootstrapMsgs = msgs.filter((m) => (m as any).dedupKey === 'ion-meta:bootstrap')
+    expect(bootstrapMsgs).toHaveLength(1)
+    // Marker must be the last message
+    expect((msgs[msgs.length - 1] as any).dedupKey).toBe('ion-meta:bootstrap')
+  })
+
+  it('default suppress-later path unchanged when dedupMode absent', () => {
+    const { state, slice } = buildHarness()
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'harness_message',
+      message: 'Welcome to Ion Meta',
+      dedupKey: 'ion-meta:welcome',
+      source: 'ion-meta',
+    } as any)
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'harness_message',
+      message: 'Welcome to Ion Meta',
+      dedupKey: 'ion-meta:welcome',
+      source: 'ion-meta',
+    } as any)
+
+    const msgs = getMessages(state)
+    expect(msgs).toHaveLength(1)
+    expect((msgs[0] as any).dedupKey).toBe('ion-meta:welcome')
+  })
+})

@@ -7,7 +7,7 @@ export type GroupedItem =
   | { kind: 'user'; message: Message }
   | { kind: 'assistant'; message: Message }
   | { kind: 'system'; message: Message }
-  | { kind: 'harness'; message: Message; bootstrapCollapsedCount?: number }
+  | { kind: 'harness'; message: Message }
   | { kind: 'intercept'; message: Message }
   | { kind: 'tool-group'; messages: Message[] }
   | { kind: 'agent-turn'; tools: Message[]; assistantMessages: Message[]; isActive: boolean; thinking?: Message }
@@ -19,8 +19,6 @@ export type GroupedItem =
 const HIDDEN_MESSAGES = [
   'Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.',
 ]
-
-const BOOTSTRAP_PREFIX = 'Session bootstrapped'
 
 // ─── groupMessages ───
 
@@ -40,9 +38,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
 
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
-  let bootstrapBuf: Message[] = []
-  let _totalRunsFlushed = 0
-  let _totalSuppressed = 0
 
   const flushTools = () => {
     if (toolBuf.length > 0) {
@@ -51,25 +46,9 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
     }
   }
 
-  const flushBootstrap = () => {
-    if (bootstrapBuf.length === 0) return
-    const suppressed = bootstrapBuf.length - 1
-    const representative = bootstrapBuf[bootstrapBuf.length - 1]
-    const item: GroupedItem = {
-      kind: 'harness',
-      message: representative,
-      bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
-    }
-    result.push(item)
-    _totalRunsFlushed++
-    _totalSuppressed += suppressed
-    bootstrapBuf = []
-  }
-
   for (const msg of messages) {
     if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
     if (msg.role === 'tool') {
-      flushBootstrap()
       toolBuf.push(msg)
     } else if (msg.role === 'thinking') {
       // Extended-thinking row (issue #158). In the non-unified view there
@@ -77,38 +56,28 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
       // collapsed block in stream order. It naturally precedes the tool
       // group that follows because thinking_block_start fires before the
       // first tool_use of the turn.
-      flushBootstrap()
       flushTools()
       result.push({ kind: 'thinking', message: msg })
     } else {
       flushTools()
       if (msg.role === 'user') {
-        flushBootstrap()
         if (includeUser) result.push({ kind: 'user', message: msg })
       } else if (msg.role === 'assistant') {
-        flushBootstrap()
         result.push({ kind: 'assistant', message: msg })
       } else if (msg.role === 'harness') {
         if (msg.interceptLevel) {
-          flushBootstrap()
           result.push({ kind: 'intercept', message: msg })
-        } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
-          bootstrapBuf.push(msg)
         } else {
-          flushBootstrap()
           result.push({ kind: 'harness', message: msg })
         }
       } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
-        flushBootstrap()
         result.push({ kind: 'compaction', message: msg })
       } else {
-        flushBootstrap()
         result.push({ kind: 'system', message: msg })
       }
     }
   }
   flushTools()
-  flushBootstrap()
 
   return result
 }
@@ -130,23 +99,6 @@ function groupMessagesUnified(
   // continuous thought stream pinned at the top of the turn, mirroring how
   // the unified view merges the rest of the turn.
   let turnThinking: Message[] = []
-  let bootstrapBuf: Message[] = []
-  let _totalRunsFlushed2 = 0
-  let _totalSuppressed2 = 0
-
-  const flushBootstrap = () => {
-    if (bootstrapBuf.length === 0) return
-    const suppressed = bootstrapBuf.length - 1
-    const representative = bootstrapBuf[bootstrapBuf.length - 1]
-    result.push({
-      kind: 'harness',
-      message: representative,
-      bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
-    })
-    _totalRunsFlushed2++
-    _totalSuppressed2 += suppressed
-    bootstrapBuf = []
-  }
 
   const flushTurn = () => {
     // Merge the turn's thinking rows (if any) into one display message —
@@ -186,46 +138,35 @@ function groupMessagesUnified(
 
     if (msg.role === 'user') {
       flushTurn()
-      flushBootstrap()
       if (includeUser) result.push({ kind: 'user', message: msg })
     } else if (msg.role === 'thinking') {
       // Accumulate the turn's thinking rows; they merge into one display
       // row per turn at flush time (see flushTurn). Never emitted standalone
       // mid-turn — that is what fragmented a turn into dozens of independent
       // "Thought" rows.
-      flushBootstrap()
       turnThinking.push(msg)
     } else if (msg.role === 'tool') {
-      flushBootstrap()
       turnTools.push(msg)
     } else if (msg.role === 'assistant') {
-      flushBootstrap()
       turnAssistant.push(msg)
     } else if (msg.role === 'harness') {
       if (msg.interceptLevel) {
         flushTurn()
-        flushBootstrap()
         result.push({ kind: 'intercept', message: msg })
-      } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
-        bootstrapBuf.push(msg)
       } else {
         flushTurn()
-        flushBootstrap()
         result.push({ kind: 'harness', message: msg })
       }
     } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
       flushTurn()
-      flushBootstrap()
       result.push({ kind: 'compaction', message: msg })
     } else {
       flushTurn()
-      flushBootstrap()
       result.push({ kind: 'system', message: msg })
     }
   }
 
   flushTurn()
-  flushBootstrap()
 
   return result
 }

@@ -33,6 +33,7 @@ export function handleExtensionEvent(
         type: 'harness_message',
         message: event.message || '',
         dedupKey: (event.metadata as any)?.dedupKey || undefined,
+        dedupMode: (event.metadata as any)?.dedupMode || undefined,
         source: event.source,
       } as NormalizedEvent)
       return true

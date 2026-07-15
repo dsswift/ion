@@ -222,7 +222,7 @@ export type NormalizedEvent =
   // renders nothing. Desktop-internal: no Go struct backing (StatusFields itself
   // is the synced shared type), so no contract-sync manifest entry.
   | { type: 'status'; fields: import('./types-engine').StatusFields }
-  | { type: 'harness_message'; message: string; dedupKey?: string; source?: string }
+  | { type: 'harness_message'; message: string; dedupKey?: string; dedupMode?: 'relocate'; source?: string }
   | { type: 'working_message'; message: string }
   | { type: 'notify'; message: string; level: string }
   | { type: 'dialog'; dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string }
