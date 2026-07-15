@@ -132,6 +132,21 @@ Power users can customize the desktop's defaults via `~/.ion/settings.json` `des
 
 Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md): the engine provides the mechanism (prompt builder, sparse-reminder injection, hook firing), the harness provides the policy (what the prose says). The three-layer precedence is symmetric between `PlanModePrompt` and `PlanModeSparseReminder` by design.
 
+### Plan mode on delegated-CLI backends
+
+The ApiBackend implements plan mode itself (tool gating, write gates, `ExitPlanMode` interception). The delegated-CLI backends instead enter each CLI's **native** plan mechanism and normalize its native plan output back into the same event contract — `engine_plan_mode_changed` on entry, `engine_plan_file_written` when the plan lands, `engine_plan_proposal` at the proposal boundary — so consumers see one identical surface regardless of backend.
+
+| Backend | Native entry | Native plan capture |
+|---------|--------------|---------------------|
+| claude-code | `--permission-mode plan` | The `ExitPlanMode` tool argument (`plan`) streamed in the assistant message |
+| codex | `turn/start` `collaborationMode{mode:"plan"}` | The completed `plan` thread item (authoritative over `item/plan/delta`) |
+| cursor (ACP) | `session/set_mode` to the advertised plan/architect mode | The `plan` session update's entries, snapshotted at prompt return |
+| grok (ACP) | none — surfaces a clean `engine_error` with `errorCode: plan_mode_unsupported` and a deliberate exit 0 | n/a |
+
+The captured native plan markdown is written atomically to the run's `planFilePath`, so file-centric consumers work unchanged. On codex, `RunOptions.PlanModePrompt` doubles as the `developer_instructions` sent with the plan collaboration mode (engine default when empty); the `plan_mode_prompt` hook layer does not reach delegated-CLI backends (it rides `RunConfig`, which only the ApiBackend receives). Each CLI backend also carries the end-of-turn safety net: a plan-mode turn that ends without a native plan/exit synthesizes `engine_plan_mode_auto_exit` + `engine_plan_proposal`, gated on `planModeAutoExit`.
+
+Native modes can be sticky on the CLI side. Non-plan codex turns on a resumed thread send an explicit `collaborationMode{mode:"default"}`; non-plan cursor runs against a session left in a plan mode reset it via `session/set_mode` before prompting.
+
 ### Model-initiated plan-mode entry
 
 In auto mode the engine injects the [`EnterPlanMode`](../tools/reference.md#enterplanmode) sentinel tool so the model can request a plan-mode transition mid-conversation.
