@@ -122,6 +122,12 @@ export type EngineEvent =
   // RunStall threshold. The authoritative completion signal is the follow-up
   // task_complete; this event is for observability only.
   | { type: 'engine_run_stalled'; runStalledDuration: number; runStalledLastActivity?: string }
+  // engine_task_suspended — a dispatched agent's LLM run ended without completing
+  // the dispatch (ctx.suspend() or ctx.suspendUntilAll() was called). The agent is
+  // parked waiting for child completions or a revive message. taskSuspendAwaitingCount
+  // is the number of pending children (0 for bare suspend). Clients may update the
+  // agent-state indicator to show suspended/idle. Task completion fires later on revival.
+  | { type: 'engine_task_suspended'; taskSuspendAwaitingCount?: number }
   // engine_model_fallback — workflow signal emitted by the engine when
   // it fell back to its configured defaultModel because the requested
   // model didn't resolve to a provider. Mirrors the underlying

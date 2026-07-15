@@ -71,6 +71,18 @@ export function handleStreamSignalEvent(
       } as NormalizedEvent)
       return true
 
+    case 'engine_task_suspended':
+      // A dispatched agent's LLM run ended without completing the dispatch.
+      // The agent called ctx.suspend() or ctx.suspendUntilAll() and is now
+      // parked waiting for child completions or a revive message. Forward as
+      // a normalized task_suspend so renderer can show "suspended/idle" state.
+      debug('task_suspended', { tab_id: tabId, awaiting_count: event.taskSuspendAwaitingCount ?? 0 })
+      ctx.emit('event', tabId, {
+        type: 'task_suspend',
+        awaitingDispatchIds: undefined,
+      } as NormalizedEvent)
+      return true
+
     case 'engine_steer_injected':
       // Mid-turn steer-drain confirmation. The runloop captures a steer
       // message between turns, inside the end_turn checkpoint, or after
