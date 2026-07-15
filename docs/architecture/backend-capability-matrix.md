@@ -57,8 +57,9 @@ below: **CLOSEABLE** (engine-side wiring, no fighting the CLI) or **GATED**
 |---|---|---|---|---|---|---|
 | Built-in tools (Read/Write/Edit/Bash/Grep/Glob/Web…) | ✅ | ✅ | ✅ | ✅ | ✅ | Each CLI ships its own equivalents; the model always has a file/shell/search tool set. |
 | Vendor's own MCP servers | ✅ | ✅ | ✅ | ✅ | ✅ | Each CLI loads MCP from **its own** config, independent of Ion. |
-| **Ion extension tools** | ✅ | ✅ | ❌ | ❌ | ❌ | `wireToolServer` exposes extension tools to the subprocess via an MCP config — **gated to `*ClaudeCodeBackend`** (`prompt_cli_hooks.go`). codex/grok/cursor get none. |
-| **`ion_agent` (subagent dispatch)** | ✅ | ⚠️ | ❌ | ❌ | ❌ | `wireAgentToolServer` registers `ion_agent` — **claude-code only**. On claude-code the handler runs the child **synchronously** and **does not register it in the dispatch registry or emit `engine_agent_state`**, so dispatched agents never appear in the agent panel. |
+| **Ion extension tools** | ✅ | ✅ | ❌ | ✅ | ✅ | `wireToolServer` exposes extension tools to the subprocess over MCP: claude-code via `--mcp-config`, grok/cursor via ACP `session/new` mcpServers. **codex is excluded** — its shared app-server takes MCP only at process-spawn time, not per session (see ledger). |
+| **`ion_agent` (subagent dispatch)** | ✅ | ✅ | ❌ | ✅ | ✅ | `wireAgentToolServer` registers `ion_agent` on claude-code and grok/cursor (not codex). The model-called `ion_agent` handler now routes through the **same depth-0 dispatch** as the API Agent tool (`buildRootAgentSpawner`): registry registration, `engine_agent_state` (appears in the panel), telemetry, and the child's own tools (next row). Foreground/synchronous, matching the tool's result contract. |
+| **Dispatched child gets ion tools** (extension tools + `ion_agent` for grandchildren) | ✅ | ✅ | ❌ | ✅ | ✅ | A CLI-routed dispatched child drops its `RunConfig`, so it used to be tool-orphaned. `BuildDelegatedChildToolServer` now gives each CLI child a per-child tool server sourced from its `RunConfig` — extension tools via the child's `McpToolRouter`, `ion_agent` via its `AgentSpawner` (grandchildren at depth+1). codex excluded (same shared-app-server gate). |
 | Background / suspend-revive dispatch | ✅ | ❌ | ❌ | ❌ | ❌ | A CLI tool call is synchronous request→response; the CLI's model cannot go idle mid-tool-call and be revived. |
 | AskUserQuestion | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | The CLI's own elicitation is used; the engine's `ChildElicitFn` symmetrization is ApiBackend-only. |
 
@@ -94,7 +95,9 @@ below: **CLOSEABLE** (engine-side wiring, no fighting the CLI) or **GATED**
 | Capability | api | claude-code | codex | grok | cursor | Notes |
 |---|---|---|---|---|---|---|
 | Mid-turn steering | ✅ | ✅ | ✅ | ❌ | ❌ | claude-code via stdin stream-json; codex via `turn/steer`. **ACP has no steer channel** (`acp_backend.go WriteToStdin` is a no-op). |
-| `OnToolCall/OnPerToolHook/OnTurnStart/OnTurnEnd/OnBeforeProviderRequest/OnBeforePrompt/OnSystemInject` hooks | ✅ | ❌ | ❌ | ❌ | ❌ | The CLI owns the loop; none of the per-turn hooks fire. |
+| `OnToolCall/OnPerToolHook/OnTurnStart/OnTurnEnd/OnBeforeProviderRequest/OnSystemInject` hooks | ✅ | ❌ | ❌ | ❌ | ❌ | The CLI owns the loop; none of the per-turn hooks fire. |
+| `OnBeforePrompt` (extension prompt rewrite) | ✅ | ✅ | ❌ | ❌ | ❌ | Bridged for claude-code via `fireBeforePromptCli` (`prompt_dispatch.go`); not yet generalized to codex/grok/cursor (CLOSEABLE — see ledger C5). |
+| `OnInitialMessages` (plugin UserPromptSubmit inject) | ✅ | ❌ | ❌ | ❌ | ❌ | ApiBackend-only; the per-turn `<system-reminder>` prepend could be applied at CLI dispatch (CLOSEABLE — see ledger C6). |
 | Early-stop / continuation (`OnBeforeEarlyStopDecision`, `EarlyStopContinue`) | ✅ | ❌ | ❌ | ❌ | ❌ | The CLI decides when to stop; Ion cannot inject a continuation between the CLI's turns. |
 | Turn/token/cost telemetry spans | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Ion emits a single run-level telemetry event at `task_complete` for every backend; the ApiBackend's finer per-call/per-tool spans are not produced by the CLI subprocess. |
 | Model-fallback / capability-unsupported / plan events | ✅ | ✅ | ✅ | ✅ | ✅ | Typed engine events emitted uniformly from the session/backend layer. |
@@ -107,17 +110,24 @@ affects).
 
 ### CLOSEABLE — engine-side wiring, no fighting the CLI
 
-| # | Gap | Affected | Priority | Approach |
-|---|---|---|---|---|
-| C1 | Ion extension tools + `ion_agent` not wired to codex/grok/cursor | codex, grok, cursor | **high** | Generalize `wireToolServer`/`wireAgentToolServer` past the `*ClaudeCodeBackend` type-gate: codex loads MCP via its app-server config; ACP takes `mcpServers` on `session/new` (now populated). |
-| C2 | CLI `ion_agent` dispatch is invisible to the agent panel | claude-code (and codex/grok/cursor once C1 lands) | **high** | In the `ion_agent` handler, register the child in the dispatch registry and emit `engine_agent_state` snapshots (running at start, done at completion) — the same snapshot contract the ApiBackend dispatch honors. |
+Extension tools + `ion_agent` on grok/cursor were previously CLOSEABLE and are
+now **done**: `mcpCapableCli` generalizes `wireToolServer`/`wireAgentToolServer`
+to the ACP backends via `session/new` mcpServers (`prompt_cli_hooks.go`). The
+remaining closeable set:
+
+| # | Gap | Affected | Priority | Status / Approach |
+| ---|---|---|---|---|
+| C2 | Model-called `ion_agent` was a bare shim (no panel, tool-orphaned child) | claude-code, grok, cursor | **high** | **DONE.** `buildAgentToolHandler` now routes through `buildRootAgentSpawner` — the same depth-0 dispatch as the API Agent tool — so the child registers in the dispatch registry, emits `engine_agent_state` (appears in the panel), gets its own tool server, and can dispatch grandchildren. (The dispatch is foreground/synchronous by the tool's result contract; that is inherent, not a gap.) |
 | C3 | Tool-call / file-change observation hooks don't fire on CLI | all CLIs | medium | Bridge tool-result and file-mutation observations from the subprocess stream into `OnFileChanged` / an observe-only tool hook. Observation only — not interception. |
+| C5 | `OnBeforePrompt` bridged only for claude-code | codex, grok, cursor | medium | Generalize `fireBeforePromptCli` (already wired for claude-code) to rewrite `opts.Prompt`/`AppendSystemPrompt` before dispatch on the other CLIs. |
+| C6 | `OnInitialMessages` (plugin UserPromptSubmit) not applied on CLI | all CLIs | low | Prepend the per-turn `<system-reminder>` injection to the CLI prompt at dispatch, same shape as C5. |
 | C4 | Permission *classification* not consulted on CLI | all CLIs | low | Offer the engine classifier over the existing ask-bridge so the CLI can tier a request before prompting. |
 
 ### GATED — the CLI owns this phase; do our best or declare the limit
 
 | Gap | Affected | Why it's gated |
 |---|---|---|
+| Ion extension tools + `ion_agent` on codex | codex | The codex app-server is one shared, lazily-spawned process multiplexing all sessions, and accepts MCP servers only at process-spawn time (`-c mcp_servers.*` / `~/.codex/config.toml`), never per session. The engine's ToolServer socket is per-session, so injecting it would require per-session codex processes or a stable session-multiplexing socket — a larger refactor, not a wiring change. Gated until then. |
 | `PermEngine` as the authoritative allow/deny gate | all CLIs | The CLI executes tools in its own runtime; Ion cannot block a call the subprocess runs internally. The ask-bridge (prompt the user) is the enforcement ceiling. |
 | Plan mode on grok | grok | grok's ACP advertises no plan/architect mode. Declared unsupported via `engine_capability_unsupported`; the session stays usable so the user can switch models or disable plan mode. |
 | `OnPlanMode*` hooks + per-command bash gating | all CLIs | Plan mode runs inside the CLI's own system; there is no Ion hook point or gate inside the subprocess. |

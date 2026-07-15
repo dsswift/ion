@@ -1,0 +1,779 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Ion mobile — which iOS devices are running Ion, on what version, paired to which desktop?",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Which iOS devices are running Ion, on what version, paired to which desktop?\n\nThe per-device mobile view over the **iOS log stream** (`{component=\"ios\"}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired desktop collects. Every line carries device identity: model / OS / app version+build (stamped by iOS) and device id / name / desktop host (stamped by the desktop). The **device→desktop pairing** table below is the \"which device connected where\" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Desktop/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |"
+      },
+      "datasource": null
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Devices reporting",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": [],
+          "noValue": "no iOS logs"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "count(sum by (device_id) (count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "App versions in use",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 4
+      },
+      "description": "Distinct app_version strings across the iOS fleet in the window. More than one is version drift — see the drift table below for which device is behind.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "count(sum by (app_version) (count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "iOS log lines",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": [],
+          "noValue": "no iOS logs"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "iOS errors",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 15,
+        "y": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({component=\"ios\", level=\"ERROR\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Device last-seen (min)",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 4
+      },
+      "description": "Minutes since the most recent iOS log line per device. Fixed 24h lookback (liveness detector): a device whose logs stopped arriving climbs while the others stay near zero.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (device_name) (max_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "{{device_name}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Devices, versions, and pairing",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "App version by device",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "description": "Every device / app-version / OS-version combination reporting in the window, with its line count. Two rows for one device means it upgraded mid-window.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Lines",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "device_id": "Device ID",
+              "device_name": "Device",
+              "app_version": "App version",
+              "app_build": "Build",
+              "os_version": "iOS",
+              "Value": "Lines"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (device_id, device_name, app_version, app_build, os_version) (count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "{{device_name}} {{app_version}}({{app_build}}) iOS {{os_version}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Device → desktop pairing",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "description": "Every device × desktop_host pair that produced iOS logs in the window. A device paired to two desktops yields two rows; several devices on one desktop yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Lines",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "device_id": "Device ID",
+              "device_name": "Device",
+              "desktop_host": "Desktop host",
+              "Value": "Lines"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (device_id, device_name, desktop_host) (count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "{{device_name}} @ {{desktop_host}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "bargauge",
+      "title": "Log volume by device",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (device_name) (count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{device_name}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "bargauge",
+      "title": "Errors by device",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (device_name) (count_over_time({component=\"ios\", level=\"ERROR\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{device_name}}"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Activity over time",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Log volume by device over time",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (device_name) (count_over_time({component=\"ios\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{device_name}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Errors by device over time",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (device_name) (count_over_time({component=\"ios\", level=\"ERROR\"} | json device_name=\"fields.device_name\", device_id=\"fields.device_id\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", desktop_host=\"fields.desktop_host\" | __error__=\"\" | device_name=~\"$device\" [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{device_name}}"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "logs",
+      "title": "iOS log tail",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{component=\"ios\"} | json device_name=\"fields.device_name\" | __error__=\"\" | device_name=~\"$device\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "ion",
+    "mobile"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "textbox",
+        "description": "Device name to scope panels. Accepts regex. Default matches all devices.",
+        "query": ".*",
+        "current": {
+          "value": ".*"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Mobile",
+  "uid": "ion-mobile",
+  "version": 1
+}

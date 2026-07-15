@@ -229,6 +229,16 @@ to `~/.ion/ios-diagnostic-logs.jsonl`), and from there they ride the workstation
 any other client-side file. There is nothing to configure on the device: if the paired
 desktop is collected, the iOS logs are collected.
 
+Each iOS line carries per-device identity in its `fields` — `device_model` / `app_version` /
+`app_build` / `os_version` (stamped by the device) and `device_id` / `device_name` /
+`desktop_host` (stamped by the collecting desktop at persist time) — so every line is
+individually attributable downstream: which device, on which app build, paired to which
+desktop. `desktop_host` mirrors the telemetry `host`, so an iOS line joins the same machine's
+rows on the fleet view. The pull is exactly-once (a monotonic per-line `seq` cursor persisted
+per device), so a reconnect or desktop restart resumes rather than re-shipping history. See
+[`log-schema.md` § ios](../observability/log-schema.md) for the field reference and the **Ion
+Mobile** dashboard for the per-device view.
+
 ### Relay — ship the file, not the console
 
 The relay writes canonical JSONL to `RELAY_LOG_FILE` (default `/var/log/ion/relay.jsonl`

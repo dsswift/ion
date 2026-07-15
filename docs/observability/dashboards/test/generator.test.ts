@@ -464,3 +464,84 @@ test('fleet pack: installs-per-host counts distinct install_ids per host', () =>
   assert.ok(expr.includes('count by (host)'), 'outer count must group by host');
   assert.ok(expr.includes('sum by (host, install_id)'), 'inner sum must key host+install_id pairs');
 });
+
+// ---------------------------------------------------------------------------
+// Ion Mobile pack contract
+// ---------------------------------------------------------------------------
+
+test('mobile pack: registered, foldered, and device-scoped via | json', () => {
+  const d = recipeByUid('ion-mobile');
+  assert.equal(d.folder, 'mobile');
+  assert.equal(d.file, 'ion-mobile');
+  const vars = (d.templating ?? []).map((v) => v.name);
+  assert.deepEqual(vars, ['device'], 'mobile pack must expose the $device textbox variable');
+  for (const v of d.templating ?? []) {
+    assert.equal(v.type, 'textbox', 'device_name is a parsed JSON field, not a stream label — textbox regex only');
+    assert.equal(v.query, '.*');
+  }
+  // device_name is NOT Alloy-promoted: every device-scoped query must parse with
+  // | json ahead of the device filter, or it silently matches nothing (same
+  // constraint the fleet pack has on $host).
+  for (const p of d.panels as Record<string, any>[]) {
+    if (!p.targets) continue;
+    for (const t of p.targets as any[]) {
+      if (typeof t.expr !== 'string' || !t.expr.includes('device_name=~"$device"')) continue;
+      const jsonIdx = t.expr.indexOf('| json');
+      const deviceIdx = t.expr.indexOf('device_name=~"$device"');
+      assert.ok(jsonIdx !== -1 && jsonIdx < deviceIdx, `"${p.title}": | json must precede the $device filter: ${t.expr}`);
+    }
+  }
+});
+
+test('mobile pack: reads the iOS log stream, never the telemetry stream', () => {
+  // iOS emits no telemetry — the whole point of a separate pack. Every target
+  // must select {component="ios"} and none may touch service_name="ion-telemetry".
+  const d = recipeByUid('ion-mobile');
+  for (const p of d.panels as Record<string, any>[]) {
+    if (!p.targets) continue;
+    for (const t of p.targets as any[]) {
+      if (typeof t.expr !== 'string') continue;
+      assert.ok(t.expr.includes('component="ios"'), `"${p.title}": mobile target must select the iOS stream: ${t.expr}`);
+      assert.ok(!t.expr.includes('ion-telemetry'), `"${p.title}": mobile target must NOT read the telemetry stream: ${t.expr}`);
+    }
+  }
+});
+
+test('mobile pack: the device→desktop pairing table keys (device_id, desktop_host)', () => {
+  const p = panelByTitle('ion-mobile', 'Device → desktop pairing');
+  const expr = (p.targets as any[])[0].expr as string;
+  assert.ok(expr.includes('sum by (device_id, device_name, desktop_host)'), 'pairing table must group by the device×desktop key');
+});
+
+test('mobile pack: device last-seen is a fixed-24h detector (not $__range)', () => {
+  const p = panelByTitle('ion-mobile', 'Device last-seen (min)');
+  const expr = (p.targets as any[])[0].expr as string;
+  assert.ok(expr.includes('[24h]'), 'last-seen detector must use the fixed 24h lookback');
+  assert.equal((p.targets as any[])[0].__ionClass, 'instant', 'last-seen is an instant detector, not an accumulation');
+});
+
+test('mobile pack: every | json target skips unparseable lines with __error__=""', () => {
+  // The {component="ios"} stream is heterogeneous — legacy lines store a bare
+  // `msg` string as the body, not full JSON. In LogQL a JSONParserErr on ONE
+  // line aborts a grouped series and returns NO data, blanking every grouped
+  // panel. `| __error__=""` after the json stage skips the bad lines. This is
+  // the fix for the "186K lines but every device panel empty" production bug;
+  // it must never regress. Any target that parses JSON must also carry the skip.
+  const d = recipeByUid('ion-mobile');
+  for (const p of d.panels as Record<string, any>[]) {
+    if (!p.targets) continue;
+    for (const t of p.targets as any[]) {
+      if (typeof t.expr !== 'string' || !t.expr.includes('| json')) continue;
+      assert.ok(
+        t.expr.includes('__error__=""'),
+        `"${p.title}": a | json target must skip parse errors with __error__="" or one bad line blanks the panel: ${t.expr}`,
+      );
+      // Ordering: the skip must come AFTER the json stage (it filters the error
+      // that stage produces).
+      assert.ok(
+        t.expr.indexOf('| json') < t.expr.indexOf('__error__=""'),
+        `"${p.title}": __error__="" must come after | json: ${t.expr}`,
+      );
+    }
+  }
+});

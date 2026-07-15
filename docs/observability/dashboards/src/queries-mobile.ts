@@ -3,16 +3,22 @@
 // iOS emits NO telemetry — only operational log lines (component="ios") that
 // ride the paired desktop's egress of ios-diagnostic-logs.jsonl. So this pack
 // queries the STRUCTURED LOG stream ({component="ios"}), not the telemetry
-// stream the Fleet/Users packs use. The per-device identity lives in the log
-// line's `fields` object:
+// stream the Fleet/Users packs use.
+//
+// OTLP body is the full Ion JSONL line (since log-egress-otel.ts shipped the
+// full-body fix). Alloy's ion_otlp_unwrap pipeline extracts it and rewrites the
+// stored Loki line to that JSON, so `| json` parses the full record including
+// all nested keys. The per-device identity lives under the `fields` object:
 //
 //   device_model / app_version / app_build / os_version  — stamped by iOS
 //   device_id / device_name / desktop_host               — stamped by the desktop
 //
-// None of these are Alloy-promoted stream labels (only component/level/tag are),
-// so every expression parses with `| json` before filtering — identical to the
-// Fleet pack's `$host` handling. The `$device` dashboard variable scopes by
-// device_name (regex, default `.*`).
+// Loki `| json` flattens nested objects with a `_` separator, so these become
+// `fields_device_name`, `fields_app_version`, etc. Named extraction pulls them
+// back to friendly label names (device_name, app_version, ...) via the
+// Loki json extraction syntax (`| json device_name="fields.device_name"`).
+// component and level are promoted stream labels — no json parse needed for them.
+// The `$device` dashboard variable scopes by device_name (regex, default `.*`).
 
 import type { Expr, Window } from './types.ts';
 import { accumulation, instant, registerQuery } from './queries.ts';
@@ -20,9 +26,31 @@ import { accumulation, instant, registerQuery } from './queries.ts';
 // The iOS operational-log stream selector.
 const IOS = '{component="ios"}';
 
-// Stream pipe for the mobile pack: parse the body, scope by the $device
-// variable (matched against device_name).
-export const DEVICE_PIPE = ' | json | device_name=~"$device"';
+// Named json extraction for device identity fields. Pulls nested fields.*
+// values up to friendly top-level label names so the rest of every query can
+// reference device_name / device_id / app_version / os_version / desktop_host
+// directly without the fields_ prefix. The extraction is applied once in
+// DEVICE_PIPE so it composes cleanly into every expression.
+const JSON_EXTRACT =
+  '| json device_name="fields.device_name", device_id="fields.device_id",' +
+  ' app_version="fields.app_version", app_build="fields.app_build",' +
+  ' os_version="fields.os_version", desktop_host="fields.desktop_host"';
+
+// Stream pipe for the mobile pack: extract device identity fields, DROP any line
+// whose body is not parseable JSON, then scope by the $device variable (matched
+// against device_name).
+//
+// The `| __error__=""` stage is load-bearing, not defensive garnish. The
+// {component="ios"} stream is heterogeneous: newer lines store the full Ion
+// JSONL record as the Loki body, but older lines (shipped before the full-body
+// OTLP egress fix) store only the bare `msg` string. `| json` raises
+// JSONParserErr on those bare-string bodies, and in LogQL a parse error on even
+// ONE line aborts the whole grouped series (`sum by (...)`) and returns NO data
+// — which is exactly why every grouped panel was blank while the ungrouped
+// totals (no `| json` stage) rendered. `| __error__=""` skips the unparseable
+// lines so the good lines aggregate normally. It must come AFTER the json stage
+// (it filters on the error that stage produces) and BEFORE the device filter.
+export const DEVICE_PIPE = ` ${JSON_EXTRACT} | __error__="" | device_name=~"$device"`;
 
 // ---------------------------------------------------------------------------
 // Distinct counts (headline stats)
@@ -53,7 +81,7 @@ export const iosLinesCount = (window: Window): Expr =>
   accumulation(`sum(count_over_time(${IOS}${DEVICE_PIPE} [${window}]))`, window);
 
 // iOS ERROR lines over the window (headline stat). level IS a promoted label,
-// so this filters on the label before the json parse for efficiency.
+// so this filters on the label before the json extraction for efficiency.
 export const iosErrorCount = (window: Window): Expr =>
   accumulation(`sum(count_over_time({component="ios", level="ERROR"}${DEVICE_PIPE} [${window}]))`, window);
 

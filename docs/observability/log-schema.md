@@ -244,6 +244,20 @@ See `docs/observability/cost-model.md` for the full cost model reference.
 - Written via `DiagnosticLog.log()` to `~/.ion/ios-diagnostic-logs.jsonl` on the paired desktop.
 - On-device rolling storage: 5 sessions max, 10 MB total cap. Desktop-side file: rename-rotate at 10 MB, 2 generations (`.1`, `.2`).
 - `tag` = Swift subsystem label.
+- **Per-device identity in `fields`.** Every iOS line carries device-attribution keys in its `fields` object so the central sink can answer "which device, on which app build, paired to which desktop, produced this line?" The identity is split by who owns it:
+
+  | Field | Stamped by | Meaning |
+  |---|---|---|
+  | `device_model` | iOS | Hardware model identifier from `utsname.machine` (e.g. `iPhone15,3`). |
+  | `app_version` | iOS | App marketing version (`CFBundleShortVersionString`). |
+  | `app_build` | iOS | App build number (`CFBundleVersion`). |
+  | `os_version` | iOS | iOS version (`UIDevice.systemVersion`). |
+  | `seq` | iOS | Monotonic per-line sequence (string-encoded int), persisted in `UserDefaults` and never reset across launches. The desktop's exactly-once pull cursor: it requests lines with `seq` greater than its persisted per-device mark and dedups on `seq` before appending, so a reconnect or desktop restart resumes instead of re-shipping history. Independent of on-device file rotation (unlike a line count). |
+  | `device_id` | Desktop | The paired device's opaque id (from the pull-response command), injected at persist time. |
+  | `device_name` | Desktop | The paired device's human name (e.g. `Josh's iPhone`), injected at persist time. |
+  | `desktop_host` | Desktop | The collecting desktop's hostname, injected at persist time. **Mirrors the telemetry `host` value** for the same machine, so an iOS line cross-references the Ion Fleet board's host rows — the basis for the device↔desktop pairing view on the Ion Mobile dashboard. |
+
+  These power the **Ion Mobile** dashboard (`docs/observability/dashboards/src/dashboards/mobile.ts`), which queries the `{component="ios"}` log stream. Like `host`/`user` on the Fleet/Users packs, none of these are Alloy-promoted stream labels — dashboards parse them with `| json`.
 
 ### relay (`component: "relay"`)
 
