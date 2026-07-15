@@ -120,8 +120,8 @@ func (m *Manager) BranchSession(key, entryID string) error {
 	}
 
 	if _, err := conversation.Branch(conv, entryID); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "branch failed", map[string]any{"error": err.Error()})
-		return nil
+		utils.LogWithFields(utils.LevelInfo, "session", "branch failed", map[string]any{"run_id": sessionID, "entry_id": entryID, "error": err.Error()})
+		return fmt.Errorf("branch failed: %w", err)
 	}
 	return conversation.Save(conv, "")
 }

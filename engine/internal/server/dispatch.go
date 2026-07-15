@@ -187,6 +187,21 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		err := s.manager.BranchSessionBefore(cmd.Key, cmd.EntryID)
 		s.sendResult(conn, cmd, err, nil)
 
+	case "rewind_session":
+		// Ordinal-addressed tree-native rewind: the client sends the 0-based
+		// ordinal of the user turn to rewind before (which it already computes
+		// from its rendered rows); the engine resolves it to the matching tree
+		// entry, moves the leaf to that entry's parent, and restores plan-file
+		// continuity for the branch point. Clients hold no engine entry ids, so
+		// this is the client-facing counterpart to branch_before (entry-id
+		// addressed, for tree-navigator/external consumers).
+		idx := 0
+		if cmd.UserTurnIndex != nil {
+			idx = *cmd.UserTurnIndex
+		}
+		err := s.manager.RewindSession(cmd.Key, idx)
+		s.sendResult(conn, cmd, err, nil)
+
 	case "navigate_tree":
 		err := s.manager.NavigateSession(cmd.Key, cmd.TargetID)
 		s.sendResult(conn, cmd, err, nil)

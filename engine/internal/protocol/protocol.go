@@ -11,33 +11,34 @@ import (
 // ClientCommand represents any command sent from a client to the engine server.
 // The Cmd field discriminates which fields are relevant.
 type ClientCommand struct {
-	Cmd          string              `json:"cmd"`
-	Key          string              `json:"key,omitempty"`
-	Config       *types.EngineConfig `json:"config,omitempty"`
-	RequestID    string              `json:"requestId,omitempty"`
-	Text         string              `json:"text,omitempty"`
-	Model        string              `json:"model,omitempty"`
-	MaxTurns     int                 `json:"maxTurns,omitempty"`
-	MaxBudgetUsd float64             `json:"maxBudgetUsd,omitempty"`
-	AgentName    string              `json:"agentName,omitempty"`
-	Subtree      *bool               `json:"subtree,omitempty"`
-	Message      string              `json:"message,omitempty"`
-	DialogID     string              `json:"dialogId,omitempty"`
-	Value        any                 `json:"value,omitempty"`
-	Command      string              `json:"command,omitempty"`
-	Args         string              `json:"args,omitempty"`
-	Prefix       string              `json:"prefix,omitempty"`
-	MessageIndex *int                `json:"messageIndex,omitempty"`
-	Enabled      *bool               `json:"enabled,omitempty"`
-	AllowedTools []string            `json:"allowedTools,omitempty"`
-	EntryID      string              `json:"entryId,omitempty"`
-	TargetID     string              `json:"targetId,omitempty"`
-	ExtensionDir string              `json:"extensionDir,omitempty"`
-	Extensions   []string            `json:"extensions,omitempty"`
-	NoExtensions bool                `json:"noExtensions,omitempty"`
-	QuestionID   string              `json:"questionId,omitempty"`
-	OptionID     string              `json:"optionId,omitempty"`
-	SessionIDs   []string            `json:"sessionIds,omitempty"`
+	Cmd                string              `json:"cmd"`
+	Key                string              `json:"key,omitempty"`
+	Config             *types.EngineConfig `json:"config,omitempty"`
+	RequestID          string              `json:"requestId,omitempty"`
+	Text               string              `json:"text,omitempty"`
+	Model              string              `json:"model,omitempty"`
+	MaxTurns           int                 `json:"maxTurns,omitempty"`
+	MaxBudgetUsd       float64             `json:"maxBudgetUsd,omitempty"`
+	AgentName          string              `json:"agentName,omitempty"`
+	Subtree            *bool               `json:"subtree,omitempty"`
+	Message            string              `json:"message,omitempty"`
+	DialogID           string              `json:"dialogId,omitempty"`
+	Value              any                 `json:"value,omitempty"`
+	Command            string              `json:"command,omitempty"`
+	Args               string              `json:"args,omitempty"`
+	Prefix             string              `json:"prefix,omitempty"`
+	MessageIndex       *int                `json:"messageIndex,omitempty"`
+	UserTurnIndex      *int                `json:"userTurnIndex,omitempty"`
+	Enabled            *bool               `json:"enabled,omitempty"`
+	AllowedTools       []string            `json:"allowedTools,omitempty"`
+	EntryID            string              `json:"entryId,omitempty"`
+	TargetID           string              `json:"targetId,omitempty"`
+	ExtensionDir       string              `json:"extensionDir,omitempty"`
+	Extensions         []string            `json:"extensions,omitempty"`
+	NoExtensions       bool                `json:"noExtensions,omitempty"`
+	QuestionID         string              `json:"questionId,omitempty"`
+	OptionID           string              `json:"optionId,omitempty"`
+	SessionIDs         []string            `json:"sessionIds,omitempty"`
 	Label              string              `json:"label,omitempty"`
 	Limit              int                 `json:"limit,omitempty"`
 	Offset             int                 `json:"offset,omitempty"`
@@ -234,43 +235,44 @@ type ClientCommand struct {
 }
 
 var validCommands = map[string]bool{
-	"start_session":   true,
-	"send_prompt":     true,
-	"abort":           true,
-	"abort_agent":     true,
-	"steer_agent":     true,
-	"dialog_response": true,
-	"command":         true,
-	"stop_session":    true,
-	"stop_by_prefix":  true,
-	"list_sessions":   true,
-	"fork_session":    true,
-	"set_plan_mode":   true,
-	"branch":          true,
-	"branch_before":   true,
-	"navigate_tree":   true,
-	"get_tree":        true,
-	"shutdown":               true,
-	"permission_response":   true,
-	"list_stored_sessions":  true,
-	"load_session_history":  true,
-	"save_session_label":    true,
-	"get_conversation":      true,
-	"generate_title":        true,
-	"elicitation_response":  true,
+	"start_session":                true,
+	"send_prompt":                  true,
+	"abort":                        true,
+	"abort_agent":                  true,
+	"steer_agent":                  true,
+	"dialog_response":              true,
+	"command":                      true,
+	"stop_session":                 true,
+	"stop_by_prefix":               true,
+	"list_sessions":                true,
+	"fork_session":                 true,
+	"set_plan_mode":                true,
+	"branch":                       true,
+	"branch_before":                true,
+	"rewind_session":               true,
+	"navigate_tree":                true,
+	"get_tree":                     true,
+	"shutdown":                     true,
+	"permission_response":          true,
+	"list_stored_sessions":         true,
+	"load_session_history":         true,
+	"save_session_label":           true,
+	"get_conversation":             true,
+	"generate_title":               true,
+	"elicitation_response":         true,
 	"early_stop_decision_response": true,
-	"health":                true,
-	"reconcile_state":       true,
+	"health":                       true,
+	"reconcile_state":              true,
 	// query_session_status: on-demand counterpart to reconcile_state that
 	// emits ONLY the engine_status snapshot (no agent state). Used by
 	// freshly-reconnected clients to learn current status for a key
 	// without waiting for the next heartbeat tick or paying the cost of
 	// a full reconcile. Phase 2 of the state-management overhaul.
-	"query_session_status":   true,
-	"migrate_conversation":  true,
-	"list_models":           true,
-	"store_credential":      true,
-	"refresh_models":        true,
+	"query_session_status": true,
+	"migrate_conversation": true,
+	"list_models":          true,
+	"store_credential":     true,
+	"refresh_models":       true,
 	// oidc_begin_login / oidc_logout / oidc_identity: operator OIDC
 	// identity lifecycle. The engine owns the token (storage, refresh,
 	// per-scope minting); these commands let a consumer start a login
@@ -288,9 +290,9 @@ var validCommands = map[string]bool{
 	// shipping its own logs) authenticates without owning the grant:
 	// the engine keeps the refresh token; clients pull ephemeral access
 	// tokens on demand.
-	"oidc_token": true,
-	"get_host_info":         true,
-	"list_directory":        true,
+	"oidc_token":     true,
+	"get_host_info":  true,
+	"list_directory": true,
 	// clear_conversation_file: wipes the LLM-visible Messages on a stored
 	// conversation file by sessionId, without requiring a live engine session. Used by
 	// consumers that need to reset a conversation file when no in-memory
@@ -491,6 +493,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasString(raw, "entryId")
 	case "branch_before":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "entryId")
+	case "rewind_session":
+		return hasNonEmptyString(raw, "key") && hasNumber(raw, "userTurnIndex")
 	case "navigate_tree":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
 	case "permission_response":
@@ -583,7 +587,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 
 // ServerEvent carries a session event broadcast to all clients.
 type ServerEvent struct {
-	Key   string             `json:"key"`
+	Key   string               `json:"key"`
 	Event types.RawEngineEvent `json:"event"`
 }
 
