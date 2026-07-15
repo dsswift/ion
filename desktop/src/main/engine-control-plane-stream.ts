@@ -88,11 +88,15 @@ export function handleStreamSignalEvent(
       // on a user turn no client submitted. Forward the full text so live
       // transcripts can render the turn — without this, clients watch the
       // model respond to a message that exists only in the conversation file.
-      log('prompt_injected', { tab_id: tabId, prompt_len: event.injectedPrompt?.length ?? 0, origin: event.injectedPromptOrigin ?? '' })
+      // injectedPromptKind classifies the injection: "agent_completion" means
+      // this is a machine-to-machine dispatch callback (child agent result
+      // routed to parent) — clients must NOT render these as user bubbles.
+      log('prompt_injected', { tab_id: tabId, prompt_len: event.injectedPrompt?.length ?? 0, origin: event.injectedPromptOrigin ?? '', kind: event.injectedPromptKind ?? '' })
       ctx.emit('event', tabId, {
         type: 'prompt_injected',
         prompt: event.injectedPrompt,
         origin: event.injectedPromptOrigin,
+        kind: event.injectedPromptKind,
       } as NormalizedEvent)
       return true
   }

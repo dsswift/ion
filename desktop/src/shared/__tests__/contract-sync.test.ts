@@ -97,7 +97,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'microOnly', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
   steer_injected: ['messageLength'],
-  prompt_injected: ['prompt', 'origin'],
+  prompt_injected: ['kind', 'origin', 'prompt'],
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],
   run_stalled: ['lastActivity', 'stalledDuration'],
   engine_plan_content: ['content', 'hasMore', 'offset', 'planFilePath', 'totalBytes'],

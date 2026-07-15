@@ -187,7 +187,7 @@ export type NormalizedEvent =
   // this turn, so no client did an optimistic insert — the renderer appends
   // it as a user message. The text is also persisted as the run's user turn,
   // so a conversation reload shows the same content.
-  | { type: 'prompt_injected'; prompt: string; origin?: string }
+  | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
   | { type: 'run_stalled'; stalledDuration: number; lastActivity?: string }
   // Extended-thinking events (issue #158), normalized-stream layer. These are

@@ -226,10 +226,18 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // the conversation file, so a rehydrate shows the identical
               // transcript (this closes the "ATV shows [Agent X completed]
               // turns the overlay never displayed" divergence).
-              messages = [
-                ...messages,
-                { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
-              ]
+              //
+              // Exception: kind="agent_completion" means this is a machine-to-
+              // machine dispatch callback (a child agent's result being routed
+              // back to its parent agent). These are internal signals, not user-
+              // authored turns. Do NOT render them as user bubbles — they
+              // should never appear in the visible conversation stream.
+              if (event.kind !== 'agent_completion') {
+                messages = [
+                  ...messages,
+                  { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
+                ]
+              }
               break
 
             case 'text_chunk': {
