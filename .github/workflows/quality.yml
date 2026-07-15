@@ -36,6 +36,42 @@ jobs:
         # state-ownership rule documented in CLAUDE.md.
         run: bash scripts/check-status-writers.sh
 
+  check-logging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: ADR-019 logging standards
+        # Enforces the logging standards from ADR-019: no interpolated msg
+        # arguments, no console.* calls in the renderer process, no relay
+        # slog package-level calls that bypass relayHandler, and no
+        # non-canonical field keys. A failure here means a new call site
+        # violates the standard — fix the call site, not the script.
+        run: bash scripts/check-logging.sh
+
+  dashboards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node
+        # Node 22.6+ ships native TypeScript type-stripping, which the
+        # dashboards generator/checker rely on (zero runtime deps, no
+        # npm install). 24 is comfortably above the floor.
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Dashboards drift + overcount audit
+        # Regenerates every provisioned Grafana dashboard JSON and queries.md
+        # from the canonical query module and byte-diffs against the committed
+        # files; re-runs the range-accumulation-fixed-window structural audit
+        # on emitted JSON. A failure here means someone hand-edited a committed
+        # dashboard JSON or changed the query module without regenerating.
+        # Fix: edit docs/observability/dashboards, run `npm run generate`,
+        # commit both. See ADR-020.
+        run: make check-dashboards
+      - name: Dashboards generator tests
+        working-directory: docs/observability/dashboards
+        run: npm test
+
   engine-test:
     strategy:
       fail-fast: false
