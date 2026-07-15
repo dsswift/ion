@@ -103,6 +103,17 @@ extension SessionViewModel {
     }
 
     @MainActor
+    func handleEnginePromptInjected(tabId: String, instanceId: String?, prompt: String) {
+        // Extension-injected prompt (engine ctx.sendPrompt): no client
+        // submitted this turn, so no optimistic insert happened anywhere.
+        // Append it as the user turn it is — the same content persists in
+        // the conversation file, so a history reload shows the identical
+        // transcript. Mirrors the desktop's prompt_injected reducer arm.
+        let msg = Message(id: UUID().uuidString, role: .user, content: prompt, timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+    }
+
+    @MainActor
     func handleEngineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String) {
         DiagnosticLog.log("engine tool start", tag: "session.engine", level: .debug, fields: [
             "tab_id": String(tabId.prefix(8)),
