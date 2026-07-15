@@ -158,6 +158,13 @@ Invoke a loaded skill by name.
 
 Returns the skill content for execution. Skills are loaded from the skills registry, which the harness populates at session start.
 
+Skills can be placed in `~/.ion/skills/` or `.ion/skills/` in two formats:
+
+- **Flat file**: `<name>.md` — the skill name comes from the `name` frontmatter key, falling back to the filename stem.
+- **Subdirectory**: `<name>/SKILL.md` — the skill name is always the directory name. This is the industry-standard layout used by most third-party skill repositories.
+
+Both formats coexist in the same directory. Frontmatter supports single-line values (`key: value`) and YAML block scalars (`key: >` for folded, `key: |` for literal).
+
 ### ListMcpResources
 
 List resources available from a connected MCP server. See [MCP Tools](mcp-tools.md).

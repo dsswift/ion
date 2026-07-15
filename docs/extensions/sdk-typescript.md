@@ -247,6 +247,39 @@ Subject to the session's permission policy. `deny` decisions resolve with `{ con
 
 The promise rejects only when the named tool is not registered (programming error in the calling extension). Tool-internal failures resolve with `isError: true`.
 
+**`http`** -- a pre-authenticated outbound HTTP surface. Each verb (`get`, `post`, `put`, `patch`, `delete`, plus the generic `request(method, url, opts?)`) resolves with `{ status, headers, body }`.
+
+```typescript
+const res = await ctx.http.get('https://graph.microsoft.com/v1.0/me', {
+  scope: 'https://graph.microsoft.com/User.Read',
+})
+if (res.status === 200) {
+  const me = JSON.parse(res.body)
+}
+```
+
+**Operator-token injection.** The request is made *as the signed-in operator*: the engine mints an access token for the scope the extension declares (from the operator's OIDC grant) and sets it as the `Authorization` header. The raw token never crosses into extension code — the request options carry no credential, and the response carries only `status`, `headers`, and `body`. Any `Authorization` header you supply in `opts.headers` is reserved and overwritten by the engine-minted token. The call fails with a clear error when no operator identity is configured or the operator is signed out.
+
+**SSRF / private-network policy.** By default the request is rejected if the target host resolves to a private or reserved address (`blocked: private/reserved address ...`). An operator-installed extension that legitimately needs to reach an intranet API sets `allowPrivateNetwork: true` to opt this single request out of the guard. Only `http` and `https` targets are allowed; other schemes are rejected.
+
+```typescript
+interface IonHttpRequestOptions {
+  scope?: string                       // downstream token scope (e.g. 'api://<app-id>/Billing.Read')
+  audience?: string                    // explicit token audience/resource (Auth0, RFC 8707)
+  headers?: Record<string, string>     // Authorization is reserved and overwritten
+  body?: string                        // request body, sent verbatim
+  timeoutMs?: number                   // request deadline (default 30000)
+  maxBytes?: number                    // response size cap (default 5 MB)
+  allowPrivateNetwork?: boolean        // opt out of the private-address guard (default false)
+}
+
+interface IonHttpResponse {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+```
+
 **`sendPrompt(text, opts?)`** -- queue a fresh prompt on this session's agent loop. Resolves once the engine has accepted the prompt; does **not** wait for the LLM to finish. Pass `opts.model` to override the model for this single prompt.
 
 ```typescript
@@ -859,3 +892,147 @@ if (result.executed) {
 **Returns** `{ executed: true, result: T }` when this instance won the dedup check and `fn` completed, or `{ executed: false, reason: string }` when skipped.
 
 **Failure handling:** If `fn` throws, the lock is released immediately so the next instance can retry without waiting for the debounce window to expire.
+
+## Schedules
+
+Schedules are async triggers — the engine fires them on their configured cadence and delivers a fresh `ctx`, the same way a hook handler gets one. They are registered through `ion.schedule.*`, not through `ion.on(...)`. The full reference is in [Scheduling SDK](scheduling.md); this section covers the complete surface including additive primitives.
+
+### Registration
+
+```typescript
+// One fire per day at 09:00 New York time.
+await ion.schedule.daily({
+  id: 'morning-summary',
+  time: '09:00',
+  tz: 'America/New_York',
+  handler: async (ctx) => {
+    await ctx.dispatchAgent({ name: 'summariser', task: 'today' })
+  },
+})
+
+// One fire per week.
+await ion.schedule.weekly({
+  id: 'weekly-digest',
+  dayOfWeek: 'monday',
+  time: '18:00',
+  handler: async (ctx) => { /* ... */ },
+})
+
+// Repeating on a fixed interval (>= 1000 ms).
+await ion.schedule.interval({
+  id: 'inbox-poll',
+  intervalMs: 30_000,
+  handler: async (ctx) => { /* ... */ },
+})
+
+// One-shot: fires once after delayMs (>= 1000 ms), then self-deregisters.
+await ion.schedule.once({
+  id: 'startup-check',
+  delayMs: 5_000,
+  handler: async (ctx) => {
+    await ctx.dispatchAgent({ name: 'checker', task: 'startup diagnostics' })
+  },
+})
+```
+
+All four return a `ScheduleHandle`:
+
+```typescript
+interface ScheduleHandle {
+  id: string
+  unregister(): Promise<void>
+}
+```
+
+### `ion.schedule.once`
+
+Registers a job that fires exactly once after `delayMs` milliseconds, then the engine removes it automatically. No second fire is possible.
+
+```typescript
+interface ScheduleOnce {
+  id: string
+  delayMs: number         // milliseconds after registration; must be >= 1000
+  tz?: string             // IANA timezone; applies to daily/weekly, optional here
+  timeoutMs?: number
+  concurrency?: 'single' | 'all'
+  enabled?: () => boolean | Promise<boolean>
+  handler: ScheduleHandler
+}
+```
+
+**Predicate skip does not spend the shot.** When `enabled` returns `false` at a tick, the once job is skipped for that tick but remains armed. It fires on the next tick where the predicate is true and `delayMs` has elapsed.
+
+**Not persisted across engine restarts.** Like interval jobs, a once job has no catch-up mechanism. Re-arm it in `session_start` if survival across restarts matters.
+
+### `ion.schedule.cancel(id)`
+
+Cancel a registered schedule by its id. Equivalent to calling `ScheduleHandle.unregister()` but works when you have no handle reference (for example, a job registered statically at module scope):
+
+```typescript
+await ion.schedule.cancel('my-job-id')
+```
+
+Both paths issue the same deregistration RPC and emit `engine_schedule_deregistered`.
+
+### Handler control argument
+
+Every schedule handler receives an optional second argument:
+
+```typescript
+type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl) => Promise<void> | void
+
+interface ScheduleControl {
+  jobId: string              // the stable id this job was registered under
+  unregister(): Promise<void>  // cancel future fires from inside the handler
+}
+```
+
+Existing handlers that only accept `(ctx)` continue to work unchanged. `control.unregister()` is useful for repeating jobs that want to stop themselves once a condition is met:
+
+```typescript
+ion.schedule.interval({
+  id: 'wait-for-ready',
+  intervalMs: 5_000,
+  handler: async (ctx, control) => {
+    if (await checkReady()) {
+      await doWork(ctx)
+      await control!.unregister()
+    }
+  },
+})
+```
+
+For once jobs, `control.unregister()` inside the handler is a no-op — the engine auto-deregisters after the handler returns regardless.
+
+### Idle-armed one-shot pattern
+
+Arm a per-session once job on idle, cancel it on the next activity. The cancel-then-once pattern ensures at most one pending shot per session:
+
+```typescript
+function idleJobId(sessionKey: string) { return `idle-summary-${sessionKey}` }
+
+ion.on('turn_end', async (ctx) => {
+  // Cancel any previous shot, then arm a fresh one.
+  await ion.schedule.cancel(idleJobId(ctx.sessionKey))
+  await ion.schedule.once({
+    id: idleJobId(ctx.sessionKey),
+    delayMs: 5 * 60 * 1000,  // 5 minutes; must be >= 1000
+    handler: async (handlerCtx) => {
+      await handlerCtx.dispatchAgent({
+        name: 'summariser',
+        task: 'Session has been idle. Summarise what was accomplished.',
+      })
+    },
+  })
+})
+
+ion.on('session_end', async (ctx) => {
+  await ion.schedule.cancel(idleJobId(ctx.sessionKey))
+})
+```
+
+### Observability
+
+The scheduler emits `engine_schedule_deregistered` for all deregistration paths: explicit `unregister()` / `cancel()`, handler calling `control.unregister()`, and the automatic once-job teardown after the handler returns. The auto path carries `asyncReason: "once_complete"`. No new event types were introduced.
+
+See [Scheduling SDK](scheduling.md) for the full reference covering catch-up behavior, in-process dedup, `engine.json` configuration, respawn behavior, and the veto-capable lifecycle hooks.

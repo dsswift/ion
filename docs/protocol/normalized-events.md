@@ -126,9 +126,11 @@ Signals the end of an engine run.
 |---------------------|--------------------|-------------------------------|
 | `type`              | `"task_complete"`  | Event type                    |
 | `result`            | string             | Final result text             |
+| `lastText`          | string             | Last non-empty assistant text across all turns of the run. Present (`omitempty`) when the final turn produced only thinking blocks: `result` is empty but `lastText` carries the last substantive text, letting consumers distinguish "silent final turn" from "silent run". Omitted when the run produced no text output at all. |
 | `costUsd`           | number             | Total run cost in USD         |
 | `durationMs`        | number             | Run duration in milliseconds  |
 | `numTurns`          | number             | Number of LLM turns           |
+| `conversationTurns` | number             | Conversation-lifetime prompt count: real user prompts across the whole conversation (not the per-run round-trip count `numTurns` carries). Additive (`omitempty`): omitted on backends/paths that do not populate it. |
 | `usage`             | UsageData          | Cumulative token usage        |
 | `sessionId`         | string             | Engine session ID             |
 | `permissionDenials` | PermissionDenial[] | Denied tool calls             |
