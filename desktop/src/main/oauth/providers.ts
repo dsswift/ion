@@ -6,7 +6,7 @@ import { generatePKCE, generateState } from './pkce'
 import { startCallbackServer } from './callback-server'
 import { log as _log } from '../logger'
 
-function log(msg: string): void { _log('oauth', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth', msg, fields) }
 
 /**
  * Resolve a public OAuth credential from (in priority order):
@@ -29,7 +29,7 @@ function resolveOAuthVar(envKey: string, provider: string, field: string): strin
     // File missing or malformed — fall through
   }
 
-  log(`WARNING: OAuth credential ${envKey} not found in env or ~/.ion/oauth.json`)
+  log('oauth: credential not found', { key: envKey })
   return ''
 }
 

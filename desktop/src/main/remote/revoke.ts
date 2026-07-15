@@ -4,12 +4,12 @@ import { log as _log } from '../logger'
 import { SETTINGS_FILE, readSettings, writeSettings } from '../settings-store'
 import { broadcast } from '../broadcast'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function revokeDeviceLocally(deviceId: string): void {
-  log(`[Remote] revoking device locally: ${deviceId}`)
+  log('remote_revoke: revoking device locally', { device_id: deviceId })
   try {
     if (existsSync(SETTINGS_FILE)) {
       const settings = readSettings()
@@ -18,7 +18,7 @@ export function revokeDeviceLocally(deviceId: string): void {
       writeSettings(settings)
     }
   } catch (err) {
-    log(`[Remote] failed to remove device from settings: ${(err as Error).message}`)
+    log('remote_revoke: failed to remove device from settings', { error: (err as Error).message })
   }
   broadcast(IPC.REMOTE_DEVICE_REVOKED, deviceId)
 }

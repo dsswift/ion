@@ -15,8 +15,8 @@
 import { randomBytes, createCipheriv, createDecipheriv, createHmac, createHash, generateKeyPairSync, diffieHellman, createPublicKey, createPrivateKey, timingSafeEqual } from 'crypto'
 import { log as _log } from '../logger'
 
-function log(msg: string): void {
-  _log('Crypto', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('Crypto', msg, fields)
 }
 
 const KEY_LENGTH = 32
@@ -90,12 +90,12 @@ export function decrypt(nonceB64: string, ciphertextB64: string, key: Buffer): B
   const combined = Buffer.from(ciphertextB64, 'base64')
 
   if (nonce.length !== NONCE_LENGTH) {
-    log(`Invalid nonce length: ${nonce.length} (expected ${NONCE_LENGTH})`)
+    log('crypto: invalid nonce length', { nonce_len: nonce.length, expected: NONCE_LENGTH })
     return null
   }
 
   if (combined.length < TAG_LENGTH) {
-    log(`Ciphertext too short: ${combined.length} bytes`)
+    log('crypto: ciphertext too short', { bytes: combined.length })
     return null
   }
 

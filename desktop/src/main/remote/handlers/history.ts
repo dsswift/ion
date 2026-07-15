@@ -1,10 +1,11 @@
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import { revokeDeviceLocally } from '../revoke'
+import { clearLoadGateForDevice } from './load-conversation-gate'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export async function handleRewind(cmd: Extract<RemoteCommand, { type: 'desktop_rewind' }>): Promise<void> {
@@ -24,7 +25,7 @@ export async function handleRewind(cmd: Extract<RemoteCommand, { type: 'desktop_
       state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: inputText })
     }
   } catch (err) {
-    log(`rewind error: ${(err as Error).message}`)
+    log('rewind error', { error: (err as Error).message })
   }
 }
 
@@ -53,7 +54,7 @@ export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 
       })
     }
   } catch (err) {
-    log(`fork_from_message error: ${(err as Error).message}`)
+    log('fork_from_message error', { error: (err as Error).message })
   }
 }
 
@@ -82,15 +83,18 @@ export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'de
       state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: inputText, instanceId: cmd.instanceId })
     }
   } catch (err) {
-    log(`engine_rewind error: ${(err as Error).message}`)
+    log('engine_rewind error', { error: (err as Error).message })
   }
 }
 
 export function handleUnpair(deviceId: string): void {
   if (deviceId) {
-    log(`Remote unpair command from device ${deviceId}`)
+    log('remote_unpair', { device_id: deviceId })
     state.remoteTransport?.removeDevice(deviceId)
     revokeDeviceLocally(deviceId)
+    // Drop the load-conversation coalesce entries for this device so its keys
+    // don't linger (the gate self-prunes too, but an unpair is a clean signal).
+    clearLoadGateForDevice(deviceId)
   } else {
     log('Remote unpair command but no device ID')
   }

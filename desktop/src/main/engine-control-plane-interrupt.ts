@@ -2,7 +2,7 @@ import type { EngineBridge } from './engine-bridge'
 import { log as _log } from './logger'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 
 /**
  * Perform the unified interrupt for a tab: abort the parent run AND reap the
@@ -25,8 +25,8 @@ function log(msg: string): void { _log(TAG, msg) }
  * for plain runs with no dispatched agents too. `abort_agent` is fire-and-forget.
  */
 export function performUnifiedInterrupt(bridge: EngineBridge, tabId: string): void {
-  log(`unifiedInterrupt: tab=${tabId}, sending abort`)
+  log('unified_interrupt: sending abort', { tab_id: tabId })
   bridge.sendAbort(tabId)
-  log(`unifiedInterrupt: tab=${tabId}, reaping dispatched-agent subtree`)
+  log('unified_interrupt: reaping agent subtree', { tab_id: tabId })
   bridge.sendAbortAgent(tabId, '', true)
 }

@@ -80,7 +80,7 @@ export async function getEnterprisePolicyNewConversationDefaults(): Promise<NewC
   interface PolicyResponse { newConversationDefaults: NewConversationDefaultsPolicy | null }
   const result = await bridge().request<PolicyResponse>('get_enterprise_policy')
   if (result.ok && result.data?.newConversationDefaults) {
-    log('engine-bridge-fs', `getEnterprisePolicyNewConversationDefaults: locked=${result.data.newConversationDefaults.locked} dir=${result.data.newConversationDefaults.baseDirectory} profile=${result.data.newConversationDefaults.engineProfileId}`)
+    log('engine-bridge-fs', 'getEnterprisePolicyNewConversationDefaults', { locked: result.data.newConversationDefaults.locked, dir: result.data.newConversationDefaults.baseDirectory, profile: result.data.newConversationDefaults.engineProfileId })
     return result.data.newConversationDefaults
   }
   return null

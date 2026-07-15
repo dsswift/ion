@@ -19,6 +19,8 @@ import { registerMigrationIpc } from './migration'
 import { registerModelsIpc } from './models'
 import { registerOAuthIpc } from './oauth'
 import { registerConversationBackupIpc } from './conversation-backup'
+import { registerLogIpc } from './log'
+import { registerAtvIpc } from './atv'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -42,4 +44,6 @@ export function registerAllIpc(): void {
   registerModelsIpc()
   registerOAuthIpc()
   registerConversationBackupIpc()
+  registerLogIpc()
+  registerAtvIpc()
 }

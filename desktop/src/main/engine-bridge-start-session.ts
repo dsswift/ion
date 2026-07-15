@@ -2,8 +2,8 @@ import type { EngineBridge } from './engine-bridge'
 import { log as _log, warn as _warn } from './logger'
 import type { EngineConfig } from '../shared/types'
 
-function log(msg: string): void { _log('engine-bridge', msg) }
-function warn(msg: string): void { _warn('engine-bridge', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-bridge', msg, fields) }
+function warn(msg: string, fields?: Record<string, unknown>): void { _warn('engine-bridge', msg, fields) }
 
 /**
  * startSession — bridge attach handshake.
@@ -68,7 +68,7 @@ export async function startSession(
   if (entry?.conversationId && !config.sessionId) {
     config = { ...config, sessionId: entry.conversationId }
   }
-  log(`startSession: key=${key} model=${config.model} sessionId=${config.sessionId ?? 'none'}`)
+  log('start_session', { key, model: config.model, session_id: config.sessionId ?? 'none' })
 
   // Register BEFORE dispatch so _reRegisterSessions on socket recovery
   // sees this session even if start_session is still in flight at the
@@ -90,7 +90,7 @@ export async function startSession(
   // existing setter (also called from the engine_status capture path); reuse it.
   if (result.ok && conversationId) {
     bridge.updateSessionConversationId(key, conversationId)
-    log(`startSession: key=${key} captured conversationId=${conversationId} from start_session result`)
+    log('start_session: captured conversationId', { key, conversation_id: conversationId })
   }
 
   // Post-start reconcile handshake. See the docblock at the top of this
@@ -99,10 +99,10 @@ export async function startSession(
   // populates state for an already-running session, including pending
   // AskUserQuestion / ExitPlanMode denials."
   if (result.ok) {
-    log(`startSession: key=${key} requesting reconcile_state post-start`)
+    log('start_session: requesting reconcile_state', { key })
     bridge.sendReconcileState(key)
   } else {
-    log(`startSession: key=${key} skipping reconcile (start failed: ${result.error ?? 'unknown'})`)
+    log('start_session: skipping reconcile', { key, error: result.error ?? 'unknown' })
   }
   return { ok: result.ok, error: result.error, conversationId }
 }
@@ -122,7 +122,7 @@ export async function startSession(
  */
 export function reRegisterSessions(bridge: EngineBridge): void {
   for (const [key, entry] of bridge.activeSessions) {
-    log(`Re-registering session after reconnect: key=${key}`)
+    log('start_session: re-registering after reconnect', { key })
     const config = { ...entry.config }
     if (entry.conversationId) {
       config.sessionId = entry.conversationId
@@ -133,7 +133,7 @@ export function reRegisterSessions(bridge: EngineBridge): void {
         if (result.ok) bridge.sendReconcileState(key)
       })
       .catch(() => {
-        warn(`Failed to re-register session ${key}`)
+        warn('start_session: failed to re-register', { key })
       })
   }
 }

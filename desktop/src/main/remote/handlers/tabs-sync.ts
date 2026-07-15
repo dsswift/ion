@@ -19,8 +19,8 @@ import { getRemoteTabStates } from '../snapshot'
 import { readRemoteDisplay } from './display'
 import { getEnterprisePolicyNewConversationDefaults } from '../../engine-bridge-fs'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Broadcast sync to all connected devices (used after state-changing operations). */
@@ -41,7 +41,7 @@ export async function sendSync(send: (event: any) => void): Promise<void> {
   const tabGroupMode = syncSettings.tabGroupMode || 'off'
   const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
   const remoteDisplay = readRemoteDisplay()
-  log(`SNAP-SEND: tabs=${tabs.length} dirs=${recentDirectories.length} remoteDisplay=${remoteDisplay ? `name=${remoteDisplay.customName === null ? 'null' : 'set'} icon=${remoteDisplay.customIcon ?? 'null'} ts=${remoteDisplay.updatedAt}` : 'unset'}`)
+  log('snap_send', { tab_count: tabs.length, dir_count: recentDirectories.length, has_remote_display: !!remoteDisplay })
   send({
     type: 'desktop_snapshot',
     tabs,
@@ -79,7 +79,7 @@ export async function sendSync(send: (event: any) => void): Promise<void> {
       newConversationPolicy = { baseDirectory: policy.baseDirectory, engineProfileId: policy.engineProfileId, locked: policy.locked }
     }
   } catch (err) {
-    log(`SNAP-SEND: getEnterprisePolicyNewConversationDefaults failed (non-fatal): ${err}`)
+    log('snap_send: enterprise policy fetch failed', { error: String(err) })
   }
   send({
     type: 'desktop_settings_snapshot',

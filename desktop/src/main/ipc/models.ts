@@ -1,12 +1,15 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 import { engineBridge, modelCache } from '../state'
 import { getModelDisplayLabel } from '../../shared/types-models'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
+}
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 /** Notify all renderer windows that the model cache has been updated. */
@@ -39,27 +42,27 @@ async function refreshModelCache(): Promise<void> {
     const result = await engineBridge.listModels()
     updateCache(result)
     notifyRenderers()
-    log(`Model cache refreshed: ${modelCache.models.length} models`)
+    log('model_cache: refreshed', { count: modelCache.models.length })
   } catch (err) {
-    log(`Model cache refresh failed: ${(err as Error).message}`)
+    log('model_cache: refresh failed', { error: (err as Error).message })
   }
 }
 
 export function registerModelsIpc(): void {
   ipcMain.handle(IPC.LIST_MODELS, async () => {
-    log('IPC LIST_MODELS')
+    debug('IPC LIST_MODELS')
     const result = await engineBridge.listModels()
     // Cache for remote snapshots
     try {
       updateCache(result)
     } catch (err) {
-      log(`modelCache update error: ${(err as Error).message}`)
+      log('model_cache: update error', { error: (err as Error).message })
     }
     return result
   })
 
   ipcMain.handle(IPC.STORE_CREDENTIAL, async (_event, { provider, credential }: { provider: string; credential: string }) => {
-    log(`IPC STORE_CREDENTIAL: provider=${provider}`)
+    log('store_credential', { provider })
     const result = await engineBridge.storeCredential(provider, credential)
     if (result.ok) {
       // Auth status changed — engine runs discovery for this provider,
@@ -70,7 +73,7 @@ export function registerModelsIpc(): void {
   })
 
   ipcMain.handle(IPC.REFRESH_MODELS, async (_event, { provider }: { provider?: string } = {}) => {
-    log(`IPC REFRESH_MODELS: provider=${provider || 'all'}`)
+    log('refresh_models', { provider: provider || 'all' })
     const result = await engineBridge.refreshModels(provider)
     if (result.ok) {
       // Re-fetch the model list to pick up discovery results

@@ -7,6 +7,7 @@ import { tabHasExtensions } from '../../shared/tab-predicates'
 import { effectivePermissionMode } from '../stores/conversation-instance'
 import { resolveBindings } from '../shortcuts/shortcut-catalog'
 import { matchesChord } from '../shortcuts/chord'
+import { rTrace, rDebug, rError } from '../rendererLogger'
 
 /**
  * Returns true when the file editor panel owns the font-zoom shortcuts.
@@ -69,33 +70,26 @@ export function handleNewConversationShortcut(
   const s = useSessionStore.getState()
   const { engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults: policy } = usePreferencesStore.getState()
   const action = resolveNewConversationAction(engineProfiles, defaultEngineProfileId, policy)
-  console.log(
-    `[Shortcuts] ${label}: resolvedAction=${action.kind}` +
-      ` dir=${dir}` +
-      ` activeTabId=${s.activeTabId ? s.activeTabId.slice(0, 8) : 'none'}`,
-  )
+  rDebug('shortcuts', 'resolvedAction', { label, action_kind: action.kind, dir, active_tab_id: s.activeTabId ? s.activeTabId.slice(0, 8) : '' })
   try {
     const result = executeNewConversationAction(
       dir,
       action,
       (d) => {
-        console.log(`[Shortcuts] ${label}: createTabInDirectory dir=${d}`)
+        rDebug('shortcuts', 'createTabInDirectory', { label, dir: d })
         return s.createTabInDirectory(d)
       },
       (d, opts) => {
-        console.log(`[Shortcuts] ${label}: createConversationTab dir=${d} profileId=${opts?.profileId ?? 'none'}`)
+        rDebug('shortcuts', 'createConversationTab', { label, dir: d, profile_id: opts?.profileId ?? '' })
         return s.createConversationTab(d, opts)
       },
     )
     if (result === 'show-picker') {
-      console.log(`[Shortcuts] ${label}: show-picker -> dispatching ion:open-new-conversation-picker dir=${dir}`)
+      rDebug('shortcuts', 'show-picker', { label, dir })
       dispatchFn(new CustomEvent('ion:open-new-conversation-picker', { detail: { dir } }))
     }
   } catch (err) {
-    console.error(
-      `[Shortcuts] ${label}: executeNewConversationAction threw` +
-        ` action=${action.kind} dir=${dir} err=${err instanceof Error ? err.message : String(err)}`,
-    )
+    rError('shortcuts', 'executeNewConversationAction threw', { label, action_kind: action.kind, dir, error: err instanceof Error ? err.message : String(err) })
     throw err
   }
 }
@@ -154,15 +148,7 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
         const ae = document.activeElement
         const activeTabId = useSessionStore.getState().activeTabId
         const activeTab = useSessionStore.getState().tabs.find((t) => t.id === activeTabId)
-        console.debug(
-          `[Shortcuts] keydown key=${e.key} meta=${e.metaKey} ctrl=${e.ctrlKey} shift=${e.shiftKey}` +
-            ` defaultPrevented=${e.defaultPrevented}` +
-            ` activeEl=${ae?.tagName ?? 'null'}${ae?.className ? '.' + (ae.className as string).trim().replace(/\s+/g, '.') : ''}` +
-            ` inCmEditor=${!!(ae?.closest('.cm-editor'))}` +
-            ` inXterm=${!!(ae?.closest('.xterm'))}` +
-            ` activeTabId=${activeTabId ? activeTabId.slice(0, 8) : 'none'}` +
-            ` tabHasExtensions=${activeTab ? tabHasExtensions(activeTab) : false}`,
-        )
+        rTrace('shortcuts', 'keydown', { key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, shift: e.shiftKey, default_prevented: e.defaultPrevented, active_el: ae?.tagName ?? '', in_cm_editor: !!(ae?.closest('.cm-editor')), in_xterm: !!(ae?.closest('.xterm')), active_tab_id: activeTabId ? activeTabId.slice(0, 8) : '', tab_has_extensions: activeTab ? tabHasExtensions(activeTab) : false })
       }
 
       // — Navigation ——————————————————————————————————————————————————
@@ -237,15 +223,15 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
         if (isPreviewZoomTarget()) {
           const prev = p.previewFontSize
           p.setPreviewFontSize(prev + 1)
-          console.debug(`[Shortcuts] zoom.in: previewFontSize ${prev} -> ${prev + 1} (preview target)`)
+          rTrace('shortcuts', 'zoom.in: previewFontSize', { from: prev, to: prev + 1 })
         } else if (isEditorZoomTarget()) {
           const prev = p.editorFontSize
           p.setEditorFontSize(prev + 1)
-          console.debug(`[Shortcuts] zoom.in: editorFontSize ${prev} -> ${prev + 1} (editor target)`)
+          rTrace('shortcuts', 'zoom.in: editorFontSize', { from: prev, to: prev + 1 })
         } else {
           const prev = p.conversationFontSize
           p.setConversationFontSize(prev + 1)
-          console.debug(`[Shortcuts] zoom.in: conversationFontSize ${prev} -> ${prev + 1}`)
+          rTrace('shortcuts', 'zoom.in: conversationFontSize', { from: prev, to: prev + 1 })
         }
       }
 
@@ -264,15 +250,15 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
         if (isPreviewZoomTarget()) {
           const prev = p.previewFontSize
           p.setPreviewFontSize(prev - 1)
-          console.debug(`[Shortcuts] zoom.out: previewFontSize ${prev} -> ${prev - 1} (preview target)`)
+          rTrace('shortcuts', 'zoom.out: previewFontSize', { from: prev, to: prev - 1 })
         } else if (isEditorZoomTarget()) {
           const prev = p.editorFontSize
           p.setEditorFontSize(prev - 1)
-          console.debug(`[Shortcuts] zoom.out: editorFontSize ${prev} -> ${prev - 1} (editor target)`)
+          rTrace('shortcuts', 'zoom.out: editorFontSize', { from: prev, to: prev - 1 })
         } else {
           const prev = p.conversationFontSize
           p.setConversationFontSize(prev - 1)
-          console.debug(`[Shortcuts] zoom.out: conversationFontSize ${prev} -> ${prev - 1}`)
+          rTrace('shortcuts', 'zoom.out: conversationFontSize', { from: prev, to: prev - 1 })
         }
       }
 
@@ -283,22 +269,15 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
         if (isPreviewZoomTarget()) {
           const prev = p.previewFontSize
           p.setPreviewFontSize(SETTINGS_DEFAULTS.previewFontSize)
-          console.debug(
-            `[Shortcuts] zoom.reset: previewFontSize ${prev} -> ${SETTINGS_DEFAULTS.previewFontSize} (preview target)`,
-          )
+          rTrace('shortcuts', 'zoom.reset: previewFontSize', { from: prev, to: SETTINGS_DEFAULTS.previewFontSize })
         } else if (isEditorZoomTarget()) {
           const prev = p.editorFontSize
           p.setEditorFontSize(SETTINGS_DEFAULTS.editorFontSize)
-          console.debug(
-            `[Shortcuts] zoom.reset: editorFontSize ${prev} -> ${SETTINGS_DEFAULTS.editorFontSize} (editor target)`,
-          )
+          rTrace('shortcuts', 'zoom.reset: editorFontSize', { from: prev, to: SETTINGS_DEFAULTS.editorFontSize })
         } else {
           const prev = p.conversationFontSize
           p.setConversationFontSize(SETTINGS_DEFAULTS.conversationFontSize)
-          console.debug(
-            `[Shortcuts] zoom.reset: conversationFontSize ${prev} -> ${SETTINGS_DEFAULTS.conversationFontSize}` +
-              ` activeEl=${document.activeElement?.tagName ?? 'null'}`,
-          )
+          rTrace('shortcuts', 'zoom.reset: conversationFontSize', { from: prev, to: SETTINGS_DEFAULTS.conversationFontSize })
         }
       }
 

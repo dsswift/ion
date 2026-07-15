@@ -33,8 +33,8 @@ import { formatClearDivider, buildClearDividerRemoteEvent } from '../shared/clea
 import { insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
 import type { IncomingPrompt } from './prompt-pipeline'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -85,7 +85,7 @@ async function resolveConversationId(p: IncomingPrompt): Promise<{ id: string; v
       return { id: String(fromRenderer), via: 'renderer-store' }
     }
   } catch (err) {
-    log(`pipeline: resolveConversationId renderer-store query failed tab=${p.tabId} err=${String(err)}`)
+    log('slash_clear: resolveConversationId failed', { tab_id: p.tabId, error: String(err) })
   }
 
   return null
@@ -115,15 +115,15 @@ export async function handleLocalClearShortCircuit(p: IncomingPrompt, engineKey:
   const resolved = await resolveConversationId(p)
   if (resolved) {
     const { id: convId, via } = resolved
-    log(`pipeline: /clear conversationId resolved via=${via} id=${convId}`)
+    log('slash_clear: conversationId resolved', { via, conv_id: convId })
     try {
       await engineBridge.clearConversationFile(convId)
-      log(`pipeline: /clear on-disk wipe complete conversationId=${convId}`)
+      log('slash_clear: on-disk wipe complete', { conv_id: convId })
     } catch (err) {
       // Log and continue: the divider is still inserted so the user sees
       // the expected UI feedback. The wipe failure is non-fatal — worse
       // than the bug, but not a crash. The user can /clear again.
-      log(`pipeline: /clear on-disk wipe failed conversationId=${convId} err=${String(err)}`)
+      log('slash_clear: on-disk wipe failed', { conv_id: convId, error: String(err) })
     }
   } else {
     log(`pipeline: /clear no conversationId from any source — truly fresh tab`)
@@ -135,7 +135,7 @@ export async function handleLocalClearShortCircuit(p: IncomingPrompt, engineKey:
   // not start an engine session (rare but possible). Calling this
   // unconditionally is cheap and keeps the post-/clear behaviour
   // symmetric with the engine-side success path in event-wiring.ts.
-  log(`pipeline: /clear (local short-circuit) notifying conversationCleared tabId=${p.tabId}`)
+  log('slash_clear: local short-circuit', { tab_id: p.tabId })
   sessionPlane.notifyConversationCleared(p.tabId)
   log(`pipeline: /clear unknown_command (no session) → inserting divider locally`)
   const now = new Date()

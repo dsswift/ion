@@ -10,6 +10,7 @@ import type { State, StoreGet } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden } from '../session-store-helpers'
 import { maybeScheduleDoneMove } from './event-slice-done-move'
 import { maybeGenerateTabTitle } from './event-slice-titling'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
 /**
  * Mutable context shared with the parent reducer for one task-lifecycle event.
@@ -109,7 +110,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
     }
 
     case 'task_complete':
-      console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main prevStatus=${ctx.tab.status} prevPermMode=${ctx.inst0?.permissionMode ?? 'auto'} prevPermDenied=${ctx.inst0?.permissionDenied ? JSON.stringify(ctx.inst0.permissionDenied.tools.map((t) => t.toolName)) : 'null'} denials=${event.permissionDenials ? JSON.stringify(event.permissionDenials.map((d: any) => ({ name: d.toolName, hasInput: !!d.toolInput, inputKeys: d.toolInput ? Object.keys(d.toolInput) : [] }))) : 'none'}`)
+      rInfo('event.task', 'task complete', { tab_id: tabId.slice(0, 8), prev_status: ctx.tab.status, prev_perm_mode: ctx.inst0?.permissionMode ?? 'auto', has_denials: !!(event.permissionDenials?.length) })
       ctx.updated.status = 'completed'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''
@@ -123,6 +124,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         totalCostUsd: event.costUsd,
         durationMs: event.durationMs,
         numTurns: event.numTurns,
+        conversationTurns: event.conversationTurns,
         usage: event.usage,
         sessionId: event.sessionId,
       }
@@ -156,9 +158,9 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         // card renders cleanly from the unfiltered denials.
         ctx.instPatch.permissionDenied = { tools: event.permissionDenials }
         ctx.instTouched = true
-        console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main branch=denials permDenied set to ${JSON.stringify(event.permissionDenials.map((t: any) => t.toolName))} permMode=${ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto'}`)
+        rDebug('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: event.permissionDenials.map((t: any) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
       } else {
-        console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main branch=noDenials permDenied=null`)
+        rDebug('event.task', 'no denials', { tab_id: tabId.slice(0, 8) })
         ctx.instPatch.permissionDenied = null
         ctx.instTouched = true
       }
@@ -211,7 +213,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       return true
 
     case 'session_dead':
-      console.warn(`[Ion] session_dead: tab=${tabId} exitCode=${event.exitCode}`)
+      rWarn('event.session', 'session dead', { tab_id: tabId, exit_code: event.exitCode })
       ctx.updated.status = 'dead'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''

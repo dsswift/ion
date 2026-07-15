@@ -79,7 +79,7 @@ vi.mock('../settings-store', () => ({
   currentBackend: 'test',
   shouldStreamThinkingToRemote: mockShouldStream,
 }))
-vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), trace: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 
 import { wireEngineBridgeEvents } from '../event-wiring'

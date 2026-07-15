@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { IPC } from '../../../shared/types'
 import { log as _log } from '../../logger'
@@ -9,13 +9,16 @@ import { readSettings, readClaudeCompat } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { broadcastSync, sendSync } from './tabs-sync'
+import { forceSyncSnapshot } from '../snapshot-polling'
+import { loadConversationFromDisk, MAX_PAGE_MESSAGES } from './tabs-disk-fallback'
+import { shouldServeLoad } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
 import type { RemoteCommand } from '../protocol'
 
 export { handlePrompt, handleCancel } from './tabs-prompt'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -58,12 +61,12 @@ async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<
       })()
     `)
     if (!snapshot) {
-      log(`sendCurrentEngineState: no snapshot available tabId=${tabId}`)
+      log('send_current_engine_state: no snapshot available', { tab_id: tabId })
       return
     }
     const instanceId: string | null = snapshot.instId ?? null
     const agents = snapshot.agents || []
-    log(`sendCurrentEngineState: tabId=${tabId} instanceId=${instanceId} agents=${agents.length} status=${!!snapshot.status} working=${snapshot.working ? 'present' : 'empty'} modelOverride=${snapshot.modelOverride ? 'present' : 'none'}`)
+    log('send_current_engine_state', { tab_id: tabId, instance_id: instanceId, agents: agents.length, has_status: !!snapshot.status, has_working: !!snapshot.working, has_model_override: !!snapshot.modelOverride })
 
     // Always send the authoritative agent snapshot — including empty.
     state.remoteTransport.sendToDevice(deviceId, {
@@ -84,11 +87,19 @@ async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<
       })
     }
   } catch (err) {
-    log(`sendCurrentEngineState error: ${(err as Error).message}`)
+    log('send_current_engine_state error', { error: (err as Error).message })
   }
 }
 
 export async function handleSync(deviceId: string): Promise<void> {
+  // Force a full snapshot to this device regardless of the SHA-256 hash gate.
+  // An explicit sync/resync from iOS means it may have missed deltas and is
+  // requesting a full state refresh — suppressing it because the hash is
+  // unchanged is the very bug that causes the "missed a delta, never re-sent"
+  // freeze. sendSync still runs for the remaining envelope (engine profiles,
+  // settings snapshot, terminal buffers) which forceSyncSnapshot does not emit.
+  log('handle_sync: bypassing hash gate', { device_id: deviceId })
+  await forceSyncSnapshot((event) => state.remoteTransport?.sendToDevice(deviceId, event as any))
   await sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event))
   autoPullDiagnosticLogs(deviceId)
 }
@@ -119,7 +130,7 @@ async function createTabFromCommand(
     `)
     return tabId || null
   } catch (err) {
-    log(`${storeMethod} error: ${(err as Error).message}`)
+    log('store_method error', { error: (err as Error).message })
     return null
   }
 }
@@ -148,7 +159,7 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
     try {
       const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const profileArg = `'${cmd.profileId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
-      log(`handleCreateTab: extension tab, profileId=${cmd.profileId}`)
+      log('handle_create_tab: extension tab', { profile_id: cmd.profileId })
       const tabId = await state.mainWindow?.webContents.executeJavaScript(`
         (function() {
           var store = window.__Ion_SESSION_STORE__;
@@ -161,7 +172,7 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
       `)
       if (tabId) notifyTabCreated(tabId)
     } catch (err) {
-      log(`handleCreateTab (engine): ${(err as Error).message}`)
+      log('handle_create_tab: engine error', { error: (err as Error).message })
     }
     return
   }
@@ -178,7 +189,7 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
   if (cmd.pinToGroupId) {
     const escaped = cmd.pinToGroupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     defaultArgs.push("'" + escaped + "'")
-    log(`handleCreateTab: pinToGroupId=${cmd.pinToGroupId} (forwarding to createTabInDirectory as explicit-pin)`)
+    log('handle_create_tab: pinToGroupId, forwarding as explicit-pin', { pin_to_group: cmd.pinToGroupId })
   } else {
     log('handleCreateTab: no pinToGroupId (default-group placement)')
   }
@@ -215,7 +226,7 @@ export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type
         })
       }
     } catch (err) {
-      log(`create_terminal_tab: instance creation error: ${(err as Error).message}`)
+      log('create_terminal_tab: instance creation error', { error: (err as Error).message })
     }
     notifyTabCreated(tabId)
   }
@@ -247,10 +258,10 @@ export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_clos
 export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type: 'desktop_set_permission_mode' }>): Promise<void> {
   const mode = cmd.mode
   if (mode !== 'auto' && mode !== 'plan') {
-    log(`Remote set_permission_mode: invalid mode "${mode}"`)
+    log('set_permission_mode: invalid mode', { mode })
     return
   }
-  log(`Remote set_permission_mode: tab=${cmd.tabId} mode=${mode}`)
+  log('set_permission_mode', { tab_id: cmd.tabId, mode })
 
   // Engine tabs are keyed by `tabId:instanceId` in the engine.
   // The generic sessionPlane.setPermissionMode uses bare tabId which
@@ -286,12 +297,12 @@ export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type
         planFilePath = info.planFilePath
       }
       if (info?.isEngine && info?.instanceId) {
-        log(`Remote set_permission_mode: engine tab, using key=${cmd.tabId} planFilePath=${planFilePath ?? '<none>'}`)
+        log('set_permission_mode: engine tab', { key: cmd.tabId, path: planFilePath ?? '' })
         engineBridge.sendSetPlanMode(cmd.tabId, mode === 'plan', undefined, 'remote', undefined, planFilePath)
         routed = true
       }
     } catch (err) {
-      log(`Remote set_permission_mode: engine tab detection failed: ${(err as Error).message}`)
+      log('set_permission_mode: engine tab detection failed', { error: (err as Error).message })
     }
   }
 
@@ -314,18 +325,23 @@ export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type
 export async function handleSetThinkingEffort(cmd: Extract<RemoteCommand, { type: 'desktop_set_thinking_effort' }>): Promise<void> {
   const effort = cmd.effort
   if (effort !== 'off' && effort !== 'low' && effort !== 'medium' && effort !== 'high') {
-    log(`Remote set_thinking_effort: invalid effort "${effort}"`)
+    log('set_thinking_effort: invalid effort', { effort })
     return
   }
-  log(`Remote set_thinking_effort: tab=${cmd.tabId} effort=${effort}`)
+  log('set_thinking_effort', { tab_id: cmd.tabId, effort })
   broadcast(IPC.REMOTE_SET_THINKING_EFFORT, { tabId: cmd.tabId, effort })
 }
 
 export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_conversation' }>, deviceId: string): Promise<void> {
   const PAGE_SIZE = 10
+  // Drop redundant identical reloads (same device, tab, and cursor) that arrive
+  // faster than the coalesce window. A flapping iOS client can otherwise fire
+  // this 60-120x/sec per conversation and back up the relay send path. Distinct
+  // pagination steps advance `before`, so they key differently and pass through.
+  if (!shouldServeLoad(deviceId, cmd.tabId, cmd.before)) return
   try {
     if (!state.mainWindow) {
-      log(`load_conversation: mainWindow not available`)
+      log('load_conversation: main window not available')
       state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
       return
     }
@@ -363,6 +379,13 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
           while (startIdx > 0 && all[startIdx] && all[startIdx].role !== 'user') {
             startIdx--;
           }
+          // Cap the page after the snap so a single oversized turn can't produce
+          // a multi-MB frame (relay main-thread wedge risk). Mirrors
+          // MAX_PAGE_MESSAGES in tabs-disk-fallback.ts. hasMore stays true so
+          // iOS paginates the remainder.
+          if (endIdx - startIdx > ${MAX_PAGE_MESSAGES}) {
+            startIdx = endIdx - ${MAX_PAGE_MESSAGES};
+          }
           var page = all.slice(startIdx, endIdx).map(function(m) {
             var content = m.content || '';
             if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
@@ -386,14 +409,30 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
           });
           var hasMore = startIdx > 0;
           var cursor = hasMore && page.length > 0 ? page[0].id : undefined;
-          return { messages: page, hasMore: hasMore, cursor: cursor, total: total, tabStatus: tab.status };
+          return { messages: page, hasMore: hasMore, cursor: cursor, total: total, tabStatus: tab.status, conversationId: tab.conversationId || null };
         } catch(e) { return { messages: [], hasMore: false }; }
       })()
     `) || { messages: [], hasMore: false }
 
-    log(`load_conversation: tab=${cmd.tabId} total=${result.total || '?'} page=${result.messages?.length || 0} hasMore=${result.hasMore}`)
+    log('load_conversation', { tab_id: cmd.tabId, total: result.total || 0, page: result.messages?.length || 0, has_more: result.hasMore })
 
-    const msgs = await Promise.all((result.messages || []).map(async (m: any) => {
+    // Disk fallback: when the renderer store has no messages (desktop restart,
+    // conversation never opened in this session), read directly from
+    // ~/.ion/conversations/{conversationId}.{tree,llm}.jsonl so iOS sees the
+    // full history without requiring the user to open the tab first.
+    // The result.conversationId comes from tab.conversationId in the renderer.
+    let resolvedResult = result
+    if ((!result.messages || result.messages.length === 0) && result.conversationId) {
+      const diskResult = loadConversationFromDisk(result.conversationId, cmd.before)
+      if (diskResult.messages.length > 0) {
+        log('load_conversation: renderer store empty, disk fallback', { conversation_id: result.conversationId, count: diskResult.messages.length, has_more: diskResult.hasMore })
+        resolvedResult = { ...result, messages: diskResult.messages, hasMore: diskResult.hasMore, total: diskResult.total }
+      } else {
+        log('load_conversation: renderer store empty and disk fallback yielded 0 msgs', { conversation_id: result.conversationId })
+      }
+    }
+
+    const msgs = await Promise.all((resolvedResult.messages || []).map(async (m: any) => {
       if (m.toolName === 'ExitPlanMode') {
         try {
           const input = m.toolInput ? JSON.parse(m.toolInput) : {}
@@ -435,15 +474,27 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
                 `) || undefined
               } catch {}
             }
-            if (planPath && existsSync(planPath)) {
-              const content = readFileSync(planPath, 'utf-8')
-              return { ...m, toolInput: JSON.stringify({ ...input, planFilePath: planPath, planContent: content }) }
+            // Async read off the main thread: readFileSync here blocked the
+            // event loop (and the relay send drain) once per ExitPlanMode
+            // message per load, in the hot path a flapping client hammers.
+            // readFile rejects with ENOENT when the plan file is absent, which
+            // is the common case, so treat a read failure as "no plan file".
+            let planContent: string | null = null
+            if (planPath) {
+              try {
+                planContent = await readFile(planPath, 'utf-8')
+              } catch {
+                planContent = null
+              }
+            }
+            if (planPath && planContent !== null) {
+              return { ...m, toolInput: JSON.stringify({ ...input, planFilePath: planPath, planContent }) }
             } else {
-              log(`load_conversation: no plan file found for ExitPlanMode (planPath=${planPath})`)
+              log('load_conversation: no plan file found for ExitPlanMode', { path: planPath })
             }
           }
         } catch (err) {
-          log(`load_conversation: enrichment error: ${(err as Error).message}`)
+          log('load_conversation: enrichment error', { error: (err as Error).message })
         }
       }
       return m
@@ -453,21 +504,21 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
       type: 'desktop_conversation_history',
       tabId: cmd.tabId,
       messages: msgs,
-      hasMore: result.hasMore || false,
-      cursor: result.cursor,
+      hasMore: resolvedResult.hasMore || false,
+      cursor: resolvedResult.cursor,
     })
 
     // Additionally push live engine state when the session is running, so iOS
     // immediately has up-to-date agents, status fields, and working message
     // on reconnect. Gate on RUNTIME status — not tab type or extension
     // presence — since any conversation's session may be running.
-    const tabStatus = result.tabStatus as string | undefined
+    const tabStatus = resolvedResult.tabStatus as string | undefined
     if (tabStatus === 'running' || tabStatus === 'connecting') {
-      log(`load_conversation: session is ${tabStatus}, pushing live engine state tabId=${cmd.tabId}`)
+      log('load_conversation: session active, pushing live state', { tab_id: cmd.tabId, status: tabStatus })
       await sendCurrentEngineState(cmd.tabId, deviceId)
     }
   } catch (err) {
-    log(`load_conversation error: ${(err as Error).message}`)
+    log('load_conversation error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
   }
 }
@@ -492,10 +543,10 @@ export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type:
     const workingDir = resolveDiscoveryWorkingDir(directory) ?? ''
     const claudeCompat = readClaudeCompat()
     const commands = await engineBridge.discoverSlashCommands(workingDir, claudeCompat)
-    log(`discover_commands: engine returned ${commands.length} entries (device=${deviceId}, claudeCompat=${claudeCompat})`)
+    log('discover_commands', { count: commands.length, device_id: deviceId, claude_compat: claudeCompat })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_discover_commands_response', directory, commands })
   } catch (err) {
-    log(`discover_commands error: ${(err as Error).message}`)
+    log('discover_commands error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_discover_commands_response', directory, commands: [] })
   }
 }

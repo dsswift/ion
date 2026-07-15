@@ -27,8 +27,8 @@ import { log as _log } from './logger'
 
 const TAG = 'ExportHandler'
 
-function log(msg: string): void {
-  _log(TAG, msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log(TAG, msg, fields)
 }
 
 /**
@@ -101,7 +101,7 @@ export async function handleExportEvent(payload: string, format?: string): Promi
 
   const extension = extensionForFormat(format)
   const defaultName = defaultExportFilename(extension)
-  log(`export: prompting save dialog format=${format ?? 'absent'} extension=${extension} payloadBytes=${payload.length}`)
+  log('engine_export: prompting save dialog', { format: format ?? 'absent', extension, payload_bytes: payload.length })
 
   try {
     const result = await dialog.showSaveDialog(state.mainWindow, {
@@ -119,8 +119,8 @@ export async function handleExportEvent(payload: string, format?: string): Promi
     }
 
     await writeFile(result.filePath, payload, 'utf-8')
-    log(`export: wrote ${payload.length} bytes to ${result.filePath}`)
+    log('engine_export: wrote', { bytes: payload.length, path: result.filePath })
   } catch (err) {
-    log(`export: save failed: ${err instanceof Error ? err.message : String(err)}`)
+    log('engine_export: save failed', { error: err instanceof Error ? err.message : String(err) })
   }
 }

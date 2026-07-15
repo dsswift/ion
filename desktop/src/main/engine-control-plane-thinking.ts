@@ -5,11 +5,12 @@
 // translation switch, lifted out verbatim. No logic change. The main file
 // delegates to handleThinkingEvent from its switch.
 import type { EngineEvent, NormalizedEvent } from '../shared/types'
-import { log as _log } from './logger'
+import { log as _log, trace as _trace } from './logger'
 import type { EventEmitterContext, TabEntry } from './engine-control-plane-events-types'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function trace(msg: string, fields?: Record<string, unknown>): void { _trace(TAG, msg, fields) }
 
 /**
  * Handle the extended-thinking (issue #158) event arms. Returns true when the
@@ -30,7 +31,7 @@ export function handleThinkingEvent(
       // row. Boundaries always arrive when reasoning happened; the per-token
       // delta may be suppressed engine-side (summary-only path). Mirrors the
       // extension-hosted path in engine-event-slice.ts.
-      log(`thinking_block_start: tabId=${tabId}`)
+      log('thinking_block_start', { tab_id: tabId })
       ctx.emit('event', tabId, { type: 'thinking_block_start' } as NormalizedEvent)
       return true
 
@@ -39,8 +40,10 @@ export function handleThinkingEvent(
       // thinking channel. Only arrives when the engine's ThinkingConfig
       // .StreamDeltas is on (boundaries always flow regardless). Translate to
       // the normalized `thinking_delta` so the renderer appends it to the open
-      // thinking row.
-      log(`thinking_delta: tabId=${tabId} len=${event.thinkingText?.length ?? 0}`)
+      // thinking row. Per-token: logged at TRACE so it is filtered before
+      // serialization at the default INFO level (a per-chunk diagnostic, per the
+      // desktop logging rule) and does not amplify main-thread load under load.
+      trace('thinking_delta', { tab_id: tabId, len: event.thinkingText?.length ?? 0 })
       ctx.emit('event', tabId, {
         type: 'thinking_delta',
         text: event.thinkingText,

@@ -4,8 +4,8 @@ import { state } from '../../state'
 import { readPlanRangeCached } from '../plan-content-cache'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 const DEFAULT_PAGE_BYTES = 64 * 1024  // 64 KB per page
@@ -32,7 +32,7 @@ export async function handleRequestPlanContent(
 ): Promise<void> {
   const { questionId, planFilePath, offset, length } = cmd
   const pageBytes = length > 0 ? Math.min(length, DEFAULT_PAGE_BYTES) : DEFAULT_PAGE_BYTES
-  log(`request_plan_content: questionId=${questionId.slice(0, 12)} planFilePath=${planFilePath} offset=${offset} pageBytes=${pageBytes}`)
+  log('request_plan_content', { question_id: questionId.slice(0, 12), path: planFilePath, offset, page_bytes: pageBytes })
 
   // Renderer-first: check if the renderer store has plan content cached for
   // a matching permission queue entry or permissionDenied entry. The store
@@ -84,7 +84,7 @@ export async function handleRequestPlanContent(
       const window = buf.subarray(offset, offset + pageBytes)
       content = window.toString('utf-8')
       resolvedFromRenderer = true
-      log(`request_plan_content: renderer hit questionId=${questionId.slice(0, 12)} totalBytes=${totalBytes} offset=${offset} windowLen=${window.length}`)
+      log('request_plan_content: renderer hit', { question_id: questionId.slice(0, 12), total_bytes: totalBytes, offset, window_len: window.length })
     }
   } catch {
     // Non-fatal: fall through to disk path
@@ -93,7 +93,7 @@ export async function handleRequestPlanContent(
   if (!resolvedFromRenderer) {
     // Disk fallback via plan-content-cache (mtime-keyed, shared with snapshot)
     if (!planFilePath || !existsSync(planFilePath)) {
-      log(`request_plan_content: file not found planFilePath=${planFilePath}`)
+      log('request_plan_content: file not found', { path: planFilePath })
       state.remoteTransport?.sendToDevice(deviceId, {
         type: 'desktop_plan_content',
         questionId,
@@ -109,9 +109,9 @@ export async function handleRequestPlanContent(
       const { window, totalBytes: tb } = readPlanRangeCached(planFilePath, offset, pageBytes)
       totalBytes = tb
       content = window.toString('utf-8')
-      log(`request_plan_content: disk hit planFilePath=${planFilePath} totalBytes=${totalBytes} offset=${offset} windowLen=${window.length}`)
+      log('request_plan_content: disk hit', { path: planFilePath, total_bytes: totalBytes, offset, window_len: window.length })
     } catch (err) {
-      log(`request_plan_content: disk read failed planFilePath=${planFilePath}: ${(err as Error).message}`)
+      log('request_plan_content: disk read failed', { path: planFilePath, error: (err as Error).message })
       state.remoteTransport?.sendToDevice(deviceId, {
         type: 'desktop_plan_content',
         questionId,

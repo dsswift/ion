@@ -5,6 +5,7 @@ import { nextMsgId, playNotificationIfHidden, cancelDoneGroupMove } from '../ses
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { parseSlash } from '../../../main/slash-parse'
+import { rDebug, rInfo } from '../../rendererLogger'
 
 export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -28,7 +29,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // Cancel any pending done-group move from a prior task_complete, so a fast
       // re-send keeps the tab in in-progress instead of being yanked to done.
       if (cancelDoneGroupMove(tabId)) {
-        console.log(`[auto-move:send] cancelled pending done-move for tab=${tabId.slice(0, 8)}`)
+        rDebug('auto-move.send', 'cancelled pending done-move', { tab_id: tabId.slice(0, 8) })
       }
 
       applyActiveGroupMove(tabId, tab, get().conversationPanes, get, 'send')
@@ -54,12 +55,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (!tab) return
       const inst = activeInstance(get().conversationPanes, tabId)
       const hasRunningChildren = (inst?.agentStates ?? []).some((a) => a.status === 'running')
-      console.log(`[interrupt] tab=${tabId.slice(0, 8)} status=${tab.status} hasRunningChildren=${hasRunningChildren} bashExecId=${tab.bashExecId ?? 'none'}`)
+      rInfo('interrupt', 'interrupt requested', { tab_id: tabId.slice(0, 8), status: tab.status, has_running_children: hasRunningChildren, bash_exec_id: tab.bashExecId ?? '' })
 
       // 1. In-flight user bash takes precedence — cancel it and stop. (A bash
       //    command and an agent run are mutually exclusive on a tab.)
       if (tab.bashExecId) {
-        console.log(`[interrupt] cancelling bash: execId=${tab.bashExecId}`)
+        rDebug('interrupt', 'cancelling bash', { exec_id: tab.bashExecId })
         window.ion.cancelBash(tab.bashExecId)
         return
       }
@@ -67,14 +68,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // 2. Always abort the run. sendAbort is safe when no run is active (it
       //    warns and returns), covering the case where the desktop's status is
       //    stale while the engine still has a live run.
-      console.log(`[interrupt] aborting run: tab=${tabId}`)
+      rDebug('interrupt', 'aborting run', { tab_id: tabId })
       window.ion.engineAbort(tabId).catch(() => {})
 
       // 3. Reap descendant agents (external processes) that might outlive the
       //    parent run's cancellation cascade — only when there are running
       //    children to reap.
       if (hasRunningChildren) {
-        console.log(`[interrupt] reaping agent subtree: tab=${tabId}`)
+        rDebug('interrupt', 'reaping agent subtree', { tab_id: tabId })
         window.ion.engineAbortAgent(tabId, '', true).catch(() => {})
       }
 
@@ -181,7 +182,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const sendInst = activeInstance(get().conversationPanes, tabId)
 
       if (tab.status === 'connecting') {
-        console.log(`[submit] blocked: tab=${tab.id.slice(0, 8)} status=connecting, dropping prompt len=${text.length}`)
+        rDebug('submit', 'blocked: status=connecting, dropping prompt', { tab_id: tab.id.slice(0, 8), count: text.length })
         return
       }
 
@@ -293,7 +294,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           effectiveSystemPrompt = effectiveSystemPrompt
             ? `${effectiveSystemPrompt}\n\n${forkCtx}`
             : forkCtx
-          console.log(`[submit] rewind context injected: tabId=${tabId.slice(0, 8)} priorMessages=${priorMessages.length} transcriptLen=${transcript.length}`)
+          rDebug('submit', 'rewind context injected', { tab_id: tabId.slice(0, 8), prior_messages: priorMessages.length, transcript_len: transcript.length })
         }
       }
 
@@ -388,7 +389,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       if (tab.status === 'connecting') {
-        console.log(`[submitRemotePrompt] blocked: tab=${tab.id.slice(0, 8)} status=connecting, dropping prompt len=${prompt.length}`)
+        rDebug('submit.remote', 'blocked: status=connecting, dropping prompt', { tab_id: tab.id.slice(0, 8), count: prompt.length })
         return
       }
 

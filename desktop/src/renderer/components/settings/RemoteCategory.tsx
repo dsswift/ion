@@ -7,6 +7,7 @@ import { RemoteCategoryDevices } from './RemoteCategoryDevices'
 import { RemoteCategoryRelay, type DiscoveredRelay } from './RemoteCategoryRelay'
 import { RemoteDisplayPanel } from './RemoteDisplayPanel'
 import type { RemotePairedDevice, RemoteTransportState } from '../../../shared/types'
+import { rError } from '../../rendererLogger'
 
 export function RemoteCategory() {
   const colors = useColors()
@@ -89,7 +90,7 @@ export function RemoteCategory() {
       const code = await window.ion?.remoteStartPairing?.()
       if (code) setPairingCode(code)
     } catch (err) {
-      console.error('[Remote] pairing failed:', err)
+      rError('remote.pairing', 'pairing failed', { error: String(err) })
     }
   }
 

@@ -15,8 +15,8 @@ import { log as _log, error as _error } from '../logger'
 import { subscribe as gitSubscribe, unsubscribe as gitUnsubscribe } from '../git/subscriptions'
 import { repositoryManager } from '../git/repositoryManager'
 
-const log = (msg: string): void => { _log('git-extras', msg) }
-const logError = (msg: string): void => { _error('git-extras', msg) }
+const log = (msg: string, fields?: Record<string, unknown>): void => { _log('git-extras', msg, fields) }
+const logError = (msg: string, fields?: Record<string, unknown>): void => { _error('git-extras', msg, fields) }
 
 export function registerGitExtrasIpc(): void {
   ipcMain.handle(IPC.GIT_SUBSCRIBE, async (event, { directory }: { directory: string }) => {
@@ -41,11 +41,11 @@ export function registerGitExtrasIpc(): void {
     }
     const wasRetained = repositoryManager.has(directory)
     const repo = repositoryManager.get(directory)
-    log(`GIT_REFRESH: refreshing snapshot for ${directory} (wasRetained=${wasRetained} revision was ${repo.revision} refCount=${repo.refCount})`)
+    log('git_refresh', { dir: directory, was_retained: wasRetained, revision: repo.revision, ref_count: repo.refCount })
     repo.bumpRevision()
     try {
       await repo.refreshSnapshot()
-      log(`GIT_REFRESH: done for ${directory} (revision now ${repo.revision} refCount=${repo.refCount})`)
+      log('git_refresh: done', { dir: directory, revision: repo.revision, ref_count: repo.refCount })
       return { ok: true }
     } catch (err) {
       logError(`GIT_REFRESH: refreshSnapshot failed for ${directory}: ${(err as Error).message}`)

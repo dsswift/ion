@@ -1,7 +1,7 @@
 import { log as _log } from '../logger'
 import { engineBridge } from '../state'
 
-function log(msg: string): void { _log('oauth', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth', msg, fields) }
 
 interface StoredToken {
   provider: string
@@ -26,9 +26,9 @@ export async function storeTokens(provider: string, accessToken: string, refresh
   tokens.set(provider, { provider, accessToken, refreshToken, expiresAt })
   try {
     await engineBridge.storeCredential(provider, accessToken)
-    log(`Stored ${provider} access token in engine`)
+    log('oauth: stored access token', { provider })
   } catch (err) {
-    log(`Failed to store ${provider} token in engine: ${(err as Error).message}`)
+    log('oauth: failed to store token', { provider, error: (err as Error).message })
   }
   scheduleRefresh()
 }
@@ -38,9 +38,9 @@ export async function clearTokens(provider: string): Promise<void> {
   tokens.delete(provider)
   try {
     await engineBridge.storeCredential(provider, '')
-    log(`Cleared ${provider} token from engine`)
+    log('oauth: cleared token', { provider })
   } catch (err) {
-    log(`Failed to clear ${provider} token from engine: ${(err as Error).message}`)
+    log('oauth: failed to clear token', { provider, error: (err as Error).message })
   }
   scheduleRefresh()
 }
@@ -60,19 +60,19 @@ function scheduleRefresh(): void {
   }
   if (earliest === Infinity) return
   const delay = Math.max(0, earliest - Date.now())
-  log(`Scheduling ${earliestProvider} token refresh in ${Math.round(delay / 1000)}s`)
+  log('oauth: scheduling token refresh', { provider: earliestProvider, delay_s: Math.round(delay / 1000) })
   refreshTimer = setTimeout(async () => {
     refreshTimer = null
     const token = tokens.get(earliestProvider)
     if (!token) return
     const refreshFn = refreshFns.get(earliestProvider)
-    if (!refreshFn) { log(`No refresh function for ${earliestProvider}`); return }
+    if (!refreshFn) { log('oauth: no refresh function', { provider: earliestProvider }); return }
     try {
-      log(`Refreshing ${earliestProvider} token`)
+      log('oauth: refreshing token', { provider: earliestProvider })
       const t = await refreshFn(token.refreshToken)
       await storeTokens(earliestProvider, t.accessToken, t.refreshToken, t.expiresAt)
     } catch (err) {
-      log(`Failed to refresh ${earliestProvider} token: ${(err as Error).message}`)
+      log('oauth: failed to refresh token', { provider: earliestProvider, error: (err as Error).message })
       refreshTimer = setTimeout(() => scheduleRefresh(), 60_000)
     }
   }, delay)

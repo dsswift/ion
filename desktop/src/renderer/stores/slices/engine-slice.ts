@@ -7,6 +7,7 @@ import { createEngineSubmitActions } from './engine-slice-submit'
 import { createEngineRewindActions } from './engine-slice-rewind'
 import { MAIN_INSTANCE_ID } from '../../../shared/session-key'
 import { createConversationTabAction, _captureMintedConversationId } from './engine-slice-create'
+import { rError } from '../../rendererLogger'
 
 /**
  * Engine slice: single-instance-per-tab lifecycle.
@@ -115,7 +116,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       }
       window.ion.engineStart(key, startOpts).then((result) => {
         if (result && !result.ok) {
-          console.error(`[addEngineInstance] Failed to start session: ${result.error}`)
+          rError('engine.session', 'failed to start session', { error: result.error })
           set((state) => {
             const notifications = new Map(state.engineNotifications)
             const keyNotifs = [...(notifications.get(key) || [])]
@@ -144,7 +145,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           _captureMintedConversationId(set, tabId, result.conversationId)
         }
       }).catch((err: any) => {
-        console.error(`[addEngineInstance] Start error: ${err.message}`)
+        rError('engine.session', 'start threw', { error: err.message })
         set((state) => {
           const conversationPanes = new Map(state.conversationPanes)
           const paneInner = conversationPanes.get(tabId)

@@ -6,8 +6,8 @@ import { atomicWriteFileSync } from './utils/atomicWrite'
 import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
 import { expandHome } from './git/ignore-paths'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export const SETTINGS_DIR = join(homedir(), '.ion')
@@ -64,6 +64,16 @@ export const SETTINGS_DEFAULTS = {
   // selected effort rides on each prompt. See StatusBarThinkingPicker.tsx and
   // the engine's resolveThinking helper.
   thinkingEnabled: false,
+  // Agent Team Visualizer (desktop-only window; none of these keys are iOS
+  // projectable). atvSeeds maps an extension scope (engineProfileId, or
+  // 'local' for plain tabs) to a user-chosen office seed string.
+  atvTheme: 'ion-works',
+  atvPinned: false,
+  // 0 = fit-to-window (default); 1..6 = manual integer zoom.
+  atvZoom: 0,
+  // One office seed for the whole desktop ('' = built-in default). The
+  // office layout is the user's office — identical across conversations.
+  atvSeed: '',
 }
 
 export function readSettings(): Record<string, any> {
@@ -72,7 +82,7 @@ export function readSettings(): Record<string, any> {
     const raw = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
     return decryptSensitiveSettings(raw)
   } catch (err) {
-    log(`Failed to read settings: ${err}`)
+    log('settings_store: failed to read settings', { error: String(err) })
     return {}
   }
 }
@@ -193,7 +203,7 @@ export function loadSessionLabels(): Record<string, string> {
       return JSON.parse(readFileSync(SESSION_LABELS_FILE, 'utf-8'))
     }
   } catch (err) {
-    log(`Failed to load session labels: ${err}`)
+    log('settings_store: failed to load session labels', { error: String(err) })
   }
   return {}
 }
@@ -203,7 +213,7 @@ export function saveSessionLabels(labels: Record<string, string>): void {
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
     atomicWriteFileSync(SESSION_LABELS_FILE, JSON.stringify(labels, null, 2), 0o644)
   } catch (err) {
-    log(`Failed to save session labels: ${err}`)
+    log('settings_store: failed to save session labels', { error: String(err) })
   }
 }
 
@@ -213,7 +223,7 @@ export function loadSessionChains(): { chains: Record<string, string[]>; reverse
       return JSON.parse(readFileSync(SESSION_CHAINS_FILE, 'utf-8'))
     }
   } catch (err) {
-    log(`Failed to load session chains: ${err}`)
+    log('settings_store: failed to load session chains', { error: String(err) })
   }
   return { chains: {}, reverse: {} }
 }
@@ -223,7 +233,7 @@ export function saveSessionChains(data: { chains: Record<string, string[]>; reve
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
     atomicWriteFileSync(SESSION_CHAINS_FILE, JSON.stringify(data, null, 2), 0o644)
   } catch (err) {
-    log(`Failed to save session chains: ${err}`)
+    log('settings_store: failed to save session chains', { error: String(err) })
   }
 }
 

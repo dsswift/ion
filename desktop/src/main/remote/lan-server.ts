@@ -15,8 +15,8 @@ import WebSocket, { WebSocketServer } from 'ws'
 import { log as _log } from '../logger'
 import type { WireMessage } from './protocol'
 
-function log(msg: string): void {
-  _log('LANServer', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('LANServer', msg, fields)
 }
 
 const DEFAULT_PORT = 19837
@@ -116,7 +116,7 @@ export class LANServer extends EventEmitter {
     // If there's already a client with newId, close the old one (latest wins per device).
     const existing = this.clients.get(newId)
     if (existing) {
-      log(`replacing existing client for ${newId}`)
+      log('lan_server: replacing existing client', { device_id: newId })
       try { existing.close() } catch { /* ignore */ }
       this.clientIps.delete(newId)
     }
@@ -139,7 +139,7 @@ export class LANServer extends EventEmitter {
 
         // Route /pair connections to the pairing handler.
         if (req.url === '/pair') {
-          log(`pairing connection from ${ip}`)
+          log('lan_server: pairing connection', { ip })
           this._handlePairingConnection(ws)
           return
         }
@@ -153,7 +153,7 @@ export class LANServer extends EventEmitter {
           const now = Date.now()
           // Log at most once per cooldown window to keep the noise floor low.
           if (rec && now - rec.lastLoggedAt > 60_000) {
-            log(`auth-blocking ip=${ip} count=${rec.failCount} for=${Math.ceil(remaining / 1000)}s`)
+            log('lan_server: auth-blocked', { ip, fail_count: rec.failCount, remaining_s: Math.ceil(remaining / 1000) })
             rec.lastLoggedAt = now
           }
           try { ws.close(1008, `auth cooldown ${Math.ceil(remaining / 1000)}s`) } catch { /* ignore */ }
@@ -163,7 +163,7 @@ export class LANServer extends EventEmitter {
         const connectionId = `lan-${this.nextId++}`
         this.clients.set(connectionId, ws)
         this.clientIps.set(connectionId, ip)
-        log(`client connected from ${ip} (${connectionId})`)
+        log('lan_server: client connected', { ip, connection_id: connectionId })
         this.emit('raw-client-connected', ws, connectionId)
 
         ws.on('message', (raw: Buffer | string) => {
@@ -171,7 +171,7 @@ export class LANServer extends EventEmitter {
             const wire = JSON.parse(raw.toString()) as WireMessage
             this.emit('message', wire, connectionId)
           } catch (err) {
-            log(`parse error: ${(err as Error).message}`)
+            log('lan_server: parse error', { error: (err as Error).message })
           }
         })
 
@@ -185,28 +185,28 @@ export class LANServer extends EventEmitter {
             if (client === ws) {
               this.clients.delete(id)
               this.clientIps.delete(id)
-              log(`client disconnected ${id} (code=${code} reason=${reason.toString()})`)
+              log('lan_server: client disconnected (authenticated)', { device_id: id, code, reason: reason.toString() })
               this.emit('client-disconnected', id, code, reason.toString())
               return
             }
           }
-          log(`client disconnected ${connectionId} (code=${code} reason=${reason.toString()})`)
+          log('lan_server: client disconnected (unauthenticated)', { connection_id: connectionId, code, reason: reason.toString() })
           this.emit('client-disconnected', connectionId, code, reason.toString())
         })
 
         ws.on('error', (err) => {
-          log(`client error (${connectionId}): ${err.message}`)
+          log('lan_server: client error', { connection_id: connectionId, error: err.message })
         })
       })
 
       this.httpServer.listen(this.port, () => {
-        log(`listening on port ${this.port}`)
+        log('lan_server: listening', { port: this.port })
         this._advertiseBonjour()
         resolve(this.port)
       })
 
       this.httpServer.on('error', (err) => {
-        log(`server error: ${err.message}`)
+        log('lan_server: server error', { error: err.message })
         reject(err)
       })
     })
@@ -220,7 +220,7 @@ export class LANServer extends EventEmitter {
       try {
         ws.send(JSON.stringify(message))
       } catch (err) {
-        log(`send error (${connectionId}): ${(err as Error).message}`)
+        log('lan_server: send error', { connection_id: connectionId, error: (err as Error).message })
       }
     } else {
       // Broadcast to all connected clients.
@@ -230,7 +230,7 @@ export class LANServer extends EventEmitter {
           try {
             ws.send(data)
           } catch (err) {
-            log(`send error (${id}): ${(err as Error).message}`)
+            log('lan_server: sendAll error', { device_id: id, error: (err as Error).message })
           }
         }
       }
@@ -244,7 +244,7 @@ export class LANServer extends EventEmitter {
     try {
       ws.send(data)
     } catch (err) {
-      log(`sendRaw error (${connectionId}): ${(err as Error).message}`)
+      log('lan_server: sendRaw error', { connection_id: connectionId, error: (err as Error).message })
     }
   }
 
@@ -300,7 +300,7 @@ export class LANServer extends EventEmitter {
       try {
         const msg = JSON.parse(raw.toString())
         if (msg.type === 'pair_request') {
-          log(`pair request from ${msg.deviceName}: code=${msg.code}`)
+          log('lan_server: pair request', { device_name: msg.deviceName, code: msg.code })
           this.emit('pair-request', {
             code: msg.code,
             publicKey: msg.publicKey,
@@ -310,7 +310,7 @@ export class LANServer extends EventEmitter {
               try {
                 ws.send(JSON.stringify(response))
               } catch (err) {
-                log(`pair response send error: ${(err as Error).message}`)
+                log('lan_server: pair response send error', { error: (err as Error).message })
               }
               // Close the pairing connection after responding.
               setTimeout(() => ws.close(), 500)
@@ -324,13 +324,13 @@ export class LANServer extends EventEmitter {
           })
         }
       } catch (err) {
-        log(`pair parse error: ${(err as Error).message}`)
+        log('lan_server: pair parse error', { error: (err as Error).message })
         ws.close()
       }
     })
 
     ws.on('error', (err) => {
-      log(`pair connection error: ${err.message}`)
+      log('lan_server: pair connection error', { error: err.message })
     })
 
     // Timeout: close if no pair_request within 30 seconds.
@@ -355,33 +355,33 @@ export class LANServer extends EventEmitter {
     this._killOrphanedDnssd()
 
     const name = hostname().replace(/\.local$/, '')
-    log(`Bonjour: spawning dns-sd -R ${name} _ion._tcp local ${this.port}`)
+    log('lan_server: bonjour spawning dns-sd', { name, port: this.port })
     try {
       this.dnssdProc = spawn('/usr/bin/dns-sd', [
         '-R', name, '_ion._tcp', 'local', String(this.port),
       ], { stdio: 'pipe' })
 
       this.dnssdProc.stdout?.on('data', (data: Buffer) => {
-        log(`dns-sd stdout: ${data.toString().trim()}`)
+        log('lan_server: dns-sd stdout', { data: data.toString().trim() })
       })
 
       this.dnssdProc.stderr?.on('data', (data: Buffer) => {
-        log(`dns-sd stderr: ${data.toString().trim()}`)
+        log('lan_server: dns-sd stderr', { data: data.toString().trim() })
       })
 
       this.dnssdProc.on('error', (err) => {
-        log(`dns-sd spawn error: ${err.message}`)
+        log('lan_server: dns-sd spawn error', { error: err.message })
         this.dnssdProc = null
       })
 
       this.dnssdProc.on('exit', (code, signal) => {
-        log(`dns-sd exited: code=${code} signal=${signal}`)
+        log('lan_server: dns-sd exited', { code, signal })
         this.dnssdProc = null
       })
 
-      log(`Bonjour: advertising ${name}._ion._tcp on port ${this.port} (pid=${this.dnssdProc.pid})`)
+      log('lan_server: bonjour advertising', { name, port: this.port, pid: this.dnssdProc.pid })
     } catch (err) {
-      log(`Bonjour unavailable: ${(err as Error).message}`)
+      log('lan_server: bonjour unavailable', { error: (err as Error).message })
     }
   }
 
@@ -407,7 +407,7 @@ export class LANServer extends EventEmitter {
         } catch { /* already dead */ }
       }
       if (killed > 0) {
-        log(`Bonjour: killed ${killed} orphaned dns-sd process(es)`)
+        log('lan_server: bonjour killed orphaned dns-sd', { count: killed })
       }
     } catch {
       // pgrep returns exit code 1 when no matches — expected on fresh start.

@@ -1,14 +1,9 @@
 import { app, ipcMain } from 'electron'
 import { existsSync, readFileSync } from 'fs'
-import { execFile } from 'child_process'
 import { IPC } from '../../shared/types'
-import { log as _log, LOG_FILE } from '../logger'
+import { LOG_FILE } from '../logger'
 import { state, sessionPlane } from '../state'
 import { gitExec } from '../git-runner'
-
-function log(msg: string): void {
-  _log('main', msg)
-}
 
 export function registerSystemIpc(): void {
   ipcMain.handle(IPC.LIST_FONTS, async () => {
@@ -67,25 +62,4 @@ return output`
     }
   })
 
-  ipcMain.handle(IPC.OPEN_IN_VSCODE, (_event, projectPath: string) => {
-    const dir = projectPath || process.cwd()
-
-    try {
-      execFile('code', ['--reuse-window', dir], (err: Error | null) => {
-        if (err) {
-          log(`'code' CLI failed, falling back to open -a: ${err.message}`)
-          execFile('/usr/bin/open', ['-a', 'Visual Studio Code', dir], (err2: Error | null) => {
-            if (err2) log(`Failed to open VS Code: ${err2.message}`)
-            else log(`Opened VS Code (via open -a) at: ${dir}`)
-          })
-        } else {
-          log(`Opened VS Code at: ${dir}`)
-        }
-      })
-      return true
-    } catch (err: unknown) {
-      log(`Failed to open VS Code: ${err}`)
-      return false
-    }
-  })
 }

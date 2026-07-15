@@ -9,8 +9,8 @@ import { requestLogsFromFirstDevice } from '../remote/handlers/diagnostics'
 import { setRemoteDisplay, readRemoteDisplay } from '../remote/handlers/display'
 import type { DiscoveredRelay } from '../remote/discovery'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function registerRemoteControlIpc(): void {
@@ -34,10 +34,10 @@ export function registerRemoteControlIpc(): void {
       }
 
       const code = pairingManager.startPairing()
-      log(`Pairing code generated: ${code}`)
+      log('pairing_code_generated', { code })
       return code
     } catch (err) {
-      log(`Failed to start pairing: ${(err as Error).message}`)
+      log('start_pairing: failed', { error: (err as Error).message })
       return null
     }
   })
@@ -47,7 +47,7 @@ export function registerRemoteControlIpc(): void {
   })
 
   ipcMain.on(IPC.REMOTE_REVOKE_DEVICE, (_event, deviceId: string) => {
-    log(`Revoking paired device: ${deviceId}`)
+    log('revoke_paired_device', { device_id: deviceId })
 
     if (state.remoteTransport) {
       log('[Remote] sending unpair event to iOS device ' + deviceId)
@@ -80,7 +80,7 @@ export function registerRemoteControlIpc(): void {
       `)
       return result || []
     } catch (err) {
-      log(`REMOTE_GET_MESSAGES error: ${(err as Error).message}`)
+      log('remote_get_messages: error', { error: (err as Error).message })
       return []
     }
   })
@@ -90,20 +90,20 @@ export function registerRemoteControlIpc(): void {
       const logs = await requestLogsFromFirstDevice()
       return { ok: true, logs }
     } catch (err) {
-      log(`REMOTE_REQUEST_IOS_LOGS error: ${(err as Error).message}`)
+      log('remote_request_ios_logs: error', { error: (err as Error).message })
       return { ok: false, error: (err as Error).message }
     }
   })
 
   ipcMain.handle(IPC.REMOTE_SET_DISPLAY, (_event, customName: string | null, customIcon: string | null) => {
-    log(`IPC.REMOTE_SET_DISPLAY: name=${customName === null ? 'null' : 'set'} icon=${customIcon ?? 'null'}`)
+    log('remote_set_display', { has_name: customName !== null, icon: customIcon ?? '' })
     const result = setRemoteDisplay(customName, customIcon, Date.now(), 'desktop')
     return result.value
   })
 
   ipcMain.handle('ion:remote-get-display', () => {
     const value = readRemoteDisplay()
-    log(`IPC.remote-get-display: ${value ? `name=${value.customName === null ? 'null' : 'set'} icon=${value.customIcon ?? 'null'} ts=${value.updatedAt}` : 'unset'}`)
+    log('remote_get_display', { has_value: !!value, has_name: value ? value.customName !== null : false, icon: value?.customIcon ?? '', ts: value?.updatedAt ?? 0 })
     return value
   })
 

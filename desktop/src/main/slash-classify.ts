@@ -31,8 +31,37 @@ import { sessionPlane, engineBridge } from './state'
 import { type ParsedSlash } from './slash-parse'
 import { awaitCommandResult, type CommandResult } from './command-await'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
+}
+
+/**
+ * Per-command awaiter timeout override (ms).
+ *
+ * `awaitCommandResult` is a crash-safety net: it resolves with a synthetic
+ * `commandError: 'timeout'` if the engine never emits an
+ * `engine_command_result`, so the pipeline can't hang on an engine crash. The
+ * 5s default (command-await.ts) suits built-ins that resolve near-instantly.
+ *
+ * `/compact` is different: the engine now runs it asynchronously and emits the
+ * result only when the compaction COMPLETES, which includes a blocking LLM
+ * summarization that routinely takes tens of seconds on a large conversation.
+ * With the 5s default the awaiter fired its synthetic timeout while the engine
+ * was still legitimately working — surfacing "timeout waiting for
+ * engine_command_result" to the user for a compaction that in fact succeeded.
+ * Because the engine dispatches compaction off the read loop, a long awaiter
+ * costs nothing (it holds only a per-promise timer, blocks nothing), so we give
+ * compact a generous 180s ceiling that outlasts any realistic summarization
+ * while still bounding a genuine engine crash.
+ */
+const COMPACT_TIMEOUT_MS = 180_000
+
+/** Resolve the awaiter timeout for a command. Returns undefined to use the
+ *  awaitCommandResult default (5s). Only slow, engine-async built-ins override.
+ *  Exported for direct unit testing of the selection policy. */
+export function awaitTimeoutForCommand(command: string): number | undefined {
+  if (command === 'compact') return COMPACT_TIMEOUT_MS
+  return undefined
 }
 
 /**
@@ -112,10 +141,10 @@ export async function dispatchExtensionCommand(
   key: string,
   slash: ParsedSlash,
 ): Promise<CommandResult> {
-  log(`pipeline: dispatch ext cmd key=${key} cmd=/${slash.command} hasArgs=${!!slash.args}`)
-  const waiter = awaitCommandResult(key, slash.command)
+  log('pipeline_classify: dispatch ext cmd', { key, command: slash.command, has_args: !!slash.args })
+  const waiter = awaitCommandResult(key, slash.command, awaitTimeoutForCommand(slash.command))
   void engineBridge.sendCommand(key, slash.command, slash.args)
   const result = await waiter
-  log(`pipeline: ext cmd resolved key=${key} cmd=/${slash.command} err=${result.commandError || '(none)'}`)
+  log('pipeline_classify: ext cmd resolved', { key, command: slash.command, error: result.commandError || '(none)' })
   return result
 }

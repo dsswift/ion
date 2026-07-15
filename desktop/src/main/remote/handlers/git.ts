@@ -7,8 +7,8 @@ import type { RemoteCommand } from '../protocol'
 import type { GitRef } from '../../../shared/types'
 import { broadcastGitChanges, broadcastGitGraph } from '../git-broadcast'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desktop_git_changes' }>, deviceId: string): Promise<void> {
@@ -72,7 +72,7 @@ export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desk
 
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind, stagedCount, unstagedCount })
   } catch (err) {
-    log(`git_changes error: ${(err as Error).message}`)
+    log('git_changes error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_changes_response', directory, files: [], branch: '', isGitRepo: true, ahead: 0, behind: 0, stagedCount: 0, unstagedCount: 0 })
   }
 }
@@ -138,7 +138,7 @@ export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'deskto
 
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_graph_response', directory, commits, isGitRepo: true, totalCount, graphLayout })
   } catch (err) {
-    log(`git_graph error: ${(err as Error).message}`)
+    log('git_graph error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_graph_response', directory, commits: [], isGitRepo: true, totalCount: 0 })
   }
 }
@@ -166,7 +166,7 @@ export async function handleGitDiff(cmd: Extract<RemoteCommand, { type: 'desktop
     }
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff, fileName: basename(filePath) })
   } catch (err) {
-    log(`git_diff error: ${(err as Error).message}`)
+    log('git_diff error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff: '', fileName: basename(filePath) })
   }
 }
@@ -177,7 +177,7 @@ export async function handleGitStage(cmd: Extract<RemoteCommand, { type: 'deskto
   try {
     await runGit(directory, ['add', '--', ...paths])
   } catch (err) {
-    log(`git_stage error: ${(err as Error).message}`)
+    log('git_stage error', { error: (err as Error).message })
     ok = false
   }
   state.remoteTransport?.send({ type: 'desktop_git_stage_result', directory, ok })
@@ -191,7 +191,7 @@ export async function handleGitUnstage(cmd: Extract<RemoteCommand, { type: 'desk
   try {
     await runGit(directory, ['restore', '--staged', '--', ...paths])
   } catch (err) {
-    log(`git_unstage error: ${(err as Error).message}`)
+    log('git_unstage error', { error: (err as Error).message })
     ok = false
   }
   state.remoteTransport?.send({ type: 'desktop_git_unstage_result', directory, ok })
@@ -206,7 +206,7 @@ export async function handleGitCommit(cmd: Extract<RemoteCommand, { type: 'deskt
   try {
     await runGit(directory, ['commit', '-m', message])
   } catch (err) {
-    log(`git_commit error: ${(err as Error).message}`)
+    log('git_commit error', { error: (err as Error).message })
     ok = false
     error = (err as Error).message
   }
@@ -253,7 +253,7 @@ export async function handleGitCommitFiles(cmd: Extract<RemoteCommand, { type: '
     const stats = { filesChanged: files.length, insertions: totalInsertions, deletions: totalDeletions }
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_files_response', directory, hash, files, stats })
   } catch (err) {
-    log(`git_commit_files error: ${(err as Error).message}`)
+    log('git_commit_files error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_files_response', directory, hash, files: [], stats: { filesChanged: 0, insertions: 0, deletions: 0 } })
   }
 }
@@ -265,7 +265,7 @@ export async function handleGitCommitFileDiff(cmd: Extract<RemoteCommand, { type
     const fileName = basename(filePath)
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: output, fileName })
   } catch (err) {
-    log(`git_commit_file_diff error: ${(err as Error).message}`)
+    log('git_commit_file_diff error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: '', fileName: basename(filePath) })
   }
 }
@@ -300,7 +300,7 @@ export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'desk
       }
     }
   } catch (err) {
-    log(`git_discard error: ${(err as Error).message}`)
+    log('git_discard error', { error: (err as Error).message })
   }
   await broadcastGitChanges(directory)
 }
@@ -310,7 +310,7 @@ export async function handleGitFetch(cmd: Extract<RemoteCommand, { type: 'deskto
   try {
     await runGit(directory, ['fetch', '--all'])
   } catch (err) {
-    log(`git_fetch error: ${(err as Error).message}`)
+    log('git_fetch error', { error: (err as Error).message })
   }
   await broadcastGitChanges(directory)
   await broadcastGitGraph(directory)
@@ -321,7 +321,7 @@ export async function handleGitPull(cmd: Extract<RemoteCommand, { type: 'desktop
   try {
     await runGit(directory, ['pull'])
   } catch (err) {
-    log(`git_pull error: ${(err as Error).message}`)
+    log('git_pull error', { error: (err as Error).message })
   }
   await broadcastGitChanges(directory)
   await broadcastGitGraph(directory)
@@ -332,7 +332,7 @@ export async function handleGitPush(cmd: Extract<RemoteCommand, { type: 'desktop
   try {
     await runGit(directory, ['push'])
   } catch (err) {
-    log(`git_push error: ${(err as Error).message}`)
+    log('git_push error', { error: (err as Error).message })
   }
   await broadcastGitGraph(directory)
 }

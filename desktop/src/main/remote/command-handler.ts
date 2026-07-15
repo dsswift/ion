@@ -80,12 +80,12 @@ import { handleRequestPlanContent } from './handlers/plan-content'
 import { handleImplementPlan } from './handlers/implement-plan'
 import type { RemoteCommand } from './protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string): Promise<void> {
-  log(`remote command: ${cmd.type}`)
+  log('remote_command', { type: cmd.type })
   switch (cmd.type) {
     case 'desktop_sync': await handleSync(deviceId); break
     case 'desktop_create_tab': await handleCreateTab(cmd); break
@@ -125,7 +125,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
       // Retired in WI-004 (#259). iOS now sends desktop_load_conversation for
       // every tab. A stale paired client may still send this; route to the
       // unified handler so it degrades gracefully rather than silently dropping.
-      log(`load_engine_conversation: routing to unified load_conversation handler (WI-004)`)
+      log('load_engine_conversation: routing to unified load_conversation handler')
       await handleLoadConversation({ type: 'desktop_load_conversation', tabId: (cmd as any).tabId }, deviceId)
       break
     case 'desktop_load_agent_conversation': await handleLoadAgentConversation(cmd, deviceId); break
@@ -140,7 +140,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
       // arrives as engine_context_breakdown, which event-wiring.ts forwards to
       // iOS as desktop_context_breakdown. Modeled on handleRequestTerminalSnapshot.
       const key = cmd.tabId
-      log(`desktop_request_context_breakdown: forwarding get_context_breakdown key=${key}`)
+      log('get_context_breakdown: forwarding', { key })
       engineBridge._send({ cmd: 'get_context_breakdown', key })
       break
     }
@@ -192,7 +192,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_report_focus': {
       const { tabId, interceptEnabled } = cmd
       deviceFocusMap.set(deviceId, { tabId, interceptEnabled })
-      log(`desktop_report_focus: device=${deviceId} tabId=${tabId} interceptEnabled=${interceptEnabled}`)
+      log('desktop_report_focus', { device_id: deviceId, tab_id: tabId, intercept_enabled: interceptEnabled })
       break
     }
   }

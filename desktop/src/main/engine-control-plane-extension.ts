@@ -11,7 +11,7 @@ import { log as _log } from './logger'
 import type { EventEmitterContext, TabEntry } from './engine-control-plane-events-types'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 
 /**
  * Handle the extension-lifecycle / harness event arms. Returns true when the
@@ -83,7 +83,7 @@ export function handleExtensionEvent(
       // wireSessionPlaneEvents can call handleInterceptEvent without creating
       // a circular import through state.ts. The event carries the raw payload
       // and tabId; the wiring layer in event-wiring.ts does the routing.
-      log(`intercept: tabId=${tabId} level=${event.interceptLevel} title=${event.interceptTitle}`)
+      log('intercept', { tab_id: tabId, level: event.interceptLevel, title: event.interceptTitle })
       ctx.emit('engine_intercept', tabId, event)
       return true
   }

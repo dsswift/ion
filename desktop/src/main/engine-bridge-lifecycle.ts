@@ -5,8 +5,8 @@ import { homedir } from 'os'
 import type { EngineBridge } from './engine-bridge'
 import { log as _log, warn as _warn } from './logger'
 
-function log(msg: string): void { _log('engine-bridge', msg) }
-function warn(msg: string): void { _warn('engine-bridge', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-bridge', msg, fields) }
+function warn(msg: string, fields?: Record<string, unknown>): void { _warn('engine-bridge', msg, fields) }
 
 const ION_HOME = join(homedir(), '.ion')
 const SOCKET_PATH = join(ION_HOME, 'engine.sock')
@@ -46,7 +46,7 @@ export async function shutdownAndWait(bridge: EngineBridge, timeoutMs = 3000): P
     } catch (err: any) {
       // 3 = "No such process" (already unloaded). Not an error.
       if (err.status !== 3) {
-        warn(`launchctl bootout failed (non-fatal): ${err.message}`)
+        warn('engine_bridge: launchctl bootout failed', { error: err.message })
       }
     }
   }

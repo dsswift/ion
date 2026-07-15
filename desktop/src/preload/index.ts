@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
+import { atvApi, type AtvApi } from './atv-api'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, ImageAttachmentPayload, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 
-export interface IonAPI {
+export interface IonAPI extends AtvApi {
   // ─── Request-response (renderer → main) ───
   start(): Promise<{ version: string; auth: { email?: string; subscriptionType?: string; authMethod?: string }; mcpServers: string[]; projectPath: string; homePath: string }>
   createTab(): Promise<{ tabId: string }>
@@ -15,6 +16,11 @@ export interface IonAPI {
   status(): Promise<HealthReport>
   tabHealth(): Promise<HealthReport>
   closeTab(tabId: string): Promise<void>
+  /**
+   * Fire-and-forget notification to the main process that a tab field changed.
+   * Main pushes a desktop_tab_meta delta to iOS immediately (no poll wait).
+   */
+  tabMetaChanged(payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }): void
   selectDirectory(): Promise<string | null>
   selectExtensionFiles(): Promise<string[] | null>
   getEngineHostInfo(): Promise<{ ok: boolean; error?: string; data?: EngineHostInfo }>
@@ -23,7 +29,7 @@ export interface IonAPI {
   /** Fetch the enterprise new-tab policy from the engine. Returns null when no enterprise config is active. */
   getEnterprisePolicy(): Promise<NewConversationDefaultsPolicy | null>
   openExternal(url: string): Promise<boolean>
-  openInVSCode(projectPath: string): Promise<boolean>
+
   attachFiles(): Promise<FileAttachment[] | null>
   attachFileByPath(path: string): Promise<FileAttachment | null>
   takeScreenshot(): Promise<FileAttachment | null>
@@ -169,7 +175,7 @@ export interface IonAPI {
   /** Notify the main process that the user focused a tab. The main
    *  process publishes the session key as a desktop.focus resource so
    *  extensions can route to the active session. */
-  notifyTabFocus(tabId: string): void
+  notifyTabFocus(tabId: string, engineProfileId?: string | null): void
   /** Publish a mark_read delta for a resource. Propagates the read state to
    *  all subscribers (including iOS) via the engine's resource broker. */
   markResourceRead(kind: string, resourceId: string): void
@@ -182,6 +188,14 @@ export interface IonAPI {
   publishResourceDelete(kind: string, resourceId: string): void
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
+  // ─── Plugin management ───
+  /** Install a Claude Code-compatible plugin from a GitHub source ("owner/repo"). */
+  pluginInstall(source: string): Promise<{ ok: boolean; error?: string; data?: { name: string; source: string; version: string } }>
+  /** List all installed plugins. */
+  pluginList(): Promise<{ ok: boolean; error?: string; data?: Array<{ name: string; source: string; version: string; installedAt: string }> }>
+  /** Remove an installed plugin by name. */
+  pluginRemove(name: string): Promise<{ ok: boolean; error?: string; data?: { removed: string } }>
+
   // ─── Model & provider management ───
   listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
   storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
@@ -193,6 +207,11 @@ export interface IonAPI {
   oauthStatus(provider: string): Promise<{ hasTokens: boolean }>
   oauthDeviceCode(provider: string): Promise<{ ok: boolean; userCode?: string; verificationUri?: string; deviceCode?: string; interval?: number; expiresIn?: number; error?: string }>
   oauthDevicePoll(deviceCode: string, interval: number, expiresIn: number): Promise<{ ok: boolean; error?: string }>
+
+  // ─── Entra OIDC (Feature 0001 Part F — telemetry auth) ───
+  entraSignIn(): Promise<{ ok: boolean; identity?: { user: string; username: string; displayName: string; oid: string }; error?: string }>
+  entraSignOut(): Promise<{ ok: boolean; error?: string }>
+  entraIdentity(): Promise<{ identity: { user: string; username: string; displayName: string; oid: string } | null }>
 
   // ─── Remote control ───
   remoteGetState(): Promise<{ transportState: RemoteTransportState } | null>
@@ -215,6 +234,11 @@ export interface IonAPI {
   installUpdate(): void
   onUpdateDownloaded(callback: (info: { version: string }) => void): () => void
 
+  // ─── Renderer logging bridge ───
+  /** Write a structured log line from renderer context. The main process
+   *  stamps component=desktop and forwards to the shared desktop logger. */
+  logWrite(level: string, tag: string, msg: string, fields?: Record<string, unknown>): void
+
   // ─── Window management ───
   resizeHeight(height: number): void
   setWindowWidth(width: number): void
@@ -234,6 +258,8 @@ export interface IonAPI {
 }
 
 const api: IonAPI = {
+  // Agent Team Visualizer bridge (see preload/atv-api.ts)
+  ...atvApi,
   // ─── Request-response ───
   start: () => ipcRenderer.invoke(IPC.START),
   createTab: () => ipcRenderer.invoke(IPC.CREATE_TAB),
@@ -246,6 +272,8 @@ const api: IonAPI = {
   status: () => ipcRenderer.invoke(IPC.STATUS),
   tabHealth: () => ipcRenderer.invoke(IPC.TAB_HEALTH),
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
+  tabMetaChanged: (payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }) =>
+    ipcRenderer.send(IPC.TAB_META_CHANGED, payload),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   selectExtensionFiles: () => ipcRenderer.invoke(IPC.SELECT_EXTENSION_FILES),
   getEngineHostInfo: () => ipcRenderer.invoke(IPC.GET_ENGINE_HOST_INFO),
@@ -254,7 +282,6 @@ const api: IonAPI = {
   engineIsRemote: () => ipcRenderer.invoke(IPC.ENGINE_IS_REMOTE),
   getEnterprisePolicy: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
-  openInVSCode: (projectPath) => ipcRenderer.invoke(IPC.OPEN_IN_VSCODE, projectPath),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),
   takeScreenshot: () => ipcRenderer.invoke(IPC.TAKE_SCREENSHOT),
@@ -427,7 +454,8 @@ const api: IonAPI = {
   engineGetContextBreakdown: (key) => ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
   engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
   engineBroadcastHistory: (tabId, instanceId) => ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId }),
-  notifyTabFocus: (tabId) => ipcRenderer.send(IPC.NOTIFY_TAB_FOCUS, { tabId }),
+  notifyTabFocus: (tabId, engineProfileId) =>
+    ipcRenderer.send(IPC.NOTIFY_TAB_FOCUS, { tabId, engineProfileId: engineProfileId ?? null }),
   markResourceRead: (kind, resourceId) => ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId }),
   getReadResourceIds: () => ipcRenderer.invoke(IPC.GET_READ_RESOURCE_IDS),
   getPersistedResources: () => ipcRenderer.invoke(IPC.GET_PERSISTED_RESOURCES),
@@ -437,6 +465,11 @@ const api: IonAPI = {
     ipcRenderer.on(IPC.ENGINE_EVENT, handler)
     return () => ipcRenderer.removeListener(IPC.ENGINE_EVENT, handler)
   },
+
+  // ─── Plugin management ───
+  pluginInstall: (source) => ipcRenderer.invoke('plugin:install', source),
+  pluginList: () => ipcRenderer.invoke('plugin:list'),
+  pluginRemove: (name) => ipcRenderer.invoke('plugin:remove', name),
 
   // ─── Model & provider management ───
   listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
@@ -449,6 +482,11 @@ const api: IonAPI = {
   oauthStatus: (provider) => ipcRenderer.invoke(IPC.OAUTH_STATUS, { provider }),
   oauthDeviceCode: (provider) => ipcRenderer.invoke(IPC.OAUTH_DEVICE_CODE, { provider }),
   oauthDevicePoll: (deviceCode, interval, expiresIn) => ipcRenderer.invoke(IPC.OAUTH_DEVICE_POLL, { deviceCode, interval, expiresIn }),
+
+  // ─── Entra OIDC (Feature 0001 Part F — telemetry auth) ───
+  entraSignIn: () => ipcRenderer.invoke(IPC.ENTRA_SIGN_IN),
+  entraSignOut: () => ipcRenderer.invoke(IPC.ENTRA_SIGN_OUT),
+  entraIdentity: () => ipcRenderer.invoke(IPC.ENTRA_IDENTITY),
 
   // ─── Remote control ───
   remoteGetState: () => ipcRenderer.invoke(IPC.REMOTE_GET_STATE),
@@ -470,6 +508,10 @@ const api: IonAPI = {
     ipcRenderer.on(IPC.UPDATE_DOWNLOADED, handler)
     return () => ipcRenderer.removeListener(IPC.UPDATE_DOWNLOADED, handler)
   },
+
+  // ─── Renderer logging bridge ───
+  logWrite: (level, tag, msg, fields) =>
+    ipcRenderer.invoke(IPC.LOG_WRITE, { level, tag, msg, fields: fields ?? {} }),
 
   on: (channel, callback) => {
     const handler = (_e: Electron.IpcRendererEvent, ...args: any[]) => callback(_e, ...args)

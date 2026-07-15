@@ -23,8 +23,8 @@ import {
 } from './crypto'
 import type { PairedDevice } from './protocol'
 
-function log(msg: string): void {
-  _log('Pairing', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('Pairing', msg, fields)
 }
 
 const CODE_EXPIRY_MS = 5 * 60 * 1000
@@ -75,7 +75,7 @@ export class PairingManager extends EventEmitter {
       this.emit('expired')
     }, CODE_EXPIRY_MS)
 
-    log(`pairing code generated: ${this.activeCode}`)
+    log('pairing: code generated', { code: this.activeCode })
     this.emit('code-generated', this.activeCode)
     return this.activeCode
   }
@@ -112,7 +112,7 @@ export class PairingManager extends EventEmitter {
 
     if (code !== this.activeCode) {
       this.failedAttempts++
-      log(`incorrect pairing code (attempt ${this.failedAttempts}/${MAX_FAILED_ATTEMPTS})`)
+      log('pairing: incorrect code', { attempt: this.failedAttempts, max: MAX_FAILED_ATTEMPTS })
       if (this.failedAttempts >= MAX_FAILED_ATTEMPTS) {
         log('too many failed pairing attempts, cancelling session')
         this.cancelPairing()
@@ -145,7 +145,7 @@ export class PairingManager extends EventEmitter {
     // Clean up pairing state.
     this.cancelPairing()
 
-    log(`paired with ${deviceName} (channel=${channelId.substring(0, 8)}...)`)
+    log('pairing: paired', { device_name: deviceName, channel_id: channelId.substring(0, 8) })
     this.emit('paired', { device, sharedSecretBuf: sharedSecret } as PairingResult)
 
     return { device, ourPublicKey, relayConfig, sharedSecretBuf: sharedSecret }

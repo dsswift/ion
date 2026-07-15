@@ -13,6 +13,7 @@ import type { ConversationInstance } from '../../../shared/types-engine'
 import type { State } from '../session-store-types'
 import type { NormalizedEvent } from '../../../shared/types-events'
 import { nextMsgId } from '../session-store-helpers'
+import { rTrace, rWarn } from '../../rendererLogger'
 
 /**
  * Mutable context shared with the parent reducer for one event. The parent
@@ -66,21 +67,25 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       // the StatusBar engine slots (identity, cost, backend badge) and the
       // model-picker actual-model parenthetical; before this arm existed the
       // field was null forever.
-      console.debug(`[status] statusFields updated tab=${tabId} state=${event.fields.state}`)
+      rTrace('event.status', 'statusFields updated', { tab_id: tabId, state: event.fields.state })
       ctx.instPatch.statusFields = event.fields
       ctx.instTouched = true
       return true
 
     case 'plan_mode_auto_exit':
-      // Engine synthesized an ExitPlanMode at end-of-turn. Clear
-      // permissionMode to 'auto' on the ACTIVE INSTANCE only — do not
-      // write the parent tab.permissionMode. The sticky-parent invariant
-      // requires this: writing the parent would leave it permanently
-      // 'plan' across instance switches and break the done-group move
-      // for auto-mode runs. The regression test in
-      // engine-event-slice-plan-auto-exit.test.ts enforces this.
-      ctx.instPatch.permissionMode = 'auto'
-      ctx.instTouched = true
+      // Engine synthesized an auto-exit at end-of-turn. This is a
+      // *proposal awaiting user approval*, identical in meaning to a
+      // model-driven ExitPlanMode — which does NOT flip permissionMode
+      // (see event-slice-plan-mode.ts). Per ADR-003, the instance stays
+      // 'plan' until the user approves at the ConversationView-implement.ts
+      // chokepoint (onImplement → setPermissionMode('auto','plan_approved'))
+      // or changes mode via the manual dropdown. Keeping the instance 'plan'
+      // is also correct for tab auto-move: the tab belongs in the planning
+      // group until the user decides.
+      //
+      // Sticky-parent invariant: never write tab.permissionMode here.
+      // The regression test in engine-event-slice-plan-auto-exit.test.ts
+      // enforces both invariants.
       return true
 
     case 'model_fallback':
@@ -212,7 +217,7 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
     case 'events_dropped':
       // Buffer overflow. Log only; no UI action (state may be stale but
       // there's nothing useful the user can do except wait).
-      console.warn(`[Ion] events_dropped: tab=${tabId} count=${event.count}`)
+      rWarn('event.buffer', 'events dropped', { tab_id: tabId, count: event.count })
       return true
   }
   return false

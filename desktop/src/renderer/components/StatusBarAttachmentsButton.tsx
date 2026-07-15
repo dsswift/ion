@@ -13,6 +13,7 @@ import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
+import { rWarn } from '../rendererLogger'
 
 /* ─── Extension sets for icon picking ─── */
 
@@ -55,6 +56,7 @@ export function AttachmentsButton() {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
+  const closePlan = useCallback(() => setPlanData(null), [])
   const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
   const [viewerData, setViewerData] = useState<{ title: string; content: string } | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
@@ -175,7 +177,7 @@ export function AttachmentsButton() {
     } else {
       const result = await window.ion.fsOpenNative(a.path)
       if (!result.ok) {
-        console.warn('Failed to open file:', result.error)
+        rWarn('attachments', 'failed to open file', { path: a.path, error: result.error })
       }
     }
   }, [activeTabId, workingDir])
@@ -478,7 +480,7 @@ export function AttachmentsButton() {
           content={planData.content}
           fileName={planData.fileName}
           filePath={planData.filePath}
-          onClose={() => setPlanData(null)}
+          onClose={closePlan}
         />
       )}
 

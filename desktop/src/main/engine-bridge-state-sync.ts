@@ -1,7 +1,8 @@
 import type { EngineBridge } from './engine-bridge'
-import { log as _log } from './logger'
+import { log as _log, debug as _debug } from './logger'
 
-function log(msg: string): void { _log('engine-bridge', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-bridge', msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug('engine-bridge', msg, fields) }
 
 /**
  * State-reconciliation RPCs. Extracted from engine-bridge.ts to keep
@@ -23,7 +24,7 @@ function log(msg: string): void { _log('engine-bridge', msg) }
  * session.
  */
 export function sendReconcileState(bridge: EngineBridge, key: string): void {
-  log(`sendReconcileState: key=${key}`)
+  log('send_reconcile_state', { key })
   bridge._send({ cmd: 'reconcile_state', key })
 }
 
@@ -41,6 +42,8 @@ export function sendReconcileState(bridge: EngineBridge, key: string): void {
  * silent (idle session, no organic transitions).
  */
 export function sendQuerySessionStatus(bridge: EngineBridge, key: string): void {
-  log(`sendQuerySessionStatus: key=${key}`)
+  // Poll-driven (snapshot poller, per silent key per tick): DEBUG so it is
+  // filtered before serialization at the default INFO level.
+  debug('send_query_session_status', { key })
   bridge._send({ cmd: 'query_session_status', key })
 }

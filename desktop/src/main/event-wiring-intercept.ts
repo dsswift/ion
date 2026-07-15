@@ -22,7 +22,7 @@ import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { focusState } from './git/focus-state'
 
 const TAG = 'intercept'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 
 /**
  * handleInterceptEvent is called when an engine_intercept event arrives on any
@@ -46,7 +46,7 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
   const source = event.interceptSource
   const metadata = event.interceptMetadata
 
-  log(`handleInterceptEvent: tabId=${tabId} level=${level} title=${JSON.stringify(title)} source=${source ?? 'unknown'}`)
+  log('intercept_event', { tab_id: tabId, level, source: source ?? 'unknown' })
 
   // ── Desktop focus check ────────────────────────────────────────────────────
   // The desktop's intercept preference is read from settings each time so it
@@ -75,14 +75,14 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
   const desktopWindowFocused = focusState.focused
   const desktopHasTabFocused = desktopWindowFocused && desktopActiveTabId === tabId
 
-  log(`handleInterceptEvent: desktop windowFocused=${desktopWindowFocused} activeTabId=${desktopActiveTabId ?? 'null'} tabFocused=${desktopHasTabFocused} interceptEnabled=${desktopInterceptEnabled}`)
+  log('intercept_event: desktop_state', { window_focused: desktopWindowFocused, active_tab: desktopActiveTabId ?? '', tab_focused: desktopHasTabFocused, intercept_enabled: desktopInterceptEnabled })
 
   // ── iOS device focus check ─────────────────────────────────────────────────
   const focusedDevices: Array<{ deviceId: string; interceptEnabled: boolean }> = []
   for (const [deviceId, focus] of deviceFocusMap.entries()) {
     if (focus.tabId === tabId) {
       focusedDevices.push({ deviceId, interceptEnabled: focus.interceptEnabled })
-      log(`handleInterceptEvent: device=${deviceId} focused on tab=${tabId} interceptEnabled=${focus.interceptEnabled}`)
+      log('intercept_event: device_focused', { device_id: deviceId, tab_id: tabId, intercept_enabled: focus.interceptEnabled })
     }
   }
 
@@ -94,10 +94,10 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
   let effectiveLevel = level
   if (level === 'redirect' && !anyDeviceWillAct) {
     effectiveLevel = 'banner'
-    log(`handleInterceptEvent: downgrading redirect to banner — no device has intercept enabled for tabId=${tabId}`)
+    log('intercept_event: downgrading to banner', { tab_id: tabId })
   }
 
-  log(`handleInterceptEvent: effectiveLevel=${effectiveLevel} desktopWillAct=${desktopWillAct} anyIosWillAct=${anyIosWillAct}`)
+  log('intercept_event: routing', { effective_level: effectiveLevel, desktop_will_act: desktopWillAct, any_ios_will_act: anyIosWillAct })
 
   // ── Forward to renderer ────────────────────────────────────────────────────
   // Always forward the raw engine event to the renderer so it can render the
@@ -117,14 +117,14 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
       metadata,
     }
     for (const device of focusedDevices) {
-      log(`handleInterceptEvent: forwarding to device=${device.deviceId} effectiveLevel=${effectiveLevel}`)
+      log('intercept_event: forwarding to device', { device_id: device.deviceId, effective_level: effectiveLevel })
       state.remoteTransport.sendToDevice(device.deviceId, remotePayload)
     }
   }
 
   // ── Redirect: abort + re-prompt ────────────────────────────────────────────
   if (level === 'redirect' && anyDeviceWillAct && message) {
-    log(`handleInterceptEvent: redirect — aborting tabId=${tabId} then re-prompting`)
+    log('intercept_event: redirect', { tab_id: tabId })
     engineBridge.sendAbort(tabId)
 
     // Brief delay to let the abort land before submitting the new prompt.
@@ -136,9 +136,9 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
 
     const promptResult = await engineBridge.sendPrompt(tabId, message)
     if (!promptResult.ok) {
-      log(`handleInterceptEvent: redirect re-prompt failed for tabId=${tabId}: ${promptResult.error ?? 'unknown error'}`)
+      log('intercept_event: redirect re-prompt failed', { tab_id: tabId, error: promptResult.error ?? 'unknown error' })
     } else {
-      log(`handleInterceptEvent: redirect re-prompt sent tabId=${tabId} messageLen=${message.length}`)
+      log('intercept_event: redirect re-prompt sent', { tab_id: tabId, message_len: message.length })
     }
   }
 }

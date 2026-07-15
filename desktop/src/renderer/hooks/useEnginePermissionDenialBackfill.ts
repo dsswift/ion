@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
+import { rDebug, rWarn } from '../rendererLogger'
 
 /**
  * Backfill pending AskUserQuestion / ExitPlanMode denials for engine
@@ -26,7 +27,8 @@ import { useSessionStore } from '../stores/sessionStore'
  *   is updated (by engine_status carrying a sessionId after start_session
  *   + reconcile_state), the pane Map identity changes and this subscription
  *   fires. At that point we know:
- *     - the compound key (`${tabId}:${instanceId}`)
+ *     - the engine session key (the bare tabId after session-key
+ *       unification, #256)
  *     - the latest sessionId for this instance (instance.conversationIds.last)
  *     - whether instance.permissionDenied already has live data (no backfill
  *       needed) or a synthesized entry that needs toolInput enrichment.
@@ -128,7 +130,7 @@ async function backfillForKey(
   try {
     const msgs = await window.ion.loadSession(sessionId)
     if (!Array.isArray(msgs) || msgs.length === 0) {
-      console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=empty no messages in conversation file`)
+      rDebug('denial-backfill', 'no messages in conversation file', { key, session_id: sessionId.slice(0, 20) })
       return
     }
 
@@ -147,11 +149,11 @@ async function backfillForKey(
       if (m.role !== 'tool' || !m.toolName) continue
       // The first tool we encounter walking backward is the last one.
       if (m.toolName !== 'AskUserQuestion' && m.toolName !== 'ExitPlanMode') {
-        console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=otherTool last tool was ${m.toolName} — no card to restore`)
+        rDebug('denial-backfill', 'other tool last, no card to restore', { key, session_id: sessionId.slice(0, 20), tool: m.toolName })
         return
       }
       if (m.content && m.content.length > 0) {
-        console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=resolved last tool ${m.toolName} already has a result — nothing pending`)
+        rDebug('denial-backfill', 'last tool already resolved, nothing pending', { key, session_id: sessionId.slice(0, 20), tool: m.toolName })
         return
       }
       // Match anchor: tool name OR toolId must agree with the
@@ -160,7 +162,7 @@ async function backfillForKey(
       const idMatch = m.toolId && expectedToolUseId !== 'restored' && m.toolId === expectedToolUseId
       const nameMatch = m.toolName === expectedToolName
       if (!idMatch && !nameMatch) {
-        console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=mismatch file tail tool=${m.toolName} toolId=${(m.toolId || '').slice(0, 16)} but expected ${expectedToolName} toolId=${expectedToolUseId.slice(0, 16)}`)
+        rDebug('denial-backfill', 'mismatch: file tail does not match expected', { key, session_id: sessionId.slice(0, 20), file_tool: m.toolName, file_tool_id: (m.toolId || '').slice(0, 16), expected_tool: expectedToolName, expected_tool_id: expectedToolUseId.slice(0, 16) })
         return
       }
       candidate = {
@@ -172,7 +174,7 @@ async function backfillForKey(
     }
 
     if (!candidate) {
-      console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=noToolMessages no tool messages found`)
+      rDebug('denial-backfill', 'no tool messages found', { key, session_id: sessionId.slice(0, 20) })
       return
     }
 
@@ -184,7 +186,7 @@ async function backfillForKey(
       try { parsedInput = JSON.parse(candidate.toolInput) } catch { parsedInput = undefined }
     }
     if (!parsedInput) {
-      console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=noInput file has tool but no parseable input`)
+      rDebug('denial-backfill', 'file has tool but no parseable input', { key, session_id: sessionId.slice(0, 20) })
       return
     }
 
@@ -213,10 +215,10 @@ async function backfillForKey(
         },
       }
       updatedPanes.set(tabId, { ...pane, instances })
-      console.log(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=enriched tool=${finalCandidate.toolName} toolId=${finalCandidate.toolId.slice(0, 16)} inputKeys=${Object.keys(finalParsedInput).join(',')}`)
+      rDebug('denial-backfill', 'enriched', { key, session_id: sessionId.slice(0, 20), tool: finalCandidate.toolName, tool_id: finalCandidate.toolId.slice(0, 16), input_keys: Object.keys(finalParsedInput).join(',') })
       return { conversationPanes: updatedPanes }
     })
   } catch (err) {
-    console.warn(`[denial-backfill] key=${key} sessionId=${sessionId.slice(0, 20)} branch=error ${err instanceof Error ? err.message : String(err)}`)
+    rWarn('denial-backfill', 'error', { key, session_id: sessionId.slice(0, 20), error: err instanceof Error ? err.message : String(err) })
   }
 }

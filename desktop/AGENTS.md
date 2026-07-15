@@ -20,12 +20,13 @@ npm run dev         # electron-vite dev (hot reload)
 npm run build       # electron-vite build
 npm test            # vitest run
 npm run typecheck   # tsc --noEmit
+npm run lint        # ESLint — enforces react-hooks rules + no-console in renderer/
 npm run doctor      # bash scripts/doctor.sh
 ```
 
 Don't kill the user's running dev server. If a restart is needed, tell the user.
 
-**Never run `make desktop`.** It replaces the running Ion.app binary and relaunches the engine, which kills any active Ion session, including the one you are running in. Conversation state is often lost. The user runs `make desktop` manually. If the packaged app needs rebuilding, tell the user.
+**Never run `make desktop`.** It replaces the running Ion.app binary and relaunches the desktop. The engine is a persistent launchd daemon (not a desktop subprocess), but on launch the desktop re-bootstraps it and force-restarts the daemon (`launchctl kickstart -k`) when the bundled engine binary or plist changed — so a `make desktop` that ships a new engine binary recycles the daemon and kills any active Ion session, including the one you are running in. Conversation state is often lost. The user runs `make desktop` manually. If the packaged app needs rebuilding, tell the user.
 
 ## Layout
 
@@ -44,7 +45,7 @@ desktop/src/
     stores/slices/         feature slices (engine, tabs, permissions, attachments, etc.)
     components/            UI (flat)
     hooks/                 React hooks
-  shared/types.ts          cross-process types
+  shared/                  cross-process types (domain files; types.ts is a barrel re-export)
 ```
 
 ## File-architecture rules
@@ -84,7 +85,7 @@ Context-menu components already do this on their `motion.div`. The `ConfirmDialo
 ## Subprocess env
 
 - `CLAUDECODE` and similar leakage env vars are stripped before spawn (`main/cli-env.ts`). Don't bypass.
-- `node-pty` is legacy (still in dependencies for existing terminals). New subprocess work goes through `engine-bridge.ts` / `terminal-manager.ts` patterns.
+- `node-pty` is legacy (still in dependencies for existing terminals). New subprocess work goes through `terminal-manager.ts` patterns. Note: `engine-bridge.ts` is **not** a subprocess spawner — the engine is a persistent launchd daemon and the bridge only *connects* to its socket (`~/.ion/engine.sock`); it never spawns the engine.
 
 ## Hot reload
 
@@ -93,7 +94,11 @@ Context-menu components already do this on their `motion.div`. The `ConfirmDialo
 
 ## Logging
 
-- Use `main/logger.ts`. No `console.log` in shipped code.
+Logs write to `~/.ion/desktop.jsonl` in the canonical Ion JSONL schema (`component=desktop`). See root [`AGENTS.md`](../AGENTS.md) § "Logging policy" for file locations, `jq` recipes, and LogQL cheat-sheet.
+
+- **Main process:** use `main/logger.ts` (`log`, `debug`, `warn`, `error`).
+- **Renderer process:** use `renderer/rendererLogger.ts` (`rInfo`, `rDebug`, `rWarn`, `rError`, `rTrace`). Renderer code cannot import `main/logger.ts` (it is Electron-bound and requires Node.js APIs). `rendererLogger.ts` routes through the contextBridge to the main process and lands in `~/.ion/desktop.jsonl`.
+- No `console.*` in shipped renderer code — `make check-logging` (ADR-019) enforces zero tolerance. Use `rendererLogger.ts` instead; its output is forwarded to `desktop.jsonl` identically.
 - No silent `catch {}`. Either log at debug (intentional fallback), increment a counter (parse-loop tolerance), or escalate to `error`.
 
 ## Debugging the packaged app
@@ -102,9 +107,9 @@ Context-menu components already do this on their `motion.div`. The `ConfirmDialo
 
 To diagnose renderer-side state in a packaged build, use one of these instead:
 
-1. **Use `console.log` / `console.warn` / `console.error`.** All renderer console output is forwarded to `~/.ion/desktop.log` via the `console-message` handler in `window-manager.ts`. No allowlist — every log line is captured. Errors and warnings get distinct `[renderer:error]` and `[renderer:warn]` tags; everything else appears as `[renderer]`.
-2. **Use `console.debug()` for high-frequency diagnostics** (e.g., per-frame or per-chunk). These are still forwarded (at verbose level) but signal intent — if log volume ever needs trimming, verbose-level lines are the first candidates for filtering.
-3. **Inspect via the main-process snapshot.** `main/remote/snapshot.ts` polls renderer state through `executeJavaScript` and logs to `desktop.log`. Adding fields to that projection is the most reliable way to observe renderer store state from a packaged build.
+1. **Use `renderer/rendererLogger.ts` (`rInfo`, `rWarn`, `rError`).** Output routes through the contextBridge and lands in `~/.ion/desktop.jsonl` via `window-manager.ts`. `rInfo` appears as `[renderer]`; `rWarn`/`rError` as `[renderer:warn]`/`[renderer:error]`. Unlike `console.*`, these calls conform to ADR-019 and can be left in shipped code.
+2. **Use `rTrace` or `rDebug` for high-frequency diagnostics** (e.g., per-frame or per-chunk). These forward at verbose level and signal intent — if log volume needs trimming, verbose-level lines are the first candidates.
+3. **Inspect via the main-process snapshot.** `main/remote/snapshot.ts` polls renderer state through `executeJavaScript` and logs to `desktop.jsonl`. Adding fields to that projection is the most reliable way to observe renderer store state from a packaged build.
 4. **Build and run in dev mode** (`cd desktop && npm run dev`) if you genuinely need live DevTools. This is the only way to use them.
 
 When investigating a renderer bug in a packaged build, **add the instrumentation first** (option 1, 2, or 3 above), ship a new build, then ask the user to reproduce. Asking the user to "check the console" is a wasted round-trip.
@@ -116,7 +121,7 @@ When investigating a renderer bug in a packaged build, **add the instrumentation
 
 ## Cross-process types
 
-- Live in `desktop/src/shared/types.ts`.
+- Organized into domain files under `desktop/src/shared/`: `types-session.ts` (tabs, messages, attachments, git), `types-events.ts` (CLI stream events, normalized events, content blocks), `types-engine.ts` (engine runtime types), `types-engine-event.ts` (the `EngineEvent` discriminated union), `types-persistence.ts` (on-disk shapes), `types-ipc.ts` (IPC channel name registry). `types.ts` is a barrel re-export for backward compatibility — new types belong in the appropriate domain file, not directly in `types.ts`.
 - Renderer must not import IPC/Electron-bound code from `main/` (see the IPC section for the pure-helper exception and its migration intent).
 
 ## Wire naming and contract rules (ADR 008)
@@ -131,7 +136,7 @@ See root `AGENTS.md` § "Contract stability" and [docs/architecture/adr/008-wire
 
 Shared types (`NormalizedEvent`, `StatusFields`, `EngineConfig`, etc.) are mirrored from Go. A contract test (`src/shared/__tests__/contract-sync.test.ts`) validates TS types against the Go-generated manifest (`engine/internal/types/testdata/contracts.json`).
 
-**When you add/change a shared type in `types-engine.ts` or `types-events.ts`:**
+**When you add/change a shared type in `types-engine.ts`, `types-events.ts`, or `types-engine-event.ts`:**
 
 1. Update the type definition.
 2. Update the field map in `src/shared/__tests__/contract-sync.test.ts` (e.g. add the new field name to the `TS_NORMALIZED_EVENTS` or `TS_SHARED_TYPES` entry).
@@ -145,13 +150,24 @@ The TabStrip contains a bell icon for global notifications (workspace-scoped res
 
 Session-scoped resources appear in the per-conversation attachments panel (ConversationAttachmentsSheet on iOS, equivalent on desktop).
 
+## ATV shell rules (overlay ↔ ATV parity)
+
+The ATV window (`src/renderer/atv/`) runs the session store in MIRROR mode — see [ADR-021](../docs/architecture/adr/021-atv-shell-mirror-store.md) and `src/renderer/atv/README.md`. The rules that bite:
+
+- **New store action** → classify in `src/shared/atv-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL with justification) or `mirror-parity.test.ts` fails.
+- **Multi-step business flow** (approve-plan, implement, anything that reads store state between mutations) → ONE store action classified FORWARDED, never a component handler chaining store calls. A component handler runs in whichever window hosts it; in the mirror that mixes forwarded and local calls and its decisions read stale mirror state (the "Implement and Unpin filed under Planning" bug). `implementPlan` in `stores/slices/implement-slice.ts` is the pattern.
+- **New event push from main** → route through `broadcast()`; `make check-atv-parity` fails direct `webContents.send` outside the owner-only allowlist in `scripts/check-atv-parity.sh`.
+- **New shared surface** → mount the overlay's component in the ATV (one component, one store); bespoke ATV widgets only for canvas-coupled surfaces.
+- **New ATV setting** → `SETTINGS_DEFAULTS` + the `ATV_SETTING_KEYS` allowlist in `main/ipc/atv.ts` + `AtvSettings`; cross-window convergence rides `ion:settings-changed` from the settings funnel.
+
 ## Done criteria
 
 While developing, run only the **scoped** gates — see root [`AGENTS.md`](../AGENTS.md) § "Quality gates (run while developing)". The full `npm test` suite and `npm audit` are heavy gates that run at PR time (CI is authoritative; `/create-pr` runs the Linux parity subset, which includes the full desktop test run, before pushing); do not run them mid-development.
 
 1. `npm run typecheck` passes.
-2. `npm test -- <pattern>` passes for the area you touched. The full `npm test` run is a heavy gate — it runs at PR time (CI is authoritative; `/create-pr` runs it inside the Linux container before pushing); don't run it repeatedly while iterating.
-3. `make check-file-sizes` passes.
-4. UI changes: smoke-tested in `npm run dev`. Report what was tested.
-5. Don't `git push`.
-6. **iOS parity check.** If the change affects a feature that exists on iOS (tab status, engine instances, permissions, working state), verify the iOS side is updated or document why it's deferred. See root `AGENTS.md` § "Cross-platform parity".
+2. `npm run lint` passes with zero errors when touching renderer/ code. This enforces `react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`, `react/no-unstable-nested-components`, and `no-console` — the structural gate against React error #185.
+3. `npm test -- <pattern>` passes for the area you touched. The full `npm test` run is a heavy gate — it runs at PR time (CI is authoritative; `/create-pr` runs it inside the Linux container before pushing); don't run it repeatedly while iterating.
+4. `make check-file-sizes` passes.
+5. UI changes: smoke-tested in `npm run dev`. Report what was tested.
+6. Don't `git push`.
+7. **iOS parity check.** If the change affects a feature that exists on iOS (tab status, engine instances, permissions, working state), verify the iOS side is updated or document why it's deferred. See root `AGENTS.md` § "Cross-platform parity".

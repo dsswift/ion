@@ -5,7 +5,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
-import { buildCompactionMarkerContent } from '../../../shared/compaction-marker'
+import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
@@ -18,6 +18,7 @@ import { buildDispatchStartEntry, applyDispatchEnd } from './engine-event-slice-
 import { maybeApplyPlanModeGroupMove } from './event-slice-plan-mode-move'
 import { handleTaskEvent } from './event-slice-task'
 import { handleErrorAction } from './event-slice-error'
+import { rTrace, rWarn } from '../../rendererLogger'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -178,8 +179,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 // Insert a compaction marker message so the user can see when
                 // compaction happened. The shared builder returns null for a
                 // pure no-op and omits the misleading "N → N messages" segment
-                // on a micro-only pass.
-                const markerContent = buildCompactionMarkerContent(event)
+                // on a micro-only pass. For a MANUAL (/compact) no-op, fall
+                // back to an explicit "nothing to compact" notice so the user
+                // gets feedback instead of silence (which reads as a crash).
+                const markerContent =
+                  buildCompactionMarkerContent(event) ?? buildManualCompactionNoOpNotice(event)
                 if (markerContent !== null) {
                   messages = [
                     ...messages,
@@ -214,7 +218,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
 
             case 'text_chunk': {
-              console.debug(`[DIAG] text_chunk: tab=${tabId} instance=main len=${(event as any).text?.length} prev_msg_len=${messages[messages.length - 1]?.content?.length ?? 'N/A'}`)
+              rTrace('event.stream', 'text_chunk', { tab_id: tabId, len: (event as any).text?.length })
               updated.currentActivity = 'Writing...'
               const lastMsg = messages[messages.length - 1]
               if (lastMsg?.role === 'assistant' && !lastMsg.toolName) {
@@ -479,6 +483,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   cacheCreationTokens: event.cacheCreationTokens,
                   model: event.model ?? '',
                   aggregateCostUsd: event.aggregateCostUsd,
+                  modelBreakdown: event.modelBreakdown,
                 },
               }
               // Mirror the authoritative contextWindow from the breakdown onto the
@@ -536,7 +541,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
     handleStatusChange: (tabId, newStatus) => {
       if (newStatus === 'dead') {
-        console.warn(`[Ion] handleStatusChange: tab=${tabId} status=dead`)
+        rWarn('event.session', 'tab status dead', { tab_id: tabId })
       }
       set((s) => {
         // Capture the PRE-transition status: the auto-move-to-done decision

@@ -170,8 +170,15 @@ vi.mock('../git-watcher-bridge', () => ({
   reconcileGitWatchedDirectories: (...args: unknown[]) => mockReconcile(...args),
 }))
 
+// The module under test imports both `log` and `debug`; mock the full logger
+// surface. (An earlier mock exported only `log`, so the skip-branch `debug()`
+// call threw, the tick's catch ate the error, and the "still reconciles when
+// skipping send" test failed for a reason unrelated to reconciliation.)
 vi.mock('../../logger', () => ({
   log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
 }))
 
 describe('startTabSnapshotPolling — change detection integration', () => {

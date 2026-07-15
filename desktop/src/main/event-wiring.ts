@@ -1,7 +1,7 @@
 import { IPC } from '../shared/types'
 import type { NormalizedEvent, EnrichedError } from '../shared/types'
-import { log as _log } from './logger'
-import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabStatus } from './state'
+import { log as _log, trace as _trace } from './logger'
+import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabStatus, lastForwardedTabMeta } from './state'
 import { broadcast } from './broadcast'
 import { currentBackend, shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
@@ -12,8 +12,11 @@ import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
+}
+function trace(msg: string, fields?: Record<string, unknown>): void {
+  _trace('main', msg, fields)
 }
 
 /** Emit a NormalizedEvent to the renderer via the single normalized stream. */
@@ -41,7 +44,7 @@ export function wireSessionPlaneEvents(): void {
   // and renderer broadcast.
   sessionPlane.on('engine_intercept', (tabId: string, event: any) => {
     handleInterceptEvent(tabId, event).catch((err: unknown) => {
-      log(`wireSessionPlaneEvents: intercept handler error tabId=${tabId}: ${(err as Error).message}`)
+      log('wire_intercept_handler_error', { tab_id: tabId, error: (err as Error).message })
     })
   })
 }
@@ -58,7 +61,18 @@ export function wireEngineBridgeEvents(): void {
   let deltaFlushTimer: ReturnType<typeof setInterval> | null = null
 
   function flushTextDeltas(): void {
-    if (pendingTextDeltas.size === 0) return
+    // Self-stop when idle: an empty buffer means streaming has ended, so the
+    // 16ms (~62.5Hz) timer has no work. Clear it rather than letting it wake the
+    // event loop forever; the next engine_text_delta re-arms via
+    // ensureDeltaFlushTimer(). Without this the timer ran for the process
+    // lifetime after the first stream, burning idle CPU on empty ticks.
+    if (pendingTextDeltas.size === 0) {
+      if (deltaFlushTimer) {
+        clearInterval(deltaFlushTimer)
+        deltaFlushTimer = null
+      }
+      return
+    }
     for (const [deltaKey, text] of pendingTextDeltas) {
       // WI-001: no longer broadcast to renderer via IPC.ENGINE_EVENT — text
       // deltas reach the renderer through the normalized stream (text_chunk
@@ -108,13 +122,13 @@ export function wireEngineBridgeEvents(): void {
     clearResourceSubscriptions()
     log('engineBridge: subscribing to global resources')
     subscribeToGlobalResourceKinds().catch((err) => {
-      log(`resource_subscribe_global: error on connect err=${err}`)
+      log('resource_subscribe_global: error on connect', { error: String(err) })
     })
     // Re-establish per-session subscriptions for sessions that were active
     // before the reconnect. engine_command_registry only fires on initial
     // session creation; reconnects skip it.
     resubscribeSessionResourceKinds().catch((err) => {
-      log(`resource_subscribe: resubscribe error on connect err=${err}`)
+      log('resource_subscribe: resubscribe error on connect', { error: String(err) })
     })
   }
   engineBridge.on('reconnected', subscribeGlobalResources)
@@ -146,11 +160,11 @@ export function wireEngineBridgeEvents(): void {
         // identical but harder to reason about in logs.
         const had = extensionCommandRegistry.has(key)
         extensionCommandRegistry.delete(key)
-        log(`engine_command_registry: cleared key=${key} (was=${had})`)
+        log('engine_command_registry: cleared', { key, had })
       } else {
         const names = new Set<string>(listings.map((l: { name: string }) => l.name))
         extensionCommandRegistry.set(key, names)
-        log(`engine_command_registry: cached key=${key} count=${names.size} names=[${[...names].join(',')}]`)
+        log('engine_command_registry: cached', { key, count: names.size })
       }
       // Extensions are loaded — subscribe to resource kinds now. The
       // command_registry event fires after the extension process has
@@ -158,12 +172,12 @@ export function wireEngineBridgeEvents(): void {
       // subscription requests. Idempotent: subscribeToResourceKinds
       // skips kinds already subscribed for this session key.
       subscribeToResourceKinds(key).catch((err) => {
-        log(`resource_subscribe: error key=${key} err=${err}`)
+        log('resource_subscribe: error', { key, error: String(err) })
       })
       // Also subscribe to global resource kinds (workspace-scoped).
       // Idempotent: subscribeToGlobalResourceKinds skips already-subscribed kinds.
       subscribeToGlobalResourceKinds().catch((err) => {
-        log(`resource_subscribe_global: error err=${err}`)
+        log('resource_subscribe_global: error', { error: String(err) })
       })
     }
 
@@ -174,7 +188,7 @@ export function wireEngineBridgeEvents(): void {
     if (event.type === 'engine_intercept') {
       const tabId = tabIdFromKey(key)
       handleInterceptEvent(tabId, event).catch((err: unknown) => {
-        log(`engine_intercept: handler error key=${key}: ${(err as Error).message}`)
+        log('engine_intercept: handler error', { key, error: (err as Error).message })
       })
       return
     }
@@ -214,7 +228,7 @@ export function wireEngineBridgeEvents(): void {
     } else if (event.type === 'engine_resource_snapshot') {
       // Resource snapshot observability
       const items = event.resourceItems ?? []
-      log(`resource: snapshot key=${key} kind=${event.resourceKind} subId=${event.resourceSubId} items=${items.length} ids=[${items.slice(0, 3).map((i: any) => i.id?.slice(-8)).join(',')}${items.length > 3 ? '...' : ''}]`)
+      log('resource_snapshot', { key, kind: event.resourceKind, sub_id: event.resourceSubId, items: items.length })
       // Cold-start disk seed: inject persisted items when the engine delivers
       // an empty snapshot (e.g. extension died during HandleQuery).
       if (items.length === 0 && state.mainWindow) {
@@ -229,7 +243,7 @@ export function wireEngineBridgeEvents(): void {
       })
     } else if (event.type === 'engine_resource_delta') {
       const d = event.resourceDelta
-      log(`resource: delta key=${key} kind=${event.resourceKind} op=${d?.op} id=${d?.item?.id?.slice(-8)} convId=${d?.item?.conversationId ?? 'global'}`)
+      log('resource_delta', { key, kind: event.resourceKind, op: d?.op, id: d?.item?.id?.slice(-8), conv_id: d?.item?.conversationId ?? 'global' })
       // Persist mark_read deltas to disk so the desktop's read state survives
       // restarts and stays consistent with cross-device reads from iOS.
       if (d?.op === 'mark_read' && d?.item?.id) {
@@ -244,7 +258,7 @@ export function wireEngineBridgeEvents(): void {
     } else if (event.type === 'engine_notification') {
       // Log-only in main process; forward to renderer via normalized stream
       // so the renderer can display a notification indicator.
-      log(`engine_notification: title=${event.notificationTitle} level=${event.notificationLevel}`)
+      log('engine_notification', { title: event.notificationTitle, level: event.notificationLevel })
       const tabIdForNotif = tabIdFromKey(key)
       broadcastNormalized(tabIdForNotif, {
         type: 'engine_notification',
@@ -260,7 +274,7 @@ export function wireEngineBridgeEvents(): void {
       // stream (that surface is text_chunk / tool_call). iOS receives the same
       // delta independently via the generic engineToWireType forwarder below.
       const tabIdForAct = tabIdFromKey(key)
-      log(`engineBridge: dispatch_activity key=${key} agentId=${event.dispatchAgentId} convId=${event.dispatchConversationId} kind=${event.dispatchActivityKind} seq=${event.dispatchSeq} toolId=${event.toolId ?? ''}`)
+      log('dispatch_activity', { key, agent_id: event.dispatchAgentId, conv_id: event.dispatchConversationId, kind: event.dispatchActivityKind, seq: event.dispatchSeq, tool_id: event.toolId ?? '' })
       broadcastNormalized(tabIdForAct, {
         type: 'dispatch_activity',
         dispatchAgentId: event.dispatchAgentId,
@@ -292,6 +306,7 @@ export function wireEngineBridgeEvents(): void {
         cacheCreationTokens: event.contextBreakdown.cacheCreationTokens,
         model: event.contextBreakdown.model ?? '',
         aggregateCostUsd: event.contextBreakdown.aggregateCostUsd,
+        modelBreakdown: event.contextBreakdown.modelBreakdown,
       })
       if (state.remoteTransport) {
         const tabIdBD = key.split(':')[0]
@@ -302,25 +317,25 @@ export function wireEngineBridgeEvents(): void {
           instanceId: instanceIdBD,
           contextBreakdown: event.contextBreakdown,
         })
-        log(`engine_context_breakdown: forwarded to iOS key=${key} categories=${event.contextBreakdown.categories?.length ?? 0} total=${event.contextBreakdown.totalTokens}`)
+        log('engine_context_breakdown: forwarded to ios', { key, categories: event.contextBreakdown.categories?.length ?? 0, total: event.contextBreakdown.totalTokens })
       }
     }
 
     // Trace agent_state so we can correlate engine→desktop→iOS flow when
     // diagnosing stuck-row, stale-snapshot, or missing-conversation reports.
     // Pairs with the engine's `agent_snapshot_emitted` utils.Log line.
-    // Always log — not gated on remoteTransport — so desktop.log is
-    // sufficient for diagnosis even without an iOS device connected.
+    // Demoted to trace: fires on every heartbeat tick (13k+/h at INFO),
+    // generating the dominant share of desktop log volume. Available at
+    // trace level when transport diagnosis is needed.
     if (event.type === 'engine_agent_state') {
       const agents = Array.isArray(event.agents) ? event.agents : []
-      const statuses = agents.map((a: any) => `${a.name}:${a.status}`).join(',')
-      log(`engineBridge: agent_state key=${key} count=${agents.length} statuses=[${statuses}]`)
-      // Log dispatch metadata for terminal agents so we can verify
+      _trace('main', 'agent_state', { key, count: agents.length })
+      // Trace dispatch metadata for terminal agents so we can verify
       // conversationId survives the engine→desktop pipeline.
       for (const a of agents) {
         if ((a.status === 'done' || a.status === 'error') && a.metadata?.task) {
           const meta = a.metadata
-          log(`engineBridge: dispatch_agent name=${a.name} status=${a.status} convId=${meta.conversationId ?? 'MISSING'} convIds=${JSON.stringify(meta.conversationIds ?? 'MISSING')} convIdsType=${typeof meta.conversationIds}`)
+          _trace('main', 'agent_state: dispatch_agent', { name: a.name, status: a.status, conv_id: meta.conversationId ?? 'MISSING' })
         }
       }
     }
@@ -368,9 +383,9 @@ export function wireEngineBridgeEvents(): void {
       // constructs its envelope explicitly for the same reason.
       if (event.type === 'engine_thinking_delta') {
         if (!shouldStreamThinkingToRemote()) {
-          log(`thinking: dropped engine_thinking_delta key=${key} (streamThinkingToRemote=off) — boundaries still forwarded`)
+          trace('thinking_delta: dropped', { key, reason: 'streamThinkingToRemote=off' })
         } else {
-          log(`thinking: forwarding engine_thinking_delta key=${key} (streamThinkingToRemote=on)`)
+          trace('thinking_delta: forwarding', { key })
           state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
         }
       } else if (event.type === 'engine_thinking_block_start' || event.type === 'engine_thinking_block_end') {
@@ -440,7 +455,7 @@ export function wireEngineBridgeEvents(): void {
           const pushBody = denial.toolName === 'AskUserQuestion'
             ? 'Question waiting for your answer'
             : 'Plan ready for your review'
-          log(`engine_status: forwarding ${denial.toolName} denial to remote key=${key} questionId=${questionId}`)
+          log('engine_status: forwarding denial to remote', { key, tool_name: denial.toolName, question_id: questionId })
           // Stamp the engine instance (sub-tab) onto the envelope so iOS
           // can scope the plan/question card to the owning
           // sub-conversation instead of rendering it on every sibling
@@ -486,12 +501,29 @@ export function wireEngineBridgeEvents(): void {
         }
         if (derivedStatus && lastForwardedTabStatus.get(tabId) !== derivedStatus) {
           lastForwardedTabStatus.set(tabId, derivedStatus)
-          log(`engine_status: synthesizing tab_status for remote tabId=${tabId} instance=${instanceId} derivedStatus=${derivedStatus}`)
+          log('engine_status: synthesizing tab_status for remote', { tab_id: tabId, instance: instanceId, derived_status: derivedStatus })
           state.remoteTransport.send({ type: 'desktop_tab_status', tabId, status: derivedStatus as any })
         }
       }
 
-      // /clear success → relay an iOS-renderable divider so the mobile
+      // Push a lightweight desktop_tab_meta delta when cost or conversationInstances
+      // change on an engine_status tick. This lets iOS tab-row metadata (cost, instance
+      // count) update without waiting for the 5 s snapshot poll.
+      //
+      // We track the last-forwarded value per tabId so we don't flood on repeated
+      // engine_status ticks with the same cost (common during idle polling).
+      if (event.type === 'engine_status' && state.remoteTransport) {
+        const costUsd = typeof event.fields?.runCostUsd === 'number' ? event.fields.runCostUsd : undefined
+        if (costUsd !== undefined) {
+          const prevCost = lastForwardedTabMeta.get(tabId)
+          if (prevCost !== costUsd) {
+            lastForwardedTabMeta.set(tabId, costUsd)
+            log('engine_status: pushing desktop_tab_meta cost delta', { tab_id: tabId, cost_usd: costUsd })
+            state.remoteTransport.send({ type: 'desktop_tab_meta', tabId, totalCostUsd: costUsd })
+          }
+        }
+      }
+
       // client sees the checkpoint immediately. We piggy-back on the
       // existing envelopes iOS already decodes: `engine_harness_message`
       // for engine tabs (NormalizedEvent.engineHarnessMessage handler),
@@ -511,7 +543,7 @@ export function wireEngineBridgeEvents(): void {
         // checkpoint, not a session restart) — without this notification
         // the post-/clear slash would see `promptCountSinceCheckpoint > 0`
         // and incorrectly preserve plan mode.
-        log(`engine_command_result clear: notifying conversationCleared tabId=${tabId}`)
+        log('engine_command_result: clear, notifying conversationCleared', { tab_id: tabId })
         sessionPlane.notifyConversationCleared(tabId)
 
         const divider = formatClearDivider(new Date())

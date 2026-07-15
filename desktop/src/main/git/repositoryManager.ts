@@ -9,8 +9,8 @@
 import { GitRepository } from './repository'
 import { log as _log } from '../logger'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export class RepositoryManager {
@@ -22,7 +22,7 @@ export class RepositoryManager {
     if (!repo) {
       repo = new GitRepository(path)
       this.repos.set(path, repo)
-      log(`Repository created: ${path}`)
+      log('git_repository_manager: created', { path })
     }
     return repo
   }
@@ -31,7 +31,7 @@ export class RepositoryManager {
   retain(path: string): GitRepository {
     const repo = this.get(path)
     repo.retain()
-    log(`Repository retained: ${path} (refCount=${repo.refCount})`)
+    log('git_repository_manager: retained', { path, ref_count: repo.refCount })
     return repo
   }
 
@@ -43,9 +43,9 @@ export class RepositoryManager {
     if (shouldDispose) {
       repo.dispose()
       this.repos.delete(path)
-      log(`Repository disposed: ${path}`)
+      log('git_repository_manager: disposed', { path })
     } else {
-      log(`Repository released: ${path} (refCount=${repo.refCount})`)
+      log('git_repository_manager: released', { path, ref_count: repo.refCount })
     }
   }
 
@@ -58,7 +58,7 @@ export class RepositoryManager {
   disposeAll(): void {
     for (const [path, repo] of this.repos) {
       repo.dispose()
-      log(`Repository disposed (shutdown): ${path}`)
+      log('git_repository_manager: disposed (shutdown)', { path })
     }
     this.repos.clear()
   }

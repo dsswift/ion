@@ -27,6 +27,7 @@ import type { ResourceItem } from '../../../shared/types-engine'
 import { extensionCommandsByKey, dispatchActivityFoldByDispatchId } from './engine-event-slice-helpers'
 import { commitInstance } from '../conversation-instance'
 import { foldActivity, activityMessages, emptyActivityState } from '../../components/agent-dispatch-activity'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
 /**
  * handleCrossNormalizedEvent — cross-cutting NormalizedEvent handler (WI-001)
@@ -104,7 +105,7 @@ export function handleCrossNormalizedEvent(
   }
   if (event.type === 'engine_notification') {
     // Notification from extension ctx.notify(). Log-only — no store mutation.
-    console.log(`[engine_notification] title=${event.notificationTitle} level=${event.notificationLevel}`)
+    rInfo('event.notification', 'engine notification', { title: event.notificationTitle, level: event.notificationLevel })
     return true
   }
   if (event.type === 'dispatch_activity') {
@@ -120,7 +121,7 @@ export function handleCrossNormalizedEvent(
     const dispatchId = event.dispatchAgentId
     const convId = event.dispatchConversationId
     if (!dispatchId) {
-      console.warn(`[dispatch_activity] missing dispatchAgentId convId=${convId ?? ''} seq=${event.dispatchSeq} — dropping`)
+      rWarn('event.dispatch', 'missing dispatchAgentId, dropping', { conversation_id: convId ?? '', seq: event.dispatchSeq })
       return true
     }
     const prev = dispatchActivityFoldByDispatchId.get(dispatchId) ?? emptyActivityState()
@@ -137,7 +138,7 @@ export function handleCrossNormalizedEvent(
     dispatchActivityFoldByDispatchId.set(dispatchId, next)
     // Log both dispatchId and convId so a push/reconcile divergence is
     // diagnosable from desktop.log without ambiguity.
-    console.log(`[dispatch_activity] fold dispatchId=${dispatchId} convId=${convId ?? ''} kind=${event.dispatchActivityKind} seq=${event.dispatchSeq} toolId=${event.toolId ?? ''} branch=${branch}`)
+    rDebug('event.dispatch', 'dispatch activity fold', { dispatch_id: dispatchId, conversation_id: convId ?? '', kind: event.dispatchActivityKind, seq: event.dispatchSeq, tool: event.toolId ?? '', branch })
     const messages = activityMessages(next)
     set((state) => ({
       dispatchActivity: { ...state.dispatchActivity, [dispatchId]: messages },

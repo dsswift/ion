@@ -13,10 +13,11 @@ import { homedir } from 'os'
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/types'
 import { log as _log } from './logger'
-import { engineBridge } from './state'
+import { engineBridge, state } from './state'
+import { notifyAtvActiveTab } from './atv-window-manager'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 // ── Active session key tracking ────────────────────────────────────────────
@@ -43,12 +44,12 @@ export async function resubscribeSessionResourceKinds(): Promise<void> {
     log('resource_subscribe: no active session keys to resubscribe')
     return
   }
-  log(`resource_subscribe: resubscribing ${activeSessionKeys.size} active session key(s) after reconnect`)
+  log('resource_subscribe: resubscribing after reconnect', { count: activeSessionKeys.size })
   const keys = Array.from(activeSessionKeys)
   await Promise.allSettled(
     keys.map((key) =>
       subscribeToResourceKinds(key).catch((err) => {
-        log(`resource_subscribe: resubscribe error key=${key} err=${err}`)
+        log('resource_subscribe: resubscribe error', { key, error: String(err) })
       }),
     ),
   )
@@ -71,7 +72,7 @@ try {
     const data = JSON.parse(readFileSync(READ_STATE_PATH, 'utf-8'))
     if (Array.isArray(data)) {
       for (const id of data) persistedReadIds.add(id)
-      log(`resource-read-state: loaded ${persistedReadIds.size} read IDs from disk`)
+      log('resource_read_state: loaded from disk', { count: persistedReadIds.size })
     }
   }
 } catch { /* non-fatal: start fresh */ }
@@ -127,10 +128,10 @@ export async function subscribeToResourceKinds(key: string): Promise<void> {
   const kind = WILDCARD_RESOURCE_KIND
   const subKey = `${key}:${kind}`
   if (resourceSubscriptionIds.has(subKey)) {
-    log(`resource_subscribe: already wildcard-subscribed key=${key} — skipping`)
+    log('resource_subscribe: already subscribed', { key })
     return
   }
-  log(`resource_subscribe: wildcard key=${key} kind=${kind}`)
+  log('resource_subscribe: wildcard', { key, kind })
   const result = await engineBridge.request<{ subscriptionId: string }>(
     'resource_subscribe',
     { key, resourceKind: kind },
@@ -139,9 +140,9 @@ export async function subscribeToResourceKinds(key: string): Promise<void> {
     resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
     // Track this key so it can be resubscribed on engine reconnect.
     recordActiveSessionKey(key)
-    log(`resource_subscribe: ok key=${key} kind=${kind} subId=${result.data.subscriptionId}`)
+    log('resource_subscribe: ok', { key, kind, sub_id: result.data.subscriptionId })
   } else {
-    log(`resource_subscribe: failed key=${key} kind=${kind} err=${result.error ?? 'no data'}`)
+    log('resource_subscribe: failed', { key, kind, error: result.error ?? 'no data' })
   }
 }
 
@@ -149,19 +150,19 @@ export async function subscribeToGlobalResourceKinds(): Promise<void> {
   const kind = WILDCARD_RESOURCE_KIND
   const subKey = `global:${kind}`
   if (resourceSubscriptionIds.has(subKey)) {
-    log(`resource_subscribe_global: already wildcard-subscribed — skipping`)
+    log('resource_subscribe_global: already subscribed')
     return
   }
-  log(`resource_subscribe_global: wildcard kind=${kind}`)
+  log('resource_subscribe_global: wildcard', { kind })
   const result = await engineBridge.request<{ subscriptionId: string }>(
     'resource_subscribe',
     { key: '', resourceKind: kind, resourceGlobal: true },
   )
   if (result.ok && result.data?.subscriptionId) {
     resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
-    log(`resource_subscribe_global: ok kind=${kind} subId=${result.data.subscriptionId}`)
+    log('resource_subscribe_global: ok', { kind, sub_id: result.data.subscriptionId })
   } else {
-    log(`resource_subscribe_global: failed kind=${kind} err=${result.error ?? 'no data'}`)
+    log('resource_subscribe_global: failed', { kind, error: result.error ?? 'no data' })
   }
 }
 
@@ -177,7 +178,7 @@ const focusResourceId = `focus-${Date.now()}`
 
 function publishTabFocus(tabId: string): void {
   const sessionKey = tabId
-  log(`desktop.focus: publishing tabId=${tabId} sessionKey=${sessionKey}`)
+  log('desktop_focus: publishing', { tab_id: tabId, session_key: sessionKey })
 
   engineBridge.request('resource_publish', {
     key: '',
@@ -191,14 +192,24 @@ function publishTabFocus(tabId: string): void {
       createdAt: new Date().toISOString(),
     },
   }).catch((err: unknown) => {
-    log(`desktop.focus: publish failed err=${err}`)
+    log('desktop_focus: publish failed', { error: String(err) })
   })
 }
 
 export function wireTabFocusHandler(): void {
-  ipcMain.on(IPC.NOTIFY_TAB_FOCUS, (_event: Electron.IpcMainEvent, { tabId }: { tabId: string }) => {
-    publishTabFocus(tabId)
-  })
+  ipcMain.on(
+    IPC.NOTIFY_TAB_FOCUS,
+    (_event: Electron.IpcMainEvent, { tabId, engineProfileId }: { tabId: string; engineProfileId?: string | null }) => {
+      publishTabFocus(tabId)
+      // The Agent Team Visualizer tracks the active tab through this same
+      // notification: record it so an ATV window opened later targets the
+      // right tab, and push it (with cached state) to a live ATV window.
+      // engineProfileId scopes the ATV office seed per extension.
+      state.atvActiveTabId = tabId
+      state.atvActiveProfileId = engineProfileId ?? null
+      notifyAtvActiveTab(tabId)
+    },
+  )
 }
 
 // ── Mark-read publishing ────────────────────────────────────────────────────
@@ -209,7 +220,7 @@ export function wireTabFocusHandler(): void {
 // see the item as read.
 
 export async function publishResourceMarkRead(kind: string, resourceId: string): Promise<void> {
-  log(`resource: mark_read kind=${kind} id=${resourceId}`)
+  log('resource_mark_read', { kind, resource_id: resourceId })
   await engineBridge.request('resource_publish', {
     key: '',
     resourceKind: kind,
@@ -217,7 +228,7 @@ export async function publishResourceMarkRead(kind: string, resourceId: string):
     resourceOp: 'mark_read',
     resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
   }).catch((err: unknown) => {
-    log(`resource_mark_read: failed kind=${kind} id=${resourceId} err=${err}`)
+    log('resource_mark_read: failed', { kind, resource_id: resourceId, error: String(err) })
   })
 }
 
@@ -269,7 +280,7 @@ export function wireMarkResourceReadHandler(): void {
     } catch { /* non-fatal */ }
     const globalCount = items.filter(i => !i.conversationId).length
     const scopedCount = items.filter(i => !!i.conversationId).length
-    log(`resource: cold-load from disk: ${items.length} total (${globalCount} global, ${scopedCount} conversation-scoped)`)
+    log('resource_cold_load', { total: items.length, global: globalCount, scoped: scopedCount })
     return items
   })
 }
@@ -282,7 +293,7 @@ export function wireMarkResourceReadHandler(): void {
 // the item.
 
 export async function publishResourceDelete(kind: string, resourceId: string): Promise<void> {
-  log(`resource: delete kind=${kind} id=${resourceId}`)
+  log('resource_delete', { kind, resource_id: resourceId })
   await engineBridge.request('resource_publish', {
     key: '',
     resourceKind: kind,
@@ -290,7 +301,7 @@ export async function publishResourceDelete(kind: string, resourceId: string): P
     resourceOp: 'delete',
     resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
   }).catch((err: unknown) => {
-    log(`resource_delete: failed kind=${kind} id=${resourceId} err=${err}`)
+    log('resource_delete: failed', { kind, resource_id: resourceId, error: String(err) })
   })
 }
 

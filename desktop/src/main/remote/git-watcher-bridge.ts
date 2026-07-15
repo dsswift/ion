@@ -15,8 +15,8 @@ import { repositoryManager } from '../git/repositoryManager'
 import { broadcastGitChanges } from './git-broadcast'
 import type { GitEvent } from '../../shared/types-git-events'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 interface WatchedEntry {
@@ -29,12 +29,12 @@ let bridgeActive = false
 /** Start the bridge. Retains repos for the given initial directory set. */
 export function startGitWatcherBridge(initialDirs: Set<string> = new Set()): void {
   if (bridgeActive) {
-    log(`Git bridge already active (${watched.size} active dirs) — reconciling with new dirs`)
+    log('git_bridge: already active, reconciling', { watched_count: watched.size })
     reconcileGitWatchedDirectories(initialDirs)
     return
   }
   bridgeActive = true
-  log(`Git bridge start: initialDirs=${initialDirs.size}`)
+  log('git_bridge: start', { initial_dirs: initialDirs.size })
   reconcileGitWatchedDirectories(initialDirs)
 }
 
@@ -45,12 +45,12 @@ export function stopGitWatcherBridge(): void {
     return
   }
   const count = watched.size
-  log(`Git bridge stop: releasing ${count} active dirs`)
+  log('git_bridge: stop', { active_dirs: count })
   for (const [dir, entry] of watched) {
     const repo = repositoryManager.has(dir) ? repositoryManager.get(dir) : null
     if (repo) {
       repo.off('event', entry.listener)
-      log(`Git bridge release: ${dir}`)
+      log('git_bridge: release', { dir })
       repositoryManager.release(dir)
     }
   }
@@ -86,23 +86,23 @@ export function reconcileGitWatchedDirectories(directories: Set<string>): void {
 
   if (added.length === 0 && removed.length === 0) return
 
-  log(`Git bridge reconcile: +${added.length} added, -${removed.length} removed, ${watched.size + added.length - removed.length} active`)
+  log('git_bridge: reconcile', { added: added.length, removed: removed.length, active: watched.size + added.length - removed.length })
 
   for (const dir of added) {
     const listener = (_event: GitEvent): void => {
-      log(`Git bridge broadcast: ${dir} (trigger=watcher)`)
+      log('git_bridge: broadcast', { dir, trigger: 'watcher' })
       broadcastGitChanges(dir).catch((err: Error) =>
-        log(`Git bridge broadcast error for ${dir}: ${err.message}`)
+        log('git_bridge: broadcast error', { dir, error: err.message })
       )
     }
     const repo = repositoryManager.retain(dir)
-    log(`Git bridge retain: ${dir} (refCount=${repo.refCount})`)
+    log('git_bridge: retain', { dir, ref_count: repo.refCount })
     repo.on('event', listener)
     watched.set(dir, { listener })
     // Initial push so freshly connected devices get state immediately
-    log(`Git bridge broadcast: ${dir} (trigger=initial)`)
+    log('git_bridge: broadcast', { dir, trigger: 'initial' })
     broadcastGitChanges(dir).catch((err: Error) =>
-      log(`Git bridge broadcast error (initial) for ${dir}: ${err.message}`)
+      log('git_bridge: broadcast error initial', { dir, error: err.message })
     )
   }
 
@@ -113,7 +113,7 @@ export function reconcileGitWatchedDirectories(directories: Set<string>): void {
       if (repo) {
         repo.off('event', entry.listener)
         repositoryManager.release(dir)
-        log(`Git bridge release: ${dir} (refCount=${repo.refCount})`)
+        log('git_bridge: release', { dir, ref_count: repo.refCount })
       }
       watched.delete(dir)
     }

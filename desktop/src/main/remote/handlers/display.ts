@@ -3,8 +3,8 @@ import { state } from '../../state'
 import { readSettings, writeSettings } from '../../settings-store'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -45,7 +45,7 @@ export function readRemoteDisplay(): RemoteDisplayValue | null {
   const customIcon = typeof rd.customIcon === 'string' && ICON_IDENTIFIERS.has(rd.customIcon)
     ? rd.customIcon
     : null
-  log(`DISPLAY-READ: name=${customName === null ? 'null' : 'set'} icon=${customIcon ?? 'null'} ts=${updatedAt}`)
+  log('display_read', { has_name: customName !== null, icon: customIcon ?? '', ts: updatedAt })
   return { customName, customIcon, updatedAt }
 }
 
@@ -76,15 +76,15 @@ export function setRemoteDisplay(
     ? customIcon
     : (customIcon === null ? null : null) // unknown → null
   if (customIcon !== null && customIcon !== undefined && !ICON_IDENTIFIERS.has(customIcon)) {
-    log(`DISPLAY-SET: ${sourceTag} unknown icon "${customIcon}" — coercing to null`)
+    log('display_set: unknown icon, coercing to null', { source: sourceTag, icon: customIcon })
   }
 
   // LWW: accept only when incoming is at least as new as stored.
   if (stored && updatedAt < stored.updatedAt) {
-    log(`DISPLAY-SET: stale ${sourceTag} incoming=${updatedAt} stored=${stored.updatedAt} — rejecting`)
+    log('display_set: stale, rejecting', { source: sourceTag, incoming_ts: updatedAt, stored_ts: stored.updatedAt })
     // Reply to the sender only (if known) so they reconcile.
     if (source === 'ios' && sourceDeviceId) {
-      log(`DISPLAY-RECONCILE: device=${sourceDeviceId.slice(0, 8)} sending current ts=${stored.updatedAt}`)
+      log('display_reconcile: sending current to device', { device_id: sourceDeviceId.slice(0, 8), ts: stored.updatedAt })
       state.remoteTransport?.sendToDevice(sourceDeviceId, {
         type: 'desktop_remote_display',
         customName: stored.customName,
@@ -104,7 +104,7 @@ export function setRemoteDisplay(
   const settings = readSettings()
   settings.remoteDisplay = nextValue
   writeSettings(settings)
-  log(`DISPLAY-SET: ${sourceTag} name=${normalizedName === null ? 'cleared' : 'set'} icon=${normalizedIcon ?? 'cleared'} ts=${updatedAt} prevTs=${stored?.updatedAt ?? 0}`)
+  log('display_set', { source: sourceTag, has_name: normalizedName !== null, icon: normalizedIcon ?? '', ts: updatedAt, prev_ts: stored?.updatedAt ?? 0 })
 
   // Notify the renderer too so the desktop Settings UI updates without
   // round-tripping through a separate file read on next open. The renderer
@@ -114,13 +114,13 @@ export function setRemoteDisplay(
   try {
     state.mainWindow?.webContents.send('ion:remote-display-changed', nextValue)
   } catch (err) {
-    log(`DISPLAY-NOTIFY: renderer notify failed: ${(err as Error).message}`)
+    log('display_notify: renderer notify failed', { error: (err as Error).message })
   }
 
   // Broadcast to every connected paired phone (including the sender, which
   // treats the echo as a confirm ack).
   const connectedIds = state.remoteTransport?.getConnectedDeviceIds?.() ?? []
-  log(`DISPLAY-BROADCAST: n=${connectedIds.length} ts=${updatedAt}`)
+  log('display_broadcast', { count: connectedIds.length, ts: updatedAt })
   state.remoteTransport?.send({
     type: 'desktop_remote_display',
     customName: normalizedName,
@@ -136,9 +136,9 @@ export async function handleSetRemoteDisplay(
   cmd: Extract<RemoteCommand, { type: 'desktop_set_remote_display' }>,
   deviceId: string,
 ): Promise<void> {
-  log(`DISPLAY-CMD: from device=${deviceId.slice(0, 8)} name=${cmd.customName === null ? 'null' : 'set'} icon=${cmd.customIcon ?? 'null'} ts=${cmd.updatedAt}`)
+  log('display_cmd: received', { device_id: deviceId.slice(0, 8), has_name: cmd.customName !== null, icon: cmd.customIcon ?? '', ts: cmd.updatedAt })
   if (typeof cmd.updatedAt !== 'number' || cmd.updatedAt <= 0) {
-    log(`DISPLAY-CMD: rejecting device=${deviceId.slice(0, 8)} — invalid updatedAt=${cmd.updatedAt}`)
+    log('display_cmd: rejecting invalid updatedAt', { device_id: deviceId.slice(0, 8), ts: cmd.updatedAt })
     return
   }
   setRemoteDisplay(cmd.customName, cmd.customIcon, cmd.updatedAt, 'ios', deviceId)

@@ -33,6 +33,7 @@ import { useColors, spacing } from './theme'
 import { usePreferencesStore } from './preferences'
 import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
+import { initActiveTabNotifier } from './lib/active-tab-notifier'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -45,6 +46,35 @@ export default function App() {
   useTabRestoration()
   useEnginePermissionDenialBackfill()
   useClickThrough()
+
+  // Publish the active tab to the main process (desktop.focus resource +
+  // Agent Team Visualizer targeting) on startup and on every change.
+  useEffect(() => {
+    return initActiveTabNotifier()
+  }, [])
+
+  // Conversation-picker selections from the ATV window: switch the desktop
+  // tab so both surfaces stay on the same conversation.
+  useEffect(() => {
+    return window.ion.onAtvFocusTab((tabId) => {
+      useSessionStore.getState().selectTab(tabId)
+    })
+  }, [])
+
+  // Click-to-inspect from the ATV window: switch to the tab, then ask the
+  // agent panel to open that agent's dispatch detail (same as clicking the
+  // agent's row).
+  useEffect(() => {
+    return window.ion.onAtvFocusAgent((tabId, agentName) => {
+      useSessionStore.getState().selectTab(tabId)
+      // The orchestrator has no dispatch panel — it IS the main conversation,
+      // so switching the tab (with the overlay shown by main) is the whole
+      // action. Named agents additionally open their dispatch detail.
+      if (agentName !== '__orchestrator__') {
+        window.dispatchEvent(new CustomEvent('ion:open-agent-detail', { detail: { agentName } }))
+      }
+    })
+  }, [])
 
   // Listen for auto-update download notifications from the main process
   useEffect(() => {
@@ -142,17 +172,13 @@ export default function App() {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
     if (!tab) return false
     const dir = editorDirForTab(tab)
-    const isOpen = s.fileEditorOpenDirs.has(dir)
-    console.log('[App] editorOpen selector', { dir, isOpen, workingDir: tab.workingDirectory, worktreeRepo: tab.worktree?.repoPath, openDirs: [...s.fileEditorOpenDirs] })
-    return isOpen
+    return s.fileEditorOpenDirs.has(dir)
   })
   const editorDirState = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
     if (!tab) return undefined
     const dir = editorDirForTab(tab)
-    const state = s.fileEditorStates.get(dir)
-    console.log('[App] editorDirState selector', { dir, hasState: !!state, fileCount: state?.files.length, activeFileId: state?.activeFileId })
-    return state
+    return s.fileEditorStates.get(dir)
   })
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 

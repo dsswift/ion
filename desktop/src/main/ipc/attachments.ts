@@ -9,8 +9,8 @@ import { broadcast } from '../broadcast'
 import { showWindow, snapshotWindowState } from '../window-manager'
 import { log as _log } from '../logger'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'])

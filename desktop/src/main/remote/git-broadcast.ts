@@ -4,8 +4,8 @@ import { runGit } from '../git-runner'
 import { computeGraphLayout } from '../../shared/gitGraphLayout'
 import type { GitRef } from '../../shared/types'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Broadcast git changes to all connected devices. */
@@ -14,7 +14,7 @@ export async function broadcastGitChanges(directory: string): Promise<void> {
     try {
       await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
     } catch {
-      log(`broadcastGitChanges: ${directory} is not a git repo`)
+      log('git_changes: not a git repo', { dir: directory })
       state.remoteTransport?.send({ type: 'desktop_git_changes_response', directory, files: [], branch: '', isGitRepo: false, ahead: 0, behind: 0, stagedCount: 0, unstagedCount: 0 })
       return
     }
@@ -47,10 +47,10 @@ export async function broadcastGitChanges(directory: string): Promise<void> {
     }
     const stagedCount = files.filter(f => f.staged).length
     const unstagedCount = files.filter(f => !f.staged).length
-    log(`broadcastGitChanges: ${directory} branch=${branch} ahead=${ahead} behind=${behind} staged=${stagedCount} unstaged=${unstagedCount}`)
+    log('git_changes', { dir: directory, branch, ahead, behind, staged: stagedCount, unstaged: unstagedCount })
     state.remoteTransport?.send({ type: 'desktop_git_changes_response', directory, files, branch, isGitRepo: true, ahead, behind, stagedCount, unstagedCount })
   } catch (err) {
-    log(`broadcastGitChanges error for ${directory}: ${(err as Error).message}`)
+    log('git_changes error', { dir: directory, error: (err as Error).message })
   }
 }
 
@@ -60,7 +60,7 @@ export async function broadcastGitGraph(directory: string): Promise<void> {
     try {
       await runGit(directory, ['rev-parse', '--is-inside-work-tree'])
     } catch {
-      log(`broadcastGitGraph: ${directory} is not a git repo`)
+      log('git_graph: not a git repo', { dir: directory })
       state.remoteTransport?.send({ type: 'desktop_git_graph_response', directory, commits: [], isGitRepo: false, totalCount: 0 })
       return
     }
@@ -90,9 +90,9 @@ export async function broadcastGitGraph(directory: string): Promise<void> {
       connections: node.connections,
       passThroughLanes: node.passThroughLanes,
     }))
-    log(`broadcastGitGraph: ${directory} totalCount=${totalCount} commits=${commits.length}`)
+    log('git_graph', { dir: directory, total_count: totalCount, commits: commits.length })
     state.remoteTransport?.send({ type: 'desktop_git_graph_response', directory, commits, isGitRepo: true, totalCount, graphLayout })
   } catch (err) {
-    log(`broadcastGitGraph error for ${directory}: ${(err as Error).message}`)
+    log('git_graph error', { dir: directory, error: (err as Error).message })
   }
 }

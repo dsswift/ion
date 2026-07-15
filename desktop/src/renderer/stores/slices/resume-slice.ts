@@ -5,6 +5,7 @@ import { makeLocalTab, nextMsgId, initialPermissionMode } from '../session-store
 import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode } from '../conversation-instance'
 import { lastPendingCardTool, type PendingCardMessage } from '../../../shared/pending-card'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {
@@ -70,7 +71,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         const forkMode = effectivePermissionMode(source, get().conversationPanes)
         // Seed the forked tab's `main` pane with the carried-over scrollback +
         // restored denial. modelOverride carries from the source instance.
-        console.log(`[store] forkTab: source=${sourceTabId.slice(0, 8)} new=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.fork', 'fork tab', { source_tab: sourceTabId.slice(0, 8), new_tab: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
@@ -105,7 +106,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         ? [...tab.historicalSessionIds, oldSessionId]
         : [...tab.historicalSessionIds]
 
-      console.log(`[store] rewindToMessage: tabId=${tabId.slice(0, 8)}:main msgIdx=${idx} totalMsgs=${inst.messages.length} keepMsgs=${idx} oldSessionId=${oldSessionId?.slice(0, 16) ?? 'none'} historicalChainLen=${historicalSessionIds.length}`)
+      rInfo('session.rewind', 'rewind to message', { tab_id: tabId.slice(0, 8), msg_idx: idx, total_msgs: inst.messages.length, keep_msgs: idx, old_session_id: oldSessionId?.slice(0, 16) ?? '', historical_chain_len: historicalSessionIds.length })
 
       const rewoundMessages = inst.messages.slice(0, idx)
       const restoredDenied = buildRestoredDenied(rewoundMessages)
@@ -186,7 +187,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         }
         // Carry the source instance's permission mode onto the new pane instance.
         const forkMode = effectivePermissionMode(source, get().conversationPanes)
-        console.log(`[store] forkFromMessage: source=${tabId.slice(0, 8)} new=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.fork', 'fork from message', { source_tab: tabId.slice(0, 8), new_tab: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
@@ -218,7 +219,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
             history = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined)
             if (history.length > 0) break
           } catch (err) {
-            console.warn(`[resumeSession] loadSession attempt ${attempt + 1} failed:`, err)
+            rWarn('session.resume', 'loadSession attempt failed', { attempt: attempt + 1, error: String(err) })
           }
           if (attempt < 2) {
             await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
@@ -248,7 +249,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           groupId,
         }
         // Seed the resumed tab's `main` pane with the loaded scrollback + denial.
-        console.log(`[store] resumeSession: tab=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.resume', 'resume session', { tab_id: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
@@ -316,7 +317,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           restoredDenied = buildRestoredDenied(allMessages)
         }
 
-        console.log(`[loadSkeletonMessages] hydrated tab=${tabId.slice(0, 8)}:main msgs=${allMessages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.restore', 'skeleton messages hydrated', { tab_id: tabId.slice(0, 8), count: allMessages.length, restored_denied: !!restoredDenied })
         set((s) => ({
           conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
             ...i,
@@ -326,7 +327,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           })),
         }))
       } catch (err) {
-        console.warn(`[loadSkeletonMessages] failed for tab ${tabId.slice(0, 8)}:main:`, err)
+        rWarn('session.restore', 'skeleton load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
         // Hydrate with empty messages so the tab is usable
         set((s) => ({
           conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
@@ -380,7 +381,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           groupId,
         }
         // Seed the resumed tab's `main` pane with the loaded chain scrollback.
-        console.log(`[store] resumeSessionWithChain: tab=${tab.id.slice(0, 8)}:main msgs=${allMessages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.resume', 'resume session with chain', { tab_id: tab.id.slice(0, 8), count: allMessages.length, restored_denied: !!restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({

@@ -5,13 +5,13 @@ import { log as _log } from '../logger'
 import { state, sessionPlane, bashProcesses } from '../state'
 import { getCliEnv } from '../cli-env'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function registerBashIpc(): void {
   ipcMain.handle(IPC.EXECUTE_BASH, async (_event, { id, command, cwd }: { id: string; command: string; cwd: string }) => {
-    log(`IPC EXECUTE_BASH [${id}]: ${command} (cwd=${cwd})`)
+    log('execute_bash', { id, command, cwd })
     return new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
       const shell = process.env.SHELL || '/bin/bash'
       const child = spawn(shell, ['-lc', command], { cwd, env: getCliEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
@@ -44,7 +44,7 @@ export function registerBashIpc(): void {
   ipcMain.on(IPC.CANCEL_BASH, (_event, id: string) => {
     const child = bashProcesses.get(id)
     if (child) {
-      log(`IPC CANCEL_BASH [${id}]: sending SIGINT`)
+      log('cancel_bash: sending SIGINT', { id })
       child.kill('SIGINT')
     }
   })

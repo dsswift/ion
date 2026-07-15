@@ -20,8 +20,8 @@ import { homedir } from 'os'
 import { log as _log } from './logger'
 import { state } from './state'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -66,7 +66,7 @@ export function injectDiskResourcesIfEmpty(kind: string, subId: string, key: str
 
   if (diskItems.length === 0) return
 
-  log(`resource: disk-seed kind=${kind} subId=${subId} key=${key} items=${diskItems.length} — injecting into renderer store`)
+  log('resource_disk_seed', { kind, sub_id: subId, key, items: diskItems.length })
 
   // Inject via executeJavaScript. Applies read state from persisted item.read
   // flags. Mirrors applyResourceSnapshot but sourced from disk, not engine events.
@@ -99,8 +99,8 @@ export function injectDiskResourcesIfEmpty(kind: string, subId: string, key: str
       } catch(e) { return 'error:' + String(e); }
     })()
   `).then((result: unknown) => {
-    log(`resource: disk-seed result kind=${kind} subId=${subId} result=${result}`)
+    log('resource_disk_seed: result', { kind, sub_id: subId, result })
   }).catch((err: unknown) => {
-    log(`resource: disk-seed executeJavaScript error kind=${kind}: ${err}`)
+    log('resource_disk_seed: executeJavaScript error', { kind, error: String(err) })
   })
 }

@@ -8,8 +8,8 @@
 import { EventEmitter } from 'events'
 import { log as _log } from '../logger'
 
-function log(msg: string): void {
-  _log('Discovery', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('Discovery', msg, fields)
 }
 
 export const RELAY_SERVICE_TYPE = '_ion-relay._tcp'
@@ -58,7 +58,7 @@ export class RelayDiscovery extends EventEmitter {
 
         // Deduplicate by id.
         if (!this._relays.some((r) => r.id === relay.id)) {
-          log(`found relay: ${relay.name} at ${relay.host}:${relay.port}`)
+          log('discovery: found relay', { name: relay.name, host: relay.host, port: relay.port })
           this._relays.push(relay)
           this.emit('relays-changed', this._relays)
         }
@@ -67,7 +67,7 @@ export class RelayDiscovery extends EventEmitter {
       this._browsing = true
       log('started browsing for _ion-relay._tcp')
     } catch (err) {
-      log(`Bonjour unavailable: ${(err as Error).message}`)
+      log('discovery: bonjour unavailable', { error: (err as Error).message })
     }
   }
 

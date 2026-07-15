@@ -9,10 +9,12 @@ import { reconcileActivity } from './agent-dispatch-activity'
 import { mapConversationMessages } from './agent-conversation-mapper'
 import { AgentExpandedView } from './AgentExpandedView'
 import { AgentDetailPanel } from './AgentDetailPanel'
+import { useAgentDetailOpener } from '../hooks/useAgentDetailOpener'
 import { useAgentPanelResize, DEFAULT_PANEL_HEIGHT } from './agent-panel-resize'
 import type { AgentStateUpdate } from '../../shared/types'
 import type { Message } from '../../shared/types'
 import type { DispatchInfo, DispatchTelemetryEntry } from '../../shared/types-engine'
+import { rDebug, rInfo, rError } from '../rendererLogger'
 
 interface Props {
   agents: AgentStateUpdate[]
@@ -136,13 +138,13 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     if (!convId) return
     setConvLoading(prev => { const next = new Map(prev); next.set(convId, true); return next })
     try {
-      console.log(`[AgentPanel] fetching conversation: convId=${convId}`)
+      rDebug('agent-panel', 'fetching conversation', { conversation_id: convId })
       const data = await window.ion.getConversation(convId, 0, 200)
       const msgs: Message[] = mapConversationMessages(data.messages || [])
-      console.log(`[AgentPanel] loaded ${msgs.length} messages for convId=${convId}`)
+      rDebug('agent-panel', 'loaded conversation messages', { conversation_id: convId, count: msgs.length })
       setConvMessages(prev => { const next = new Map(prev); next.set(convId, msgs); return next })
     } catch (err) {
-      console.error(`[AgentPanel] loadConversation error:`, err)
+      rError('agent-panel', 'loadConversation error', { error: String(err) })
     } finally {
       setConvLoading(prev => { const next = new Map(prev); next.set(convId, false); return next })
     }
@@ -280,6 +282,9 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     }
     return { dispatches, dispIdx, slicedMsgs: mergedMsgs, isLoading }
   }, [selectedDispatch, convMessages, convLoading, dispatchActivity])
+
+  // Click-to-inspect from the Agent Team Visualizer (see the hook).
+  useAgentDetailOpener(agents, (name, agent) => toggleAgent(name, agent))
 
   const toggleAgent = (name: string, agent: AgentStateUpdate) => {
     // Per-agent UI state (expand/select/popup) is keyed by the agent's most

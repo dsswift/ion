@@ -27,7 +27,7 @@ import { previewExport, runExport, type ExportSources } from '../conversation-ba
 import { previewRestore, runRestore, type ConflictPolicy } from '../conversation-backup/restore'
 import type { ExportScope } from '../conversation-backup/manifest'
 
-function log(msg: string): void { _log('backup-ipc', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('backup-ipc', msg, fields) }
 
 function buildExportSources(): ExportSources {
   const home = join(homedir(), '.ion')
@@ -51,7 +51,7 @@ function emitProgress(current: number, total: number, label: string): void {
     try {
       win.webContents.send(IPC.CONVERSATION_BACKUP_PROGRESS, { current, total, label })
     } catch (err: any) {
-      log(`emitProgress: send failed err=${err.message}`)
+      log('emit_progress: send failed', { error: err.message })
     }
   }
 }
@@ -61,10 +61,10 @@ export function registerConversationBackupIpc(): void {
     try {
       const sources = buildExportSources()
       const preview = previewExport({ scope, sources })
-      log(`export preview: scope=${scope} tabs=${preview.tabCount ?? 'n/a'} conversations=${preview.conversationCount} uncompressed=${preview.totalUncompressedBytes}`)
+      log('export_preview', { scope, tab_count: preview.tabCount ?? 'n/a', conversation_count: preview.conversationCount, total_bytes: preview.totalUncompressedBytes })
       return { ok: true, ...preview }
     } catch (err: any) {
-      log(`export preview failed: ${err.message}`)
+      log('export_preview: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -107,7 +107,7 @@ export function registerConversationBackupIpc(): void {
       })
       return result
     } catch (err: any) {
-      log(`export failed: ${err.message}`)
+      log('export: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -135,7 +135,7 @@ export function registerConversationBackupIpc(): void {
       const preview = await previewRestore(sourcePath)
       return { ...preview, sourcePath }
     } catch (err: any) {
-      log(`restore preview failed: ${err.message}`)
+      log('restore_preview: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -164,7 +164,7 @@ export function registerConversationBackupIpc(): void {
       })
       return result
     } catch (err: any) {
-      log(`restore failed: ${err.message}`)
+      log('restore: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })

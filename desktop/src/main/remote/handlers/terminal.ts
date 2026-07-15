@@ -5,8 +5,8 @@ import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function handleTerminalInput(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_input' }>): void {
@@ -44,7 +44,7 @@ export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { ty
       })
     }
   } catch (err) {
-    log(`terminal_add_instance error: ${(err as Error).message}`)
+    log('terminal_add_instance error', { error: (err as Error).message })
   }
 }
 
@@ -62,7 +62,7 @@ export async function handleTerminalRemoveInstance(cmd: Extract<RemoteCommand, {
     terminalManager.destroy(`${cmd.tabId}:${cmd.instanceId}`)
     state.remoteTransport?.send({ type: 'desktop_terminal_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
   } catch (err) {
-    log(`terminal_remove_instance error: ${(err as Error).message}`)
+    log('terminal_remove_instance error', { error: (err as Error).message })
   }
 }
 
@@ -109,7 +109,7 @@ export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, 
       })
     }
   } catch (err) {
-    log(`request_terminal_snapshot error: ${(err as Error).message}`)
+    log('request_terminal_snapshot error', { error: (err as Error).message })
   }
 }
 
@@ -125,7 +125,7 @@ export async function handleTerminalSelectInstance(cmd: Extract<RemoteCommand, {
       })()
     `)
   } catch (err) {
-    log(`terminal_select_instance error: ${(err as Error).message}`)
+    log('terminal_select_instance error', { error: (err as Error).message })
   }
 }
 

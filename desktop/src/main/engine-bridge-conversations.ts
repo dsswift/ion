@@ -2,7 +2,7 @@ import type { EngineBridge } from './engine-bridge'
 import type { DiscoveredCommand, EngineDiscoveredCommand } from '../shared/types'
 import { log as _log } from './logger'
 
-function log(msg: string): void { _log('engine-bridge', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-bridge', msg, fields) }
 
 /**
  * Conversation-data RPC helpers for the engine bridge.
@@ -31,14 +31,14 @@ function log(msg: string): void { _log('engine-bridge', msg) }
 
 export async function listStoredSessions(bridge: EngineBridge, limit?: number): Promise<any[]> {
   await bridge.connect()
-  log(`listStoredSessions: limit=${limit ?? 50}`)
+  log('list_stored_sessions', { limit: limit ?? 50 })
   const result = await bridge._sendWithData<any[]>({ cmd: 'list_stored_sessions', limit: limit || 50 })
   return result.data || []
 }
 
 export async function loadSessionHistory(bridge: EngineBridge, sessionId: string): Promise<any[]> {
   await bridge.connect()
-  log(`loadSessionHistory: sessionId=${sessionId}`)
+  log('load_session_history', { session_id: sessionId })
   const result = await bridge._sendWithData<any[]>({ cmd: 'load_session_history', key: sessionId })
   return result.data || []
 }
@@ -67,7 +67,7 @@ export async function loadSessionHistory(bridge: EngineBridge, sessionId: string
  */
 export async function discoverSlashCommands(bridge: EngineBridge, workingDir: string, claudeCompat: boolean): Promise<DiscoveredCommand[]> {
   await bridge.connect()
-  log(`discoverSlashCommands: path=${workingDir} claudeCompat=${claudeCompat}`)
+  log('discover_slash_commands', { path: workingDir, claude_compat: claudeCompat })
   const result = await bridge._sendWithData<EngineDiscoveredCommand[]>({
     cmd: 'discover_slash_commands',
     path: workingDir,
@@ -76,7 +76,7 @@ export async function discoverSlashCommands(bridge: EngineBridge, workingDir: st
     config: { claudeCompat },
   })
   const raw = result.data || []
-  log(`discoverSlashCommands: path=${workingDir} count=${raw.length} ok=${result.ok}`)
+  log('discover_slash_commands: done', { path: workingDir, count: raw.length, ok: result.ok })
   return raw.map((c): DiscoveredCommand => {
     // The engine's source taxonomy is richer than the desktop's origin/scope
     // split. Map skills to the skill source; everything else is a command.
@@ -101,17 +101,17 @@ export async function discoverSlashCommands(bridge: EngineBridge, workingDir: st
 
 export async function loadChainHistory(bridge: EngineBridge, sessionIds: string[]): Promise<any[]> {
   await bridge.connect()
-  log(`loadChainHistory: count=${sessionIds.length} first=${sessionIds[0] ?? 'none'}`)
+  log('load_chain_history', { count: sessionIds.length })
   const result = await bridge._sendWithData<any[]>({ cmd: 'load_session_history', sessionIds })
   return result.data || []
 }
 
 export async function getConversation(bridge: EngineBridge, conversationId: string, offset = 0, limit = 50): Promise<any> {
   await bridge.connect()
-  log(`getConversation: conversationId=${conversationId} offset=${offset} limit=${limit}`)
+  log('get_conversation', { conversation_id: conversationId, offset, limit })
   const result = await bridge._sendWithData<any>({ cmd: 'get_conversation', key: conversationId, offset, limit })
   const data = result.data || { messages: [], total: 0, hasMore: false }
-  log(`getConversation: result conversationId=${conversationId} messages=${data.messages?.length ?? 0} total=${data.total ?? 0}`)
+  log('get_conversation: result', { conversation_id: conversationId, messages: data.messages?.length ?? 0, total: data.total ?? 0 })
   return data
 }
 
@@ -128,19 +128,19 @@ export async function getConversation(bridge: EngineBridge, conversationId: stri
  */
 export async function clearConversationFile(bridge: EngineBridge, conversationId: string): Promise<void> {
   await bridge.connect()
-  log(`clearConversationFile: conversationId=${conversationId}`)
+  log('clear_conversation_file', { conversation_id: conversationId })
   await bridge._sendWithResult({ cmd: 'clear_conversation_file', key: conversationId })
 }
 
 export async function saveSessionLabel(bridge: EngineBridge, sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
   await bridge.connect()
-  log(`saveSessionLabel: sessionId=${sessionId} labelLen=${label.length}`)
+  log('save_session_label', { session_id: sessionId, label_len: label.length })
   return bridge._sendWithResult({ cmd: 'save_session_label', key: sessionId, label })
 }
 
 export async function generateTitle(bridge: EngineBridge, text: string): Promise<string> {
   await bridge.connect()
-  log(`generateTitle: textLen=${text.length}`)
+  log('generate_title', { text_len: text.length })
   const result = await bridge._sendWithData<{ title: string }>({ cmd: 'generate_title', text })
   return result.data?.title || ''
 }
@@ -153,6 +153,6 @@ export async function migrateConversation(
   sourceDir: string,
 ): Promise<{ ok: boolean; error?: string; data?: { newSessionId: string; outputPath: string; messageCount: number; contentHash: string } }> {
   await bridge.connect()
-  log(`migrateConversation: sessionId=${sessionId} targetFormat=${targetFormat} targetDir=${targetDir} sourceDir=${sourceDir}`)
+  log('migrate_conversation', { session_id: sessionId, target_format: targetFormat, target_dir: targetDir, source_dir: sourceDir })
   return bridge._sendWithData({ cmd: 'migrate_conversation', key: sessionId, text: targetFormat, message: targetDir, args: sourceDir })
 }

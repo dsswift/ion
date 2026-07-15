@@ -19,7 +19,6 @@ export const IPC = {
   ENGINE_IS_REMOTE: 'ion:engine-is-remote',
   SELECT_EXTENSION_FILES: 'ion:select-extension-files',
   OPEN_EXTERNAL: 'ion:open-external',
-  OPEN_IN_VSCODE: 'ion:open-in-vscode',
   ATTACH_FILES: 'ion:attach-files',
   ATTACH_FILE_BY_PATH: 'ion:attach-file-by-path',
   TAKE_SCREENSHOT: 'ion:take-screenshot',
@@ -243,6 +242,7 @@ export const IPC = {
   ENGINE_DIALOG_RESPONSE: 'ion:engine-dialog-response',
   ENGINE_COMMAND: 'ion:engine-command',
   ENGINE_STOP: 'ion:engine-stop',
+  ENGINE_BRANCH_BEFORE: 'ion:engine-branch-before',
   ENGINE_EVENT: 'ion:engine-event',
   ENGINE_REMAP_SESSION: 'ion:engine-remap-session',
   ENGINE_BROADCAST_HISTORY: 'ion:engine-broadcast-history',
@@ -267,6 +267,11 @@ export const IPC = {
   OAUTH_DEVICE_CODE: 'ion:oauth-device-code',
   OAUTH_DEVICE_POLL: 'ion:oauth-device-poll',
 
+  // Entra OIDC (telemetry auth — Feature 0001 Part F)
+  ENTRA_SIGN_IN: 'ion:entra-sign-in',
+  ENTRA_SIGN_OUT: 'ion:entra-sign-out',
+  ENTRA_IDENTITY: 'ion:entra-identity',
+
   // Auto-update
   INSTALL_UPDATE: 'ion:install-update',
   UPDATE_DOWNLOADED: 'ion:update-downloaded',
@@ -275,4 +280,53 @@ export const IPC = {
   STREAM_EVENT: 'ion:stream-event',
   RUN_COMPLETE: 'ion:run-complete',
   RUN_ERROR: 'ion:run-error',
+
+  // Event-driven tab metadata delta push (renderer → main → iOS)
+  // Fired by tab-slice.ts after any tab field change (title, customTitle, groupId)
+  // so the main process can push a lightweight desktop_tab_meta delta over the
+  // remote transport without waiting for the next 5 s snapshot poll tick.
+  TAB_META_CHANGED: 'ion:tab-meta-changed',
+
+  // Structured renderer-side logging (renderer → main). The main process
+  // stamps component=desktop and forwards to the desktop logger.
+  LOG_WRITE: 'log:write',
+
+  // Agent Team Visualizer (ATV) — secondary floating window
+  ATV_OPEN: 'atv:open',
+  ATV_GET_STATE: 'atv:get-state',
+  ATV_ACTIVE_TAB: 'atv:active-tab',
+  ATV_GET_SETTINGS: 'atv:get-settings',
+  ATV_SET_SETTING: 'atv:set-setting',
+  ATV_LIST_TABS: 'atv:list-tabs',
+  ATV_FOCUS_TAB: 'atv:focus-tab',
+  ATV_FOCUS_AGENT: 'atv:focus-agent',
+  ATV_LIST_THEMES: 'atv:list-themes',
+  ATV_READ_THEME_BUNDLE: 'atv:read-theme-bundle',
+  ATV_READ_THEME_ASSET: 'atv:read-theme-asset',
+  // Main → overlay renderer push: the ATV window opened/closed (drives the
+  // launcher button's active indicator).
+  ATV_WINDOW_STATE: 'atv:window-state',
+  // Mirror-store action forwarding: ATV renderer → main (validated against
+  // FORWARDED_ACTIONS) → overlay renderer, which executes on the owner store.
+  ATV_FORWARD_ACTION: 'atv:forward-action',
+  ATV_EXEC_ACTION: 'atv:exec-action',
+  // Owner-published tab-metadata snapshot: owner renderer → main (publish),
+  // main → ATV window (push), ATV → main (boot pull).
+  ATV_PUBLISH_TABS_SYNC: 'atv:publish-tabs-sync',
+  ATV_TABS_SYNC: 'atv:tabs-sync',
+  ATV_GET_TABS_SYNC: 'atv:get-tabs-sync',
+  // Main → ATV push: a permission was answered on SOME surface (overlay,
+  // iOS, or ATV) — clear it from the mirror queue and the canvas bubble.
+  ATV_PERMISSION_RESOLVED: 'atv:permission-resolved',
+  // ATV → main: surface the overlay glass (palette cross-link).
+  ATV_SHOW_OVERLAY: 'atv:show-overlay',
+  // ATV → main: save a composed office snapshot PNG via the save dialog.
+  ATV_EXPORT_IMAGE: 'atv:export-image',
+  // ATV → main: live per-tab summaries for the campus view.
+  ATV_GET_ALL_STATUS: 'atv:get-all-status',
+  // ATV → main: save a recorded office clip (webm) via the save dialog.
+  ATV_EXPORT_VIDEO: 'atv:export-video',
+  // Main → ATV push: a user prompt was submitted (any surface) — the mirror
+  // inserts it so its transcript matches the owner's optimistic insert.
+  ATV_USER_MESSAGE_ECHO: 'atv:user-message-echo',
 } as const

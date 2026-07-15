@@ -33,8 +33,8 @@ import { persistAndBroadcastSettings } from '../../settings-broadcast'
 import { broadcast } from '../../broadcast'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Wire-level handler for the `set_desktop_setting` command from iOS. */
@@ -48,12 +48,12 @@ export async function handleSetDesktopSetting(
     // the desktop's allowlist (the iOS UI shouldn't ever send a key
     // that wasn't in the most recent snapshot). Refusing the write is
     // safer than guessing what to do with a name we don't recognize.
-    log(`SETTINGS-CMD: rejecting ${tag} — unknown key`)
+    log('settings_cmd: rejecting unknown key', { tag })
     return
   }
   const validationError = validateSettingValue(cmd.key, cmd.value)
   if (validationError) {
-    log(`SETTINGS-CMD: rejecting ${tag} — ${validationError}`)
+    log('settings_cmd: rejecting validation error', { tag, error: validationError })
     return
   }
 
@@ -68,9 +68,9 @@ export async function handleSetDesktopSetting(
     // Without this, iOS-originated writes only land on disk — the
     // renderer keeps the stale in-memory value until the next restart.
     broadcast('ion:settings-changed', cmd.key, cmd.value)
-    log(`SETTINGS-CMD: applied ${tag}`)
+    log('settings_cmd: applied', { tag })
   } catch (err) {
-    log(`SETTINGS-CMD: write failed ${tag} err=${err}`)
+    log('settings_cmd: write failed', { tag, error: String(err) })
     return
   }
 }

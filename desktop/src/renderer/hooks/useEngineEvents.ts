@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { IPC, type NormalizedEvent, type ImageAttachmentPayload } from '../../shared/types'
+import { rTrace, rWarn, rDebug } from '../rendererLogger'
 
 /**
  * Subscribes to the single normalized-event stream (ion:normalized-event) and
@@ -33,20 +34,20 @@ export function useEngineEvents() {
 
       // Flush all accumulated text per tab in one go
       for (const [tabId, text] of buffer) {
-        console.debug(`[DIAG] flushing text_chunk: tab=${tabId} flush_len=${text.length}`)
+        rTrace('event.stream', 'flushing text_chunk', { tab_id: tabId, flush_len: text.length })
         handleNormalizedEvent(tabId, { type: 'text_chunk', text } as NormalizedEvent)
       }
       buffer.clear()
     }
 
-    console.debug('[DIAG] useEngineEvents: registering onEvent handler')
+    rDebug('event.stream', 'registering onEvent handler')
     const unsubEvent = window.ion.onEvent((tabId, event) => {
       if (event.type === 'text_chunk') {
         // Buffer text chunks and flush on next animation frame
         const buffer = chunkBufferRef.current
         const existing = buffer.get(tabId) || ''
         buffer.set(tabId, existing + (event as any).text)
-        console.debug(`[DIAG] text_chunk buffered: tab=${tabId} chunk_len=${(event as any).text?.length} buffer_len=${buffer.get(tabId)?.length}`)
+        rTrace('event.stream', 'text_chunk buffered', { tab_id: tabId, chunk_len: (event as any).text?.length, buffer_len: buffer.get(tabId)?.length })
 
         if (!rafIdRef.current) {
           rafIdRef.current = requestAnimationFrame(flushChunks)
@@ -88,7 +89,7 @@ export function useEngineEvents() {
 
     const unsubSkill = window.ion.onSkillStatus((status) => {
       if (status.state === 'failed') {
-        console.warn(`[Ion] Skill install failed: ${status.name} — ${status.error}`)
+        rWarn('event.skill', 'skill install failed', { name: status.name, error: status.error })
       }
     })
 
@@ -130,7 +131,7 @@ export function useEngineEvents() {
         if (tab) {
           if (tab.groupPinned) {
             const wouldMoveTo = data.mode === 'plan' ? planningGroupId : inProgressGroupId
-            console.log(`[auto-move] suppressed: tab=${data.tabId.slice(0, 8)} pinned=true currentGroup=${tab.groupId ?? 'none'} wouldMoveTo=${wouldMoveTo ?? 'none'}`)
+            rDebug('auto-move', 'suppressed: tab pinned', { tab_id: data.tabId.slice(0, 8), current_group: tab.groupId ?? '', would_move_to: wouldMoveTo ?? '' })
           } else if (data.mode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
             useSessionStore.getState().moveTabToGroup(data.tabId, planningGroupId)
           } else if (data.mode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
@@ -214,7 +215,7 @@ export function useEngineEvents() {
     window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
 
     return () => {
-      console.debug('[DIAG] useEngineEvents: cleanup — removing handlers')
+    rDebug('event.stream', 'cleanup: removing handlers')
       unsubEvent()
       unsubStatus()
       unsubError()
