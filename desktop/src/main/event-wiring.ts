@@ -415,6 +415,13 @@ export function wireEngineBridgeEvents(): void {
         if (event.type === 'engine_message_end' || event.type === 'engine_tool_start') {
           flushKeyDeltas(key)
         }
+        // engine_stream_reset discards the failed attempt's partial output on
+        // every client. Any batched-but-unsent text for this key belongs to
+        // that discarded attempt — DROP it (do not flush) so the 16ms timer
+        // can't deliver stale pre-reset text to iOS after the reset event.
+        if (event.type === 'engine_stream_reset') {
+          pendingTextDeltas.delete(key)
+        }
         // Spread order matters (same hazard documented above for the thinking
         // path): `...event` carries the engine's own `type: 'engine_*'`, so it
         // MUST come BEFORE the computed wire type or it clobbers it back to the

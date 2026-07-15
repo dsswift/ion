@@ -39,7 +39,7 @@ export type EngineEvent =
   // may pick their own keys (namespace as `<extensionName>:<messageKey>`).
   | { type: 'engine_harness_message'; message: string; source?: string; metadata?: Record<string, unknown> }
   | { type: 'engine_text_delta'; text: string }
-  | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
+  | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number; entryId?: string; userEntryId?: string } }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
   // engine_image_content — a single image produced during a run, either

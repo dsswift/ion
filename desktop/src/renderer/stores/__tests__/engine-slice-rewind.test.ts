@@ -117,14 +117,17 @@ const INTERLEAVED = [
 ]
 
 let broadcastSpy: ReturnType<typeof vi.fn>
+let branchBeforeSpy: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   broadcastSpy = vi.fn(async () => {})
+  branchBeforeSpy = vi.fn(async () => {})
   ;(globalThis as any).window = {
     ion: {
       engineStop: vi.fn(async () => {}),
       engineStart: vi.fn(async () => ({ ok: true })),
       engineBroadcastHistory: broadcastSpy,
+      engineBranchBefore: branchBeforeSpy,
     },
   }
 })
@@ -179,6 +182,44 @@ describe('rewindEngineInstance — broadcast after restart', () => {
     const { slice } = buildHarness(INTERLEAVED)
     slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
     // engineStop → engineStart → engineBroadcastHistory chain is async; flush.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(broadcastSpy).toHaveBeenCalledWith('tab1', 'inst1')
+  })
+})
+
+describe('rewindEngineInstance — tree-native branch on rebound conversations', () => {
+  // The rewind restart does NOT guarantee a fresh conversation: a bound tab
+  // rebinds the SAME conversation, and the resubmit then appended a duplicate
+  // of the rewound turn after the old leaf (forensic case: the same slash
+  // invocation persisted twice, chained). With a canonical engine entry id as
+  // the target, the rewind must branch the engine tree to before the target.
+  const CANONICAL = [
+    { id: 'aa11bb22', role: 'user', content: 'first prompt', timestamp: 1 },
+    { id: 'cc33dd44', role: 'assistant', content: 'reply', timestamp: 2 },
+    { id: 'ee55ff66', role: 'user', content: 'second prompt', timestamp: 3 },
+  ]
+
+  it('calls engineBranchBefore with the canonical target entry id', async () => {
+    const { slice } = buildHarness(CANONICAL)
+    slice.rewindEngineInstance('tab1', 'inst1', 'ee55ff66')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(branchBeforeSpy).toHaveBeenCalledWith('tab1', 'ee55ff66')
+    // Broadcast still happens after the branch resolves.
+    expect(broadcastSpy).toHaveBeenCalledWith('tab1', 'inst1')
+  })
+
+  it('skips the branch for non-canonical (local) message ids', async () => {
+    const { slice } = buildHarness(INTERLEAVED)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(branchBeforeSpy).not.toHaveBeenCalled()
+    expect(broadcastSpy).toHaveBeenCalledWith('tab1', 'inst1')
+  })
+
+  it('a branch_before rejection (fresh conversation) does not block the broadcast', async () => {
+    branchBeforeSpy.mockRejectedValueOnce(new Error('entry not found'))
+    const { slice } = buildHarness(CANONICAL)
+    slice.rewindEngineInstance('tab1', 'inst1', 'ee55ff66')
     await new Promise((r) => setTimeout(r, 0))
     expect(broadcastSpy).toHaveBeenCalledWith('tab1', 'inst1')
   })

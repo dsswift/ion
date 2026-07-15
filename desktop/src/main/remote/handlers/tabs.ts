@@ -10,7 +10,8 @@ import { getRemoteTabStates } from '../snapshot'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { sendSync } from './tabs-sync'
 import { forceSyncSnapshot } from '../snapshot-polling'
-import { loadConversationFromDisk, MAX_PAGE_MESSAGES } from './tabs-disk-fallback'
+import { resolveTabSessionChain, paginateHistory, planPathFromHistory, toRemoteMessage } from './tabs-session-chain'
+import { mapSessionHistory } from '../../../shared/session-message-mapper'
 import { shouldServeLoad } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
 import type { RemoteCommand } from '../protocol'
@@ -118,12 +119,16 @@ async function createTabFromCommand(
   try {
     const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const args = ["'" + escaped + "'", ...defaultArgs].join(', ')
+    // The store creators (createTabInDirectory / createTerminalTab) are async.
+    // await INSIDE the IIFE so the activeTabId restore runs after the tab id is
+    // minted rather than racing the unresolved promise; executeJavaScript
+    // resolves the returned promise to the string id.
     const tabId = await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
+      (async function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
         var prev = store.getState().activeTabId;
-        var id = store.getState().${storeMethod}(${args});
+        var id = await store.getState().${storeMethod}(${args});
         store.setState({ activeTabId: prev });
         return id;
       })()
@@ -135,17 +140,53 @@ async function createTabFromCommand(
   }
 }
 
-function notifyTabCreated(tabId: string): void {
+function notifyTabCreated(tabId: string, clientCmdId?: string): void {
   setTimeout(async () => {
     try {
       const { tabs } = await getRemoteTabStates()
       const newTab = tabs.find((t: any) => t.id === tabId)
-      if (newTab) state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab })
+      if (newTab) state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab, clientCmdId })
     } catch {}
   }, 500)
 }
 
+// Idempotency for the iOS confirm-or-resend loop. iOS attaches a `clientCmdId`
+// to each create command and resends it if no `desktop_tab_created` echo comes
+// back (its transport can silently wedge after a background/resume cycle, so a
+// locally-successful send is not proof of delivery). Without dedup a resend of
+// a create that actually landed would spawn a duplicate tab. We remember the
+// clientCmdId→tabId mapping and, on a repeat, re-emit the existing tab instead
+// of creating another. Bounded FIFO so the map can't grow unbounded across a
+// long-lived desktop session.
+const recentCreatesByClientCmdId = new Map<string, string>()
+const RECENT_CREATES_CAP = 256
+
+function rememberCreate(clientCmdId: string, tabId: string): void {
+  recentCreatesByClientCmdId.set(clientCmdId, tabId)
+  while (recentCreatesByClientCmdId.size > RECENT_CREATES_CAP) {
+    const oldest = recentCreatesByClientCmdId.keys().next().value
+    if (oldest === undefined) break
+    recentCreatesByClientCmdId.delete(oldest)
+  }
+}
+
+// Returns true if this is a duplicate delivery of a create we already served.
+// On a duplicate we re-emit the created tab (the client's confirmation was
+// lost, not its request) and the caller returns without creating a new tab.
+function handleDuplicateCreate(clientCmdId: string | undefined): boolean {
+  if (!clientCmdId) return false
+  const existing = recentCreatesByClientCmdId.get(clientCmdId)
+  if (!existing) return false
+  log('handle_create_tab: duplicate clientCmdId, re-emitting existing tab', { client_cmd_id: clientCmdId, tab_id: existing })
+  notifyTabCreated(existing, clientCmdId)
+  return true
+}
+
 export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_tab' }>): Promise<void> {
+  // Idempotency: a resend of a create we already served re-emits the existing
+  // tab rather than making a duplicate. See handleDuplicateCreate.
+  if (handleDuplicateCreate(cmd.clientCmdId)) return
+
   // When profileId is present the iOS client wants an extension-hosted
   // conversation. Route through createConversationTab with profileId in opts.
   // When absent, create a plain CLI tab.
@@ -160,17 +201,23 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
       const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const profileArg = `'${cmd.profileId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
       log('handle_create_tab: extension tab', { profile_id: cmd.profileId })
+      // createConversationTab is async; await it INSIDE the IIFE so the
+      // activeTabId restore runs AFTER the real tab id is minted, not before
+      // the promise resolves. executeJavaScript resolves the returned promise.
       const tabId = await state.mainWindow?.webContents.executeJavaScript(`
-        (function() {
+        (async function() {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return null;
           var prev = store.getState().activeTabId;
-          var id = store.getState().createConversationTab('${escaped}', { profileId: ${profileArg} });
+          var id = await store.getState().createConversationTab('${escaped}', { profileId: ${profileArg} });
           store.setState({ activeTabId: prev });
           return id;
         })()
       `)
-      if (tabId) notifyTabCreated(tabId)
+      if (tabId) {
+        if (cmd.clientCmdId) rememberCreate(cmd.clientCmdId, tabId)
+        notifyTabCreated(tabId, cmd.clientCmdId)
+      }
     } catch (err) {
       log('handle_create_tab: engine error', { error: (err as Error).message })
     }
@@ -194,10 +241,15 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
     log('handleCreateTab: no pinToGroupId (default-group placement)')
   }
   const tabId = await createTabFromCommand(cmd, 'createTabInDirectory', defaultArgs)
-  if (tabId) notifyTabCreated(tabId)
+  if (tabId) {
+    if (cmd.clientCmdId) rememberCreate(cmd.clientCmdId, tabId)
+    notifyTabCreated(tabId, cmd.clientCmdId)
+  }
 }
 
 export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_terminal_tab' }>): Promise<void> {
+  // Idempotency: a resend re-emits the existing terminal tab, not a duplicate.
+  if (handleDuplicateCreate(cmd.clientCmdId)) return
   const tabId = await createTabFromCommand(cmd, 'createTerminalTab')
   if (tabId) {
     // Eagerly create a terminal instance + PTY so remote clients can use it
@@ -228,7 +280,8 @@ export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type
     } catch (err) {
       log('create_terminal_tab: instance creation error', { error: (err as Error).message })
     }
-    notifyTabCreated(tabId)
+    if (cmd.clientCmdId) rememberCreate(cmd.clientCmdId, tabId)
+    notifyTabCreated(tabId, cmd.clientCmdId)
   }
 }
 
@@ -333,147 +386,44 @@ export async function handleSetThinkingEffort(cmd: Extract<RemoteCommand, { type
 }
 
 export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_conversation' }>, deviceId: string): Promise<void> {
-  const PAGE_SIZE = 10
   // Drop redundant identical reloads (same device, tab, and cursor) that arrive
   // faster than the coalesce window. A flapping iOS client can otherwise fire
   // this 60-120x/sec per conversation and back up the relay send path. Distinct
   // pagination steps advance `before`, so they key differently and pass through.
   if (!shouldServeLoad(deviceId, cmd.tabId, cmd.before)) return
   try {
-    if (!state.mainWindow) {
-      log('load_conversation: main window not available')
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
+    // History is served from the ENGINE — the same `load_session_history`
+    // source the overlay and ATV hydrate from — so every client renders one
+    // canonical transcript with the engine's stable row ids. The renderer is
+    // consulted only for tab metadata (never message content); the persisted
+    // tabs file covers the renderer-unavailable case, and the engine daemon
+    // outlives the renderer.
+    const chain = await resolveTabSessionChain(cmd.tabId)
+    if (!chain) {
+      log('load_conversation: no session chain for tab', { tab_id: cmd.tabId })
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false, before: cmd.before ?? null })
       return
     }
-    const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const escapedBefore = cmd.before ? cmd.before.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : ''
 
-    const result = await state.mainWindow.webContents.executeJavaScript(`
-      (function() {
-        try {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return { messages: [], hasMore: false };
-          var s = store.getState();
-          var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-          if (!tab) return { messages: [], hasMore: false };
-          // Messages live on the active conversation instance for every tab.
-          var hPane = s.conversationPanes ? s.conversationPanes.get('${escapedTabId}') : null;
-          var hInst = hPane ? (hPane.instances.find(function(i){ return i.id === hPane.activeInstanceId; }) || hPane.instances[0]) : null;
-          var all = (hInst && hInst.messages) || [];
-          var total = all.length;
-          var pageSize = ${PAGE_SIZE};
-          var before = '${escapedBefore}';
-          var startIdx = 0;
-          var endIdx = total;
-          if (before) {
-            var cursorIdx = all.findIndex(function(m) { return m.id === before; });
-            if (cursorIdx > 0) {
-              endIdx = cursorIdx;
-              startIdx = Math.max(0, endIdx - pageSize);
-            }
-          } else {
-            startIdx = Math.max(0, total - pageSize);
-          }
-          // Snap startIdx backward to a turn boundary (user message) to avoid
-          // sending partial turns/tool-groups to iOS
-          while (startIdx > 0 && all[startIdx] && all[startIdx].role !== 'user') {
-            startIdx--;
-          }
-          // Cap the page after the snap so a single oversized turn can't produce
-          // a multi-MB frame (relay main-thread wedge risk). Mirrors
-          // MAX_PAGE_MESSAGES in tabs-disk-fallback.ts. hasMore stays true so
-          // iOS paginates the remainder.
-          if (endIdx - startIdx > ${MAX_PAGE_MESSAGES}) {
-            startIdx = endIdx - ${MAX_PAGE_MESSAGES};
-          }
-          var page = all.slice(startIdx, endIdx).map(function(m) {
-            var content = m.content || '';
-            if (m.role === 'tool' && content.length > 2048) content = content.substring(0, 2048) + '\\n... [truncated]';
-            return {
-              id: m.id, role: m.role, content: content,
-              toolName: m.toolName, toolInput: m.toolInput,
-              toolId: m.toolId, toolStatus: m.toolStatus,
-              timestamp: m.timestamp,
-              // Slash-command provenance from the engine SessionMessage, so iOS
-              // renders the command pill for resolved slash invocations.
-              slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource,
-              // Carry planFilePath through so plan-lifecycle divider system
-              // messages (Plan created / Plan updated / Implementing plan) stay
-              // clickable on iOS after a history reload. Mirrors
-              // readEngineHistoryFromStore (engine-history.ts), the rewind path.
-              planFilePath: m.planFilePath,
-              attachments: (m.attachments || []).map(function(a) {
-                return { id: a.id, type: a.type, name: a.name, path: a.path };
-              }),
-            };
-          });
-          var hasMore = startIdx > 0;
-          var cursor = hasMore && page.length > 0 ? page[0].id : undefined;
-          return { messages: page, hasMore: hasMore, cursor: cursor, total: total, tabStatus: tab.status, conversationId: tab.conversationId || null };
-        } catch(e) { return { messages: [], hasMore: false }; }
-      })()
-    `) || { messages: [], hasMore: false }
+    const history = await engineBridge.loadChainHistory(chain.sessionIds)
+    // Shared pure mapper — the exact conversion the overlay uses, so iOS
+    // receives identical marker/divider content and canonical row ids.
+    // makeId only fires for rows from an engine predating SessionMessage.id.
+    let fallbackSeq = 0
+    const all = mapSessionHistory(history, () => `hist-${cmd.tabId}-${fallbackSeq++}`)
 
-    log('load_conversation', { tab_id: cmd.tabId, total: result.total || 0, page: result.messages?.length || 0, has_more: result.hasMore })
+    const { page, hasMore, cursor, total } = paginateHistory(all, cmd.before)
+    log('load_conversation', { tab_id: cmd.tabId, total, page: page.length, has_more: hasMore, sessions: chain.sessionIds.length })
 
-    // Disk fallback: when the renderer store has no messages (desktop restart,
-    // conversation never opened in this session), read directly from
-    // ~/.ion/conversations/{conversationId}.{tree,llm}.jsonl so iOS sees the
-    // full history without requiring the user to open the tab first.
-    // The result.conversationId comes from tab.conversationId in the renderer.
-    let resolvedResult = result
-    if ((!result.messages || result.messages.length === 0) && result.conversationId) {
-      const diskResult = loadConversationFromDisk(result.conversationId, cmd.before)
-      if (diskResult.messages.length > 0) {
-        log('load_conversation: renderer store empty, disk fallback', { conversation_id: result.conversationId, count: diskResult.messages.length, has_more: diskResult.hasMore })
-        resolvedResult = { ...result, messages: diskResult.messages, hasMore: diskResult.hasMore, total: diskResult.total }
-      } else {
-        log('load_conversation: renderer store empty and disk fallback yielded 0 msgs', { conversation_id: result.conversationId })
-      }
-    }
-
-    const msgs = await Promise.all((resolvedResult.messages || []).map(async (m: any) => {
+    const msgs = await Promise.all(page.map(toRemoteMessage).map(async (m) => {
       if (m.toolName === 'ExitPlanMode') {
         try {
           const input = m.toolInput ? JSON.parse(m.toolInput) : {}
           if (!input.planContent) {
-            let planPath = input.planFilePath as string | undefined
-            if (!planPath && state.mainWindow) {
-              try {
-                planPath = await state.mainWindow.webContents.executeJavaScript(`
-                  (function() {
-                    var store = window.__Ion_SESSION_STORE__;
-                    if (!store) return null;
-                    var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-                    if (!tab) return null;
-                    var st2 = store.getState();
-                    var pPane = st2.conversationPanes ? st2.conversationPanes.get('${escapedTabId}') : null;
-                    var pInst = pPane ? (pPane.instances.find(function(i){ return i.id === pPane.activeInstanceId; }) || pPane.instances[0]) : null;
-                    var msgs = (pInst && pInst.messages) || [];
-                    for (var i = msgs.length - 1; i >= 0; i--) {
-                      var m = msgs[i];
-                      if (m.toolName === 'Write' && m.toolInput) {
-                        try {
-                          var input = JSON.parse(m.toolInput);
-                          var fp = input.file_path;
-                          if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
-                        } catch(e) {}
-                      }
-                    }
-                    // Fallback: check the instance's permissionDenied for planFilePath
-                    var denied = pInst && pInst.permissionDenied && pInst.permissionDenied.tools;
-                    if (denied) {
-                      for (var d = 0; d < denied.length; d++) {
-                        if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
-                          return denied[d].toolInput.planFilePath;
-                        }
-                      }
-                    }
-                    return null;
-                  })()
-                `) || undefined
-              } catch {}
-            }
+            // Fallback plan path comes from the loaded transcript itself (the
+            // most recent plan-file Write) — same data the old renderer scrape
+            // read, without touching the renderer.
+            const planPath = (input.planFilePath as string | undefined) || planPathFromHistory(all)
             // Async read off the main thread: readFileSync here blocked the
             // event loop (and the relay send drain) once per ExitPlanMode
             // message per load, in the hot path a flapping client hammers.
@@ -504,22 +454,26 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
       type: 'desktop_conversation_history',
       tabId: cmd.tabId,
       messages: msgs,
-      hasMore: resolvedResult.hasMore || false,
-      cursor: resolvedResult.cursor,
+      hasMore,
+      cursor,
+      // Echo of the REQUEST cursor. iOS discriminates first-page/heal
+      // (wholesale replace) from older-page pagination (prepend) on this —
+      // never on the response cursor, which is set on every page that has
+      // more history (the heal-loop bug this field fixes).
+      before: cmd.before ?? null,
     })
 
     // Additionally push live engine state when the session is running, so iOS
     // immediately has up-to-date agents, status fields, and working message
     // on reconnect. Gate on RUNTIME status — not tab type or extension
     // presence — since any conversation's session may be running.
-    const tabStatus = resolvedResult.tabStatus as string | undefined
-    if (tabStatus === 'running' || tabStatus === 'connecting') {
-      log('load_conversation: session active, pushing live state', { tab_id: cmd.tabId, status: tabStatus })
+    if (chain.tabStatus === 'running' || chain.tabStatus === 'connecting') {
+      log('load_conversation: session active, pushing live state', { tab_id: cmd.tabId, status: chain.tabStatus })
       await sendCurrentEngineState(cmd.tabId, deviceId)
     }
   } catch (err) {
     log('load_conversation error', { error: (err as Error).message })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false, before: cmd.before ?? null })
   }
 }
 

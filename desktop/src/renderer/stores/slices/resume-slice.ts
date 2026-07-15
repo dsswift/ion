@@ -326,17 +326,25 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         }
 
         rInfo('session.restore', 'skeleton messages hydrated', { tab_id: tabId.slice(0, 8), count: allMessages.length, baseline, restored_denied: !!restoredDenied })
+        // Canonical ids make the live tail dedupable: a turn that completed
+        // DURING the async load appears both in the history (entry-row id)
+        // and in the tail (re-keyed at message_end / keyed by toolId), so
+        // drop tail rows the history already contains.
+        const historyIds = new Set(allMessages.map((m) => m.id))
         set((s) => ({
-          conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
-            ...i,
-            // History first, then live messages that streamed in DURING the
-            // load (past the baseline) — the pre-baseline live messages are
-            // persisted turns the history already contains.
-            messages: [...allMessages, ...i.messages.slice(baseline)],
-            messageCount: allMessages.length + i.messages.length - baseline,
-            historyHydrated: true,
-            ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
-          })),
+          conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => {
+            const liveTail = i.messages.slice(baseline).filter((m) => !historyIds.has(m.id))
+            return {
+              ...i,
+              // History first, then live messages that streamed in DURING the
+              // load (past the baseline) — the pre-baseline live messages are
+              // persisted turns the history already contains.
+              messages: [...allMessages, ...liveTail],
+              messageCount: allMessages.length + liveTail.length,
+              historyHydrated: true,
+              ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
+            }
+          }),
         }))
       } catch (err) {
         rWarn('session.restore', 'skeleton load failed', { tab_id: tabId.slice(0, 8), error: String(err) })

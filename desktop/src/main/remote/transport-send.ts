@@ -43,7 +43,10 @@ export const CRITICAL_TYPES = new Set([
   'desktop_permission_request', 'desktop_snapshot', 'desktop_tab_created', 'desktop_tab_closed',
   'desktop_conversation_history', 'desktop_heartbeat', 'desktop_terminal_snapshot',
   'desktop_agent_state', 'desktop_status', 'desktop_message_end', 'desktop_engine_error',
-  'desktop_text_delta', 'desktop_tool_start', 'desktop_tool_end',
+  // desktop_stream_reset must ride FIFO with desktop_text_delta: a dropped
+  // reset leaves the discarded attempt's partial text on the phone as if it
+  // were real output.
+  'desktop_text_delta', 'desktop_stream_reset', 'desktop_tool_start', 'desktop_tool_end',
 ])
 
 /** One queued outbound event plus its push metadata and enqueue timestamp. */

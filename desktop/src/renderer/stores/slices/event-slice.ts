@@ -236,7 +236,12 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               rTrace('event.stream', 'text_chunk', { tab_id: tabId, len: (event as any).text?.length })
               updated.currentActivity = 'Writing...'
               const lastMsg = messages[messages.length - 1]
-              if (lastMsg?.role === 'assistant' && !lastMsg.toolName) {
+              // A `sealed` row was closed by message_end — the next chunk is
+              // a NEW assistant message, not a continuation. Appending across
+              // the seal merged separate persisted assistant entries into one
+              // paragraph live, so a later history hydration (one row per
+              // entry text block) rendered a different transcript shape.
+              if (lastMsg?.role === 'assistant' && !lastMsg.toolName && !lastMsg.sealed) {
                 messages = [
                   ...messages.slice(0, -1),
                   { ...lastMsg, content: lastMsg.content + event.text },
@@ -255,7 +260,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               messages = [
                 ...messages,
                 {
-                  id: nextMsgId(),
+                  // Tool rows are keyed by the engine tool id — the identity
+                  // history reloads (SessionLoadMessage.toolId) and every
+                  // other client share. Unique per conversation; the local
+                  // counter is only a guard against an empty id.
+                  id: event.toolId || nextMsgId(),
                   role: 'tool',
                   content: '',
                   toolName: event.toolName,

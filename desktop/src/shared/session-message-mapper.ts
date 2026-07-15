@@ -61,23 +61,39 @@ export function buildMarkerContent(m: SessionLoadMessage): string | null {
 }
 
 /**
+ * Tools whose "error" results are conversational (a declined plan, a question
+ * answered "no") rather than failures. The live reducer never marks them
+ * failed; history mapping must agree. Mirrors the exemption in
+ * event-slice.ts's tool_result handler.
+ */
+const ERROR_EXEMPT_TOOLS = new Set(['ExitPlanMode', 'AskUserQuestion'])
+
+/**
  * Map a single engine `SessionLoadMessage` to a client `Message`, or `null`
  * when the row should be dropped entirely (a no-op compaction marker the engine
  * still persisted — mirrors the live path where `buildCompactionMarkerContent`
  * returning `null` suppresses the marker).
  *
- * `makeId` supplies the client-local message id (`nextMsgId` in the renderer
- * store, `crypto.randomUUID` in the restoration hook) so this stays pure and
- * caller-agnostic.
+ * Row identity: the engine's canonical row id (`SessionLoadMessage.id` — the
+ * persisted entry id, stable across reloads) is used whenever present, so
+ * every consumer shares one id-space and repeated hydrations never mint new
+ * identities. `makeId` supplies the id only as a degraded fallback for rows
+ * from an engine that predates the field.
  */
 export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): Message | null {
+  // Tool rows are keyed by the engine tool id — the SAME key the live
+  // reducer uses when the tool_call streams in — so a history reload dedups
+  // against a live-built tool row. Every other row uses the engine's
+  // canonical entry-row id (live assistant/user rows re-key to it at
+  // message_end). makeId is the degraded fallback for engines predating ids.
+  const rowId = (m.toolName && m.toolId ? m.toolId : m.id) || makeId()
   if (m.markerKind) {
     const content = buildMarkerContent(m)
     // A no-op compaction marker (buildCompactionMarkerContent → null) is
     // dropped, matching the live compacting handler which never pushes it.
     if (content === null) return null
     const msg: Message = {
-      id: makeId(),
+      id: rowId,
       role: 'system',
       content,
       timestamp: m.timestamp,
@@ -90,14 +106,15 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
     return msg
   }
 
+  const failed = m.isError && m.toolName && !ERROR_EXEMPT_TOOLS.has(m.toolName)
   return {
-    id: makeId(),
+    id: rowId,
     role: m.role as Message['role'],
     content: m.content || '',
     toolName: m.toolName,
     toolId: m.toolId,
     toolInput: m.toolInput,
-    toolStatus: m.toolName ? 'completed' : undefined,
+    toolStatus: m.toolName ? (failed ? 'error' : 'completed') : undefined,
     userExecuted: m.userExecuted,
     slashCommand: m.slashCommand,
     slashArgs: m.slashArgs,

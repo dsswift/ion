@@ -164,14 +164,50 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
     case 'message_end':
       // End of one LLM message within a multi-turn run. Seal the last
       // assistant text row so the next text_chunk starts a fresh row
-      // instead of appending to this one.
+      // instead of appending to this one. When the event carries the
+      // canonical persisted entry ids, re-key the rows to them: the sealed
+      // assistant row takes entryId and the turn's user row takes
+      // userEntryId, so a later history load (SessionLoadMessage.id) dedups
+      // against these rows instead of duplicating them.
       {
-        const lastAssistant = ctx.messages[ctx.messages.length - 1]
-        if (lastAssistant?.role === 'assistant' && !lastAssistant.toolName) {
-          ctx.messages = [
-            ...ctx.messages.slice(0, -1),
-            { ...lastAssistant, sealed: true },
-          ]
+        // The message being closed is the most recent assistant TEXT row —
+        // walk back past the turn's tool rows (message_end fires after the
+        // stream ends but before tool results arrive, so tool rows can sit
+        // above the text row). Stop at a user row: nothing to seal.
+        for (let i = ctx.messages.length - 1; i >= 0; i--) {
+          const m = ctx.messages[i]
+          if (m.role === 'user') break
+          if (m.role === 'assistant' && !m.toolName) {
+            // An already-sealed row belongs to an earlier message_end (this
+            // one closed a tool-only assistant message) — its identity is
+            // final; never re-key it to a later entry id.
+            if (!m.sealed) {
+              ctx.messages = [
+                ...ctx.messages.slice(0, i),
+                { ...m, sealed: true, ...(event.entryId ? { id: event.entryId } : {}) },
+                ...ctx.messages.slice(i + 1),
+              ]
+            }
+            break
+          }
+        }
+        if (event.userEntryId) {
+          // Re-key the most recent user row (the run-opening turn). A row
+          // that already carries the canonical id — a prior message_end of
+          // the same run, or a hydrated history row — is left untouched.
+          for (let i = ctx.messages.length - 1; i >= 0; i--) {
+            const m = ctx.messages[i]
+            if (m.role === 'user') {
+              if (m.id !== event.userEntryId) {
+                ctx.messages = [
+                  ...ctx.messages.slice(0, i),
+                  { ...m, id: event.userEntryId },
+                  ...ctx.messages.slice(i + 1),
+                ]
+              }
+              break
+            }
+          }
         }
       }
       return true

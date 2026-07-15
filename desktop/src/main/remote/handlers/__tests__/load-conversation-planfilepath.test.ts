@@ -1,18 +1,20 @@
 /**
- * Regression test for the planFilePath carry-through bug in
- * handleLoadConversation (commit: fix(desktop): carry planFilePath through
- * handleLoadConversation).
+ * Regression tests for plan-marker handling in the engine-sourced
+ * handleLoadConversation.
  *
- * The history IIFE that reads messages out of the renderer store dropped
- * `planFilePath`, so plan-lifecycle divider system messages (Plan created /
- * Plan updated / Implementing plan) lost their clickable slug after a history
- * reload on iOS. This test pins two things:
- *
- *   1. The IIFE source string carries planFilePath through the store mapper.
- *   2. A plan-divider row's planFilePath survives to the wire response.
+ * 1. A persisted plan-marker row (engine `markerKind: 'plan'` on
+ *    load_session_history) maps to a system divider whose planFilePath
+ *    survives to the wire — so plan-lifecycle dividers stay clickable on iOS
+ *    after a history reload.
+ * 2. ExitPlanMode enrichment resolves the fallback plan path from the loaded
+ *    engine rows themselves (the most recent plan-file Write), replacing the
+ *    old renderer-scrape IIFE.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { mkdirSync, writeFileSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 // Electron is not installed in CI (npm ci --ignore-scripts skips the binary
 // download). Any module in the transitive import chain that does
@@ -36,6 +38,7 @@ const sent: Array<{ deviceId: string | undefined; event: any }> = []
 const sendToDeviceMock = vi.fn((deviceId: string, event: any) => { sent.push({ deviceId, event }) })
 const sendMock = vi.fn((event: any) => { sent.push({ deviceId: undefined, event }) })
 const executeJsMock = vi.fn()
+const loadChainHistoryMock = vi.fn()
 
 vi.mock('../../../state', () => ({
   state: {
@@ -47,7 +50,7 @@ vi.mock('../../../state', () => ({
     },
   },
   sessionPlane: {},
-  engineBridge: {},
+  engineBridge: { loadChainHistory: (ids: string[]) => loadChainHistoryMock(ids) },
   activeAssistantMessages: new Map(),
   lastMessagePreview: new Map(),
   lastForwardedTabStatus: new Map(),
@@ -57,7 +60,11 @@ vi.mock('../../../state', () => ({
 vi.mock('../../../logger', () => ({ log: vi.fn() }))
 vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../../terminal-manager-instance', () => ({ terminalManager: {} }))
-vi.mock('../../../settings-store', () => ({ readSettings: vi.fn(() => ({})), readClaudeCompat: vi.fn(() => false) }))
+vi.mock('../../../settings-store', () => ({
+  readSettings: vi.fn(() => ({})),
+  readClaudeCompat: vi.fn(() => false),
+  TABS_FILE: '/tmp/ion-planfilepath-test/tabs.json',
+}))
 vi.mock('../../snapshot', () => ({ getRemoteTabStates: vi.fn(async () => []) }))
 vi.mock('./diagnostics', () => ({ autoPullDiagnosticLogs: vi.fn() }))
 vi.mock('./tabs-sync', () => ({ broadcastSync: vi.fn(), sendSync: vi.fn() }))
@@ -66,39 +73,71 @@ vi.mock('./tabs-prompt', () => ({ handlePrompt: vi.fn(), handleCancel: vi.fn() }
 
 import { handleLoadConversation } from '../tabs'
 
-describe('handleLoadConversation — planFilePath carry-through', () => {
+function tabMeta() {
+  return { conversationId: 'conv-plan', historicalSessionIds: [], status: 'idle' }
+}
+
+describe('handleLoadConversation — plan-marker and enrichment', () => {
   beforeEach(() => {
     sent.length = 0
     sendToDeviceMock.mockClear()
     sendMock.mockClear()
     executeJsMock.mockReset()
+    loadChainHistoryMock.mockReset()
   })
 
-  it('the store-read IIFE maps planFilePath through', async () => {
-    executeJsMock.mockResolvedValueOnce({ messages: [], hasMore: false, total: 0, tabStatus: 'idle' })
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-x' }, 'dev-1')
-    const iife = executeJsMock.mock.calls[0][0] as string
-    expect(iife).toContain('planFilePath: m.planFilePath')
-  })
-
-  it('carries planFilePath to the wire response for a plan-divider row', async () => {
-    executeJsMock.mockResolvedValueOnce({
-      messages: [
-        { id: 'm0', role: 'user', content: 'go', timestamp: 1, attachments: [] },
-        {
-          id: 'm1', role: 'system', content: '── Plan created at 3:00 PM · plan ──',
-          timestamp: 2, planFilePath: '/test/plan.md', attachments: [],
-        },
-      ],
-      hasMore: false,
-      total: 2,
-      tabStatus: 'idle',
-    })
+  it('maps an engine plan-marker row to a divider with planFilePath on the wire', async () => {
+    executeJsMock.mockResolvedValueOnce(tabMeta())
+    loadChainHistoryMock.mockResolvedValueOnce([
+      { id: 'u1', role: 'user', content: 'go', timestamp: 1 },
+      {
+        id: 'p1', role: 'system', content: '──', timestamp: 2,
+        markerKind: 'plan', markerPlanOperation: 'created',
+        markerPlanFilePath: '/test/plan.md', markerPlanSlug: 'plan',
+      },
+    ])
 
     await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-plan' }, 'dev-2')
 
     const hist = sent.find((s) => s.event.type === 'desktop_conversation_history')!
     const divider = hist.event.messages.find((m: any) => m.role === 'system')
+    expect(divider).toBeTruthy()
     expect(divider.planFilePath).toBe('/test/plan.md')
+    expect(divider.content).toContain('Plan created')
+    // Canonical engine row id preserved on the wire.
+    expect(divider.id).toBe('p1')
+  })
+
+  it('enriches ExitPlanMode with planContent resolved from the loaded rows', async () => {
+    const dir = join(tmpdir(), `ion-planpath-${Date.now()}`)
+    mkdirSync(join(dir, '.ion', 'plans'), { recursive: true })
+    const planPath = join(dir, '.ion', 'plans', 'my-plan.md')
+    writeFileSync(planPath, '# The Plan\ndo things')
+
+    try {
+      executeJsMock.mockResolvedValueOnce(tabMeta())
+      loadChainHistoryMock.mockResolvedValueOnce([
+        { id: 'u1', role: 'user', content: 'plan it', timestamp: 1 },
+        {
+          id: 'w1', role: 'tool', content: 'ok', toolName: 'Write', toolId: 'toolu_w',
+          toolInput: JSON.stringify({ file_path: planPath, content: '# The Plan' }), timestamp: 2,
+        },
+        {
+          id: 'x1', role: 'tool', content: '', toolName: 'ExitPlanMode', toolId: 'toolu_x',
+          toolInput: JSON.stringify({}), timestamp: 3,
+        },
+      ])
+
+      await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-enrich' }, 'dev-3')
+
+      const hist = sent.find((s) => s.event.type === 'desktop_conversation_history')!
+      const exitRow = hist.event.messages.find((m: any) => m.toolName === 'ExitPlanMode')
+      expect(exitRow).toBeTruthy()
+      const input = JSON.parse(exitRow.toolInput)
+      expect(input.planFilePath).toBe(planPath)
+      expect(input.planContent).toContain('# The Plan')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

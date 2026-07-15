@@ -470,6 +470,15 @@ export class EngineBridge extends EventEmitter {
     this._send({ cmd: 'stop_session', key })
   }
 
+  async branchSessionBefore(key: string, entryId: string): Promise<void> {
+    // Tree-native rewind: the engine moves the conversation leaf to the
+    // PARENT of the given entry, so the next prompt replaces that entry on
+    // the active path instead of chaining after the old leaf (which
+    // duplicated the turn when a rewound-and-rebound session re-submitted).
+    log('branch_before', { key, entry_id: entryId })
+    await this._sendWithData({ cmd: 'branch_before', key, entryId })
+  }
+
   sendPermissionResponse(key: string, questionId: string, optionId: string): void {
     log('send_permission_response', { key, question_id: questionId, option_id: optionId })
     this._send({ cmd: 'permission_response', key, questionId, optionId })

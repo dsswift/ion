@@ -59,8 +59,14 @@ export type RemoteCommand =
   // engine-hosted conversation. When absent, the desktop creates a plain
   // CLI tab (legacy behavior). This merges the former desktop_create_engine_tab
   // command into the unified create-tab shape.
-  | { type: 'desktop_create_tab'; workingDirectory?: string; pinToGroupId?: string; profileId?: string; extensions?: string[] }
-  | { type: 'desktop_create_terminal_tab'; workingDirectory?: string }
+  // `clientCmdId` is an iOS-generated correlation id for the confirm-or-resend
+  // reliability loop: the desktop echoes it back on `desktop_tab_created` so the
+  // client can clear its pending-create tracker, and dedupes by it so a resend
+  // (after a lost confirmation over a wedged transport) re-emits the existing
+  // tab instead of creating a duplicate. Absent from older clients — creation
+  // proceeds without dedup, exactly as before.
+  | { type: 'desktop_create_tab'; workingDirectory?: string; pinToGroupId?: string; profileId?: string; extensions?: string[]; clientCmdId?: string }
+  | { type: 'desktop_create_terminal_tab'; workingDirectory?: string; clientCmdId?: string }
   | { type: 'desktop_close_tab'; tabId: string }
   // `instanceId` scopes a prompt to a specific engine instance (absent means
   // active instance or CLI tab). This merges the former desktop_engine_prompt
@@ -203,7 +209,11 @@ export type RemoteCommand =
 export type RemoteEvent =
   | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[] }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; content: string }
-  | { type: 'desktop_tab_created'; tab: RemoteTabState }
+  // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
+  // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker
+  // can correlate this event to its pending create and stop resending. Absent
+  // for desktop-originated tab creation (no client to correlate).
+  | { type: 'desktop_tab_created'; tab: RemoteTabState; clientCmdId?: string }
   | { type: 'desktop_tab_closed'; tabId: string }
   | { type: 'desktop_tab_status'; tabId: string; status: TabStatus }
   /**
@@ -232,7 +242,12 @@ export type RemoteEvent =
   | { type: 'desktop_permission_request'; tabId: string; instanceId?: string; questionId: string; toolName: string; toolInput?: Record<string, unknown>; options: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'desktop_permission_resolved'; tabId: string; questionId: string }
   | { type: 'desktop_error'; tabId: string; message: string }
-  | { type: 'desktop_conversation_history'; tabId: string; messages: RemoteMessage[]; hasMore: boolean; cursor?: string }
+  // `before` echoes the REQUEST cursor of the desktop_load_conversation this
+  // page answers (null for a first-page/heal request). Clients discriminate
+  // wholesale-replace (before == null) from older-page prepend (before set)
+  // on THIS field — never on `cursor`, which is populated on every page that
+  // has more history and therefore cannot distinguish the two.
+  | { type: 'desktop_conversation_history'; tabId: string; messages: RemoteMessage[]; hasMore: boolean; cursor?: string; before?: string | null }
   | { type: 'desktop_message_added'; tabId: string; message: RemoteMessage }
   | { type: 'desktop_message_updated'; tabId: string; messageId: string; content?: string; toolStatus?: 'running' | 'completed' | 'error'; toolInput?: string }
   | { type: 'desktop_queue_update'; tabId: string; prompts: string[] }
@@ -248,6 +263,14 @@ export type RemoteEvent =
   | { type: 'desktop_dialog'; tabId: string; instanceId?: string | null; dialogId: string; method: string; title: string; message?: string; options?: string[]; defaultValue?: string }
   | { type: 'desktop_dialog_resolved'; tabId: string; instanceId?: string | null; dialogId: string }
   | { type: 'desktop_text_delta'; tabId: string; instanceId?: string | null; text: string }
+  // desktop_stream_reset: forwarded verbatim from engine_stream_reset by the
+  // generic engine-event forwarder in event-wiring.ts. The engine is retrying
+  // the turn after a mid-stream provider failure or reactive compaction —
+  // clients discard all partial output from the interrupted attempt (streamed
+  // assistant text, in-flight tool rows, active thinking). The desktop main
+  // process drops any batched-but-unsent text for the key before forwarding
+  // so stale pre-reset deltas can never arrive after this event.
+  | { type: 'desktop_stream_reset'; tabId: string; instanceId?: string | null }
   | { type: 'desktop_message_end'; tabId: string; instanceId?: string | null; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
   // `metadata` is an opaque pass-through hint map forwarded from the engine.
   // Carried verbatim across the relay to iOS so future iOS-side handlers

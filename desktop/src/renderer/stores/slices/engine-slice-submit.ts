@@ -1,24 +1,26 @@
 /**
- * engine-slice-submit — engine dialog + system-message + draft actions
+ * engine-slice-submit — engine dialog + system-message + draft + fingerprint actions
  *
  * Extracted from engine-slice.ts to keep that file under the 600-line
- * TypeScript cap. Contains three actions that write to engine instances:
+ * TypeScript cap. Contains actions that write to or read from engine instances:
  *
  *   - respondEngineDialog    — answer a dialog raised by the engine
  *   - addEngineSystemMessage — inject a system message by tabId
  *   - setEngineDraftInput    — persist the InputBar draft per instance
+ *   - computeConvFingerprint — compute the canonical tail fingerprint for a tab
  *
  * (Prompt submission is no longer here: `submitEnginePrompt` was removed when
  * the engine-vs-plain send fork collapsed into the single `submit` action in
  * send-slice.ts. Every conversation tab — plain or extension-backed — submits
  * through that one path.)
  *
- * All three are spread into the object returned by createEngineSlice.
+ * All are spread into the object returned by createEngineSlice.
  */
 
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
-import { commitInstance } from '../conversation-instance'
+import { commitInstance, activeInstance } from '../conversation-instance'
+import { conversationTailFingerprint } from '../../../shared/conversation-fingerprint'
 
 export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -93,6 +95,18 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
           draftInput: text,
         })),
       }))
+    },
+
+    computeConvFingerprint: (tabId) => {
+      // Use the canonical TS implementation from shared/conversation-fingerprint.ts.
+      // This function is exposed on the store so snapshot.ts's executeJavaScript
+      // can call `store.getState().computeConvFingerprint(tabId)` instead of
+      // inlining the algorithm as a string-interpolated IIFE. The canonical
+      // function is the single TS source of truth; the inline IIFE in snapshot.ts
+      // was a necessary but manual copy — this eliminates it.
+      const inst = activeInstance(get().conversationPanes, tabId)
+      const msgs = inst?.messages ?? []
+      return conversationTailFingerprint(msgs)
     },
   }
 }

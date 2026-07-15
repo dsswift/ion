@@ -90,4 +90,59 @@ describe('conversationTailFingerprint', () => {
     ]
     expect(conversationTailFingerprint(msgs)).toBe('u1:5,a1:8,t1:tr')
   })
+
+  // ── v2: persisted-role filter + toolId keying ──────────────────────────────
+
+  it('excludes client-local roles (thinking / system / harness) before windowing', () => {
+    // One side synthesizes thinking rows and inserts live system dividers
+    // with local ids the other side never shares; the fingerprint must be
+    // identical with and without them or the heal loops forever.
+    const persisted = [
+      m('u1', 'user', 'hello'),
+      m('a1', 'assistant', 'hi there'),
+    ]
+    const withLocal: FingerprintMessage[] = [
+      persisted[0],
+      m('think-uuid', 'thinking', 'reasoning...'),
+      m('sys-uuid', 'system', '── Plan created ──'),
+      persisted[1],
+      m('harness-1', 'harness', 'Session bootstrapped'),
+    ]
+    expect(conversationTailFingerprint(withLocal)).toBe(conversationTailFingerprint(persisted))
+  })
+
+  it('keys tool rows by toolId so live and reloaded rows agree', () => {
+    // Live tool row keyed by toolId; a history reload of the same tool may
+    // carry a different row id but the same toolId — tokens must match.
+    const live: FingerprintMessage[] = [
+      { id: 'toolu_9', role: 'tool', content: 'x', toolStatus: 'completed', toolId: 'toolu_9' },
+    ]
+    const reloaded: FingerprintMessage[] = [
+      { id: 'e42:1', role: 'tool', content: 'x (truncated differently)', toolStatus: 'completed', toolId: 'toolu_9' },
+    ]
+    expect(conversationTailFingerprint(live)).toBe(conversationTailFingerprint(reloaded))
+    expect(conversationTailFingerprint(live)).toBe('toolu_9:tc')
+  })
+
+  it('post-heal iOS page and desktop full list produce equal fingerprints', () => {
+    // Desktop holds the full list including client-local rows; iOS holds a
+    // heal page of persisted rows (canonical ids). Same tail → same string.
+    const desktopFull: FingerprintMessage[] = [
+      m('e01', 'user', 'old turn'),
+      m('sys-local', 'system', '── Steer applied ──'),
+      m('e02', 'assistant', 'old reply'),
+      m('e03', 'user', 'do the thing'),
+      m('think-local', 'thinking', 'hmm'),
+      m('e04', 'assistant', 'done'),
+      { id: 'toolu_1', role: 'tool', content: 'full tool output '.repeat(500), toolStatus: 'completed', toolId: 'toolu_1' },
+    ]
+    const iosPage: FingerprintMessage[] = [
+      m('e01', 'user', 'old turn'),
+      m('e02', 'assistant', 'old reply'),
+      m('e03', 'user', 'do the thing'),
+      m('e04', 'assistant', 'done'),
+      { id: 'e04:1', role: 'tool', content: 'truncated…', toolStatus: 'completed', toolId: 'toolu_1' },
+    ]
+    expect(conversationTailFingerprint(desktopFull)).toBe(conversationTailFingerprint(iosPage))
+  })
 })

@@ -336,6 +336,16 @@ export interface State {
    *  from the renderer store) also miss it. */
   insertRemoteUserMessage: (tabId: string, content: string, slashCommand?: string, slashArgs?: string) => void
   setEngineDraftInput: (tabId: string, text: string) => void
+  /**
+   * Compute the conversation tail fingerprint for a tab using the canonical
+   * TS implementation in `shared/conversation-fingerprint.ts`. Exposed on the
+   * store so snapshot.ts's `executeJavaScript` can call it via
+   * `store.getState().computeConvFingerprint(tabId)` instead of inlining the
+   * algorithm as a string-interpolated IIFE. Eliminates the inline-JS copy in
+   * snapshot.ts; the canonical function in shared/ remains the single TS
+   * source of truth. Returns '' when the tab has no messages.
+   */
+  computeConvFingerprint: (tabId: string) => string
   markResourceRead: (resourceId: string) => void
   markAllResourcesRead: (items: ResourceItem[]) => void
   deleteResource: (kind: string, resourceId: string) => void

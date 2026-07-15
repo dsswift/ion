@@ -206,7 +206,11 @@ export type NormalizedEvent =
   // Previously handled only by the raw engine_* stream; now first-class
   // NormalizedEvent variants so every conversation flows through the
   // single normalized reducer (handleNormalizedEvent in event-slice.ts).
-  | { type: 'message_end'; inputTokens?: number; outputTokens?: number; contextPercent?: number; cost?: number }
+  // entryId / userEntryId: canonical persisted entry ids of the assistant
+  // message this end closes and of the run-opening user turn. Consumers
+  // re-key their live rows to them so a later history load
+  // (SessionLoadMessage.id) dedups against the live rows.
+  | { type: 'message_end'; inputTokens?: number; outputTokens?: number; contextPercent?: number; cost?: number; entryId?: string; userEntryId?: string }
   | { type: 'agent_state'; agents: import('./types-engine').AgentStateUpdate[] }
   // status — desktop-internal per-session status snapshot. Emitted by the
   // control plane (engine-control-plane-events.ts handleStatusEvent) from every

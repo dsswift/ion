@@ -1,20 +1,23 @@
 /**
- * WI-004 desktop handler parity test (#259)
+ * handleLoadConversation — engine-sourced history tests.
  *
- * Verifies that `handleLoadConversation` (the unified history handler) behaves
- * identically for plain tabs and extension-hosted tabs, and that the live
- * engine-state push fires based on runtime session status — not tab type.
+ * History for iOS is served from the ENGINE (`loadChainHistory` over the
+ * daemon socket) — the same source the overlay and ATV hydrate from — never
+ * from a renderer message scrape or a TS reimplementation of the tree walk.
+ * The renderer is consulted only for tab metadata (conversation id, session
+ * chain, runtime status).
  *
  * Coverage:
- *   1. Plain tab: messages returned, desktop_conversation_history sent, no
- *      live-state push when status is 'idle'.
- *   2. Extension-hosted tab: same behavior as plain tab for identical pane
- *      state (pagination, message shape, no live-state push when idle).
- *   3. Running session: live-state push fires for BOTH tab types when
- *      tabStatus is 'running'.
- *   4. Retired string: desktop_engine_conversation_history is never sent by
- *      handleLoadConversation.
- *   5. Pagination: both tab types respect the `before` cursor uniformly.
+ *   1. History rows come from engineBridge.loadChainHistory, mapped through
+ *      the shared mapper, with engine canonical row ids preserved.
+ *   2. Plain and extension-hosted tabs get identical behavior (unified path).
+ *   3. Live-state push fires on runtime status 'running'/'connecting' only.
+ *   4. Retired string desktop_engine_conversation_history is never sent.
+ *   5. Pagination honors the `before` cursor and echoes it (`before` field) —
+ *      iOS discriminates replace-vs-prepend on the echoed REQUEST cursor,
+ *      never the response cursor (the heal-loop bug).
+ *   6. Renderer unavailable → persisted-tabs fallback still serves history
+ *      from the engine.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
@@ -44,18 +47,20 @@ const sendToDeviceMock = vi.fn((deviceId: string, event: any) => { sent.push({ d
 const sendMock = vi.fn((event: any) => { sent.push({ deviceId: undefined, event }) })
 
 const executeJsMock = vi.fn()
+const loadChainHistoryMock = vi.fn()
+let mainWindowAvailable = true
 
 vi.mock('../../../state', () => ({
   state: {
     get mainWindow() {
-      return { webContents: { executeJavaScript: executeJsMock } }
+      return mainWindowAvailable ? { webContents: { executeJavaScript: executeJsMock } } : null
     },
     get remoteTransport() {
       return { sendToDevice: sendToDeviceMock, send: sendMock }
     },
   },
   sessionPlane: {},
-  engineBridge: {},
+  engineBridge: { loadChainHistory: (ids: string[]) => loadChainHistoryMock(ids) },
   activeAssistantMessages: new Map(),
   lastMessagePreview: new Map(),
   lastForwardedTabStatus: new Map(),
@@ -65,7 +70,11 @@ vi.mock('../../../state', () => ({
 vi.mock('../../../logger', () => ({ log: vi.fn() }))
 vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../../terminal-manager-instance', () => ({ terminalManager: {} }))
-vi.mock('../../../settings-store', () => ({ readSettings: vi.fn(() => ({})), readClaudeCompat: vi.fn(() => false) }))
+vi.mock('../../../settings-store', () => ({
+  readSettings: vi.fn(() => ({})),
+  readClaudeCompat: vi.fn(() => false),
+  TABS_FILE: '/tmp/ion-parity-test/tabs.json',
+}))
 vi.mock('../../snapshot', () => ({ getRemoteTabStates: vi.fn(async () => []) }))
 vi.mock('./diagnostics', () => ({ autoPullDiagnosticLogs: vi.fn() }))
 vi.mock('./tabs-sync', () => ({ broadcastSync: vi.fn(), sendSync: vi.fn() }))
@@ -76,37 +85,26 @@ vi.mock('./tabs-prompt', () => ({ handlePrompt: vi.fn(), handleCancel: vi.fn() }
 
 import { handleLoadConversation } from '../tabs'
 
-/** Build an executeJavaScript mock result for the history IIFE. */
-function makeHistoryResult(opts: {
-  tabStatus?: string
-  msgCount?: number
-  toolName?: string
-}) {
-  const msgCount = opts.msgCount ?? 3
-  const messages = Array.from({ length: msgCount }, (_, i) => ({
-    id: `msg-${i}`,
-    role: i % 2 === 0 ? 'user' : 'assistant',
-    content: `message ${i}`,
-    toolName: opts.toolName,
-    toolInput: null,
-    toolId: null,
-    toolStatus: null,
-    timestamp: 1000 + i,
-    slashCommand: null,
-    slashArgs: null,
-    slashSource: null,
-    attachments: [],
-  }))
+/** Renderer metadata result (the only renderer query the handler makes). */
+function tabMeta(opts: { status?: string; conversationId?: string; historical?: string[] } = {}) {
   return {
-    messages,
-    hasMore: false,
-    cursor: undefined,
-    total: msgCount,
-    tabStatus: opts.tabStatus ?? 'idle',
+    conversationId: opts.conversationId ?? 'conv-main',
+    historicalSessionIds: opts.historical ?? [],
+    status: opts.status ?? 'idle',
   }
 }
 
-/** Build a live engine state snapshot result (for the second executeJavaScript call). */
+/** Engine history rows (SessionLoadMessage shape) with canonical ids. */
+function engineRows(count: number): any[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `e${String(i).padStart(3, '0')}`,
+    role: i % 2 === 0 ? 'user' : 'assistant',
+    content: `message ${i}`,
+    timestamp: 1000 + i,
+  }))
+}
+
+/** Live engine state snapshot result (for the live-state push query). */
 function makeLiveStateResult() {
   return {
     instId: 'main',
@@ -119,138 +117,127 @@ function makeLiveStateResult() {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('handleLoadConversation — WI-004 unified handler', () => {
+describe('handleLoadConversation — engine-sourced history', () => {
   beforeEach(() => {
     sent.length = 0
     sendToDeviceMock.mockClear()
     sendMock.mockClear()
     executeJsMock.mockReset()
+    loadChainHistoryMock.mockReset()
+    mainWindowAvailable = true
   })
 
-  // ── 1. Plain tab idle ────────────────────────────────────────────────────
+  it('serves history from the engine with canonical row ids', async () => {
+    executeJsMock.mockResolvedValueOnce(tabMeta({ historical: ['sess-old'] }))
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(3))
 
-  it('plain tab: sends desktop_conversation_history, no live-state push when idle', async () => {
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'idle' }))
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-engine' }, 'device-1')
 
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-plain' }, 'device-1')
+    // The engine was asked for the full session chain, in order.
+    expect(loadChainHistoryMock).toHaveBeenCalledWith(['sess-old', 'conv-main'])
 
-    const historyEvents = sent.filter(s => s.event.type === 'desktop_conversation_history')
-    expect(historyEvents).toHaveLength(1)
-    expect(historyEvents[0].event.tabId).toBe('tab-plain')
-    expect(historyEvents[0].deviceId).toBe('device-1')
-
-    // No live-state push when idle.
-    const agentEvents = sent.filter(s => s.event.type === 'desktop_agent_state')
-    expect(agentEvents).toHaveLength(0)
-  })
-
-  // ── 2. Extension-hosted tab idle — parity ────────────────────────────────
-
-  it('extension-hosted tab: identical behavior to plain tab for idle state', async () => {
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'idle', msgCount: 3 }))
-
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-ext' }, 'device-2')
-
-    const historyEvents = sent.filter(s => s.event.type === 'desktop_conversation_history')
-    expect(historyEvents).toHaveLength(1)
-    expect(historyEvents[0].event.tabId).toBe('tab-ext')
-
-    // No live-state push for idle extension-hosted tab either.
-    expect(sent.filter(s => s.event.type === 'desktop_agent_state')).toHaveLength(0)
+    const ev = sent.find(s => s.event.type === 'desktop_conversation_history')!
+    expect(ev).toBeTruthy()
+    expect(ev.deviceId).toBe('device-1')
+    expect(ev.event.messages.map((m: any) => m.id)).toEqual(['e000', 'e001', 'e002'])
+    // No cursor and no more pages for a 3-row conversation.
+    expect(ev.event.hasMore).toBe(false)
+    // First-page request → echoed request cursor is null.
+    expect(ev.event.before).toBeNull()
   })
 
   it('plain and extension-hosted tabs return the same event type and shape', async () => {
-    // Plain tab
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'idle', msgCount: 2 }))
+    executeJsMock.mockResolvedValueOnce(tabMeta())
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(2))
     await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-plain-2' }, 'device-a')
     const plainEvent = sent.find(s => s.event.tabId === 'tab-plain-2')!
 
     sent.length = 0
     executeJsMock.mockReset()
+    loadChainHistoryMock.mockReset()
 
-    // Extension-hosted tab (same content)
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'idle', msgCount: 2 }))
+    executeJsMock.mockResolvedValueOnce(tabMeta())
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(2))
     await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-ext-2' }, 'device-b')
     const extEvent = sent.find(s => s.event.tabId === 'tab-ext-2')!
 
-    // Same event type for both.
     expect(plainEvent.event.type).toBe('desktop_conversation_history')
     expect(extEvent.event.type).toBe('desktop_conversation_history')
-    // Same field structure.
     expect(Object.keys(plainEvent.event).sort()).toEqual(Object.keys(extEvent.event).sort())
   })
 
-  // ── 3. Running session: live-state push for BOTH tab types ───────────────
-
-  it('running plain tab: live-state push fires', async () => {
-    // First call: history IIFE returns tabStatus='running'
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'running' }))
-    // Second call: live engine state snapshot
+  it('running tab: live-state push fires', async () => {
+    executeJsMock.mockResolvedValueOnce(tabMeta({ status: 'running' }))
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(2))
+    // Live engine state snapshot query.
     executeJsMock.mockResolvedValueOnce(makeLiveStateResult())
 
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-plain-run' }, 'device-3')
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-run' }, 'device-3')
 
     const agentEvents = sent.filter(s => s.event.type === 'desktop_agent_state')
     expect(agentEvents).toHaveLength(1)
-    expect(agentEvents[0].event.tabId).toBe('tab-plain-run')
-    expect(agentEvents[0].deviceId).toBe('device-3')
+    expect(agentEvents[0].event.tabId).toBe('tab-run')
   })
 
-  it('running extension-hosted tab: live-state push fires (identical to plain)', async () => {
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'running' }))
+  it('connecting status also triggers live-state push; idle does not', async () => {
+    executeJsMock.mockResolvedValueOnce(tabMeta({ status: 'connecting' }))
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(1))
     executeJsMock.mockResolvedValueOnce(makeLiveStateResult())
-
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-ext-run' }, 'device-4')
-
-    const agentEvents = sent.filter(s => s.event.type === 'desktop_agent_state')
-    expect(agentEvents).toHaveLength(1)
-    expect(agentEvents[0].event.tabId).toBe('tab-ext-run')
-  })
-
-  it('connecting status also triggers live-state push', async () => {
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'connecting' }))
-    executeJsMock.mockResolvedValueOnce(makeLiveStateResult())
-
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-connecting' }, 'device-5')
-
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-conn' }, 'device-5')
     expect(sent.filter(s => s.event.type === 'desktop_agent_state')).toHaveLength(1)
-  })
 
-  // ── 4. Retired string guard ──────────────────────────────────────────────
+    sent.length = 0
+    executeJsMock.mockReset()
+    loadChainHistoryMock.mockReset()
+    executeJsMock.mockResolvedValueOnce(tabMeta({ status: 'idle' }))
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(1))
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-idle' }, 'device-6')
+    expect(sent.filter(s => s.event.type === 'desktop_agent_state')).toHaveLength(0)
+  })
 
   it('never sends desktop_engine_conversation_history (retired string)', async () => {
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'idle' }))
-    executeJsMock.mockResolvedValueOnce(makeHistoryResult({ tabStatus: 'running' }))
-    executeJsMock.mockResolvedValueOnce(makeLiveStateResult())
-
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-guard-1' }, 'device-6')
-    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-guard-2' }, 'device-7')
-
-    const retiredEvents = sent.filter(s => s.event.type === 'desktop_engine_conversation_history')
-    expect(retiredEvents).toHaveLength(0)
+    executeJsMock.mockResolvedValueOnce(tabMeta())
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(2))
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-guard-1' }, 'device-7')
+    expect(sent.filter(s => s.event.type === 'desktop_engine_conversation_history')).toHaveLength(0)
   })
 
-  // ── 5. Pagination: both tab types respect the before cursor ──────────────
+  it('pagination: honors and echoes the before cursor', async () => {
+    // 30 rows; page 1 (no cursor) serves the last 10 snapped to a user turn.
+    executeJsMock.mockResolvedValueOnce(tabMeta())
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(30))
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-page' }, 'device-8')
+    const page1 = sent.find(s => s.event.type === 'desktop_conversation_history')!.event
+    expect(page1.hasMore).toBe(true)
+    expect(page1.before).toBeNull()
+    expect(page1.cursor).toBe(page1.messages[0].id)
 
-  it('pagination: before cursor is passed uniformly regardless of tab type', async () => {
-    // The handler passes `before` to the IIFE. We verify executeJavaScript is
-    // called and the history returned uses the correct slice.
-    const historyResult = makeHistoryResult({ tabStatus: 'idle', msgCount: 2 })
-    executeJsMock.mockResolvedValueOnce(historyResult)
+    sent.length = 0
+    executeJsMock.mockReset()
+    loadChainHistoryMock.mockReset()
 
-    await handleLoadConversation(
-      { type: 'desktop_load_conversation', tabId: 'tab-page', before: 'msg-5' },
-      'device-8'
-    )
+    // Page 2: pass the cursor; rows strictly before it come back, and the
+    // REQUEST cursor is echoed so iOS prepends instead of replacing.
+    executeJsMock.mockResolvedValueOnce(tabMeta())
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(30))
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-page', before: page1.cursor }, 'device-8')
+    const page2 = sent.find(s => s.event.type === 'desktop_conversation_history')!.event
+    expect(page2.before).toBe(page1.cursor)
+    const page1Ids = new Set(page1.messages.map((m: any) => m.id))
+    for (const m of page2.messages) {
+      expect(page1Ids.has(m.id)).toBe(false)
+    }
+  })
 
-    // executeJavaScript was called (pagination IIFE ran).
-    expect(executeJsMock).toHaveBeenCalledTimes(1)
-    // The IIFE string must contain the before cursor value.
-    const iifeArg = executeJsMock.mock.calls[0][0] as string
-    expect(iifeArg).toContain('msg-5')
-
-    // Response carries hasMore from the result.
-    const histEvent = sent.find(s => s.event.type === 'desktop_conversation_history')!
-    expect(histEvent.event.hasMore).toBe(false)
+  it('renderer unavailable: empty-chain response is well-formed', async () => {
+    mainWindowAvailable = false
+    // No persisted tabs file at the mocked path → chain resolution fails →
+    // empty response (iOS retries; the engine daemon outlives the renderer,
+    // so a later attempt with persisted metadata succeeds).
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-norenderer' }, 'device-9')
+    const ev = sent.find(s => s.event.type === 'desktop_conversation_history')!
+    expect(ev.event.messages).toEqual([])
+    expect(ev.event.hasMore).toBe(false)
+    expect(ev.event.before).toBeNull()
   })
 })

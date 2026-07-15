@@ -163,6 +163,11 @@ export interface IonAPI extends AtvApi {
   engineDialogResponse(key: string, dialogId: string, value: any): Promise<void>
   engineCommand(key: string, command: string, args: string): Promise<void>
   engineStop(key: string): Promise<void>
+  /** Tree-native rewind: move the conversation leaf to the PARENT of the
+   *  given entry so the next prompt replaces it on the active path (a new
+   *  sibling branch) instead of appending a duplicate after the old leaf.
+   *  Rejects when the session/entry is unknown. */
+  engineBranchBefore(key: string, entryId: string): Promise<void>
   /** Fire get_context_breakdown for the given engine key. Fire-and-forget:
    *  the engine emits engine_context_breakdown on its event bus; the renderer
    *  observes the result via the existing context_breakdown normalized event. */
@@ -451,6 +456,7 @@ const api: IonAPI = {
   engineDialogResponse: (key, dialogId, value) => ipcRenderer.invoke(IPC.ENGINE_DIALOG_RESPONSE, { key, dialogId, value }),
   engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
   engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),
+  engineBranchBefore: (key, entryId) => ipcRenderer.invoke(IPC.ENGINE_BRANCH_BEFORE, { key, entryId }),
   engineGetContextBreakdown: (key) => ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
   engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
   engineBroadcastHistory: (tabId, instanceId) => ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId }),

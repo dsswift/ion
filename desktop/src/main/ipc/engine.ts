@@ -6,8 +6,8 @@ import { isValidProjectPath } from '../ipc-validation'
 import { engineBridge, sessionPlane, state } from '../state'
 import { broadcastEngineHistory } from '../remote/handlers/engine-history'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -20,7 +20,7 @@ function log(msg: string): void {
 export function sanitizePlanFilePath(planFilePath: string | undefined, channel: string): string | undefined {
   if (!planFilePath) return undefined
   if (!isValidProjectPath(planFilePath)) {
-    log(`IPC ${channel}: rejecting malformed planFilePath (degrading to no-restore)`)
+    log('engine_start: rejecting malformed planFilePath', { channel })
     return undefined
   }
   return planFilePath
@@ -28,7 +28,7 @@ export function sanitizePlanFilePath(planFilePath: string | undefined, channel: 
 
 export function registerEngineIpc(): void {
   ipcMain.handle(IPC.ENGINE_START, async (_event, { key, config }: { key: string; config: import('../../shared/types').EngineConfig }) => {
-    log(`IPC ENGINE_START: key=${key} ext=${config.extensions?.join(',')} sessionId=${config.sessionId ?? 'none'}`)
+    log('engine_start', { key, extensions: config.extensions?.join(',') ?? '', session_id: config.sessionId ?? 'none' })
     // Seed the control-plane TabEntry with the resolved conversationId BEFORE the
     // engine session starts. This IPC starts the session via engineBridge
     // directly (bypassing EngineControlPlane.ensureSession, which is the only
@@ -45,25 +45,25 @@ export function registerEngineIpc(): void {
   })
 
   ipcMain.handle(IPC.ENGINE_ABORT, (_event, { key }: { key: string }) => {
-    log(`IPC ENGINE_ABORT: key=${key}`)
+    log('engine_abort', { key })
     engineBridge.sendAbort(key)
   })
 
   ipcMain.handle(
     IPC.ENGINE_ABORT_AGENT,
     (_event, { key, agentName, subtree }: { key: string; agentName: string; subtree?: boolean }) => {
-      log(`IPC ENGINE_ABORT_AGENT: key=${key} agent=${agentName} subtree=${subtree ?? false}`)
+      log('engine_abort_agent', { key, agent: agentName, subtree: subtree ?? false })
       engineBridge.sendAbortAgent(key, agentName, subtree ?? false)
     },
   )
 
   ipcMain.handle(IPC.ENGINE_DIALOG_RESPONSE, (_event, { key, dialogId, value }: { key: string; dialogId: string; value: any }) => {
-    log(`IPC ENGINE_DIALOG_RESPONSE: key=${key} dialog=${dialogId}`)
+    log('engine_dialog_response', { key, dialog_id: dialogId })
     engineBridge.sendDialogResponse(key, dialogId, value)
   })
 
   ipcMain.handle(IPC.ENGINE_COMMAND, (_event, { key, command, args }: { key: string; command: string; args: string }) => {
-    log(`IPC ENGINE_COMMAND: key=${key} cmd=/${command}`)
+    log('engine_command', { key, command })
     engineBridge.sendCommand(key, command, args)
     // Mirror /clear divider to iOS so the remote client sees the checkpoint
     // immediately, without waiting for a conversation reload. The renderer
@@ -77,12 +77,22 @@ export function registerEngineIpc(): void {
   })
 
   ipcMain.handle(IPC.ENGINE_STOP, (_event, { key }: { key: string }) => {
-    log(`IPC ENGINE_STOP: key=${key}`)
+    log('engine_stop', { key })
     engineBridge.stopSession(key)
   })
 
+  ipcMain.handle(IPC.ENGINE_BRANCH_BEFORE, async (_event, { key, entryId }: { key: string; entryId: string }) => {
+    // Tree-native rewind: move the conversation leaf to the parent of the
+    // given entry so the next prompt replaces it on the active path. Errors
+    // reject the invoke so the renderer can log the failure (an unknown
+    // entry is expected when the rewound session got a genuinely fresh
+    // conversation instead of a rebound one).
+    log('engine_branch_before', { key, entry_id: entryId })
+    await engineBridge.branchSessionBefore(key, entryId)
+  })
+
   ipcMain.handle(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, (_event, { key }: { key: string }) => {
-    log(`IPC ENGINE_GET_CONTEXT_BREAKDOWN: key=${key}`)
+    log('engine_get_context_breakdown', { key })
     // Fire-and-forget. The engine emits engine_context_breakdown on its event
     // bus; the existing event-wiring handler translates it to context_breakdown
     // and broadcasts to the renderer. The IPC reply is empty — the caller
@@ -91,34 +101,50 @@ export function registerEngineIpc(): void {
   })
 
   ipcMain.handle(IPC.ENGINE_REMAP_SESSION, (_event, { oldKey, newKey }: { oldKey: string; newKey: string }) => {
-    log(`IPC ENGINE_REMAP_SESSION: ${oldKey} -> ${newKey}`)
+    log('engine_remap_session', { old_key: oldKey, new_key: newKey })
     engineBridge.remapSession(oldKey, newKey)
   })
 
   ipcMain.handle(IPC.ENGINE_BROADCAST_HISTORY, async (_event, { tabId, instanceId }: { tabId: string; instanceId: string | null }) => {
-    log(`IPC ENGINE_BROADCAST_HISTORY: tabId=${tabId} instanceId=${instanceId || 'null'}`)
+    log('engine_broadcast_history', { tab_id: tabId, instance_id: instanceId || '' })
     await broadcastEngineHistory(tabId, instanceId)
   })
 
   ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string; source?: string; planFilePath?: string }) => {
     const { tabId, mode, source, planFilePath } = payload
     if (mode !== 'auto' && mode !== 'plan') {
-      log(`IPC SET_PERMISSION_MODE: invalid mode "${mode}" — ignoring`)
+      log('set_permission_mode: invalid mode', { mode })
       return
     }
     const safePlanFilePath = sanitizePlanFilePath(planFilePath, 'SET_PERMISSION_MODE')
-    log(`IPC SET_PERMISSION_MODE: tab=${tabId} mode=${mode} source=${source ?? 'unknown'} planFilePath=${safePlanFilePath ?? '<none>'}`)
+    log('set_permission_mode', { tab_id: tabId, mode, source: source ?? 'unknown', plan_file_path: safePlanFilePath ?? '' })
     sessionPlane.setPermissionMode(tabId, mode, source, safePlanFilePath)
   })
 
   ipcMain.on('ion:engine-set-plan-mode', (_event, key: string, enabled: boolean, planFilePath?: string) => {
     const safePlanFilePath = sanitizePlanFilePath(planFilePath, 'engine-set-plan-mode')
-    log(`IPC engine-set-plan-mode: key=${key} enabled=${enabled} planFilePath=${safePlanFilePath ?? '<none>'}`)
+    log('engine_set_plan_mode', { key, enabled, plan_file_path: safePlanFilePath ?? '' })
     // planFilePath restores plan-file continuity when enabling plan mode on a
     // session that lost its in-memory path (e.g. after restart / rebind). The
     // engine re-adopts it if it exists on disk; ignored on disable. Forwarded
     // as the 6th sendSetPlanMode arg (bash allowlist stays undefined here —
     // the extension-instance plan toggle does not project the allowlist).
     engineBridge.sendSetPlanMode(key, enabled, undefined, 'prompt_sync', undefined, safePlanFilePath)
+  })
+
+  // ─── Plugin management ───
+  ipcMain.handle('plugin:install', async (_event, source: string) => {
+    log('plugin_install', { source })
+    return engineBridge.request('plugin_install', { source })
+  })
+
+  ipcMain.handle('plugin:list', async () => {
+    log('plugin_list')
+    return engineBridge.request('plugin_list', {})
+  })
+
+  ipcMain.handle('plugin:remove', async (_event, name: string) => {
+    log('plugin_remove', { name })
+    return engineBridge.request('plugin_remove', { label: name })
   })
 }

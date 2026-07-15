@@ -74,7 +74,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   ],
   session_dead: ['exitCode', 'signal', 'stderrTail'],
   rate_limit: ['rateLimitType', 'resetsAt', 'status'],
-  usage: ['usage'],
+  usage: ['entryId', 'usage', 'userEntryId'],
   permission_request: [
     'options',
     'questionId',
@@ -105,7 +105,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   thinking_delta: ['text'],
   thinking_block_end: ['elapsedSeconds', 'redacted', 'totalTokens'],
   // Extension-surface events (WI-001: single-path collapse)
-  message_end: ['contextPercent', 'cost', 'inputTokens', 'outputTokens'],
+  message_end: ['contextPercent', 'cost', 'entryId', 'inputTokens', 'outputTokens', 'userEntryId'],
   agent_state: ['agents'],
   harness_message: ['dedupKey', 'message', 'source'],
   working_message: ['message'],
@@ -183,7 +183,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'workingDirectory',
     'workspaceWatchIgnore',
   ],
-  MessageEndUsage: ['contextPercent', 'cost', 'inputTokens', 'outputTokens'],
+  MessageEndUsage: ['contextPercent', 'cost', 'entryId', 'inputTokens', 'outputTokens', 'userEntryId'],
   PermissionOpt: ['id', 'kind', 'label'],
   McpServerInfo: ['name', 'status'],
   UsageData: [
@@ -238,6 +238,36 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   ],
   // Per-model cost breakdown row. Mirrors Go's ModelBreakdown in types/model_breakdown.go.
   ModelBreakdown: ['conversations', 'costUsd', 'inputTokens', 'isSelf', 'model', 'outputTokens'],
+  // Go SessionMessage ↔ TS SessionLoadMessage (types-session.ts). The TS type
+  // also carries `userExecuted`, a desktop-only concept intentionally
+  // excluded from the contract.
+  SessionMessage: [
+    'attachments',
+    'content',
+    'id',
+    'internal',
+    'isError',
+    'markerClearedBlocks',
+    'markerKind',
+    'markerMessageLength',
+    'markerMessagesAfter',
+    'markerMessagesBefore',
+    'markerMicroOnly',
+    'markerPlanFilePath',
+    'markerPlanOperation',
+    'markerPlanSlug',
+    'markerStrategy',
+    'markerSummary',
+    'role',
+    'slashArgs',
+    'slashCommand',
+    'slashSource',
+    'timestamp',
+    'toolId',
+    'toolInput',
+    'toolName',
+  ],
+  SessionMessageAttachment: ['id', 'mimeType', 'name', 'path', 'type'],
   // Wire shape for content blocks carried inside LlmMessage payloads.
   // The compact_boundary variant (gentle-knitting-cup plan) added the
   // optional summary / trigger / messages* / clearedBlocks / tokensBefore

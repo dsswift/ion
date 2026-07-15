@@ -11,7 +11,7 @@
  *   - command-handler switch does not dispatch on old type strings
  */
 
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 // ─── Hoisted mock state ──────────────────────────────────────────────────────
 // vi.hoisted runs before all imports and vi.mock factories.
@@ -252,6 +252,68 @@ describe('handleCreateTab', () => {
     const createCall = calls.find((c) => String(c[0]).includes('createTabInDirectory'))
     expect(createCall).toBeDefined()
     expect(String(createCall![0])).toContain('/default/dir')
+  })
+})
+
+// ─── handleCreateTab: clientCmdId confirm-or-resend reliability ────────────────
+// The iOS client attaches a clientCmdId to each create and resends it if no
+// desktop_tab_created echo comes back (its transport can silently wedge after a
+// background/resume cycle). The desktop must (1) echo the id back so the client
+// can stop resending, and (2) dedupe by it so a resend re-emits the existing tab
+// instead of spawning a duplicate.
+
+describe('handleCreateTab: clientCmdId reliability', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    mocks.executeJsMock.mockResolvedValue('tab-cc')
+    mocks.getRemoteTabStatesMock.mockResolvedValue({
+      tabs: [{
+        id: 'tab-cc', title: 'New Tab', status: 'idle',
+        workingDirectory: '/home/test', permissionMode: 'auto',
+        permissionQueue: [], lastMessage: null, contextTokens: null,
+        contextWindow: null, messageCount: 0, queuedPrompts: [], customTitle: null,
+      }],
+    })
+    mocks.readSettingsMock.mockReturnValue({ defaultBaseDirectory: '/home/test' })
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('echoes clientCmdId on the desktop_tab_created event', async () => {
+    await handleCreateTab({ type: 'desktop_create_tab', workingDirectory: '/home/test', clientCmdId: 'cc-echo-1' })
+    await vi.advanceTimersByTimeAsync(600)  // notifyTabCreated fires on a 500ms timeout
+
+    const created = mocks.remoteSendMock.mock.calls
+      .map((c) => c[0])
+      .find((m) => m?.type === 'desktop_tab_created')
+    expect(created).toBeDefined()
+    expect(created.clientCmdId).toBe('cc-echo-1')
+    expect(created.tab.id).toBe('tab-cc')
+  })
+
+  it('dedupes a resent create by clientCmdId: re-emits the existing tab, no second creation', async () => {
+    await handleCreateTab({ type: 'desktop_create_tab', workingDirectory: '/home/test', clientCmdId: 'cc-dup-1' })
+    await vi.advanceTimersByTimeAsync(600)
+    const afterFirst = mocks.executeJsMock.mock.calls
+      .filter((c) => String(c[0]).includes('createTabInDirectory')).length
+
+    // Resend with the same clientCmdId (simulating the client's confirm-or-resend
+    // firing because the first desktop_tab_created echo was lost in transit).
+    await handleCreateTab({ type: 'desktop_create_tab', workingDirectory: '/home/test', clientCmdId: 'cc-dup-1' })
+    await vi.advanceTimersByTimeAsync(600)
+    const afterSecond = mocks.executeJsMock.mock.calls
+      .filter((c) => String(c[0]).includes('createTabInDirectory')).length
+
+    expect(afterFirst).toBe(1)
+    expect(afterSecond).toBe(1)  // second create deduped — no duplicate tab
+
+    // Both handler invocations still emit desktop_tab_created for the same tab,
+    // so a client that missed the first echo confirms on the second.
+    const echoes = mocks.remoteSendMock.mock.calls
+      .map((c) => c[0])
+      .filter((m) => m?.type === 'desktop_tab_created' && m.clientCmdId === 'cc-dup-1')
+    expect(echoes).toHaveLength(2)
+    expect(echoes.every((m) => m.tab.id === 'tab-cc')).toBe(true)
   })
 })
 

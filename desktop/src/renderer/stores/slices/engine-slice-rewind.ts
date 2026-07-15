@@ -29,24 +29,25 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { lastPendingCardTool } from '../../../shared/pending-card'
+import { rDebug, rInfo, rWarn, rError } from '../../rendererLogger'
 
 export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     rewindEngineInstance: (tabId, instanceId, messageId, userTurnIndex) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) {
-        console.warn(`[engine] rewindEngineInstance: tab not found tabId=${tabId.slice(0, 8)}`)
+        rWarn('engine.rewind', 'rewind: tab not found', { tab_id: tabId.slice(0, 8) })
         return
       }
       const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) {
-        console.warn(`[engine] rewindEngineInstance: pane not found tabId=${tabId.slice(0, 8)}`)
+        rWarn('engine.rewind', 'rewind: pane not found', { tab_id: tabId.slice(0, 8) })
         return
       }
       const inst = pane.instances.find((i) => i.id === instanceId)
       if (!inst) {
-        console.warn(`[engine] rewindEngineInstance: instance not found tabId=${tabId.slice(0, 8)} instanceId=${instanceId}`)
+        rWarn('engine.rewind', 'rewind: instance not found', { tab_id: tabId.slice(0, 8), instance_id: instanceId })
         return
       }
 
@@ -54,7 +55,7 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
       // where messageId is a nextMsgId() value present in inst.messages).
       let idx = inst.messages.findIndex((m) => m.id === messageId)
       if (idx >= 0) {
-        console.log(`[engine] rewindEngineInstance: resolved by id messageId=${messageId} idx=${idx}`)
+        rDebug('engine.rewind', 'rewind: resolved by id', { message_id: messageId, idx })
       } else if (typeof userTurnIndex === 'number' && userTurnIndex >= 0) {
         // Path 2: user-turn ordinal fallback (iOS-initiated rewind, where the
         // target was rendered from an optimistic UUID the desktop never minted).
@@ -71,32 +72,38 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
           }
         }
         if (idx >= 0) {
-          console.log(`[engine] rewindEngineInstance: resolved by userTurnIndex=${userTurnIndex} idx=${idx} (id ${messageId} not found)`)
+          rDebug('engine.rewind', 'rewind: resolved by user turn index', { user_turn_index: userTurnIndex, idx, message_id: messageId })
         } else {
-          console.warn(`[engine] rewindEngineInstance: userTurnIndex=${userTurnIndex} out of range (only ${userCount + 1} user messages) tabId=${tabId.slice(0, 8)} instanceId=${instanceId}`)
+          rWarn('engine.rewind', 'rewind: user turn index out of range', { user_turn_index: userTurnIndex, tab_id: tabId.slice(0, 8), instance_id: instanceId })
           return
         }
       } else {
-        console.warn(`[engine] rewindEngineInstance: message not found tabId=${tabId.slice(0, 8)} instanceId=${instanceId} messageId=${messageId} (no userTurnIndex fallback)`)
+        rWarn('engine.rewind', 'rewind: message not found', { tab_id: tabId.slice(0, 8), instance_id: instanceId, message_id: messageId })
         return
       }
 
       const targetMessage = inst.messages[idx]
       const key = tabId
       const priorConvIds = inst.conversationIds.length > 0 ? [...inst.conversationIds] : null
-      console.log(`[engine] rewindEngineInstance: key=${key} msgIdx=${idx} totalMsgs=${inst.messages.length} keepMsgs=${idx} priorConvIds=${JSON.stringify(priorConvIds)} targetMsgLen=${targetMessage.content.length}`)
+      rInfo('engine.rewind', 'rewind: executing', { tab_id: key, msg_idx: idx, total_msgs: inst.messages.length, keep_msgs: idx, prior_conv_ids: priorConvIds?.length ?? 0, target_msg_len: targetMessage.content.length })
+
+      // Canonical entry ids are bare 8-hex tree-entry ids (history rows and
+      // message_end-re-keyed live rows carry them). A local id (msg-N /
+      // UUID / toolId) cannot address the engine tree.
+      const targetEntryId = /^[0-9a-f]{8}$/.test(targetMessage.id) ? targetMessage.id : null
 
       // Stop the engine session completely (not just abort the current run).
-      // A rewind must start a fresh conversation — aborting would leave the
-      // old conversation file intact and the next send_prompt would append to
-      // it, creating a confusing state where the engine has full pre-rewind
-      // history but the desktop shows truncated messages.
+      // A rewind must not leave the old run appending — and the restart is
+      // what re-resolves extension bindings. NOTE the restart does NOT
+      // guarantee a fresh conversation file: a bound tab's session restore
+      // rebinds the SAME conversation ("resuming bound from binding store"),
+      // and a resubmit would then append a duplicate of the rewound turn
+      // after the old leaf. That is exactly what branch_before below fixes:
+      // it moves the engine tree's leaf to the parent of the rewind target,
+      // so the resubmit becomes the target's sibling — replacing it on the
+      // active path.
       window.ion.engineStop(key).then(() => {
-        console.log(`[engine] rewindEngineInstance: session stopped key=${key}, starting fresh session`)
-        // Start a fresh session with the same key. No sessionId is passed,
-        // so the engine allocates a new conversation file. The prior context
-        // is injected as appendSystemPrompt on the next prompt (see
-        // engine-slice-submit.ts fork context injection).
+        rInfo('engine.rewind', 'rewind: session stopped, starting fresh session', { tab_id: key })
         const { engineProfiles } = usePreferencesStore.getState()
         const profile = tab.engineProfileId ? engineProfiles.find((p) => p.id === tab.engineProfileId) : null
         window.ion.engineStart(key, {
@@ -104,22 +111,37 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
           extensions: profile?.extensions || [],
           workingDirectory: tab.workingDirectory,
         }).then(() => {
-          console.log(`[engine] rewindEngineInstance: fresh session started key=${key} profile=${profile?.id || 'none'}`)
-          // Broadcast the truncated history to all connected remote devices so
-          // iOS replaces its now-stale message list immediately, instead of
-          // waiting for a sub-tab switch to re-issue load_engine_conversation.
-          // The renderer store already holds the truncated inst.messages at
-          // this point (the set() below runs synchronously before this resolves).
-          window.ion.engineBroadcastHistory(tabId, instanceId).then(() => {
-            console.log(`[engine] rewindEngineInstance: broadcast truncated history key=${key}`)
-          }).catch((err: any) => {
-            console.error(`[engine] rewindEngineInstance: broadcast failed key=${key} err=${err.message}`)
+          rInfo('engine.rewind', 'rewind: fresh session started', { tab_id: key, profile: profile?.id || 'none' })
+          // Move the rebound conversation's leaf to before the rewind target.
+          // A rejection is expected and harmless when the restart produced a
+          // genuinely new conversation (nothing rebound → entry not found) —
+          // the fresh file has nothing to branch.
+          const branched = targetEntryId
+            ? window.ion.engineBranchBefore(key, targetEntryId).then(() => {
+                rInfo('engine.rewind', 'rewind: branched before target entry', { tab_id: key, entry_id: targetEntryId })
+              }).catch((err: any) => {
+                rDebug('engine.rewind', 'rewind: branch_before not applicable', { tab_id: key, entry_id: targetEntryId, error: err.message })
+              })
+            : Promise.resolve(
+                rDebug('engine.rewind', 'rewind: target id not canonical, skipping branch', { tab_id: key, message_id: targetMessage.id }),
+              )
+          void branched.then(() => {
+            // Broadcast the truncated history to all connected remote devices so
+            // iOS replaces its now-stale message list immediately, instead of
+            // waiting for a sub-tab switch to re-issue load_engine_conversation.
+            // The renderer store already holds the truncated inst.messages at
+            // this point (the set() below runs synchronously before this resolves).
+            window.ion.engineBroadcastHistory(tabId, instanceId).then(() => {
+              rDebug('engine.rewind', 'rewind: broadcast truncated history', { tab_id: key })
+            }).catch((err: any) => {
+              rError('engine.rewind', 'rewind: broadcast failed', { tab_id: key, error: err.message })
+            })
           })
         }).catch((err: any) => {
-          console.error(`[engine] rewindEngineInstance: restart failed key=${key} err=${err.message}`)
+          rError('engine.rewind', 'rewind: restart failed', { tab_id: key, error: err.message })
         })
       }).catch((err: any) => {
-        console.error(`[engine] rewindEngineInstance: stop failed key=${key} err=${(err as Error).message}`)
+        rError('engine.rewind', 'rewind: stop failed', { tab_id: key, error: (err as Error).message })
       })
 
       const rewoundMessages = inst.messages.slice(0, idx)
@@ -137,6 +159,16 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
       const restoredDenied = foundCard
         ? { tools: [{ toolName: foundCard.toolName, toolUseId: foundCard.toolId || 'restored', toolInput: parseInput(foundCard.toolInput) }] }
         : null
+
+      // Restore planFilePath from an ExitPlanMode card's toolInput when present.
+      // The ExitPlanMode toolInput carries { planFilePath } so after rewinding
+      // to before the implement step the instance still knows which plan file
+      // was assigned. Without this the field was unconditionally null, causing
+      // the engine to allocate a new slug when the user re-entered plan mode.
+      const restoredPlanFilePath: string | null =
+        foundCard?.toolName === 'ExitPlanMode'
+          ? (parseInput(foundCard.toolInput)?.planFilePath as string | undefined) ?? null
+          : null
 
       panes.set(tabId, {
         ...pane,
@@ -156,7 +188,7 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
             draftInput: targetMessage.content,
             agentStates: [],
             statusFields: null,
-            planFilePath: null,
+            planFilePath: restoredPlanFilePath,
             forkedFromConversationIds: i.conversationIds.length > 0 ? [...i.conversationIds] : null,
           }
         }),
