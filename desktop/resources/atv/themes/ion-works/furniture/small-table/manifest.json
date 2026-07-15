@@ -1,0 +1,14 @@
+{
+  "id": "small-table",
+  "name": "Small Table",
+  "category": "relax",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 16,
+  "rotationScheme": "none",
+  "images": {
+    "default": "default.png"
+  },
+  "isSurface": true
+}

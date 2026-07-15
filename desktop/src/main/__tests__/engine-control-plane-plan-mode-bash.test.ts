@@ -49,7 +49,10 @@ vi.mock('electron', () => ({
   },
 }))
 
-const mockBridge = {
+// vi.hoisted for the same reason as `mocks` above: state.ts constructs an
+// EngineBridge at module load, so the engine-bridge mock factory runs during
+// the hoisted import phase — a plain `const` here is still in its TDZ then.
+const mockBridge = vi.hoisted(() => ({
   startSession: vi.fn().mockResolvedValue({ ok: true }),
   sendPrompt: vi.fn().mockResolvedValue({ ok: true }),
   sendAbort: vi.fn(),
@@ -65,7 +68,7 @@ const mockBridge = {
   emit: vi.fn(),
   removeListener: vi.fn(),
   removeAllListeners: vi.fn(),
-}
+}))
 
 vi.mock('../engine-bridge', () => {
   return {

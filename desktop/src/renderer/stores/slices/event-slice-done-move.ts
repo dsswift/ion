@@ -4,6 +4,8 @@ import type { ConversationPane } from '../../../shared/types-engine'
 import { usePreferencesStore } from '../../preferences'
 import { scheduleDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, effectivePermissionMode } from '../conversation-instance'
+import { isMirrorWindow } from '../../lib/window-role'
+import { rDebug, rInfo } from '../../rendererLogger'
 
 /**
  * Schedule the auto-move-to-done-group for a tab that has just reached a clean
@@ -81,15 +83,21 @@ export function maybeScheduleDoneMove(
   source: string,
   deniedOverride?: boolean,
 ): void {
+  // MIRROR GUARD: same contract as applyActiveGroupMove — group movement is
+  // an OWNER decision. Both windows ingest the status stream, so without
+  // this guard every done-move was scheduled and executed twice (owner +
+  // mirror forwarding), with the mirror deciding from possibly-stale state.
+  if (isMirrorWindow()) {
+    rDebug('auto-move.done', 'skipped: mirror window', { source, tab_id: tabId.slice(0, 8) })
+    return
+  }
   // Only a clean terminal state reached FROM a running state is a completion.
   const isCleanTerminal = newStatus === 'idle' || newStatus === 'completed'
   const mode = effectivePermissionMode(updatedTab, panes)
   const denied = deniedOverride ?? (activeInstance(panes, tabId)?.permissionDenied != null)
 
   if (prevStatus !== 'running' || !isCleanTerminal || mode !== 'auto' || denied) {
-    console.log(
-      `[auto-move:done] skipped: source=${source} tab=${tabId.slice(0, 8)} prevStatus=${prevStatus} newStatus=${newStatus} mode=${mode} denied=${denied}`,
-    )
+    rDebug('auto-move.done', 'skipped', { source, tab_id: tabId.slice(0, 8), prev_status: prevStatus, status: newStatus, mode, denied })
     return
   }
 
@@ -100,26 +108,20 @@ export function maybeScheduleDoneMove(
   // the store already knows.
   const hasRunningChildren = hasRunningAgents(panes, tabId)
   if (hasRunningChildren) {
-    console.log(
-      `[auto-move:done] skipped: source=${source} tab=${tabId.slice(0, 8)} hasRunningChildren=true (dispatched agents still running)`,
-    )
+    rDebug('auto-move.done', 'skipped: running children', { source, tab_id: tabId.slice(0, 8) })
     return
   }
 
   const { autoGroupMovement, tabGroupMode, doneGroupId } = usePreferencesStore.getState()
-  console.log(
-    `[auto-move:done] source=${source} tab=${tabId.slice(0, 8)} autoGroup=${autoGroupMovement} tabGroupMode=${tabGroupMode} doneGroup=${doneGroupId ?? 'none'} currentGroup=${updatedTab.groupId ?? 'none'} pinned=${updatedTab.groupPinned}`,
-  )
+  rDebug('auto-move.done', 'evaluating', { source, tab_id: tabId.slice(0, 8), auto_group: autoGroupMovement, tab_group_mode: tabGroupMode, done_group: doneGroupId ?? '', current_group: updatedTab.groupId ?? '', pinned: updatedTab.groupPinned })
   if (!(autoGroupMovement && tabGroupMode === 'manual' && doneGroupId && updatedTab.groupId !== doneGroupId)) {
     return
   }
   if (updatedTab.groupPinned) {
-    console.log(
-      `[auto-move:done] suppressed: source=${source} tab=${tabId.slice(0, 8)} pinned=true currentGroup=${updatedTab.groupId ?? 'none'} wouldMoveTo=${doneGroupId}`,
-    )
+    rDebug('auto-move.done', 'suppressed: tab pinned', { source, tab_id: tabId.slice(0, 8), current_group: updatedTab.groupId ?? '', would_move_to: doneGroupId })
     return
   }
-  console.log(`[auto-move:done] scheduling source=${source} tab=${tabId.slice(0, 8)} to done group=${doneGroupId} in 1500ms`)
+  rInfo('auto-move.done', 'scheduling move', { source, tab_id: tabId.slice(0, 8), done_group: doneGroupId })
   const capturedDoneGroupId = doneGroupId
   scheduleDoneGroupMove(tabId, 1500, () => {
     // Re-check: the tab may have started new work since the timer was scheduled
@@ -128,7 +130,7 @@ export function maybeScheduleDoneMove(
     // tab is actually done.
     const currentTab = get().tabs.find((t) => t.id === tabId)
     if (currentTab && (currentTab.status === 'running' || currentTab.status === 'connecting')) {
-      console.log(`[auto-move:done] cancelled: source=${source} tab=${tabId.slice(0, 8)} status=${currentTab.status} (still active)`)
+      rDebug('auto-move.done', 'cancelled: tab still active', { source, tab_id: tabId.slice(0, 8), status: currentTab.status })
       return
     }
     // Re-check: a running child agent_state snapshot may have arrived after the
@@ -137,10 +139,10 @@ export function maybeScheduleDoneMove(
     // the orchestrator receives their terminal agent_state.
     const stillHasRunningChildren = hasRunningAgents(get().conversationPanes, tabId)
     if (stillHasRunningChildren) {
-      console.log(`[auto-move:done] cancelled: source=${source} tab=${tabId.slice(0, 8)} hasRunningChildren=true (agent arrived after schedule)`)
+      rDebug('auto-move.done', 'cancelled: running children arrived after schedule', { source, tab_id: tabId.slice(0, 8) })
       return
     }
-    console.log(`[auto-move:done] executing moveTabToGroup source=${source} tab=${tabId.slice(0, 8)} → ${capturedDoneGroupId} status=${currentTab?.status ?? 'unknown'}`)
+    rInfo('auto-move.done', 'executing move', { source, tab_id: tabId.slice(0, 8), done_group: capturedDoneGroupId, status: currentTab?.status ?? '' })
     get().moveTabToGroup(tabId, capturedDoneGroupId)
   })
 }

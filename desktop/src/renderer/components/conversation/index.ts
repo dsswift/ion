@@ -1,4 +1,4 @@
-export { groupMessages, getToolDescription, toolSummary, type GroupedItem } from './tool-helpers'
+export { groupMessages, getToolDescription, toolSummary, toolFailureSummary, type GroupedItem } from './tool-helpers'
 export { ToolIcon } from './ToolIcon'
 export { ToolRow } from './ToolRow'
 export { ToolGroup } from './ToolGroup'

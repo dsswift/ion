@@ -67,12 +67,6 @@ interface MutableState {
   atvActiveTabId: string | null
   /** The active tab's engineProfileId (extension scope for the ATV seed). */
   atvActiveProfileId: string | null
-  /**
-   * True when the unpinned ATV window was hidden in sympathy with the main
-   * overlay (Alt+Space). Only then does showWindow re-show it, so a window
-   * the user closed or never opened doesn't appear unbidden.
-   */
-  atvHiddenBySympathy: boolean
 }
 
 export const state: MutableState = {
@@ -89,7 +83,6 @@ export const state: MutableState = {
   atvWindow: null,
   atvActiveTabId: null,
   atvActiveProfileId: null,
-  atvHiddenBySympathy: false,
 }
 
 /** Cached model list from engine, populated by LIST_MODELS IPC and included in remote snapshots. */

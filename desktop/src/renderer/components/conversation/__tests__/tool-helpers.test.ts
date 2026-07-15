@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripCdPrefix, getToolDescription, groupMessages } from '../tool-helpers'
+import { stripCdPrefix, getToolDescription, groupMessages, toolFailureSummary } from '../tool-helpers'
 import type { GroupedItem } from '../tool-helpers'
 import type { Message } from '../../../../shared/types'
 
@@ -325,5 +325,65 @@ describe('groupMessages — thinking row hoisting (unified turn view)', () => {
     expect(thinkingIdx).toBeGreaterThanOrEqual(0)
     // Thinking precedes the tool group that follows it in stream order.
     expect(thinkingIdx).toBeLessThan(toolGroupIdx)
+  })
+})
+
+// ─── toolFailureSummary ───
+
+function toolMsg(id: string, status: Message['toolStatus']): Message {
+  return { id, role: 'tool', content: '', timestamp: 0, toolStatus: status }
+}
+
+describe('toolFailureSummary', () => {
+  it('all-success: 5 completed tools returns failed==0, running==false', () => {
+    const tools = [
+      toolMsg('t1', 'completed'),
+      toolMsg('t2', 'completed'),
+      toolMsg('t3', 'completed'),
+      toolMsg('t4', 'completed'),
+      toolMsg('t5', 'completed'),
+    ]
+    const result = toolFailureSummary(tools)
+    expect(result.failed).toBe(0)
+    expect(result.total).toBe(5)
+    expect(result.running).toBe(false)
+  })
+
+  it('mixed: 100 tools (3 error, 97 completed) returns failed==3, total==100, running==false', () => {
+    const tools: Message[] = [
+      ...Array.from({ length: 97 }, (_, i) => toolMsg(`ok-${i}`, 'completed')),
+      toolMsg('e1', 'error'),
+      toolMsg('e2', 'error'),
+      toolMsg('e3', 'error'),
+    ]
+    const result = toolFailureSummary(tools)
+    expect(result.failed).toBe(3)
+    expect(result.total).toBe(100)
+    expect(result.running).toBe(false)
+  })
+
+  it('all-failed: 4 error tools returns failed==4, total==4, running==false', () => {
+    const tools = [
+      toolMsg('e1', 'error'),
+      toolMsg('e2', 'error'),
+      toolMsg('e3', 'error'),
+      toolMsg('e4', 'error'),
+    ]
+    const result = toolFailureSummary(tools)
+    expect(result.failed).toBe(4)
+    expect(result.total).toBe(4)
+    expect(result.running).toBe(false)
+  })
+
+  it('running: 2 completed + 1 running + 1 error returns running==true', () => {
+    const tools = [
+      toolMsg('c1', 'completed'),
+      toolMsg('c2', 'completed'),
+      toolMsg('r1', 'running'),
+      toolMsg('e1', 'error'),
+    ]
+    const result = toolFailureSummary(tools)
+    expect(result.running).toBe(true)
+    expect(result.total).toBe(4)
   })
 })

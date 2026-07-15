@@ -27,6 +27,9 @@ export function clampDelta(rect: DOMRect, vw: number, vh: number): { dx: number;
   return { dx, dy }
 }
 
+/** How long to keep re-clamping after open — covers entrance animations. */
+const SETTLE_MS = 400
+
 export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boolean): void {
   useLayoutEffect(() => {
     const el = ref.current
@@ -39,10 +42,23 @@ export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boo
       if (dx !== 0 || dy !== 0) el.style.translate = `${dx}px ${dy}px`
     }
     apply()
+    // Entrance-animation settle: Framer's scale/slide entrances are JS-driven
+    // transforms, so the first measurement sees the mid-animation rect (a
+    // scale-0.9 popover measures ~10% small) and the correction undershoots —
+    // and the ResizeObserver never refires because the LAYOUT size never
+    // changed, only the transform. That left tall pickers with their top edge
+    // cut off at the window border. Re-clamp on animation frames until the
+    // entrance settles, then the observer + resize listener take over.
+    const startedAt = performance.now()
+    let raf = requestAnimationFrame(function settle() {
+      apply()
+      if (performance.now() - startedAt < SETTLE_MS) raf = requestAnimationFrame(settle)
+    })
     const observer = new ResizeObserver(apply)
     observer.observe(el)
     window.addEventListener('resize', apply)
     return () => {
+      cancelAnimationFrame(raf)
       observer.disconnect()
       window.removeEventListener('resize', apply)
     }

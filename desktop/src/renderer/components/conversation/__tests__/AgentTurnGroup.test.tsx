@@ -155,3 +155,48 @@ describe('AgentTurnGroup — DOM render order', () => {
     ).toBe(true)
   })
 })
+
+// ─── Three-state failure summary in activityHeader ───
+
+function toolMsg(id: string, status: Message['toolStatus']): Message {
+  return { id, role: 'tool', content: '', timestamp: 0, toolStatus: status }
+}
+
+describe('AgentTurnGroup — activity header three-state status', () => {
+  it('renders failure count in header for mixed group when not active', () => {
+    const tools = [
+      toolMsg('c1', 'completed'),
+      toolMsg('c2', 'completed'),
+      toolMsg('e1', 'error'),
+    ]
+
+    const el = renderGroup({
+      tools,
+      assistantMessages: [],
+      isActive: false,
+      skipMotion: true,
+    })
+
+    const header = el.querySelector('[data-ion-ui]')
+    expect(header).not.toBeNull()
+    expect(header!.textContent).toContain('1 failed')
+  })
+
+  it('does NOT render failure text for all-success group', () => {
+    const tools = [
+      toolMsg('c1', 'completed'),
+      toolMsg('c2', 'completed'),
+    ]
+
+    const el = renderGroup({
+      tools,
+      assistantMessages: [],
+      isActive: false,
+      skipMotion: true,
+    })
+
+    const header = el.querySelector('[data-ion-ui]')
+    expect(header).not.toBeNull()
+    expect(header!.textContent).not.toContain('failed')
+  })
+})

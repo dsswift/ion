@@ -1,0 +1,23 @@
+{
+  "id": "volt-cat",
+  "name": "Volt",
+  "behavior": "wander",
+  "animations": {
+    "idle": {
+      "file": "idle.png",
+      "frames": 1
+    },
+    "walk-down": {
+      "file": "walk-down.png",
+      "frames": 2
+    },
+    "walk-up": {
+      "file": "walk-up.png",
+      "frames": 2
+    },
+    "walk-right": {
+      "file": "walk-right.png",
+      "frames": 2
+    }
+  }
+}

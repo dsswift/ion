@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { IPC, type NormalizedEvent, type ImageAttachmentPayload } from '../../shared/types'
+import { FORWARDED_ACTIONS } from '../../shared/atv-mirror-actions'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
 
 /**
@@ -214,6 +215,25 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
 
+    // Forwarded actions from the ATV mirror window: this renderer is the
+    // session-store OWNER, so owner-durable mutations execute here (main
+    // already validated the action against FORWARDED_ACTIONS). The resulting
+    // state flows back to the mirror via events and sync pushes.
+    const unsubExecAction = window.ion.onAtvExecAction((action, args) => {
+      if (!(action in FORWARDED_ACTIONS)) {
+        rWarn('event.atv', 'exec-action outside the forwarded set', { action })
+        return
+      }
+      const store = useSessionStore.getState() as unknown as Record<string, unknown>
+      const fn = store[action]
+      if (typeof fn !== 'function') {
+        rWarn('event.atv', 'exec-action has no store implementation', { action })
+        return
+      }
+      rDebug('event.atv', 'executing forwarded action', { action, arg_count: args.length })
+      void (fn as (...a: unknown[]) => unknown)(...args)
+    })
+
     return () => {
     rDebug('event.stream', 'cleanup: removing handlers')
       unsubEvent()
@@ -230,6 +250,7 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
       window.ion.off(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
       window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
+      unsubExecAction()
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
       chunkBufferRef.current.clear()
     }

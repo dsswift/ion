@@ -74,8 +74,35 @@ describe('RetransmitBuffer', () => {
     // The malformed request must be observable via the warn log.
     expect(warnMock).toHaveBeenCalledWith(
       'RetransmitBuffer',
-      expect.stringContaining('inverted bounds'),
+      expect.stringContaining('invalid resend range'),
+      expect.objectContaining({ from_seq: 8, to_seq: 3 }),
     )
+  })
+
+  it('does not iterate the integer span for an enormous toSeq (main-thread freeze regression)', () => {
+    // A peer sending a huge/garbage toSeq must not drive a per-integer loop.
+    // Pre-fix this walked billions of buf.get() calls synchronously and pegged
+    // a core; post-fix it iterates only the buffered frames. Guard with a wall-
+    // clock ceiling: correct code is sub-millisecond, the old code took minutes.
+    const buf = new RetransmitBuffer()
+    for (let s = 1; s <= 5; s++) buf.record('dev', frame(s))
+    const start = Date.now()
+    const { frames, complete } = buf.range('dev', 1, 3_000_000_000)
+    expect(Date.now() - start).toBeLessThan(100)
+    // Only the buffered frames come back; the giant span is reported incomplete.
+    expect(frames.map((f) => f.seq)).toEqual([1, 2, 3, 4, 5])
+    expect(complete).toBe(false)
+  })
+
+  it('rejects non-integer bounds without iterating', () => {
+    const buf = new RetransmitBuffer()
+    buf.record('dev', frame(1))
+    const nan = buf.range('dev', 1, Number.NaN)
+    expect(nan.frames).toEqual([])
+    expect(nan.complete).toBe(false)
+    const inf = buf.range('dev', 1, Number.POSITIVE_INFINITY)
+    expect(inf.frames).toEqual([])
+    expect(inf.complete).toBe(false)
   })
 })
 

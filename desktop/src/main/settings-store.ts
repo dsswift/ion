@@ -74,6 +74,40 @@ export const SETTINGS_DEFAULTS = {
   // One office seed for the whole desktop ('' = built-in default). The
   // office layout is the user's office — identical across conversations.
   atvSeed: '',
+  // While the ATV window is open, flip the app's activation policy to
+  // 'regular' so Ion appears in the Dock and Cmd-Tab (immersive-app
+  // behavior); reverts to accessory when the window closes.
+  atvDockPresence: true,
+  // Which surface(s) appear at startup: 'overlay' | 'atv' | 'both'. The
+  // overlay RENDERER always runs (it owns session state); this only governs
+  // what the user sees first.
+  launchSurface: 'overlay',
+  // Global shortcut toggling the ATV shell (Electron accelerator; '' = none).
+  atvShortcut: 'Alt+Shift+Space',
+  // Footstep-heat overlay on the ATV canvas (traffic visualization).
+  atvHeat: false,
+  // ATV shell layout (dock open/width/tab) — one global state persisted
+  // across opens and restarts, never per-session.
+  atvLayout: { dockOpen: false, dockWidth: 420, dockTab: 'conversation' },
+  // Ambient soundscape in the ATV (procedurally synthesized; mute toggle
+  // in the control bar — office users need one-click silence).
+  atvSound: true,
+  // Dock bounce + title prefix when a permission arrives while the ATV is
+  // open but unfocused.
+  atvBeacon: true,
+  // Beta gate for the Agent Team Visualizer. Default false — the ATV is
+  // shipping as a beta feature that is intentionally not advertised. Set
+  // to true in ~/.ion/settings.json to enable the launcher button, tray
+  // item, global shortcut, and window. The ATV window itself cannot write
+  // this key (it is not in ATV_SETTING_KEYS in ipc/atv.ts).
+  atvBeta: false,
+  // Auto-open the ATV side dock when the conversation awaits user input
+  // (plan ready / question / permission).
+  atvAutoDrawer: true,
+  // Enterprise/operator surface gate: 'both' | 'overlay-only' | 'atv-only'.
+  // Deployable via managed settings.json; clamps launchSurface and disables
+  // the gated surface's launchers (tray item, button, shortcut, atv:open).
+  surfacePolicy: 'both',
 }
 
 export function readSettings(): Record<string, any> {

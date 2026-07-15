@@ -1,0 +1,13 @@
+{
+  "id": "package-stack",
+  "name": "Package Stack",
+  "category": "mail",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 16,
+  "rotationScheme": "none",
+  "images": {
+    "default": "default.png"
+  }
+}

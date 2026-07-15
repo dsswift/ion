@@ -46,6 +46,7 @@ vi.mock('framer-motion', () => ({
 
 vi.mock('@phosphor-icons/react', () => ({
   Terminal: () => null,
+  UsersThree: () => null,
   CaretLeft: () => null,
   CaretRight: () => null,
   ArrowsInSimple: () => null,
@@ -142,6 +143,7 @@ vi.mock('../TabStripShared', () => ({
   checkWorktreeUncommitted: () => {},
   shouldUseWorktree: () => false,
   zoomRect: (r: DOMRect) => r,
+  anyEngineInstanceHasRunningChildren: () => false,
 }))
 
 vi.mock('../PopoverLayer', () => ({

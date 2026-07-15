@@ -1,0 +1,51 @@
+{
+  "zone": "break",
+  "floor": "plank-birch",
+  "required": [
+    {
+      "id": "sofa",
+      "count": 1
+    },
+    {
+      "id": "coffee-bar",
+      "count": 1
+    },
+    {
+      "id": "water-cooler",
+      "count": 1
+    }
+  ],
+  "optional": [
+    {
+      "id": "arcade-cabinet",
+      "weight": 2,
+      "max": 1
+    },
+    {
+      "id": "snack-shelf",
+      "weight": 2,
+      "max": 1
+    },
+    {
+      "id": "coffee-table",
+      "weight": 2,
+      "max": 1
+    },
+    {
+      "id": "bench",
+      "weight": 1,
+      "max": 1
+    },
+    {
+      "id": "plant-large",
+      "weight": 1,
+      "max": 1
+    },
+    {
+      "id": "plant-small",
+      "weight": 2,
+      "max": 2
+    }
+  ],
+  "density": 0.18
+}

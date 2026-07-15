@@ -25,6 +25,7 @@ import { formatImplementDivider, planSlugFromPath } from '../../../shared/clear-
 import { commitInstance, activeInstance } from '../conversation-instance'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+import { setTabStatus } from './tab-status-transition'
 
 export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -62,7 +63,7 @@ export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<Stat
       // Without this, heartbeat ticks during the async plan read can
       // re-promote stale denials (see engine_status handler in event-slice.ts).
       set((s) => ({
-        tabs: s.tabs.map((t) => t.id === tabId ? { ...t, status: 'running' as const } : t),
+        tabs: setTabStatus(s.tabs, tabId, 'running'),
       }))
 
       // Insert an "Implementing plan" divider so the user can see the

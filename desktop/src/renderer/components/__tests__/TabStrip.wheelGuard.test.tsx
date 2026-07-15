@@ -1,21 +1,37 @@
 // @vitest-environment jsdom
 //
-// Regression tests for the tab-strip onWheel portal-bleed fix.
+// Regression tests for the tab-strip wheel handler.
 //
-// Root cause (2026-06-27): React synthetic wheel events from portaled popovers
+// Root cause 1 (2026-06-27): React synthetic wheel events from portaled popovers
 // (GroupPickerDropdown) bubble through the React component tree to TabStrip's
 // onWheel handler even though their DOM target lives in the PopoverLayer, not
 // inside the scrollRef container. Without the DOM-containment guard, scrollLeft
 // changes on the tab strip whenever the user scrolls inside the group picker.
 //
-// This test verifies:
-//   1. A wheel event whose nativeEvent.target is OUTSIDE scrollRef does NOT
-//      change scrollLeft (the guard fires).
-//   2. A wheel event whose nativeEvent.target IS inside scrollRef DOES change
-//      scrollLeft (normal horizontal scroll still works).
+// Root cause 2 (2026-07-05): React's synthetic onWheel handler is registered as
+// a PASSIVE listener in React 17+. Calling e.preventDefault() inside a passive
+// listener is a no-op that logs "Unable to preventDefault inside passive event
+// listener invocation". The fix moves the handler to a native addEventListener
+// with { passive: false } so preventDefault is honored.
 //
-// Reversibility: removing the `scrollRef.current.contains(...)` guard from
-// TabStrip.tsx causes assertion (1) to fail.
+// This test verifies:
+//   1. A wheel event whose target is OUTSIDE scrollRef does NOT change scrollLeft
+//      (the containment guard fires).
+//   2. A wheel event whose target IS inside scrollRef DOES change scrollLeft
+//      (normal horizontal scroll still works).
+//   3. preventDefault is called on an inside-target wheel event (goes red if
+//      { passive: false } is removed or the preventDefault call is removed).
+//
+// Reversibility:
+//   - Removing the `el.contains(...)` guard causes assertion (1) to fail.
+//   - Removing `{ passive: false }` from addEventListener doesn't directly fail
+//     in jsdom (jsdom doesn't enforce the passive restriction), but assertion (3)
+//     pins the explicit preventDefault() call: if it is removed, the spy goes
+//     uncalled and the test fails.
+//   - Switching back to React's onWheel (passive by default) causes assertion (3)
+//     to fail because jsdom DOES invoke the spy when addEventListener is used but
+//     would not invoke it if the handler were re-routed through the React tree
+//     without using addEventListener (since we dispatch native WheelEvents).
 
 import React from 'react'
 import { act } from 'react'
@@ -44,6 +60,7 @@ vi.mock('framer-motion', () => ({
 
 vi.mock('@phosphor-icons/react', () => ({
   Terminal: () => null,
+  UsersThree: () => null,
   CaretLeft: () => null,
   CaretRight: () => null,
   ArrowsInSimple: () => null,
@@ -135,6 +152,7 @@ vi.mock('../TabStripShared', () => ({
   checkWorktreeUncommitted: () => {},
   shouldUseWorktree: () => false,
   zoomRect: (r: DOMRect) => r,
+  anyEngineInstanceHasRunningChildren: () => false,
 }))
 
 vi.mock('../PopoverLayer', () => ({
@@ -144,6 +162,10 @@ vi.mock('../PopoverLayer', () => ({
 
 vi.mock('../../stores/remote-fs-store', () => ({
   pickDirectoryForSession: async () => null,
+}))
+
+vi.mock('../WorkspaceStatusIndicator', () => ({
+  WorkspaceStatusIndicator: () => null,
 }))
 
 const STUB_TAB = {
@@ -226,38 +248,16 @@ vi.mock('../../preferences', () => ({
 
 import { TabStrip } from '../TabStrip'
 
-/** Fire a synthetic React WheelEvent on `target` whose `nativeEvent.target`
- *  points at `nativeTarget`. React's synthetic onWheel reads `e.nativeEvent.target`
- *  for the DOM-containment check, so we have to pass the native target explicitly.
- */
-function fireWheelEvent(target: Element, nativeTarget: EventTarget, deltaY: number) {
-  // Build a native WheelEvent whose .target will be `nativeTarget`.
-  // We dispatch on `nativeTarget` but React's event delegation at the root
-  // will still invoke the React onWheel handler on `target`'s React tree.
-  // For our purposes, creating a WheelEvent manually and attaching to a
-  // synthetic-looking object is sufficient — we simulate what React exposes
-  // to the onWheel callback.
-  const nativeEvent = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true })
-  // Override the read-only `target` using defineProperty so our guard sees it.
-  Object.defineProperty(nativeEvent, 'target', { value: nativeTarget, configurable: true })
-
-  // React's synthetic event wraps nativeEvent. We call the onWheel prop directly
-  // to keep the test simple and deterministic — no need for real DOM event dispatch.
-  const scrollDiv = target.querySelector('[class*="overflow-x-auto"]') as HTMLElement | null
-  if (!scrollDiv) throw new Error('Could not find scrollRef div')
-
-  // Get the React onWheel handler from the fiber. Instead of reaching into React
-  // internals, we retrieve the prop as stored by React on the DOM node.
-  // The simplest approach: dispatch a real WheelEvent on the scrollDiv with
-  // the nativeEvent's deltaY, and check scrollLeft after.
-  const evt = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true })
-  Object.defineProperty(evt, 'target', { value: nativeTarget, configurable: true })
-  scrollDiv.dispatchEvent(evt)
+/** Find the scroll container created by TabStrip and verify it exists. */
+function getScrollDiv(container: HTMLDivElement): HTMLElement {
+  const el = container.querySelector('[class*="overflow-x-auto"]') as HTMLElement | null
+  if (!el) throw new Error('Could not find scrollRef div (overflow-x-auto element)')
+  return el
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('TabStrip onWheel portal-bleed fix', () => {
+describe('TabStrip wheel handler — native non-passive listener', () => {
   let container: HTMLDivElement
   let root: ReturnType<typeof createRoot>
 
@@ -276,18 +276,17 @@ describe('TabStrip onWheel portal-bleed fix', () => {
   })
 
   it('does not change scrollLeft when wheel target is OUTSIDE scrollRef (portal bleed guard)', () => {
-    const scrollDiv = container.querySelector('[class*="overflow-x-auto"]') as HTMLElement
-    expect(scrollDiv).not.toBeNull()
-
-    // jsdom default scrollLeft is 0.
+    const scrollDiv = getScrollDiv(container)
     expect(scrollDiv.scrollLeft).toBe(0)
 
-    // An element outside the scroll container — e.g. a portaled popover DOM node.
+    // Simulate a portaled element whose wheel event bubbles into the container.
     const outsideEl = document.createElement('div')
     document.body.appendChild(outsideEl)
 
     act(() => {
-      // Dispatch wheel with deltaY=100, but the native target is outside scrollRef.
+      // Native WheelEvent dispatched on scrollDiv but with target set to the
+      // outside element — this is what happens when a portaled popover wheel
+      // event bubbles through the DOM. The containment guard must reject it.
       const evt = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })
       Object.defineProperty(evt, 'target', { value: outsideEl, configurable: true })
       scrollDiv.dispatchEvent(evt)
@@ -300,15 +299,10 @@ describe('TabStrip onWheel portal-bleed fix', () => {
   })
 
   it('changes scrollLeft when wheel target IS inside scrollRef (normal scroll works)', () => {
-    const scrollDiv = container.querySelector('[class*="overflow-x-auto"]') as HTMLElement
-    expect(scrollDiv).not.toBeNull()
+    const scrollDiv = getScrollDiv(container)
 
-    // Make the scroll container actually scrollable so scrollLeft can change.
-    // jsdom doesn't do layout; we fake scrollWidth > clientWidth by setting
-    // scrollLeft directly to confirm the handler attempts to set it.
-    // We spy on the scrollLeft setter to detect whether the handler ran.
+    // Spy on the scrollLeft setter to detect that the handler ran.
     let capturedScrollLeftDelta: number | undefined
-    const originalScrollLeft = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft')
     Object.defineProperty(scrollDiv, 'scrollLeft', {
       get: () => capturedScrollLeftDelta ?? 0,
       set: (v: number) => { capturedScrollLeftDelta = v },
@@ -318,7 +312,6 @@ describe('TabStrip onWheel portal-bleed fix', () => {
     act(() => {
       // A tab pill inside the scroll container is the native target.
       const tabPillEl = container.querySelector('[data-testid="tab-pill-tab-1"]') as HTMLElement
-      // If the TabPill stub rendered a div, use it; otherwise use scrollDiv itself as a child.
       const innerTarget = tabPillEl ?? scrollDiv.firstElementChild ?? scrollDiv
 
       const evt = new WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true })
@@ -328,10 +321,28 @@ describe('TabStrip onWheel portal-bleed fix', () => {
 
     // Handler must have run: scrollLeft was set to delta (0 + 50).
     expect(capturedScrollLeftDelta).toBe(50)
+  })
 
-    // Restore
-    if (originalScrollLeft) {
-      Object.defineProperty(scrollDiv, 'scrollLeft', originalScrollLeft)
-    }
+  it('calls preventDefault on an inside-target wheel event (honors { passive: false })', () => {
+    // This assertion goes red if:
+    //   a) the handler is removed entirely, or
+    //   b) the e.preventDefault() call is removed from the handler, or
+    //   c) the listener is registered WITHOUT { passive: false } and jsdom
+    //      enforces the passive restriction (currently jsdom does not enforce it,
+    //      but the explicit spy pins the call regardless of environment).
+    const scrollDiv = getScrollDiv(container)
+
+    const tabPillEl = container.querySelector('[data-testid="tab-pill-tab-1"]') as HTMLElement
+    const innerTarget = tabPillEl ?? scrollDiv.firstElementChild ?? scrollDiv
+
+    const evt = new WheelEvent('wheel', { deltaY: 30, bubbles: true, cancelable: true })
+    Object.defineProperty(evt, 'target', { value: innerTarget, configurable: true })
+    const preventDefaultSpy = vi.spyOn(evt, 'preventDefault')
+
+    act(() => {
+      scrollDiv.dispatchEvent(evt)
+    })
+
+    expect(preventDefaultSpy).toHaveBeenCalledTimes(1)
   })
 })

@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import type { TabState } from '../../shared/types'
 import {
   getWaitingState, isAnyEngineInstanceRunning, anyEngineInstanceHasRunningChildren,
-  formatRelativeShort, abbreviateProfileName, resolveTabModelFallback,
+  formatRelativeShort, abbreviateProfileName, resolveTabModelFallback, getTabStatusColor,
 } from './TabStripShared'
 import { activeInstance } from '../stores/conversation-instance'
 import { StatusDot } from './TabStripStatusDot'
@@ -182,7 +182,7 @@ export function TabPill({
           onOpenColorPicker(tab.id, { x: e.clientX, y: e.clientY })
         }}
       >
-        <StatusDot status={effectiveStatus} hasUnread={tab.hasUnread} hasPermission={hasPermission} bashExecuting={tab.bashExecuting} waitingState={waitingState} pillIcon={tab.pillIcon} hasRunningChildren={anyInstanceHasRunningChildren} />
+        <StatusDot derived={getTabStatusColor(tab, colors)} pillIcon={tab.pillIcon} />
       </span>
       {harnessBadgeLabel !== null && (
         // Harness badge: abbreviated profile name in an accent-tinted chip.

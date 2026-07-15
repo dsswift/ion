@@ -23,6 +23,7 @@ import { createEngineSlice } from './slices/engine-slice'
 import { createImplementSlice } from './slices/implement-slice'
 import { setupPersistence } from './session-store-persistence'
 import { usePreferencesStore } from '../preferences'
+import { isMirrorWindow } from '../lib/window-role'
 
 export { isTextFile, editorDirForTab } from './session-store-helpers'
 export { AVAILABLE_MODELS, getModelDisplayLabel } from './model-labels'
@@ -142,4 +143,11 @@ export const useSessionStore = create<State>((set, get) => {
 }
 ;(window as any).__serializeTerminalBuffer = serializeTerminalBuffer
 
-setupPersistence(useSessionStore)
+// The ATV mirror window never persists: the overlay renderer is the single
+// writer for tabs/settings (single-writer rule of the mirror-store
+// architecture). The mirror also skips the stuck-tab watchdog and the
+// __ionForceFlushTabs global (both live inside setupPersistence) — healing
+// and flushing are owner duties.
+if (!isMirrorWindow()) {
+  setupPersistence(useSessionStore)
+}

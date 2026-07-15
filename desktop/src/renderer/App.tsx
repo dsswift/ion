@@ -15,6 +15,7 @@ import { FileExplorer } from './components/FileExplorer'
 import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
+import { CommandPalette } from './components/CommandPalette'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
 import { RemoteDirectoryPicker } from './components/RemoteDirectoryPicker'
@@ -247,6 +248,13 @@ export default function App() {
 
   return (
     <PopoverLayerProvider>
+      {/* Shared ⌘K palette (also mounted in the ATV shell — parity by
+          construction); this surface contributes the cross-link action. */}
+      <CommandPalette
+        actions={[
+          { id: 'act:atv', label: 'Open Visualizer', keywords: 'atv office agents', section: 'Actions', run: () => window.ion.atvOpen() },
+        ]}
+      />
       <div className="flex flex-col justify-end h-full" style={{ background: 'transparent' }}>
 
         {/* ─── 460px content column, centered. Circles overflow left. ─── */}

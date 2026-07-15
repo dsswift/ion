@@ -24,10 +24,12 @@ import type { Message } from '../../../shared/types'
 vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000000' }),
 }))
-vi.mock('../../preferences', () => ({
-  usePreferencesStore: (selector: (s: { expandToolResults: boolean }) => unknown) =>
-    selector({ expandToolResults: false }),
-}))
+vi.mock('../../preferences', () => {
+  const store = (selector: (s: { expandToolResults: boolean }) => unknown) =>
+    selector({ expandToolResults: false })
+  store.getState = () => ({ expandToolResults: false, planModelSplitEnabled: false, planModeModel: null, defaultModel: null })
+  return { usePreferencesStore: store }
+})
 
 // Keep the test focused on the header layer — stub the row/icon leaves so the
 // assertion isn't entangled with InlineEditDiff and the full icon set.

@@ -14,13 +14,13 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 // ─── Shared mock state (hoisted so factory closures can capture it) ───────────
 
-const { mockSetAlwaysOnTop, mockSetVisibleOnAllWorkspaces, mockWindowInstance } = vi.hoisted(() => {
+const { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance } = vi.hoisted(() => {
   const mockSetAlwaysOnTop = vi.fn()
-  const mockSetVisibleOnAllWorkspaces = vi.fn()
+  const _mockSetVisibleOnAllWorkspaces = vi.fn()
 
   const mockWindowInstance = {
     setAlwaysOnTop: mockSetAlwaysOnTop,
-    setVisibleOnAllWorkspaces: mockSetVisibleOnAllWorkspaces,
+    setVisibleOnAllWorkspaces: _mockSetVisibleOnAllWorkspaces,
     webContents: {
       on: vi.fn(),
       setWindowOpenHandler: vi.fn(),
@@ -32,11 +32,12 @@ const { mockSetAlwaysOnTop, mockSetVisibleOnAllWorkspaces, mockWindowInstance } 
     loadFile: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
+    setBounds: vi.fn(),
     isVisible: vi.fn().mockReturnValue(false),
     isDestroyed: vi.fn().mockReturnValue(false),
   }
 
-  return { mockSetAlwaysOnTop, mockSetVisibleOnAllWorkspaces, mockWindowInstance }
+  return { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance }
 })
 
 vi.mock('electron', () => {
@@ -100,10 +101,10 @@ vi.mock('../engine-bootstrap', () => ({
   restartEngineDaemon: mockRestartEngineDaemon,
 }))
 
+const mockReassertPolicy = vi.hoisted(() => vi.fn())
 vi.mock('../atv-window-manager', () => ({
   openAtvWindow: vi.fn(),
-  hideAtvInSympathy: vi.fn(),
-  showAtvInSympathy: vi.fn(),
+  reassertAtvActivationPolicy: mockReassertPolicy,
 }))
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -138,6 +139,28 @@ describe('window-manager createWindow()', () => {
 
     const enabledArg = mockSetAlwaysOnTop.mock.calls[0][0]
     expect(enabledArg).toBe(true)
+  })
+
+  it('re-asserts the activation policy after setVisibleOnAllWorkspaces (accessory side-effect regression)', async () => {
+    // visibleOnFullScreen flips the app to 'accessory' as a macOS/Electron
+    // side effect. With the ATV open ('regular' policy) that removed Ion
+    // from Cmd-Tab and backgrounded the ATV window on every overlay show.
+    const { createWindow, showWindow } = await import('../window-manager')
+    createWindow()
+    expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()
+    expect(mockReassertPolicy).toHaveBeenCalled()
+    expect(
+      mockReassertPolicy.mock.invocationCallOrder[mockReassertPolicy.mock.invocationCallOrder.length - 1],
+    ).toBeGreaterThan(_mockSetVisibleOnAllWorkspaces.mock.invocationCallOrder[0])
+
+    mockReassertPolicy.mockClear()
+    _mockSetVisibleOnAllWorkspaces.mockClear()
+    showWindow('test')
+    expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()
+    expect(mockReassertPolicy).toHaveBeenCalled()
+    expect(
+      mockReassertPolicy.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(_mockSetVisibleOnAllWorkspaces.mock.invocationCallOrder[0])
   })
 })
 

@@ -1,0 +1,15 @@
+{
+  "id": "plasma-globe",
+  "name": "Plasma Globe",
+  "category": "manager",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 16,
+  "rotationScheme": "none",
+  "images": {
+    "default": "default.png"
+  },
+  "frames": 2,
+  "canPlaceOnSurfaces": true
+}

@@ -4,6 +4,8 @@ import type { StoreSet, StoreGet } from '../session-store-types'
 import { makeLocalTab, nextMsgId, initialModelOverride, initialPermissionMode } from '../session-store-helpers'
 import { makeMainPane } from '../conversation-instance'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
+import { rError } from '../../rendererLogger'
+import { setTabStatus } from './tab-status-transition'
 
 /**
  * Options for createConversationTab.
@@ -147,7 +149,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     // as the session key (Phase 4b collapsed the compound key).
     // Engine tabs start in auto mode (extensions control plan mode); plain
     // tabs start with the user's default permission mode.
-    const initMode: 'auto' | 'plan' = isEngine ? 'auto' : initialPermissionMode()
+    const initMode: 'auto' | 'plan' = isEngine ? (profile?.defaultMode ?? 'auto') : initialPermissionMode()
     const pane = makeMainPane(
       { modelOverride: initialModel, messages: [startDivider], messageCount: 1, permissionMode: initMode },
       'main',
@@ -179,9 +181,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       // EngineView's auto-create effect (addEngineInstance) will find the
       // pane already populated and skip, so there is no duplicate start.
       set((state) => ({
-        tabs: state.tabs.map((t) =>
-          t.id === tabId ? { ...t, status: 'connecting' as const } : t
-        ),
+        tabs: setTabStatus(state.tabs, tabId, 'connecting'),
       }))
       window.ion.engineStart(tabId, {
         profileId: profile?.id || '',
@@ -189,15 +189,18 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
         workingDirectory,
       }).then((result) => {
         if (result && !result.ok) {
-          console.error(`[createConversationTab] engine start failed: ${result.error}`)
+          rError('engine.create', 'engine start failed', { error: result.error })
           _onEngineStartError(set, tabId, tabId, result.error || 'unknown')
           return
         }
         if (result?.conversationId) {
           _captureMintedConversationId(set, tabId, result.conversationId)
         }
+        if (initMode === 'plan') {
+          window.ion.setPermissionMode(tabId, 'plan', 'session_start')
+        }
       }).catch((err: { message?: string }) => {
-        console.error(`[createConversationTab] engine start threw: ${err.message}`)
+        rError('engine.create', 'engine start threw', { error: err.message })
         _onEngineStartError(set, tabId, tabId, err.message || 'error')
       })
     } else {
@@ -213,14 +216,14 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
         permissionMode: initMode,
       }).then((result) => {
         if (result && !result.ok) {
-          console.error(`[createConversationTab] ensureEngineSession failed: ${result.error}`)
+          rError('engine.create', 'ensureEngineSession failed', { error: result.error })
           return
         }
         if (result?.conversationId) {
           _captureMintedConversationId(set, tabId, result.conversationId)
         }
       }).catch((err: { message?: string }) => {
-        console.error(`[createConversationTab] ensureEngineSession threw: ${err.message}`)
+        rError('engine.create', 'ensureEngineSession threw', { error: err.message })
       })
     }
 
@@ -252,7 +255,7 @@ function _onEngineStartError(
         conversationPanes.set(tabId, { ...pane, instances })
       }
     }
-    const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+    const tabs = setTabStatus(state.tabs, tabId, 'idle')
     return { conversationPanes, tabs }
   })
 }

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { CaretRight, CaretDown, SpinnerGap } from '@phosphor-icons/react'
+import { CaretRight, CaretDown, SpinnerGap, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { ToolIcon } from './ToolIcon'
 import { ToolRow } from './ToolRow'
-import { getToolDescription, toolSummary } from './tool-helpers'
+import { ToolImagesStrip } from './ToolImagesStrip'
+import { getToolDescription, toolSummary, toolFailureSummary } from './tool-helpers'
 import type { Message } from '../../../shared/types'
 
 interface ToolGroupProps {
@@ -109,6 +110,8 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
             })}
           </div>
         </div>
+        {/* Tool images: always visible, outside the collapsible text rows. */}
+        <ToolImagesStrip tools={tools} />
       </div>
     )
 
@@ -131,8 +134,32 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
   // the user knows something is happening even though the group is collapsed.
   // Lead with a `(N)` count badge when there are 2+ tools so the magnitude of
   // the collapsed group is obvious at a glance without having to expand it.
+  //
+  // Three-state status icon (rendered BEFORE the count badge):
+  //   running   → spinner (existing treatment, suppresses failure suffix)
+  //   mixed     → amber Warning  + ", M failed" suffix
+  //   all-failed → red XCircle   + ", all failed" suffix
+  //   all-ok    → green CheckCircle (no suffix)
   const summary = toolSummary(tools)
   const showCount = tools.length > 1
+  const { failed, total, running: isRunning } = toolFailureSummary(tools)
+  const settled = total - tools.filter((t) => t.toolStatus === 'running').length
+  const isMixed = !isRunning && failed > 0 && failed < settled
+  const isAllFailed = !isRunning && failed > 0 && failed === settled
+
+  const failureSuffix = isMixed
+    ? `, ${failed} failed`
+    : isAllFailed
+      ? ', all failed'
+      : ''
+
+  const statusIcon = isRunning
+    ? null
+    : isAllFailed
+      ? <XCircle size={10} className="flex-shrink-0 mt-[2px]" style={{ color: colors.statusError }} />
+      : isMixed
+        ? <Warning size={10} className="flex-shrink-0 mt-[2px]" style={{ color: colors.statusWarning }} />
+        : <CheckCircle size={10} className="flex-shrink-0 mt-[2px]" style={{ color: colors.statusComplete }} />
 
   const inner = (
     <div
@@ -140,10 +167,11 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
       data-ion-ui
       onClick={handleExpand}
     >
-      {hasRunning
+      {isRunning
         ? <SpinnerGap size={10} className="animate-spin flex-shrink-0 mt-[2px]" style={{ color: colors.statusRunning }} />
         : <CaretRight size={10} className="flex-shrink-0 mt-[2px]" style={{ color: colors.textTertiary }} />
       }
+      {statusIcon}
       {showCount && (
         <span
           className="text-[11px] leading-[1.4] tabular-nums flex-shrink-0"
@@ -152,13 +180,19 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
           ({tools.length})
         </span>
       )}
-      <span className="text-[11px] leading-[1.4]" style={{ color: hasRunning ? colors.textSecondary : colors.textTertiary }}>
-        {summary}
+      <span className="text-[11px] leading-[1.4]" style={{ color: isRunning ? colors.textSecondary : colors.textTertiary }}>
+        {summary}{failureSuffix}
       </span>
     </div>
   )
 
-  if (skipMotion) return <div className="py-0.5">{inner}</div>
+  if (skipMotion) return (
+    <div className="py-0.5">
+      {inner}
+      {/* Tool images stay visible even while the tool text is collapsed. */}
+      <ToolImagesStrip tools={tools} />
+    </div>
+  )
 
   return (
     <motion.div
@@ -169,6 +203,8 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
       className="py-0.5"
     >
       {inner}
+      {/* Tool images stay visible even while the tool text is collapsed. */}
+      <ToolImagesStrip tools={tools} />
     </motion.div>
   )
 })

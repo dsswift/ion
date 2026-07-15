@@ -295,6 +295,31 @@ export function getToolDescription(name: string, input?: string): string {
   }
 }
 
+// ─── toolFailureSummary ───
+
+/**
+ * Returns failure counts for the collapsed tool-group three-state status
+ * display.
+ *
+ * - failed: number of tools with toolStatus === 'error'
+ * - total: tools.length (all tools in the group)
+ * - running: true when any tool has toolStatus === 'running'
+ *
+ * The pass/fail denominator for mixed/all-failed classification is
+ * settled = total - runningCount, so callers must not include running tools
+ * in the failure ratio while a run is still in flight. The running flag is
+ * returned here so the caller can suppress failure UI while work continues.
+ */
+export function toolFailureSummary(tools: Message[]): { failed: number; total: number; running: boolean } {
+  let failed = 0
+  let running = false
+  for (const t of tools) {
+    if (t.toolStatus === 'error') failed++
+    if (t.toolStatus === 'running') running = true
+  }
+  return { failed, total: tools.length, running }
+}
+
 // ─── toolSummary ───
 
 export function toolSummary(tools: Message[]): string {

@@ -3,6 +3,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
+import { setTabStatus } from './tab-status-transition'
 import { createEngineSubmitActions } from './engine-slice-submit'
 import { createEngineRewindActions } from './engine-slice-rewind'
 import { MAIN_INSTANCE_ID } from '../../../shared/session-key'
@@ -93,9 +94,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       })
       set((state) => ({
         conversationPanes: panes,
-        tabs: state.tabs.map((t) =>
-          t.id === tabId ? { ...t, status: 'connecting' as TabStatus } : t
-        ),
+        tabs: setTabStatus(state.tabs, tabId, 'connecting'),
       }))
 
       const key = tabId
@@ -133,7 +132,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
                 conversationPanes.set(tabId, { ...paneInner, instances })
               }
             }
-            const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+            const tabs = setTabStatus(state.tabs, tabId, 'idle')
             return { engineNotifications: notifications, conversationPanes, tabs }
           })
           return
@@ -158,7 +157,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
               conversationPanes.set(tabId, { ...paneInner, instances })
             }
           }
-          const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+          const tabs = setTabStatus(state.tabs, tabId, 'idle')
           return { conversationPanes, tabs }
         })
       })

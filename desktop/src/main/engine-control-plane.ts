@@ -8,7 +8,6 @@ import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { resolveAtvPermission } from './atv-state-cache'
-import { notifyAtvPermissionResolved } from './atv-window-manager'
 import { resolveBashAllowlistFromSettings } from './plan-mode-bash-allowlist'
 import type {
   EngineConfig,
@@ -484,7 +483,12 @@ export class EngineControlPlane extends EventEmitter {
     // resolution here means an answer from ANY surface clears the others
     // instantly, instead of waiting for the next status transition.
     resolveAtvPermission(tabId, questionId)
-    notifyAtvPermissionResolved(tabId, questionId)
+    // Emitted (not called directly): importing atv-window-manager here forms
+    // the module cycle engine-control-plane → atv-window-manager → state →
+    // engine-control-plane, which only loads by import-order luck. The
+    // listener lives in event-wiring.ts (wireSessionPlaneEvents), the same
+    // seam as every other control-plane push.
+    this.emit('permission-resolved', tabId, questionId)
     return true
   }
 

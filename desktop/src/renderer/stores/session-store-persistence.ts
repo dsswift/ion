@@ -138,6 +138,17 @@ function persistTabs(useSessionStore: Store): void {
   }
   window.ion.saveTabs(data)
 
+  // Owner sync push (mirror-store architecture): tab metadata does not ride
+  // normalized events, so the owner publishes the same persisted snapshot to
+  // the main process, which caches it and forwards it to the ATV mirror.
+  // Live statuses ride ALONGSIDE (they are runtime state, not persisted to
+  // disk) — without them the mirror would hydrate every tab as idle and the
+  // workspace indicator would miss running conversations.
+  window.ion.atvPublishTabsSync?.({
+    ...data,
+    liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),
+  })
+
   void persistSessionChains(useSessionStore)
 }
 
@@ -259,6 +270,16 @@ export function setupPersistence(useSessionStore: Store): void {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
     persistTabs(useSessionStore)
   }
+
+  // Publish one tabs snapshot as soon as restoration completes, so an ATV
+  // mirror opened before the first user-driven persist still hydrates
+  // (view readiness: the mirror's boot pull must find a snapshot).
+  const unsubReady = useSessionStore.subscribe((state, prev) => {
+    if (state.tabsReady && !prev.tabsReady) {
+      persistTabs(useSessionStore)
+      unsubReady()
+    }
+  })
 
   setInterval(() => scanForStuckTabs(useSessionStore), WATCHDOG_INTERVAL_MS)
   window.addEventListener('focus', () => scanForStuckTabs(useSessionStore))

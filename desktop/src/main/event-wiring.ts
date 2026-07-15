@@ -1,4 +1,3 @@
-import { IPC } from '../shared/types'
 import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log, trace as _trace } from './logger'
 import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabStatus, lastForwardedTabMeta } from './state'
@@ -9,6 +8,7 @@ import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
 import { handleInterceptEvent } from './event-wiring-intercept'
 import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
+import { notifyAtvPermissionResolved } from './atv-window-manager'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
@@ -35,6 +35,15 @@ export function wireSessionPlaneEvents(): void {
 
   sessionPlane.on('error', (tabId: string, error: EnrichedError) => {
     broadcast('ion:enriched-error', tabId, error)
+  })
+
+  // Cross-surface permission reconcile: the control plane emits this from
+  // its respondToPermission choke point (any surface's answer). Routed to
+  // the ATV window here rather than called from the control plane directly,
+  // which would re-create the engine-control-plane → atv-window-manager →
+  // state module cycle.
+  sessionPlane.on('permission-resolved', (tabId: string, questionId: string) => {
+    notifyAtvPermissionResolved(tabId, questionId)
   })
 
   // engine_intercept from CLI-tab sessions. EngineControlPlane bubbles
