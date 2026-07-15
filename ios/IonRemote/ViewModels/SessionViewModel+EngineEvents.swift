@@ -256,8 +256,38 @@ extension SessionViewModel {
         }
     }
 
+    /// desktop_stream_reset: the engine discarded the current attempt's
+    /// partial output (mid-stream provider retry or reactive compaction) and
+    /// is re-streaming the turn. Mirror the desktop renderer's stream_reset
+    /// handling: drop the trailing in-progress assistant text row and any
+    /// ACTIVE thinking row (a sealed thinking row from earlier in the turn
+    /// survives). The re-streamed attempt arrives as fresh text deltas.
     @MainActor
-    func handleEngineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int?, contextPercent: Double?) {
+    func handleEngineStreamReset(tabId: String, instanceId: String?) {
+        DiagnosticLog.log("stream reset: discarding partial attempt output", tag: "session.engine", level: .info, fields: [
+            "tab_id": String(tabId.prefix(8))
+        ])
+        // Remove the active thinking row before touching the assistant text —
+        // the live row (if any) is the last thinking message by id.
+        if let msgId = thinkingMessageId(tabId) {
+            setThinkingMessageId(tabId: tabId, nil)
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+                if let idx = inst.messages.lastIndex(where: { $0.id == msgId }) {
+                    inst.messages.remove(at: idx)
+                }
+            }
+        }
+        // Discard the trailing in-progress assistant text row (never a tool row).
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if let last = inst.messages.last, last.role == .assistant, last.toolName == nil {
+                inst.messages.removeLast()
+            }
+        }
+        engineTurnHasText.remove(tabId)
+    }
+
+    @MainActor
+    func handleEngineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int?, contextPercent: Double?, entryId: String? = nil, userEntryId: String? = nil) {
         // Clear pinned prompt after message completes
         enginePinnedPrompt[tabId] = nil
         // Update context stats only — do NOT set status to .idle here.
@@ -270,8 +300,45 @@ extension SessionViewModel {
             tabs[idx].contextPercent = contextPercent
         }
 
-        // Seal the last assistant message so the next text delta starts fresh.
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            // RE-KEY the streamed rows to their canonical persisted tree-entry
+            // ids so a subsequent history page — which keys its rows by those
+            // ids — anchors on them instead of duplicating them.
+            //
+            // Assistant row: walk back from the end past tool/thinking/system
+            // rows (a user row is a turn boundary — stop) to the most recent
+            // assistant text row. Only an UNSEALED row is re-keyed and then
+            // sealed: a tool-only assistant message's end (no text row of its
+            // own) walks back to the PREVIOUS message's row, and re-keying
+            // that already-sealed row would steal its identity.
+            if let entryId {
+                var i = inst.messages.count - 1
+                while i >= 0 {
+                    let role = inst.messages[i].role
+                    if role == .assistant || role == .user { break }
+                    i -= 1
+                }
+                if i >= 0, inst.messages[i].role == .assistant,
+                   inst.messages[i].toolName == nil, !inst.messages[i].sealed {
+                    if inst.messages[i].id != entryId {
+                        inst.messages[i].id = entryId
+                    }
+                    // Seal at the re-key site (not only on the trailing row):
+                    // when tool rows follow the text, the trailing-row seal
+                    // below misses this row and the NEXT tool-only message_end
+                    // would re-key it. Sealing here makes the protection
+                    // self-sustaining.
+                    inst.messages[i].sealed = true
+                }
+            }
+            // User row: the run-opening user turn (optimistic clientMsgId or
+            // prompt-injected UUID) adopts its canonical persisted id.
+            if let userEntryId,
+               let uIdx = inst.messages.lastIndex(where: { $0.role == .user }),
+               inst.messages[uIdx].id != userEntryId {
+                inst.messages[uIdx].id = userEntryId
+            }
+            // Seal the last assistant message so the next text delta starts fresh.
             if let lastIdx = inst.messages.indices.last, inst.messages[lastIdx].role == .assistant {
                 inst.messages[lastIdx].sealed = true
             }

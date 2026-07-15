@@ -355,9 +355,20 @@ final class SessionViewModel {
     /// cleared when the app backgrounds. The desktop reads this via `report_focus`
     /// commands to route engine_intercept events to the correct device+tab.
     var focusedTabId: String? = nil
-    /// Set `true` before sending a create-tab command so the `tabCreated`
-    /// handler knows the creation was locally initiated and should navigate.
-    var awaitingLocalTabCreation = false
+    /// In-flight tab-create commands awaiting a `desktop_tab_created` echo,
+    /// keyed by the `clientCmdId` attached to each create command.
+    ///
+    /// A create can be silently lost: after a background/resume cycle the LAN
+    /// socket can report connected while actually being dead, so `lan.send`
+    /// succeeds locally and the frame never reaches the desktop — nothing
+    /// throws, so the essential-queue/requeue paths never fire. This tracker
+    /// closes that hole: each create is recorded here, resent on a timeout and
+    /// on the next `.connected` transition, and cleared when the desktop echoes
+    /// the id back (`confirmCreate`). The matching echo also drives navigation
+    /// to the new tab (it replaces the former `awaitingLocalTabCreation` flag).
+    /// Cleared on hard disconnect so a stale create never spawns a tab against a
+    /// different pairing. See `SessionViewModel+PendingCreate.swift`.
+    var pendingCreates: [String: PendingCreate] = [:]
     /// Text to prefill into the input bar (set by rewind/fork responses).
     var pendingInputByTab: [String: String] = [:]
     /// Per-tab unsent input text. Persisted to UserDefaults across launches.

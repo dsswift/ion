@@ -28,11 +28,13 @@ import Foundation
 //   3. Summary-only: thinkingActive == false and content empty; shows
 //      "💭 Thought for {n}s" (+ token estimate) or "🔒 redacted reasoning".
 //
-// Stream-reset semantics: the tab's `thinkingMessageId` is cleared whenever the
-// conversation is reloaded (desktop_conversation_history / handleConversationHistory)
-// or transient state is wiped — so a block that never received its block_end
-// (transport drop mid-reasoning) never leaves a permanently "thinking…" row bound
-// to a stale message id. See clearThinkingAccumulator.
+// Stream-reset semantics: the tab's `thinkingMessageId` is cleared whenever a
+// conversation reload (desktop_conversation_history / handleConversationHistory)
+// DROPS the live thinking row from the list — so a block that never received
+// its block_end (transport drop mid-reasoning) never leaves the accumulator
+// bound to a message id that no longer exists. When the reload preserves the
+// row in the live tail, the id stays bound and the stream continues.
+// See clearThinkingAccumulator.
 
 extension SessionViewModel {
 
@@ -43,7 +45,9 @@ extension SessionViewModel {
     /// thinking rows at once.
     @MainActor
     func handleEngineThinkingBlockStart(tabId: String, instanceId: String?) {
-        DiagnosticLog.log("ENGINE: thinking-block-start tabId=\(tabId.prefix(16))")
+        DiagnosticLog.log("thinking block start", tag: "session.thinking", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(16))
+        ])
 
         // Defensive close of any orphaned in-progress block for this tab.
         finalizeInProgressThinking(tabId: tabId, instanceId: instanceId,
@@ -90,7 +94,12 @@ extension SessionViewModel {
         elapsedSeconds: Double?,
         redacted: Bool?
     ) {
-        DiagnosticLog.log("ENGINE: thinking-block-end tabId=\(tabId.prefix(16)) tokens=\(totalTokens.map(String.init) ?? "nil") elapsed=\(elapsedSeconds.map { String(format: "%.1f", $0) } ?? "nil") redacted=\(redacted ?? false)")
+        DiagnosticLog.log("thinking block end", tag: "session.thinking", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(16)),
+            "count": totalTokens.map(String.init) ?? "nil",
+            "duration_ms": elapsedSeconds.map { String(format: "%.1f", $0) } ?? "nil",
+            "reason": String(redacted ?? false)
+        ])
 
         if thinkingMessageId(tabId) != nil {
             finalizeInProgressThinking(tabId: tabId, instanceId: instanceId,
@@ -138,10 +147,10 @@ extension SessionViewModel {
         }
     }
 
-    /// Clear the in-progress thinking accumulator for one tab. Called on
-    /// conversation reload (desktop_conversation_history → handleConversationHistory)
-    /// so a block that never closed doesn't keep a stale message id bound after
-    /// the underlying messages are replaced. This is the iOS analogue of
+    /// Clear the in-progress thinking accumulator for one tab. Called by
+    /// handleConversationHistory when a wholesale replace drops the live
+    /// thinking row, so a block that never closed doesn't keep a stale message
+    /// id bound after the underlying row is gone. This is the iOS analogue of
     /// resetting an in-flight stream accumulator.
     @MainActor
     func clearThinkingAccumulator(forKey tabId: String) {

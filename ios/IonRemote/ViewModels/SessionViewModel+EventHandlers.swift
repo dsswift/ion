@@ -4,56 +4,12 @@ import os
 
 private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
 
-// MARK: - Event Listening
+// MARK: - Event dispatch
+//
+// `startListening()` (the transport→batcher collector + flush loop) lives in
+// SessionViewModel+Listening.swift to keep this file under the 600-line cap.
 
 extension SessionViewModel {
-
-    func startListening() {
-        eventTask?.cancel()
-        flushTask?.cancel()
-
-        // Collector: read events from transport and enqueue into batcher
-        eventTask = Task { [weak self] in
-            guard let self, let transport = self.transport else { return }
-
-            for await event in transport.events {
-                guard !Task.isCancelled else { break }
-                await self.eventBatcher.enqueue(event)
-            }
-
-            // Stream ended naturally -- flush remaining events.
-            // Don't wipe state here: softReconnect keeps state alive.
-            // Only wipe if cancelled explicitly via disconnect().
-            guard !Task.isCancelled else { return }
-            let remaining = await self.eventBatcher.drain()
-            if !remaining.isEmpty {
-                await MainActor.run {
-                    for event in remaining { self.handleEvent(event) }
-                }
-            }
-        }
-
-        // Flusher: drain batched events every ~16ms and process on MainActor
-        flushTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(16))
-                guard !Task.isCancelled, let self else { break }
-                let batch = await self.eventBatcher.drain()
-                // Sync connectionQuality.transportState so signal bars update promptly.
-                let latestTransport = self.transport?.state ?? .disconnected
-                let needsStateSync = self.connectionQuality.transportState != latestTransport
-                guard !batch.isEmpty || needsStateSync else { continue }
-                await MainActor.run {
-                    for event in batch {
-                        self.handleEvent(event)
-                    }
-                    if needsStateSync {
-                        self.connectionQuality.transportState = latestTransport
-                    }
-                }
-            }
-        }
-    }
 
     @MainActor
     func handleEvent(_ event: RemoteEvent) {
@@ -91,6 +47,9 @@ extension SessionViewModel {
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
+        case .lanAuthRejected:
+            handleLANAuthRejected()
+
         case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources):
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
@@ -103,14 +62,18 @@ extension SessionViewModel {
         case .remoteDisplay(let customName, let customIcon, let updatedAt):
             applyLiveRemoteDisplay(customName: customName, customIcon: customIcon, updatedAt: updatedAt)
 
-        case .tabCreated(let tab):
+        case .tabCreated(let tab, let clientCmdId):
             if !tabs.contains(where: { $0.id == tab.id }) {
                 tabs.append(tab)
                 tabIds.insert(tab.id)
             }
-            if awaitingLocalTabCreation {
+            // Clear the confirm-or-resend tracker for this create. A match means
+            // the creation was locally initiated, so navigate to it (replacing
+            // the former `awaitingLocalTabCreation` flag). A resent create the
+            // desktop deduped still echoes the same id, so navigation and the
+            // tracker-clear fire exactly once.
+            if confirmCreate(clientCmdId: clientCmdId) {
                 pendingNavigationTabId = tab.id
-                awaitingLocalTabCreation = false
             }
 
         case .tabClosed(let tabId):
@@ -118,6 +81,9 @@ extension SessionViewModel {
 
         case .tabStatus(let tabId, let status):
             handleTabStatus(tabId: tabId, status: status)
+
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId):
+            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId)
 
         case .textChunk(let tabId, let text):
             // Update tab preview for the tab list (shows most recent text)
@@ -150,8 +116,8 @@ extension SessionViewModel {
                 tabs[idx].permissionQueue.removeAll { $0.questionId == questionId }
             }
 
-        case .conversationHistory(let tabId, let newMessages, let hasMore, let cursor):
-            handleConversationHistory(tabId: tabId, newMessages: newMessages, hasMore: hasMore, cursor: cursor)
+        case .conversationHistory(let tabId, let newMessages, let hasMore, let cursor, let before):
+            handleConversationHistory(tabId: tabId, newMessages: newMessages, hasMore: hasMore, cursor: cursor, before: before)
 
         case .messageAdded(let tabId, let message):
             handleMessageAdded(tabId: tabId, message: message)
@@ -208,7 +174,11 @@ extension SessionViewModel {
             // event's instanceId is vestigial — mutateEngineInstance targets
             // that single instance regardless.
             let statuses = agents.map { "\($0.name):\($0.status)" }.joined(separator: ",")
-            DiagnosticLog.log("ENGINE: agent_state tabId=\(tabId.prefix(8)) count=\(agents.count) statuses=[\(statuses)]")
+            DiagnosticLog.log("agent state", tag: "session.events", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "count": String(agents.count),
+                "agent": statuses
+            ])
             mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.agentStates = agents }
             // Clear push/snapshot input caches for terminal dispatches so
             // stale push entries don't produce ghost duplicates on popup reopen.
@@ -242,11 +212,17 @@ extension SessionViewModel {
             _ = instanceId // unused post-#256, bare tabId is the key
             activeTools[tabId]?[toolId]?.isStalled = true
 
+        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let source, let toolId):
+            handleEngineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, source: source, toolId: toolId)
+
         case .engineRunStalled(let tabId, let instanceId, let stalledDuration, let lastActivity):
             handleEngineRunStalled(tabId: tabId, instanceId: instanceId, stalledDuration: stalledDuration, lastActivity: lastActivity)
 
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+
+        case .enginePromptInjected(let tabId, let instanceId, let prompt, _):
+            handleEnginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt)
 
         // Extended-thinking events (issue #158). A thinking block is OPTIONAL
         // per turn; the delta may be gated off for low-bandwidth. The
@@ -270,7 +246,12 @@ extension SessionViewModel {
         // dispatchTelemetry array, mirroring desktop buildDispatchStartEntry /
         // applyDispatchEnd in engine-event-slice-helpers.ts.
         case .engineDispatchStart(let tabId, let instanceId, let agent, let sessionId, let model, let task, let depth, let parentId, let dispatchId):
-            DiagnosticLog.log("ENGINE: dispatch_start agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) id=\(dispatchId.prefix(16))")
+            DiagnosticLog.log("dispatch start", tag: "session.events", level: .debug, fields: [
+                "agent": agent,
+                "count": String(depth),
+                "reason": String(parentId.prefix(16)),
+                "run_id": String(dispatchId.prefix(16))
+            ])
             let entry = DispatchTelemetryEntry(
                 dispatchAgent: agent,
                 dispatchSessionId: sessionId,
@@ -286,7 +267,14 @@ extension SessionViewModel {
                 $0.dispatchTelemetry = existing
             }
         case .engineDispatchEnd(let tabId, let instanceId, let agent, let depth, let parentId, let exitCode, let elapsed, let dispatchId, let conversationId):
-            DiagnosticLog.log("ENGINE: dispatch_end agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) exit=\(exitCode) elapsed=\(String(format: "%.2f", elapsed))s id=\(dispatchId.prefix(16))")
+            DiagnosticLog.log("dispatch end", tag: "session.events", level: .debug, fields: [
+                "agent": agent,
+                "count": String(depth),
+                "reason": String(parentId.prefix(16)),
+                "status": String(exitCode),
+                "duration_ms": String(format: "%.2f", elapsed),
+                "run_id": String(dispatchId.prefix(16))
+            ])
             mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
                 guard var telemetry = $0.dispatchTelemetry else { return }
                 if let idx = telemetry.firstIndex(where: { $0.dispatchId == dispatchId }) {
@@ -317,8 +305,11 @@ extension SessionViewModel {
         case .engineTextDelta(let tabId, let instanceId, let text):
             handleEngineTextDelta(tabId: tabId, instanceId: instanceId, text: text)
 
-        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _):
-            handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent)
+        case .engineStreamReset(let tabId, let instanceId):
+            handleEngineStreamReset(tabId: tabId, instanceId: instanceId)
+
+        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _, let entryId, let userEntryId):
+            handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent, entryId: entryId, userEntryId: userEntryId)
 
         case .engineHarnessMessage(let tabId, let instanceId, let message, _, _):
             handleEngineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message)
@@ -400,7 +391,11 @@ extension SessionViewModel {
             // new-conversation flow must skip picker and use mandated values.
             enterpriseNewConversationPolicy = newConversationPolicy
             if let policy = newConversationPolicy {
-                DiagnosticLog.log("SETTINGS: newConversationPolicy received locked=\(policy.locked) dir=\(policy.baseDirectory.prefix(40)) profile=\(policy.engineProfileId.prefix(8))")
+                DiagnosticLog.log("new conversation policy received", tag: "session.events", fields: [
+                    "status": String(policy.locked),
+                    "path": String(policy.baseDirectory.prefix(40)),
+                    "reason": String(policy.engineProfileId.prefix(8))
+                ])
             }
 
         // Git events
@@ -484,7 +479,11 @@ extension SessionViewModel {
 
         case .tabAttachments(let tabId, let attachments):
             let names = attachments.map { "\($0.type):\($0.name)" }.joined(separator: ", ")
-            DiagnosticLog.log("ATTACH: tabAttachments received tabId=\(tabId.prefix(8)) count=\(attachments.count) items=[\(names)]")
+            DiagnosticLog.log("tab attachments received", tag: "session.events", fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "count": String(attachments.count),
+                "reason": names
+            ])
             tabAttachmentCache[tabId] = attachments
 
         // Command discovery events
@@ -492,8 +491,8 @@ extension SessionViewModel {
             discoveredCommands[directory] = commands
 
         // Diagnostic log request from desktop
-        case .requestDiagnosticLogs:
-            handleRequestDiagnosticLogs()
+        case .requestDiagnosticLogs(let lineOffset):
+            handleRequestDiagnosticLogs(lineOffset: lineOffset)
 
         // Resource events (D-007)
         case .engineResourceSnapshot(_, _, let kind, _, let rawItems):
@@ -526,7 +525,11 @@ extension SessionViewModel {
             // Store on the active instance so StatusDrawerView can read it without a
             // separate fetch. Mirrors the desktop's engine-event-slice handler that
             // writes contextBreakdown onto the ConversationInstance.
-            DiagnosticLog.log("ENGINE: context_breakdown tabId=\(tabId.prefix(8)) categories=\(payload.categories.count) total=\(payload.totalTokens)")
+            DiagnosticLog.log("context breakdown", tag: "session.events", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "count": String(payload.categories.count),
+                "max": String(payload.totalTokens)
+            ])
             mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
                 $0.contextBreakdown = payload
             }

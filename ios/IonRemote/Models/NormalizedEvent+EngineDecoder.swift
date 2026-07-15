@@ -173,12 +173,20 @@ extension RemoteEvent {
             let text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
             return .engineTextDelta(tabId: tabId, instanceId: instanceId, text: text)
 
+        case .engineStreamReset:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            return .engineStreamReset(tabId: tabId, instanceId: instanceId)
+
         case .engineMessageEnd:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            // Usage is a nested object: { inputTokens, outputTokens, contextPercent, cost }
+            // Usage is a nested object: { inputTokens, outputTokens,
+            // contextPercent, cost, entryId?, userEntryId? }. The canonical
+            // entry ids ride inside usage on the wire (Go MessageEndUsage);
+            // they surface as top-level associated values on the Swift case.
             let usage = try container.decodeIfPresent(EngineMessageEndUsage.self, forKey: .usage)
-            return .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0)
+            return .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0, entryId: usage?.entryId, userEntryId: usage?.userEntryId)
 
         case .engineDead:
             let tabId = try container.decode(String.self, forKey: .tabId)

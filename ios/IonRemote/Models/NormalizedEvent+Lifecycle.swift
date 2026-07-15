@@ -39,7 +39,8 @@ extension RemoteEvent {
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
-            return .tabCreated(tab: tab)
+            let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
+            return .tabCreated(tab: tab, clientCmdId: clientCmdId)
 
         case .tabClosed:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -135,9 +136,10 @@ extension RemoteEvent {
             try container.encodeIfPresent(resources, forKey: .resources)
             return true
 
-        case .tabCreated(let tab):
+        case .tabCreated(let tab, let clientCmdId):
             try container.encode(TypeKey.tabCreated, forKey: .type)
             try container.encode(tab, forKey: .tab)
+            try container.encodeIfPresent(clientCmdId, forKey: .clientCmdId)
             return true
 
         case .tabClosed(let tabId):

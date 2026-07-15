@@ -3,7 +3,12 @@ import Foundation
 /// A single message in a conversation. Matches `RemoteMessage` in protocol.ts.
 /// Also used for engine conversations (formerly EngineMessage).
 struct Message: Codable, Identifiable, Sendable {
-    let id: String
+    /// Mutable so `handleEngineMessageEnd` can RE-KEY a locally-streamed row
+    /// (UUID / clientMsgId) to its canonical persisted tree-entry id carried
+    /// on desktop_message_end (`entryId` / `userEntryId`). History pages key
+    /// rows by those canonical ids, so the re-key is what lets a subsequent
+    /// wholesale-replace anchor on the live rows instead of duplicating them.
+    var id: String
     let role: MessageRole
     var content: String
     var toolName: String?

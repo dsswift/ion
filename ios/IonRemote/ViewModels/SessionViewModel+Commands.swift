@@ -130,7 +130,8 @@ extension SessionViewModel {
         // conversation blank for the whole round-trip (and indefinitely if the
         // response was dropped). The existing messages stay visible until the
         // replacement page arrives; handleConversationHistory replaces them
-        // wholesale on the first page (before == nil / cursor == nil).
+        // wholesale on the first page (the response echoes this request's
+        // nil cursor as `before == nil`).
         clearLiveText(tabId: tabId)
         conversationLoaded.remove(tabId)
         conversationHasMore.removeValue(forKey: tabId)
@@ -197,7 +198,12 @@ extension SessionViewModel {
 
     func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil, profileId: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
-        awaitingLocalTabCreation = true
+        // Route through the confirm-or-resend tracker rather than a fire-once
+        // `send(_:intent: .userInitiated)`: a create dropped into a wedged
+        // transport succeeds locally without throwing and is otherwise lost.
+        // The `clientCmdId` correlates the desktop_tab_created echo back to this
+        // pending create (also driving navigation). See SessionViewModel+PendingCreate.
+        let clientCmdId = UUID().uuidString
         // When `pinToGroupId` is supplied (e.g. via the per-group `+` button
         // in TabListView's group header), include it on the wire so the
         // desktop can create the tab inside that manual group with
@@ -209,7 +215,10 @@ extension SessionViewModel {
         // that profile; nil creates a plain conversation tab. This is the
         // unified post-#256 wire path — both plain and engine tabs go through
         // the same `desktop_create_tab` command shape.
-        send(.createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId), intent: .userInitiated)
+        sendTrackedCreate(
+            .createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId, clientCmdId: clientCmdId),
+            clientCmdId: clientCmdId
+        )
     }
 
     func closeTab(_ tabId: String) {
@@ -269,8 +278,12 @@ extension SessionViewModel {
 
     func createTerminalTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
-        awaitingLocalTabCreation = true
-        send(.createTerminalTab(workingDirectory: dir), intent: .userInitiated)
+        // Confirm-or-resend tracked, same rationale as createTab.
+        let clientCmdId = UUID().uuidString
+        sendTrackedCreate(
+            .createTerminalTab(workingDirectory: dir, clientCmdId: clientCmdId),
+            clientCmdId: clientCmdId
+        )
     }
 
     // Engine Commands live in SessionViewModel+EngineCommands.swift to keep

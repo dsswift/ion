@@ -14,8 +14,16 @@ enum RemoteCommand: Codable, Sendable {
     /// engine-hosted conversation. When absent the desktop creates a plain
     /// CLI tab. This merges the former `desktop_create_engine_tab` wire
     /// command into the unified create-tab shape (#256).
-    case createTab(workingDirectory: String?, pinToGroupId: String? = nil, profileId: String? = nil, extensions: [String]? = nil)
-    case createTerminalTab(workingDirectory: String?)
+    /// `clientCmdId` is a locally-generated correlation id for the
+    /// confirm-or-resend delivery loop (see `SessionViewModel+PendingCreate`).
+    /// A create can be silently lost when the transport wedges after a
+    /// background/resume cycle — `lan.send` succeeds into a dead socket and
+    /// nothing throws — so the client tracks the create as pending and resends
+    /// until the desktop echoes this id back on `desktop_tab_created`. The
+    /// desktop dedupes by it so a resend re-emits the existing tab, never a
+    /// duplicate. Absent (nil) for any non-tracked caller.
+    case createTab(workingDirectory: String?, pinToGroupId: String? = nil, profileId: String? = nil, extensions: [String]? = nil, clientCmdId: String? = nil)
+    case createTerminalTab(workingDirectory: String?, clientCmdId: String? = nil)
     case closeTab(tabId: String)
     case resetTabSession(tabId: String)
     /// Engine-instance counterpart to `resetTabSession` — stops the engine
@@ -307,6 +315,9 @@ enum RemoteCommand: Codable, Sendable {
         // `extensions` carries the optional list of extension IDs for
         // engine-hosted tabs created via the unified desktop_create_tab shape.
         case extensions
+        // `clientCmdId` correlates create commands to their desktop_tab_created
+        // echo for the confirm-or-resend delivery loop (create-tab reliability).
+        case clientCmdId
         case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden, hash
         // fs_rename payload — both paths are absolute and live under a
         // project root. New CodingKeys (no collision with existing entries);

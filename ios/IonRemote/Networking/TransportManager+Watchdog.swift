@@ -67,6 +67,40 @@ extension TransportManager {
         lanHeartbeatWatchdogTask = nil
     }
 
+    /// Re-prove the LAN socket right after an app resume.
+    ///
+    /// A LAN connection that was `.lanPreferred` before the app suspended can
+    /// come back a zombie: the OS froze the process, the TCP socket wedged
+    /// without ever delivering a FIN, and `lan.isConnected` still reads true.
+    /// Outbound sends then vanish into that dead socket — `lan.send` succeeds
+    /// locally and nothing throws — for up to a full steady-state watchdog
+    /// interval (30s). That is the exact window where user actions (e.g. a tab
+    /// create) get silently lost after a background/resume cycle.
+    ///
+    /// This fires a short one-shot probe: baseline `lastHeartbeatAt` to now, and
+    /// 3s later, if no LAN heartbeat has arrived (which would advance
+    /// `lastHeartbeatAt` past the baseline), tear the LAN down so relay takes
+    /// over immediately. The steady-state watchdog is left untouched — this only
+    /// tightens detection for the resume moment. Confirm-or-resend on the client
+    /// still guarantees create delivery; this reduces how often the hole opens
+    /// for every other command too.
+    func revalidateLANAfterResume() {
+        guard state == .lanPreferred else { return }
+        let baseline = Date()
+        lastHeartbeatAt = baseline
+        DiagnosticLog.log("lan revalidate after resume: 3s probe armed", tag: "transport", fields: [:])
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, !Task.isCancelled else { return }
+            // A genuine LAN heartbeat since resume advances lastHeartbeatAt past
+            // the baseline; if it hasn't moved, the LAN socket is not delivering.
+            guard self.state == .lanPreferred, self.lastHeartbeatAt <= baseline else { return }
+            DiagnosticLog.log("lan revalidate: no heartbeat 3s after resume, tearing down lan", tag: "transport", level: .warn, fields: [:])
+            self.stopLANHeartbeatWatchdog()
+            self.handleLANWatchdogFire()
+        }
+    }
+
     /// Recover from a starved LAN socket: tear the dead NWConnection down and
     /// recompute the transport state so relay takes over immediately.
     ///

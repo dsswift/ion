@@ -10,7 +10,7 @@ import XCTest
 ///
 /// The fix removes the pre-clear. Existing messages remain visible until the
 /// replacement page arrives; `handleConversationHistory` replaces them wholesale
-/// on the first page (cursor == nil).
+/// on the first page (before == nil).
 ///
 /// This test seeds messages, calls `loadConversation`, and asserts the messages
 /// survive the call. On the unfixed code the pre-clear empties the list and the
@@ -49,7 +49,7 @@ final class SessionViewModelLoadConversationTests: XCTestCase {
         let vm = SessionViewModel()
         let tabId = "tab-replace"
 
-        // Seed stale messages, then deliver a fresh first page (cursor == nil).
+        // Seed stale messages, then deliver a fresh first page (before == nil).
         vm.setConversationMessages(tabId: tabId, [makeMessage(id: "old1"), makeMessage(id: "old2")])
         vm.handleConversationHistory(
             tabId: tabId,

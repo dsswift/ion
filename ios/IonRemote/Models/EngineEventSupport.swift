@@ -369,11 +369,21 @@ struct ConversationInstancePayload: Codable, Sendable {
 // MARK: - EngineMessageEndUsage
 
 /// Nested usage stats within an engine_message_end event.
+/// Mirrors Go `types.MessageEndUsage` (engine/internal/types) — the manifest
+/// entry `sharedTypes.MessageEndUsage` in contracts.json is the contract.
 struct EngineMessageEndUsage: Codable, Sendable {
     let inputTokens: Int
     let outputTokens: Int
     let contextPercent: Double
     let cost: Double
+    /// Canonical persisted tree-entry id of the assistant message this end
+    /// closes. iOS re-keys the streamed assistant row to it so history pages
+    /// (which carry the same id) anchor on it. Optional: absent on older
+    /// engines/desktops.
+    let entryId: String?
+    /// Canonical persisted tree-entry id of the run-opening user turn. iOS
+    /// re-keys the optimistic user row (clientMsgId) to it. Optional.
+    let userEntryId: String?
 }
 
 // MARK: - EngineCommandListing

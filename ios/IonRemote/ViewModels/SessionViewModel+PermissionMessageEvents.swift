@@ -14,7 +14,15 @@ extension SessionViewModel {
         let inputKeys = toolInput?.keys.sorted() ?? []
         let inputSummary = toolInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
         let hasEngineExtension = tabs.first(where: { $0.id == tabId })?.hasEngineExtension == true
-        DiagnosticLog.log("PERM: handlePermissionRequest: tabId=\(tabId.prefix(8)) instanceId=\(instanceId?.prefix(8) ?? "nil") questionId=\(questionId.prefix(16)) toolName=\(toolName) inputKeys=\(inputKeys) inputTypes=[\(inputSummary)] options=\(options.map(\.label)) isEngine=\(hasEngineExtension)")
+        DiagnosticLog.log("permission request", tag: "session.perm", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": instanceId?.prefix(8).description ?? "nil",
+            "question_id": String(questionId.prefix(16)),
+            "tool": toolName,
+            "count": String(inputKeys.count),
+            "status": inputSummary,
+            "agent": String(hasEngineExtension)
+        ])
 
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             // Normalize AnyCodable toolInput to Foundation types so the
@@ -28,7 +36,9 @@ extension SessionViewModel {
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 normalizedInput = dict.mapValues { AnyCodable($0) }
                 let normalizedSummary = normalizedInput?.map { "\($0.key): \(type(of: $0.value.value))" }.joined(separator: ", ") ?? "nil"
-                DiagnosticLog.log("PERM: handlePermissionRequest: normalized toolInput types=[\(normalizedSummary)]")
+                DiagnosticLog.log("permission request normalized tool input", tag: "session.perm", fields: [
+                    "status": normalizedSummary
+                ])
             } else {
                 DiagnosticLog.log("PERM: handlePermissionRequest: normalization failed or skipped, using raw toolInput")
             }
@@ -39,15 +49,35 @@ extension SessionViewModel {
                 options: options,
                 instanceId: instanceId
             )
-            DiagnosticLog.log("PERM: handlePermissionRequest: queued request for tabId=\(tabId.prefix(8)) queueSize=\(self.tabs[idx].permissionQueue.count + 1)")
+            DiagnosticLog.log("permission request queued", tag: "session.perm", fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "count": String(self.tabs[idx].permissionQueue.count + 1)
+            ])
             tabs[idx].permissionQueue.append(request)
         } else {
-            DiagnosticLog.log("PERM: handlePermissionRequest: tab \(tabId.prefix(8)) not found, dropping permission request")
+            DiagnosticLog.log("permission request tab not found", tag: "session.perm", level: .warn, fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
         }
     }
 
+    /// Apply a `desktop_conversation_history` page.
+    ///
+    /// Replace-vs-prepend is discriminated by `before` — the desktop's ECHO of
+    /// the REQUEST cursor from the `desktop_load_conversation` this page
+    /// answers — NEVER by the response `cursor`. The response cursor is set on
+    /// every page that has more history (it is the token for fetching the next
+    /// older page), so the old `cursor != nil` branch made every
+    /// fingerprint-heal response take the prepend path and prepend a duplicate
+    /// page: message counts grew 132→172→212→252, one page per heal, producing
+    /// an interlaced transcript.
+    ///
+    ///   - `before != nil` — older-page pagination: prepend only unseen rows.
+    ///   - `before == nil` — first page / heal: wholesale REPLACE of the
+    ///     persisted portion, preserving (1) the live tail (rows streamed after
+    ///     the page was cut) and (2) optimistic user rows not yet persisted.
     @MainActor
-    func handleConversationHistory(tabId: String, newMessages: [Message], hasMore: Bool, cursor: String?) {
+    func handleConversationHistory(tabId: String, newMessages: [Message], hasMore: Bool, cursor: String?, before: String? = nil) {
         cancelLoadTimer(tabId: tabId)
         conversationLoadFailed.remove(tabId)
         loadingConversation.remove(tabId)
@@ -56,36 +86,82 @@ extension SessionViewModel {
         conversationHasMore[tabId] = hasMore
         conversationCursor[tabId] = cursor
 
-        // Deduplicate by message ID, keeping last occurrence (most recent version).
-        let deduped = deduplicateMessages(newMessages)
+        // Deduplicate incoming by message ID, keeping last occurrence (most
+        // recent version).
+        let incoming = deduplicateMessages(newMessages)
+        let incomingIds = Set(incoming.map { $0.id })
+        let current = conversationMessages(tabId)
 
-        if cursor != nil {
+        if before != nil {
+            // Older-page pagination (user scrolled up): prepend only rows the
+            // local list doesn't already hold, above the existing transcript.
+            // Suppress the scroll-to-bottom the list would otherwise perform
+            // on a count change — the user is reading older history.
             suppressScrollToBottom = true
-            setConversationMessages(tabId: tabId, deduped + conversationMessages(tabId))
+            let currentIds = Set(current.map { $0.id })
+            let newRows = incoming.filter { !currentIds.contains($0.id) }
+            setConversationMessages(tabId: tabId, newRows + current)
         } else {
-            // Preserve any pending optimistic user messages that arrived between
-            // submit and this history response. An optimistic message is one in
-            // the current list whose id is NOT in the incoming history — it was
-            // written locally by `submit` and has not yet been confirmed by a
-            // desktop echo. If we did a bare replace it would be silently dropped,
-            // leaving no user bubble until the echo arrived over the relay
-            // round-trip (the MISSING symptom for the case where history lands
-            // before the echo). Prepend them so they sit above the history tail;
-            // `deduplicateMessages` then collapses any overlap when the echo
-            // arrives later and carries the same clientMsgId.
-            let incomingIds = Set(deduped.map { $0.id })
-            let pending = conversationMessages(tabId).filter {
-                !incomingIds.contains($0.id) && $0.role == .user && $0.source == .remote
+            // First page / fingerprint heal: the page is the authoritative
+            // persisted transcript. Replace wholesale, preserving two classes
+            // of local rows the page cannot carry yet:
+            //
+            // (1) The LIVE TAIL — rows streamed via live events after the page
+            //     was cut on the desktop. Anchor on the LAST local row whose
+            //     id appears in the page (history rows carry canonical engine
+            //     tree-entry ids; live rows are re-keyed to the same ids by
+            //     handleEngineMessageEnd): everything after the anchor is
+            //     newer than the page. When no id anchors (a fully pre-canonical
+            //     local list), fall back to rows STRICTLY newer than the
+            //     page's last timestamp. Rows the page already contains are
+            //     dropped from the tail (the page's version is canonical).
+            //
+            // (2) PENDING OPTIMISTIC user rows — written locally by `submit`
+            //     (source == .remote) and not yet confirmed into the page. A
+            //     bare replace would drop them, leaving no user bubble until
+            //     the desktop echo round-trips (the MISSING symptom). They are
+            //     the newest turns, so they go BELOW the history — the old
+            //     code wrongly prepended them above it.
+            //
+            // Final shape: incoming + pendingOptimistic + liveTail.
+            let isPendingOptimistic: (Message) -> Bool = {
+                $0.role == .user && $0.source == .remote && !incomingIds.contains($0.id)
             }
-            let merged = pending.isEmpty ? deduped : deduplicateMessages(pending + deduped)
+            var tailCandidates: [Message] = []
+            if let anchorIdx = current.lastIndex(where: { incomingIds.contains($0.id) }) {
+                tailCandidates = Array(current[(anchorIdx + 1)...])
+            } else if let lastTs = incoming.compactMap({ $0.timestamp }).max() {
+                tailCandidates = current.filter { ($0.timestamp ?? 0) > lastTs }
+            }
+            let pending = current.filter(isPendingOptimistic)
+            let tail = tailCandidates.filter {
+                !incomingIds.contains($0.id) && !isPendingOptimistic($0)
+            }
+            let merged = incoming + pending + tail
             setConversationMessages(tabId: tabId, merged)
+
+            // If the replace dropped the live `.thinking` row, clear the
+            // in-progress accumulator so a late thinking_delta / block_end
+            // can't target a message id that no longer exists in the list.
+            // When the row survived in the live tail the id stays bound and
+            // the stream continues seamlessly.
+            if let liveThinkingId = thinkingMessageId(tabId),
+               !merged.contains(where: { $0.id == liveThinkingId }) {
+                clearThinkingAccumulator(forKey: tabId)
+            }
         }
 
         // Log the last 3 messages for diagnostics (permission card restoration depends on message content).
         let allMsgs = conversationMessages(tabId)
         let tail = allMsgs.suffix(3)
         let tailSummary = tail.map { "role=\($0.role.rawValue) toolName=\($0.toolName ?? "nil") isTool=\($0.isTool) toolInput=\($0.toolInput?.prefix(60) ?? "nil")" }.joined(separator: " | ")
-        DiagnosticLog.log("CONV-HIST: tabId=\(tabId.prefix(8)) total=\(allMsgs.count) hasMore=\(hasMore) cursor=\(cursor?.prefix(8) ?? "nil") tail=[\(tailSummary)]")
+        DiagnosticLog.log("conversation history", tag: "session.convhist", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "count": String(allMsgs.count),
+            "reason": String(hasMore),
+            "conversation_id": before?.prefix(8).description ?? "nil",
+            "status": tailSummary
+        ])
     }
 
     @MainActor
@@ -112,7 +188,10 @@ extension SessionViewModel {
         // conversation.
         if message.role == .user || message.role == .assistant {
             if !conversationLoaded.contains(tabId) {
-                DiagnosticLog.log("MSG-ADD: tabId=\(tabId.prefix(8)) inserting \(message.role.rawValue) echo on not-yet-loaded conversation (marking loaded)")
+                DiagnosticLog.log("message added echo on unloaded conversation", tag: "session.msg", fields: [
+                    "tab_id": String(tabId.prefix(8)),
+                    "reason": message.role.rawValue
+                ])
                 conversationLoaded.insert(tabId)
             }
         } else {
@@ -122,10 +201,20 @@ extension SessionViewModel {
             // ID-based reconciliation: if a message with this ID already exists
             // (optimistic insert), replace it with the canonical version from desktop.
             if let existingIdx = msgs.firstIndex(where: { $0.id == message.id }) {
-                DiagnosticLog.log("MSG-RECONCILE: tabId=\(tabId.prefix(8)) id=\(message.id.prefix(8)) role=\(message.role.rawValue) replaced-at-idx=\(existingIdx) totalMsgs=\(msgs.count)")
+                DiagnosticLog.log("message reconciled", tag: "session.msg", fields: [
+                    "tab_id": String(tabId.prefix(8)),
+                    "reason": String(message.id.prefix(8)),
+                    "status": message.role.rawValue,
+                    "count": String(msgs.count)
+                ])
                 msgs[existingIdx] = message
             } else {
-                DiagnosticLog.log("MSG-APPEND: tabId=\(tabId.prefix(8)) id=\(message.id.prefix(8)) role=\(message.role.rawValue) totalMsgs=\(msgs.count + 1)")
+                DiagnosticLog.log("message appended", tag: "session.msg", fields: [
+                    "tab_id": String(tabId.prefix(8)),
+                    "reason": String(message.id.prefix(8)),
+                    "status": message.role.rawValue,
+                    "count": String(msgs.count + 1)
+                ])
                 msgs.append(message)
             }
         }
@@ -164,7 +253,11 @@ extension SessionViewModel {
         // on its own. Here we only place the rewound user message back in the
         // engine input box.
         if let instanceId {
-            DiagnosticLog.log("EVENT: inputPrefill -> engine draft tabId=\(tabId.prefix(8)) instance=\(instanceId.prefix(8)) len=\(text.count)")
+            DiagnosticLog.log("input prefill to engine draft", tag: "session.prefill", fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "reason": String(instanceId.prefix(8)),
+                "count": String(text.count)
+            ])
             setEngineDraft(tabId: tabId, instanceId: instanceId, text)
             if switchTo {
                 pendingNavigationTabId = tabId

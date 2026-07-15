@@ -244,10 +244,13 @@ extension SessionViewModel {
         if transport == nil {
             softReconnect()
         } else {
-            // Transport survived backgrounding. A delta may have been missed
-            // while suspended, so proactively resync to reconcile state rather
-            // than waiting for the next incidental event.
-            DiagnosticLog.log("RESUME: transport alive, sending proactive sync")
+            // Transport survived backgrounding. Two things can be stale:
+            // (1) the LAN socket may be a zombie (wedged during suspension while
+            //     still reading connected) — revalidate it so sends don't vanish
+            //     into a dead socket; and (2) a delta may have been missed, so
+            //     proactively resync to reconcile state.
+            DiagnosticLog.log("RESUME: transport alive, revalidating LAN + proactive sync")
+            transport?.revalidateLANAfterResume()
             send(.sync, intent: .automaticEssential)
         }
     }
@@ -377,7 +380,10 @@ extension SessionViewModel {
         enterpriseNewConversationPolicy = nil
         pendingCloseTabIds = []
         pendingInputByTab = [:]
-        awaitingLocalTabCreation = false
+        // Hard reset only (switch desktop / unpair): drop in-flight creates so a
+        // stale create never spawns a tab against a different pairing. Survives
+        // soft reconnect because that path never calls wipeTransientState.
+        clearPendingCreates()
         activeTools = [:]
         tabGroupMode = "auto"
         tabGroups = []

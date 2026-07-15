@@ -10,7 +10,7 @@ extension RemoteCommand {
         switch self {
         case .sync:
             try container.encode(TypeKey.sync, forKey: .type)
-        case .createTab(let workingDirectory, let pinToGroupId, let profileId, let extensions):
+        case .createTab(let workingDirectory, let pinToGroupId, let profileId, let extensions, let clientCmdId):
             try container.encode(TypeKey.createTab, forKey: .type)
             try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
             // Only emit optional fields when the caller actually supplied them,
@@ -19,6 +19,7 @@ extension RemoteCommand {
             try container.encodeIfPresent(pinToGroupId, forKey: .pinToGroupId)
             try container.encodeIfPresent(profileId, forKey: .profileId)
             try container.encodeIfPresent(extensions, forKey: .extensions)
+            try container.encodeIfPresent(clientCmdId, forKey: .clientCmdId)
         case .closeTab(let tabId):
             try container.encode(TypeKey.closeTab, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -75,9 +76,10 @@ extension RemoteCommand {
             try container.encode(TypeKey.requestResend, forKey: .type)
             try container.encode(fromSeq, forKey: .fromSeq)
             try container.encode(toSeq, forKey: .toSeq)
-        case .createTerminalTab(let workingDirectory):
+        case .createTerminalTab(let workingDirectory, let clientCmdId):
             try container.encode(TypeKey.createTerminalTab, forKey: .type)
             try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
+            try container.encodeIfPresent(clientCmdId, forKey: .clientCmdId)
 
         case .terminalInput(let tabId, let instanceId, let data):
             try container.encode(TypeKey.terminalInput, forKey: .type)

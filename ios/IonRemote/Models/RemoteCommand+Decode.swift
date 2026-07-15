@@ -27,7 +27,8 @@ extension RemoteCommand {
             let pinToGroupId = try container.decodeIfPresent(String.self, forKey: .pinToGroupId)
             let profileId = try container.decodeIfPresent(String.self, forKey: .profileId)
             let extensions = try container.decodeIfPresent([String].self, forKey: .extensions)
-            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId, profileId: profileId, extensions: extensions)
+            let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
+            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId, profileId: profileId, extensions: extensions, clientCmdId: clientCmdId)
 
         case .closeTab:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -97,7 +98,8 @@ extension RemoteCommand {
 
         case .createTerminalTab:
             let workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
-            self = .createTerminalTab(workingDirectory: workingDirectory)
+            let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
+            self = .createTerminalTab(workingDirectory: workingDirectory, clientCmdId: clientCmdId)
 
         case .terminalInput:
             let tabId = try container.decode(String.self, forKey: .tabId)

@@ -363,6 +363,19 @@ final class ContractSyncTests: XCTestCase {
         }
     }
 
+    func testEngineStreamResetDecode() throws {
+        let json = """
+        {"type":"desktop_stream_reset","tabId":"t1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineStreamReset(let tabId, let instanceId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+        } else {
+            XCTFail("Expected engineStreamReset")
+        }
+    }
+
     func testEngineToolStartDecode() throws {
         let json = """
         {"type":"desktop_tool_start","tabId":"t1","toolName":"bash","toolId":"tid-1"}
@@ -517,13 +530,33 @@ final class ContractSyncTests: XCTestCase {
         {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01}}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineMessageEnd(_, _, let input, let output, let pct, let cost) = event {
+        if case .engineMessageEnd(_, _, let input, let output, let pct, let cost, let entryId, let userEntryId) = event {
             XCTAssertEqual(input, 100)
             XCTAssertEqual(output, 50)
             XCTAssertEqual(pct, 30.0)
             XCTAssertEqual(cost, 0.01)
+            // Older desktops omit the canonical entry ids — they decode nil.
+            XCTAssertNil(entryId)
+            XCTAssertNil(userEntryId)
         } else {
             XCTFail("Expected engineMessageEnd")
+        }
+    }
+
+    /// The canonical persisted entry ids ride inside `usage` on the wire
+    /// (Go MessageEndUsage) and surface as top-level associated values on
+    /// the Swift case. handleEngineMessageEnd uses them to re-key the
+    /// streamed rows so history pages anchor on them.
+    func testEngineMessageEndDecodeWithEntryIds() throws {
+        let json = """
+        {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01,"entryId":"entry-9","userEntryId":"entry-8"}}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineMessageEnd(_, _, _, _, _, _, let entryId, let userEntryId) = event {
+            XCTAssertEqual(entryId, "entry-9")
+            XCTAssertEqual(userEntryId, "entry-8")
+        } else {
+            XCTFail("Expected engineMessageEnd with entry ids")
         }
     }
 
@@ -577,19 +610,87 @@ final class ContractSyncTests: XCTestCase {
         }
 
         let json = """
-        {"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.5}
+        {"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.5,"entryId":"e-1","userEntryId":"u-1"}
         """.data(using: .utf8)!
         let usage = try decoder.decode(EngineMessageEndUsage.self, from: json)
         XCTAssertEqual(usage.inputTokens, 100)
         XCTAssertEqual(usage.outputTokens, 50)
+        XCTAssertEqual(usage.entryId, "e-1")
+        XCTAssertEqual(usage.userEntryId, "u-1")
 
         let swiftHandled: Set<String> = [
             "inputTokens", "outputTokens", "contextPercent", "cost",
+            "entryId", "userEntryId",
         ]
         let unhandled = Set(goFields).subtracting(swiftHandled)
         XCTAssert(
             unhandled.isEmpty,
             "Go MessageEndUsage has fields not tracked in Swift: \(unhandled.sorted())"
+        )
+    }
+
+    // MARK: - SessionMessage / SessionMessageAttachment field coverage
+
+    /// Go `SessionMessage` is the engine's persisted history-row shape. iOS
+    /// consumes it two ways: via the desktop history mapper (standard
+    /// `Message` Codable decode on desktop_conversation_history) and via the
+    /// direct engine-wire path (`Message(engineJSON:)` for agent histories).
+    /// This tracked set mirrors the Go manifest so any engine-side field
+    /// addition fails here and prompts an iOS review. Fields iOS deliberately
+    /// does not decode are still tracked (documented inline).
+    func testSessionMessageFieldsInManifest() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["SessionMessage"] else {
+            XCTFail("SessionMessage not found in Go manifest")
+            return
+        }
+
+        let swiftHandled: Set<String> = [
+            // Decoded by Message (Codable + engineJSON paths).
+            "attachments", "content", "id", "internal", "role",
+            "slashArgs", "slashCommand", "slashSource",
+            "timestamp", "toolId", "toolInput", "toolName",
+            // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath
+            // fallback for plan-divider links).
+            "markerKind", "markerPlanFilePath",
+            // Tracked but not decoded: the desktop history mapper folds these
+            // marker payload details into the rendered divider content before
+            // iOS sees the row; the engineJSON path routes markers by their
+            // content sentinel. A future iOS marker renderer can adopt them
+            // without a contract change.
+            "markerClearedBlocks", "markerMessageLength",
+            "markerMessagesAfter", "markerMessagesBefore", "markerMicroOnly",
+            "markerPlanOperation", "markerPlanSlug",
+            "markerStrategy", "markerSummary",
+            // Tracked but not decoded: the desktop mapper projects a tool
+            // row's error state onto `toolStatus` before forwarding to iOS.
+            "isError",
+        ]
+        let goSet = Set(goFields)
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go SessionMessage has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
+    /// Go `SessionMessageAttachment` mirrors onto the Swift MessageAttachment
+    /// used on both history paths.
+    func testSessionMessageAttachmentFieldsInManifest() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["SessionMessageAttachment"] else {
+            XCTFail("SessionMessageAttachment not found in Go manifest")
+            return
+        }
+
+        let swiftHandled: Set<String> = [
+            "id", "mimeType", "name", "path", "type",
+        ]
+        let goSet = Set(goFields)
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go SessionMessageAttachment has fields not tracked in Swift test: \(unhandled.sorted())"
         )
     }
 

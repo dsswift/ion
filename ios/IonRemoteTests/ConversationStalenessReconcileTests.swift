@@ -48,6 +48,47 @@ final class ConversationStalenessReconcileTests: XCTestCase {
         XCTAssertEqual(vm.conversationTailFingerprint(msgs), "u1:5,a1:8,t1:tr")
     }
 
+    /// v2: client-local roles (thinking synthesis, live-inserted system
+    /// dividers) are excluded BEFORE windowing — they carry ids only one side
+    /// knows, and including them made the two fingerprints diverge permanently
+    /// (the heal loop that grew the transcript by one page per snapshot).
+    /// Matches the desktop's "excludes client-local roles" case.
+    func testFingerprintExcludesClientLocalRoles() {
+        let vm = SessionViewModel()
+        let persisted = [
+            msg(id: "u1", role: .user, content: "hello"),
+            msg(id: "a1", role: .assistant, content: "hi there"),
+        ]
+        let withLocal = [
+            persisted[0],
+            msg(id: "think-uuid", role: .thinking, content: "reasoning..."),
+            msg(id: "sys-uuid", role: .system, content: "── Plan created ──"),
+            persisted[1],
+            msg(id: "harness-1", role: .harness, content: "Session bootstrapped"),
+        ]
+        XCTAssertEqual(
+            vm.conversationTailFingerprint(withLocal),
+            vm.conversationTailFingerprint(persisted)
+        )
+    }
+
+    /// v2: tool rows key on the engine toolId so a live-streamed tool row and
+    /// its history-reloaded counterpart (different row id, same toolId)
+    /// produce the same token. Matches the desktop's "keys tool rows by
+    /// toolId" case, golden "toolu_9:tc".
+    func testFingerprintToolRowsKeyOnToolId() {
+        let vm = SessionViewModel()
+        var live = msg(id: "toolu_9", role: .tool, content: "x", toolStatus: .completed)
+        live.toolId = "toolu_9"
+        var reloaded = msg(id: "e42:1", role: .tool, content: "different content", toolStatus: .completed)
+        reloaded.toolId = "toolu_9"
+        XCTAssertEqual(vm.conversationTailFingerprint([live]), "toolu_9:tc")
+        XCTAssertEqual(
+            vm.conversationTailFingerprint([live]),
+            vm.conversationTailFingerprint([reloaded])
+        )
+    }
+
     /// Pagination-safety regression for the reload-flash bug: iOS holds a
     /// paginated PAGE while the desktop holds the FULL list. When both share the
     /// same final tail, the fingerprints must be EQUAL (no total-count term), or
