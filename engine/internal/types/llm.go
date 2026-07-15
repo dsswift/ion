@@ -210,6 +210,14 @@ type LlmStreamContentBlock struct {
 	Text      string `json:"text,omitempty"`
 	ToolUseID string `json:"tool_use_id,omitempty"` // for web_search_tool_result
 	Content   any    `json:"content,omitempty"`     // for web_search_tool_result (search results array)
+	// ImageData / ImageMediaType carry a provider-generated image (Type=="image").
+	// ImageData is base64-encoded bytes; ImageMediaType is the MIME type
+	// (e.g. "image/png"). The engine is a pass-through: it saves these bytes to
+	// the conversation's images/ directory and emits an ImageContentEvent
+	// carrying the on-disk FILE PATH — base64 never reaches the wire. Empty for
+	// every non-image block (the overwhelming majority).
+	ImageData      string `json:"image_data,omitempty"`
+	ImageMediaType string `json:"image_media_type,omitempty"`
 }
 
 // LlmStreamDelta carries an incremental content update.

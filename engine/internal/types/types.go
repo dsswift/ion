@@ -414,6 +414,33 @@ type SessionMessage struct {
 
 	// Steer marker fields (MarkerKind=="steer"): mirror SteerMarkerData.
 	MarkerMessageLength int `json:"markerMessageLength,omitempty"`
+
+	// Attachments carries engine-produced image references replayed on
+	// historical reload. Set (on a tool-role row) when flattenEntries encounters
+	// image blocks persisted alongside a tool result, or (on an assistant-role
+	// row) for a provider-generated image. Each entry references an on-disk file
+	// under the conversation's images/ directory — never base64 on the wire,
+	// matching the live ImageContentEvent contract. Empty for ordinary rows.
+	//
+	// This is the reload counterpart to the live image path: during a run the
+	// engine emits an ImageContentEvent per image and clients attach it to the
+	// owning message; on reload that event is gone (it is not persisted), so the
+	// engine replays the same reference here from the persisted image block.
+	Attachments []SessionMessageAttachment `json:"attachments,omitempty"`
+}
+
+// SessionMessageAttachment is a single image reference carried on a
+// SessionMessage during historical reload. The JSON field names match the
+// client attachment shape (desktop Attachment, iOS MessageAttachment) so the
+// existing history-load mappers surface it without a translation layer. Path is
+// the on-disk location under the conversation's images/ directory; the engine
+// never puts base64 on the wire.
+type SessionMessageAttachment struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"` // "image"
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	MediaType string `json:"mimeType,omitempty"`
 }
 
 // PermissionDenialEntry is the wire format for permission denials in ResultEvent.

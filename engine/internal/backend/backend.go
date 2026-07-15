@@ -307,7 +307,16 @@ type RunConfig struct {
 	// the wait. (Permission prompts block elsewhere and do not use the
 	// suspender — see DeadlineSuspender's doc.) ctx is also the cancellation
 	// signal for the routed call.
-	McpToolRouter func(ctx context.Context, name string, input map[string]interface{}) (content string, isErr bool, err error)
+	//
+	// Returns the full *types.ToolResult so vision images an extension or MCP
+	// tool returns (ToolResult.Images) survive the routing hop into the agent
+	// loop. A nil result with a nil error is the "empty successful result"
+	// case; the caller substitutes an empty ToolResult. Widened from the prior
+	// (content string, isErr bool, err error) tuple, which dropped the Images
+	// field on the floor — this router lives behind the compiler-enforced
+	// internal/ boundary and is not a published contract, so the signature
+	// change is an internal refactor.
+	McpToolRouter func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
 	AgentSpawner  tools.AgentSpawner
 	Telemetry     TelemetryCollector
 	Timeouts      *types.TimeoutsConfig

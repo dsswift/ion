@@ -144,6 +144,23 @@ func (b *ApiBackend) processStream(
 				currentPartialJSON.Reset()
 			}
 
+			// Provider-generated image (e.g. GPT-4o, Gemini image output). The
+			// provider parser sets ImageData (base64) + ImageMediaType on the
+			// content block. The engine is a pass-through: save the bytes to the
+			// conversation's images/ directory and emit an ImageContentEvent
+			// carrying the on-disk FILE PATH (never base64 on the wire), with
+			// Source="provider" and no ToolID. A save failure is logged and the
+			// image is dropped rather than failing the run.
+			if cb.Type == "image" || cb.ImageData != "" {
+				if path := b.saveProviderImage(run, cb.ImageMediaType, cb.ImageData); path != "" {
+					b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
+						Path:      path,
+						MediaType: cb.ImageMediaType,
+						Source:    "provider",
+					}})
+				}
+			}
+
 			// Server-side search results -- emit event so consumers can
 			// surface the citations alongside the assistant message.
 			if cb.Type == "web_search_tool_result" && cb.Content != nil {

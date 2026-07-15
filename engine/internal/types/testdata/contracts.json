@@ -66,6 +66,12 @@
       "message",
       "source"
     ],
+    "image_content": [
+      "mediaType",
+      "path",
+      "source",
+      "toolId"
+    ],
     "message_end": [
       "contextPercent",
       "cost",
@@ -178,6 +184,7 @@
     ],
     "tool_result": [
       "content",
+      "images",
       "isError",
       "toolId"
     ],
@@ -264,6 +271,11 @@
     "fields",
     "hasMore",
     "httpStatus",
+    "imageMediaType",
+    "imagePath",
+    "imageSource",
+    "imageToolId",
+    "images",
     "index",
     "interceptLevel",
     "interceptMessage",

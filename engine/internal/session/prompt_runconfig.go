@@ -548,9 +548,16 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 	}
 	capturedExtGroup := extGroup
 	runCfg.ExternalTools = combinedToolDefs
-	runCfg.McpToolRouter = func(ctx context.Context, name string, input map[string]interface{}) (string, bool, error) {
+	runCfg.McpToolRouter = func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error) {
 		if mcpRouter != nil && strings.HasPrefix(name, "mcp__") {
-			return mcpRouter(name, input)
+			content, isErr, err := mcpRouter(name, input)
+			if err != nil {
+				return nil, err
+			}
+			// MCP connections return text content only today; wrap it in a
+			// ToolResult so the router surface is uniform. Images arrive via
+			// the extension path below.
+			return &types.ToolResult{Content: content, IsError: isErr}, nil
 		}
 		if capturedExtGroup != nil {
 			for _, tool := range capturedExtGroup.Tools() {
@@ -562,16 +569,18 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 					extCtx := m.newExtContextWithSuspender(s, key, types.DeadlineSuspenderFrom(ctx))
 					result, err := tool.Execute(input, extCtx)
 					if err != nil {
-						return err.Error(), true, nil
+						return &types.ToolResult{Content: err.Error(), IsError: true}, nil
 					}
 					if result == nil {
-						return "", false, nil
+						return nil, nil
 					}
-					return result.Content, result.IsError, nil
+					// Return the whole result so Images (vision output) survive
+					// the routing hop into the agent loop.
+					return result, nil
 				}
 			}
 		}
-		return "", true, fmt.Errorf("external tool %q not found", name)
+		return nil, fmt.Errorf("external tool %q not found", name)
 	}
 }
 

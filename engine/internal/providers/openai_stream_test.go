@@ -319,3 +319,102 @@ func TestOpenAIStreamCleanToolCallSucceeds(t *testing.T) {
 		t.Fatalf("content_block_stop count = %d, want 1", stops)
 	}
 }
+
+// findImageBlock returns the first content_block_start image block in the
+// collected events, or nil if none was emitted.
+func findImageBlock(events []types.LlmStreamEvent) *types.LlmStreamContentBlock {
+	for _, ev := range events {
+		if ev.Type == "content_block_start" && ev.ContentBlock != nil && ev.ContentBlock.Type == "image" {
+			return ev.ContentBlock
+		}
+	}
+	return nil
+}
+
+// TestOpenAIStreamImageDataURL pins provider image-output parsing for the
+// data-URL shape: a delta carrying images:[{image_url:{url:"data:image/png;
+// base64,..."}}] must emit an image content block carrying the decoded media
+// type + base64 payload. Without the openaiDelta.Images parsing this block is
+// never emitted and the assertion fails.
+func TestOpenAIStreamImageDataURL(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"choices":[{"delta":{"images":[{"type":"image_url","image_url":{"url":"data:image/png;base64,AAECAwQ="}}]}}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+
+	srv := sseServer(t, body)
+	defer srv.Close()
+
+	events, err := drainStream(t, newTestOpenAI(srv.URL))
+	if err != nil {
+		t.Fatalf("stream error: %v", err)
+	}
+	img := findImageBlock(events)
+	if img == nil {
+		t.Fatal("no image content block emitted; provider dropped the image output")
+	}
+	if img.ImageMediaType != "image/png" {
+		t.Errorf("media type = %q, want image/png", img.ImageMediaType)
+	}
+	if img.ImageData != "AAECAwQ=" {
+		t.Errorf("image data = %q, want the base64 payload from the data URL", img.ImageData)
+	}
+}
+
+// TestOpenAIStreamImageB64JSON pins the b64_json shape: images:[{b64_json:...,
+// media_type:...}] must emit an image content block with the explicit media
+// type. Also verifies the image block is self-contained (its own start+stop).
+func TestOpenAIStreamImageB64JSON(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"choices":[{"delta":{"images":[{"type":"image","b64_json":"Zm9vYmFy","media_type":"image/jpeg"}]}}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+
+	srv := sseServer(t, body)
+	defer srv.Close()
+
+	events, err := drainStream(t, newTestOpenAI(srv.URL))
+	if err != nil {
+		t.Fatalf("stream error: %v", err)
+	}
+	img := findImageBlock(events)
+	if img == nil {
+		t.Fatal("no image content block emitted for b64_json image output")
+	}
+	if img.ImageMediaType != "image/jpeg" {
+		t.Errorf("media type = %q, want image/jpeg", img.ImageMediaType)
+	}
+	if img.ImageData != "Zm9vYmFy" {
+		t.Errorf("image data = %q, want the b64_json payload", img.ImageData)
+	}
+}
+
+// TestParseOpenAIImageOut unit-tests the shape normalizer directly, covering
+// the data-URL, b64_json, and malformed cases.
+func TestParseOpenAIImageOut(t *testing.T) {
+	// b64_json with explicit media type
+	mt, data := parseOpenAIImageOut(openaiImageOut{B64JSON: "QQ==", MediaType: "image/webp"})
+	if mt != "image/webp" || data != "QQ==" {
+		t.Errorf("b64_json: got (%q,%q), want (image/webp,QQ==)", mt, data)
+	}
+	// b64_json without media type defaults to png
+	mt, _ = parseOpenAIImageOut(openaiImageOut{B64JSON: "QQ=="})
+	if mt != "image/png" {
+		t.Errorf("b64_json default media type = %q, want image/png", mt)
+	}
+	// data URL
+	mt, data = parseOpenAIImageOut(openaiImageOut{ImageURL: &struct {
+		URL string `json:"url"`
+	}{URL: "data:image/gif;base64,R0lGOD"}})
+	if mt != "image/gif" || data != "R0lGOD" {
+		t.Errorf("data URL: got (%q,%q), want (image/gif,R0lGOD)", mt, data)
+	}
+	// malformed / empty
+	if mt, data := parseOpenAIImageOut(openaiImageOut{}); mt != "" || data != "" {
+		t.Errorf("empty entry: got (%q,%q), want empty", mt, data)
+	}
+}

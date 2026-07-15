@@ -30,7 +30,7 @@ func (b *ApiBackend) executeTools(
 	var hooks RunHooks
 	var permEng *permissions.Engine
 	var sbCfg *sandbox.Config
-	var mcpRouter func(context.Context, string, map[string]interface{}) (string, bool, error)
+	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 	var telem TelemetryCollector
 	var spawnerFn tools.AgentSpawner
 	if run.cfg != nil {
@@ -500,9 +500,8 @@ func (b *ApiBackend) executeTools(
 				// mcpRouter does not yet take ctx; race its return against
 				// toolCtx so a hung MCP server cannot wedge the run.
 				type mcpRet struct {
-					content string
-					isErr   bool
-					err     error
+					result *types.ToolResult
+					err    error
 				}
 				resCh := make(chan mcpRet, 1)
 				go func() {
@@ -510,15 +509,23 @@ func (b *ApiBackend) executeTools(
 					// needs its own ambient install to keep MCP router log
 					// lines correlated. gCtx is captured in the closure.
 					defer installAmbientLogging(gCtx)()
-					content, isErr, routeErr := mcpRouter(toolCtx, block.Name, block.Input)
-					resCh <- mcpRet{content, isErr, routeErr}
+					routed, routeErr := mcpRouter(toolCtx, block.Name, block.Input)
+					resCh <- mcpRet{routed, routeErr}
 				}()
 				select {
 				case r := <-resCh:
 					if r.err != nil {
 						err = r.err
+					} else if r.result != nil {
+						// Consume the full ToolResult directly so Images
+						// (vision output from an extension/MCP tool) survive
+						// into the ToolResultEntry rather than being flattened
+						// to (content, isErr).
+						toolResult = r.result
 					} else {
-						toolResult = &types.ToolResult{Content: r.content, IsError: r.isErr}
+						// Nil result with nil error is the empty-successful
+						// case: substitute an empty result.
+						toolResult = &types.ToolResult{}
 					}
 				case <-toolCtx.Done():
 					err = toolCtx.Err()
@@ -721,12 +728,30 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Emit tool_result event
+			// Emit tool_result event. When the tool returned vision images,
+			// save each image's bytes to the conversation's images/ directory
+			// and carry the FILE PATH (never base64) on both the
+			// ToolResultEvent.Images field and a per-image ImageContentEvent.
+			// The engine is a pass-through for images — it saves and forwards,
+			// never generates.
+			var resultImages []types.ToolResultImage
+			if len(results[i].Images) > 0 {
+				resultImages = b.saveToolResultImages(run, block.ID, results[i].Images)
+			}
 			b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 				ToolID:  block.ID,
 				Content: results[i].Content,
 				IsError: results[i].IsError,
+				Images:  resultImages,
 			}})
+			for _, img := range resultImages {
+				b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
+					Path:      img.Path,
+					MediaType: img.MediaType,
+					Source:    "tool",
+					ToolID:    block.ID,
+				}})
+			}
 
 			return nil
 		})

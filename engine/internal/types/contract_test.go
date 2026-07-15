@@ -86,6 +86,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventExtensionDeadPermanent: &ExtensionDeadPermanentEvent{},
 		EventEventsDropped:          &EventsDroppedEvent{},
 		EventContextBreakdown:       &ContextBreakdownEvent{},
+		EventImageContent:           &ImageContentEvent{},
 	}
 }
 

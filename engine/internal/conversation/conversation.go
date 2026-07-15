@@ -402,8 +402,15 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		})
 		for _, img := range r.Images {
 			imageBlocks = append(imageBlocks, types.LlmContentBlock{
-				Type:   "image",
-				Source: img,
+				Type: "image",
+				// Carry the owning tool call's id on the persisted image block.
+				// Providers ignore ToolUseID on an image block (every provider
+				// serialiser reads only Source for type=="image"), so this never
+				// reaches the wire — but it is what lets flattenEntries associate
+				// a reloaded image back to its tool message on historical reload.
+				// Without it, images loaded from disk have no home and are dropped.
+				ToolUseID: r.ToolUseID,
+				Source:    img,
 			})
 		}
 	}

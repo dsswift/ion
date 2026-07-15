@@ -508,6 +508,44 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 						result[idx].Content = b.Content
 					}
 					// If no matching tool call found, drop the orphan result.
+				case "image":
+					// A persisted tool-result image block. The live path emitted
+					// an ImageContentEvent per image and clients attached it to
+					// the owning tool message; that event is not persisted, so on
+					// reload we replay the reference here. The image block carries
+					// the owning tool call's id in ToolUseID (set by
+					// AddToolResults). Re-derive the on-disk path from the base64
+					// bytes (content-addressed, idempotent: this resolves to the
+					// same file the live save wrote, creating it only if it was
+					// pruned) and attach it to the matching tool-call row.
+					att := imageAttachmentFromBlock(conv.ID, b)
+					if att == nil {
+						break
+					}
+					if b.ToolUseID != "" {
+						if idx, ok := toolCallIndex[b.ToolUseID]; ok {
+							result[idx].Attachments = append(result[idx].Attachments, *att)
+						}
+						// An image with a non-empty ToolUseID but no matching
+						// tool call (orphan) is dropped, mirroring the
+						// orphan-tool_result handling above.
+					} else {
+						// Legacy pre-ToolUseID images: persisted before the
+						// ToolUseID stamping was added (commit b9f399e2), so
+						// b.ToolUseID is empty and the toolCallIndex lookup
+						// above can never match. The persisted block order is
+						// [tool_result, tool_result, image, image], so the
+						// images belong to the most recent tool-call message.
+						// Attach to the last tool-role row in result. This is a
+						// positional heuristic for pre-fix data only; new data
+						// carries the precise ToolUseID association above.
+						for i := len(result) - 1; i >= 0; i-- {
+							if result[i].Role == "tool" {
+								result[i].Attachments = append(result[i].Attachments, *att)
+								break
+							}
+						}
+					}
 				}
 			}
 			if len(textParts) > 0 {
@@ -561,6 +599,42 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 	}
 
 	return result
+}
+
+// imageAttachmentFromBlock turns a persisted "image" content block into a
+// SessionMessageAttachment for historical reload. The persisted block stores
+// the image inline as base64 (types.ImageSource); the engine never puts base64
+// on the wire, so this re-derives the on-disk file path by saving the bytes
+// through the shared content-addressed saver. Because SaveImageToConversation
+// is content-addressed and idempotent, this resolves to the exact file the
+// live emit-time save already wrote — no duplicate — and only writes when the
+// file is missing (e.g. pruned). Returns nil when the block has no image source
+// or the save fails (the image is dropped rather than emitting a dangling path).
+func imageAttachmentFromBlock(convID string, b types.LlmContentBlock) *types.SessionMessageAttachment {
+	if b.Source == nil || b.Source.Data == "" || convID == "" {
+		return nil
+	}
+	path, err := SaveImageToConversation("", convID, b.Source.MediaType, b.Source.Data)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "conversation", "reload image attachment save failed; dropping", map[string]any{
+			"conversation_id": convID,
+			"mediaType":       b.Source.MediaType,
+			"tool_use_id":     b.ToolUseID,
+			"error":           utils.ErrStr(err),
+		})
+		return nil
+	}
+	name := path
+	if i := strings.LastIndex(name, string(filepath.Separator)); i >= 0 {
+		name = name[i+1:]
+	}
+	return &types.SessionMessageAttachment{
+		ID:        "img:" + path,
+		Type:      "image",
+		Name:      name,
+		Path:      path,
+		MediaType: b.Source.MediaType,
+	}
 }
 
 // contentToBlocks converts a MessageData.Content (which may be string,

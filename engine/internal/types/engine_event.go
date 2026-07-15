@@ -81,6 +81,24 @@ type EngineEvent struct {
 	// engine_tool_end
 	ToolResult  string `json:"result,omitempty"`
 	ToolIsError bool   `json:"isError,omitempty"`
+	// ToolResultImages carries images a tool returned alongside its text
+	// output on engine_tool_end. Each entry references an on-disk FILE PATH
+	// (never base64) so consumers can render tool-produced images inline.
+	// Additive (omitempty): absent for the overwhelming majority of tool
+	// results. Mirrors ToolResultEvent.Images.
+	ToolResultImages []ToolResultImage `json:"images,omitempty"`
+
+	// engine_image_content — a single image produced during a run, emitted
+	// once per image. Source is "tool" (ImageToolID set to the producing tool
+	// call) or "provider" (ImageToolID empty). ImagePath is the on-disk
+	// location of the saved image; the engine never puts base64 on the wire.
+	// Mirrors the ImageContentEvent NormalizedEvent variant. Surfaced with
+	// image-prefixed field names so they don't collide with other variants'
+	// primitives (ToolID is already used by engine_tool_start/tool_end).
+	ImagePath      string `json:"imagePath,omitempty"`
+	ImageMediaType string `json:"imageMediaType,omitempty"`
+	ImageSource    string `json:"imageSource,omitempty"`
+	ImageToolID    string `json:"imageToolId,omitempty"`
 
 	// engine_tool_stalled
 	ToolElapsed float64 `json:"toolElapsed,omitempty"`

@@ -34,7 +34,21 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_tool_complete", ToolIndex: &idx}
 
 	case *types.ToolResultEvent:
-		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError}
+		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError, ToolResultImages: e.Images}
+
+	case *types.ImageContentEvent:
+		// A single image produced during the run — tool-returned or
+		// provider-generated. The engine is a pass-through for images: it
+		// emits the on-disk file path, never base64 bytes. Consumers render
+		// or ignore it; the engine has no opinion (see CLAUDE.md § "The
+		// typed-event corollary").
+		return types.EngineEvent{
+			Type:           "engine_image_content",
+			ImagePath:      e.Path,
+			ImageMediaType: e.MediaType,
+			ImageSource:    e.Source,
+			ImageToolID:    e.ToolID,
+		}
 
 	case *types.TaskCompleteEvent:
 		var pct int
