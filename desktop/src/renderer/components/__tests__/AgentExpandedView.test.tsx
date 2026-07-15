@@ -182,7 +182,7 @@ describe('AgentExpandedView headerSlot', () => {
   it('with headerSlot: slot receives header node, returns null, body still renders inline', () => {
     const container = document.createElement('div')
     const root = createRoot(container)
-    const slotSpy = vi.fn((header: React.ReactNode) => {
+    const slotSpy = vi.fn((_header: React.ReactNode) => {
       // In a real panel the slot portals the header node elsewhere.
       // Here we just capture it and return null (simulating the panel behavior).
       return null
@@ -253,8 +253,8 @@ describe('AgentExpandedView headerSlot', () => {
     // rules-of-hooks violation (crash A).
     expect(() => {
       renderThenRerender(
-        { loading: true, dispatches: [dispatchA, dispatchB], selectedDispatch: 1, headerSlot: (h) => null },
-        { loading: false, loadedMessages: [message], dispatches: [dispatchA, dispatchB], selectedDispatch: 1, headerSlot: (h) => null },
+        { loading: true, dispatches: [dispatchA, dispatchB], selectedDispatch: 1, headerSlot: (_h) => null },
+        { loading: false, loadedMessages: [message], dispatches: [dispatchA, dispatchB], selectedDispatch: 1, headerSlot: (_h) => null },
       )
     }).not.toThrow()
   })

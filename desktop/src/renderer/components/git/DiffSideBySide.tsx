@@ -48,7 +48,7 @@ function buildRows(parsed: ParsedDiff): Row[] {
   return rows
 }
 
-function renderInline(text: string, side: 'left' | 'right', pair?: { left: string; right: string }, colors?: ReturnType<typeof useColors>): React.ReactNode {
+function renderInline(text: string, side: 'left' | 'right', pair?: { left: string; right: string }, _colors?: ReturnType<typeof useColors>): React.ReactNode {
   if (!pair) return text
   const tokens = wordDiff(pair.left, pair.right)
   const arr = side === 'left' ? tokens.old : tokens.new

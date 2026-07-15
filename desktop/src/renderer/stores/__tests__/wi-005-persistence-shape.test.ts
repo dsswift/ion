@@ -50,7 +50,6 @@ vi.mock('../../stores/session-store-persistence', () => ({
 import {
   serializeConversationPane,
   instanceHasRendererOnlyRows,
-  isExtensionErrorMessage,
 } from '../../stores/serialize-conversation-pane'
 import { persistedTabHasExtensions } from '../../../shared/tab-predicates'
 import { buildPopulatedInstance } from '../../hooks/useTabRestoration-engine'

@@ -115,7 +115,7 @@ beforeEach(() => {
 import { mergeHistoryAttachments } from '../useTabRestoration-images'
 import { Transcript } from '../../components/conversation/Transcript'
 import { deriveMessageImages } from '../../components/conversation/InlineMessageImages'
-import { groupMessages } from '../../components/conversation/tool-helpers'
+import { groupMessages as _groupMessages } from '../../components/conversation/tool-helpers'
 
 async function renderTranscript(messages: Message[]) {
   const container = document.createElement('div')

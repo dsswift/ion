@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
-import { TerminalInstanceView, destroyTerminalInstance } from './TerminalInstance'
+import { TerminalInstanceView } from './TerminalInstance'
 import { TerminalTabStrip } from './TerminalTabStrip'
 
 // Re-export destroyTerminalInstance for backward compatibility

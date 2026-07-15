@@ -13,7 +13,6 @@
  */
 import type {
   AtvBubbleKind,
-  AtvBubblesManifest,
   AtvCharacterManifest,
   AtvDressingTemplate,
   AtvFloorManifest,

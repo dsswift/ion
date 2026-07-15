@@ -22,7 +22,7 @@ import { useGitStore } from '../stores/git'
 import { useSessionStore } from '../stores/sessionStore'
 
 let listenerInstalled = false
-let lastRevisionByRepo: Record<string, number> = {}
+const lastRevisionByRepo: Record<string, number> = {}
 
 function installGlobalListener(): void {
   if (listenerInstalled) return

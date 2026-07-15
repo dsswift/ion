@@ -31,7 +31,7 @@
 
 import { MAIN_INSTANCE_ID } from '../../shared/session-key'
 import type { ConversationRef, ConversationInstance, ConversationPane } from '../../shared/types-engine'
-import type { Message } from '../../shared/types-session'
+import type { Message as _Message } from '../../shared/types-session'
 
 /** A fully-typed instance row as stored in `ConversationPane.instances`. */
 export type Instance = ConversationRef & ConversationInstance

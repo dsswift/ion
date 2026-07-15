@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
     "doctor": "bash scripts/doctor.sh",
     "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh && bash scripts/patch-zustand.sh && bash ../scripts/setup-claude-symlinks.sh"
   },
@@ -86,6 +87,14 @@
       {
         "from": "resources/engine/ion",
         "to": "engine/ion"
+      },
+      {
+        "from": "resources/engine/com.ion.engine.plist",
+        "to": "engine/com.ion.engine.plist"
+      },
+      {
+        "from": "resources/engine/extensions",
+        "to": "engine/extensions"
       }
     ],
     "afterPack": "scripts/afterPack.js",
@@ -146,12 +155,16 @@
     "electron": "^35.7.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.2.1",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0",
     "vite": "^6.0.0",
     "vitest": "^4.1.9"
   }

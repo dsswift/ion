@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { generateOffice, seatOf } from '../index'
 import { deriveRoster } from '../roster'
 import { castCharacter, type CastableCharacter } from '../../theme/casting'
-import { department, rootAgent, testTheme } from './gen-helpers'
+import { department, rootAgent as _rootAgent, testTheme } from './gen-helpers'
 
 describe('seat assignment stability', () => {
   it('assigns the lead to the head desk and specialists to cluster seats by name order', () => {

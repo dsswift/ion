@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
+import { rDebug } from '../rendererLogger'
 
 interface UseFileEditorContentParams {
   dir: string
@@ -23,14 +24,14 @@ export function useFileEditorContent({
   // ---- File loading ----
   useEffect(() => {
     if (!activeFile) {
-      console.log('[useFileEditorContent] no active file, skipping load')
+      rDebug('file-editor', 'no active file, skipping load')
       return
     }
     if (activeFile.filePath && activeFile.content === '' && activeFile.savedContent === '') {
       // Initial load for newly opened files
-      console.log('[useFileEditorContent] initial load', { fileId: activeFile.id, filePath: activeFile.filePath })
+      rDebug('file-editor', 'initial load', { file_id: activeFile.id, path: activeFile.filePath })
       window.ion.fsReadFile(activeFile.filePath).then((result) => {
-        console.log('[useFileEditorContent] fsReadFile result', { filePath: activeFile.filePath, hasContent: result.content !== null, contentLen: result.content?.length })
+        rDebug('file-editor', 'fsReadFile result', { path: activeFile.filePath, has_content: result.content !== null, content_len: result.content?.length })
         if (result.content !== null) {
           // Set both content and savedContent so isDirty starts false
           useSessionStore.setState((s) => {
@@ -70,7 +71,7 @@ export function useFileEditorContent({
         }
       })
     }
-  }, [activeFile?.id, activeFile?.filePath, dir])
+  }, [activeFile, activeFile?.id, activeFile?.filePath, dir])
 
   // ---- File watcher: auto-reload on disk changes ----
   useEffect(() => {

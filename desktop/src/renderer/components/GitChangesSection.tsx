@@ -28,7 +28,7 @@ export function GitChangesSection({
   const [diffData, setDiffData] = useState<{ diff: string; fileName: string } | null>(null)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  const [_selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
   const [stashes, setStashes] = useState<Array<{ ref: string; message: string; date: string }>>([])
   const [stashExpanded, setStashExpanded] = useState(false)
@@ -135,22 +135,22 @@ export function GitChangesSection({
     })
   }, [])
 
-  const handleStage = async (path: string) => {
+  const handleStage = useCallback(async (path: string) => {
     const result = await window.ion.gitStage(directory, [path])
     if (!result.ok) { setError(result.error || 'Failed to stage file'); return }
     onRefresh()
-  }
+  }, [directory, onRefresh])
 
-  const handleUnstage = async (path: string) => {
+  const handleUnstage = useCallback(async (path: string) => {
     const result = await window.ion.gitUnstage(directory, [path])
     if (!result.ok) { setError(result.error || 'Failed to unstage file'); return }
     onRefresh()
-  }
+  }, [directory, onRefresh])
 
   const [discardConfirm, setDiscardConfirm] = useState<string | null>(null)
-  const handleDiscard = (path: string) => {
+  const handleDiscard = useCallback((path: string) => {
     setDiscardConfirm(path)
-  }
+  }, [])
   const confirmDiscard = async () => {
     if (!discardConfirm) return
     const result = await window.ion.gitDiscard(directory, [discardConfirm])
@@ -177,7 +177,7 @@ export function GitChangesSection({
     }
   }
 
-  const handleFileClick = async (file: GitChangedFile) => {
+  const handleFileClick = useCallback(async (file: GitChangedFile) => {
     if (diffFile?.path === file.path && diffFile?.staged === file.staged) {
       setDiffFile(null)
       setDiffData(null)
@@ -186,17 +186,17 @@ export function GitChangesSection({
     setDiffFile({ path: file.path, staged: file.staged })
     const data = await window.ion.gitDiff(directory, file.path, file.staged)
     setDiffData(data)
-  }
+  }, [diffFile, directory])
 
-  const allFiles = [...stagedFiles, ...unstagedFiles]
+  const allFiles = useMemo(() => [...stagedFiles, ...unstagedFiles], [stagedFiles, unstagedFiles])
 
-  const handleFileSelect = useCallback((file: GitChangedFile, event: React.MouseEvent) => {
+  const _handleFileSelect = useCallback((file: GitChangedFile, event: React.MouseEvent) => {
     const key = `${file.staged ? 's' : 'u'}:${file.path}`
     if (event.metaKey || event.ctrlKey) {
       // Toggle selection
       setSelectedPaths(prev => {
         const next = new Set(prev)
-        next.has(key) ? next.delete(key) : next.add(key)
+        if (next.has(key)) { next.delete(key) } else { next.add(key) }
         return next
       })
     } else if (event.shiftKey && lastClickedPath) {

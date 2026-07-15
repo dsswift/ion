@@ -48,6 +48,52 @@ function fileIcon(name: string, size: number) {
 
 /* ─── Component ─── */
 
+// Stable empty fallbacks: a `?? []` literal inside a store selector defeats
+// snapshot memoization (new reference every call) — see the stability note
+// on the selector below.
+const EMPTY_MESSAGES: MsgLike[] = []
+const EMPTY_RESOURCES: ResourceItem[] = []
+
+/**
+ * SELECTOR STABILITY IS LOAD-BEARING (React #185). This selector must return
+ * only store-held references and scalars — never a freshly built array or
+ * object. An earlier version built the conversation-scoped resource array
+ * inside the selector (Object.values(...).flat().filter(...)): a fresh array
+ * on every call is never Object.is-equal, so useShallow's memo never held,
+ * getSnapshot was permanently unstable, and React threw #185 ("maximum
+ * update depth exceeded") under streaming load — abandoning the StatusBar
+ * subtree mid-render in BOTH windows. Derivation happens in useMemo in the
+ * component. Exported so the stability test can pin this contract.
+ */
+export function selectAttachmentsData(s: {
+  tabs: Array<{ id: string; conversationId: string | null; workingDirectory: string }>
+  activeTabId: string
+  conversationPanes: Parameters<typeof activeInstance>[0]
+  resources: Record<string, ResourceItem[]>
+}) {
+  const tab = s.tabs.find((t) => t.id === s.activeTabId)
+  // Messages and plan state now live on the active `ConversationInstance`
+  // for every tab type (normal tabs carry a single `main` instance), so
+  // there is no longer a tab-type fork — `activeInstance` resolves the
+  // right instance uniformly.
+  const inst = tab ? activeInstance(s.conversationPanes, tab.id) : null
+  return {
+    messages: (inst?.messages ?? EMPTY_MESSAGES) as MsgLike[],
+    // `instance.planFilePath` is only populated by the conversation
+    // `plan_proposal` event path. Engine tabs surface their current plan
+    // through the system divider message (parsed inside
+    // `parseAttachmentsFromMessages`) or through a `Write`/`Edit` tool call
+    // against `**/plans/*.md` (also parsed inside). Either way, pass
+    // `instance.planFilePath` through as a sentinel so explicit
+    // conversation-tab flows still work.
+    planFilePath: inst?.planFilePath ?? null,
+    activeTabId: s.activeTabId,
+    workingDir: tab?.workingDirectory ?? '~',
+    tabConvId: tab?.conversationId ?? null,
+    resources: s.resources,
+  }
+}
+
 export function AttachmentsButton() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
@@ -72,36 +118,19 @@ export function AttachmentsButton() {
     })
   }, [])
 
-  const { messages, planFilePath, activeTabId, workingDir, resources: convResources } = useSessionStore(
-    useShallow((s) => {
-      const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      // Messages and plan state now live on the active `ConversationInstance`
-      // for every tab type (normal tabs carry a single `main` instance), so
-      // there is no longer a tab-type fork — `activeInstance` resolves
-      // the right instance uniformly.
-      const inst = tab ? activeInstance(s.conversationPanes, tab.id) : null
-      const msgs: MsgLike[] = (inst?.messages ?? []) as MsgLike[]
-      // Conversation-scoped resources: filter global resources to items whose
-      // conversationId matches the current tab's conversation.
-      const tabConvId = tab?.conversationId ?? null
-      const convResources: ResourceItem[] = tabConvId
-        ? Object.values(s.resources).flat().filter((r) => r.conversationId === tabConvId)
-        : []
-      return {
-        messages: msgs,
-        // `instance.planFilePath` is only populated by the conversation
-        // `plan_proposal` event path. Engine tabs surface their
-        // current plan through the system divider message (parsed
-        // inside `parseAttachmentsFromMessages`) or through a
-        // `Write`/`Edit` tool call against `**/plans/*.md` (also
-        // parsed inside). Either way, pass `instance.planFilePath`
-        // through as a sentinel so explicit conversation-tab flows still work.
-        planFilePath: inst?.planFilePath ?? null,
-        activeTabId: s.activeTabId,
-        workingDir: tab?.workingDirectory ?? '~',
-        resources: convResources,
-      }
-    }),
+  const { messages, planFilePath, activeTabId, workingDir, tabConvId, resources } =
+    useSessionStore(useShallow(selectAttachmentsData))
+
+  // Conversation-scoped resources: filter global resources to items whose
+  // conversationId matches the current tab's conversation. Derived OUTSIDE
+  // the selector (see stability note above); recomputes only when the
+  // resource map or the conversation actually changes.
+  const convResources: ResourceItem[] = useMemo(
+    () =>
+      tabConvId
+        ? Object.values(resources).flat().filter((r) => r.conversationId === tabConvId)
+        : EMPTY_RESOURCES,
+    [resources, tabConvId],
   )
 
   const attachments = useMemo(

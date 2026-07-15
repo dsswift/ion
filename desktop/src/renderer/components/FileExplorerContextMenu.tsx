@@ -72,7 +72,7 @@ export function FileExplorerContextMenu({
       { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsRevealInFinder(menu.entry.path) } },
       { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsOpenNative(menu.entry.path) } },
     ]
-  }, [menu.entry.path, workingDir, onRename])
+  }, [menu.entry, workingDir, onRename, addAttachments])
 
   return createPortal(
     <div

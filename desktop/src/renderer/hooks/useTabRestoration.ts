@@ -9,7 +9,7 @@ import { makeMainPane, commitInstance, activeInstance } from '../stores/conversa
 import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
 import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially } from './useTabRestoration-helpers'
-import { tabHasExtensions, persistedTabHasExtensions } from '../../shared/tab-predicates'
+import { persistedTabHasExtensions } from '../../shared/tab-predicates'
 import { rDebug, rInfo, rWarn } from '../rendererLogger'
 
 /**

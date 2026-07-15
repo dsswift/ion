@@ -34,7 +34,7 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
   skipMotion,
 }: AgentTurnGroupProps) {
   const colors = useColors()
-  const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
+  const _expandToolResults = usePreferencesStore((s) => s.expandToolResults)
   const [expanded, setExpanded] = useState(false)
 
   const toolCount = tools.length

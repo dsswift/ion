@@ -4,7 +4,7 @@ import {
   Terminal, CaretLeft, CaretRight, ChatCircle,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
-import { HistoryPicker } from './HistoryPicker'
+
 import { SettingsPopover } from './SettingsPopover'
 import { NotificationsBell } from './NotificationsPanel'
 import { AtvLauncherButton } from './AtvLauncherButton'
@@ -94,7 +94,7 @@ export function TabStrip() {
   useEffect(() => {
     const id = dirMenuTabId || tabMenuId
     if (id) checkWorktreeUncommitted(tabs.find((t) => t.id === id))
-  }, [dirMenuTabId, tabMenuId])
+  }, [dirMenuTabId, tabMenuId, tabs])
 
   // Keyboard shortcut bridge: Cmd+T / Cmd+Shift+T fire this event when the
   // resolved action is 'show-picker' so the picker opens anchored to the +
@@ -158,10 +158,15 @@ export function TabStrip() {
     if (!el) return
     updateScrollIndicators()
     el.addEventListener('scroll', updateScrollIndicators, { passive: true })
-    const ro = new ResizeObserver(updateScrollIndicators)
+    let rafId = 0
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateScrollIndicators)
+    })
     ro.observe(el)
     return () => {
       el.removeEventListener('scroll', updateScrollIndicators)
+      cancelAnimationFrame(rafId)
       ro.disconnect()
     }
   }, [updateScrollIndicators])

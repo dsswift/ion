@@ -11,7 +11,7 @@
 import type { AtvDressingTemplate, AtvFurnitureManifest } from '../../../shared/types-atv'
 import type { AtvRng } from './prng'
 import { CLUSTER, type RoomSpec } from './program'
-import { buildWalkability, corridorStart, floodFrom, validateLayout } from './validate'
+import { buildWalkability, corridorStart, validateLayout } from './validate'
 import { Cell, cellAt, type GenTheme, type OfficeLayout, type PlacedFurniture, type Room, type Seat } from './types'
 
 interface DressContext {

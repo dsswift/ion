@@ -37,7 +37,18 @@ export function VirtualCommitList({
   graphNodes, expandedHash, selectedHash, commitDetail, commitFiles, scrollRef,
   onHover, onLeave, onContextMenu, onClick, onFileClick,
 }: Props) {
-  if (graphNodes.length < VIRT_THRESHOLD) {
+  const useVirt = graphNodes.length >= VIRT_THRESHOLD
+
+  // Always call the hook — conditional hook calls violate the rules of hooks.
+  // When we're below the threshold we disable virtualization by passing count=0.
+  const virtualizer = useVirtualizer({
+    count: useVirt ? graphNodes.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (graphNodes[i]?.commit.hash === expandedHash ? 280 : ROW_HEIGHT),
+    overscan: 10,
+  })
+
+  if (!useVirt) {
     return (
       <>
         {graphNodes.map((node) => (
@@ -64,13 +75,6 @@ export function VirtualCommitList({
       </>
     )
   }
-
-  const virtualizer = useVirtualizer({
-    count: graphNodes.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (graphNodes[i].commit.hash === expandedHash ? 280 : ROW_HEIGHT),
-    overscan: 10,
-  })
 
   return (
     <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>

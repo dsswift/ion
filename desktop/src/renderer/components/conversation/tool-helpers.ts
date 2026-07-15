@@ -41,8 +41,8 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
   let bootstrapBuf: Message[] = []
-  let totalRunsFlushed = 0
-  let totalSuppressed = 0
+  let _totalRunsFlushed = 0
+  let _totalSuppressed = 0
 
   const flushTools = () => {
     if (toolBuf.length > 0) {
@@ -61,8 +61,8 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
       bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
     }
     result.push(item)
-    totalRunsFlushed++
-    totalSuppressed += suppressed
+    _totalRunsFlushed++
+    _totalSuppressed += suppressed
     bootstrapBuf = []
   }
 
@@ -131,8 +131,8 @@ function groupMessagesUnified(
   // the unified view merges the rest of the turn.
   let turnThinking: Message[] = []
   let bootstrapBuf: Message[] = []
-  let totalRunsFlushed = 0
-  let totalSuppressed = 0
+  let _totalRunsFlushed2 = 0
+  let _totalSuppressed2 = 0
 
   const flushBootstrap = () => {
     if (bootstrapBuf.length === 0) return
@@ -143,8 +143,8 @@ function groupMessagesUnified(
       message: representative,
       bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
     })
-    totalRunsFlushed++
-    totalSuppressed += suppressed
+    _totalRunsFlushed2++
+    _totalSuppressed2 += suppressed
     bootstrapBuf = []
   }
 

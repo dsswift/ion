@@ -10,6 +10,7 @@ import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerCo
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
 import { ImageViewer } from './ImageViewer'
 import type { FsEntry } from '../../shared/types'
+import { rDebug, rInfo } from '../rendererLogger'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
 
@@ -108,26 +109,26 @@ export function FileExplorer() {
     if (!isExpanded && !dirCache.has(entry.path)) {
       fetchDir(entry.path)
     }
-  }, [workingDir, explorerState.expandedPaths, dirCache, fetchDir])
+  }, [workingDir, explorerState.expandedPaths, dirCache, fetchDir, setFileExplorerExpanded, setFileExplorerSelected])
 
   const handleFileClick = useCallback((entry: FsEntry) => {
-    console.log('[FileExplorer] handleFileClick', { name: entry.name, path: entry.path, workingDir, activeTabId, isText: isTextFile(entry.name) })
+    rDebug('file-explorer', 'handleFileClick', { name: entry.name, path: entry.path, working_dir: workingDir, active_tab: activeTabId, is_text: isTextFile(entry.name) })
     if (!workingDir || !activeTabId) {
-      console.log('[FileExplorer] handleFileClick bailed: no workingDir or activeTabId')
+      rDebug('file-explorer', 'handleFileClick bailed: no workingDir or activeTabId')
       return
     }
     setFileExplorerSelected(workingDir, entry.path)
     const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop()!.toLowerCase() : ''
     if (IMAGE_EXTS.has(ext)) {
-      console.log('[FileExplorer] opening image preview', { path: entry.path })
+      rDebug('file-explorer', 'opening image preview', { path: entry.path })
       setImagePreview({ path: entry.path, name: entry.name })
     } else if (isTextFile(entry.name)) {
-      console.log('[FileExplorer] calling openFileInEditor', { dir: workingDir, tabId: activeTabId, filePath: entry.path })
+      rDebug('file-explorer', 'opening file in editor', { dir: workingDir, tab_id: activeTabId, path: entry.path })
       openFileInEditor(workingDir, activeTabId, entry.path)
     } else {
-      console.log('[FileExplorer] skipped: not a text or image file')
+      rDebug('file-explorer', 'skipped: not a text or image file')
     }
-  }, [workingDir, activeTabId])
+  }, [workingDir, activeTabId, openFileInEditor, setFileExplorerSelected])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, entry: FsEntry) => {
     e.preventDefault()
@@ -186,7 +187,7 @@ export function FileExplorer() {
    * name. Submit calls `window.ion.fsRename`; cancel restores the row.
    */
   const handleRenameStart = useCallback((entry: FsEntry) => {
-    console.log('[FileExplorer] handleRenameStart', { path: entry.path, name: entry.name })
+    rDebug('file-explorer', 'handleRenameStart', { path: entry.path, name: entry.name })
     setRenaming({ path: entry.path, initialName: entry.name })
   }, [])
 
@@ -202,30 +203,30 @@ export function FileExplorer() {
     const trimmed = newName.trim()
     // No-op when the user submitted the same name (or empty after trim).
     if (!trimmed || trimmed === renaming.initialName) {
-      console.log('[FileExplorer] handleRenameSubmit: skipped', { reason: trimmed ? 'unchanged' : 'empty', oldPath: renaming.path })
+      rDebug('file-explorer', 'handleRenameSubmit: skipped', { reason: trimmed ? 'unchanged' : 'empty', old_path: renaming.path })
       setRenaming(null)
       return
     }
     const lastSlash = renaming.path.lastIndexOf('/')
     const parentDir = lastSlash >= 0 ? renaming.path.slice(0, lastSlash) : renaming.path
     const newPath = `${parentDir}/${trimmed}`
-    console.log('[FileExplorer] handleRenameSubmit: invoking fsRename', { oldPath: renaming.path, newPath })
+    rInfo('file-explorer', 'handleRenameSubmit', { old_path: renaming.path, new_path: newPath })
     try {
       const result = await window.ion.fsRename(renaming.path, newPath)
       if (result.ok) {
-        console.log('[FileExplorer] handleRenameSubmit: success', { oldPath: renaming.path, newPath })
+        rInfo('file-explorer', 'rename success', { old_path: renaming.path, new_path: newPath })
       } else {
-        console.log('[FileExplorer] handleRenameSubmit: failed', { oldPath: renaming.path, newPath, error: result.error })
+        rDebug('file-explorer', 'rename failed', { old_path: renaming.path, new_path: newPath, error: result.error })
       }
     } catch (err) {
-      console.log('[FileExplorer] handleRenameSubmit: threw', { oldPath: renaming.path, newPath, error: (err as Error).message })
+      rDebug('file-explorer', 'rename threw', { old_path: renaming.path, new_path: newPath, error: (err as Error).message })
     }
     setRenaming(null)
     fetchDir(parentDir)
   }, [renaming, fetchDir])
 
   const handleRenameCancel = useCallback(() => {
-    console.log('[FileExplorer] handleRenameCancel', { path: renaming?.path })
+    rDebug('file-explorer', 'handleRenameCancel', { path: renaming?.path ?? '' })
     setRenaming(null)
   }, [renaming])
 

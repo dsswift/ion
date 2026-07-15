@@ -1,11 +1,11 @@
 import type { TabState, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { makeLocalTab, nextMsgId, initialPermissionMode } from '../session-store-helpers'
+import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode, needsHistoryHydration } from '../conversation-instance'
 import { lastPendingCardTool, type PendingCardMessage } from '../../../shared/pending-card'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
-import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+import { rInfo, rWarn } from '../../rendererLogger'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {

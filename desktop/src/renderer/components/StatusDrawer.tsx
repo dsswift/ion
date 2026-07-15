@@ -292,7 +292,10 @@ export function StatusDrawer() {
   const usage = useSessionStore((s) => s.engineUsage.get(activeTabId))
 
   const statusFields = activeInstance?.statusFields ?? null
-  const agentStates: AgentStateUpdate[] = activeInstance?.agentStates ?? []
+  const agentStates: AgentStateUpdate[] = useMemo(
+    () => activeInstance?.agentStates ?? [],
+    [activeInstance?.agentStates],
+  )
   const dispatchTelemetry = activeInstance?.dispatchTelemetry ?? []
 
   // Flat, running-only dispatch rows across all tiers
@@ -454,7 +457,7 @@ export function StatusDrawer() {
           <div>
             <SectionHeader label={`Running (${runningDispatches.length})`} colors={colors} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {runningDispatches.map(({ agent, dispatch, depth, displayName }) => (
+              {runningDispatches.map(({ agent: _agent, dispatch, depth, displayName }) => (
                 <button key={dispatch.id} onClick={() => openDispatchPreview(dispatch.id)}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 4, background: statusDrawerDispatchId === dispatch.id ? colors.surfaceActive : colors.surfaceHover, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                   {depth > 0 && <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>T{depth}</span>}

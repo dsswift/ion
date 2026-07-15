@@ -14,7 +14,7 @@
  * ipcMain.handle.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'

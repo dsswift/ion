@@ -6,7 +6,7 @@ import type { useColors } from '../theme'
 import type { TabState } from '../../shared/types'
 import type { ConversationPane, StatusFields } from '../../shared/types-engine'
 import { activeInstance } from '../stores/conversation-instance'
-import { tabHasExtensions } from '../../shared/tab-predicates'
+import { tabHasExtensions as _tabHasExtensions } from '../../shared/tab-predicates'
 import { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { tabHasExtensions } from '../../shared/tab-predicates'
@@ -217,7 +217,9 @@ export function useAnchoredPopoverPosition(
     // We intentionally include `anchor.x` / `anchor.y` rather than the
     // object identity so a parent that reconstructs `anchor` each
     // render doesn't cause a measurement storm. `parentRect` is
-    // similarly destructured.
+    // similarly destructured. The spread `...deps` is intentional —
+    // callers pass additional dependencies that are statically unknown
+    // here; the spread is the correct mechanism for that pattern.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     anchor.x,
@@ -230,6 +232,7 @@ export function useAnchoredPopoverPosition(
     parentRect?.right,
     parentRect?.top,
     parentRect?.bottom,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     ...deps,
   ])
 

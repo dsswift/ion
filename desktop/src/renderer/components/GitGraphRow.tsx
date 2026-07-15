@@ -53,7 +53,7 @@ export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExp
         {(() => {
           const selected = selectedHash != null
           const isSel = selected && selectedHash === commit.fullHash
-          const dim = (lineColor: string) => (selected && !isSel ? 0.25 : 0.6)
+          const dim = (_lineColor: string) => (selected && !isSel ? 0.25 : 0.6)
           return (
             <>
               {node.passThroughLanes.map((pt, i) => {

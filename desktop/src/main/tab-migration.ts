@@ -8,12 +8,12 @@ import {
   tabsFileForBackend,
   sessionLabelsFileForBackend,
   getCurrentBackend,
-  SETTINGS_DIR,
+  SETTINGS_DIR as _SETTINGS_DIR,
 } from './settings-store'
-import type { PersistedTab, PersistedTabState } from '../shared/types'
+import type { PersistedTabState } from '../shared/types'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export interface MigrationResult {
@@ -51,7 +51,7 @@ export function loadOtherBackendTabs(): Array<{
         permissionMode: tab.permissionMode ?? 'auto',
       }))
   } catch (err) {
-    log(`Failed to load other backend tabs: ${err}`)
+    log('tab_migration: failed to load other backend tabs', { error: String(err) })
     return []
   }
 }
@@ -86,7 +86,7 @@ export function createBackupSnapshot(
     }
   }
 
-  log(`Created ${paths.length} backup snapshots`)
+  log('tab_migration: created backups', { count: paths.length })
   return paths
 }
 
@@ -233,12 +233,12 @@ export async function migrateTabsToBackend(
         title,
       })
 
-      log(`Migrated "${title}" (${conversationId} → ${result.data.newSessionId}): ${result.data.messageCount} msgs`)
+      log('tab_migration: migrated', { title, conversation_id: conversationId, new_session_id: result.data.newSessionId, message_count: result.data.messageCount })
     } catch (err: any) {
       failed.push({ conversationId, title, error: err.message || String(err) })
     }
   }
 
-  log(`Migration complete: ${migrated.length} succeeded, ${failed.length} failed`)
+  log('tab_migration: complete', { succeeded: migrated.length, failed: failed.length })
   return { backupPaths, migrated, failed }
 }

@@ -6,7 +6,7 @@
  * Private fields are accessed via bracket notation where needed.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock filesystem and child_process — these are imported at module load
 // even though they're only used in connect/start paths.

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { usePreferencesStore } from '../../preferences'
+
 import { useColors } from '../../theme'
 import { groupMessages } from './tool-helpers'
 import { TranscriptRows } from './TranscriptRows'

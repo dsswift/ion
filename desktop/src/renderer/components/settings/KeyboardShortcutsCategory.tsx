@@ -35,7 +35,7 @@ export function KeyboardShortcutsCategory() {
   // are absent from the resolved map).
   const chordConflicts = useMemo(() => {
     const conflicts = new Map<string, string>() // commandId -> winner commandId
-    const catalogDefaultMap = new Map<string, string>() // chordKey -> commandId for resolved
+    const _catalogDefaultMap = new Map<string, string>() // chordKey -> commandId for resolved
     for (const entry of SHORTCUT_CATALOG) {
       if (!bindings.has(entry.id)) {
         // This entry lost a conflict. Find which command has its chord.

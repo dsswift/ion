@@ -197,7 +197,7 @@ export class EngineBridge extends EventEmitter {
 
   /** Reject all pending request callbacks with an error message. */
   private _failPendingRequests(reason: string): void {
-    for (const [id, cb] of this.requestCallbacks) {
+    for (const [_id, cb] of this.requestCallbacks) {
       cb({ ok: false, error: reason })
     }
     this.requestCallbacks.clear()
@@ -584,7 +584,7 @@ export class EngineBridge extends EventEmitter {
   shutdown(): void { this._send({ cmd: 'shutdown' }) }
   async shutdownAndWait(timeoutMs = 3000): Promise<void> { return shutdownAndWaitImpl(this, timeoutMs) }
 
-  isRunning(key: string): boolean {
+  isRunning(_key: string): boolean {
     // Can't synchronously check -- return true if connected
     return this.connected
   }

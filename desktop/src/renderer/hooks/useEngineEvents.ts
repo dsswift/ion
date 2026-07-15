@@ -28,6 +28,10 @@ export function useEngineEvents() {
   const rafIdRef = useRef<number>(0)
 
   useEffect(() => {
+    // Capture the buffer reference at effect-setup time so the cleanup
+    // function uses the same Map instance (refs can change between setup and
+    // cleanup per the react-hooks/exhaustive-deps rule).
+    const chunkBuffer = chunkBufferRef.current
     const flushChunks = () => {
       rafIdRef.current = 0
       const buffer = chunkBufferRef.current
@@ -252,7 +256,7 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
       unsubExecAction()
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
-      chunkBufferRef.current.clear()
+      chunkBuffer.clear()
     }
   }, [handleNormalizedEvent, handleStatusChange, handleError])
 

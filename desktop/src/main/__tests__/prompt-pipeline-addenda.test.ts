@@ -41,7 +41,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 // ───────────────────────────────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => {
-  const bridgeListeners = new Map<string, Array<(key: string, event: any) => void>>()
+  const bridgeListeners = new Map<string, Array<(_key: string, _event: any) => void>>()
   const sendCommandMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const sendPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
   const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
@@ -75,17 +75,12 @@ mocks.broadcastMock = vi.fn()
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
 mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
 
-function emitBridgeEvent(key: string, event: any): void {
-  const arr = mocks.bridgeListeners.get('event') ?? []
-  for (const fn of arr) fn(key, event)
-}
-
 vi.mock('../state', () => {
   const mockEngineBridge = {
     sendCommand: (...args: any[]) => mocks.sendCommandMock(...args),
     sendPrompt: (...args: any[]) => mocks.sendPromptMock(...args),
     clearConversationFile: (...args: any[]) => mocks.clearConversationFileMock(...args),
-    on: (name: string, fn: (key: string, event: any) => void) => {
+    on: (name: string, fn: (_key: string, _event: any) => void) => {
       const arr = mocks.bridgeListeners.get(name) ?? []
       arr.push(fn)
       mocks.bridgeListeners.set(name, arr)

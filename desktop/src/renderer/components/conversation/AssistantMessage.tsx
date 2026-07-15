@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Globe, Image as ImageIcon } from '@phosphor-icons/react'
+import { Globe } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { CopyButton } from './CopyButton'
@@ -47,11 +47,15 @@ export function TableScrollWrapper({ children }: { children: React.ReactNode }) 
     update()
     const el = ref.current
     if (!el) return
-    const ro = new ResizeObserver(update)
+    let rafId = 0
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(update)
+    })
     ro.observe(el)
     const table = el.querySelector('table')
     if (table) ro.observe(table)
-    return () => ro.disconnect()
+    return () => { cancelAnimationFrame(rafId); ro.disconnect() }
   }, [update])
 
   return (

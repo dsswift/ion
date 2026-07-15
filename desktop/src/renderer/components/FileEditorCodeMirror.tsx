@@ -15,6 +15,7 @@ import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { getLanguageExtension, getLanguageExtensionById } from './FileEditorShared'
 import { blameExtension, dispatchBlame, clearBlame } from './git/blameGutter'
 import { FileEditorContextMenu } from './FileEditorContextMenu'
+import { rTrace } from '../rendererLogger'
 
 export interface CursorPosition {
   line: number
@@ -35,7 +36,7 @@ interface FileEditorCodeMirrorProps {
  * active; preview rendering is handled by FileEditorPreview.
  */
 export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, editorViewRef, languageOverride }: FileEditorCodeMirrorProps) {
-  console.log('[FileEditorCodeMirror] render', { dir, fileId: activeFile.id, fileName: activeFile.fileName, isReadOnly: activeFile.isReadOnly, contentLen: activeFile.content.length })
+  rTrace('file-editor.codemirror', 'render', { dir, file_id: activeFile.id, file_name: activeFile.fileName, is_read_only: activeFile.isReadOnly, content_len: activeFile.content.length })
   const colors = useColors()
   const editorWordWrap = usePreferencesStore((s) => s.editorWordWrap)
   const editorFontSize = usePreferencesStore((s) => s.editorFontSize)
@@ -181,7 +182,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
     }
 
     return exts
-  }, [ionTheme, dir, updateEditorContent, editorWordWrap, editorFontSize, languageOverride])
+  }, [ionTheme, dir, updateEditorContent, editorWordWrap, languageOverride])
 
   // ---- CodeMirror lifecycle ----
   useEffect(() => {
@@ -227,7 +228,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
       // Only destroy if switching away or unmounting
       // The next effect run will handle re-creation
     }
-  }, [activeFile.id, activeFile.isReadOnly, buildExtensions, editorWordWrap, editorFontSize, languageOverride])
+  }, [activeFile, activeFile.id, activeFile.isReadOnly, buildExtensions, editorWordWrap, editorFontSize, languageOverride, editorViewRef])
 
   // Sync external content changes into the editor (e.g., after file load)
   useEffect(() => {

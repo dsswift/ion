@@ -7,12 +7,6 @@
  * - Every operation carries an AbortSignal for cancellation.
  */
 
-import { log as _log } from '../logger'
-
-function log(msg: string): void {
-  _log('main', msg)
-}
-
 export type OperationKind = 'mutation' | 'read'
 
 interface QueuedOperation<T> {

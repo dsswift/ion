@@ -6,6 +6,7 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { LINK_RE, isCmdHeld, EDITABLE_EXTS } from '../hooks/useNavigableLinks'
+import { rDebug } from '../rendererLogger'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalEntry {
@@ -129,10 +130,10 @@ async function openTerminalFile(path: string, cwd: string, tabId: string): Promi
   const resolved = expanded.startsWith('/') ? expanded : cwd + '/' + expanded
   const { exists } = await window.ion.fsExists(resolved)
   if (!exists) {
-    console.log('[TerminalInstance] file does not exist, ignoring cmd-click', { rawPath: path, resolved })
+    rDebug('terminal.link', 'file does not exist, ignoring cmd-click', { raw_path: path, resolved })
     return
   }
-  console.log('[TerminalInstance] opening file', { resolved })
+  rDebug('terminal.link', 'opening file', { resolved })
   const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
   if (EDITABLE_EXTS.has(ext)) {
     useSessionStore.getState().openFileInEditor(cwd, tabId, resolved)
@@ -295,13 +296,17 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
     })
 
     // Resize observer
+    let rafId = 0
     const ro = new ResizeObserver(() => {
-      if (!entry) return
-      entry.fitAddon.fit()
-      const dims = entry.fitAddon.proposeDimensions()
-      if (dims) {
-        window.ion.terminalResize(key, dims.cols, dims.rows)
-      }
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        if (!entry) return
+        entry.fitAddon.fit()
+        const dims = entry.fitAddon.proposeDimensions()
+        if (dims) {
+          window.ion.terminalResize(key, dims.cols, dims.rows)
+        }
+      })
     })
     ro.observe(container)
 
@@ -309,6 +314,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
 
     return () => {
       disposeOnData.dispose()
+      cancelAnimationFrame(rafId)
       ro.disconnect()
       // Only remove if hostEl is still in this container (not stolen by a new mount)
       if (entry!.hostEl.parentElement === container) {

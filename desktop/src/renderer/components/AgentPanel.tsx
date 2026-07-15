@@ -14,7 +14,7 @@ import { useAgentPanelResize, DEFAULT_PANEL_HEIGHT } from './agent-panel-resize'
 import type { AgentStateUpdate } from '../../shared/types'
 import type { Message } from '../../shared/types'
 import type { DispatchInfo, DispatchTelemetryEntry } from '../../shared/types-engine'
-import { rDebug, rInfo, rError } from '../rendererLogger'
+import { rDebug, rError } from '../rendererLogger'
 
 interface Props {
   agents: AgentStateUpdate[]

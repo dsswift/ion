@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'fs'
 import { engineBridge } from './state'
 import { log as _log } from './logger'
 
-function log(msg: string): void { _log('cleanup', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('cleanup', msg, fields) }
 
 // DRY_RUN is intentionally `true` for the first deploy cycle of this collector.
 //
@@ -109,7 +109,7 @@ export function collectProtectedIds(sources: CleanupSources): {
         }
       }
     } catch (err: any) {
-      log(`collect: failed to parse ${file}: ${err.message}`)
+      log('cleanup: collect failed to parse', { file, error: err.message })
     }
     breakdown.tabs.push({ file, tabCount, idsContributed: ids.size - before })
   }
@@ -139,7 +139,7 @@ export function collectProtectedIds(sources: CleanupSources): {
         }
       }
     } catch (err: any) {
-      log(`collect: failed to parse ${file}: ${err.message}`)
+      log('cleanup: collect failed to parse', { file, error: err.message })
     }
     breakdown.chains.push({ file, idsContributed: ids.size - before })
   }
@@ -156,7 +156,7 @@ export function collectProtectedIds(sources: CleanupSources): {
         }
       }
     } catch (err: any) {
-      log(`collect: failed to parse ${file}: ${err.message}`)
+      log('cleanup: collect failed to parse', { file, error: err.message })
     }
     breakdown.labels.push({ file, idsContributed: ids.size - before })
   }
@@ -164,7 +164,7 @@ export function collectProtectedIds(sources: CleanupSources): {
   return { ids: Array.from(ids), breakdown }
 }
 
-function formatBreakdown(b: ReturnType<typeof collectProtectedIds>['breakdown']): string {
+function _formatBreakdown(b: ReturnType<typeof collectProtectedIds>['breakdown']): string {
   const tabsStr = b.tabs.map((t) => `${t.file.split('/').pop()}(tabs=${t.tabCount},ids=${t.idsContributed})`).join(',')
   const chainsStr = b.chains.map((c) => `${c.file.split('/').pop()}(ids=${c.idsContributed})`).join(',')
   const labelsStr = b.labels.map((l) => `${l.file.split('/').pop()}(ids=${l.idsContributed})`).join(',')
@@ -186,12 +186,12 @@ async function runCleanup(sources: CleanupSources): Promise<void> {
     // engine will still refuse to delete tab-referenced conversations.
     // This abort is the last belt on top of the suspenders.
     if (excludeIds.length === 0 && breakdown.filesPresent > 0) {
-      log(`aborted: zero IDs collected despite ${breakdown.filesPresent} source file(s) present. ${formatBreakdown(breakdown)}`)
+      log('cleanup: aborted, zero IDs collected', { files_present: breakdown.filesPresent })
       log('aborted: cleanup will NOT run this cycle. Investigate before next interval.')
       return
     }
 
-    log(`starting excludeIds=${excludeIds.length} dryRun=${DRY_RUN} ${formatBreakdown(breakdown)}`)
+    log('cleanup: starting', { exclude_ids: excludeIds.length, dry_run: DRY_RUN })
     await engineBridge.connect()
     const result = await engineBridge._sendWithData<{ deleted: number }>({
       cmd: 'delete_stored_sessions',
@@ -201,12 +201,12 @@ async function runCleanup(sources: CleanupSources): Promise<void> {
     })
     if (result.ok) {
       const count = result.data?.deleted ?? 0
-      log(DRY_RUN ? `dry-run: would delete ${count} stale conversations` : `deleted ${count} stale conversations`)
+      log(DRY_RUN ? 'cleanup: dry-run would delete' : 'cleanup: deleted stale conversations', { count })
     } else {
-      log(`engine error: ${result.error}`)
+      log('cleanup: engine error', { error: result.error })
     }
   } catch (err: any) {
-    log(`failed: ${err.message}`)
+    log('cleanup: failed', { error: err.message })
   }
 }
 
@@ -247,21 +247,21 @@ function scheduleFirstRun(sources: CleanupSources): void {
     if (now < minDeadline) {
       // Below the 5-minute floor: keep waiting.
       const remainingMs = minDeadline - now
-      log(`boot-gate: waiting for min delay (${Math.ceil(remainingMs / 1000)}s remaining)`)
+      log('cleanup: boot-gate waiting for min delay', { remaining_s: Math.ceil(remainingMs / 1000) })
       setTimeout(tryRun, Math.min(remainingMs, BOOT_GATE_POLL_MS))
       return
     }
 
     if (activeSessionCount > 0 || now >= maxDeadline) {
       const trigger = activeSessionCount > 0 ? `sessions=${activeSessionCount}` : 'max-uptime-reached'
-      log(`boot-gate: triggering first run (elapsed=${Math.round(elapsedMs / 1000)}s trigger=${trigger})`)
+      log('cleanup: boot-gate triggering first run', { elapsed_s: Math.round(elapsedMs / 1000), trigger })
       void runCleanup(sources)
       return
     }
 
     // Past the min delay but still no active sessions and below max deadline:
     // poll every 30s.
-    log(`boot-gate: waiting for first active session (elapsed=${Math.round(elapsedMs / 1000)}s sessions=0)`)
+    log('cleanup: boot-gate waiting for first session', { elapsed_s: Math.round(elapsedMs / 1000) })
     setTimeout(tryRun, BOOT_GATE_POLL_MS)
   }
 
@@ -280,6 +280,6 @@ function scheduleFirstRun(sources: CleanupSources): void {
 export function startConversationCleanup(sources: CleanupSources): void {
   scheduleFirstRun(sources)
   setInterval(() => void runCleanup(sources), CLEANUP_INTERVAL_MS)
-  log(`scheduled (min startup delay ${Math.round(MIN_STARTUP_DELAY_MS / 60000)}min, max ${Math.round(MAX_STARTUP_DELAY_MS / 60000)}min, interval 24h, dryRun=${DRY_RUN})`)
-  log(`sources: tabs=${sources.tabsFiles.length} chains=${sources.chainsFiles.length} labels=${sources.labelsFiles.length}`)
+  log('cleanup: scheduled', { min_delay_min: Math.round(MIN_STARTUP_DELAY_MS / 60000), max_delay_min: Math.round(MAX_STARTUP_DELAY_MS / 60000), dry_run: DRY_RUN })
+  log('cleanup: sources', { tabs: sources.tabsFiles.length, chains: sources.chainsFiles.length, labels: sources.labelsFiles.length })
 }

@@ -10,8 +10,8 @@
  */
 
 import { EventEmitter } from 'events'
-import { RelayClient, type RelayClientOptions } from './relay-client'
-import { LANServer, type LANServerOptions } from './lan-server'
+import { RelayClient } from './relay-client'
+import { LANServer } from './lan-server'
 import { decrypt } from './crypto'
 import { compressPayload, decompressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'

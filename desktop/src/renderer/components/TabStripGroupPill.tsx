@@ -64,7 +64,7 @@ export function GroupPill({
 
   useEffect(() => {
     if (tabMenu) checkWorktreeUncommitted(selectedTab)
-  }, [tabMenu])
+  }, [tabMenu, selectedTab])
 
   // Close picker when any new tab is created (from +button, keyboard shortcut, or another picker)
   useEffect(() => {

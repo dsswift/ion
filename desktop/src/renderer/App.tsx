@@ -185,6 +185,8 @@ export default function App() {
 
   // When editor is open for this tab but the current dir has no files
   // (e.g. base directory changed), auto-create a scratch file so the editor stays visible
+  const activeTabDir = activeTab ? editorDirForTab(activeTab) : undefined
+
   useEffect(() => {
     if (!editorOpen || !activeTab) return
     const dir = editorDirForTab(activeTab)
@@ -192,7 +194,7 @@ export default function App() {
     if (!dirState || dirState.files.length === 0) {
       useSessionStore.getState().createScratchFile(dir)
     }
-  }, [editorOpen, activeTab ? editorDirForTab(activeTab) : undefined])
+  }, [editorOpen, activeTab, activeTabDir])
 
   // Fire get_context_breakdown when the status drawer opens so the breakdown
   // panel always shows current data — even for idle or freshly-loaded historical

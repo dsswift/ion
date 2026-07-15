@@ -2,8 +2,8 @@ import { log as _log } from '../../logger'
 import { state, engineBridge } from '../../state'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Per-device voice configuration (sent by iOS). */
@@ -13,7 +13,7 @@ export function handleVoiceConfig(
   cmd: Extract<RemoteCommand, { type: 'desktop_voice_config' }>,
   deviceId: string,
 ): void {
-  log(`voice_config: device=${deviceId} enabled=${cmd.enabled} mode=${cmd.mode} hasPrompt=${!!cmd.systemPrompt}`)
+  log('voice_config', { device_id: deviceId, enabled: cmd.enabled, mode: cmd.mode, has_prompt: !!cmd.systemPrompt })
   deviceVoiceConfig.set(deviceId, { enabled: cmd.enabled, mode: cmd.mode, systemPrompt: cmd.systemPrompt })
 }
 
@@ -42,9 +42,9 @@ export function handleEngineAbort(cmd: Extract<RemoteCommand, { type: 'desktop_e
  */
 export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { type: 'desktop_reset_engine_session' }>): Promise<void> {
   const key = cmd.tabId
-  log(`reset_engine_session: tabId=${cmd.tabId} key=${key}`)
+  log('reset_engine_session', { tab_id: cmd.tabId, key })
   await engineBridge.stopSession(key)
-  log(`reset_engine_session: stopSession complete key=${key}`)
+  log('reset_engine_session: stop complete', { key })
   // Ask the renderer to wipe its per-instance state Maps (messages,
   // status, agent-state, dialogs, etc.) and seed a fresh
   // "Session started" divider. Mirrors the IPC pattern other engine
@@ -59,9 +59,9 @@ export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { typ
         store.getState().resetEngineInstance('${escapedTab}', '${escapedInst}');
       })()
     `)
-    log(`reset_engine_session: renderer state wiped key=${key}`)
+    log('reset_engine_session: renderer state wiped', { key })
   } catch (err) {
-    log(`reset_engine_session: renderer wipe failed key=${key} err=${(err as Error).message}`)
+    log('reset_engine_session: renderer wipe failed', { key, error: (err as Error).message })
   }
 }
 
@@ -82,12 +82,12 @@ export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: '
       })()
     `)
   } catch (err) {
-    log(`engine_set_model error: ${(err as Error).message}`)
+    log('engine_set_model error', { error: (err as Error).message })
   }
 }
 export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_agent_conversation' }>, deviceId: string): Promise<void> {
   try {
-    log(`load_agent_conversation: conversationIds=${cmd.conversationIds.join(',')}`)
+    log('load_agent_conversation', { conversation_ids: cmd.conversationIds.join(',') })
     if (!engineBridge || cmd.conversationIds.length === 0) {
       state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_agent_conversation_history', agentName: '', messages: [] })
       return
@@ -116,7 +116,7 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
           })
         }
       } catch (convErr) {
-        log(`load_agent_conversation: failed to load convId=${convId}: ${(convErr as Error).message}`)
+        log('load_agent_conversation: failed to load', { conversation_id: convId, error: (convErr as Error).message })
       }
     }
 
@@ -156,12 +156,12 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
           })()
         `)
         agentName = result?.name || ''
-      } catch (_) {
+      } catch {
         // Best-effort name resolution; empty string is fine
       }
     }
 
-    log(`load_agent_conversation: resolved agentName=${agentName || '(unknown)'}, totalMessages=${allMessages.length}`)
+    log('load_agent_conversation: resolved', { agent_name: agentName || '', total_messages: allMessages.length })
 
     const finalMessages = allMessages
 
@@ -170,7 +170,7 @@ export async function handleLoadAgentConversation(cmd: Extract<RemoteCommand, { 
     const singleConvId = cmd.conversationIds.length === 1 ? cmd.conversationIds[0] : undefined
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_agent_conversation_history', agentName, conversationId: singleConvId, messages: finalMessages })
   } catch (err) {
-    log(`load_agent_conversation error: ${(err as Error).message}`)
+    log('load_agent_conversation error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_agent_conversation_history', agentName: '', messages: [] })
   }
 }

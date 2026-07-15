@@ -100,7 +100,7 @@ export function TabPill({
   // Active instance for this tab (the single `main` instance for normal
   // tabs). Holds the permission queue that used to live on TabState.
   const inst = activeInstance(conversationPanes, tab.id)
-  const hasPermission = (inst?.permissionQueue.length ?? 0) > 0
+  const _hasPermission = (inst?.permissionQueue.length ?? 0) > 0
 
   // DATA-driven (not tab-type): does ANY instance of this tab have a running
   // run / running dispatched children? A plain conversation has one instance
@@ -111,7 +111,7 @@ export function TabPill({
   // drives the yellow "awaiting children" dot and the hard-block on the X
   // close button. Foreground orange wins over background yellow.
   const anyInstanceHasRunningChildren = anyEngineInstanceHasRunningChildren(tab.id)
-  const effectiveStatus = (anyInstanceRunning && !isRunning) ? 'running' as const : tab.status
+  const _effectiveStatus = (anyInstanceRunning && !isRunning) ? 'running' as const : tab.status
   // Combined "must not close" predicate. Hard-blocks the X close
   // button below. Mirrors the action-layer guard in tab-slice.ts
   // closeTab so every entry point — UI affordance, keyboard shortcut,

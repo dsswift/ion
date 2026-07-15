@@ -121,8 +121,13 @@ export function useRepoState(path: string | undefined): RepoState | undefined {
   return useGitStore((s) => path ? s.repos[path] : undefined)
 }
 
+// Stable empty fallback: a `?? []` literal inside a selector returns a new
+// reference on every getSnapshot call, which defeats Object.is equality and
+// can drive React into a #185 re-render loop.
+const EMPTY_FILES: GitChangedFile[] = []
+
 export function useRepoFiles(path: string | undefined): GitChangedFile[] {
-  return useGitStore((s) => path ? s.repos[path]?.files ?? [] : [])
+  return useGitStore((s) => (path ? s.repos[path]?.files ?? EMPTY_FILES : EMPTY_FILES))
 }
 
 export function useRepoBranch(path: string | undefined): string {

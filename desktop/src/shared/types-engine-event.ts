@@ -16,7 +16,6 @@ import type {
   EngineCommandListing,
   ContextBreakdownPayload,
 } from './types-engine'
-import type { Message } from './types-session'
 
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }

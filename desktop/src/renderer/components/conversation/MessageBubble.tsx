@@ -6,7 +6,7 @@ import { useColors } from '../../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
-import type { Message, Attachment } from '../../../shared/types'
+import type { Message } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
 

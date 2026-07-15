@@ -15,11 +15,9 @@ import { DiffPane } from './git/DiffPane'
 import { useRepoBranch } from '../stores/git'
 import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../shared/types'
 import { BranchPicker } from './GitBranchPicker'
-import { GraphRow, CommitFileList } from './GitGraphRow'
 import { CommitPopup } from './GitCommitPopup'
 import { CommitContextMenu } from './GitCommitContextMenu'
 import { FinishWorkContextMenu } from './GitFinishWorkMenu'
-import { CommitDetailsPane } from './git/CommitDetailsPane'
 import { VirtualCommitList } from './git/VirtualCommitList'
 import { GraphFilterBar, EMPTY_FILTERS, type GraphFilters } from './git/GraphFilterBar'
 import { RebaseEditor, type RebaseCommit } from './git/RebaseEditor'
@@ -247,7 +245,7 @@ export function GitGraphSection({
       setCommitFiles([])
       setExpandedDetail(null)
     }
-  }, [expandedHash, directory])
+  }, [expandedHash, directory, dismissPopup])
 
   const handleCommitFileClick = useCallback(async (file: GitCommitFile) => {
     if (!expandedHash) return

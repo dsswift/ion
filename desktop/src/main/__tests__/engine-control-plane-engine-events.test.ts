@@ -274,7 +274,7 @@ describe('EngineControlPlane — engine event handling', () => {
       expect(cp.getTabStatus(tabId)?.status).toBe('completed')
 
       // Second idle (cost-only update) should be skipped by the completed guard
-      const eventsBefore = events.length
+      const _eventsBefore = events.length
       capturedEventHandler!(tabId, {
         type: 'engine_status',
         fields: { state: 'idle', runCostUsd: 0.05 },
@@ -358,7 +358,7 @@ describe('EngineControlPlane — engine event handling', () => {
       expect(cp.getTabStatus(tabId)?.status).toBe('running')
 
       // Step 5: Stale engine_status idle from the OLD dying session arrives
-      const eventsBefore = events.length
+      const _eventsBefore = events.length
       capturedEventHandler!(tabId, {
         type: 'engine_status',
         fields: { state: 'idle' },

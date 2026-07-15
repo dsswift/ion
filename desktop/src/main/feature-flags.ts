@@ -11,7 +11,7 @@
  *   flags.set('remoteApi', true)  // persists to settings
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 

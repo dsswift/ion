@@ -261,7 +261,7 @@ export class LANServer extends EventEmitter {
   async stop(): Promise<void> {
     this._unadvertiseBonjour()
 
-    for (const [id, ws] of this.clients) {
+    for (const [_id, ws] of this.clients) {
       try { ws.close() } catch { /* ignore */ }
     }
     this.clients.clear()

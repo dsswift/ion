@@ -17,6 +17,7 @@
 
 import { parseChord } from './chord'
 import type { Chord } from './chord'
+import { rWarn } from '../rendererLogger'
 
 export interface ShortcutEntry {
   id: string
@@ -108,7 +109,7 @@ export const SHORTCUT_CATALOG: ShortcutEntry[] = [
  * Returns a Map<commandId, Chord> ready for `matchesChord`.
  */
 export function resolveBindings(overrides: Record<string, string>): Map<string, Chord> {
-  const knownIds = new Set(SHORTCUT_CATALOG.map((e) => e.id))
+  const _knownIds = new Set(SHORTCUT_CATALOG.map((e) => e.id))
   const result = new Map<string, Chord>()
 
   for (const entry of SHORTCUT_CATALOG) {
@@ -137,9 +138,7 @@ export function resolveBindings(overrides: Record<string, string>): Map<string, 
     const chordKey = chordToKey(chord)
     const existing = seenChords.get(chordKey)
     if (existing) {
-      console.warn(
-        `[Shortcuts] Conflict: '${entry.id}' and '${existing}' share chord '${chordKey}'. '${existing}' wins (catalog order).`,
-      )
+      rWarn('shortcuts', 'chord conflict: existing wins', { later_id: entry.id, existing_id: existing, chord: chordKey })
       // Remove the later entry (entry.id) — existing wins.
       result.delete(entry.id)
     } else {

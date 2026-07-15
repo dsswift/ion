@@ -11,7 +11,7 @@
  * carry the `engine_` prefix — the two namespaces are disjoint.
  */
 
-import type { NormalizedEvent, TabStatus, AgentStateUpdate, StatusFields } from '../../shared/types'
+import type { TabStatus, AgentStateUpdate, StatusFields } from '../../shared/types'
 import type { RemoteTabState, RemoteMessage, TerminalInstanceInfo } from './protocol-remote-tab'
 
 /**

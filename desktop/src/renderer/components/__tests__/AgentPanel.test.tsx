@@ -88,7 +88,7 @@ function engineDevChildStub(): AgentStateUpdate {
   } as unknown as AgentStateUpdate
 }
 
-function render(el: React.ReactElement) {
+function render(_el: React.ReactElement) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
