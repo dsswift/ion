@@ -58,7 +58,11 @@ extension TabListView {
             defaultId: viewModel.defaultEngineProfileId,
             enterprisePolicy: policy
         )
-        DiagnosticLog.log("NEW-CONV: action=\(action) dir=\(directory?.prefix(40) ?? "nil") pin=\(pinToGroupId ?? "nil")")
+        DiagnosticLog.log("new conv action", tag: "view.tablist", fields: [
+            "reason": String(describing: action),
+            "path": directory?.prefix(40).description ?? "nil",
+            "status": pinToGroupId ?? "nil"
+        ])
         switch action {
         case .plain:
             viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId)

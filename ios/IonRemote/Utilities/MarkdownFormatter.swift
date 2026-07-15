@@ -63,7 +63,9 @@ enum MarkdownFormatter {
 
     static func parse(_ markdown: String) -> [MarkdownBlock] {
         let inputLen = markdown.count
-        DiagnosticLog.log("markdown.parse: input_len=\(inputLen)")
+        DiagnosticLog.trace("markdown parse", tag: "markdown.parse", fields: [
+            "count": String(inputLen)
+        ])
 
         // Empty / whitespace input: return a single empty paragraph. This
         // preserves the previous formatter's behavior so call sites that
@@ -91,7 +93,9 @@ enum MarkdownFormatter {
             let document = Markdown.Document(parsing: normalized)
             blocks = try walkDocument(document, raw: normalized)
         } catch {
-            DiagnosticLog.log("markdown.parse: walker failed err=\(error) → raw paragraph fallback")
+            DiagnosticLog.log("markdown parse walker failed", tag: "markdown.parse", level: .warn, fields: [
+                "error": String(describing: error)
+            ])
             return [.paragraph(text: AttributedString(normalized))]
         }
 
@@ -106,7 +110,10 @@ enum MarkdownFormatter {
         }
 
         let summary = summarize(blocks)
-        DiagnosticLog.log("markdown.parse: emitted blocks=\(blocks.count) kinds=[\(summary)]")
+        DiagnosticLog.trace("markdown parse emitted", tag: "markdown.parse", fields: [
+            "count": String(blocks.count),
+            "reason": summary
+        ])
         return blocks
     }
 

@@ -17,7 +17,11 @@ extension SessionViewModel {
         //
         // Content format mirrors the desktop: bold title line prefixed with
         // "Conversation redirected: " for redirect level, then the body.
-        DiagnosticLog.log("ENGINE: intercept tabId=\(tabId.prefix(8)) level=\(level) title=\(title.prefix(60))")
+        DiagnosticLog.log("engine intercept", tag: "session.engine", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": level,
+            "status": String(title.prefix(60))
+        ])
         let levelPrefix = level == "redirect" ? "Conversation redirected: " : ""
         let content = "**\(levelPrefix)\(title)**\n\n\(message)"
         var msg = Message(
@@ -100,7 +104,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String) {
-        DiagnosticLog.log("ENGINE: tool-start tabId=\(tabId.prefix(8)) tool=\(toolName) toolId=\(toolId.prefix(8))")
+        DiagnosticLog.log("engine tool start", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "tool": toolName,
+            "reason": String(toolId.prefix(8))
+        ])
         let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
         activeTools[tabId, default: [:]][toolId] = info
         // Add tool message to conversation
@@ -110,7 +118,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool) {
-        DiagnosticLog.log("ENGINE: tool-end tabId=\(tabId.prefix(8)) toolId=\(toolId.prefix(8)) isError=\(isError)")
+        DiagnosticLog.log("engine tool end", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": String(toolId.prefix(8)),
+            "status": String(isError)
+        ])
         activeTools[tabId]?[toolId] = nil
         if activeTools[tabId]?.isEmpty == true {
             activeTools.removeValue(forKey: tabId)
@@ -126,7 +138,10 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineError(tabId: String, instanceId: String?, message: String) {
-        DiagnosticLog.log("ENGINE: error tabId=\(tabId.prefix(8)) msg=\(message.prefix(80))")
+        DiagnosticLog.log("engine error", tag: "session.engine", level: .error, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "error": String(message.prefix(80))
+        ])
         // Add error as system message in conversation
         let msg = Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000)
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
@@ -139,7 +154,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineNotify(tabId: String, instanceId: String?, message: String, level: String?) {
-        DiagnosticLog.log("ENGINE: notify tabId=\(tabId.prefix(8)) level=\(level ?? "info") msg=\(message.prefix(60))")
+        DiagnosticLog.log("engine notify", tag: "session.engine", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": level ?? "info",
+            "status": String(message.prefix(60))
+        ])
         // Surface notifications as system messages in the conversation
         let prefix = level == "warning" ? "⚠️ " : level == "error" ? "❌ " : ""
         let msg = Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000)
@@ -160,7 +179,10 @@ extension SessionViewModel {
                 inst.messages[inst.messages.count - 1].content += text
                 // Unseal so subsequent deltas for this run keep appending.
                 if inst.messages[inst.messages.count - 1].sealed {
-                    DiagnosticLog.log("ENGINE: text-delta after seal tabId=\(tabId.prefix(8)) len=\(text.count) — unsealing, appending to existing row")
+                    DiagnosticLog.log("engine text delta after seal", tag: "session.engine", level: .debug, fields: [
+                        "tab_id": String(tabId.prefix(8)),
+                        "count": String(text.count)
+                    ])
                     inst.messages[inst.messages.count - 1].sealed = false
                 }
             } else {
@@ -203,7 +225,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String]) {
-        DiagnosticLog.log("ENGINE: dead tabId=\(tabId.prefix(8)) exitCode=\(exitCode ?? -1) signal=\(signal ?? "nil")")
+        DiagnosticLog.log("engine dead", tag: "session.engine", level: .warn, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "status": String(exitCode ?? -1),
+            "reason": signal ?? "nil"
+        ])
         // exitCode 0/nil = normal exit or idle cleanup, not a real death
         guard let exitCode, exitCode != 0 else { return }
         // Only mark tab dead if no other instances are running
@@ -245,7 +271,13 @@ extension SessionViewModel {
         // under that key so each dispatch is cached independently.
         if let convId = conversationId, !convId.isEmpty {
             let wasAlreadyCached = agentSnapshotByConvId[convId] != nil
-            DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) convId=\(convId) count=\(messages.count) filtered=\(filtered.count) snapshotOp=\(wasAlreadyCached ? "replace" : "first-populate")")
+            DiagnosticLog.log("agent conversation history", tag: "session.engine", fields: [
+                "agent": agentName,
+                "conversation_id": convId,
+                "count": String(messages.count),
+                "max": String(filtered.count),
+                "reason": wasAlreadyCached ? "replace" : "first-populate"
+            ])
             // The file-backed load is the snapshot AUTHORITY — store it and
             // recompute the merged transcript so it replaces stale state while
             // any in-flight push entries newer than the snapshot survive.
@@ -259,7 +291,11 @@ extension SessionViewModel {
             agentConversationLoading.remove(convId)
         } else {
             // Legacy fallback: store under agent name for multi-convId loads
-            DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) (legacy) count=\(messages.count) filtered=\(filtered.count)")
+            DiagnosticLog.log("agent conversation history legacy", tag: "session.engine", fields: [
+                "agent": agentName,
+                "count": String(messages.count),
+                "max": String(filtered.count)
+            ])
             agentConversationMessages[agentName] = filtered
             agentConversationLoading.remove(agentName)
         }
@@ -275,7 +311,10 @@ extension SessionViewModel {
     func loadAgentConversation(agent: AgentStateUpdate) {
         guard !agent.conversationIds.isEmpty else { return }
         guard !agentConversationLoading.contains(agent.name) else { return }
-        DiagnosticLog.log("ENGINE: loading agent conversation agent=\(agent.name) convIds=\(agent.conversationIds)")
+        DiagnosticLog.log("loading agent conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": agent.conversationIds.joined(separator: ",")
+        ])
         agentConversationLoading.insert(agent.name)
         send(.loadAgentConversation(conversationIds: agent.conversationIds), intent: .automaticEssential)
     }
@@ -311,7 +350,10 @@ extension SessionViewModel {
             // popup gets a fresh snapshot rather than stale push-only entries.
             DiagnosticLog.log("ENGINE: reload dispatch conv (running+cached) agent=\(agent.name) convId=\(conversationId) existingMsgCount=\(agentConversationMessages[conversationId]?.count ?? 0)")
         }
-        DiagnosticLog.log("ENGINE: loading dispatch conversation agent=\(agent.name) convId=\(conversationId)")
+        DiagnosticLog.log("loading dispatch conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": conversationId
+        ])
         agentConversationLoading.insert(conversationId)
         send(.loadAgentConversation(conversationIds: [conversationId]), intent: .automaticEssential)
     }
@@ -341,7 +383,10 @@ extension SessionViewModel {
     func refreshAgentDispatchConversation(agent: AgentStateUpdate, conversationId: String) {
         guard !conversationId.isEmpty else { return }
         guard !agentConversationLoading.contains(conversationId) else { return }
-        DiagnosticLog.log("ENGINE: refresh dispatch conversation agent=\(agent.name) convId=\(conversationId)")
+        DiagnosticLog.log("refresh dispatch conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": conversationId
+        ])
         agentConversationLoading.insert(conversationId)
         send(.loadAgentConversation(conversationIds: [conversationId]), intent: .automaticEssential)
     }
@@ -351,7 +396,10 @@ extension SessionViewModel {
     func refreshAgentConversation(agent: AgentStateUpdate) {
         guard !agent.conversationIds.isEmpty else { return }
         guard !agentConversationLoading.contains(agent.name) else { return }
-        DiagnosticLog.log("ENGINE: refresh agent conversation agent=\(agent.name) convIds=\(agent.conversationIds)")
+        DiagnosticLog.log("refresh agent conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": agent.conversationIds.joined(separator: ",")
+        ])
         agentConversationMessages.removeValue(forKey: agent.name)
         agentConversationLoading.insert(agent.name)
         send(.loadAgentConversation(conversationIds: agent.conversationIds), intent: .automaticEssential)
@@ -360,10 +408,16 @@ extension SessionViewModel {
     // MARK: - Diagnostic log request
 
     @MainActor
-    func handleRequestDiagnosticLogs() {
-        let logs = DiagnosticLog.exportAllSessions()
+    func handleRequestDiagnosticLogs(lineOffset: Int = 0) {
+        let (logs, nextOffset) = lineOffset > 0
+            ? DiagnosticLog.exportIncrementalSince(lineOffset: lineOffset)
+            : (DiagnosticLog.exportAllSessions(), 0)
         let deviceId = activeDeviceId ?? "unknown"
         let deviceName = UIDevice.current.name
+        DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
+            "count": String(lineOffset),
+            "max": String(nextOffset - lineOffset)
+        ])
         send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName), intent: .automaticEssential)
     }
 

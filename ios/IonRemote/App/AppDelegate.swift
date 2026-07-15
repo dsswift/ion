@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        print("[push] registered with token: \(token.prefix(8))...")
+        DiagnosticLog.log("apns registered", tag: "apns", fields: ["token_prefix": String(token.prefix(8))])
         sessionViewModel?.apnsToken = token
     }
 
@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         // Graceful degradation: push is optional.
-        print("[push] registration failed: \(error.localizedDescription)")
+        DiagnosticLog.log("apns registration failed", tag: "apns", level: .error, fields: ["error": error.localizedDescription])
     }
 
     // MARK: - Foreground delivery
@@ -69,11 +69,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             if let error {
-                print("[push] authorization error: \(error.localizedDescription)")
+                DiagnosticLog.log("apns authorization error", tag: "apns", level: .error, fields: ["error": error.localizedDescription])
                 return
             }
             guard granted else {
-                print("[push] authorization denied by user")
+                DiagnosticLog.log("apns authorization denied by user", tag: "apns", level: .warn)
                 return
             }
             DispatchQueue.main.async {

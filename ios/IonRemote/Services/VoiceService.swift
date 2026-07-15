@@ -99,9 +99,16 @@ final class VoiceService {
 
     func speak(text: String, messageId: String? = nil, tabId: String? = nil) {
         let cleaned = prepareForSpeech(text)
-        DiagnosticLog.log("VOICE: speak called, enabled=\(isEnabled) cleaned.count=\(cleaned.count) hasApiKey=\(apiKey != nil)")
+        DiagnosticLog.log("voice speak called", tag: "voice", fields: [
+            "enabled": String(isEnabled),
+            "cleaned_count": String(cleaned.count),
+            "has_api_key": String(apiKey != nil)
+        ])
         guard isEnabled, !cleaned.isEmpty else {
-            DiagnosticLog.log("VOICE: skipped — enabled=\(isEnabled) empty=\(cleaned.isEmpty)")
+            DiagnosticLog.log("voice speak skipped", tag: "voice", fields: [
+                "enabled": String(isEnabled),
+                "empty": String(cleaned.isEmpty)
+            ])
             return
         }
         if isSpeaking {
@@ -109,10 +116,12 @@ final class VoiceService {
             pendingText = cleaned
             pendingMessageId = messageId
             pendingTabId = tabId
-            DiagnosticLog.log("VOICE: queued (already speaking)")
+            DiagnosticLog.log("voice queued while speaking", tag: "voice")
         } else {
             pendingText = nil
-            DiagnosticLog.log("VOICE: starting performSpeak, text=\(String(cleaned.prefix(80)))…")
+            DiagnosticLog.log("voice starting performSpeak", tag: "voice", fields: [
+                "text": String(cleaned.prefix(80))
+            ])
             speakTask = Task { await self.performSpeak(cleaned, messageId: messageId, tabId: tabId) }
         }
     }
@@ -236,10 +245,12 @@ final class VoiceService {
         }
 
         guard let audioData = await fetchAudio(text) else {
-            DiagnosticLog.log("VOICE: fetchAudio returned nil")
+            DiagnosticLog.log("voice fetch audio returned nil", tag: "voice", level: .warn)
             return
         }
-        DiagnosticLog.log("VOICE: got audio data, \(audioData.count) bytes")
+        DiagnosticLog.log("voice audio data received", tag: "voice", fields: [
+            "bytes": String(audioData.count)
+        ])
         guard !Task.isCancelled else { return }
 
         do {
@@ -272,7 +283,7 @@ final class VoiceService {
 
     private func fetchAudio(_ text: String) async -> Data? {
         guard let key = apiKey, !key.isEmpty else {
-            DiagnosticLog.log("VOICE: no API key in keychain")
+            DiagnosticLog.log("voice no api key", tag: "voice", level: .warn)
             return nil
         }
         guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(Self.voiceID)") else {
@@ -296,12 +307,16 @@ final class VoiceService {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-                DiagnosticLog.log("VOICE: ElevenLabs HTTP \(code)")
+                DiagnosticLog.log("voice elevenlabs http error", tag: "voice", level: .warn, fields: [
+                    "status": String(code)
+                ])
                 return nil
             }
             return data
         } catch {
-            DiagnosticLog.log("VOICE: fetch error: \(error.localizedDescription)")
+            DiagnosticLog.log("voice fetch error", tag: "voice", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
             return nil
         }
     }

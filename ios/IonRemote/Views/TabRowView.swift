@@ -18,7 +18,10 @@ struct TabRowView: View {
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {
-        let _ = DiagnosticLog.log("[TabRowView] rendering with accent: \(theme.accent), theme id: \(theme.id)")
+        let _ = DiagnosticLog.trace("tab row rendering", tag: "view.tabrow", fields: [
+            "reason": String(describing: theme.accent),
+            "status": theme.id
+        ])
         HStack(spacing: 12) {
             // Status indicator: show a custom SF Symbol icon when pillIcon is set,
             // otherwise fall back to the default Circle. Status dot color always
@@ -220,33 +223,57 @@ struct TabRowView: View {
 
     // MARK: - Idle Label
 
-    private func idleLabel(at now: Date, since: Date) -> String {
+    // The subtitle text and color fold the SAME classifier the status dot uses
+    // (`TabStatusRollup.classify`), keyed off its `priority`. This is what stops
+    // the subtitle from diverging from the dot: previously the subtitle checked
+    // plan-ready/question from `permissionQueue` FIRST and was blind to
+    // `tab.hasRunningChildren`, so an idle tab with running children that still
+    // carried an ExitPlanMode entry showed a yellow dot but a green
+    // "Plan ready" subtitle. Now both surfaces read one decision.
+    //
+    // Only the running-children / plan-ready / question priorities are resolved
+    // via the classifier here; the lower-priority failed/dead/completed/idle
+    // outcomes fall through to the existing status-based cases. The running
+    // (priority 6) branch never reaches here — the `tab.status == .running ||
+    // .connecting` guard in `body` renders "Running…" before the idle branch.
+    func idleLabel(at now: Date, since: Date) -> String {
         let elapsed = relativeTime(from: since, to: now)
-        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
-        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
+        let priority = TabStatusRollup.classify(tab).priority
 
-        if hasQuestion {
-            return "Waiting on you · \(elapsed)"
-        } else if hasPlanReady {
+        switch priority {
+        case TabStatusRollup.priorityChildren:
+            return "Working… · \(elapsed)"
+        case TabStatusRollup.priorityPlanReady:
             return "Plan ready · \(elapsed)"
-        } else if tab.status == .failed {
-            return "Failed \(elapsed)"
-        } else if tab.status == .dead {
-            return "Dead \(elapsed)"
-        } else if tab.status == .completed {
-            return "Completed \(elapsed)"
-        } else {
-            return "Idle \(elapsed)"
+        case TabStatusRollup.priorityQuestion:
+            return "Waiting on you · \(elapsed)"
+        default:
+            if tab.status == .failed {
+                return "Failed \(elapsed)"
+            } else if tab.status == .dead {
+                return "Dead \(elapsed)"
+            } else if tab.status == .completed {
+                return "Completed \(elapsed)"
+            } else {
+                return "Idle \(elapsed)"
+            }
         }
     }
 
-    private var idleLabelColor: Color {
-        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
-        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
-        if hasQuestion { return Color(hex: 0x4A9EF5) }
-        if hasPlanReady { return .green }
-        if tab.status == .failed || tab.status == .dead { return Color(hex: 0xC47060) }
-        return Color(hex: 0x8A8A80)
+    var idleLabelColor: Color {
+        let priority = TabStatusRollup.classify(tab).priority
+
+        switch priority {
+        case TabStatusRollup.priorityChildren:
+            return TabStatusRollup.childrenYellow
+        case TabStatusRollup.priorityPlanReady:
+            return .green
+        case TabStatusRollup.priorityQuestion:
+            return TabStatusRollup.questionBlue
+        default:
+            if tab.status == .failed || tab.status == .dead { return Color(hex: 0xC47060) }
+            return Color(hex: 0x8A8A80)
+        }
     }
 
     private func relativeTime(from start: Date, to end: Date) -> String {
@@ -349,50 +376,13 @@ struct TabRowView: View {
     }
 
     /// Status color and pulse state matching desktop TabStrip priority order.
+    ///
+    /// Delegates to the single shared classifier (`TabStatusRollup.classify`)
+    /// so the per-tab dot and the group-header rollup dot fold the exact same
+    /// cascade and cannot drift — mirroring how the desktop shares
+    /// `getTabStatusColor` between the per-tab dot and `getGroupStatusColor`.
     var statusInfo: (color: Color, pulse: Bool) {
-        // 1. Dead/Failed -> Red (no pulse)
-        if tab.status == .dead || tab.status == .failed {
-            return (Color(hex: 0xC47060), false)
-        }
-
-        // 2. Check permission queue for special tool states
-        let hasGenericPermission = tab.permissionQueue.contains {
-            $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
-        }
-        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
-        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
-
-        // 3. Generic permission -> Orange (steady)
-        if hasGenericPermission {
-            return (Color(hex: 0xE8854A), false)
-        }
-        // 4. Running/Connecting -> Orange + pulse (before plan/question so active streaming always wins)
-        if tab.status == .running || tab.status == .connecting {
-            return (Color(hex: 0xE8854A), true)
-        }
-        // 5. Awaiting children (yellow + pulse) — orchestrator idle
-        //    but dispatched background agents still executing. The
-        //    desktop `snapshot.ts` aggregates per-instance
-        //    `runningAgentCount` into the top-level `hasRunningChildren`
-        //    flag so iOS can read it without a per-instance fold. Sits
-        //    below the orange running branch (foreground wins) and
-        //    above the plan/question waits (active background work is
-        //    a stronger signal than passive "waiting on you"). The
-        //    yellow hex matches the desktop's `statusWaitingChildren`
-        //    and `IonDefaultTheme.statusWaitingChildren`. See
-        //    CLAUDE.md § "Common parity surfaces" parity row.
-        if tab.hasRunningChildren == true {
-            return (Color(hex: 0xF59E0B), true)
-        }
-        // 6. Plan ready -> Green (idle or completed -- run finishes after auto-allow)
-        if hasPlanReady && (tab.status == .idle || tab.status == .completed) {
-            return (.green, false)
-        }
-        // 7. Question pending -> Blue (idle or completed)
-        if hasQuestion && (tab.status == .idle || tab.status == .completed) {
-            return (Color(hex: 0x4A9EF5), false)
-        }
-        // 8. Default -> Gray
-        return (Color(hex: 0x8A8A80), false)
+        let status = TabStatusRollup.classify(tab)
+        return (status.color, status.shouldPulse)
     }
 }

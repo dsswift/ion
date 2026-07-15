@@ -36,7 +36,10 @@ final class SpeechPermissionManager {
 
     init() {
         refreshCurrentStatus()
-        DiagnosticLog.log("SPEECH-PERM: init mic=\(microphoneState) speech=\(speechState)")
+        DiagnosticLog.log("speech permission init", tag: "speech.permission", fields: [
+            "mic": String(describing: microphoneState),
+            "speech": String(describing: speechState)
+        ])
     }
 
     // MARK: - Public API
@@ -44,10 +47,14 @@ final class SpeechPermissionManager {
     /// Request both microphone and speech recognition permissions.
     /// Returns true only when both are granted.
     func requestAll() async -> Bool {
-        DiagnosticLog.log("SPEECH-PERM: requestAll called")
+        DiagnosticLog.log("speech permission requestAll called", tag: "speech.permission")
         let mic = await requestMicrophone()
         let speech = await requestSpeechRecognition()
-        DiagnosticLog.log("SPEECH-PERM: requestAll mic=\(mic) speech=\(speech) combined=\(mic && speech)")
+        DiagnosticLog.log("speech permission requested", tag: "speech.permission", fields: [
+            "mic": String(mic),
+            "speech": String(speech),
+            "combined": String(mic && speech)
+        ])
         return mic && speech
     }
 
@@ -63,19 +70,21 @@ final class SpeechPermissionManager {
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
             microphoneState = .granted
-            DiagnosticLog.log("SPEECH-PERM: microphone already granted")
+            DiagnosticLog.log("microphone already granted", tag: "speech.permission")
             return true
         case .denied:
             microphoneState = .denied
-            DiagnosticLog.log("SPEECH-PERM: microphone denied")
+            DiagnosticLog.log("microphone denied", tag: "speech.permission")
             return false
         case .undetermined:
-            DiagnosticLog.log("SPEECH-PERM: requesting microphone permission")
+            DiagnosticLog.log("requesting microphone permission", tag: "speech.permission")
             // AVAudioApplication.requestRecordPermission() is already async and
             // resumes on the calling actor — no continuation wrapping needed.
             let granted = await AVAudioApplication.requestRecordPermission()
             microphoneState = granted ? .granted : .denied
-            DiagnosticLog.log("SPEECH-PERM: microphone result=\(granted)")
+            DiagnosticLog.log("microphone permission result", tag: "speech.permission", fields: [
+                "result": String(granted)
+            ])
             return granted
         @unknown default:
             microphoneState = .denied
@@ -85,7 +94,9 @@ final class SpeechPermissionManager {
 
     private func requestSpeechRecognition() async -> Bool {
         let current = SFSpeechRecognizer.authorizationStatus()
-        DiagnosticLog.log("SPEECH-PERM: SFSpeechRecognizer current status=\(current.rawValue)")
+        DiagnosticLog.log("speech recognizer current status", tag: "speech.permission", fields: [
+            "status": String(current.rawValue)
+        ])
         switch current {
         case .authorized:
             speechState = .granted
@@ -97,7 +108,7 @@ final class SpeechPermissionManager {
             speechState = .restricted
             return false
         case .notDetermined:
-            DiagnosticLog.log("SPEECH-PERM: requesting speech recognition permission")
+            DiagnosticLog.log("requesting speech recognition permission", tag: "speech.permission")
             // SFSpeechRecognizer.requestAuthorization calls back on an arbitrary
             // thread. We must NOT hop back to MainActor inside the continuation —
             // that causes a deadlock because the MainActor is suspended waiting for
@@ -109,7 +120,9 @@ final class SpeechPermissionManager {
                     continuation.resume(returning: status)
                 }
             }
-            DiagnosticLog.log("SPEECH-PERM: speech recognition result=\(status.rawValue)")
+            DiagnosticLog.log("speech recognition permission result", tag: "speech.permission", fields: [
+                "status": String(status.rawValue)
+            ])
             switch status {
             case .authorized:
                 speechState = .granted

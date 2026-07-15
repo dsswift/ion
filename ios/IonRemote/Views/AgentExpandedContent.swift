@@ -426,6 +426,16 @@ struct AgentExpandedContent: View {
         let assistantCount = filtered.filter { $0.role == .assistant }.count
         let thinkingCount = filtered.filter { $0.role == .thinking }.count
         let userCount = filtered.filter { $0.role == .user }.count
-        DiagnosticLog.log("DISPATCH-VIEW: \(event) idx=\(idx) convId=\(convId) dispatchId=\(dispatchId) raw=\(rawCount) filtered=\(filtered.count) tool=\(toolCount) assistant=\(assistantCount) thinking=\(thinkingCount) user=\(userCount)")
+        DiagnosticLog.log("dispatch view", tag: "view.dispatch", fields: [
+            "reason": event,
+            "conversation_id": convId,
+            "run_id": dispatchId,
+            "count": String(rawCount),
+            "max": String(filtered.count),
+            "tool": String(toolCount),
+            "agent": String(assistantCount),
+            "turn": String(thinkingCount),
+            "status": String(userCount)
+        ])
     }
 }

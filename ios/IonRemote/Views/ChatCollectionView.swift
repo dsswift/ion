@@ -228,7 +228,11 @@ final class ChatCollectionVC<Payload, RowContent: View>:
                     // through history we must not yank them back down.
                     // Logged so a wedged-interaction state is visible in
                     // diagnostics instead of silently suppressing the tail.
-                    DiagnosticLog.log("CHAT-SCROLL: tail skipped, interacting (tracking=\(self.collectionView.isTracking) dragging=\(self.collectionView.isDragging) decelerating=\(self.collectionView.isDecelerating))")
+                    DiagnosticLog.trace("chat scroll tail skipped interacting", tag: "view.chatscroll", fields: [
+                        "reason": String(self.collectionView.isTracking),
+                        "status": String(self.collectionView.isDragging),
+                        "count": String(self.collectionView.isDecelerating)
+                    ])
                 } else {
                     self.scrollToBottom(animated: false)
                 }
@@ -266,7 +270,11 @@ final class ChatCollectionVC<Payload, RowContent: View>:
             -collectionView.adjustedContentInset.top
         )
         if abs(newBottom - bottom) > 1 {
-            DiagnosticLog.log("CHAT-SCROLL: second-pass correction delta=\(newBottom - bottom) sizeBefore=\(sizeBefore) sizeAfter=\(collectionView.contentSize.height)")
+            DiagnosticLog.trace("chat scroll second-pass correction", tag: "view.chatscroll", fields: [
+                "count": String(format: "%.1f", newBottom - bottom),
+                "reason": String(format: "%.1f", sizeBefore),
+                "status": String(format: "%.1f", collectionView.contentSize.height)
+            ])
             collectionView.setContentOffset(CGPoint(x: 0, y: newBottom), animated: false)
         }
     }

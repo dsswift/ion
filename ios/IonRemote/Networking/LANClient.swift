@@ -69,7 +69,11 @@ final class LANClient {
         // callback from the old task sees a stale gen and bails out.
         connectionGen &+= 1
         let gen = connectionGen
-        DiagnosticLog.log("LAN-WS: connect gen=\(gen) \(host):\(port)")
+        DiagnosticLog.log("lan websocket connect", tag: "lan.client", fields: [
+            "gen": String(gen),
+            "host": host,
+            "port": String(port)
+        ])
 
         // Create a fresh stream for this connection.
         var continuation: AsyncStream<Data>.Continuation!
@@ -92,7 +96,9 @@ final class LANClient {
     }
 
     func disconnect() {
-        DiagnosticLog.log("LAN-WS: disconnect gen=\(connectionGen)")
+        DiagnosticLog.log("lan websocket disconnect", tag: "lan.client", fields: [
+            "gen": String(connectionGen)
+        ])
         intentionallyClosed = true
         messageContinuation?.finish()
         task?.cancel(with: .normalClosure, reason: nil)
@@ -121,7 +127,10 @@ final class LANClient {
             // which finishes the NEW connection's continuation, killing the
             // listener stream ~100ms after auth.
             guard gen == self.connectionGen else {
-                DiagnosticLog.log("LAN-WS: stale recv gen=\(gen) cur=\(self.connectionGen)")
+                DiagnosticLog.trace("lan websocket stale recv", tag: "lan.client", fields: [
+                    "gen": String(gen),
+                    "current": String(self.connectionGen)
+                ])
                 return
             }
 
@@ -129,7 +138,9 @@ final class LANClient {
             case .success(let message):
                 if !self.isConnected {
                     self.isConnected = true
-                    DiagnosticLog.log("LAN-WS: first msg, isConnected=true gen=\(gen)")
+                    DiagnosticLog.log("lan websocket first message", tag: "lan.client", fields: [
+                        "gen": String(gen)
+                    ])
                 }
                 switch message {
                 case .data(let data):
@@ -144,7 +155,10 @@ final class LANClient {
                 self.receiveLoop(wsTask, gen: gen)
 
             case .failure(let error):
-                DiagnosticLog.log("LAN-WS: recv failure gen=\(gen) err=\(error.localizedDescription)")
+                DiagnosticLog.log("lan websocket recv failure", tag: "lan.client", level: .warn, fields: [
+                    "gen": String(gen),
+                    "error": error.localizedDescription
+                ])
                 self.handleDisconnect(gen: gen)
             }
         }
@@ -155,10 +169,15 @@ final class LANClient {
         // A stale receiveLoop from a previous connect() must not touch
         // the new connection's state or continuation.
         guard gen == connectionGen else {
-            DiagnosticLog.log("LAN-WS: stale disconnect gen=\(gen) cur=\(connectionGen)")
+            DiagnosticLog.trace("lan websocket stale disconnect", tag: "lan.client", fields: [
+                "gen": String(gen),
+                "current": String(connectionGen)
+            ])
             return
         }
-        DiagnosticLog.log("LAN-WS: handleDisconnect gen=\(gen)")
+        DiagnosticLog.log("lan websocket handle disconnect", tag: "lan.client", fields: [
+            "gen": String(gen)
+        ])
         isConnected = false
         task = nil
         session?.invalidateAndCancel()

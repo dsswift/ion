@@ -190,7 +190,10 @@ struct ConversationView: View {
 
     func logAttachmentTaskEntry(tabId: String) {
         let count = viewModel.tabAttachmentCache[tabId]?.count ?? -1
-        DiagnosticLog.log("ATTACH: ConversationView.task tabId=\(tabId.prefix(8)) cacheBeforeRequest=\(count)")
+        DiagnosticLog.log("conversation view attachment task", tag: "view.conversation", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "count": String(count)
+        ])
     }
 
     /// Load conversation history via the unified wire command.
@@ -225,11 +228,22 @@ struct ConversationView: View {
         let status = tab?.status
         for request in queue {
             if let owner = request.instanceId, owner != activeInstanceId {
-                DiagnosticLog.log("ENGINE-PERM: pendingPermission: skipping \(request.toolName) questionId=\(request.questionId.prefix(16)) — owned by instance \(owner.prefix(8)), active is \(activeInstanceId.prefix(8))")
+                DiagnosticLog.log("pending permission skipping", tag: "view.perm", fields: [
+                    "tool": request.toolName,
+                    "question_id": String(request.questionId.prefix(16)),
+                    "reason": String(owner.prefix(8)),
+                    "status": String(activeInstanceId.prefix(8))
+                ])
                 continue
             }
             let inputKeys = request.toolInput?.keys.sorted() ?? []
-            DiagnosticLog.log("ENGINE-PERM: pendingPermission: from queue — toolName=\(request.toolName) questionId=\(request.questionId) instanceId=\(request.instanceId?.prefix(8) ?? "nil") inputKeys=\(inputKeys) status=\(status?.rawValue ?? "nil")")
+            DiagnosticLog.log("pending permission from queue", tag: "view.perm", fields: [
+                "tool": request.toolName,
+                "question_id": request.questionId,
+                "reason": request.instanceId?.prefix(8).description ?? "nil",
+                "count": String(inputKeys.count),
+                "status": status?.rawValue ?? "nil"
+            ])
             return request
         }
         // Queue empty — fall back to a restored card synthesized from history,
@@ -237,10 +251,18 @@ struct ConversationView: View {
         if !viewModel.dismissedLiveSpecialTabs.contains(tabId),
            let restored = PendingCard.restoredCard(for: engineMsgs),
            !viewModel.dismissedRestoredCards.contains(restored.questionId) {
-            DiagnosticLog.log("ENGINE-PERM: pendingPermission: restored card questionId=\(restored.questionId) toolName=\(restored.toolName)")
+            DiagnosticLog.log("pending permission restored card", tag: "view.perm", fields: [
+                "question_id": restored.questionId,
+                "tool": restored.toolName
+            ])
             return restored
         }
-        DiagnosticLog.log("ENGINE-PERM: pendingPermission: nil (queueSize=\(queue.count) status=\(status?.rawValue ?? "nil") tabId=\(tabId.prefix(8)) activeInstance=\(activeInstanceId.prefix(8)))")
+        DiagnosticLog.log("pending permission nil", tag: "view.perm", fields: [
+            "count": String(queue.count),
+            "status": status?.rawValue ?? "nil",
+            "tab_id": String(tabId.prefix(8)),
+            "reason": String(activeInstanceId.prefix(8))
+        ])
         return nil
     }
 
@@ -416,7 +438,10 @@ struct ConversationView: View {
                     // still running — the orchestrator will resume and revise the
                     // plan once the dispatch reports back. The card returns once
                     // the dispatch ends (the denial is not cleared, only hidden).
-                    let _ = DiagnosticLog.log("PLAN-CARD: deferring Plan Ready card for tab=\(tabId.prefix(8)) — \(runningAgentCount) background dispatch(es) still running")
+                    let _ = DiagnosticLog.log("deferring plan ready card", tag: "view.plancard", fields: [
+                        "tab_id": String(tabId.prefix(8)),
+                        "count": String(runningAgentCount)
+                    ])
                 }
             }
 

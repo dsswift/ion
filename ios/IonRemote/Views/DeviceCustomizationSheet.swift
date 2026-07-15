@@ -106,7 +106,11 @@ struct DeviceCustomizationSheet: View {
             .onAppear {
                 draftName = device.customName ?? ""
                 selectedIcon = device.customIcon
-                DiagnosticLog.log("DISPLAY-SHEET: opened device=\(device.id.prefix(8)) hasName=\(device.customName != nil) hasIcon=\(device.customIcon ?? "nil")")
+                DiagnosticLog.log("display sheet opened", tag: "view.displaysheet", fields: [
+                    "device": String(device.id.prefix(8)),
+                    "reason": String(device.customName != nil),
+                    "status": device.customIcon ?? "nil"
+                ])
             }
             .alert("Couldn't Save", isPresented: $showError, presenting: errorMessage) { _ in
                 Button("OK", role: .cancel) { }
@@ -156,7 +160,11 @@ struct DeviceCustomizationSheet: View {
         let nameOut: String? = trimmed.isEmpty ? nil : trimmed
         let iconOut: String? = selectedIcon  // nil means clear override
 
-        DiagnosticLog.log("DISPLAY-SHEET: save device=\(device.id.prefix(8)) name=\(nameOut == nil ? "cleared" : "set") icon=\(iconOut ?? "cleared")")
+        DiagnosticLog.log("display sheet save", tag: "view.displaysheet", fields: [
+            "device": String(device.id.prefix(8)),
+            "reason": nameOut == nil ? "cleared" : "set",
+            "status": iconOut ?? "cleared"
+        ])
 
         do {
             try await viewModel.updateRemoteDisplay(
@@ -165,10 +173,15 @@ struct DeviceCustomizationSheet: View {
                 customIcon: iconOut,
             )
             Haptic.success()
-            DiagnosticLog.log("DISPLAY-SHEET: save OK device=\(device.id.prefix(8))")
+            DiagnosticLog.log("display sheet save ok", tag: "view.displaysheet", fields: [
+                "device": String(device.id.prefix(8))
+            ])
             dismiss()
         } catch {
-            DiagnosticLog.log("DISPLAY-SHEET: save FAILED device=\(device.id.prefix(8)) err=\(error.localizedDescription)")
+            DiagnosticLog.log("display sheet save failed", tag: "view.displaysheet", level: .error, fields: [
+                "device": String(device.id.prefix(8)),
+                "error": error.localizedDescription
+            ])
             Haptic.error()
             errorMessage = error.localizedDescription
             showError = true

@@ -112,7 +112,12 @@ extension SessionViewModel {
                     // with the full conversation. The push buffer is kept until the new
                     // snapshot arrives so the popup continues to show the merge rather
                     // than collapsing to the truncated snapshot-only view.
-                    DiagnosticLog.log("ENGINE: terminal dispatch snapshot incomplete — reload before push-clear dispatchId=\(dispatchId) convId=\(convId) snapshot=\(snapshot.count) merged=\(merged.count)")
+                    DiagnosticLog.log("terminal dispatch snapshot incomplete reload", tag: "session.dispatchcache", fields: [
+                        "run_id": dispatchId,
+                        "conversation_id": convId,
+                        "count": String(snapshot.count),
+                        "max": String(merged.count)
+                    ])
                     // Clear the loading guard so the reload is not blocked by a stale sentinel.
                     agentConversationLoading.remove(convId)
                     refreshAgentDispatchConversation(agent: agent, conversationId: convId)
@@ -123,7 +128,13 @@ extension SessionViewModel {
                     // Snapshot is complete (or no push buffer existed). Clear the push
                     // cache and rebuild from the retained snapshot.
                     if hasPush {
-                        DiagnosticLog.log("ENGINE: clearing terminal dispatch push cache dispatchId=\(dispatchId) convId=\(convId) status=\(dispatch.status) snapshot=\(snapshot.count) merged=\(merged.count)")
+                        DiagnosticLog.log("clearing terminal dispatch push cache", tag: "session.dispatchcache", fields: [
+                            "run_id": dispatchId,
+                            "conversation_id": convId,
+                            "status": String(describing: dispatch.status),
+                            "count": String(snapshot.count),
+                            "max": String(merged.count)
+                        ])
                         agentDispatchActivity.removeValue(forKey: dispatchId)
                         agentDispatchSeqs.removeValue(forKey: dispatchId)
                     }
@@ -162,13 +173,25 @@ extension SessionViewModel {
 
         lastKnownEngineSessionId[tabId] = sid
 
+        // Stamp the engine session id onto subsequent DiagnosticLog lines so
+        // the JSONL `session_id` correlation field is populated (schema:
+        // docs/observability/log-schema.md). Omitted-when-nil is the default.
+        DiagnosticLog.setSessionId(sid)
+
         if let previous {
             // Genuine session change: old engine → new engine. Invalidate.
-            DiagnosticLog.log("DISPATCH-CACHE: engine session changed tabId=\(tabId.prefix(8)) old=\(previous.prefix(20)) new=\(sid.prefix(20)) — clearing all dispatch caches")
+            DiagnosticLog.log("engine session changed clearing caches", tag: "session.dispatchcache", fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "reason": String(previous.prefix(20)),
+                "session_id": String(sid.prefix(20))
+            ])
             invalidateAllDispatchCaches()
         } else {
             // First-ever sessionId for this tab. Caches are empty; seed only.
-            DiagnosticLog.log("DISPATCH-CACHE: engine session seeded tabId=\(tabId.prefix(8)) id=\(sid.prefix(20)) — caches empty, no-op clear")
+            DiagnosticLog.log("engine session seeded", tag: "session.dispatchcache", fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "session_id": String(sid.prefix(20))
+            ])
         }
     }
 

@@ -146,7 +146,12 @@ extension SessionViewModel {
         // regardless of tab type. ensureMainInstance (inside the mutator)
         // creates the instance if it doesn't exist yet.
         let targetInstanceId = conversationInstances[tabId]?.first?.id ?? "(will-create)"
-        DiagnosticLog.log("OPTIMISTIC-INSERT: tabId=\(tabId.prefix(8)) clientMsgId=\(clientMsgId.prefix(8)) instanceId=\(targetInstanceId) wireInstanceId=\(instanceId ?? "nil")")
+        DiagnosticLog.log("optimistic insert", tag: "session.submit", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": String(clientMsgId.prefix(8)),
+            "status": targetInstanceId,
+            "count": instanceId ?? "nil"
+        ])
         mutateConversationMessages(tabId: tabId) { $0.append(optimistic) }
 
         // The single, unified wire command. instanceId is the data field that

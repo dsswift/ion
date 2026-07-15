@@ -22,7 +22,17 @@ extension RemoteEvent: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(TypeKey.self, forKey: .type)
+        // Decode the type field as a plain String first, then map to TypeKey.
+        // This lets us distinguish "type string has no TypeKey case" (expected
+        // for engine events iOS hasn't wired up yet — throws
+        // RemoteEventDecodeError.unknownType) from "payload for a known type is
+        // malformed" (throws DecodingError). The caller in
+        // TransportManager+Receive.swift catches these two error types separately
+        // so only the second triggers an error log + resync.
+        let rawType = try container.decode(String.self, forKey: .type)
+        guard let type = TypeKey(rawValue: rawType) else {
+            throw RemoteEventDecodeError.unknownType(rawType)
+        }
 
         if let event = try Self.decodeLifecycle(type: type, container: container) {
             self = event

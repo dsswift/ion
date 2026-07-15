@@ -63,7 +63,9 @@ extension TransportManager {
                 // Phase 1: waiting for auth_challenge
                 guard type == "auth_challenge",
                       let nonceB64 = json["nonce"] as? String else {
-                    DiagnosticLog.log("AUTH-CORE: unexpected type=\(type) in phase1, returning false")
+                    DiagnosticLog.log("lan auth unexpected type in phase1", tag: "transport.auth", level: .warn, fields: [
+                        "type": type
+                    ])
                     return false
                 }
 
@@ -89,7 +91,9 @@ extension TransportManager {
                 // Phase 2: waiting for auth_result
                 if type == "auth_result" {
                     let ok = json["success"] as? Bool == true
-                    DiagnosticLog.log("AUTH: result success=\(ok)")
+                    DiagnosticLog.log("lan auth result received", tag: "transport.auth", fields: [
+                        "success": String(ok)
+                    ])
                     return ok
                 }
                 // Also check for WireMessage wrapping an auth_result
@@ -97,10 +101,14 @@ extension TransportManager {
                    let inner = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
                    inner["type"] as? String == "auth_result" {
                     let ok = inner["success"] as? Bool == true
-                    DiagnosticLog.log("AUTH: result(wire) success=\(ok)")
+                    DiagnosticLog.log("lan auth result received (wire)", tag: "transport.auth", fields: [
+                        "success": String(ok)
+                    ])
                     return ok
                 }
-                DiagnosticLog.log("AUTH-CORE: unexpected type=\(type) in phase2")
+                DiagnosticLog.log("lan auth unexpected type in phase2", tag: "transport.auth", level: .warn, fields: [
+                    "type": type
+                ])
             }
         }
         DiagnosticLog.log("AUTH-CORE: for-await ended (stream finished)")

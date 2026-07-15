@@ -118,7 +118,9 @@ struct SettingsDesktopsView: View {
                                 Spacer()
                                 if !isActive {
                                     Button {
-                                        DiagnosticLog.log("[SettingsView] Connect tapped for device: \(device.id)")
+                                        DiagnosticLog.log("settings connect tapped", tag: "view.settings", fields: [
+                                            "device": device.id
+                                        ])
                                         viewModel.switchToDevice(id: device.id)
                                         Haptic.success()
                                         dismiss()

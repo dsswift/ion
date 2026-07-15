@@ -30,7 +30,11 @@ extension SessionViewModel {
            let host = url.host(percentEncoded: false),
            let port = url.port {
             ionLog.info("connect: device=\(device.name) via LAN-only (\(host):\(port))")
-            DiagnosticLog.log("CONNECT: LAN-direct \(device.name) \(host):\(port) id=\(device.id.prefix(8))")
+            DiagnosticLog.log("connect lan-direct", tag: "session.lifecycle", fields: [
+                "reason": device.name,
+                "path": "\(host):\(port)",
+                "device": String(device.id.prefix(8))
+            ])
             restoreCachedLayout(for: device.id)
             connectLAN(host: host, port: UInt16(port))
             return
@@ -40,7 +44,11 @@ extension SessionViewModel {
         let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
 
         ionLog.info("connect: device=\(device.name) relayURL=\(effectiveRelayURL) channelId=\(channelId.prefix(8))...")
-        DiagnosticLog.log("CONNECT: relay \(device.name) url=\(effectiveRelayURL) ch=\(channelId.prefix(8))")
+        DiagnosticLog.log("connect relay", tag: "session.lifecycle", fields: [
+            "reason": device.name,
+            "path": effectiveRelayURL,
+            "count": String(channelId.prefix(8))
+        ])
 
         guard !effectiveRelayURL.isEmpty,
               let url = URL(string: effectiveRelayURL) else {
@@ -75,7 +83,11 @@ extension SessionViewModel {
         guard let device = activeDevice else { return }
 
         ionLog.info("connectLAN: device=\(device.name) host=\(host):\(port)")
-        DiagnosticLog.log("LAN-CONNECT: \(device.name) \(host):\(port) id=\(device.id.prefix(8))")
+        DiagnosticLog.log("lan connect", tag: "session.lifecycle", fields: [
+            "reason": device.name,
+            "path": "\(host):\(port)",
+            "device": String(device.id.prefix(8))
+        ])
 
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
@@ -87,14 +99,18 @@ extension SessionViewModel {
             let authed = await tm.startLANWithAuth(host: host, port: port)
             if authed {
                 ionLog.info("connectLAN: auth succeeded for \(device.name)")
-                DiagnosticLog.log("LAN-CONNECT: auth OK \(device.name)")
+                DiagnosticLog.log("lan connect auth ok", tag: "session.lifecycle", fields: [
+                    "reason": device.name
+                ])
                 await MainActor.run {
                     self.connectionState = .connected
                     self.send(.sync, intent: .automaticEssential)
                 }
             } else {
                 ionLog.error("connectLAN: auth FAILED for \(device.name)")
-                DiagnosticLog.log("LAN-CONNECT: auth FAILED \(device.name)")
+                DiagnosticLog.log("lan connect auth failed", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name
+                ])
                 await MainActor.run {
                     self.connectionState = .authFailed
                     self.transport?.stop()
@@ -117,7 +133,11 @@ extension SessionViewModel {
         let effectiveAPIKey = device.relayAPIKey ?? relayAPIKey
 
         ionLog.info("softReconnect: device=\(device.name) apiKey=\(effectiveAPIKey) relayURL=\(effectiveRelayURL)")
-        DiagnosticLog.log("SOFT-RECONN: \(device.name) key=\(effectiveAPIKey.prefix(8)) url=\(effectiveRelayURL)")
+        DiagnosticLog.log("soft reconnect", tag: "session.lifecycle", fields: [
+            "reason": device.name,
+            "count": String(effectiveAPIKey.prefix(8)),
+            "path": effectiveRelayURL
+        ])
 
         // LAN-only device: reconnect directly without a relay.
         if effectiveAPIKey == "lan-direct",
@@ -137,7 +157,9 @@ extension SessionViewModel {
               let url = URL(string: effectiveRelayURL) else { return }
 
         connectionState = .reconnecting
-        DiagnosticLog.log("SOFT-RECONN: relay path \(effectiveRelayURL)")
+        DiagnosticLog.log("soft reconnect relay path", tag: "session.lifecycle", fields: [
+            "path": effectiveRelayURL
+        ])
 
         let tm = TransportManager(
             relayURL: url,
@@ -174,9 +196,17 @@ extension SessionViewModel {
     /// Rebuild the transport after suspend. Called when the app foregrounds.
     func resumeTransport() {
         guard !pairedDevices.isEmpty else { return }
-        DiagnosticLog.log("RESUME: transport=\(transport == nil ? "nil" : "exists")")
+        DiagnosticLog.log("resume transport", tag: "session.lifecycle", fields: [
+            "status": transport == nil ? "nil" : "exists"
+        ])
         if transport == nil {
             softReconnect()
+        } else {
+            // Transport survived backgrounding. A delta may have been missed
+            // while suspended, so proactively resync to reconcile state rather
+            // than waiting for the next incidental event.
+            DiagnosticLog.log("RESUME: transport alive, sending proactive sync")
+            send(.sync, intent: .automaticEssential)
         }
     }
 
@@ -188,7 +218,11 @@ extension SessionViewModel {
         let fromName = activeDevice?.name ?? "nil"
         let toName = pairedDevices.first(where: { $0.id == id })?.name ?? "unknown"
         ionLog.info("switchToDevice: \(id)")
-        DiagnosticLog.log("USER: switch-device from=\(fromName) to=\(toName) id=\(id.prefix(8))")
+        DiagnosticLog.log("switch device", tag: "session.lifecycle", fields: [
+            "reason": fromName,
+            "status": toName,
+            "device": String(id.prefix(8))
+        ])
         disconnect()
         activeDeviceId = id
         restoreCachedLayout(for: id)
@@ -218,7 +252,11 @@ extension SessionViewModel {
 
     /// Disconnect from the current transport and wipe all transient state.
     func disconnect() {
-        DiagnosticLog.log("DISCONNECT: tearing down")
+        DiagnosticLog.log("tearing down", tag: "session", level: .info)
+        // Clear correlation IDs — we are leaving the current pairing's
+        // session/conversation context. Omitted-when-nil per schema.
+        DiagnosticLog.setSessionId(nil)
+        DiagnosticLog.setConversationId(nil)
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = nil
         // Clear any commands deferred via `runWhenConnected` — a hard
@@ -314,11 +352,19 @@ extension SessionViewModel {
             return
         }
         guard let cached = LayoutCache.load(deviceId: deviceId) else {
-            DiagnosticLog.log("CACHE: restoreCachedLayout miss — no cache for deviceId=\(deviceId.prefix(8))")
+            DiagnosticLog.log("restore cached layout miss", tag: "session.cache", fields: [
+                "device": String(deviceId.prefix(8))
+            ])
             return
         }
         let ageSeconds = Int(Date().timeIntervalSince(cached.cachedAt))
-        DiagnosticLog.log("CACHE: restoreCachedLayout hit deviceId=\(deviceId.prefix(8)) tabs=\(cached.tabs.count) groups=\(cached.tabGroups.count) groupMode=\(cached.tabGroupMode) age=\(ageSeconds)s")
+        DiagnosticLog.log("restore cached layout hit", tag: "session.cache", fields: [
+            "device": String(deviceId.prefix(8)),
+            "count": String(cached.tabs.count),
+            "max": String(cached.tabGroups.count),
+            "status": cached.tabGroupMode,
+            "duration_ms": String(ageSeconds)
+        ])
         tabs = cached.tabs
         tabIds = Set(cached.tabs.map(\.id))
         tabGroupMode = cached.tabGroupMode
@@ -370,7 +416,12 @@ extension SessionViewModel {
         let updatedAt = Date()
         let updatedAtMs = Int(updatedAt.timeIntervalSince1970 * 1000)
         let isActive = device.id == activeDevice?.id
-        DiagnosticLog.log("DISPLAY-SEND: device=\(device.id.prefix(8)) active=\(isActive) name=\(customName == nil ? "cleared" : "set") icon=\(customIcon ?? "cleared") ts=\(updatedAtMs)")
+        DiagnosticLog.log("display send", tag: "session.display", fields: [
+            "device": String(device.id.prefix(8)),
+            "status": String(isActive),
+            "reason": customName == nil ? "cleared" : "set",
+            "count": String(updatedAtMs)
+        ])
 
         // Optimistic local write — gives the UI an instant response while
         // the round-trip is in flight. Reconciliation overrides this on ack
@@ -390,7 +441,10 @@ extension SessionViewModel {
             prevName = nil
             prevIcon = nil
             prevTs = nil
-            DiagnosticLog.log("DISPLAY-SEND: device=\(device.id.prefix(8)) not in pairedDevices — skipping optimistic write")
+            DiagnosticLog.log("display send skipping optimistic write", tag: "session.display", fields: [
+                "device": String(device.id.prefix(8)),
+                "reason": "not in pairedDevices"
+            ])
         }
 
         do {
@@ -422,7 +476,10 @@ extension SessionViewModel {
             }
         } catch {
             // Rollback optimistic write on failure.
-            DiagnosticLog.log("DISPLAY-SEND: failed device=\(device.id.prefix(8)) err=\(error.localizedDescription) — rolling back")
+            DiagnosticLog.log("display send failed rolling back", tag: "session.display", level: .error, fields: [
+                "device": String(device.id.prefix(8)),
+                "error": error.localizedDescription
+            ])
             if let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
                 pairedDevices[idx].customName = prevName
                 pairedDevices[idx].customIcon = prevIcon

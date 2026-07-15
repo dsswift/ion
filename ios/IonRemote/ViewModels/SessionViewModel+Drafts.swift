@@ -42,14 +42,19 @@ extension SessionViewModel {
     func setTabDraft(_ tabId: String, _ text: String) {
         if text.isEmpty {
             if draftInputByTab.removeValue(forKey: tabId) != nil {
-                DiagnosticLog.log("DRAFT: tab \(tabId.prefix(8)) cleared")
+                DiagnosticLog.log("draft cleared", tag: "session.drafts", fields: [
+                    "tab_id": String(tabId.prefix(8))
+                ])
                 persistDrafts()
             }
         } else {
             let prev = draftInputByTab[tabId]
             draftInputByTab[tabId] = text
             if prev != text {
-                DiagnosticLog.log("DRAFT: tab \(tabId.prefix(8)) updated len=\(text.count)")
+                DiagnosticLog.log("draft updated", tag: "session.drafts", fields: [
+                    "tab_id": String(tabId.prefix(8)),
+                    "count": String(text.count)
+                ])
                 persistDrafts()
             }
         }
@@ -58,7 +63,10 @@ extension SessionViewModel {
     /// Removes a per-tab draft (used when tab is closed).
     func clearTabDraft(_ tabId: String) {
         if draftInputByTab.removeValue(forKey: tabId) != nil {
-            DiagnosticLog.log("DRAFT: tab \(tabId.prefix(8)) removed (tab closed)")
+            DiagnosticLog.log("draft removed", tag: "session.drafts", fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "reason": "tab closed"
+            ])
             persistDrafts()
         }
     }
@@ -112,8 +120,12 @@ extension SessionViewModel {
             if migrated > 0 {
                 persistDrafts()
             }
-            DiagnosticLog.log("DRAFT: migrated \(migrated) legacy engine draft(s) into unified store")
+            DiagnosticLog.log("draft legacy migration", tag: "session.drafts", fields: [
+                "count": String(migrated)
+            ])
         }
-        DiagnosticLog.log("DRAFT: hydrated tabDrafts=\(draftInputByTab.count)")
+        DiagnosticLog.log("draft hydrated", tag: "session.drafts", fields: [
+            "count": String(draftInputByTab.count)
+        ])
     }
 }

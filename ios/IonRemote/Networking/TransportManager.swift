@@ -86,6 +86,25 @@ final class TransportManager {
     var disconnectGraceTask: Task<Void, Never>?
     static let disconnectGracePeriod: Duration = .seconds(4)
 
+    /// Watchdog that monitors LAN heartbeat liveness. The desktop sends a
+    /// heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). If two intervals (30s)
+    /// pass with no heartbeat while LAN is the active transport, the socket is
+    /// silently dead (TCP can wedge without a FIN); the watchdog forces a
+    /// reconnect+sync via `peerDisconnected` so the ViewModel re-establishes.
+    var lanHeartbeatWatchdogTask: Task<Void, Never>?
+    /// Wall-clock time of the most recent heartbeat received over the wire.
+    /// Updated by the receive path before it yields `.heartbeat`. The watchdog
+    /// compares against this; each new heartbeat effectively resets the timer.
+    var lastHeartbeatAt: Date = .distantPast
+
+    /// One-way clock-skew estimate in milliseconds (positive = iOS clock is ahead
+    /// of the desktop). Updated from `desktop_heartbeat` frames by comparing iOS
+    /// wall-clock receive time against the desktop's `ts` field.
+    /// Used by the receive-latency logger to produce a skew-corrected latency
+    /// value: `adjusted_latency_ms = raw_latency_ms - clockSkewEstimate_ms`.
+    /// Exponential moving average with α = 0.25.
+    var clockSkewEstimateMs: Double = 0.0
+
     // MARK: - Init (Relay + LAN)
 
     init(relayURL: URL, apiKey: String, channelId: String, sharedKey: SymmetricKey, apnsToken: String? = nil) {
@@ -123,6 +142,7 @@ final class TransportManager {
         lanStateTask?.cancel()
         pathMonitor?.cancel()
         disconnectGraceTask?.cancel()
+        lanHeartbeatWatchdogTask?.cancel()
     }
 
     // MARK: - Public API
@@ -149,11 +169,19 @@ final class TransportManager {
     /// Connect to a LAN host with challenge-response auth handshake.
     /// Returns `true` if auth succeeded, `false` if rejected.
     func startLANWithAuth(host: String, port: UInt16) async -> Bool {
-        DiagnosticLog.log("LAN-AUTH: start \(host):\(port) devId=\(deviceId?.prefix(8) ?? "nil")")
+        DiagnosticLog.log("lan auth start", tag: "transport.auth", fields: [
+            "host": host,
+            "port": String(port),
+            "device_id": deviceId.map { String($0.prefix(8)) } ?? "nil"
+        ])
         await lan.connect(host: host, port: port)
 
         let success = await performLANAuth()
-        DiagnosticLog.log("LAN-AUTH: result=\(success ? "OK" : "FAIL") \(host):\(port)")
+        DiagnosticLog.log("lan auth result", tag: "transport.auth", fields: [
+            "success": String(success),
+            "host": host,
+            "port": String(port)
+        ])
         if success {
             // Record as current LAN host so Bonjour observation doesn't re-discover and clobber us.
             currentLANHost = DiscoveredHost(
@@ -200,6 +228,7 @@ final class TransportManager {
         pathMonitor = nil
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
+        stopLANHeartbeatWatchdog()
 
         relay?.disconnect()
         lan.disconnect()
@@ -213,7 +242,10 @@ final class TransportManager {
     func setState(_ newState: TransportState) {
         guard state != newState else { return }
         print("[Ion] TransportManager: \(state) -> \(newState)")
-        DiagnosticLog.log("TM-STATE: \(state) -> \(newState)")
+        DiagnosticLog.log("transport state changed", tag: "transport", fields: [
+            "old": state.rawValue,
+            "new": newState.rawValue
+        ])
         state = newState
     }
 
@@ -248,7 +280,9 @@ final class TransportManager {
     ///   doesn't mean the peer is reachable.
     func startDisconnectGracePeriod(force: Bool = false) {
         guard disconnectGraceTask == nil else { return }
-        DiagnosticLog.log("GRACE: start force=\(force)")
+        DiagnosticLog.log("disconnect grace period start", tag: "transport", fields: [
+            "force": String(force)
+        ])
         eventContinuation.yield(.transportReconnecting)
         disconnectGraceTask = Task { [weak self] in
             try? await Task.sleep(for: Self.disconnectGracePeriod)
@@ -272,6 +306,50 @@ final class TransportManager {
     func cancelDisconnectGracePeriod() {
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
+    }
+
+    // MARK: - LAN heartbeat watchdog
+
+    /// Start (or restart) the LAN heartbeat liveness watchdog.
+    ///
+    /// The desktop emits a heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). A
+    /// healthy LAN connection therefore refreshes `lastHeartbeatAt` at least
+    /// that often. If two full intervals (`intervalSeconds`, default 30s) elapse
+    /// with no heartbeat while LAN is the active transport, the socket is
+    /// silently dead — TCP can wedge without delivering a FIN, so the receive
+    /// loop never ends and no `peerDisconnected` is emitted. The watchdog
+    /// detects that starvation and forces a reconnect+sync by yielding
+    /// `.peerDisconnected`, the same signal the LAN stream-ended path uses.
+    ///
+    /// Idempotent: an already-running watchdog is left in place (its loop
+    /// re-reads `lastHeartbeatAt`, so a fresh heartbeat effectively resets the
+    /// timer without needing a restart). `intervalSeconds` is injectable so the
+    /// unit test can drive the loop on a short cadence.
+    func startLANHeartbeatWatchdog(intervalSeconds: Double = 30.0) {
+        guard lanHeartbeatWatchdogTask == nil else { return }
+        DiagnosticLog.log("lan heartbeat watchdog starting", tag: "transport", fields: [
+            "interval_s": String(intervalSeconds)
+        ])
+        lanHeartbeatWatchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(intervalSeconds))
+                guard !Task.isCancelled, let self else { return }
+                let elapsed = Date().timeIntervalSince(self.lastHeartbeatAt)
+                if elapsed > intervalSeconds {
+                    DiagnosticLog.log("WATCHDOG: LAN heartbeat starved, triggering reconnect+sync")
+                    // Force the ViewModel to reconnect (which re-syncs). Mirrors
+                    // the LAN stream-ended path's recovery signal.
+                    self.eventContinuation.yield(.peerDisconnected)
+                    return
+                }
+            }
+        }
+    }
+
+    /// Stop the LAN heartbeat watchdog (called on stop() and teardown).
+    func stopLANHeartbeatWatchdog() {
+        lanHeartbeatWatchdogTask?.cancel()
+        lanHeartbeatWatchdogTask = nil
     }
 
     // MARK: - Bonjour observation
@@ -318,7 +396,11 @@ final class TransportManager {
                 if countChanged || needsConnect {
                     if let host = self.matchingLANHost(hosts),
                        !self.lan.isConnected {
-                        DiagnosticLog.log("BONJOUR: connecting to \(host.name) \(host.host):\(host.port)")
+                        DiagnosticLog.log("bonjour connecting to host", tag: "transport.bonjour", fields: [
+                            "name": host.name,
+                            "host": host.host,
+                            "port": String(host.port)
+                        ])
                         self.currentLANHost = host
                         let authed = await self.startLANWithAuth(host: host.host, port: host.port)
                         if authed {
@@ -355,7 +437,10 @@ final class TransportManager {
         if let name = deviceName {
             let match = ionHosts.first { $0.name == name }
             if match == nil && !ionHosts.isEmpty {
-                DiagnosticLog.log("BONJOUR-MATCH: filter=\(name) no match in \(ionHosts.map(\.name))")
+                DiagnosticLog.log("bonjour host filter no match", tag: "transport.bonjour", fields: [
+                    "filter": name,
+                    "available": String(describing: ionHosts.map(\.name))
+                ])
             }
             return match
         }

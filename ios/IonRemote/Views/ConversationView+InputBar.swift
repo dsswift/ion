@@ -70,7 +70,11 @@ extension ConversationView {
 
                 if canAbort {
                     Button {
-                        DiagnosticLog.log("ENGINE-INPUTBAR: abort tapped — tab=\(tabId) status=\(viewModel.tab(for: tabId)?.status.rawValue ?? "nil") hasRunningChildren=\(viewModel.tab(for: tabId)?.hasRunningChildren == true)")
+                        DiagnosticLog.log("inputbar abort tapped", tag: "view.inputbar", fields: [
+                            "tab_id": tabId,
+                            "status": viewModel.tab(for: tabId)?.status.rawValue ?? "nil",
+                            "reason": String(viewModel.tab(for: tabId)?.hasRunningChildren == true)
+                        ])
                         viewModel.cancel(tabId: tabId)
                     } label: {
                         Image(systemName: "stop.circle.fill")
@@ -167,9 +171,13 @@ extension ConversationView {
             do {
                 try await viewModel.speechService.startRecording(stoppingVoiceService: viewModel.voiceService)
                 isRecordingVoice = true
-                DiagnosticLog.log("ENGINE-INPUTBAR: recording started draftSnapshot=\(draftBeforeRecording.prefix(40))")
+                DiagnosticLog.log("inputbar recording started", tag: "view.inputbar", fields: [
+                    "reason": String(draftBeforeRecording.prefix(40))
+                ])
             } catch {
-                DiagnosticLog.log("ENGINE-INPUTBAR: startRecording error: \(error.localizedDescription)")
+                DiagnosticLog.log("inputbar start recording error", tag: "view.inputbar", level: .error, fields: [
+                    "error": error.localizedDescription
+                ])
                 isRecordingVoice = false
             }
         }
@@ -219,7 +227,9 @@ extension ConversationView {
         // Only refresh tabs the user has actually opened; unopened tabs are
         // handled by the snapshot prefetch in handleSnapshot.
         guard !engineMsgs.isEmpty else { return }
-        DiagnosticLog.log("RESUME-SYNC: ConversationView reloading tabId=\(tabId.prefix(8))")
+        DiagnosticLog.log("resume sync reloading", tag: "view.inputbar", fields: [
+            "tab_id": String(tabId.prefix(8))
+        ])
         pendingScrollAfterReload = true
         viewModel.loadConversation(tabId: tabId)
         viewModel.requestLoadAttachments(tabId: tabId)

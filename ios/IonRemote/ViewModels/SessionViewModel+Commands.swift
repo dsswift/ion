@@ -63,7 +63,12 @@ extension SessionViewModel {
                 }
             }
         }
-        DiagnosticLog.log("CMD: engineRewindInstance tabId=\(tabId.prefix(8)) instanceId=\(instanceId.prefix(8)) messageId=\(messageId.prefix(16)) userTurnIndex=\(userTurnIndex.map(String.init) ?? "nil")")
+        DiagnosticLog.log("engine rewind instance", tag: "session.commands", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": String(instanceId.prefix(8)),
+            "status": String(messageId.prefix(16)),
+            "turn": userTurnIndex.map(String.init) ?? "nil"
+        ])
         send(.engineRewind(tabId: tabId, instanceId: instanceId, messageId: messageId, userTurnIndex: userTurnIndex), intent: .userInitiated)
     }
 
@@ -105,11 +110,15 @@ extension SessionViewModel {
             // Post-#256: engine session key is bare tabId; instanceId is vestigial.
             // Insert bare tabId so snapshot sweep reads the same key.
             _ = instanceId // unused for keying post-#256
-            DiagnosticLog.log("PERM: dismissSpecialPermission: tabId=\(tabId.prefix(8)) engine-instance dismissal (keyed bare tabId post-#256)")
+            DiagnosticLog.log("dismiss special permission engine-instance", tag: "session.commands", fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
             dismissedLiveSpecialTabs.insert(tabId)
         } else {
             // Live card dismissed -- block restoredSpecialCard from re-triggering
-            DiagnosticLog.log("PERM: dismissSpecialPermission: tabId=\(tabId.prefix(8)) tab-scoped dismissal (no instanceId)")
+            DiagnosticLog.log("dismiss special permission tab-scoped", tag: "session.commands", fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
             dismissedLiveSpecialTabs.insert(tabId)
         }
     }
@@ -117,7 +126,11 @@ extension SessionViewModel {
     @MainActor
     func loadConversation(tabId: String) {
         guard !loadingConversation.contains(tabId) else { return }
-        setConversationMessages(tabId: tabId, [])
+        // Do NOT clear the transcript here. Clearing before the fetch left the
+        // conversation blank for the whole round-trip (and indefinitely if the
+        // response was dropped). The existing messages stay visible until the
+        // replacement page arrives; handleConversationHistory replaces them
+        // wholesale on the first page (before == nil / cursor == nil).
         clearLiveText(tabId: tabId)
         conversationLoaded.remove(tabId)
         conversationHasMore.removeValue(forKey: tabId)
@@ -151,7 +164,12 @@ extension SessionViewModel {
     func startLoadTimer(tabId: String) {
         conversationLoadTimers[tabId]?.cancel()
         conversationLoadTimers[tabId] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(15))
+            // First load attempt retries faster (5s); the post-retry wait stays
+            // at 15s. With commit 1's truncation fix, a 5s first retry makes
+            // recovery from any transient failure noticeably quicker.
+            let retriesSoFar = self?.conversationLoadRetryCount[tabId] ?? 0
+            let waitSeconds = retriesSoFar < 1 ? 5 : 15
+            try? await Task.sleep(for: .seconds(waitSeconds))
             guard !Task.isCancelled, let self else { return }
             guard self.loadingConversation.contains(tabId) else { return }
             let retries = self.conversationLoadRetryCount[tabId] ?? 0
@@ -332,80 +350,6 @@ extension SessionViewModel {
         terminalInstanceLabels["\(tabId):\(instanceId)"] ?? fallback
     }
 
-    // MARK: - Git Commands
-
-    func requestGitChanges(directory: String) {
-        send(.gitChanges(directory: directory), intent: .automaticEssential)
-    }
-
-    /// Request git changes for every unique tab working directory that doesn't
-    /// already have cached data. Called when the "Show Git Info" toggle is
-    /// enabled so rows populate without waiting for the next watcher event.
-    func requestMissingGitChanges() {
-        let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
-        for dir in dirs where gitChanges[dir] == nil {
-            requestGitChanges(directory: dir)
-        }
-    }
-
-    /// Request git changes for every unique tab working directory — including
-    /// ones that already have cached (potentially stale) data. Called when the
-    /// app foregrounds and when the tab list appears, so the user sees fresh
-    /// branch + ahead/behind info on every appear. The desktop's git watcher
-    /// is best-effort and can silently stop delivering events; this guarantees
-    /// the iOS tab list reflects current state.
-    func requestAllGitChanges() {
-        let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
-        for dir in dirs {
-            requestGitChanges(directory: dir)
-        }
-    }
-
-    func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {
-        send(.gitGraph(directory: directory, skip: skip, limit: limit), intent: .userInitiated)
-    }
-
-    func requestGitDiff(directory: String, path: String, staged: Bool) {
-        gitDiffLoading = true
-        send(.gitDiff(directory: directory, path: path, staged: staged), intent: .userInitiated)
-    }
-
-    func gitStage(directory: String, paths: [String]) {
-        send(.gitStage(directory: directory, paths: paths), intent: .userInitiated)
-    }
-
-    func gitUnstage(directory: String, paths: [String]) {
-        send(.gitUnstage(directory: directory, paths: paths), intent: .userInitiated)
-    }
-
-    func gitCommit(directory: String, message: String) {
-        send(.gitCommit(directory: directory, message: message), intent: .userInitiated)
-    }
-
-    func gitDiscard(directory: String, paths: [String]) {
-        send(.gitDiscard(directory: directory, paths: paths), intent: .userInitiated)
-    }
-
-    func gitFetch(directory: String) {
-        send(.gitFetch(directory: directory), intent: .userInitiated)
-    }
-
-    func gitPull(directory: String) {
-        send(.gitPull(directory: directory), intent: .userInitiated)
-    }
-
-    func gitPush(directory: String) {
-        send(.gitPush(directory: directory), intent: .userInitiated)
-    }
-
-    func requestGitCommitFiles(directory: String, hash: String) {
-        send(.gitCommitFiles(directory: directory, hash: hash), intent: .userInitiated)
-    }
-
-    func requestGitCommitFileDiff(directory: String, hash: String, path: String) {
-        send(.gitCommitFileDiff(directory: directory, hash: hash, path: path), intent: .userInitiated)
-    }
-
     // MARK: - File Explorer Commands
 
     /// Upload an image from the iOS device to the desktop as a temp file.
@@ -437,7 +381,10 @@ extension SessionViewModel {
 
     func requestLoadAttachments(tabId: String) {
         let oldCount = tabAttachmentCache[tabId]?.count ?? -1
-        DiagnosticLog.log("ATTACH: requestLoadAttachments tabId=\(tabId.prefix(8)) oldCacheCount=\(oldCount) clearing")
+        DiagnosticLog.log("request load attachments", tag: "session.commands", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "count": String(oldCount)
+        ])
         tabAttachmentCache.removeValue(forKey: tabId)
         send(.loadAttachments(tabId: tabId), intent: .automaticEssential)
     }
@@ -493,7 +440,10 @@ extension SessionViewModel {
     /// without any configuration step.
     func sendReportFocus(tabId: String?) {
         let interceptEnabled = UserDefaults.standard.object(forKey: "interceptEnabled") as? Bool ?? true
-        DiagnosticLog.log("CMD: report_focus tabId=\(tabId?.prefix(8) ?? "nil") interceptEnabled=\(interceptEnabled)")
+        DiagnosticLog.log("report focus", tag: "session.commands", fields: [
+            "tab_id": tabId?.prefix(8).description ?? "nil",
+            "status": String(interceptEnabled)
+        ])
         Task { @MainActor [weak self] in
             self?.focusedTabId = tabId
         }
@@ -547,7 +497,10 @@ extension SessionViewModel {
         case .automaticEssential:
             guard connectionState == .connected, let transport else {
                 let key = command.essentialKey ?? "unknown:\(command)"
-                DiagnosticLog.log("CMD: essential not connected, deferring key=\(key) state=\(connectionState.rawValue)")
+                DiagnosticLog.log("essential not connected deferring", tag: "session.commands", fields: [
+                    "reason": key,
+                    "status": connectionState.rawValue
+                ])
                 enqueueEssential(key: key, command: command)
                 return
             }
