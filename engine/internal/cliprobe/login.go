@@ -17,6 +17,12 @@ import (
 // deadline of its own.
 const loginTimeout = 10 * time.Minute
 
+// logoutTimeout bounds a logout when the caller's context carries no deadline of
+// its own. Logout spawns the CLI's app-server and issues a single Logout RPC; a
+// wedged CLI must not block the server goroutine (and the RefreshProviderProbes
+// call sequenced after it) indefinitely.
+const logoutTimeout = 30 * time.Second
+
 // LoginStage is one transition of an interactive login, reported via LoginEmit.
 type LoginStage struct {
 	Stage           string
@@ -63,6 +69,11 @@ func Login(ctx context.Context, kind string, emit LoginEmit) error {
 func Logout(ctx context.Context, kind string) error {
 	if kind != "codex" {
 		return fmt.Errorf("logout not supported for backend %q", kind)
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, logoutTimeout)
+		defer cancel()
 	}
 	bin, err := Find("codex", nil)
 	if err != nil {

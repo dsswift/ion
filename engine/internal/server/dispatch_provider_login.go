@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/cliprobe"
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
@@ -20,6 +21,13 @@ var (
 	activeLogins = make(map[string]context.CancelFunc)
 	loginMu      sync.Mutex
 )
+
+// logoutDispatchTimeout bounds the logout driver call at the dispatch level so a
+// wedged CLI can never block the RefreshProviderProbes call sequenced after it
+// (and thus never starve the engine_providers_updated refresh nudge). It is a
+// backstop above cliprobe.Logout's own self-timeout: any driver — including a
+// custom one — is bounded here as long as it honors the context.
+const logoutDispatchTimeout = 60 * time.Second
 
 // loginDriver returns the login func (default: real CLI login; overridable in
 // tests via SetLoginFunc).
@@ -119,7 +127,9 @@ func (s *Server) dispatchProviderLogout(conn net.Conn, cmd *protocol.ClientComma
 		return
 	}
 	go func() {
-		if err := s.logoutDriver()(s.serveContext(), kind); err != nil {
+		ctx, cancel := context.WithTimeout(s.serveContext(), logoutDispatchTimeout)
+		defer cancel()
+		if err := s.logoutDriver()(ctx, kind); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "server.provider_login", "logout ended", map[string]any{"provider": cmd.Provider, "kind": kind, "error": err.Error()})
 		}
 		s.RefreshProviderProbes()
@@ -139,4 +149,21 @@ func (s *Server) broadcastProviderLogin(update types.ProviderLoginUpdate) {
 	line := protocol.SerializeServerEvent("", json.RawMessage(raw))
 	s.broadcast(line, evt.Type)
 	utils.LogWithFields(utils.LevelInfo, "server.provider_login", "stage", map[string]any{"provider": update.Provider, "backend": update.Backend, "stage": update.Stage})
+}
+
+// broadcastProvidersUpdated emits the advisory engine_providers_updated event to
+// every connected client. It carries no payload: consumers re-query list_models
+// to pull the authoritative provider + model listing. Called after a probe
+// refresh so a login/logout, refresh_models, or startup probe becomes visible
+// without the consumer polling. See types.EventProvidersUpdated for semantics.
+func (s *Server) broadcastProvidersUpdated() {
+	evt := types.EngineEvent{Type: types.EventProvidersUpdated}
+	raw, err := json.Marshal(evt)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "server.provider_login", "providers-updated marshal failed", map[string]any{"error": err.Error()})
+		return
+	}
+	line := protocol.SerializeServerEvent("", json.RawMessage(raw))
+	s.broadcast(line, evt.Type)
+	utils.LogWithFields(utils.LevelInfo, "server.provider_login", "providers updated broadcast", nil)
 }

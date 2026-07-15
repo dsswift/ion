@@ -36,7 +36,7 @@ func loginTestServer(t *testing.T, login cliprobe.LoginFunc, logout cliprobe.Log
 			return
 		}
 		var evt types.EngineEvent
-		if json.Unmarshal(wrapper.Event, &evt) == nil && evt.Type == types.EventProviderLogin {
+		if json.Unmarshal(wrapper.Event, &evt) == nil && (evt.Type == types.EventProviderLogin || evt.Type == types.EventProvidersUpdated) {
 			select {
 			case events <- evt:
 			default:
@@ -138,6 +138,52 @@ func TestDispatchProviderLogout_Invoked(t *testing.T) {
 	case kind := <-done:
 		if kind != "codex" {
 			t.Fatalf("expected logout for codex, got %q", kind)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("logout driver not invoked")
+	}
+}
+
+// TestDispatchProviderLogout_BroadcastsProvidersUpdated pins the fix for the
+// "Sign out does nothing" defect: a completed logout must emit the advisory
+// engine_providers_updated event (via the RefreshProviderProbes sequenced after
+// the logout driver) so consumers re-query and the UI reflects the signed-out
+// state. Without the broadcast this test fails.
+func TestDispatchProviderLogout_BroadcastsProvidersUpdated(t *testing.T) {
+	logout := func(context.Context, string) error { return nil }
+	s, events := loginTestServer(t, nil, logout)
+	s.dispatchProviderLogout(nil, &protocol.ClientCommand{Cmd: "provider_logout", Provider: "openai"})
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case e := <-events:
+			if e.Type == types.EventProvidersUpdated {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no engine_providers_updated broadcast after logout")
+		}
+	}
+}
+
+// TestDispatchProviderLogout_BoundsDriverContext pins the hang backstop: the
+// logout driver must receive a context carrying a deadline, so a wedged CLI can
+// never block the RefreshProviderProbes refresh sequenced after it. Removing the
+// dispatch-level timeout wrapper fails this test.
+func TestDispatchProviderLogout_BoundsDriverContext(t *testing.T) {
+	gotDeadline := make(chan bool, 1)
+	logout := func(ctx context.Context, _ string) error {
+		_, ok := ctx.Deadline()
+		gotDeadline <- ok
+		return nil
+	}
+	s, _ := loginTestServer(t, nil, logout)
+	s.dispatchProviderLogout(nil, &protocol.ClientCommand{Cmd: "provider_logout", Provider: "openai"})
+	select {
+	case ok := <-gotDeadline:
+		if !ok {
+			t.Fatal("logout driver received a context with no deadline; a wedged CLI would hang the refresh")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("logout driver not invoked")

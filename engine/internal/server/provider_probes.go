@@ -113,6 +113,11 @@ func (s *Server) RefreshProviderProbes() {
 			}
 		}
 		utils.LogWithFields(utils.LevelInfo, "server", "provider probes refreshed", map[string]any{"kinds": kindList, "selected_pre": len(selected), "selected_post": len(refreshed)})
+		// Signal consumers that provider auth / model state may have changed so
+		// they re-query list_models. This is the sole refresh nudge for probe
+		// changes that carry no login-stage event of their own — most notably a
+		// completed logout, which otherwise updates state silently.
+		s.broadcastProvidersUpdated()
 	}()
 }
 
