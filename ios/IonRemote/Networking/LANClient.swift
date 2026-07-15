@@ -112,7 +112,24 @@ final class LANClient {
         guard let task, task.state == .running else {
             throw LANClientError.notConnected
         }
-        try await task.send(.data(data))
+        // NWConnection/URLSession can report `.running` on a half-open socket
+        // whose peer is gone (desktop backgrounded/slept) — a send then awaits
+        // indefinitely. Bound every send with a deadline; on timeout treat the
+        // LAN transport as failed and tear it down so TransportManager's
+        // Bonjour observation reconnects (or relay takes over).
+        do {
+            try await withSendDeadline(seconds: transportSendDeadlineSeconds) {
+                try await task.send(.data(data))
+            }
+        } catch is SendDeadlineError {
+            DiagnosticLog.log("lan send timed out, tearing down", tag: "lan.client", level: .error, fields: [
+                "gen": String(connectionGen),
+                "timeout_s": String(transportSendDeadlineSeconds),
+                "bytes": String(data.count)
+            ])
+            handleDisconnect(gen: connectionGen)
+            throw LANClientError.sendTimeout
+        }
     }
 
     // MARK: - Receive loop
@@ -193,11 +210,14 @@ final class LANClient {
 
 enum LANClientError: Error, LocalizedError {
     case notConnected
+    case sendTimeout
 
     var errorDescription: String? {
         switch self {
         case .notConnected:
             return "LAN client is not connected"
+        case .sendTimeout:
+            return "LAN send timed out (connection wedged); transport torn down"
         }
     }
 }

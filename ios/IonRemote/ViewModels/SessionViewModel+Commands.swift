@@ -456,13 +456,18 @@ extension SessionViewModel {
     ///
     /// Intent drives queueing and error visibility:
     ///
-    ///   `.userInitiated`         User tapped or typed. Transport absent -> "Not
-    ///                            connected" toast; send error -> "Send failed" toast.
+    ///   `.userInitiated`         User tapped or typed. Transport absent or send
+    ///                            error/timeout -> if the command has an
+    ///                            `essentialKey` (e.g. a prompt) it is re-enqueued
+    ///                            for the reconnect flush and a "queued" toast is
+    ///                            shown; otherwise an error toast. A user message
+    ///                            is never silently dropped.
     ///
     ///   `.automaticEssential`    Background send the screen requires. Not connected
     ///                            -> enqueue deduped by command-identity key
     ///                            (last-write-wins); drains once on first snapshot.
-    ///                            Connected but throws -> log only, no toast.
+    ///                            Connected but throws -> re-enqueue for the next
+    ///                            flush (no toast).
     ///
     ///   `.automaticFireAndForget` Background send that self-heals. Not connected
     ///                            -> drop silently (log only). Connected but throws
@@ -477,9 +482,25 @@ extension SessionViewModel {
         switch intent {
         case .userInitiated:
             guard let transport else {
-                DiagnosticLog.log("CMD: dropped (no transport) intent=userInitiated")
-                Task { @MainActor [weak self] in
-                    self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
+                // No transport object at all (mid soft-reconnect teardown, or
+                // unpaired). Queueable commands — critically, user prompts —
+                // are deferred to the reconnect flush instead of dropped: the
+                // optimistic UI stays and the command delivers on reconnect.
+                // The queue is cleared on hard disconnect/unpair, so a truly
+                // undeliverable command doesn't fire against a new pairing.
+                if let key = command.essentialKey {
+                    DiagnosticLog.log("user command deferred (no transport)", tag: "session.commands", level: .warn, fields: [
+                        "reason": key
+                    ])
+                    enqueueEssential(key: key, command: command)
+                    Task { @MainActor [weak self] in
+                        self?.showToast(ToastMessage(style: .warning, title: "Not connected", detail: "Queued — will send when reconnected"))
+                    }
+                } else {
+                    DiagnosticLog.log("user command dropped, no transport and not queueable", tag: "session.commands", level: .error, fields: [:])
+                    Task { @MainActor [weak self] in
+                        self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
+                    }
                 }
                 return
             }
@@ -487,9 +508,28 @@ extension SessionViewModel {
                 do {
                     try await transport.send(command)
                 } catch {
+                    // Send failed or timed out (wedged socket, mid-reconnect).
+                    // Re-enqueue queueable commands for the reconnect flush so
+                    // the user's action still lands; surface a visible error
+                    // for commands that cannot be retried safely.
+                    guard let self else { return }
                     let detail = error.localizedDescription
-                    await MainActor.run {
-                        self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                    if let key = command.essentialKey {
+                        DiagnosticLog.log("user command send failed, requeued for reconnect flush", tag: "session.commands", level: .warn, fields: [
+                            "reason": key,
+                            "error": detail
+                        ])
+                        await MainActor.run {
+                            self.enqueueEssential(key: key, command: command)
+                            self.showToast(ToastMessage(style: .warning, title: "Connection interrupted", detail: "Queued — will send when reconnected"))
+                        }
+                    } else {
+                        DiagnosticLog.log("user command send failed, not queueable", tag: "session.commands", level: .error, fields: [
+                            "error": detail
+                        ])
+                        await MainActor.run {
+                            self.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                        }
                     }
                 }
             }
@@ -508,9 +548,21 @@ extension SessionViewModel {
                 do {
                     try await transport.send(command)
                 } catch {
-                    DiagnosticLog.log("CMD: essential send error (no toast): \(error.localizedDescription)")
+                    // Connected-but-threw means the transport wedged between
+                    // the state check and the write. Re-enqueue so the command
+                    // delivers on the reconnect flush (the failed send tears
+                    // the transport down, which drives reconnect -> sync ->
+                    // snapshot -> drain) instead of being lost.
+                    guard let self else { return }
+                    let key = command.essentialKey ?? "unknown:\(command)"
+                    DiagnosticLog.log("essential send failed, requeued for reconnect flush", tag: "session.commands", level: .warn, fields: [
+                        "reason": key,
+                        "error": error.localizedDescription
+                    ])
+                    await MainActor.run {
+                        self.enqueueEssential(key: key, command: command)
+                    }
                 }
-                _ = self
             }
 
         case .automaticFireAndForget:

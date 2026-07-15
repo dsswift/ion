@@ -95,8 +95,9 @@ final class ConversationStalenessReconcileTests: XCTestCase {
     // MARK: - Heal behavior
 
     /// Desktop fingerprint diverges from local (a dropped tool_end: desktop says
-    /// completed, local still running) → heal fires (loadConversation clears
-    /// messages, drops the loaded mark, marks the tab loading).
+    /// completed, local still running) → heal fires (loadConversation marks the
+    /// tab loading and drops the loaded mark, but preserves existing messages
+    /// visible during the round-trip per the no-pre-clear invariant).
     func testHealsWhenFingerprintDiverges() {
         let vm = SessionViewModel()
         let tab = "tab-stale"
@@ -110,7 +111,10 @@ final class ConversationStalenessReconcileTests: XCTestCase {
 
         XCTAssertTrue(vm.loadingConversation.contains(tab), "diverged fingerprint must re-fetch history")
         XCTAssertFalse(vm.conversationLoaded.contains(tab), "re-fetch clears the loaded mark until history returns")
-        XCTAssertEqual(vm.conversationMessages(tab).count, 0, "re-fetch clears the stale transcript")
+        // loadConversation intentionally does NOT pre-clear the transcript so the
+        // user never sees a blank conversation during the round-trip. The stale
+        // messages stay visible until handleConversationHistory replaces them.
+        XCTAssertEqual(vm.conversationMessages(tab).count, 1, "stale transcript is preserved during the in-flight load")
     }
 
     /// Fingerprints match → no heal, no thrash (the in-sync streaming case).
@@ -197,6 +201,114 @@ final class ConversationStalenessReconcileTests: XCTestCase {
         // .connecting is the other streaming state — also suppressed.
         vm.maybeReconcileStaleConversation(tab: makeTab(id: tab, convFingerprint: desktopFp, status: .connecting))
         XCTAssertFalse(vm.loadingConversation.contains(tab), "reconcile must not fire while tab.status == .connecting")
+    }
+
+    // MARK: - Reconnect bypass
+
+    /// On the first snapshot after a (re)connect, the running-status suppression
+    /// guard must be bypassed: iOS has no in-flight stream during a reconnect gap
+    /// and a diverged fingerprint means genuinely stale content that needs an
+    /// immediate reload regardless of tab.status.
+    ///
+    /// Regression anchor: reverting the `isReconnectSnapshot` bypass in
+    /// maybeReconcileStaleConversation while `isReconnectSnapshot == true` turns
+    /// this test red.
+    func testReconnectSnapshotBypassesRunningGuard() {
+        let vm = SessionViewModel()
+        let tab = "tab-reconnect-running"
+
+        // Load some messages so iOS has a local fingerprint.
+        vm.handleConversationHistory(
+            tabId: tab,
+            newMessages: [msg(id: "a1", role: .assistant, content: "old content")],
+            hasMore: false,
+            cursor: nil
+        )
+        XCTAssertTrue(vm.conversationLoaded.contains(tab))
+
+        // Desktop fingerprint has advanced (clear + new session ran during the gap).
+        let desktopFp = vm.conversationTailFingerprint([
+            msg(id: "a2", role: .user, content: "post-clear prompt"),
+        ])
+        XCTAssertNotEqual(desktopFp, vm.conversationTailFingerprint([msg(id: "a1", role: .assistant, content: "old content")]))
+
+        // First: confirm the normal guard suppresses when NOT a reconnect snapshot.
+        vm.isReconnectSnapshot = false
+        vm.maybeReconcileStaleConversation(tab: makeTab(id: tab, convFingerprint: desktopFp, status: .running))
+        XCTAssertFalse(vm.loadingConversation.contains(tab),
+            "normal streaming case: reconcile must be suppressed while tab.status == .running")
+
+        // Now simulate the reconnect: set the flag and call again.
+        // (Reset debounce so the second call isn't blocked by it.)
+        vm.lastConversationReconcileAt.removeValue(forKey: tab)
+        vm.isReconnectSnapshot = true
+        vm.maybeReconcileStaleConversation(tab: makeTab(id: tab, convFingerprint: desktopFp, status: .running))
+        XCTAssertTrue(vm.loadingConversation.contains(tab),
+            "reconnect snapshot: reconcile must fire even while tab.status == .running (iOS missed events during gap)")
+        XCTAssertFalse(vm.conversationLoaded.contains(tab),
+            "reconnect reload must clear the loaded mark")
+    }
+
+    /// On a reconnect, the per-tab debounce must also be bypassed so the
+    /// reload fires on the first snapshot and is not deferred by up to 4 s.
+    func testReconnectSnapshotBypassesDebounce() {
+        let vm = SessionViewModel()
+        let tab = "tab-reconnect-debounce"
+
+        // Local message: "stale" (5 bytes). Desktop message: "fresh content" (13
+        // bytes). Byte lengths differ so fingerprints differ → the heal guard passes.
+        vm.handleConversationHistory(
+            tabId: tab,
+            newMessages: [msg(id: "a1", role: .assistant, content: "stale")],
+            hasMore: false,
+            cursor: nil
+        )
+        let desktopFp = vm.conversationTailFingerprint([msg(id: "a1", role: .assistant, content: "fresh content")])
+        XCTAssertNotEqual(
+            vm.conversationTailFingerprint(vm.conversationMessages(tab)),
+            desktopFp,
+            "precondition: fingerprints must differ for the debounce test to be meaningful"
+        )
+
+        // Seed the debounce timer as if a reconcile fired just now.
+        vm.lastConversationReconcileAt[tab] = Date()
+
+        // Normal case: debounce suppresses.
+        vm.isReconnectSnapshot = false
+        vm.maybeReconcileStaleConversation(tab: makeTab(id: tab, convFingerprint: desktopFp))
+        XCTAssertFalse(vm.loadingConversation.contains(tab),
+            "debounce must suppress a second heal within the window (normal case)")
+
+        // Reconnect case: debounce is bypassed.
+        vm.isReconnectSnapshot = true
+        vm.maybeReconcileStaleConversation(tab: makeTab(id: tab, convFingerprint: desktopFp))
+        XCTAssertTrue(vm.loadingConversation.contains(tab),
+            "reconnect snapshot must bypass the debounce and fire immediately")
+    }
+
+    /// Flapping guard: the reconnect bypass may be granted at most once per
+    /// reconnectReloadDebounce. A rapidly reconnecting transport would otherwise
+    /// re-fire loadConversation for every diverged tab on every reconnect,
+    /// flooding the desktop (a relay-wedge trigger). Only the first reconnect in
+    /// the window bypasses the per-tab debounce; the rest fall back to it.
+    /// Reverting allowReconnectReconcileBypass turns this red.
+    func testReconnectBypassIsRateLimitedUnderFlapping() {
+        let vm = SessionViewModel()
+        let t0 = Date()
+
+        // First reconnect in a quiet period → bypass granted.
+        XCTAssertTrue(vm.allowReconnectReconcileBypass(now: t0),
+            "first reconnect must be granted the reconcile bypass")
+
+        // A reconnect inside the window (flapping) → bypass denied.
+        let within = t0.addingTimeInterval(SessionViewModel.reconnectReloadDebounce - 1)
+        XCTAssertFalse(vm.allowReconnectReconcileBypass(now: within),
+            "a reconnect inside the debounce window must NOT re-grant the bypass")
+
+        // A genuine reconnect after the window elapses → granted again.
+        let after = t0.addingTimeInterval(SessionViewModel.reconnectReloadDebounce + 0.1)
+        XCTAssertTrue(vm.allowReconnectReconcileBypass(now: after),
+            "a reconnect after the window may bypass again")
     }
 
     /// One-shot post-run heal: handleTabStatus(.idle) after .running must fire

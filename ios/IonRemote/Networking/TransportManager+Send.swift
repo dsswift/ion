@@ -9,17 +9,26 @@ extension TransportManager {
     /// Uses LAN when connected, otherwise falls back to relay. The command is
     /// JSON-encoded, encrypted, wrapped in a `WireMessage` envelope, and sent
     /// as binary data over the active WebSocket.
+    ///
+    /// Seq allocation and the socket write happen as ONE atomic unit on the
+    /// strict-FIFO `outboundQueue`, so wire order always equals seq order.
+    /// Concurrent callers used to allocate seqs under a lock but then race the
+    /// socket writes that followed further awaits, letting a later seq hit the
+    /// wire first. (The desktop's dedup now tolerates reorder, but iOS still
+    /// writes in seq order — reorder is a defect, not a supported shape.)
     func send(_ command: RemoteCommand) async throws {
         let payload = try JSONEncoder().encode(command)
-        let wire = try buildWireMessage(payload: payload)
-        let wireData = try JSONEncoder().encode(wire)
+        try await outboundQueue.enqueue { [self] in
+            let wire = try buildWireMessage(payload: payload)
+            let wireData = try JSONEncoder().encode(wire)
 
-        if state == .lanPreferred, lan.isConnected {
-            try await lan.send(data: wireData)
-        } else if let relay, relay.isConnected {
-            try await relay.send(data: wireData)
-        } else {
-            throw TransportError.noTransportAvailable
+            if state == .lanPreferred, lan.isConnected {
+                try await lan.send(data: wireData)
+            } else if let relay, relay.isConnected {
+                try await relay.send(data: wireData)
+            } else {
+                throw TransportError.noTransportAvailable
+            }
         }
     }
 

@@ -111,6 +111,12 @@ final class SessionViewModel {
     /// snapshots during a legitimately-streaming run does not thrash the
     /// re-fetch. See SessionViewModel+Snapshot.swift.
     var lastConversationReconcileAt: [String: Date] = [:]
+    /// Timestamp of the last reconnect allowed to bypass the per-tab reconcile
+    /// debounce. A flapping transport would otherwise re-trigger a full reload of
+    /// every diverged tab on every reconnect, flooding the desktop with
+    /// load_conversation requests; the bypass is granted at most once per
+    /// reconnectReloadDebounce window. See SessionViewModel+Snapshot.swift.
+    var lastReconnectReconcileAt: Date?
     var suppressScrollToBottom = false
     var conversationLoadRetryCount: [String: Int] = [:]
     var conversationLoadTimers: [String: Task<Void, Never>] = [:]
@@ -276,6 +282,17 @@ final class SessionViewModel {
     /// `SessionViewModel+OnConnected.swift` for the helper and
     /// `IonRemoteApp.swift`'s `.active` handler for the call sites.
     var pendingOnConnected: [() -> Void] = []
+
+    /// True for the duration of the single snapshot handler invocation that
+    /// corresponds to the first snapshot received after a (re)connect transition.
+    /// Set to `true` inside `handleSnapshot` when `connectionState` flips from
+    /// non-connected to `.connected`, and reset to `false` at the end of the
+    /// same tab-processing loop. Read by `maybeReconcileStaleConversation` to
+    /// bypass the running-status suppression guard: on a reconnect iOS has no
+    /// in-flight stream — it missed all events during the gap — so a diverged
+    /// fingerprint means genuinely stale content and must trigger an immediate
+    /// reload rather than waiting for the post-run heal.
+    var isReconnectSnapshot = false
 
     /// Keyed deferred queue for `.automaticEssential` sends that arrive
     /// while the transport is not yet `.connected`.

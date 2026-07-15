@@ -92,10 +92,20 @@ final class TransportManager {
     /// silently dead (TCP can wedge without a FIN); the watchdog forces a
     /// reconnect+sync via `peerDisconnected` so the ViewModel re-establishes.
     var lanHeartbeatWatchdogTask: Task<Void, Never>?
-    /// Wall-clock time of the most recent heartbeat received over the wire.
-    /// Updated by the receive path before it yields `.heartbeat`. The watchdog
-    /// compares against this; each new heartbeat effectively resets the timer.
+    /// Wall-clock time of the most recent heartbeat received over the LAN
+    /// transport specifically (relay-delivered heartbeats do not update this —
+    /// they prove the relay works, not the LAN socket). Baselined to now when
+    /// the watchdog arms; each LAN heartbeat effectively resets the timer.
     var lastHeartbeatAt: Date = .distantPast
+
+    /// Wall-clock time the most recent `.snapshot` event was decoded from the
+    /// wire. The retryable sync handshake (TransportManager+Sync.swift) polls
+    /// this to know the desktop answered; `.distantPast` until the first one.
+    var lastSnapshotReceivedAt: Date = .distantPast
+
+    /// Strict-FIFO queue serializing outbound seq allocation + socket write so
+    /// wire order always equals seq order. See TransportManager+Send.swift.
+    let outboundQueue = SerialAsyncQueue()
 
     /// One-way clock-skew estimate in milliseconds (positive = iOS clock is ahead
     /// of the desktop). Updated from `desktop_heartbeat` frames by comparing iOS
@@ -155,14 +165,18 @@ final class TransportManager {
         startBonjourObservation()
 
         if let relay {
-            print("[Ion] TM.start: calling relay.connect()")
+            DiagnosticLog.log("start: connecting relay", tag: "transport")
             await relay.connect()
-            print("[Ion] TM.start: relay.connect() returned, isConnected=\(relay.isConnected)")
+            DiagnosticLog.log("start: relay connect returned", tag: "transport", fields: [
+                "connected": String(relay.isConnected)
+            ])
             startRelayListener()
             startRelayStateObservation()
         }
         startLANStateObservation()
-        print("[Ion] TM.start: starting network monitor, relay.isConnected=\(relay?.isConnected ?? false)")
+        DiagnosticLog.log("start: starting network monitor", tag: "transport", fields: [
+            "relay_connected": String(relay?.isConnected ?? false)
+        ])
         startNetworkMonitor()
     }
 
@@ -241,12 +255,21 @@ final class TransportManager {
 
     func setState(_ newState: TransportState) {
         guard state != newState else { return }
-        print("[Ion] TransportManager: \(state) -> \(newState)")
         DiagnosticLog.log("transport state changed", tag: "transport", fields: [
             "old": state.rawValue,
             "new": newState.rawValue
         ])
         state = newState
+        // Arm the LAN heartbeat watchdog the moment LAN becomes the active
+        // transport — not just on the first LAN heartbeat. A LAN socket that
+        // dies before ever delivering a heartbeat would otherwise never arm
+        // the watchdog and never be detected. Disarm when LAN stops being the
+        // active transport so the watchdog only ever polices a live LAN claim.
+        if newState == .lanPreferred {
+            startLANHeartbeatWatchdog()
+        } else {
+            stopLANHeartbeatWatchdog()
+        }
     }
 
     func updateState() {
@@ -308,49 +331,10 @@ final class TransportManager {
         disconnectGraceTask = nil
     }
 
-    // MARK: - LAN heartbeat watchdog
-
-    /// Start (or restart) the LAN heartbeat liveness watchdog.
-    ///
-    /// The desktop emits a heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). A
-    /// healthy LAN connection therefore refreshes `lastHeartbeatAt` at least
-    /// that often. If two full intervals (`intervalSeconds`, default 30s) elapse
-    /// with no heartbeat while LAN is the active transport, the socket is
-    /// silently dead — TCP can wedge without delivering a FIN, so the receive
-    /// loop never ends and no `peerDisconnected` is emitted. The watchdog
-    /// detects that starvation and forces a reconnect+sync by yielding
-    /// `.peerDisconnected`, the same signal the LAN stream-ended path uses.
-    ///
-    /// Idempotent: an already-running watchdog is left in place (its loop
-    /// re-reads `lastHeartbeatAt`, so a fresh heartbeat effectively resets the
-    /// timer without needing a restart). `intervalSeconds` is injectable so the
-    /// unit test can drive the loop on a short cadence.
-    func startLANHeartbeatWatchdog(intervalSeconds: Double = 30.0) {
-        guard lanHeartbeatWatchdogTask == nil else { return }
-        DiagnosticLog.log("lan heartbeat watchdog starting", tag: "transport", fields: [
-            "interval_s": String(intervalSeconds)
-        ])
-        lanHeartbeatWatchdogTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(intervalSeconds))
-                guard !Task.isCancelled, let self else { return }
-                let elapsed = Date().timeIntervalSince(self.lastHeartbeatAt)
-                if elapsed > intervalSeconds {
-                    DiagnosticLog.log("WATCHDOG: LAN heartbeat starved, triggering reconnect+sync")
-                    // Force the ViewModel to reconnect (which re-syncs). Mirrors
-                    // the LAN stream-ended path's recovery signal.
-                    self.eventContinuation.yield(.peerDisconnected)
-                    return
-                }
-            }
-        }
-    }
-
-    /// Stop the LAN heartbeat watchdog (called on stop() and teardown).
-    func stopLANHeartbeatWatchdog() {
-        lanHeartbeatWatchdogTask?.cancel()
-        lanHeartbeatWatchdogTask = nil
-    }
+    // The LAN heartbeat watchdog (startLANHeartbeatWatchdog,
+    // stopLANHeartbeatWatchdog, handleLANWatchdogFire) lives in
+    // TransportManager+Watchdog.swift — this file is allowlisted
+    // "don't extend; extract". See CLAUDE.md → file-architecture rules.
 
     // MARK: - Bonjour observation
 
@@ -405,10 +389,12 @@ final class TransportManager {
                         let authed = await self.startLANWithAuth(host: host.host, port: host.port)
                         if authed {
                             didRestartBrowser = false
-                            do {
-                                try await self.send(.sync)
-                            } catch {
-                                print("[Ion] bonjour auth ok but sync failed: \(error)")
+                            // Retryable handshake — a single failed sync used
+                            // to leave the fresh LAN session snapshot-less.
+                            // Detached so a slow handshake never blocks the
+                            // Bonjour observation loop.
+                            Task { [weak self] in
+                                await self?.sendSyncWithRetry(reason: "bonjour-lan-auth")
                             }
                         } else {
                             self.currentLANHost = nil

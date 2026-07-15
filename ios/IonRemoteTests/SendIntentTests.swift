@@ -78,13 +78,16 @@ final class SendIntentTests: XCTestCase {
         let queueDepthBefore = vm.pendingEssentialQueue.count
         XCTAssertEqual(queueDepthBefore, 3, "Expected 3 distinct deduped entries")
 
-        // Simulate connect: flip state then drain (mirrors handleSnapshot)
+        // Simulate connect: flip state then drain (mirrors handleSnapshot).
+        // No transport is attached, so the drain must put the batch BACK
+        // (deduped — same count, same keys) rather than dropping it: the
+        // queue can carry user prompts, which have no re-triggering call
+        // site. See SendFailureRequeueTests for the with-transport paths.
         vm.connectionState = .connected
         vm.drainPendingEssential()
 
-        // Queue must be empty after drain (regardless of whether transport exists)
-        XCTAssertTrue(vm.pendingEssentialQueue.isEmpty,
-            "Essential queue must be empty after drainPendingEssential()")
+        XCTAssertEqual(vm.pendingEssentialQueue.count, 3,
+            "A drain with no transport must re-enqueue the deduped batch intact")
 
         // No toast must have been produced during drain
         XCTAssertTrue(vm.toastMessages.isEmpty,

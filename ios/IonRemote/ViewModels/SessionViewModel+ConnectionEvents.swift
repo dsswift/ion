@@ -41,7 +41,9 @@ extension SessionViewModel {
         // A legitimate relay upgrade must provide both values.
         if let device = activeDevice, device.relayAPIKey == "lan-direct" {
             guard !relayUrl.isEmpty, !relayApiKey.isEmpty else {
-                DiagnosticLog.log("RELAY-CFG: rejected empty for lan-direct \(device.name)")
+                DiagnosticLog.log("relay config rejected empty for lan-direct", tag: "session.relay", level: .warn, fields: [
+                    "reason": device.name
+                ])
                 print("[Ion] handleRelayConfig: ignoring incomplete relay config for LAN-direct device \(device.name)")
                 return
             }
@@ -55,7 +57,9 @@ extension SessionViewModel {
             pairedDevices[idx].relayURL = relayUrl
             pairedDevices[idx].relayAPIKey = relayApiKey
             savePairedDevices()
-            DiagnosticLog.log("RELAY-CFG: accepted for \(device.id.prefix(8))")
+            DiagnosticLog.log("relay config accepted", tag: "session.relay", fields: [
+                "device": String(device.id.prefix(8))
+            ])
         }
     }
 }

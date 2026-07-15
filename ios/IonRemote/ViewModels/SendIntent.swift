@@ -7,8 +7,14 @@ import Foundation
 /// The classification drives queueing and error-visibility:
 ///
 ///   - `.userInitiated`          The user explicitly tapped or typed something.
-///                               Failure toasts (no transport → "Not connected";
-///                               send error → "Send failed"). Never queued.
+///                               Failure is always visible (toast). Commands
+///                               with an `essentialKey` (notably `.prompt`) are
+///                               additionally re-enqueued on the essential queue
+///                               when the transport is absent or the send
+///                               fails/times out, so a user message delivers on
+///                               the reconnect flush instead of being lost;
+///                               commands without a key toast an error and are
+///                               not retried.
 ///
 ///   - `.automaticEssential`     Background send the screen requires to render
 ///                               correctly (load conversation, load attachments,
