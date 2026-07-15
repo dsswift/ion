@@ -6,9 +6,9 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -25,6 +25,37 @@ const (
 	tokenTTL          = 50 * time.Minute // Apple requires refresh within 60 min
 )
 
+// ErrQueueFull is returned by Send when the push queue is at capacity.
+var ErrQueueFull = errors.New("apns push queue full")
+
+// apnsError is a typed error returned by sendAsync. It carries a stable
+// reason string used in logs and on the wire (relay:push-failed frame).
+type apnsError struct {
+	reason string
+	err    error
+}
+
+func (e *apnsError) Error() string { return e.err.Error() }
+func (e *apnsError) Unwrap() error { return e.err }
+
+// newAPNsError wraps an underlying error with a classified reason.
+func newAPNsError(reason string, err error) *apnsError {
+	return &apnsError{reason: reason, err: err}
+}
+
+// classifyAPNsStatus maps an APNs HTTP status code to a stable reason string
+// used both in logs and on the wire (relay:push-failed frame).
+func classifyAPNsStatus(statusCode int) string {
+	switch {
+	case statusCode == 400 || statusCode == 403 || statusCode == 410:
+		return "invalid_token"
+	case statusCode == 429 || statusCode >= 500:
+		return "transient"
+	default:
+		return "transient"
+	}
+}
+
 // pushRequest holds the parameters for a single push notification.
 type pushRequest struct {
 	deviceToken string
@@ -32,6 +63,10 @@ type pushRequest struct {
 	body        string
 	kind        string // resource kind for deep-link routing on the client
 	resourceId  string // resource ID for deep-link routing on the client
+
+	// onFailure is called with a stable reason string when the push fails.
+	// It is optional (nil means no callback).
+	onFailure func(reason string)
 }
 
 // APNsPusher sends push notifications via Apple's HTTP/2 APNs API.
@@ -132,11 +167,34 @@ type apsAlert struct {
 	Body  string `json:"body"`
 }
 
-func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId string) {
+// Send enqueues a push notification. Returns ErrQueueFull if the queue is at
+// capacity. The onFailure callback from SendWithNotify is not invoked on a
+// queue-full drop — callers using SendWithNotify must check the return error
+// and invoke the callback themselves when it is non-nil.
+func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId string) error {
+	return p.SendWithNotify(deviceToken, title, body, kind, resourceId, nil)
+}
+
+// SendWithNotify enqueues a push notification and registers an optional
+// callback that is invoked with a stable reason string if the push fails at
+// any stage (queue full, token error, transport error, or a non-200 APNs
+// response). Callers that do not need failure notification may use Send instead.
+func (p *APNsPusher) SendWithNotify(deviceToken, title, body, kind, resourceId string, onFailure func(reason string)) error {
+	req := pushRequest{
+		deviceToken: deviceToken,
+		title:       title,
+		body:        body,
+		kind:        kind,
+		resourceId:  resourceId,
+		onFailure:   onFailure,
+	}
 	select {
-	case p.queue <- pushRequest{deviceToken: deviceToken, title: title, body: body, kind: kind, resourceId: resourceId}:
+	case p.queue <- req:
+		return nil
 	default:
-		log.Printf("APNs push queue full, dropping notification")
+		logger.Warn("APNs push queue full", "tag", "relay.apns.error",
+			"kind", kind, "resource_id", resourceId)
+		return ErrQueueFull
 	}
 }
 
@@ -144,16 +202,28 @@ func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId string) {
 func (p *APNsPusher) Start() {
 	go func() {
 		for req := range p.queue {
-			p.sendAsync(req)
+			if err := p.sendAsync(req); err != nil {
+				if req.onFailure != nil {
+					reason := "transient" // default when classification is unavailable
+					var apnsErr *apnsError
+					if errors.As(err, &apnsErr) {
+						reason = apnsErr.reason
+					}
+					req.onFailure(reason)
+				}
+			}
 		}
 	}()
 }
 
-func (p *APNsPusher) sendAsync(req pushRequest) {
+// sendAsync executes a single APNs push synchronously (called from the worker
+// goroutine). Returns nil on HTTP 200; otherwise returns a classified *apnsError.
+func (p *APNsPusher) sendAsync(req pushRequest) error {
 	token, err := p.getToken()
 	if err != nil {
-		log.Printf("APNs token error: %v", err)
-		return
+		logger.Error("APNs token error", "tag", "relay.apns.error", "err", err,
+			"kind", req.kind, "resource_id", req.resourceId)
+		return newAPNsError("token", fmt.Errorf("apns token: %w", err))
 	}
 
 	payload := apnsPayload{
@@ -172,15 +242,17 @@ func (p *APNsPusher) sendAsync(req pushRequest) {
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("APNs marshal error: %v", err)
-		return
+		logger.Error("APNs marshal error", "tag", "relay.apns.error", "err", err,
+			"kind", req.kind, "resource_id", req.resourceId)
+		return newAPNsError("marshal", fmt.Errorf("apns marshal: %w", err))
 	}
 
 	url := fmt.Sprintf("%s/3/device/%s", p.baseURL, req.deviceToken)
 	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(data))
 	if err != nil {
-		log.Printf("APNs request error: %v", err)
-		return
+		logger.Error("APNs request error", "tag", "relay.apns.error", "err", err,
+			"kind", req.kind, "resource_id", req.resourceId)
+		return newAPNsError("request", fmt.Errorf("apns request: %w", err))
 	}
 
 	httpReq.Header.Set("Authorization", "bearer "+token)
@@ -190,13 +262,22 @@ func (p *APNsPusher) sendAsync(req pushRequest) {
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		log.Printf("APNs send error: %v", err)
-		return
+		logger.Error("APNs send error", "tag", "relay.apns.error", "err", err,
+			"kind", req.kind, "resource_id", req.resourceId)
+		return newAPNsError("transport", fmt.Errorf("apns transport: %w", err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		log.Printf("APNs response %d: %s", resp.StatusCode, string(respBody))
+		reason := classifyAPNsStatus(resp.StatusCode)
+		logger.Error("APNs response error", "tag", "relay.apns.error",
+			"status", resp.StatusCode, "body", string(respBody),
+			"reason", reason, "kind", req.kind, "resource_id", req.resourceId)
+		return newAPNsError(reason, fmt.Errorf("apns response: status %d reason %s", resp.StatusCode, reason))
 	}
+
+	logger.Info("APNs push delivered", "tag", "relay.apns.delivered",
+		"status", resp.StatusCode, "kind", req.kind, "resource_id", req.resourceId)
+	return nil
 }

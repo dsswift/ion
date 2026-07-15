@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -30,7 +29,7 @@ func (h *MDNSHandle) Shutdown() {
 func StartMDNS(ctx context.Context, port int) (*MDNSHandle, error) {
 	// dns-sd is macOS-only. Skip silently on Linux (Docker, production).
 	if _, err := exec.LookPath("dns-sd"); err != nil {
-		log.Println("mDNS: dns-sd not found, skipping (not macOS)")
+		logger.Info("mDNS skipped", "tag", "relay.mdns.skip", "reason", "dns-sd not found")
 		return nil, nil
 	}
 
@@ -54,7 +53,7 @@ func StartMDNS(ctx context.Context, port int) (*MDNSHandle, error) {
 		return nil, err
 	}
 
-	log.Printf("mDNS: advertising %s._ion-relay._tcp on port %d (pid %d)", hostname, port, cmd.Process.Pid)
+	logger.Info("mDNS advertising", "tag", "relay.mdns.start", "hostname", hostname, "port", port, "pid", cmd.Process.Pid)
 	return &MDNSHandle{cmd: cmd}, nil
 }
 
