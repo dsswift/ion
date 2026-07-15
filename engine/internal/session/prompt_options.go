@@ -59,7 +59,30 @@ func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extensio
 	}
 	if err := m.SendPrompt(key, payload.Text, overrides); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "ext/send_message failed", map[string]any{"error": err})
+		return
 	}
+	// Extension-initiated prompt accepted: surface it as a typed event so
+	// live clients can render the turn (see emitPromptInjected).
+	m.emitPromptInjected(key, payload.Text)
+}
+
+// emitPromptInjected surfaces an ENGINE-SIDE prompt injection (extension
+// ctx.sendPrompt — dispatch-completion delivery, check-ins, revives) as the
+// typed engine_prompt_injected event. Client-submitted prompts (the wire
+// `prompt` command in server/dispatch.go) must never route through this:
+// each client does its own optimistic transcript insert, and echoing those
+// back would duplicate them. Called only from the two extension entry seams
+// (sessionAccessor.SendPrompt and dispatchSendPromptPayload), after
+// m.SendPrompt accepted the prompt.
+func (m *Manager) emitPromptInjected(key, text string) {
+	m.mu.RLock()
+	origin := ""
+	if s, ok := m.sessions[key]; ok {
+		origin = s.extensionName
+	}
+	m.mu.RUnlock()
+	utils.LogWithFields(utils.LevelInfo, "session", "prompt injected by extension, emitting engine_prompt_injected", map[string]any{"key": key, "origin": origin, "prompt_len": len(text)})
+	m.emit(key, types.EngineEvent{Type: "engine_prompt_injected", InjectedPrompt: text, InjectedPromptOrigin: origin})
 }
 
 func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) types.RunOptions {

@@ -126,7 +126,18 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		})
 		return fmt.Errorf("session %q not found", key)
 	}
-	if s.requestID != "" {
+	// Busy check: a run is in flight (s.requestID != "") OR an async
+	// user-initiated compaction is running (s.compactInFlight). The latter
+	// does not set s.requestID — its synthetic runID is unregistered in the
+	// backend — so without this second condition a prompt submitted during
+	// compaction would start a real run whose load-mutate-save clobbers the
+	// compaction's own save. Enqueue instead; the compaction goroutine drains
+	// one queued prompt when it finishes (mirroring handleRunExit). See
+	// dispatchCompact and engineSession.compactInFlight.
+	if s.requestID != "" || s.compactInFlight {
+		if s.requestID == "" && s.compactInFlight {
+			utils.LogWithFields(utils.LevelInfo, "session", "sendprompt: enqueued behind in-flight compaction (compactinflight=true, no active run)", map[string]any{"key": key})
+		}
 		queueFull, err := m.enqueueIfBusy(s, key, text, overrides)
 		m.mu.Unlock()
 		if queueFull {
@@ -168,15 +179,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		if overrides != nil && overrides.PlanFilePath != "" {
 			if _, err := os.Stat(overrides.PlanFilePath); err == nil {
 				s.planFilePath = overrides.PlanFilePath
-				utils.Info("PlanMode", fmt.Sprintf(
-					"SendPrompt: key=%s restored planFile=%s from client",
-					key, s.planFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: restored from client", map[string]any{"session_id": key, "plan_file_path": s.planFilePath})
 			} else {
-				utils.Info("PlanMode", fmt.Sprintf(
-					"SendPrompt: key=%s client planFilePath=%s not on disk, allocating new",
-					key, overrides.PlanFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: client not on disk, allocating new", map[string]any{"session_id": key, "plan_file_path": overrides.PlanFilePath})
 				s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-				utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 			}
 		} else {
 			// Plan file allocation is centralised in allocateNewPlanFilePath
@@ -184,7 +191,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			// directory choice and produces a fresh non-colliding word slug.
 			// See its doc comment for the directory selection rules.
 			s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-			utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 		}
 	}
 
@@ -196,7 +203,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	opts := buildRunOptions(s, text, overrides)
 	if planModeReentry {
 		opts.PlanModeReentry = true
-		utils.Info("PlanMode", fmt.Sprintf("key=%s reentry detected, planFile=%s", key, s.planFilePath))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "reentry detected", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	}
 
 	// Slash-command resolution + expansion. When the client flagged this prompt
@@ -229,8 +236,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		opts.ResolvedSlashCommand = s.pendingSlashInvocation.Command
 		opts.ResolvedSlashArgs = s.pendingSlashInvocation.Args
 		opts.ResolvedSlashSource = s.pendingSlashInvocation.Source
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: applied pending slash invocation command=%s argsLen=%d",
-			key, opts.ResolvedSlashCommand, len(opts.ResolvedSlashArgs)))
+		utils.LogWithFields(utils.LevelInfo, "session", "send prompt applied pending slash invocation", map[string]any{"session_id": key, "reason": opts.ResolvedSlashCommand, "count": len(opts.ResolvedSlashArgs)})
 		s.pendingSlashInvocation = nil
 	} else if s.pendingSlashInvocation != nil {
 		// resolveSlashIntoOpts already set the fields; discard the pending.
@@ -245,13 +251,14 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
 	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
-		utils.Log("Session", fmt.Sprintf("prompt_dispatch: key=%s overriding default model %s with conversation model %s", key, opts.Model, s.lastModel))
+		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "model_2": s.lastModel})
 		opts.Model = s.lastModel
 	}
 
 	injectContextFiles(s, &opts)
 	m.injectExtensionContext(s, key, &opts)
 	injectGitContext(s, &opts)
+	injectPluginContext(s, &opts)
 
 	// Inject session memory into the system prompt so the model has context
 	// from previously compacted conversation history. Only fires when memory
@@ -260,7 +267,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
 	}
 
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: releasing lock, model=%s", key, opts.Model))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: releasing lock", map[string]any{"key": key, "model": opts.Model})
 
 	// G07: Enterprise model enforcement
 	if m.config != nil && m.config.Enterprise != nil {
@@ -276,6 +283,18 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	m.lateLoadExtensions(s, key, overrides)
 
+	// lateLoadExtensions may have just populated s.extensionName /
+	// s.extensionVersion (first prompt on a session whose extensions arrive
+	// per-prompt). buildRunOptions above ran before the late load, so re-stamp
+	// the identity onto opts here — otherwise the very first extension-hosted
+	// run's llm.call telemetry would miss ctx.extension.
+	if opts.ExtensionName == "" {
+		opts.ExtensionName = s.extensionName
+	}
+	if opts.ExtensionVersion == "" {
+		opts.ExtensionVersion = s.extensionVersion
+	}
+
 	skipExtensions := overrides != nil && overrides.NoExtensions
 
 	extGroup := s.extGroup
@@ -283,7 +302,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	telemCollector := s.telemetry
 	mcpConns := s.mcpConns
 	m.mu.Unlock()
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: lock released", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: lock released", map[string]any{"key": key})
 
 	// context: fork — run the resolved command's expanded body as a forked
 	// sub-agent instead of inlining it into this conversation. The parent
@@ -307,7 +326,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	m.fireModelSelect(s, key, extGroup, skipExtensions, &opts)
 
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: building backend run config", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: building backend run config", map[string]any{"key": key})
 
 	// Build the per-run RunConfig that travels with this run on the backend.
 	// Storing hooks/perm engine/external tools/agent spawner on each run --
@@ -337,7 +356,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	m.mu.RUnlock()
 
-	utils.Info("Session", fmt.Sprintf("dispatching prompt: key=%s requestID=%s model=%s", key, requestID, opts.Model))
+	utils.LogWithFields(utils.LevelInfo, "session", "dispatching prompt", map[string]any{"key": key, "run_id": requestID, "model": opts.Model})
 	promptCtxWindow := conversation.DefaultContext
 	if info := providers.GetModelInfo(opts.Model); info != nil {
 		promptCtxWindow = info.ContextWindow
@@ -353,7 +372,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// denial on top of an in-flight prompt, contradicting the session's
 	// current state.
 	if len(s.lastPermissionDenials) > 0 {
-		utils.Log("Session", fmt.Sprintf("prompt_dispatch: key=%s clearing %d retained permission_denials (new prompt supersedes)", key, len(s.lastPermissionDenials)))
+		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: clearing retained permission_denials (new prompt supersedes)", map[string]any{"key": key, "count": len(s.lastPermissionDenials)})
 		s.lastPermissionDenials = nil
 	}
 	lastPct := s.lastContextPct
@@ -406,16 +425,15 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 	}
 	pp := pendingPrompt{text: text}
 	if overrides != nil {
-		pp.model = overrides.Model
-		pp.maxTurns = overrides.MaxTurns
-		pp.maxBudgetUsd = overrides.MaxBudgetUsd
-		pp.extensions = overrides.Extensions
-		pp.noExtensions = overrides.NoExtensions
-		pp.attachments = overrides.Attachments
-		pp.implementationPhase = overrides.ImplementationPhase
-		pp.thinkingEffort = overrides.ThinkingEffort
+		// Value-copy all 19 PromptOverrides fields so every per-prompt flag
+		// (ResolveSlash, BashAllowlistAdditionsForThisPrompt, PlanFilePath,
+		// CompactEnabled, harness prose, etc.) survives the queue round-trip
+		// intact. The caller may free or reuse its pointer after this returns;
+		// the copy in the queue is independent.
+		ovCopy := *overrides
+		pp.overrides = &ovCopy
 	}
 	s.promptQueue = append(s.promptQueue, pp)
-	utils.Log("Session", fmt.Sprintf("prompt queued for %s (%d in queue)", key, len(s.promptQueue)))
+	utils.LogWithFields(utils.LevelInfo, "session", "prompt queued for ( in queue)", map[string]any{"key": key, "count": len(s.promptQueue)})
 	return false, nil
 }

@@ -117,6 +117,10 @@
       "planFilePath",
       "planSlug"
     ],
+    "prompt_injected": [
+      "origin",
+      "prompt"
+    ],
     "rate_limit": [
       "rateLimitType",
       "resetsAt",
@@ -277,6 +281,8 @@
     "imageToolId",
     "images",
     "index",
+    "injectedPrompt",
+    "injectedPromptOrigin",
     "interceptLevel",
     "interceptMessage",
     "interceptMetadata",

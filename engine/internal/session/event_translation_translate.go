@@ -240,6 +240,13 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// to be echoed back over the wire.
 		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
 
+	case *types.PromptInjectedEvent:
+		// Engine-initiated prompt (extension ctx.sendPrompt): live clients
+		// must render the turn from this event — no client submitted it, so
+		// no client did an optimistic insert. The full text crosses the wire
+		// deliberately (unlike the steer confirmation): it IS the turn.
+		return types.EngineEvent{Type: "engine_prompt_injected", InjectedPrompt: e.Prompt, InjectedPromptOrigin: e.Origin}
+
 	case *types.ModelFallbackEvent:
 		// Surface the model-fallback workflow signal as a typed engine
 		// event so clients can render an indicator. The desktop and iOS

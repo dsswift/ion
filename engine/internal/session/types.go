@@ -24,26 +24,12 @@ type toolMeta struct {
 }
 
 // pendingPrompt holds a queued prompt waiting for the active run to finish.
+// overrides is a value-copied snapshot of the caller's *PromptOverrides so
+// all 19 fields survive the enqueue → dequeue round-trip intact. A nil
+// overrides is stored as-is and forwarded as nil to SendPrompt.
 type pendingPrompt struct {
-	text         string
-	model        string
-	maxTurns     int
-	maxBudgetUsd float64
-	extensions   []string
-	noExtensions bool
-	attachments  []types.ImageAttachment
-	// implementationPhase carries the client's
-	// ClientCommand.ImplementationPhase flag through the queue so the
-	// suppression of EnterPlanMode injection survives queueing on a busy
-	// session. Without this, a queued "implement" prompt would lose the
-	// flag and the engine would inject EnterPlanMode against the user's
-	// already-approved intent.
-	implementationPhase bool
-	// thinkingEffort carries the client's ClientCommand.ThinkingEffort
-	// through the queue so a queued prompt's live thinking level survives
-	// queueing on a busy session. Without it, a prompt queued behind a
-	// running turn would lose its selected effort.
-	thinkingEffort string
+	text      string
+	overrides *PromptOverrides
 }
 
 // engineSession holds the state for a single session managed by the Manager.

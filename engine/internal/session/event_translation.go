@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -24,11 +25,11 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		// live is a routing defect: log it with the event type so a silent loss
 		// is reconstructable from engine.log (this path was previously a silent
 		// return — the blind spot that hid the dropped PlanModeChangedEvent).
-		utils.Warn("Session", fmt.Sprintf("normalized event DROPPED: no key for runID=%s type=%T (post-exit is expected; mid-run indicates a routing defect)", runID, event.Data))
+		utils.LogWithFields(utils.LevelWarn, "session", "normalized event dropped: no key for type=%t (post-exit is expected; mid-run indicates a routing defect)", map[string]any{"run_id": runID, "data": event.Data})
 		return
 	}
 
-	utils.Debug("Session", fmt.Sprintf("normalized event: key=%s runID=%s type=%T", key, runID, event.Data))
+	utils.LogWithFields(utils.LevelDebug, "session", "normalized event: type=%t", map[string]any{"key": key, "run_id": runID, "data": event.Data})
 
 	// Look up session once for all downstream hook firing.
 	m.mu.RLock()
@@ -51,7 +52,19 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.mu.Lock()
 		if s2, ok2 := m.sessions[key]; ok2 && s2.conversationID == "" {
 			s2.conversationID = init.SessionID
-			utils.Log("Session", fmt.Sprintf("captured conversationID=%s from SessionInitEvent key=%s", init.SessionID, key))
+			utils.LogWithFields(utils.LevelInfo, "session", "captured from sessioninitevent", map[string]any{"run_id": init.SessionID, "key": key})
+
+			// If the root context lacks conversation_id (first-run path where
+			// StartSession pre-minted a fresh ID before any conversation was
+			// confirmed), re-arm the root so subsequent runLoop goroutines pick
+			// up the confirmed ID via their ambient context. newSessionRootContext
+			// re-threads all correlation IDs (including the just-set
+			// conversationID) from a fresh Background root. We hold the manager
+			// lock here (required for rootCtx mutation) and the new-run busy-guard
+			// upstream guarantees no other run is dispatching, so the swap is safe.
+			if s2.rootCtx != nil && utils.ConversationIDFromContext(s2.rootCtx) == "" {
+				s2.newSessionRootContext()
+			}
 
 			// Initialize session memory for the newly created conversation.
 			// On resumed sessions this is already done in StartSession; here
@@ -65,7 +78,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 				sm := NewSessionMemory(init.SessionID, convDir, nil)
 				sm.Start()
 				s2.sessionMemory = sm
-				utils.Log("Session", fmt.Sprintf("created session memory for new conv=%s key=%s", init.SessionID, key))
+				utils.LogWithFields(utils.LevelInfo, "session", "created session memory for new", map[string]any{"run_id": init.SessionID, "key": key})
 			}
 		}
 		m.mu.Unlock()
@@ -80,7 +93,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	ee := translateToEngineEvent(event, contextWindow)
 	if ee.Type == "" {
-		utils.Debug("Session", fmt.Sprintf("dropping unhandled normalized event type: %T", event.Data))
+		utils.LogWithFields(utils.LevelDebug, "session", "dropping unhandled normalized event type: %t", map[string]any{"data": event.Data})
 		return
 	}
 
@@ -97,7 +110,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.mu.RLock()
 		if s2, ok2 := m.sessions[key]; ok2 && s2.conversationID != "" {
 			if ee.Fields.SessionID != s2.conversationID {
-				utils.Debug("Session", fmt.Sprintf("task_complete status: substituting Ion conversationID=%s for backend sessionID=%s key=%s", s2.conversationID, ee.Fields.SessionID, key))
+				utils.LogWithFields(utils.LevelDebug, "session", "task_complete status: substituting ion for backend", map[string]any{"run_id": s2.conversationID, "run_id_1": ee.Fields.SessionID, "key": key})
 			}
 			ee.Fields.SessionID = s2.conversationID
 		}
@@ -124,7 +137,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			if s2, ok2 := m.sessions[key]; ok2 {
 				s2.planMode = true
 				s2.planFilePath = pmc.PlanFilePath
-				utils.Info("PlanMode", fmt.Sprintf("event_translation: key=%s model entered plan mode planFile=%s", key, pmc.PlanFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "event_translation: model entered plan mode", map[string]any{"key": key, "plan_file_path": pmc.PlanFilePath})
 			}
 			m.mu.Unlock()
 		}
@@ -266,7 +279,20 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			// retained state — a task that completed cleanly has no
 			// outstanding denials to re-emit.
 			s2.lastPermissionDenials = tc.PermissionDenials
-			utils.Log("Session", fmt.Sprintf("task_complete: key=%s retained %d permission_denials for reconcile", key, len(tc.PermissionDenials)))
+			utils.LogWithFields(utils.LevelInfo, "session", "task_complete: retained permission_denials for reconcile", map[string]any{"key": key, "count": len(tc.PermissionDenials)})
+
+			// Compute and cache conversation-level cost so heartbeats,
+			// host_death, and ReconcileState can emit ConversationCostUsd
+			// without a second disk walk. Computed here under the lock
+			// alongside the aggregate already computed for run.complete
+			// telemetry above.
+			convID := s2.conversationID
+			var liveIDs []string
+			if s2.dispatchRegistry != nil {
+				liveIDs = s2.dispatchRegistry.LiveConvIDs()
+			}
+			convCost, _ := cost.ConversationCost(convID, liveIDs, "")
+			s2.lastConvCost = convCost
 
 			// Emit a run-level telemetry event. This is the one place every
 			// backend's TaskCompleteEvent converges, so a single guarded
@@ -279,18 +305,49 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			// s2.lastModel (set in prompt_dispatch when the run started); the
 			// cost/duration/turn/usage fields come straight from the event.
 			if s2.telemetry != nil {
-				payload := map[string]any{
-					"model":                    s2.lastModel,
-					"costUsd":                  tc.CostUsd,
-					"durationMs":               tc.DurationMs,
-					"numTurns":                 tc.NumTurns,
-					"inputTokens":              derefInt(tc.Usage.InputTokens),
-					"outputTokens":             derefInt(tc.Usage.OutputTokens),
-					"cacheReadInputTokens":     derefInt(tc.Usage.CacheReadInputTokens),
-					"cacheCreationInputTokens": derefInt(tc.Usage.CacheCreationInputTokens),
+				// Compute aggregate cost: this session + all descendant dispatches.
+				// Uses the same cost.ConversationCost walk as ComputeAndEmitContextBreakdown.
+				// liveChildConvIDs is called outside the lock below; capture what we need here.
+				convID := s2.conversationID
+				var liveIDs []string
+				if s2.dispatchRegistry != nil {
+					liveIDs = s2.dispatchRegistry.LiveConvIDs()
 				}
-				s2.telemetry.Event(telemetry.RunComplete, payload, nil)
-				utils.Log("Session", fmt.Sprintf("run.complete telemetry emitted: key=%s model=%s costUsd=%f numTurns=%d", key, s2.lastModel, tc.CostUsd, tc.NumTurns))
+				// Release the lock before the disk-IO walk, then re-acquire to emit.
+				// We hold it for the entire TaskComplete block anyway (the surrounding
+				// m.mu.Lock is still held at this point), so we compute inline —
+				// cost.ConversationCost is a best-effort disk walk that handles errors
+				// by returning 0 + a debug log, never panics, and is the same path
+				// already used by ComputeAndEmitContextBreakdown under the same lock.
+				aggregateCost, _ := cost.ConversationCost(convID, liveIDs, "")
+
+				// dispatchDepth is 0 for all sessions that emit run.complete through
+				// handleNormalizedEvent. Dispatched child agents run their backends
+				// inline via child.OnNormalized and never reach this manager-level
+				// event handler, so the manager-level emission is always depth 0.
+				const dispatchDepth = 0
+
+				payload := map[string]any{
+					"model":                       s2.lastModel,
+					"run_cost_usd":                tc.CostUsd,
+					"aggregate_cost_usd":          aggregateCost,
+					"dispatch_depth":              dispatchDepth,
+					"duration_ms":                 tc.DurationMs,
+					"num_turns":                   tc.NumTurns,
+					"input_tokens":                derefInt(tc.Usage.InputTokens),
+					"output_tokens":               derefInt(tc.Usage.OutputTokens),
+					"cache_read_input_tokens":     derefInt(tc.Usage.CacheReadInputTokens),
+					"cache_creation_input_tokens": derefInt(tc.Usage.CacheCreationInputTokens),
+				}
+				s2.telemetry.Event(telemetry.RunComplete, payload, correlationCtxExt(key, s2.conversationID, s2.extensionName, s2.extensionVersion))
+				utils.LogWithFields(utils.LevelInfo, "session", "run.complete telemetry emitted", map[string]any{"key": key, "model": s2.lastModel, "cost_usd": tc.CostUsd, "aggregate_cost": aggregateCost, "turn": tc.NumTurns})
+
+				// Context-economy telemetry (family 4c): emit a cache.savings
+				// data point when the run used prompt caching, so consumers can
+				// track the dollar savings from cache reads. Computed from the
+				// model's input pricing and the cache-read token count. Nil-safe
+				// via the guarded collector above.
+				emitCacheSavings(s2.telemetry, s2.lastModel, tc.Usage, key, s2.conversationID, s2.extensionName, s2.extensionVersion)
 			}
 		}
 		m.mu.Unlock()
@@ -320,7 +377,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	if signal != nil {
 		sigStr = *signal
 	}
-	utils.Info("Session", fmt.Sprintf("handleRunExit: key=%s runID=%s code=%s signal=%s sessionID=%s", key, runID, codeStr, sigStr, sessionID))
+	utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr, "run_id_4": sessionID})
 
 	var nextPrompt *pendingPrompt
 	var bgCount int
@@ -357,7 +414,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 			activeNames := s.dispatchRegistry.ActiveNames()
 			bgCount = len(activeIDs)
 			if len(activeIDs) > 0 || len(activeNames) > 0 {
-				utils.Log("Session", fmt.Sprintf("handleRunExit: preserving %d live dispatch(es) by id=%v name=%v", bgCount, activeIDs, activeNames))
+				utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: preserving live dispatch(es) by", map[string]any{"bg_count": bgCount, "run_id": activeIDs, "model": activeNames})
 				s.agents.ClearRunningStatesExceptIDsOrNames(activeIDs, activeNames)
 			} else {
 				s.agents.ClearRunningStates()
@@ -376,9 +433,9 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		// reads CliResumeSessionID).
 		if sessionID != "" {
 			s.cliSessionID = sessionID
-			utils.Log("Session", fmt.Sprintf("handleRunExit: captured cliSessionID=%s key=%s (conversationID=%s unchanged)", sessionID, key, s.conversationID))
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: captured ( unchanged)", map[string]any{"run_id": sessionID, "key": key, "run_id_2": s.conversationID})
 		} else {
-			utils.Log("Session", fmt.Sprintf("handleRunExit: no sessionID reported by backend key=%s (cliSessionID unchanged=%s)", key, s.cliSessionID))
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: no sessionid reported by backend (clisessionid )", map[string]any{"key": key, "run_id": s.cliSessionID})
 		}
 		if len(s.promptQueue) > 0 {
 			next := s.promptQueue[0]
@@ -420,7 +477,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		runExitSnapshot = s.agents.MergedSnapshot()
 	}
 	m.mu.RUnlock()
-	utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=run_exit", key, len(runExitSnapshot)))
+	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=run_exit", map[string]any{"key": key, "count": len(runExitSnapshot)})
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_agent_state",
 		Agents: runExitSnapshot,
@@ -446,7 +503,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	m.mu.RUnlock()
 
 	if bgCount > 0 {
-		utils.Log("Session", fmt.Sprintf("handleRunExit: emitting idle with backgroundAgents=%d key=%s", bgCount, key))
+		utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: emitting idle with", map[string]any{"bg_count": bgCount, "key": key})
 	}
 	var idleFields *types.StatusFields
 	if exitSession != nil {
@@ -490,14 +547,14 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	}
 
 	if abnormalExit {
-		utils.Warn("Session", fmt.Sprintf("emitting engine_dead: key=%s code=%s signal=%s", key, codeStr, sigStr))
+		utils.LogWithFields(utils.LevelWarn, "session", "emitting engine_dead", map[string]any{"key": key, "code_str": codeStr, "sig_str": sigStr})
 		m.emit(key, types.EngineEvent{
 			Type:     "engine_dead",
 			ExitCode: code,
 			Signal:   signal,
 		})
 	} else if cleanCancel {
-		utils.Info("Session", fmt.Sprintf("clean cancel (no engine_dead): key=%s code=%s signal=%s", key, codeStr, sigStr))
+		utils.LogWithFields(utils.LevelInfo, "session", "clean cancel (no engine_dead)", map[string]any{"key": key, "code_str": codeStr, "sig_str": sigStr})
 	}
 
 	// Auto-respawn any extension hosts whose subprocess died during the
@@ -507,26 +564,22 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 
 	// Dispatch queued prompt outside the lock
 	if nextPrompt != nil {
-		utils.Debug("Session", fmt.Sprintf("dispatching queued prompt: key=%s", key))
-		go func() {
-			var ov *PromptOverrides
-			if nextPrompt.model != "" || nextPrompt.maxTurns > 0 || nextPrompt.maxBudgetUsd > 0 || len(nextPrompt.extensions) > 0 || nextPrompt.noExtensions || len(nextPrompt.attachments) > 0 || nextPrompt.implementationPhase || nextPrompt.thinkingEffort != "" {
-				ov = &PromptOverrides{
-					Model:               nextPrompt.model,
-					MaxTurns:            nextPrompt.maxTurns,
-					MaxBudgetUsd:        nextPrompt.maxBudgetUsd,
-					Extensions:          nextPrompt.extensions,
-					NoExtensions:        nextPrompt.noExtensions,
-					Attachments:         nextPrompt.attachments,
-					ImplementationPhase: nextPrompt.implementationPhase,
-					ThinkingEffort:      nextPrompt.thinkingEffort,
-				}
-			}
-			if err := m.SendPrompt(key, nextPrompt.text, ov); err != nil {
-				utils.Error("Session", "queued prompt failed: "+err.Error())
-			}
-		}()
+		utils.LogWithFields(utils.LevelDebug, "session", "dispatching queued prompt", map[string]any{"key": key})
+		m.dispatchQueuedPrompt(key, nextPrompt)
 	}
+}
+
+// dispatchQueuedPrompt re-submits a dequeued prompt on its own goroutine,
+// forwarding the full *PromptOverrides captured at enqueue time. All 19
+// override fields survive the queue round-trip because enqueueIfBusy stored
+// a value copy. Dispatched off-lock and on a goroutine because SendPrompt
+// re-acquires m.mu and may start a run.
+func (m *Manager) dispatchQueuedPrompt(key string, next *pendingPrompt) {
+	go func() {
+		if err := m.SendPrompt(key, next.text, next.overrides); err != nil {
+			utils.LogWithFields(utils.LevelError, "session", "queued prompt failed", map[string]any{"error": err.Error()})
+		}
+	}()
 }
 
 // handleRunError is called when a backend run encounters an error.
@@ -538,7 +591,7 @@ func (m *Manager) handleRunError(runID string, err error) {
 	if key == "" {
 		return
 	}
-	utils.Error("Session", fmt.Sprintf("handleRunError: key=%s runID=%s err=%s", key, runID, err.Error()))
+	utils.LogWithFields(utils.LevelError, "session", "handlerunerror", map[string]any{"key": key, "run_id": runID, "error": err.Error()})
 	// Reap descendants so a dispatched child does not continue running
 	// (and billing model time) after the parent loop has died.
 	m.abortAllDescendants(key, fmt.Sprintf("parent run error: %s", err.Error()))

@@ -34,6 +34,14 @@ const (
 	EventCompacting      = "compacting"
 	EventToolStalled     = "tool_stalled"
 	EventSteerInjected   = "steer_injected"
+	// EventPromptInjected is emitted when a prompt no client submitted is
+	// injected into the session — an extension calling ctx.sendPrompt
+	// (dispatch-completion delivery, check-ins, orchestrator revives). The
+	// injected text persists as a genuine user turn in the conversation
+	// file; this event is what lets LIVE clients render that turn without
+	// reloading the file. Client-submitted prompts never emit it (each
+	// client does its own optimistic transcript insert).
+	EventPromptInjected = "prompt_injected"
 	EventModelFallback   = "model_fallback"
 	EventRunStalled      = "run_stalled"
 	// EventPlanContent is emitted in response to a get_plan_content command.
@@ -214,6 +222,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ToolStalledEvent{}
 	case EventSteerInjected:
 		target = &SteerInjectedEvent{}
+	case EventPromptInjected:
+		target = &PromptInjectedEvent{}
 	case EventModelFallback:
 		target = &ModelFallbackEvent{}
 	case EventRunStalled:
@@ -680,55 +690,6 @@ type ToolStalledEvent struct {
 }
 
 func (ToolStalledEvent) eventType() string { return EventToolStalled }
-
-// RunStalledEvent fires when the engine watchdog detects that an active
-// run has made no progress (no provider stream events, no tool results,
-// no turn boundaries) for longer than the configured run-stall threshold
-// and cancels the run as a safety backstop. Emitted exactly once per
-// stalled run, immediately before the engine cancels the run's context.
-//
-// This event is *advisory*: the authoritative completion signal is the
-// follow-up TaskCompleteEvent (with a non-zero exit code) plus the
-// emitExit call that fires after context cancellation propagates. A
-// consumer that ignores RunStalledEvent entirely still sees the run
-// reach a terminal state through the normal exit pipeline; the event
-// exists so consumers that want to render "stalled" distinctly from
-// "errored" (e.g. a watchdog icon vs. a generic error toast) can do so.
-//
-// The watchdog is the engine's last line of defense against subsystems
-// that block indefinitely on a channel or syscall outside the reach of
-// HTTP/2 pings or per-tool timeouts. See
-// engine/internal/backend/runloop_watchdog.go for the implementation
-// and the threshold default. Headless harnesses receive the event in
-// the JSON stream and may abort, retry, notify, or ignore.
-type RunStalledEvent struct {
-	// StalledDuration is the elapsed time (seconds) since the last
-	// recorded progress event on this run. Equal to or greater than
-	// the configured run-stall threshold at emission time.
-	StalledDuration float64 `json:"stalledDuration"`
-	// LastActivity is a short human-readable description of the most
-	// recent progress event observed (e.g. "provider stream chunk",
-	// "tool result", "turn boundary"). Optional — included for
-	// diagnostics so an operator reading the event stream can tell
-	// where progress stopped without cross-referencing the engine
-	// log. Empty string is permitted when no description is available.
-	LastActivity string `json:"lastActivity,omitempty"`
-}
-
-func (RunStalledEvent) eventType() string { return EventRunStalled }
-
-// SteerInjectedEvent is emitted when a mid-turn steer message is injected into
-// the conversation before the next LLM call. Clients can use this to confirm
-// that a steer message sent while the agent was running was successfully
-// captured and will influence the model's next response.
-type SteerInjectedEvent struct {
-	// MessageLength is the character count of the injected steer message.
-	// Provided so clients can display a non-empty confirmation without
-	// echoing the full message back over the wire.
-	MessageLength int `json:"messageLength"`
-}
-
-func (SteerInjectedEvent) eventType() string { return EventSteerInjected }
 
 // ModelFallbackEvent is emitted once per run when the requested model
 // could not be resolved to a provider and the engine fell back to the

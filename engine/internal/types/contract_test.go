@@ -68,6 +68,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventCompacting:         &CompactingEvent{},
 		EventToolStalled:        &ToolStalledEvent{},
 		EventSteerInjected:      &SteerInjectedEvent{},
+		EventPromptInjected:     &PromptInjectedEvent{},
 		EventModelFallback:      &ModelFallbackEvent{},
 		EventRunStalled:         &RunStalledEvent{},
 		EventPlanContent:        &PlanContentEvent{},

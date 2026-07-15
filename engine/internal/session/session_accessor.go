@@ -53,7 +53,14 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 	if len(bashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sessionaccessor.sendprompt: threading bash-allowlist additions for this prompt", map[string]any{"key": a.key, "count": len(bashAllowlistAdditions), "bash_allowlist_additions": bashAllowlistAdditions})
 	}
-	return a.m.SendPrompt(a.key, text, overrides)
+	if err := a.m.SendPrompt(a.key, text, overrides); err != nil {
+		return err
+	}
+	// Extension-initiated prompt (ctx.sendPrompt / steerSelf fallback):
+	// surface the injected turn to live clients. Client wire prompts never
+	// route through this accessor. See emitPromptInjected.
+	a.m.emitPromptInjected(a.key, text)
+	return nil
 }
 
 // SteerSelfMainLoop steers this session's own main run loop (depth-0 /

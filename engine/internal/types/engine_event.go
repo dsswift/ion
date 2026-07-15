@@ -127,6 +127,15 @@ type EngineEvent struct {
 	// SteerInjectedEvent for the underlying normalized variant.
 	SteerMessageLength int `json:"steerMessageLength,omitempty"`
 
+	// engine_prompt_injected — an extension injected a prompt via
+	// ctx.sendPrompt and a run started on it; no client submitted this
+	// turn, so live clients must render it from this event (the text is
+	// also persisted as the run's user turn — a conversation reload shows
+	// the same content). InjectedPromptOrigin names the hosting extension
+	// when known. See PromptInjectedEvent for the normalized variant.
+	InjectedPrompt       string `json:"injectedPrompt,omitempty"`
+	InjectedPromptOrigin string `json:"injectedPromptOrigin,omitempty"`
+
 	// engine_model_fallback — workflow signal emitted when the engine
 	// fell back to its configured defaultModel because the requested
 	// model didn't resolve to a provider. Mirrors the underlying
