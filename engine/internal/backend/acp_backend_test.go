@@ -202,21 +202,21 @@ func TestCursorSpec(t *testing.T) {
 	}
 }
 
-// TestAcpBackend_GrokPlanModeCleanError pins the grok surface: no native plan
-// mode exists, so plan mode yields a normalized ErrorEvent with the
-// plan_mode_unsupported code and a DELIBERATE exit 0 — never the crash-shaped
+// TestAcpBackend_GrokPlanModeCleanError pins the grok backstop: the primary
+// flow declines grok+plan at the session capability gate (grok's descriptor
+// reports PlanMode=false), but a direct backend consumer that dispatches
+// anyway still gets a clean runtime decline — the live session advertises no
+// plan mode, so the run yields a normalized ErrorEvent with the
+// plan_mode_unsupported code and a DELIBERATE exit 0, never the crash-shaped
 // exit 1 consumers render as a dead engine process.
 func TestAcpBackend_GrokPlanModeCleanError(t *testing.T) {
-	b := NewGrokBackend()
-	launched := false
-	b.launch = func(acpSpec, acp.Handlers) (*acp.Client, func(), error) { launched = true; return nil, nil, nil }
+	b, agentCh := newTestAcpBackend(t) // grok agent advertising no session modes
 	r := newAcpRecorder()
 	r.attach(b)
-	b.StartRun("req-plan", types.RunOptions{Model: "grok-code", PlanMode: true})
+	startAcp(t, b, agentCh, "req-plan", types.RunOptions{
+		Model: "grok-code", Prompt: "plan it", ProjectPath: "/repo", PlanMode: true,
+	})
 	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "plan-mode exit")
-	if launched {
-		t.Fatal("plan mode must not spawn the agent")
-	}
 	if n := r.count(func(e types.NormalizedEvent) bool {
 		err, ok := e.Data.(*types.ErrorEvent)
 		return ok && err.ErrorCode == "plan_mode_unsupported"

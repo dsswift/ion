@@ -238,6 +238,14 @@ func (d *initThenWorkChildBackend) Cancel(string) bool                     { ret
 func (d *initThenWorkChildBackend) IsRunning(string) bool                  { return false }
 func (d *initThenWorkChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *initThenWorkChildBackend) FlushConversations()                    {}
+func (d *initThenWorkChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *initThenWorkChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -390,6 +398,14 @@ func (d *requestIDEchoChildBackend) Cancel(string) bool                     { re
 func (d *requestIDEchoChildBackend) IsRunning(string) bool                  { return false }
 func (d *requestIDEchoChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *requestIDEchoChildBackend) FlushConversations()                    {}
+func (d *requestIDEchoChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *requestIDEchoChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

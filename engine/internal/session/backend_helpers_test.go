@@ -118,13 +118,30 @@ func TestResolvedBackend_MockBackend_PassesThrough(t *testing.T) {
 func TestResolvedBackend_Hybrid_ClaudeRoutesToCli(t *testing.T) {
 	registerSessionTestModels(t)
 	hybrid := backend.NewHybridBackend()
+	// Credential-based routing (EffectiveBackendForProvider): with no API key,
+	// an anthropic model routes to claude-code only when the CLI is installed
+	// and authenticated. Wire the probe the server would normally inject.
+	hybrid.SetCliAuthProbe(func(kind string) bool { return kind == "claude-code" })
 	mgr := NewManager(hybrid)
 	got := mgr.resolvedBackend("claude-session-test")
 	if _, ok := got.(*backend.ClaudeCodeBackend); !ok {
-		t.Fatalf("expected hybrid + claude-* to resolve to *ClaudeCodeBackend, got %T", got)
+		t.Fatalf("expected hybrid + claude-* (cli authed, no key) to resolve to *ClaudeCodeBackend, got %T", got)
 	}
 	if got != hybrid.InnerClaudeCode() {
 		t.Fatalf("expected exactly the hybrid's inner ClaudeCodeBackend, got different pointer")
+	}
+}
+
+func TestResolvedBackend_Hybrid_ClaudeFallsToApiWithoutCliAuth(t *testing.T) {
+	registerSessionTestModels(t)
+	// No API key and no CLI auth probe wired (nil means "no CLI available"):
+	// routing degrades safely to api so the run fails with a clean
+	// missing-key error instead of spawning a CLI that isn't signed in.
+	hybrid := backend.NewHybridBackend()
+	mgr := NewManager(hybrid)
+	got := mgr.resolvedBackend("claude-session-test")
+	if _, ok := got.(*backend.ApiBackend); !ok {
+		t.Fatalf("expected hybrid + claude-* (no key, no cli) to degrade to *ApiBackend, got %T", got)
 	}
 }
 

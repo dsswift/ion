@@ -255,6 +255,49 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		opts.Model = s.lastModel
 	}
 
+	// Capability gate: the model is final here, so resolve the serving
+	// backend's static descriptor and decline unsupported feature requests
+	// BEFORE any dispatch work — a typed engine_capability_unsupported event,
+	// no run, no crash-shaped exit. This is the single choke point for
+	// feature gating (it replaced the per-backend static reject that lived in
+	// acp_backend.StartRun); the engine reports and the harness decides
+	// (reroute / abort / notify) — no engine-side auto-reroute. The session
+	// stays idle and immediately usable for the next prompt.
+	caps := m.resolvedBackend(opts.Model).Capabilities()
+	if opts.PlanMode && !caps.PlanMode {
+		s.requestID = ""
+		m.unbindRunLocked(requestID)
+		m.mu.Unlock()
+		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt_dispatch: capability gate declined prompt", map[string]any{
+			"key": key, "model": opts.Model, "backend": caps.Kind, "capability": "plan_mode",
+		})
+		m.emit(key, types.EngineEvent{
+			Type:              "engine_capability_unsupported",
+			Capability:        "plan_mode",
+			CapabilityBackend: caps.Kind,
+			CapabilityReason:  reason,
+		})
+		return nil
+	}
+	// Record the serving backend's descriptor for this run so handleRunExit
+	// can decide whether (and under which kind) to capture the reported
+	// session id as a native-session cursor (see native_session.go).
+	// Written under m.mu alongside requestID.
+	s.runCaps = caps
+	// For a native-session (delegated-CLI) backend, stash the ORIGINAL user
+	// prompt (before resolveCliContinuity bridges prior history into
+	// opts.Prompt) so handleRunExit can persist this turn into Ion's
+	// conversation store. Engine-owned backends persist their own turns via
+	// the runloop, so they leave this empty. Reset both halves at dispatch so
+	// a prior turn's text can never leak into this one.
+	s.pendingCliAssistantText = ""
+	if caps.ContextModel == backend.ContextModelNativeSession {
+		s.pendingCliUserTurn = text
+	} else {
+		s.pendingCliUserTurn = ""
+	}
+
 	injectContextFiles(s, &opts)
 	m.injectExtensionContext(s, key, &opts)
 	injectGitContext(s, &opts)
@@ -395,6 +438,16 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// Background, so we set it unconditionally for the main session run.
 	// See session_root_context.go and backend ParentCtx handling.
 	opts.ParentCtx = s.rootContext()
+
+	// Resume-vs-bridge decision for delegated-CLI backends: resume the
+	// backend's native session when this session holds a still-valid cursor
+	// for it (HeadEntryID == the conversation's LeafID), otherwise bridge by
+	// seeding the prior conversation transcript into the prompt — otherwise
+	// the CLI subprocess receives only the current prompt and the model
+	// loses all context (e.g. a conversation built on the ApiBackend then
+	// continued on claude-code). See native_session.go and
+	// cli_history_seed.go. Runs after opts.Prompt is finalized.
+	m.resolveCliContinuity(s, &opts)
 
 	// Dispatch to backend. ApiBackend uses the per-run config built above so
 	// every closure on this run sees this session's hooks/tools/perms.

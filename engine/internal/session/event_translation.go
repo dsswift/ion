@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -264,6 +265,18 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			if tc.CostUsd > 0 {
 				s2.lastTotalCost = tc.CostUsd
 			}
+			// Capture the final assistant text for delegated-CLI turn
+			// persistence (see persistCliTurn in native_session.go). LastText
+			// carries the last substantive text even when the final turn was
+			// pure reasoning; fall back to Result. Only meaningful when a
+			// native-session backend served this run (pendingCliUserTurn set).
+			if s2.pendingCliUserTurn != "" {
+				if tc.LastText != "" {
+					s2.pendingCliAssistantText = tc.LastText
+				} else {
+					s2.pendingCliAssistantText = tc.Result
+				}
+			}
 			// Capture pending denials so ReconcileState can re-emit them
 			// on the engine_status snapshot a re-attaching consumer
 			// requests. Cleared on next prompt dispatch (see
@@ -382,6 +395,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	var nextPrompt *pendingPrompt
 	var bgCount int
 	var ionConvID string
+	var captureCursorKind string
 	m.mu.Lock()
 	// Authoritative terminal point: clear the runID -> key routing binding
 	// under the lock, unconditionally (even if the session was already torn
@@ -422,20 +436,31 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		} else {
 			s.agents.ClearRunningStates()
 		}
-		// Capture the backend-reported sessionID into cliSessionID — claude's
-		// native session UUID is what `--resume` needs on the next CLI run.
-		// CRITICAL: do NOT write it into s.conversationID. conversationID is
-		// Ion's durable conversation-file identity; overwriting it with a
-		// claude UUID corrupts compaction, export, /clear, tree navigation,
-		// and the client-facing session id (all keyed on the Ion id). For the
-		// API backend the reported sessionID equals s.conversationID already,
-		// so storing it in cliSessionID is inert there (the API backend never
-		// reads CliResumeSessionID).
-		if sessionID != "" {
-			s.cliSessionID = sessionID
-			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: captured ( unchanged)", map[string]any{"run_id": sessionID, "key": key, "run_id_2": s.conversationID})
+		// Decide whether to capture the backend-reported sessionID as a
+		// native-session cursor — the backend-native resume handle for the
+		// next run on the same kind (claude UUID / codex thread / ACP
+		// session). The capture itself runs below, outside the lock, AFTER
+		// persistTerminalDispatches (which advances the leaf the cursor is
+		// tagged with) — see captureNativeSessionCursor in native_session.go.
+		// CRITICAL: the native id is never written into s.conversationID.
+		// conversationID is Ion's durable conversation-file identity;
+		// overwriting it with a backend-native id corrupts compaction,
+		// export, /clear, tree navigation, and the client-facing session id
+		// (all keyed on the Ion id).
+		//
+		// Guards:
+		//   - sessionID != s.conversationID: the API backend reports
+		//     sessionID == conversationID; feeding the Ion conversation id to
+		//     `claude --resume` (or ThreadResume) after a backend switch is a
+		//     resume id the CLI has never seen, which fails.
+		//   - runCaps recorded a native-session, resume-capable backend for
+		//     this run: only those hand back a resumable native id.
+		if sessionID != "" && sessionID != s.conversationID &&
+			s.runCaps.ContextModel == backend.ContextModelNativeSession && s.runCaps.Resume {
+			captureCursorKind = s.runCaps.Kind
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"run_id": sessionID, "key": key, "kind": captureCursorKind, "run_id_2": s.conversationID})
 		} else {
-			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: no sessionid reported by backend (clisessionid )", map[string]any{"key": key, "run_id": s.cliSessionID})
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: no native session id to capture", map[string]any{"key": key, "reported_session_id": sessionID, "kind": s.runCaps.Kind})
 		}
 		if len(s.promptQueue) > 0 {
 			next := s.promptQueue[0]
@@ -454,6 +479,15 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// sessionID, which for the CLI backend is claude's UUID with no Ion file.
 	m.persistTerminalDispatches(key, ionConvID)
 
+	// Persist this delegated-CLI turn (user prompt + assistant text) into Ion's
+	// conversation store so Ion's transcript — the single source of truth —
+	// actually contains CLI-served turns. Runs BEFORE flushPendingBinding so a
+	// first-CLI-turn conversation has a backing file when the binding flush
+	// checks conversation.Exists, and BEFORE the cursor capture so the cursor
+	// is tagged at the post-turn leaf. No-op for engine-owned runs
+	// (pendingCliUserTurn empty) and for runs with no conversation id.
+	m.persistCliTurn(key, ionConvID)
+
 	// Flush a deferred key->conversationId binding now that a run has exited
 	// and the backend's final save has landed. A freshly pre-minted session
 	// deferred its binding at StartSession (bindingPending) to avoid leaving a
@@ -462,6 +496,16 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// producing a turn (no save) leaves bindingPending set and writes nothing,
 	// so the next restart won't try to resume an empty id. (#230/#231)
 	m.flushPendingBinding(key, ionConvID)
+
+	// Capture the native-session cursor AFTER persistTerminalDispatches AND
+	// persistCliTurn — both advance the conversation's leaf, and the cursor
+	// must be tagged with the leaf as it stands at the end of all run-exit
+	// writes or the very next same-provider turn would see a moved leaf and
+	// re-bridge for nothing. Persists into the .tree.jsonl header (restart
+	// resilience) and mirrors onto s.nativeSessions (see native_session.go).
+	if captureCursorKind != "" {
+		m.captureNativeSessionCursor(key, ionConvID, captureCursorKind, sessionID)
+	}
 
 	// Emit updated agent state snapshot after clearing running agents.
 	// Completed agents (done/error/cancelled) are preserved so their

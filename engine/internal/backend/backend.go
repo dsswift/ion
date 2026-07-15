@@ -25,6 +25,16 @@ type RunBackend interface {
 	Cancel(requestID string) bool
 	IsRunning(requestID string) bool
 
+	// Capabilities returns the backend's static feature descriptor: how it
+	// sources conversation context, whether it supports plan mode and
+	// mid-turn steering, and whether it maintains a resumable native
+	// session. The session layer consults it at dispatch to gate
+	// unsupported feature requests cleanly and to decide between native
+	// resume and transcript bridging. See capabilities.go for the
+	// per-backend descriptors. Additive: HybridBackend answers for its
+	// default-routed inner; per-model callers resolve the inner first.
+	Capabilities() BackendCapabilities
+
 	// WriteToStdin sends a follow-up message to a running process over stdin.
 	// Used by ClaudeCodeBackend for bidirectional stream-json communication.
 	// ApiBackend returns nil (no stdin pipe -- uses conversation injection).

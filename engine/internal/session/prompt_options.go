@@ -117,10 +117,13 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		// this run records its descent from a prior session (client-driven
 		// checkpoint cut). Inert when resuming an existing conversation.
 		ParentConversationID: s.config.ParentConversationID,
-		// CliResumeSessionID is claude's own captured session UUID (empty on
-		// the first CLI run → no --resume). The API backend ignores it; only
-		// the CLI backend reads it. Distinct identity space from SessionID.
-		CliResumeSessionID:          s.cliSessionID,
+		// CliResumeSessionID is deliberately NOT set here. The resume-vs-
+		// bridge decision is made at dispatch by resolveCliContinuity
+		// (native_session.go), after the model — and therefore the serving
+		// backend kind — is final: a still-valid per-kind cursor sets the
+		// field; a stale/absent one leaves it empty and bridges the
+		// transcript instead. The API backend ignores the field; only the
+		// CLI backends read it. Distinct identity space from SessionID.
 		MaxTokens:                   s.config.MaxTokens,
 		Thinking:                    s.config.Thinking,
 		PlanMode:                    s.planMode,

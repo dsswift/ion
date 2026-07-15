@@ -253,6 +253,17 @@ func saveSplit(conv *Conversation, dir string) error {
 	if conv.Backend != "" {
 		treeHeader["backend"] = conv.Backend
 	}
+	// Persist the per-provider native-session cursors (additive, omitted when
+	// empty). The tree header is the natural home: cursors are position-tagged
+	// against the tree's LeafID, and both live in the same file so a cursor
+	// can never be persisted against a leaf it has not seen.
+	if len(conv.NativeSessions) > 0 {
+		nsSnap := make(map[string]NativeSessionCursor, len(conv.NativeSessions))
+		for k, v := range conv.NativeSessions {
+			nsSnap[k] = v
+		}
+		treeHeader["nativeSessions"] = nsSnap
+	}
 	isLegacy := conv._isLegacy
 	conv.unlock()
 
@@ -643,6 +654,26 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 
 	if leafID, ok := treeHeader["leafId"].(string); ok {
 		conv.LeafID = &leafID
+	}
+
+	// Rehydrate the per-provider native-session cursors (additive header
+	// field; absent on legacy files). Round-trip through JSON so the untyped
+	// header map decodes into the typed cursor struct; a malformed field is
+	// logged and dropped rather than failing the whole load — cursors are a
+	// disposable cache, and the safe fallback is "no cursor → re-bridge".
+	if rawNS, ok := treeHeader["nativeSessions"]; ok && rawNS != nil {
+		nsBytes, err := json.Marshal(rawNS)
+		if err == nil {
+			var ns map[string]NativeSessionCursor
+			if err = json.Unmarshal(nsBytes, &ns); err == nil && len(ns) > 0 {
+				conv.NativeSessions = ns
+			}
+		}
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "conversation", "load: dropping malformed nativeSessions header", map[string]any{
+				"conversation_id": conv.ID, "error": err.Error(),
+			})
+		}
 	}
 
 	if err := rehydrateEntries(conv); err != nil {

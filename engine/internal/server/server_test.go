@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -58,6 +59,17 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 
 func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
 func (m *mockBackend) FlushConversations()                                 {}
+
+// Capabilities reports an engine-owned, fully-capable descriptor so no
+// dispatch-time capability gate engages against this mock.
+func (m *mockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 func (m *mockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) { m.onNorm = fn }
 func (m *mockBackend) OnExit(fn func(string, *int, *string, string))       { m.onExit = fn }
 func (m *mockBackend) OnError(fn func(string, error))                      { m.onErr = fn }

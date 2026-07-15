@@ -144,6 +144,14 @@ func (d *drippingChildBackend) Cancel(string) bool                     { return 
 func (d *drippingChildBackend) IsRunning(string) bool                  { return false }
 func (d *drippingChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *drippingChildBackend) FlushConversations()                    {}
+func (d *drippingChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *drippingChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

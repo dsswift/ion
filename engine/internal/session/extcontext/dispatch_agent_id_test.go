@@ -166,6 +166,14 @@ func (d *idChildBackend) Cancel(string) bool                     { return false 
 func (d *idChildBackend) IsRunning(string) bool                  { return false }
 func (d *idChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *idChildBackend) FlushConversations()                    {}
+func (d *idChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *idChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -448,6 +456,14 @@ func (d *blockingChildBackend) Cancel(string) bool                     { return 
 func (d *blockingChildBackend) IsRunning(string) bool                  { return false }
 func (d *blockingChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *blockingChildBackend) FlushConversations()                    {}
+func (d *blockingChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *blockingChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -514,6 +530,14 @@ func (d *errorChildBackend) Cancel(string) bool                     { return fal
 func (d *errorChildBackend) IsRunning(string) bool                  { return false }
 func (d *errorChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *errorChildBackend) FlushConversations()                    {}
+func (d *errorChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *errorChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -657,6 +681,14 @@ func (d *lifecycleChildBackend) Cancel(string) bool                     { return
 func (d *lifecycleChildBackend) IsRunning(string) bool                  { return false }
 func (d *lifecycleChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *lifecycleChildBackend) FlushConversations()                    {}
+func (d *lifecycleChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *lifecycleChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

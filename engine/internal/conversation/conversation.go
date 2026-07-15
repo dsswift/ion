@@ -185,6 +185,18 @@ type Conversation struct {
 	// inferring it from a global mode.
 	Backend string `json:"backend,omitempty"`
 
+	// NativeSessions maps a delegated-CLI backend kind ("claude-code",
+	// "codex", "grok", "cursor") to the native-session cursor captured at
+	// the exit of the last run this conversation completed on that backend.
+	// A cursor is a disposable per-provider CACHE over Ion's transcript: it
+	// is valid for native resume only while HeadEntryID still equals the
+	// conversation's LeafID (no other writer advanced the transcript since
+	// capture). Stale or absent cursors are discarded and the next run on
+	// that backend re-bridges from the transcript instead. Persisted in the
+	// .tree.jsonl header (additive, omitempty) so continuity survives an
+	// engine restart. See session/native_session.go for capture/decide.
+	NativeSessions map[string]NativeSessionCursor `json:"nativeSessions,omitempty"`
+
 	// _isLegacy is set by Load when reading a legacy .jsonl or .json file.
 	// Save reads this flag to decide whether to unlink the legacy file after
 	// writing the new split format. Not JSON-tagged — never persisted.
@@ -196,6 +208,18 @@ type Conversation struct {
 	// signal-handler flush). Unexported — encoding/json ignores it, so the
 	// persisted shape is unchanged. See lock.go for the locking discipline.
 	mu sync.Mutex
+}
+
+// NativeSessionCursor is one delegated-CLI backend's resumable native-session
+// handle, position-tagged against Ion's conversation tree. Cursor is the
+// backend-native resume id (claude session UUID / codex thread id / ACP
+// session id). HeadEntryID is the conversation's LeafID at capture time — the
+// validity tag: the cursor may feed a native resume only while it still
+// equals the live LeafID, proving no other provider (or /clear, rewind, tree
+// navigation) advanced the transcript since this backend last saw it.
+type NativeSessionCursor struct {
+	Cursor      string `json:"cursor"`
+	HeadEntryID string `json:"headEntryId"`
 }
 
 // ContextUsageInfo describes current context window consumption.

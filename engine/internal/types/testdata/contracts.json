@@ -3,6 +3,11 @@
     "agent_state": [
       "agents"
     ],
+    "capability_unsupported": [
+      "backend",
+      "capability",
+      "reason"
+    ],
     "compacting": [
       "active",
       "clearedBlocks",
@@ -230,6 +235,9 @@
     "asyncStatus",
     "attemptNumber",
     "cancelled",
+    "capability",
+    "capabilityBackend",
+    "capabilityReason",
     "clearedBlocks",
     "command",
     "commandError",

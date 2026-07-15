@@ -77,17 +77,43 @@ type engineSession struct {
 	// genuine resume (file already present at StartSession) this is false and
 	// the binding is written immediately. (#230/#231 phantom-binding fix)
 	bindingPending bool
-	// cliSessionID is the claude-native session UUID captured from CLI run
-	// exits (the backend reports it via SessionInitEvent/TaskCompleteEvent →
-	// emitExit → handleRunExit). It is the ONLY value fed to `claude
-	// --resume` (via RunOptions.CliResumeSessionID). It is deliberately kept
-	// distinct from conversationID: conversationID is Ion's durable
-	// conversation-file identity (`{millis}-{12hex}`, the basename of the
-	// `~/.ion/conversations/<id>.*` files) and must never be overwritten with
-	// a claude UUID — doing so would break compaction, export, /clear, tree
-	// navigation, and the client-facing session id, all of which key on the
-	// Ion id. Empty until the first successful CLI run reports a UUID.
-	cliSessionID                string
+	// nativeSessions maps a delegated-CLI backend kind ("claude-code",
+	// "codex", "grok", "cursor") to the native-session cursor captured from
+	// that backend's last run exit (the backend reports its native id via
+	// emitExit → handleRunExit). A cursor is the ONLY value ever fed to a
+	// native resume (`claude --resume` / ThreadResume / session/load, via
+	// RunOptions.CliResumeSessionID), and only while its HeadEntryID still
+	// equals the conversation's LeafID — see resolveCliContinuity in
+	// native_session.go. Cursors are deliberately kept distinct from
+	// conversationID: conversationID is Ion's durable conversation-file
+	// identity (`{millis}-{12hex}`) and must never be overwritten with a
+	// backend-native id — doing so would break compaction, export, /clear,
+	// tree navigation, and the client-facing session id, all of which key on
+	// the Ion id. Mirrored to conversation.NativeSessions (the .tree.jsonl
+	// header) on capture and rehydrated from it in StartSession, so
+	// continuity survives an engine restart. Guarded by m.mu.
+	nativeSessions map[string]conversation.NativeSessionCursor
+	// runCaps is the capability descriptor of the backend serving the
+	// session's active run, recorded at dispatch (prompt_dispatch.go) after
+	// the model is final. handleRunExit reads it to decide whether (and
+	// under which kind) to capture the backend-reported session id as a
+	// native-session cursor. Guarded by m.mu; overwritten on every dispatch.
+	runCaps                     backend.BackendCapabilities
+	// pendingCliUserTurn holds the current run's original user prompt (the
+	// display text, before any transcript bridging mutated opts.Prompt) when
+	// the run is served by a native-session (delegated-CLI) backend. Together
+	// with pendingCliAssistantText it is persisted into Ion's conversation
+	// store at run exit so the delegated-CLI turn lands in Ion's transcript —
+	// the single source of truth. Without this, CLI turns are invisible to
+	// Ion and a later cross-provider turn's transcript bridge misses them (the
+	// continuity-loss bug). Empty for engine-owned backends, which persist
+	// their own turns via the runloop. Guarded by m.mu.
+	pendingCliUserTurn          string
+	// pendingCliAssistantText holds the current run's final assistant text
+	// (TaskCompleteEvent.LastText, else Result), captured as the event flows
+	// through handleNormalizedEvent, for the same CLI-turn persistence.
+	// Guarded by m.mu.
+	pendingCliAssistantText     string
 	// traceID is a stable per-session OpenTelemetry-compatible 32-hex trace ID.
 	// Generated once in newSessionRootContext and threaded into rootCtx via
 	// utils.WithTraceID so every log line and telemetry span emitted for this

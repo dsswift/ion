@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -37,6 +38,14 @@ func (d *doubleExitChildBackend) Cancel(string) bool                     { retur
 func (d *doubleExitChildBackend) IsRunning(string) bool                  { return false }
 func (d *doubleExitChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *doubleExitChildBackend) FlushConversations()                    {}
+func (d *doubleExitChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *doubleExitChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

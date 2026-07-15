@@ -33,10 +33,26 @@ type claudeCodeRun struct {
 	stdinMu      sync.Mutex
 	planMode     bool
 	planFilePath string
-	// planCaptured latches once the native ExitPlanMode plan argument has been
-	// written to the plan file (see handlePlanModeAssistant), so the result
-	// handler does not double-surface the proposal.
+	// planCaptured latches once the native plan has been written to the plan
+	// file (from the ExitPlanMode argument or a plans-file Write fallback —
+	// see handlePlanModeAssistant/handlePlanModeResult), so the result handler
+	// does not double-surface the proposal.
 	planCaptured bool
+	// sawExitPlanMode latches when the ExitPlanMode tool_use appears in the
+	// assistant stream, regardless of whether it carried plan text. This is
+	// the RELIABLE "the model proposed exiting plan mode" signal: newer
+	// claude-code (2.1.x) auto-approves ExitPlanMode under the engine's
+	// bypass permission mode, so it does NOT appear in the result event's
+	// permission_denials — the result-denial-based detection misses it and the
+	// run falls through to the (wrong) auto-exit-with-empty-plan path.
+	sawExitPlanMode bool
+	// pendingPlanFromFile holds the content of the most recent Write to a
+	// plans file (~/.claude/plans/<slug>.md or the run's own plan file) seen
+	// in the assistant stream. Newer claude-code writes the plan to its own
+	// plans directory via the Write tool and then calls ExitPlanMode with an
+	// EMPTY argument, so this is the fallback plan source when ExitPlanMode
+	// carries no text.
+	pendingPlanFromFile string
 }
 
 // ClaudeCodeBackend implements RunBackend by spawning the Claude Code CLI

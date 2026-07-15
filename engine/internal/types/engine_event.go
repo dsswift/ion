@@ -165,6 +165,18 @@ type EngineEvent struct {
 	FallbackModel          string `json:"fallbackModel,omitempty"`
 	FallbackReason         string `json:"fallbackReason,omitempty"`
 
+	// engine_capability_unsupported — workflow signal emitted when a
+	// requested feature (e.g. plan mode) is not supported by the backend
+	// that would serve the run, and the engine declined the prompt cleanly
+	// instead of dispatching a run that would fail. Mirrors the underlying
+	// CapabilityUnsupportedEvent NormalizedEvent variant. No run starts;
+	// the session stays idle and immediately usable. Consumers may reroute
+	// to a capable model, surface the reason, or ignore the event — see
+	// CLAUDE.md § "The typed-event corollary".
+	Capability        string `json:"capability,omitempty"`
+	CapabilityBackend string `json:"capabilityBackend,omitempty"`
+	CapabilityReason  string `json:"capabilityReason,omitempty"`
+
 	// engine_dead
 	ExitCode   *int     `json:"exitCode,omitempty"`
 	Signal     *string  `json:"signal,omitempty"`

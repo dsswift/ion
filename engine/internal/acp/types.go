@@ -154,9 +154,16 @@ type AuthenticateParams struct {
 // --- session lifecycle ---
 
 // SessionNewParams is the "session/new" request payload.
+//
+// mcpServers is REQUIRED by the ACP spec and by the grok agent's serde: it
+// rejects session/new with "-32602 Invalid params: missing field `mcpServers`"
+// when the key is absent. The field therefore carries no `omitempty` — a nil
+// slice must still serialize as `[]`, not be dropped. Callers that pass no MCP
+// servers get an empty (non-nil) slice; the delegated CLI uses its own MCP
+// configuration regardless, so an empty list is the correct "none from Ion".
 type SessionNewParams struct {
 	Cwd        string `json:"cwd"`
-	McpServers []any  `json:"mcpServers,omitempty"`
+	McpServers []any  `json:"mcpServers"`
 }
 
 // SessionResult is the shared result of session/new and session/load.
@@ -166,11 +173,13 @@ type SessionResult struct {
 	Modes     *SessionModeState `json:"modes,omitempty"`
 }
 
-// SessionLoadParams is the "session/load" request payload.
+// SessionLoadParams is the "session/load" request payload. Same required-field
+// contract as SessionNewParams: mcpServers must be present (serialized as `[]`
+// when empty), not dropped.
 type SessionLoadParams struct {
 	SessionID  string `json:"sessionId"`
 	Cwd        string `json:"cwd"`
-	McpServers []any  `json:"mcpServers,omitempty"`
+	McpServers []any  `json:"mcpServers"`
 }
 
 // --- prompt ---

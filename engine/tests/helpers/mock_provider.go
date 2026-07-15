@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -385,6 +386,17 @@ func (m *MockBackend) WriteToStdin(_ string, _ interface{}) error {
 
 // FlushConversations is a no-op stub satisfying the RunBackend interface.
 func (m *MockBackend) FlushConversations() {}
+
+// Capabilities reports an engine-owned, fully-capable descriptor so no
+// dispatch-time capability gate engages against this mock.
+func (m *MockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (m *MockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
 	m.mu.Lock()

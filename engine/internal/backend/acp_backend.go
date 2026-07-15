@@ -177,15 +177,18 @@ func (b *AcpBackend) WriteToStdin(requestID string, msg interface{}) error {
 }
 
 // StartRun begins a run. Plan mode maps onto the agent's native plan/architect
-// session mode when the spec is planCapable (cursor); agents without one
-// (grok) surface a clean unsupported error — a normalized ErrorEvent plus a
+// session mode when the live session advertises one; agents without one
+// (grok, or a plan-capable spec whose session offers none at runtime) surface
+// a clean unsupported error inside runPrompt — a normalized ErrorEvent plus a
 // DELIBERATE exit 0, never a crash-shaped nonzero exit that consumers would
 // render as a dead engine process.
+//
+// The session layer's capability gate (session/prompt_dispatch.go, driven by
+// Capabilities().PlanMode) declines grok+plan before dispatch, so the primary
+// flow never reaches this backend with an unsupportable plan request. The
+// runtime check in runPrompt remains as the backstop for direct backend
+// consumers and for live sessions that advertise fewer modes than the spec.
 func (b *AcpBackend) StartRun(requestID string, options types.RunOptions) {
-	if options.PlanMode && !b.spec.planCapable {
-		b.emitPlanModeUnsupported(requestID, "")
-		return
-	}
 	go b.runPrompt(requestID, options)
 }
 

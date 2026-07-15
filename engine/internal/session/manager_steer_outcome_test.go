@@ -75,6 +75,17 @@ func (m *steerableMockBackend) IsRunning(requestID string) bool {
 func (m *steerableMockBackend) WriteToStdin(_ string, _ interface{}) error { return nil }
 func (m *steerableMockBackend) FlushConversations()                        {}
 
+// Capabilities mirrors mockBackend's engine-owned descriptor (see
+// manager_helpers_test.go) so no dispatch gate or history seed engages.
+func (m *steerableMockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
+
 func (m *steerableMockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
 	m.onNorm = fn
 }

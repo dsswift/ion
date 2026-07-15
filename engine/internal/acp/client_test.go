@@ -150,6 +150,42 @@ func TestACP_SessionNew_WithModels(t *testing.T) {
 	if res.SessionID != "sess_1" || res.Models == nil || len(res.Models.AvailableModels) != 2 {
 		t.Fatalf("unexpected session result: %+v", res)
 	}
+
+	// Regression: grok's ACP rejects session/new with -32602 when mcpServers
+	// is absent. The field must serialize as `[]` (present, empty), never be
+	// omitted. Assert the wire payload the agent actually received.
+	raw := agent.paramsFor("session/new")
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode session/new params: %v", err)
+	}
+	mcp, present := got["mcpServers"]
+	if !present {
+		t.Fatalf("session/new params missing mcpServers (grok rejects this): %s", raw)
+	}
+	if string(mcp) != "[]" {
+		t.Fatalf("mcpServers = %s, want [] (present, empty array)", mcp)
+	}
+}
+
+// TestACP_SessionLoad_SendsMcpServers pins the same required-field contract on
+// session/load: mcpServers must be present as `[]`, not omitted.
+func TestACP_SessionLoad_SendsMcpServers(t *testing.T) {
+	c, agent := newFakeAgent(t, "grok", Handlers{})
+	agent.on("session/load", func(json.RawMessage) any {
+		return SessionResult{SessionID: "sess_9"}
+	})
+	if _, err := c.SessionLoad(context.Background(), "sess_9", "/repo"); err != nil {
+		t.Fatalf("session/load: %v", err)
+	}
+	raw := agent.paramsFor("session/load")
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode session/load params: %v", err)
+	}
+	if mcp, present := got["mcpServers"]; !present || string(mcp) != "[]" {
+		t.Fatalf("session/load mcpServers = %s (present=%v), want [] present", mcp, present)
+	}
 }
 
 func TestACP_Prompt_StopReason(t *testing.T) {

@@ -281,6 +281,18 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			FallbackReason:         e.Reason,
 		}
 
+	case *types.CapabilityUnsupportedEvent:
+		// Surface a declined feature request as a typed engine event so
+		// clients can render a recoverable message (not a dead engine).
+		// The engine reports; the harness decides (reroute / abort /
+		// notify). See CLAUDE.md § "The typed-event corollary".
+		return types.EngineEvent{
+			Type:              "engine_capability_unsupported",
+			Capability:        e.Capability,
+			CapabilityBackend: e.Backend,
+			CapabilityReason:  e.Reason,
+		}
+
 	case *types.ThinkingBlockStartEvent:
 		// Reasoning block began. No payload — arrival is the signal.
 		// Consumers create a "thinking" affordance and start a pulse/elapsed

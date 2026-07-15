@@ -152,6 +152,12 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		// tab (plus a partial header read) dominated startup parse time.
 		conv := m.rehydrateDispatchState(s, key)
 
+		// Restore the persisted per-provider native-session cursors so a
+		// resumed conversation keeps its delegated-CLI continuity across the
+		// restart: a still-valid cursor lets the next same-provider turn
+		// resume natively instead of re-bridging the whole transcript.
+		m.rehydrateNativeSessions(s, conv)
+
 		// Seed lastModel from the conversation so ReconcileState emits the
 		// correct model before any prompt dispatches. Without this, a resumed
 		// session emits model="" on reconcile, causing the desktop to fall back

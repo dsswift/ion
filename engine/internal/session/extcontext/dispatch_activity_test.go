@@ -189,6 +189,14 @@ func (d *activityChildBackend) Cancel(string) bool                     { return 
 func (d *activityChildBackend) IsRunning(string) bool                  { return false }
 func (d *activityChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *activityChildBackend) FlushConversations()                    {}
+func (d *activityChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *activityChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

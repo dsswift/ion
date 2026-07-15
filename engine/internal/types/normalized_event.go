@@ -43,7 +43,12 @@ const (
 	// client does its own optimistic transcript insert).
 	EventPromptInjected = "prompt_injected"
 	EventModelFallback  = "model_fallback"
-	EventRunStalled     = "run_stalled"
+	// EventCapabilityUnsupported signals that a requested feature (e.g. plan
+	// mode) is not supported by the backend that would serve the run, and the
+	// run was declined cleanly — no dispatch, no crash-shaped exit. See
+	// CapabilityUnsupportedEvent in normalized_event_capability.go.
+	EventCapabilityUnsupported = "capability_unsupported"
+	EventRunStalled            = "run_stalled"
 	// EventTaskSuspend is the engine-internal signal that ends an LLM run
 	// without completing the dispatch. The agent's LLM run exits (saving
 	// tokens, showing as idle in the UI) but its parent's OnComplete callback
@@ -237,6 +242,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &PromptInjectedEvent{}
 	case EventModelFallback:
 		target = &ModelFallbackEvent{}
+	case EventCapabilityUnsupported:
+		target = &CapabilityUnsupportedEvent{}
 	case EventRunStalled:
 		target = &RunStalledEvent{}
 	case EventTaskSuspend:

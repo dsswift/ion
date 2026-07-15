@@ -133,6 +133,86 @@ func TestClaudeCodePlanResult_AutoExitSynthesisWhenNoExitCall(t *testing.T) {
 	}
 }
 
+// planWriteThenEmptyExit builds the newer-claude-code plan sequence: a Write
+// to the plans file carrying the plan, then an ExitPlanMode with an empty
+// argument.
+func planWriteThenEmptyExit(plansPath, plan string) *types.TaskUpdateEvent {
+	return &types.TaskUpdateEvent{Message: types.AssistantMessagePayload{
+		Content: []types.ContentBlock{
+			{Type: "tool_use", Name: "Write", ID: "w-1", Input: map[string]any{"file_path": plansPath, "content": plan}},
+			{Type: "text", Text: "plan written; exiting plan mode"},
+			{Type: "tool_use", Name: "ExitPlanMode", ID: "tu-1", Input: map[string]any{"plan": ""}},
+		},
+	}}
+}
+
+// TestClaudeCodePlanCapture_FromPlansFileWrite pins the newer claude-code
+// (2.1.x) behavior: the model writes the plan to its own ~/.claude/plans file
+// via Write and calls ExitPlanMode with an EMPTY argument, and the CLI
+// auto-approves ExitPlanMode so it never appears in the result's
+// permission_denials. The plan must still be captured (from the plans-file
+// write) and the proposal surfaced.
+func TestClaudeCodePlanCapture_FromPlansFileWrite(t *testing.T) {
+	b, events := planModeTestBackend()
+	planPath := filepath.Join(t.TempDir(), "ion-plan.md")
+	plansWrite := filepath.Join(t.TempDir(), "plans", "make-a-plan-for-mellow-turing.md")
+	run := &claudeCodeRun{requestID: "req-file", planMode: true, planFilePath: planPath}
+
+	// Stream: Write(plan to plans file) + empty ExitPlanMode.
+	b.handlePlanModeAssistant(run, planWriteThenEmptyExit(plansWrite, "# Real Plan\n\nstep one\n"))
+	if run.planCaptured {
+		t.Fatal("plan should not be captured until the result handler (all writes seen)")
+	}
+	if !run.sawExitPlanMode {
+		t.Fatal("sawExitPlanMode must latch from the stream even with an empty ExitPlanMode arg")
+	}
+	if run.pendingPlanFromFile != "# Real Plan\n\nstep one\n" {
+		t.Fatalf("plans-file write not stashed: %q", run.pendingPlanFromFile)
+	}
+
+	// Result: empty permission_denials (ExitPlanMode auto-approved).
+	b.handlePlanModeResult(run, &types.TaskCompleteEvent{}, &types.RunOptions{})
+
+	if !run.planCaptured {
+		t.Fatal("plan not captured from plans-file write fallback")
+	}
+	data, err := os.ReadFile(planPath)
+	if err != nil || string(data) != "# Real Plan\n\nstep one\n" {
+		t.Fatalf("ion plan file not written from fallback: err=%v content=%q", err, string(data))
+	}
+	// Exactly the captured-plan surface: PlanFileWritten + PlanProposal.
+	if len(*events) != 2 {
+		t.Fatalf("expected PlanFileWritten + PlanProposal, got %d events", len(*events))
+	}
+	if _, ok := (*events)[0].Data.(*types.PlanFileWrittenEvent); !ok {
+		t.Fatalf("event[0] = %T, want PlanFileWrittenEvent", (*events)[0].Data)
+	}
+	if _, ok := (*events)[1].Data.(*types.PlanProposalEvent); !ok {
+		t.Fatalf("event[1] = %T, want PlanProposalEvent", (*events)[1].Data)
+	}
+}
+
+// TestClaudeCodePlanResult_StreamExitDrivesResultWithoutDenial pins that a
+// stream-observed ExitPlanMode (auto-approved, so absent from result denials)
+// with no captured plan still surfaces the fallback proposal — it must NOT
+// fall through to the auto-exit-synthesis path, which is only for turns that
+// never called ExitPlanMode at all.
+func TestClaudeCodePlanResult_StreamExitDrivesResultWithoutDenial(t *testing.T) {
+	b, events := planModeTestBackend()
+	planPath := filepath.Join(t.TempDir(), "p.md")
+	run := &claudeCodeRun{requestID: "req-stream", planMode: true, planFilePath: planPath, sawExitPlanMode: true}
+
+	// Empty result (no ExitPlanMode denial), no stashed plan.
+	b.handlePlanModeResult(run, &types.TaskCompleteEvent{}, &types.RunOptions{})
+
+	if len(*events) != 1 {
+		t.Fatalf("expected exactly the fallback proposal, got %d events", len(*events))
+	}
+	if _, ok := (*events)[0].Data.(*types.PlanProposalEvent); !ok {
+		t.Fatalf("event[0] = %T, want PlanProposalEvent (not auto-exit synthesis)", (*events)[0].Data)
+	}
+}
+
 func TestClaudeCodePlanResult_AutoExitDisabledByRunOptions(t *testing.T) {
 	b, events := planModeTestBackend()
 	run := &claudeCodeRun{requestID: "req-6", planMode: true, planFilePath: filepath.Join(t.TempDir(), "p.md")}

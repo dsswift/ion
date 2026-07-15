@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -349,16 +350,35 @@ func TestHandleRunExit_ClearsRequestID(t *testing.T) {
 	}
 }
 
-// TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID verifies the
-// corrected two-identity-space contract: the backend-reported sessionID
-// (claude's UUID for the CLI backend) is captured into cliSessionID and fed
-// to --resume via CliResumeSessionID on the next run, while Ion's
-// conversationID (the durable conversation-file identity) is NEVER
-// overwritten. Previously this test asserted the (defective) behavior of
-// overwriting conversationID with the backend value; that conflated the two
-// identity spaces and corrupted Ion-side file lookups for CLI sessions.
-func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
-	mb := newMockBackend()
+// cliCapsMockBackend is a mockBackend whose descriptor reports a
+// native-session, resume-capable CLI backend, so the full dispatch → exit →
+// capture → resume pipeline runs against the mock exactly as it would
+// against claude-code.
+type cliCapsMockBackend struct{ *mockBackend }
+
+func (m *cliCapsMockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:             "claude-code",
+		ContextModel:     backend.ContextModelNativeSession,
+		PlanMode:         true,
+		Steering:         true,
+		Resume:           true,
+		ResumeHandleKind: backend.ResumeHandleClaudeSessionUUID,
+	}
+}
+
+// TestHandleRunExit_CapturesBackendSessionIDIntoCursor verifies the
+// corrected two-identity-space contract end to end through SendPrompt: the
+// backend-reported sessionID (claude's UUID for the CLI backend) is captured
+// as the per-kind native-session cursor and fed to --resume via
+// CliResumeSessionID on the next run, while Ion's conversationID (the
+// durable conversation-file identity) is NEVER overwritten. Previously this
+// test asserted the (defective) behavior of overwriting conversationID with
+// the backend value; that conflated the two identity spaces and corrupted
+// Ion-side file lookups for CLI sessions.
+func TestHandleRunExit_CapturesBackendSessionIDIntoCursor(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mb := &cliCapsMockBackend{newMockBackend()}
 	mgr := NewManager(mb)
 
 	_, _ = mgr.StartSession("sessid", defaultConfig())
@@ -377,16 +397,16 @@ func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
 	code := 0
 	mb.emitExit(keys[0], &code, nil, "session-abc")
 
-	// After exit, cliSessionID holds the backend value and conversationID is
-	// unchanged (still the Ion id).
+	// After exit, the cursor holds the backend value (keyed by the serving
+	// backend kind) and conversationID is unchanged (still the Ion id).
 	mgr.mu.RLock()
 	s := mgr.sessions["sessid"]
-	gotCli := s.cliSessionID
+	cursor, hasCursor := s.nativeSessions["claude-code"]
 	gotConv := s.conversationID
 	mgr.mu.RUnlock()
 
-	if gotCli != "session-abc" {
-		t.Errorf("expected cliSessionID='session-abc', got %q", gotCli)
+	if !hasCursor || cursor.Cursor != "session-abc" {
+		t.Errorf("expected nativeSessions[claude-code].Cursor='session-abc', got %q (present=%v)", cursor.Cursor, hasCursor)
 	}
 	if gotConv != ionConvID {
 		t.Errorf("conversationID must be unchanged: got %q, want %q", gotConv, ionConvID)
