@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldWarning, ShieldCheck, Terminal, ListChecks, Eye, Question, PushPinSlash } from '@phosphor-icons/react'
+import { ShieldWarning, ShieldCheck, Terminal, ListChecks, Eye, PushPinSlash } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { PlanViewer } from './PlanViewer'
@@ -23,7 +23,7 @@ interface Props {
    * `clearContext` defaults to false — the regular Implement button
    * preserves the engine conversation across the plan→implement boundary.
    * When `clearContext = true`, the handler runs the reset-and-archive
-   * path. See runHandleImplement in ConversationView-implement.ts.
+   * path. See implementPlan in implement-slice.ts.
    */
   onImplement?: (clearContext?: boolean) => void
   /**
@@ -35,7 +35,7 @@ interface Props {
   onApprove?: (toolNames: string[]) => void
 }
 
-export function PermissionDeniedCard({ tools, tabId, sessionId, projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
+export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _sessionId, projectPath: _projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
   const colors = useColors()
   const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
   // Reveals the secondary "Implement, clear context" action on the

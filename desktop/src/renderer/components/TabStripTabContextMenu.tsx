@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import {
@@ -13,6 +14,7 @@ import type { TabState } from '../../shared/types'
 import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
+import { rDebug, rInfo } from '../rendererLogger'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -41,6 +43,8 @@ export function TabContextMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(ref, true)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
@@ -391,7 +395,7 @@ export function TabContextMenu({
           newGroupName={newGroupName}
           setNewGroupName={setNewGroupName}
           onPickTarget={(groupId, label) => {
-            console.log('[TabContextMenu] move-all confirmation requested', { tabCount: groupTabs?.length ?? 0, targetGroupId: groupId, targetLabel: label })
+            rDebug('tab-context-menu', 'move-all confirmation requested', { tab_count: groupTabs?.length ?? 0, target_group: groupId, target_label: label })
             setMoveAllSubmenu(null)
             setMoveAllParentRect(null)
             setPendingMoveAll({ groupId, label })
@@ -408,13 +412,13 @@ export function TabContextMenu({
         cancelLabel="Cancel"
         danger={false}
         onConfirm={() => {
-          console.log('[TabContextMenu] move-all confirmed', { tabCount: groupTabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+          rInfo('tab-context-menu', 'move-all confirmed', { tab_count: groupTabs.length, target_group: pendingMoveAll.groupId, target_label: pendingMoveAll.label })
           for (const t of groupTabs) moveTabToGroup(t.id, pendingMoveAll.groupId)
           setPendingMoveAll(null)
           onClose()
         }}
         onCancel={() => {
-          console.log('[TabContextMenu] move-all cancelled', { tabCount: groupTabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+          rDebug('tab-context-menu', 'move-all cancelled', { tab_count: groupTabs.length, target_group: pendingMoveAll.groupId, target_label: pendingMoveAll.label })
           setPendingMoveAll(null)
           onClose()
         }}

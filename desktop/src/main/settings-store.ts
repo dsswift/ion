@@ -42,7 +42,7 @@ export const SETTINGS_DEFAULTS = {
   // clear-context action is opt-in per-plan (per-click), not a global
   // forced behavior. Users can also `/clear` manually at any time. See
   // desktop/src/renderer/components/PermissionDeniedCard.tsx for the
-  // button reveal and runHandleImplement (ConversationView-implement.ts) for
+  // button reveal and implementPlan (implement-slice.ts) for
   // the branching behavior.
   showImplementClearContext: false,
   // Whether the desktop acts on "redirect" level engine_intercept events —

@@ -186,6 +186,10 @@ export function useTabRestoration() {
               const skeletonMode: 'auto' | 'plan' = main?.permissionMode ?? (st as any).permissionMode ?? 'auto'
               const pane = makeMainPane({
                 messages: [],
+                // Skeleton restore: history loads lazily (loadSkeletonMessages).
+                // The explicit marker keeps hydration correct even if live
+                // events land on this pane before the user opens the tab.
+                historyHydrated: false,
                 messageCount: main?.messageCount ?? 0,
                 modelOverride: main?.modelOverride || null,
                 draftInput: main?.draftInput ?? '',

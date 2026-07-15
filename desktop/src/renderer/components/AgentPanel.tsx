@@ -84,25 +84,23 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const userToggled = useRef(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // Visibility scoping:
-  //  - subDispatch tiers (inside the popup): visibility metadata does not apply
-  //    to sub-dispatched agents, so every agent shows (skip isAgentVisible).
-  //  - main conversation: apply the always/sticky/ephemeral visibility filter.
-  const visibilityFiltered = subDispatch ? agents : agents.filter(isAgentVisible)
-  // Root scoping (main conversation only): when rootOnly, drop any agent that
-  // is a nested dispatch (a specialist dispatched by another dispatched agent).
-  // Each agent-state pill carries its own dispatch attribution
-  // (dispatchDepth / dispatchParentId, stamped in dispatch_agent.go), so the
-  // filter is per-instance: it correctly hides a depth-2 dispatch of an agent
-  // name even when the SAME name is also dispatched at root level by the
-  // orchestrator. (The earlier name-based telemetry heuristic could not
-  // distinguish those and leaked the nested instance into the main panel.)
-  // Agents with no attribution (extension-roster rows, pre-fix persisted state)
-  // are treated as root-level and stay visible — see isRootLevelAgent.
-  const scoped = rootOnly
-    ? visibilityFiltered.filter(isRootLevelAgent)
-    : visibilityFiltered
-  const visible = sortAgents(scoped)
+  // Visibility + root scoping. Memoized so `visible` is a stable reference:
+  // `filter` and `sortAgents` always produce new arrays, and effects that
+  // depend on `visible` would re-fire on every render (once per streaming text
+  // chunk) without memoization — causing sustained re-render thrashing.
+  //  - subDispatch tiers: skip the always/sticky/ephemeral visibility filter.
+  //  - rootOnly (main conversation): drop depth-2+ nested dispatches. Each
+  //    agent carries dispatchDepth / dispatchParentId from dispatch_agent.go,
+  //    so the filter is per-instance — the same agent name dispatched at both
+  //    root and nested levels is handled correctly. Agents with no attribution
+  //    (extension-roster rows, pre-fix state) are treated as root-level.
+  const visible = React.useMemo(() => {
+    const visibilityFiltered = subDispatch ? agents : agents.filter(isAgentVisible)
+    const scoped = rootOnly
+      ? visibilityFiltered.filter(isRootLevelAgent)
+      : visibilityFiltered
+    return sortAgents(scoped)
+  }, [agents, subDispatch, rootOnly])
 
   // Derive per-agent nesting depth from flat dispatch telemetry.
   const agentDepths = React.useMemo(

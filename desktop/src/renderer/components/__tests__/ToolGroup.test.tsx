@@ -67,6 +67,18 @@ function render(props: React.ComponentProps<typeof ToolGroup>): string {
   }
 }
 
+function errorTool(id: string): Message {
+  return {
+    id,
+    role: 'tool',
+    content: '',
+    toolName: 'Bash',
+    toolInput: '',
+    toolStatus: 'error',
+    timestamp: 0,
+  } as Message
+}
+
 const tools = [tool('t0', 'Read'), tool('t1', 'Edit'), tool('t2', 'Bash')]
 
 describe('ToolGroup embedded mode', () => {
@@ -106,5 +118,26 @@ describe('ToolGroup embedded mode', () => {
         root.unmount()
       })
     }
+  })
+})
+
+describe('ToolGroup collapsed — three-state failure summary', () => {
+  it('shows failure count when group has errors', () => {
+    // 100 tools: 3 error, 97 completed. Collapsed (no userExecuted, no expandToolResults).
+    const mixed: Message[] = []
+    for (let i = 0; i < 97; i++) mixed.push(tool(`c${i}`, 'Read'))
+    for (let i = 0; i < 3; i++) mixed.push(errorTool(`e${i}`))
+
+    const html = render({ tools: mixed, skipMotion: true })
+    // Collapsed summary must contain the failure count.
+    expect(html).toMatch(/3 failed/)
+  })
+
+  it('does NOT show failure text when all tools completed', () => {
+    const allOk: Message[] = []
+    for (let i = 0; i < 5; i++) allOk.push(tool(`c${i}`, 'Read'))
+
+    const html = render({ tools: allOk, skipMotion: true })
+    expect(html).not.toMatch(/failed/)
   })
 })

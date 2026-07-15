@@ -7,6 +7,8 @@ import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restar
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { resolveAtvPermission } from './atv-state-cache'
+import { notifyAtvPermissionResolved } from './atv-window-manager'
 import { resolveBashAllowlistFromSettings } from './plan-mode-bash-allowlist'
 import type {
   EngineConfig,
@@ -476,6 +478,13 @@ export class EngineControlPlane extends EventEmitter {
   respondToPermission(tabId: string, questionId: string, optionId: string): boolean {
     if (!this.tabs.has(tabId)) { log('respond_to_permission: dropped, unknown tab', { tab_id: tabId, question_id: questionId }); return false }
     this.bridge.sendPermissionResponse(tabId, questionId, optionId)
+    // Cross-surface reconcile (mirror-store architecture): this is the ONE
+    // spot every surface's answer funnels through — overlay card, iOS
+    // remote, ATV approval. Resolving the ATV pending queue and pushing the
+    // resolution here means an answer from ANY surface clears the others
+    // instantly, instead of waiting for the next status transition.
+    resolveAtvPermission(tabId, questionId)
+    notifyAtvPermissionResolved(tabId, questionId)
     return true
   }
 

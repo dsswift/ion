@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { TerminalPaneState, ConversationPane, Message } from '../../shared/types'
+import type { TerminalPaneState, ConversationPane } from '../../shared/types'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import type { State, StoreSet, StoreGet } from './session-store-types'
 import type { ResourceItem } from '../../shared/types-engine'
@@ -20,6 +20,7 @@ import { createPermissionsSlice } from './slices/permissions-slice'
 import { createSendSlice } from './slices/send-slice'
 import { createEventSlice } from './slices/event-slice'
 import { createEngineSlice } from './slices/engine-slice'
+import { createImplementSlice } from './slices/implement-slice'
 import { setupPersistence } from './session-store-persistence'
 import { usePreferencesStore } from '../preferences'
 
@@ -99,6 +100,7 @@ export const useSessionStore = create<State>((set, get) => {
     ...createSendSlice(_set, _get),
     ...createEventSlice(_set, _get),
     ...createEngineSlice(_set, _get),
+    ...createImplementSlice(_set, _get),
     markResourceRead: (resourceId: string) => {
       set((state) => {
         const updated = new Set(state.readResourceIds)

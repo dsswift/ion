@@ -238,6 +238,19 @@ export interface ConversationInstance {
    * The Status Drawer reads this synchronously on open; no fetch required.
    */
   contextBreakdown: ContextBreakdownPayload | null
+  /**
+   * Whether the on-disk scrollback for this conversation has been loaded into
+   * `messages`. Skeleton (lazy-load) panes are created with `false`; the
+   * hydration path (`loadSkeletonMessages`) sets `true` on completion. This is
+   * the PRECISE hydration marker — "messages is empty" is NOT a reliable
+   * proxy, because live streamed events (and cross-window user-message echoes)
+   * append to a never-hydrated skeleton pane, after which an emptiness check
+   * silently skips loading the history (the ATV-mirror last-turn-only bug).
+   * `undefined` (legacy panes created by paths that don't set it) falls back
+   * to the empty-messages+messageCount heuristic in `needsHistoryHydration`.
+   * Client-only and transient: never persisted, not part of the Go contract.
+   */
+  historyHydrated?: boolean
 }
 
 export interface ConversationPane {

@@ -77,7 +77,7 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       // *proposal awaiting user approval*, identical in meaning to a
       // model-driven ExitPlanMode — which does NOT flip permissionMode
       // (see event-slice-plan-mode.ts). Per ADR-003, the instance stays
-      // 'plan' until the user approves at the ConversationView-implement.ts
+      // 'plan' until the user approves at the implement-slice.ts
       // chokepoint (onImplement → setPermissionMode('auto','plan_approved'))
       // or changes mode via the manual dropdown. Keeping the instance 'plan'
       // is also correct for tab auto-move: the tab belongs in the planning
@@ -107,7 +107,7 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       // the same dedupKey already exists in scrollback, suppress this push.
       const dk = event.dedupKey
       const alreadyPresent = dk
-        ? ctx.messages.some((m) => (m as any).harnessDedup === dk)
+        ? ctx.messages.some((m) => (m as any).dedupKey === dk)
         : false
       if (!alreadyPresent) {
         ctx.messages = [
@@ -117,7 +117,7 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
             role: 'harness' as any,
             content: event.message,
             timestamp: Date.now(),
-            ...(dk ? { harnessDedup: dk } : {}),
+            ...(dk ? { dedupKey: dk } : {}),
             ...(event.source ? { harnessSource: event.source } : {}),
           },
         ]

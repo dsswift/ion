@@ -8,6 +8,7 @@ import type { Message } from '../../../shared/types'
 import type { ConversationInstance } from '../../../shared/types-engine'
 import { nextMsgId } from '../session-store-helpers'
 import { formatPlanCreatedDivider, formatPlanUpdatedDivider } from '../../../shared/clear-divider'
+import { rInfo, rWarn } from '../../rendererLogger'
 
 /**
  * Mutable context shared with the parent reducer for one plan-mode event.
@@ -40,7 +41,7 @@ export function handlePlanModeEvent(ctx: PlanModeCtx, event: any): boolean {
       // Enabled:false from a model-initiated ExitPlanMode is a
       // *proposal* awaiting user approval, so we do NOT flip the
       // dropdown to auto here. The user-approval chokepoint in
-      // runHandleImplement (ConversationView-implement.ts) is responsible for
+      // implementPlan (implement-slice.ts) is responsible for
       // the mode flip back to 'auto'. The engine no longer emits
       // false for the ExitPlanMode case, but this branch still
       // guards against any future emitter.
@@ -130,7 +131,7 @@ export function handlePlanModeEvent(ctx: PlanModeCtx, event: any): boolean {
       const proposal = event
       const kind = proposal.planProposalKind ?? proposal.kind
       const path = proposal.planFilePath
-      console.log(`[plan_proposal] tab=${ctx.tabId.slice(0, 8)} instance=main kind=${kind} planFilePath=${path ?? ''} planSlug=${proposal.planSlug ?? ''}`)
+      rInfo('event.plan-mode', 'plan proposal received', { tab_id: ctx.tabId.slice(0, 8), kind, path: path ?? '', plan_slug: proposal.planSlug ?? '' })
       if (path && ctx.inst0?.planFilePath !== path) {
         ctx.instPatch.planFilePath = path
         ctx.instTouched = true
@@ -157,26 +158,22 @@ export function handlePlanModeEvent(ctx: PlanModeCtx, event: any): boolean {
           ],
         }
         ctx.instTouched = true
-        console.log(`[plan_proposal] tab=${ctx.tabId.slice(0, 8)} synthesized ExitPlanMode permissionDenied from proposal (card trigger) planFilePath=${path ?? '<none>'}`)
+        rInfo('event.plan-mode', 'synthesized ExitPlanMode permission denied from proposal', { tab_id: ctx.tabId.slice(0, 8), path: path ?? '' })
       }
-      // Layer 2 (Bug #1 regression DETECTOR): a kind="exit" proposal is
-      // definitive proof the session was in plan mode awaiting approval. The
-      // entry event (engine_plan_mode_changed{enabled:true}) that normally
-      // establishes instance plan mode could be lost in the engine's session
-      // router when a status query transiently cleared the run's requestID
-      // mid-flight. That dropped-event defect is now FIXED engine-side (the
-      // run_key_binding routing fix), so this branch is no longer a recovery
-      // mechanism — it must NOT silently mutate permissionMode. Instead it is a
-      // pure observability assertion: if a kind="exit" proposal ever arrives on
-      // an instance that is not already in plan mode, that is a regression in
-      // the engine's entry-event delivery and we surface it as a warning rather
-      // than papering over it with an auto-correction. Auto-correcting here
-      // would mask the very defect the engine fix was meant to eliminate.
-      // Skip when already 'plan' (the entry event was delivered normally).
+      // Layer 2 (regression DETECTOR): a kind="exit" proposal is definitive
+      // proof the session was in plan mode awaiting approval. If this arm
+      // runs with a non-'plan' instance, it means the instance permissionMode
+      // was corrupted upstream (e.g. something prematurely flipped it to
+      // 'auto'). This warning is the detector that catches that upstream
+      // corruption. We do NOT auto-correct here — silently mutating
+      // permissionMode would mask the defect that caused the corruption.
+      // The instance stays exactly as it is; the warning surfaces the
+      // upstream bug so it can be found and fixed at its root.
+      // Skip when already 'plan' (the entry event delivered normally).
       const currentMode =
         ('permissionMode' in ctx.instPatch ? ctx.instPatch.permissionMode : ctx.inst0?.permissionMode) ?? 'auto'
       if (kind === 'exit' && currentMode !== 'plan') {
-        console.warn(`[plan_proposal] tab=${ctx.tabId.slice(0, 8)} a kind=exit proposal arrived with instance permissionMode=${currentMode} (expected plan) — the engine_plan_mode_changed entry event may have been dropped; the run_key_binding routing fix should prevent this. NOT auto-correcting.`)
+        rWarn('event.plan-mode', 'exit proposal arrived on non-plan instance — NOT auto-correcting; upstream mode corruption detected', { tab_id: ctx.tabId.slice(0, 8), mode: currentMode })
       }
       return true
     }

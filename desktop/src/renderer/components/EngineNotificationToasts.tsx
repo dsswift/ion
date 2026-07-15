@@ -18,11 +18,11 @@
 //     dismissal once the X button existed (closing the head toast would
 //     make the shared timer remove the wrong sibling).
 //
-// Scoping note: notifications are already scoped per engine instance —
-// the store keys `engineNotifications` by compound `tabId:instanceId` and
-// EngineView selects only the active instance's list. This component is
-// purely presentational; switching sub-tabs unmounts these toasts and the
-// per-toast timers restart on remount (acceptable for ephemeral signals).
+// Scoping note: notifications are already scoped per engine tab —
+// the store keys `engineNotifications` by the bare tabId (after session-key
+// unification, #256) and EngineView selects only the active tab's list. This
+// component is purely presentational; switching sub-tabs unmounts these toasts
+// and the per-toast timers restart on remount (acceptable for ephemeral signals).
 
 import React, { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'

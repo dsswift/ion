@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { DotsThree, Gear, ListChecks, ClipboardText, Bug, FolderOpen, Hash } from '@phosphor-icons/react'
@@ -8,6 +9,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { activeInstance } from '../stores/conversation-instance'
 import { tabHasExtensions, computeSessionIdCopyPayload } from '../../shared/tab-predicates'
+import { rDebug } from '../rendererLogger'
 
 function RowToggle({
   checked,
@@ -65,6 +67,8 @@ export function SettingsPopover() {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState<{ right: number; top?: number; bottom?: number; maxHeight?: number }>({ right: 0 })
 
   const updatePos = useCallback(() => {
@@ -205,7 +209,7 @@ export function SettingsPopover() {
     const inst = pane?.activeInstanceId ? pane.instances.find(i => i.id === pane.activeInstanceId) ?? null : null
     const payload = computeSessionIdCopyPayload(tab, inst)
     if (payload === null) return
-    console.debug('[SettingsPopover] copySessionId: copying', payload.split('\n').length, 'id(s)')
+    rDebug('settings-popover', 'copying session id(s)', { count: payload.split('\n').length })
 
     navigator.clipboard.writeText(payload)
     setOpen(false)

@@ -148,6 +148,25 @@ export function instanceMessageCount(inst: ConversationInstance | null | undefin
 }
 
 /**
+ * Does this instance still need its on-disk scrollback loaded?
+ *
+ * The precise signal is `historyHydrated` (set `false` by skeleton-creation
+ * sites, `true` by `loadSkeletonMessages` on completion). When it is `false`,
+ * hydration is needed even if `messages` is non-empty — live streamed events
+ * append to skeleton panes before the user ever opens them, and an emptiness
+ * check would silently skip the history load (showing only the live tail).
+ * `undefined` means the pane came from a path that predates the marker;
+ * those keep the legacy empty-messages+messageCount heuristic so their
+ * behavior is unchanged.
+ */
+export function needsHistoryHydration(inst: ConversationInstance | null | undefined): boolean {
+  if (!inst) return false
+  if (inst.historyHydrated === true) return false
+  if (inst.historyHydrated === false) return instanceMessageCount(inst) > 0
+  return inst.messages.length === 0 && (inst.messageCount ?? 0) > 0
+}
+
+/**
  * Return a NEW `conversationPanes` map with `mutate` applied to the active instance
  * of `tabId`. Returns the original map unchanged when the pane/instance is
  * missing, so callers can `set({ conversationPanes })` unconditionally without

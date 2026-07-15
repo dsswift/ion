@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import {
   Paperclip, FileText, Image, FileCode, File, ListChecks, BookOpen, CaretRight,
@@ -54,6 +55,8 @@ export function AttachmentsButton() {
   const popoverRef = useRef<HTMLDivElement>(null)
 
   const [open, setOpen] = useState(false)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
   const closePlan = useCallback(() => setPlanData(null), [])

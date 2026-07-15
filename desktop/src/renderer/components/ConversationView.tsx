@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
+import React, { useCallback, useEffect, useState, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useColors } from '../theme'
-import { runHandleImplement } from './ConversationView-implement'
 import { EngineDialog } from './EngineDialog'
 import { EngineNotificationToasts } from './EngineNotificationToasts'
 import { AgentPanel } from './AgentPanel'
@@ -17,6 +17,7 @@ import { useConversationSearch } from '../hooks/useConversationSearch'
 import { useScrollFollow } from './conversation/useScrollFollow'
 import { ScrollToBottomButton } from './conversation/ScrollToBottomButton'
 import { TranscriptRows } from './conversation/TranscriptRows'
+import { rDebug, rInfo } from '../rendererLogger'
 import {
   groupMessages,
   MessageActions, InterruptButton,
@@ -73,14 +74,14 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.messages ?? EMPTY_MESSAGES
   })
-  const { agentStates, dispatchTelemetry } = useSessionStore(s => {
+  const { agentStates, dispatchTelemetry } = useSessionStore(useShallow(s => {
     const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return {
       agentStates: inst?.agentStates ?? EMPTY_AGENTS,
       dispatchTelemetry: inst?.dispatchTelemetry ?? EMPTY_TELEMETRY,
     }
-  })
+  }))
   const workingMessage = useSessionStore(s => {
     const p = s.conversationPanes.get(tabId)
     const k = p?.activeInstanceId ? tabId : ''
@@ -111,14 +112,14 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     hasRunningChildren,
     tabId,
     runningChildCount,
-    log: console.log,
+    log: (msg: string, ...args: any[]) => rDebug('plan-card', msg, ...args),
   })
   const [agentPanelFullscreen, setAgentPanelFullscreen] = useState(false)
   const [agentPanelHeights, setAgentPanelHeights] = useState<Map<string, number>>(new Map())
   const [renderOffset, setRenderOffset] = useState(0)
 
   // Scroll-follow via shared hook.
-  const { scrollRef, isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
+  const { scrollRef, isNearBottomRef: _isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
     messages.length, agentStates.length, workingMessage, isRunning,
   ])
 
@@ -141,7 +142,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
 
   // Pagination
   const totalCount = messages.length
-  let startIndex = Math.max(0, totalCount - INITIAL_RENDER_CAP - renderOffset * PAGE_SIZE)
+  const startIndex = Math.max(0, totalCount - INITIAL_RENDER_CAP - renderOffset * PAGE_SIZE)
   const visibleMessages = startIndex > 0 ? messages.slice(startIndex) : messages
   const hasOlder = startIndex > 0
   const hiddenCount = totalCount - visibleMessages.length
@@ -182,23 +183,24 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const clearPermissionDenied = useClearPermissionDenied(key, tabId, activeInstanceId)
 
   const handleAnswerDenial = useCallback((answer: string) => {
-    console.log(`[ConversationView] handleAnswerDenial: tab=${tabId.slice(0, 8)} answerLen=${answer.length}`)
+    rInfo('conversation', 'handleAnswerDenial', { tab_id: tabId.slice(0, 8), answer_len: answer.length })
     clearPermissionDenied()
     submit(tabId, answer)
   }, [tabId, clearPermissionDenied, submit])
 
+  // One pipeline for every surface: implementPlan is a store action, so in
+  // the overlay it executes here (the owner) and in the ATV mirror the same
+  // click forwards to the owner — the component never runs the business
+  // logic itself (unpin ordering, mode flip, group move all happen in one
+  // window against one store).
   const handleImplement = useCallback(async (clearContext: boolean = false) => {
-    await runHandleImplement(
-      { tabId, clearPermissionDenied, submit, tabPlanFilePath, permissionDenied },
-      clearContext,
-    )
-  }, [tabId, clearPermissionDenied, submit, tabPlanFilePath, permissionDenied])
+    await useSessionStore.getState().implementPlan(tabId, { clearContext })
+  }, [tabId])
 
   const handleImplementAndUnpin = useCallback(async (clearContext: boolean = false) => {
-    useSessionStore.getState().toggleTabGroupPin(tabId)
-    console.log(`[EngineView] implement-and-unpin: tab=${tabId.slice(0, 8)} clearContext=${clearContext} — pin cleared`)
-    await handleImplement(clearContext)
-  }, [tabId, handleImplement])
+    rInfo('conversation', 'implement-and-unpin', { tab_id: tabId.slice(0, 8), clear_context: clearContext })
+    await useSessionStore.getState().implementPlan(tabId, { clearContext, unpin: true })
+  }, [tabId])
 
   const handleLoadOlder = useCallback(() => { setRenderOffset((o) => o + 1) }, [])
 

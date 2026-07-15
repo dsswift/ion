@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { FolderPlus, GitFork, CheckCircle, CaretDown, Rows, PushPin } from '@phosphor-icons/react'
@@ -35,6 +36,8 @@ export function DirContextMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(ref, true)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const [moveSubmenu, setMoveSubmenu] = useState<{ x: number; y: number } | null>(null)
   // Bounding rect of the "Move to group" row, captured at the moment

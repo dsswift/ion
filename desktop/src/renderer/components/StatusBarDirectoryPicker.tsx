@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { FolderOpen, Plus, X } from '@phosphor-icons/react'
@@ -40,6 +41,8 @@ export function DirectoryPicker() {
   const [dirOpen, setDirOpen] = useState(false)
   const dirRef = useRef<HTMLButtonElement>(null)
   const dirPopRef = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(dirPopRef, dirOpen)
   const [dirPos, setDirPos] = useState({ bottom: 0, left: 0 })
 
   // Close popover on tab change

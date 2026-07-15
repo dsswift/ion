@@ -6,9 +6,10 @@ import { parseSessionKey } from '../../../shared/session-key'
 
 /**
  * Return a new conversationPanes Map with `instance.messages` replaced for the
- * instance identified by `key` (`${tabId}:${instanceId}`). No-ops silently
- * when the pane or instance is not found (event arrived before pane was
- * registered — safe to ignore).
+ * instance identified by `key` (the bare tabId after session-key unification
+ * (#256); parseSessionKey tolerates the legacy `${tabId}:${instanceId}` form).
+ * No-ops silently when the pane or instance is not found (event arrived before
+ * pane was registered — safe to ignore).
  */
 function withInstanceMessages(
   conversationPanes: Map<string, ConversationPane>,
@@ -28,8 +29,9 @@ function withInstanceMessages(
 }
 
 /**
- * Handler for `engine_intercept` events on engine-view tabs (compound
- * `${tabId}:${instanceId}` key). Extracted from engine-event-slice.ts
+ * Handler for `engine_intercept` events on engine-view tabs (keyed by the
+ * bare tabId after session-key unification (#256); parseSessionKey tolerates
+ * the legacy `${tabId}:${instanceId}` form). Extracted from engine-event-slice.ts
  * to keep that file under the 600-line TypeScript cap.
  *
  * Renders an inline banner in the conversation scrollback so the user

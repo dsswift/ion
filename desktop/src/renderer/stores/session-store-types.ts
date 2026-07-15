@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ConversationInstance, AgentStateUpdate, StatusFields, Message, ImageAttachmentPayload } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -128,6 +128,13 @@ export interface State {
 
   initStaticInfo: () => Promise<void>
   setPermissionMode: (mode: 'auto' | 'plan', source?: string) => void
+  /**
+   * The single plan-approval → implementation pipeline (implement-slice.ts):
+   * optional unpin, denial-card dismissal, implement divider, per-tab mode
+   * flip to 'auto', model split switch, in-progress auto-move, plan read,
+   * prompt submit. Owner-executed everywhere — the ATV mirror forwards it.
+   */
+  implementPlan: (tabId: string, opts?: { clearContext?: boolean; unpin?: boolean }) => Promise<void>
   /**
    * Set the per-conversation extended-thinking effort for the active
    * conversation. Isolated per-tab (bare) and per-instance (engine subtab),

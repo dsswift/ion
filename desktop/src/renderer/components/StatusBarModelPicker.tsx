@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { CaretDown } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
@@ -60,6 +61,8 @@ export function ModelPicker() {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
   const fetchModels = useModelStore((s) => s.fetchModels)

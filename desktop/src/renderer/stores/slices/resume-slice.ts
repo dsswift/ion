@@ -2,7 +2,7 @@ import type { TabState, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId, initialPermissionMode } from '../session-store-helpers'
-import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode } from '../conversation-instance'
+import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode, needsHistoryHydration } from '../conversation-instance'
 import { lastPendingCardTool, type PendingCardMessage } from '../../../shared/pending-card'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
@@ -289,11 +289,19 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
     loadSkeletonMessages: async (tabId) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab || !tab.conversationId) return
-      // Skeleton state lives on the active instance now: a persisted
-      // messageCount > 0 with an empty messages array means not-yet-hydrated.
-      // Already-loaded (messages present) tabs short-circuit.
+      // Precise hydration gate (needsHistoryHydration): the historyHydrated
+      // marker, not message emptiness — live events append to skeleton panes
+      // before the user opens them, and an emptiness check would skip the
+      // history load, leaving only the live tail in the transcript.
       const inst = activeInstance(get().conversationPanes, tabId)
-      if (!inst || inst.messages.length > 0) return
+      if (!needsHistoryHydration(inst)) return
+      // Messages already present are live-streamed arrivals on the skeleton.
+      // Everything before this baseline is REPLACED by the history load (a
+      // completed turn is persisted, so the history covers it); anything
+      // appended during the async load is kept as the live tail. Known edge:
+      // a turn still streaming at this instant loses its not-yet-persisted
+      // partial text — the pre-hydration window is one IPC roundtrip.
+      const baseline = inst!.messages.length
 
       try {
         // Load all historical + current session messages in a single
@@ -317,23 +325,28 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           restoredDenied = buildRestoredDenied(allMessages)
         }
 
-        rInfo('session.restore', 'skeleton messages hydrated', { tab_id: tabId.slice(0, 8), count: allMessages.length, restored_denied: !!restoredDenied })
+        rInfo('session.restore', 'skeleton messages hydrated', { tab_id: tabId.slice(0, 8), count: allMessages.length, baseline, restored_denied: !!restoredDenied })
         set((s) => ({
           conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
             ...i,
-            messages: allMessages,
-            messageCount: allMessages.length,
+            // History first, then live messages that streamed in DURING the
+            // load (past the baseline) — the pre-baseline live messages are
+            // persisted turns the history already contains.
+            messages: [...allMessages, ...i.messages.slice(baseline)],
+            messageCount: allMessages.length + i.messages.length - baseline,
+            historyHydrated: true,
             ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
           })),
         }))
       } catch (err) {
         rWarn('session.restore', 'skeleton load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
-        // Hydrate with empty messages so the tab is usable
+        // Mark hydrated with whatever live messages exist so the tab is
+        // usable and selectTab doesn't retry the failing load on every switch.
         set((s) => ({
           conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
             ...i,
-            messages: [],
-            messageCount: 0,
+            messageCount: i.messages.length,
+            historyHydrated: true,
           })),
         }))
       }
