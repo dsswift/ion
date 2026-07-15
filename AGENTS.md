@@ -52,7 +52,7 @@ Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook 
 
 ## Forbidden commands
 
-**Never run `make desktop`.** It builds, packages, installs to `/Applications`, and relaunches the desktop app. If you are running inside an Ion session, this kills the engine process hosting your conversation and often loses conversation state. The user runs `make desktop` manually when they are ready. If a desktop rebuild is needed, tell the user to run it.
+**Never run `make desktop`.** It builds, packages, installs to `/Applications`, and relaunches the desktop app. On launch the desktop re-bootstraps the engine daemon and force-restarts it (`launchctl kickstart -k`) when the bundled binary or plist changed — so a `make desktop` that ships a new engine binary recycles the daemon, killing the engine process hosting your conversation and often losing conversation state. The user runs `make desktop` manually when they are ready. If a desktop rebuild is needed, tell the user to run it.
 
 ## Quality gates (run while developing)
 
@@ -62,6 +62,8 @@ These are the gates to run **during normal development** — they are cheap, fas
 |------|---------|
 | File-size cap | `make check-file-sizes` |
 | Contract sync | `make check-contracts` (only when you change a shared type — see "Cross-language contract sync") |
+| Status-writer check | `make check-status-writers` — run when touching code that emits `engine_status` or `engine_session_status` |
+| Logging standards | `make check-logging` — enforces ADR-019: no interpolated `msg`, no `console.*` in renderer, no non-canonical field keys. |
 | Engine lint | `cd engine && golangci-lint run` (scope to touched packages while iterating: `golangci-lint run ./internal/<pkg>/...`) |
 | Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. |
 | Desktop typecheck | `cd desktop && npm run typecheck` |
@@ -102,7 +104,7 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 
 - Conventional Commits with **required scope**: `type(scope): subject`.
 - Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`.
-- Allowed scopes (from `.commit.json`):
+- Allowed scopes (enforced by `commitlint.config.js`):
 
 | Scope | Path trigger |
 |-------|-------------|
@@ -111,13 +113,16 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | `relay` | `relay/` |
 | `ios` | `ios/` |
 | `docs` | `docs/` |
-| `repo` | `.github/`, root files, or cross-cutting changes |
+| `repo` | root files or cross-cutting changes |
+| `ci` | `.github/` workflows and CI config |
+| `deps` | dependency-only updates (Dependabot / manual bumps) |
 
-- Pick the scope matching the primary path touched. If files span multiple scopes, use the scope of the *primary* change; for pure CI/config/root changes use `repo`.
+- `ci` and `deps` are in `commitlint.config.js` but not in `.commit.json` (the commit binary does not auto-scope them; use them via `git commit -m` directly when appropriate).
+- Pick the scope matching the primary path touched. If files span multiple scopes, use the scope of the *primary* change.
 - Examples: `feat(engine): add streaming support`, `fix(desktop): correct tab order`, `chore(repo): update ci workflow`.
-- Subject ≤ 65 chars, lowercase, imperative, no period. (Commitlint's hard cap from `@commitlint/config-conventional` is 72; 65 leaves headroom for the ` (#N)` issue suffix without tripping the warning.)
+- Subject ≤ 65 chars, lowercase, imperative, no period. (This 65-char target is a self-imposed stylistic guideline, not the enforced limit: commitlint's `header-max-length` from `@commitlint/config-conventional` is 100. The tighter target leaves ample headroom for the ` (#N)` issue suffix.)
 - **Issue association is mandatory when working from a GitHub issue.** If the work was initiated by an issue (e.g. user said "let's work on #126"), the commit must associate it both ways:
-  - **Subject line**: append ` (#N)` so GitHub auto-links and the issue number is visible in `git log --oneline`. Example: `fix(engine): wire agent_start / agent_end hooks (#126)`. Stay within the 65-char subject cap; precedent: commit `a73824a9` (`fix(engine): wire before_provider_request hook (#128)`).
+  - **Subject line**: append ` (#N)` so GitHub auto-links and the issue number is visible in `git log --oneline`. Example: `fix(engine): wire agent_start / agent_end hooks (#126)`. Stay within the 65-char subject cap.
   - **Body trailer**: include `Fixes #N` (or `Closes #N` for non-bug work) on its own line at the end of the body. This is what GitHub uses to auto-close the issue when the PR merges.
   - Both are required. Subject alone gives the auto-link but won't close the issue; body alone closes the issue but isn't visible in short logs.
 - Never `--no-verify`.
@@ -155,6 +160,7 @@ The principle stands on its own. It is **not** "match whatever a competitor does
 | **Schedules** | The scheduler — timing, persistence, firing | What a schedule *does* when it fires |
 | **Webhooks** | The HTTP-server mechanics — listening, routing, lifecycle | The action taken on an inbound webhook; the consumer just registers it |
 | **Slash commands** | Discovery across the conventional roots, frontmatter parsing (full map preserved), precedence resolution, `$ARGUMENTS` expansion, the persisted-invocation-vs-expanded-content split | Whether non-standard activation modes are enabled (config), and specialized handling via a resolution hook that sees the full frontmatter + invocation metadata — so the same `/command` can behave differently in an extension-hosted conversation than in a plain one |
+| **Tool instructions** | Input-shape mechanics, channel correctness (e.g. "the user sees only visible assistant text — private reasoning never reaches them"), interception semantics | Style, depth, tone, workflow framing (tradeoff analysis, recommendations, domain phrasing) — via operator `AGENTS.md`, harness prose overrides, or `RegisterTool` replacement. See [ADR-017](docs/architecture/adr/017-opinionless-tool-instructions.md) |
 
 When you add a feature to the engine, decide explicitly: what is the mechanism (engine-owned, generic) and what is the opinion (consumer-owned, configurable + hookable)? Ship the mechanism with a least-opinionated default and a seam for every opinion. A feature that hardcodes an opinion with no override is incomplete.
 
@@ -213,16 +219,41 @@ This applies equally to warnings (model fallback, deprecation notices), advisori
 - **Engine API surface should be generous.** Every configurable behavior should be exposed: as an `engine.json` config field, as a per-prompt `ClientCommand` override, and (where applicable) as an SDK context method. External consumers want every hook we can imagine.
 - **Desktop and iOS are not gatekeepers.** They consume the engine; they do not define its surface. When reviewing engine changes, do not ask "does desktop use this?" — ask "would an external consumer want this?"
 
-### Consuming harness updates ship with the engine change
+## Harnesses and extensions are in scope
 
-The framing above ("engine surface ships ahead of its consumers") governs *whether the engine may add surface with no in-repo caller* — it always may. It does **not** excuse leaving a *known, on-machine* consumer unwired when that consumer is the source of the bug or the destined user of the feature.
+When a local extension or harness is referenced during investigation as the **source** of an issue, or is the **end-goal consumer** of an engine/SDK feature, the plan **must** include the actual upgrade to that extension/harness — not merely the engine/SDK mechanism. An engine feature with no consumer is an unfinished plan: it leaves the reported bug unfixed in practice and the new capability unexercised. These extensions are the reference and testable implementations; shipping the mechanism without wiring the consumer is half a fix.
 
-When an engine/SDK change is driven by, or destined for, a specific harness that exists on the machine, the plan includes that harness's upgrade and ships it in the same change set (at the harness's own scope seam):
+This holds regardless of where the harness lives or who owns it:
 
-- For the **in-repo `ion-meta` extension** (it ships with the engine to end users), the `ion-meta` update is part of the same plan and lands in this repo alongside the engine/SDK change.
-- For **out-of-repo harnesses** (the private `ion-dev` engine-development harness, `chief-of-staff`, or any other extension installed under `~/.ion/extensions/`), the upgrade is still in scope and is implemented and committed in that harness's own working tree. See the operator's global `~/.ion/AGENTS.md` § "Harnesses and extensions are in scope" for the full statement.
+- **In-repo** harnesses that ship with the engine (e.g. `ion-meta`, installed to end users when the engine is installed).
+- The primary **engine-development harness** I use most (`ion-dev`) — a private extension at `~/.ion/extensions/ion-dev/`, not part of the Ion repository, but the active extension I use to find bugs, exercise new engine/SDK surface, and test the engine inside the desktop.
+- Fully **private** harnesses with no relation to Ion development beyond consuming the engine (e.g. `chief-of-staff`).
+- **Any other harness installed under `~/.ion/extensions/`** that is what we are troubleshooting or enhancing.
 
-The anti-pattern is shipping the engine mechanism and stopping — leaving the reporting/consuming harness unwired so the reported bug remains unfixed in practice. SDK source-of-truth note: edit the SDK in this repo at `engine/extensions/sdk/ion-sdk/`; never the installed copy at `~/.ion/extensions/sdk/`.
+If the harness is on the machine and it is what we are troubleshooting or enhancing, its upgrade is in the plan and gets implemented and committed (at its own scope seam, in its own working tree) alongside the engine/SDK change.
+
+This generalizes the `## Scope` rule above (no deferral of ordered work) to the engine↔harness boundary. Note the SDK source-of-truth split: edit the SDK in the engine repo at `engine/extensions/sdk/ion-sdk/`; never edit the installed copy at `~/.ion/extensions/sdk/` (it is overwritten at build time). A harness that consumes a brand-new SDK field may need a structural-typing shim until the operator rebuilds the engine/SDK so the installed copy carries the field.
+
+## Missing engine/SDK capability is fixed at the root, not worked around in the harness
+
+I own the Ion engine and I am the extension developer. When a requested extension feature is **blocked by a missing engine or SDK capability**, the correct resolution is to add the proper engine/SDK primitive — a new hook, tool, event, config field, SDK method, or scheduler/async kind — and then consume it in the harness. It is **not** to build a load-bearing workaround in the extension that routes around the gap (a raw timer standing in for a missing schedule kind, a polling loop standing in for a missing event, a local reimplementation of mechanics the engine should own). Workarounds around an engine gap are the same anti-pattern as substituting a heuristic for a precise mechanism: they drift, they leak, and they leave the real capability unbuilt.
+
+The trigger is any moment where the honest description of a plan is "the SDK can't do X, so the extension fakes X." When you catch that, stop and make the distinction explicit to me:
+
+- **Name the gap** as a first-class finding: "the SDK has no one-shot schedule / no self-unregister / no such event."
+- **Propose the engine/SDK enhancement** as the primary fix (additive and generic — built for any external consumer, per the engine-consumer framing, not just this harness), and
+- **Name the consuming-harness upgrade** that exercises it — both land in the same plan (per `## Harnesses and extensions are in scope`), each committed at its own scope seam in its own working tree.
+
+This is not license to gold-plate every extension task into an engine change. Most harness work is genuinely harness work. The rule fires specifically when a feature is *blocked by* an engine/SDK limitation and I own the engine: in that case the engine enhancement is the plan, and the workaround is the defect to avoid. When I ask for cutting-edge extension features, assume engine/SDK enhancements are in scope and surface them rather than defaulting to a harness-local hack. If there is a genuine reason the engine change is out of scope (published-contract break needing my approval, or the capability truly belongs in the harness), say so and let me decide — never silently pick the workaround.
+
+## Cross-client parity (overlay ↔ ATV)
+
+The desktop has two clients in one process: the overlay glass and the ATV shell (`desktop/src/renderer/atv/`). Same parity obligation as desktop ↔ iOS: a feature that exists in both must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-atv-shell-mirror-store.md).
+
+- **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both windows (the ATV runs the session store in mirror mode). Never build a bespoke ATV widget for something the overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
+- **New store action** → classify it in `desktop/src/shared/atv-mirror-actions.ts` (forwarded vs mirror-local, with justification); the mirror-parity test fails otherwise.
+- **New main-process event push** → route through `broadcast()`; `make check-atv-parity` (CI) fails direct `webContents.send` outside the owner-only allowlist.
+- **Checklist for overlay UI/state changes:** does the surface exist in the ATV shell? Shared component → done by construction. Not shared → mount it in the ATV, or state why it is overlay-only. The inverse holds for ATV changes.
 
 ## Cross-platform parity (desktop ↔ iOS)
 
@@ -242,12 +273,12 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Desktop | iOS counterpart | Sync path |
 |---------|----------------|-----------|
 | Tab status dot (TabStripTabPill, StatusDot) | Tab list dot (TabRowView.statusInfo) | `snapshot.ts` → `RemoteTabState.status` |
-| Engine instance bar (EngineTabStrip) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.conversationInstances` |
+| Engine instance bar (TabStripTabPill) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.conversationInstances`. Note: `EngineTabStrip` was deleted in #256 (conversation unification); the model-fallback indicator is now derived via `resolveTabModelFallback` in `TabStripTabPill`. |
 | Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `conversationInstances` |
 | Tab group pills | Tab group sections | `snapshot.ts` → group fields on `RemoteTabState` |
 | Thinking indicator / interrupt button | Activity indicator / interrupt button | Real-time events (`engineTextDelta`, `tabStatus`) |
 | Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` for all conversations. For extension-loaded tabs, per-instance session IDs are available in `conversationInstances[i].conversationIds` (historical) and `StatusFields.sessionId` (live). |
-| Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` allowlist → `desktop_settings_snapshot` event (settings + schema + groups) → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match the desktop's `CATEGORIES` array; renaming a desktop category requires updating `PROJECTABLE_GROUP_LABELS` and the test in `projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` unless the setting is local-machine-only (font, path, secret). |
+| Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` → `desktop_settings_snapshot` event → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match `PROJECTABLE_GROUP_ORDER` (exported from `projectable-settings.ts`); renaming a group requires updating `PROJECTABLE_GROUP_LABELS` in that same file and the test in `src/main/__tests__/projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` in `projectable-settings-data.ts` unless the setting is local-machine-only (font, path, secret). |
 | Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
 
 ### When to skip iOS
@@ -280,7 +311,7 @@ The engine stores nothing. Extensions that declare resource kinds are responsibl
 
 ### Notifications
 
-`ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads (per D-009). The push body is a doorbell string ("New briefing ready"), not content. The `resourceId` field enables deep-linking: iOS reads it from the push payload's `userInfo` to navigate to the specific resource.
+`ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads. The push body is a doorbell string ("New briefing ready"), not content. The relay includes `ionResourceId` and `ionKind` in the APNs payload for future deep-linking. iOS does not yet read these fields; the current `AppDelegate` navigates by `tabId` only.
 
 ## Contract stability
 
@@ -354,7 +385,7 @@ Go is the source of truth. A reflection-based test (`engine/internal/types/contr
 1. Make the Go change in `engine/internal/types/`.
 2. Regenerate the manifest: `cd engine && go test ./internal/types/ -run TestContractManifest -update`
 3. Update the TS field map in `desktop/src/shared/__tests__/contract-sync.test.ts` to match.
-4. Update the TS type definition in `desktop/src/shared/types-engine.ts` or `types-events.ts`.
+4. Update the TS type definition in the appropriate file under `desktop/src/shared/`: `types-engine.ts`, `types-events.ts`, or `types-engine-event.ts` (the `EngineEvent` discriminated union lives in `types-engine-event.ts`, split from `types-engine.ts` to stay under the 600-line cap).
 5. Update the Swift type in `ios/IonRemote/Models/` and the Swift contract test if field coverage changed.
 6. Run `make check-contracts`, `npm test`, and `make ios-check` to verify.
 
@@ -364,14 +395,56 @@ If you skip a step, CI fails with a clear message identifying the drift (e.g. `"
 
 Logging is a **first-class citizen** of the architecture. Every code path must be observable through logs alone.
 
+### Log files and format
+
+Logs are structured JSONL (one JSON object per line). Every line has a canonical schema — see [`docs/observability/log-schema.md`](docs/observability/log-schema.md) for the full field reference.
+
+| Surface | File | Notes |
+|---|---|---|
+| Engine | `~/.ion/engine.jsonl` | Go `utils.Log` / `utils.LogCtx` via slog JSON handler |
+| Desktop | `~/.ion/desktop.jsonl` | Electron main process logger |
+| iOS | `~/.ion/ios-diagnostic-logs.jsonl` | Written via `DiagnosticLog.log()` |
+| Relay | `RELAY_LOG_FILE` (default `/var/log/ion/relay.jsonl`, inside the container) or stdout / `docker logs ion-relay` — `RELAY_LOG_OUTPUT` selects `stdout` \| `file` \| `both` (default `stdout`) | Go relay logger, canonical JSONL |
+| Extensions | `~/.ion/engine.jsonl` | `component=extension`, `tag=<extension-name>` |
+
 ### Check Logs First
 
-Check the logs before assuming anything when investigating issues.
-Caution: These files are large >20KB. Use intelligent searching when looking through the logs, don't just try to read the whole file.
+Check the logs before investigating any issue. All files are JSONL — use `jq` to filter rather than reading them raw.
 
-- Engine Logs: ~/.ion/engine.log
-- Desktop Client Logs: ~/.ion/desktop.log
-- iOS Diagnostic Logs: ~/.ion/ios-diagnostic-logs.txt
+**Filter one conversation** (all surfaces, all log lines for a conversation ID):
+```bash
+jq -c 'select(.conversation_id=="<id>")' ~/.ion/engine.jsonl
+```
+
+**Filter one session across all surfaces**:
+```bash
+jq -c 'select(.session_id=="<id>")' ~/.ion/*.jsonl
+```
+
+**Filter one extension** (by name):
+```bash
+jq -c 'select(.component=="extension" and .tag=="ion-meta")' ~/.ion/engine.jsonl
+```
+
+**Filter by time range** (logs after a given timestamp):
+```bash
+jq -c 'select(.ts >= "2024-11-15T22:00:00Z")' ~/.ion/engine.jsonl
+```
+
+**Filter by level** (errors only):
+```bash
+jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
+```
+
+**When the Loki stack is running** (`docker compose up` in `docs/observability/`), use LogQL instead:
+
+| Goal | LogQL |
+|---|---|
+| One conversation | `{component=~".+"} \| json \| conversation_id = "<id>"` |
+| One session across surfaces | `{component=~".+"} \| json \| session_id = "<id>"` |
+| Errors in time range | `{level="ERROR"}` (use Grafana time picker) |
+| One extension | `{component="extension", tag="ion-meta"}` |
+| Trace correlation | `{component=~".+"} \| json \| trace_id = "<32-hex-id>"` |
 
 ### Rules
 
@@ -384,7 +457,7 @@ Caution: These files are large >20KB. Use intelligent searching when looking thr
 4. **Include context in every log.** Always log the relevant identifiers (provider ID, model ID, session key, request ID, key lengths, URL, status codes). A log line without context is useless.
 5. **Log both sides of conditionals.** If an `if/else` branch makes a decision, log which branch was taken and why. Don't log only the happy path.
 6. **Desktop main process** uses the `log()` helper from `../logger`. Renderer code uses `console.log` sparingly (performance-sensitive hot paths excepted).
-7. **Engine Go code** uses `utils.Log(tag, msg)`, `utils.Debug(tag, msg)`, and `utils.Error(tag, msg)`. Never use `log.Printf` or `fmt.Printf` for operational logging — those go to stderr which is invisible when the desktop spawns the engine. All operational logs must go through `utils.Log` so they land in `~/.ion/engine.log`.
+7. **Engine Go code** uses `utils.Log(tag, msg)`, `utils.Debug(tag, msg)`, and `utils.Error(tag, msg)`. Never use `log.Printf` or `fmt.Printf` for operational logging — those go to stderr, which is not a reliable operational channel for the headless launchd engine daemon. All operational logs must go through `utils.Log` so they land in `~/.ion/engine.jsonl`.
 
 ### Anti-patterns
 
@@ -606,59 +679,4 @@ Do not report a feature or fix as "done," "complete," or "verified" when the onl
 
 ## Conversation storage
 
-Conversations are persisted as NDJSON file pairs under `~/.ion/conversations/`.
-
-### ID format
-
-Each conversation ID is `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). Generated by `NewConversationID()` in `engine/internal/conversation/id.go` (`time.Now().UnixMilli()` + `NewConvSuffix()`).
-
-### File layout
-
-A conversation with ID `<id>` produces up to three files:
-
-| File | Purpose |
-|------|---------|
-| `<id>.tree.jsonl` | Conversation tree for rendering and branching. Source of truth for the full message history with parent/child relationships. |
-| `<id>.llm.jsonl` | LLM-authoritative message history. Source of truth for what the model actually saw and for token/cost accounting. |
-| `<id>.memory.md` | Session memory summary. Background-generated Markdown summary used for zero-cost compaction and system prompt injection. Optional — only present after enough turns and token growth. |
-
-Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-migrates legacy files to the split format on the next save.
-
-### `.tree.jsonl` structure
-
-- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"leafId"`, `"workingDirectory"`, `"version"`.
-- **Subsequent lines:** `SessionEntry` objects (`engine/internal/conversation/conversation.go`), each with:
-  - `id` — unique entry identifier
-  - `parentId` — pointer to parent entry (null for roots)
-  - `type` — one of `message`, `compaction`, `model_change`, `label`, `custom`
-  - `timestamp` — Unix millis
-  - `data` — type-specific payload (message content, compaction summary, etc.)
-
-### `.llm.jsonl` structure
-
-- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"version"`, `"model"`, `"system"` (system prompt), `"totalInputTokens"`, `"totalOutputTokens"`, `"lastInputTokens"`, `"lastInputTokensMsgCount"`, `"totalCost"`, `"createdAt"`, and optional `"parentId"`.
-- **Subsequent lines:** `LlmMessage` objects (`engine/internal/types/llm.go`), each with:
-  - `role` — `user`, `assistant`, or `system`
-  - `content` — string or array of `LlmContentBlock` (text, tool_use, tool_result, image, etc.)
-
-### Looking up a conversation
-
-When given a conversation ID, glob for its files:
-
-```
-~/.ion/conversations/{id}.*
-```
-
-- Read `{id}.tree.jsonl` for the full message history with branching structure.
-- Read `{id}.llm.jsonl` for the LLM-side view, system prompt, and token/cost accounting.
-- Read `{id}.memory.md` for the background session memory summary (if present).
-- If only `{id}.jsonl` or `{id}.json` exists, the conversation is in legacy format (pre-split).
-
-### Key source files
-
-| What | Where |
-|------|-------|
-| ID generation | `engine/internal/conversation/id.go` (`NewConversationID` / `NewConvSuffix`) |
-| Save/load logic | `engine/internal/conversation/persistence.go` (`Save`, `Load`, `saveSplit`) |
-| Data structures | `engine/internal/conversation/conversation.go` (`Conversation`, `SessionEntry`) |
-| LLM message type | `engine/internal/types/llm.go` (`LlmMessage`) |
+Conversations persist as NDJSON file pairs under `~/.ion/conversations/`. Full reference: [`docs/architecture/conversation-storage.md`](docs/architecture/conversation-storage.md) — covers ID format, file layout (`.tree.jsonl`, `.llm.jsonl`, `.memory.md`), struct shapes, and the legacy migration path.

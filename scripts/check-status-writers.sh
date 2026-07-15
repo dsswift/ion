@@ -72,6 +72,8 @@ desktop/src/main/engine-control-plane.ts
 desktop/src/main/engine-control-plane-events.ts
 desktop/src/main/prompt-pipeline-renderer.ts
 desktop/src/main/state.ts
+desktop/src/renderer/atv/state/agent-cache.ts
+desktop/src/main/atv-state-cache.ts
 ios/IonRemote/ViewModels/SessionViewModel+SessionStatus.swift
 ios/IonRemote/ViewModels/SessionViewModel+EventHandlers.swift
 ios/IonRemote/ViewModels/SessionViewModel+EngineEvents.swift
